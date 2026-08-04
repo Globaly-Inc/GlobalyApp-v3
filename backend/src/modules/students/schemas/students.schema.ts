@@ -62,33 +62,33 @@ export const StudentProfilePatchSchema = z.object({
 // ── Sub-resources ──
 
 export const QualificationSchema = z.object({
-  qualification_type: z.string().nullable(),
-  degree_title: z.string().nullable(),
-  subject_area: z.string().nullable(),
-  institution_name: z.string().nullable(),
-  grading_system: z.string().nullable(),
-  grade_value: z.string().nullable(),
+  qualification_type: z.string().nullish(),
+  degree_title: z.string().nullish(),
+  subject_area: z.string().nullish(),
+  institution_name: z.string().nullish(),
+  grading_system: z.string().nullish(),
+  grade_value: z.string().nullish(),
   is_current: z.boolean().optional(),
-  start_date: z.string().nullable(),
-  end_date: z.string().nullable(),
+  start_date: z.string().nullish(),
+  end_date: z.string().nullish(),
   sort_order: z.number().int().optional(),
 });
 
 export const LanguageTestSchema = z.object({
-  test_status: z.string().nullable(),
-  test_type: z.string().nullable(),
-  overall_score: z.string().nullable(),
-  test_date: z.string().nullable(),
-  sub_scores: z.record(z.unknown()).nullable(),
+  test_status: z.string().nullish(),
+  test_type: z.string().nullish(),
+  overall_score: z.string().nullish(),
+  test_date: z.string().nullish(),
+  sub_scores: z.record(z.unknown()).nullish(),
   sort_order: z.number().int().optional(),
 });
 
 export const WorkExperienceSchema = z.object({
   job_title: z.string().min(1),
-  organization_name: z.string().nullable(),
+  organization_name: z.string().nullish(),
   is_current: z.boolean().optional(),
-  start_date: z.string().nullable(),
-  end_date: z.string().nullable(),
+  start_date: z.string().nullish(),
+  end_date: z.string().nullish(),
   sort_order: z.number().int().optional(),
 });
 
