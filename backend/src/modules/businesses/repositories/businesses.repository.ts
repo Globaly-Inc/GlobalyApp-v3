@@ -34,6 +34,10 @@ export async function insertBusiness(data: {
   return row;
 }
 
+export async function deleteBusiness(id: string): Promise<void> {
+  await masterKnex("businesses").where({ id }).delete();
+}
+
 export async function updateBusinessStatus(id: string, accountStatus: number): Promise<void> {
   await masterKnex("businesses").where({ id }).update({ account_status: accountStatus, updated_at: masterKnex.fn.now() });
 }

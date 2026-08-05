@@ -1,10 +1,9 @@
-
 import type { Knex } from "knex";
 
 export async function up(knex: Knex): Promise<void> {
-  await knex.schema.createTable("student_profiles", (t) => {
+  await knex.schema.createTable("platform_user_profiles", (t) => {
     t.increments("id").primary();
-    t.integer("student_id").unsigned().notNullable().unique().references("id").inTable("students").onDelete("CASCADE");
+    t.integer("user_id").unsigned().notNullable().unique().references("id").inTable("platform_users").onDelete("CASCADE");
     t.integer("nationality_id").unsigned().nullable().references("id").inTable("countries");
     t.integer("country_of_residence_id").unsigned().nullable().references("id").inTable("countries");
     t.date("date_of_birth").nullable();
@@ -20,10 +19,12 @@ export async function up(knex: Knex): Promise<void> {
     t.integer("budget_max").nullable();
     t.text("budget_currency").nullable();
     t.boolean("include_living_expenses").defaultTo(false);
-    t.specificType("preferred_destinations", "text[]").nullable();
-    t.specificType("preferred_fields", "text[]").nullable();
+    t.text("degree_level").nullable();                        // e.g. "Bachelor", "Master"
+    t.jsonb("preferred_destinations").nullable().defaultTo("[]"); // array of up to 5 country IDs: [1,4,12,20,31]
+    t.jsonb("fields_of_study").nullable().defaultTo("[]");       // [{name:"Law"},{name:"Medicine"}]
     t.specificType("preferred_degree_levels", "text[]").nullable();
     t.text("expected_start_date").nullable();
+    t.text("city_of_residence").nullable();                      // city name from country lookup
     t.integer("completion_percentage").defaultTo(0);
     t.boolean("onboarding_completed").defaultTo(false);
     t.text("individual_category").nullable();
@@ -37,9 +38,9 @@ export async function up(knex: Knex): Promise<void> {
     t.timestamps(true, true);
   });
 
-  await knex.schema.createTable("student_qualifications", (t) => {
+  await knex.schema.createTable("platform_user_qualifications", (t) => {
     t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));
-    t.integer("student_id").unsigned().notNullable().references("id").inTable("students").onDelete("CASCADE");
+    t.integer("user_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("CASCADE");
     t.text("qualification_type").nullable();
     t.text("degree_title").nullable();
     t.text("subject_area").nullable();
@@ -53,9 +54,9 @@ export async function up(knex: Knex): Promise<void> {
     t.timestamps(true, true);
   });
 
-  await knex.schema.createTable("student_language_tests", (t) => {
+  await knex.schema.createTable("platform_user_language_tests", (t) => {
     t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));
-    t.integer("student_id").unsigned().notNullable().references("id").inTable("students").onDelete("CASCADE");
+    t.integer("user_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("CASCADE");
     t.text("test_status").nullable();
     t.text("test_type").nullable();
     t.text("overall_score").nullable();
@@ -65,9 +66,9 @@ export async function up(knex: Knex): Promise<void> {
     t.timestamps(true, true);
   });
 
-  await knex.schema.createTable("student_work_experiences", (t) => {
+  await knex.schema.createTable("platform_user_work_experiences", (t) => {
     t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));
-    t.integer("student_id").unsigned().notNullable().references("id").inTable("students").onDelete("CASCADE");
+    t.integer("user_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("CASCADE");
     t.text("job_title").notNullable();
     t.text("organization_name").nullable();
     t.boolean("is_current").defaultTo(false);
@@ -79,8 +80,8 @@ export async function up(knex: Knex): Promise<void> {
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.schema.dropTableIfExists("student_work_experiences");
-  await knex.schema.dropTableIfExists("student_language_tests");
-  await knex.schema.dropTableIfExists("student_qualifications");
-  await knex.schema.dropTableIfExists("student_profiles");
+  await knex.schema.dropTableIfExists("platform_user_work_experiences");
+  await knex.schema.dropTableIfExists("platform_user_language_tests");
+  await knex.schema.dropTableIfExists("platform_user_qualifications");
+  await knex.schema.dropTableIfExists("platform_user_profiles");
 }

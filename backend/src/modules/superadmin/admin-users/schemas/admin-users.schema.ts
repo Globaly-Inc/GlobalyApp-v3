@@ -1,8 +1,7 @@
 // Validation schemas for admin user auth, CRUD, and invitations.
 
 import { z } from "zod";
-
-const ADMIN_ROLES = ["super_admin", "admin", "data_admin", "moderator"] as const;
+import { ADMIN_ROLES } from "../../consts.js";
 
 export const LoginRequestOtpSchema = z.object({
   email: z.string().email(),

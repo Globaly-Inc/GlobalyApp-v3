@@ -10,6 +10,7 @@ import {
   UnauthorizedError,
 } from "../../../../shared/errors.js";
 import { queueInvitationEmail } from "../../../auth/auth.service.js";
+import { ROLE_DISPLAY } from "../../consts.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import {
   paginationToOffset,
@@ -48,13 +49,6 @@ export async function updateAdmin(id: number, data: UpdateAdminInput) {
 }
 
 // ── Invitations ──
-
-const ROLE_DISPLAY: Record<string, string> = {
-  super_admin: "Super Admin",
-  admin: "Admin",
-  data_admin: "Data Admin",
-  moderator: "Moderator",
-};
 
 export function roleDisplayName(role: string): string {
   return ROLE_DISPLAY[role] ?? role;

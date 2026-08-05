@@ -3,6 +3,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import * as service from "./auth.service.js";
+import { RATE_LIMITS } from "./consts.js";
+
+const RegisterSchema = z.object({
+  first_name: z.string().min(1).max(100),
+  last_name: z.string().min(1).max(100),
+  email: z.string().email(),
+});
 
 const SendOtpSchema = z.object({
   email: z.string().email(),
@@ -21,8 +28,16 @@ const RefreshSchema = z.object({
 });
 
 export async function authRoutes(app: FastifyInstance) {
+  app.post("/register", {
+    config: { rateLimit: RATE_LIMITS.register },
+  }, async (req, reply) => {
+    const { first_name, last_name, email } = RegisterSchema.parse(req.body);
+    const result = await service.registerUser(first_name, last_name, email);
+    return reply.status(201).send(result);
+  });
+
   app.post("/send-otp", {
-    config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+    config: { rateLimit: RATE_LIMITS.sendOtp },
   }, async (req, reply) => {
     const { email, subdomain } = SendOtpSchema.parse(req.body);
     const result = await service.sendOtp(email, subdomain);
@@ -30,7 +45,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/verify-otp", {
-    config: { rateLimit: { max: 10, timeWindow: "5 minutes" } },
+    config: { rateLimit: RATE_LIMITS.verifyOtp },
   }, async (req, reply) => {
     const { email, otp, subdomain } = VerifyOtpSchema.parse(req.body);
     const result = await service.verifyOtp(email, otp, subdomain);
@@ -40,6 +55,12 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/refresh", async (req, reply) => {
     const { refresh_token, subdomain } = RefreshSchema.parse(req.body);
     const result = await service.refreshAccessToken(refresh_token, subdomain);
+    return reply.send(result);
+  });
+
+  // Authenticated — returns user profile based on JWT type
+  app.get("/me", async (req, reply) => {
+    const result = await service.getMe(req.auth);
     return reply.send(result);
   });
 }

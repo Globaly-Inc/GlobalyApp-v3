@@ -1,17 +1,11 @@
 // Validation schemas for business registration and profile management.
 
 import { z } from "zod";
-
-const BUSINESS_TYPES = ["agent", "institution", "service_provider", "accreditation_body", "immigration_department"] as const;
+import { BUSINESS_TYPES } from "../consts.js";
 
 export const BusinessRegisterSchema = z.object({
-  // Tenant fields (existing registration)
-  first_name: z.string().min(1).max(100),
-  last_name: z.string().min(1).max(100),
-  email: z.string().email(),
   subdomain: z.string().min(3).max(20).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Lowercase alphanumeric with hyphens"),
   business_name: z.string().min(1).max(200),
-  // Business profile extension (from V2)
   business_type: z.enum(BUSINESS_TYPES).optional(),
   description: z.string().max(5000).optional(),
   phone: z.string().max(50).optional(),
