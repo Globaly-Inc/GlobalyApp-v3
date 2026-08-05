@@ -3,6 +3,7 @@ import { Geist_Mono, Inter, Fraunces } from "next/font/google";
 import { cookies } from "next/headers";
 import { siteConfig } from "@/config/site";
 import { ThemeSettingsSync } from "@/components/theme-settings-sync";
+import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { parseThemeSettingsCookie, THEME_SETTINGS_KEY } from "@/lib/theme-settings";
 import StoreProvider from "./StoreProvider";
@@ -78,6 +79,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <ThemeSettingsSync />
         <StoreProvider>{children}</StoreProvider>
+        <Toaster />
       </body>
     </html>
   );

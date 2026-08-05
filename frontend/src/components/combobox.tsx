@@ -1,0 +1,148 @@
+"use client";
+
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Check, ChevronsUpDown, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+
+export type ComboboxOption = {
+  value: string;
+  label: string;
+  icon?: ReactNode;
+};
+
+export function Combobox({
+  options,
+  value,
+  onChange,
+  placeholder = "Select...",
+  searchPlaceholder = "Search...",
+  emptyText = "No results found.",
+  loading = false,
+  loadingText = "Loading...",
+  disabled = false,
+  id,
+  className,
+  "aria-invalid": ariaInvalid,
+}: Readonly<{
+  options: ComboboxOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  loading?: boolean;
+  loadingText?: string;
+  disabled?: boolean;
+  id?: string;
+  className?: string;
+  "aria-invalid"?: boolean;
+}>) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selected = options.find((o) => o.value === value);
+
+  const filtered = useMemo(
+    () => options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())),
+    [options, query]
+  );
+
+  function select(option: ComboboxOption) {
+    onChange(option.value);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const option = filtered[activeIndex];
+      if (option) select(option);
+    }
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          setQuery("");
+          setActiveIndex(0);
+        }
+      }}
+    >
+      <PopoverTrigger
+        render={
+          <Button
+            id={id}
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            aria-invalid={ariaInvalid}
+            disabled={disabled || loading}
+            className={cn("w-full h-10 justify-between font-normal", className)}
+          >
+            {selected ? (
+              <span className="flex items-center gap-2 truncate">
+                {selected.icon}
+                <span className="truncate">{selected.label}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">{loading ? loadingText : placeholder}</span>
+            )}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        }
+      />
+      <PopoverContent className="w-(--anchor-width) p-0" align="start">
+        <div className="relative border-b p-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
+          <Input
+            autoFocus
+            placeholder={searchPlaceholder}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveIndex(0);
+            }}
+            onKeyDown={onKeyDown}
+            className="h-8 border-none pl-8 shadow-none focus-visible:ring-0"
+          />
+        </div>
+        <div className="max-h-[250px] overflow-y-auto p-1">
+          {filtered.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
+          ) : (
+            filtered.map((option, index) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => select(option)}
+                onMouseEnter={() => setActiveIndex(index)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden",
+                  index === activeIndex && "bg-muted text-foreground"
+                )}
+              >
+                <Check className={cn("h-4 w-4 shrink-0", value === option.value ? "opacity-100" : "opacity-0")} />
+                {option.icon}
+                <span className="truncate">{option.label}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
