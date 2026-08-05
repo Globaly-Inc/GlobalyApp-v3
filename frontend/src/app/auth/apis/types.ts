@@ -1,5 +1,18 @@
-export type Employee = {
-  id: string;
-  name: string;
-  department: string;
+export type AuthUser = {
+  email: string;
+  type: "admin" | "student" | "agent";
+  role: string | null;
+};
+
+export type SendOtpParams = {
+  email: string;
+};
+
+export type VerifyOtpParams = {
+  email: string;
+  otp: string;
+};
+
+export type UpdateRoleParams = {
+  category: "personal" | "business";
 };
