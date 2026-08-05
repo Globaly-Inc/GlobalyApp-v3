@@ -17,7 +17,7 @@ import { createChildLogger } from "./shared/logger.js";
 // Modules
 import authModule from "./modules/auth/index.js";
 import superadminModule from "./modules/superadmin/index.js";
-import studentsModule from "./modules/students/index.js";
+import platformUsersModule from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
 import agentsModule from "./modules/agents/index.js";
 
@@ -37,7 +37,7 @@ export async function buildServer() {
   // --- Modules ---
   await app.register(authModule);           // unified OTP login for all user types
   await app.register(superadminModule);     // admin users + data extraction
-  await app.register(studentsModule);       // student registration + profiles
+  await app.register(platformUsersModule);   // platform user profiles + sub-resources
   await app.register(businessesModule);     // business registration + profiles
   await app.register(agentsModule);         // agent auth + management (per-business DB)
 

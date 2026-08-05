@@ -5,12 +5,12 @@ import { BusinessRegisterSchema, BusinessProfilePatchSchema } from "../schemas/b
 import * as service from "../services/businesses.service.js";
 
 export async function businessRoutes(app: FastifyInstance) {
-  // Public: Register business (creates business + DB + owner)
+  // Auth-required: Register business (creates business + DB + owner agent)
   app.post("/register", {
     config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
   }, async (req, reply) => {
     const input = BusinessRegisterSchema.parse(req.body);
-    const result = await service.registerBusiness(input);
+    const result = await service.registerBusiness(Number(req.auth.sub), input);
     return reply.status(201).send(result);
   });
 

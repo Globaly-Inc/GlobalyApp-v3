@@ -5,7 +5,7 @@ import type { Knex } from "knex";
 /** JWT claims decoded from the access token */
 export interface AuthClaims {
   sub: string;
-  type: "admin" | "student" | "agent";
+  type: "admin" | "platform_user" | "agent";
   role?: string;     // admin: super_admin|admin|data_admin|moderator, agent: owner|admin|member
   orgId?: string;    // business id (agents only)
   email: string;

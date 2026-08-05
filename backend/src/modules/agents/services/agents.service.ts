@@ -26,7 +26,7 @@ const logger = createChildLogger("agents-service");
 async function resolveBusinessDb(subdomain: string) {
   const business = await repo.findBusinessBySubdomain(subdomain);
   if (!business) throw new NotFoundError("Organization not found");
-  const db = getKnex(business.id, buildConnString(business));
+  const db = await getKnex(business.id, buildConnString(business));
   return { business, db };
 }
 

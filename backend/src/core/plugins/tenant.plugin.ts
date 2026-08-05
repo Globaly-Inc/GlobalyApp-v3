@@ -24,6 +24,6 @@ export const tenantPlugin = fp(async (app) => {
       return reply.status(404).send({ error: "Business not found or inactive" });
     }
 
-    req.db = getKnex(business.id, buildConnString(business));
+    req.db = await getKnex(business.id, buildConnString(business));
   });
 });

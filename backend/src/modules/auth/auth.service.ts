@@ -1,23 +1,23 @@
 // Unified auth service — single send-otp / verify-otp / refresh for all user types.
-// Resolves user type automatically: admin_users → students → agents (if subdomain provided).
+// Resolves user type automatically: admin_users → platform_users → agents (if subdomain provided).
 
 import { randomInt, randomBytes, createHash } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { config } from "../../config.js";
 import { createChildLogger } from "../../shared/logger.js";
-import { NotFoundError, UnauthorizedError } from "../../shared/errors.js";
+import { ConflictError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
 import { queueService } from "../../shared/queue/queueService.js";
 import { mailerService } from "../../shared/mail/mailerService.js";
 import { getKnex } from "../../core/db/pool-manager.js";
 import { buildConnString } from "../../core/db/knex.js";
 
 import * as adminRepo from "../superadmin/admin-users/repositories/admin-users.repository.js";
-import * as studentRepo from "../students/repositories/students.repository.js";
+import * as platformUserRepo from "../platform-users/repositories/platform-users.repository.js";
 import * as agentRepo from "../agents/repositories/agents.repository.js";
 
 const logger = createChildLogger("auth-service");
 
-type UserType = "admin" | "student" | "agent";
+type UserType = "admin" | "platform_user" | "agent";
 
 interface ResolvedUser {
   type: UserType;
@@ -36,49 +36,57 @@ interface ResolvedUser {
 // ── resolve ──
 
 async function resolveUser(email: string, subdomain?: string): Promise<ResolvedUser | null> {
+  const candidates: ResolvedUser[] = [];
+
   // 1. superadmin.admin_users
   const admin = await adminRepo.findAdminByEmail(email);
   if (admin) {
-    return {
+    candidates.push({
       type: "admin", id: admin.id, email: admin.email, role: admin.role,
       otp: admin.otp, otp_expires_at: admin.otp_expires_at,
       updateOtp: (otp, exp) => adminRepo.updateOtp(admin.id, otp, exp),
       clearOtp: () => adminRepo.clearOtp(admin.id),
       updateRefreshToken: (t) => adminRepo.updateRefreshToken(admin.id, t),
-    };
+    });
   }
 
-  // 2. students
-  const student = await studentRepo.findStudentByEmail(email);
-  if (student) {
-    return {
-      type: "student", id: student.id, email: student.email,
-      otp: student.otp, otp_expires_at: student.otp_expires_at,
-      updateOtp: (otp, exp) => studentRepo.updateOtp(student.id, otp, exp),
-      clearOtp: () => studentRepo.clearOtp(student.id),
-      updateRefreshToken: (t) => studentRepo.updateRefreshToken(student.id, t),
-    };
+  // 2. platform users
+  const platformUser = await platformUserRepo.findByEmail(email);
+  if (platformUser) {
+    candidates.push({
+      type: "platform_user", id: platformUser.id, email: platformUser.email,
+      otp: platformUser.otp, otp_expires_at: platformUser.otp_expires_at,
+      updateOtp: (otp, exp) => platformUserRepo.updateOtp(platformUser.id, otp, exp),
+      clearOtp: () => platformUserRepo.clearOtp(platformUser.id),
+      updateRefreshToken: (t) => platformUserRepo.updateRefreshToken(platformUser.id, t),
+    });
   }
 
   // 3. agents (needs subdomain to resolve business DB)
   if (subdomain) {
     const business = await agentRepo.findBusinessBySubdomain(subdomain);
     if (business) {
-      const db = getKnex(business.id, buildConnString(business));
+      const db = await getKnex(business.id, buildConnString(business));
       const agent = await agentRepo.findAgentByEmail(db, email);
       if (agent) {
-        return {
+        candidates.push({
           type: "agent", id: agent.id, email: agent.email, role: agent.role, orgId: business.id,
           otp: agent.otp, otp_expires_at: agent.otp_expires_at,
           updateOtp: (otp, exp) => agentRepo.updateOtp(db, agent.id, otp, exp),
           clearOtp: () => agentRepo.clearOtp(db, agent.id),
           updateRefreshToken: (t) => agentRepo.updateRefreshToken(db, agent.id, t),
-        };
+        });
       }
     }
   }
 
-  return null;
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  // Multiple matches (same email in admin + platform_users): prefer the one
+  // with an active OTP so verify-otp resolves to the right account.
+  const withOtp = candidates.find((c) => c.otp && c.otp_expires_at && new Date() < c.otp_expires_at);
+  return withOtp ?? candidates[0];
 }
 
 // ── helpers ──
@@ -126,6 +134,34 @@ export async function queueInvitationEmail(options: {
 
 // ── public API ──
 
+export async function registerUser(firstName: string, lastName: string, email: string) {
+  const existing = await platformUserRepo.findByEmail(email);
+  if (existing) throw new ConflictError("Email already registered");
+
+  const user = await platformUserRepo.insert({
+    first_name: firstName,
+    last_name: lastName,
+    email,
+    username: email,
+    account_status: 1,
+  });
+
+  // Send OTP immediately so user can verify and log in
+  const otp = String(randomInt(100_000, 999_999));
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  await platformUserRepo.updateOtp(user.id, otp, expiresAt);
+
+  // ponytail: fire-and-forget — registration must not fail because email is down
+  queueEmail({
+    to: email,
+    subject: "Your Login OTP",
+    html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
+  }).catch((err) => logger.warn("OTP email failed (registration succeeded)", { email, err: err.message }));
+
+  logger.info("User registered", { userId: user.id });
+  return { message: "Registered. Check your email for OTP to log in." };
+}
+
 export async function sendOtp(email: string, subdomain?: string) {
   const user = await resolveUser(email, subdomain);
   if (!user) throw new NotFoundError("Account not found");
@@ -135,11 +171,11 @@ export async function sendOtp(email: string, subdomain?: string) {
 
   await user.updateOtp(otp, expiresAt);
 
-  await queueEmail({
+  queueEmail({
     to: user.email,
     subject: "Your Login OTP",
     html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
-  });
+  }).catch((err) => logger.warn("OTP email failed", { email, err: err.message }));
 
   logger.info("OTP sent", { type: user.type, userId: user.id });
   return { message: "OTP sent" };
@@ -159,7 +195,16 @@ export async function verifyOtp(email: string, otp: string, subdomain?: string) 
   await user.updateRefreshToken(hashToken(rawRefresh));
 
   logger.info("User authenticated", { type: user.type, userId: user.id });
-  return { access_token: accessToken, refresh_token: rawRefresh, type: user.type, role: user.role ?? null };
+  return {
+    access_token: accessToken,
+    refresh_token: rawRefresh,
+    user: {
+      id: user.id,
+      email: user.email,
+      type: user.type,
+      role: user.role ?? null,
+    },
+  };
 }
 
 export async function refreshAccessToken(refreshToken: string, subdomain?: string) {
@@ -178,24 +223,24 @@ export async function refreshAccessToken(refreshToken: string, subdomain?: strin
     return { access_token: at, refresh_token: newRaw, type: "admin" as const };
   }
 
-  // Check student
-  const student = await studentRepo.findStudentByRefreshToken(hashed);
-  if (student) {
+  // Check platform user
+  const platformUser = await platformUserRepo.findByRefreshToken(hashed);
+  if (platformUser) {
     const at = jwt.sign(
-      { sub: student.id, type: "student", email: student.email },
+      { sub: platformUser.id, type: "platform_user", email: platformUser.email },
       config.JWT_SECRET as jwt.Secret,
       { expiresIn: config.JWT_EXPIRY as jwt.SignOptions["expiresIn"] },
     );
     const newRaw = randomBytes(40).toString("hex");
-    await studentRepo.updateRefreshToken(student.id, hashToken(newRaw));
-    return { access_token: at, refresh_token: newRaw, type: "student" as const };
+    await platformUserRepo.updateRefreshToken(platformUser.id, hashToken(newRaw));
+    return { access_token: at, refresh_token: newRaw, type: "platform_user" as const };
   }
 
   // Check agent (needs subdomain)
   if (subdomain) {
     const business = await agentRepo.findBusinessBySubdomain(subdomain);
     if (business) {
-      const db = getKnex(business.id, buildConnString(business));
+      const db = await getKnex(business.id, buildConnString(business));
       const agent = await agentRepo.findAgentByRefreshToken(db, hashed);
       if (agent) {
         const at = jwt.sign(
@@ -211,4 +256,31 @@ export async function refreshAccessToken(refreshToken: string, subdomain?: strin
   }
 
   throw new UnauthorizedError("Invalid refresh token");
+}
+
+export async function getMe(auth: { sub: string; type: string; role?: string; orgId?: string; email: string }) {
+  const id = Number(auth.sub);
+
+  if (auth.type === "admin") {
+    const admin = await adminRepo.findAdminById(id);
+    if (!admin) throw new NotFoundError("Admin not found");
+    return { user: { ...admin, type: "admin" as const } };
+  }
+
+  if (auth.type === "platform_user") {
+    const user = await platformUserRepo.findById(id);
+    if (!user) throw new NotFoundError("User not found");
+    return { user: { ...user, type: "platform_user" as const } };
+  }
+
+  if (auth.type === "agent" && auth.orgId) {
+    const business = await agentRepo.findBusinessById(auth.orgId);
+    if (!business) throw new NotFoundError("Business not found");
+    const db = await getKnex(business.id, buildConnString(business));
+    const agent = await agentRepo.findAgentById(db, id);
+    if (!agent) throw new NotFoundError("Agent not found");
+    return { user: { ...agent, type: "agent" as const, orgId: business.id } };
+  }
+
+  throw new UnauthorizedError("Unknown user type");
 }

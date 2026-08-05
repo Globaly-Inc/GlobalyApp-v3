@@ -13,8 +13,17 @@ export async function up(knex: Knex): Promise<void> {
     t.boolean("is_active").notNullable().defaultTo(true);
     t.timestamps(true, true);
   });
+
+  await knex.schema.createTable("cities", (t) => {
+    t.increments("id").primary();
+    t.integer("country_id").unsigned().notNullable().references("id").inTable("countries").onDelete("CASCADE");
+    t.text("name").notNullable();
+    t.text("state_name").nullable();
+    t.index(["country_id", "name"]);
+  });
 }
 
 export async function down(knex: Knex): Promise<void> {
+  await knex.schema.dropTableIfExists("cities");
   await knex.schema.dropTableIfExists("countries");
 }

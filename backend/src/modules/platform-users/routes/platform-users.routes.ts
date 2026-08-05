@@ -1,25 +1,18 @@
-// Student routes — public registration & auth + auth-required profile & sub-resource CRUD.
+// Platform user routes — auth-required profile, onboarding steps, and sub-resource CRUD.
 
 import type { FastifyInstance } from "fastify";
 import {
-  StudentRegisterSchema, StudentProfilePatchSchema,
+  UpdateCategorySchema,
+  UpdateSubCategorySchema,
+  OnboardingPersonalSchema, OnboardingBusinessSchema, OnboardingInstitutionSchema,
+  ProfilePatchSchema,
   QualificationSchema, LanguageTestSchema, WorkExperienceSchema,
-  IdParamSchema,
-} from "../schemas/students.schema.js";
-import * as service from "../services/students.service.js";
+  IdParamSchema, CountryIdParamSchema,
+} from "../schemas/platform-users.schema.js";
+import * as service from "../services/platform-users.service.js";
 
-export async function studentRoutes(app: FastifyInstance) {
-  // ── Public ──
-
-  app.post("/register", {
-    config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
-  }, async (req, reply) => {
-    const input = StudentRegisterSchema.parse(req.body);
-    const result = await service.registerStudent(input);
-    return reply.status(201).send(result);
-  });
-
-  // ── Auth-required: Profile ──
+export async function platformUserRoutes(app: FastifyInstance) {
+  // ── Profile ──
 
   app.get("/me", async (req, reply) => {
     const result = await service.getProfile(Number(req.auth.sub));
@@ -27,8 +20,60 @@ export async function studentRoutes(app: FastifyInstance) {
   });
 
   app.patch("/me", async (req, reply) => {
-    const data = StudentProfilePatchSchema.parse(req.body);
+    const data = ProfilePatchSchema.parse(req.body);
     const result = await service.updateProfile(Number(req.auth.sub), data);
+    return reply.send(result);
+  });
+
+  // ── Onboarding step APIs (called in order after registration) ──
+
+  // Step 1: Set user category (personal | business)
+  app.patch("/me/category", async (req, reply) => {
+    const { user_category } = UpdateCategorySchema.parse(req.body);
+    const result = await service.updateCategory(Number(req.auth.sub), user_category);
+    return reply.send(result);
+  });
+
+  // Step 2: Set user sub-category
+  app.patch("/me/sub-category", async (req, reply) => {
+    const { user_sub_category } = UpdateSubCategorySchema.parse(req.body);
+    const result = await service.updateSubCategory(Number(req.auth.sub), user_sub_category);
+    return reply.send(result);
+  });
+
+  // Step 3: Set onboarding profile — dispatches by user_category
+  app.patch("/me/onboarding-profile", async (req, reply) => {
+    const userId = Number(req.auth.sub);
+    const user = await service.getUserForOnboarding(userId);
+
+    if (user.user_category === "business") {
+      // institution, everything else → business with tenant DB
+      if (user.user_sub_category === "institution") {
+        const data = OnboardingInstitutionSchema.parse(req.body);
+        const result = await service.onboardInstitution(userId, data);
+        return reply.status(201).send(result);
+      }
+      const data = OnboardingBusinessSchema.parse(req.body);
+      const result = await service.onboardBusiness(userId, data);
+      return reply.status(201).send(result);
+    }
+
+    // personal (student / parents / explorer)
+    const data = OnboardingPersonalSchema.parse(req.body);
+    const result = await service.onboardPersonal(userId, data);
+    return reply.send(result);
+  });
+
+  // ── Countries / Cities ──
+
+  app.get("/countries", async (_req, reply) => {
+    const result = await service.listCountries();
+    return reply.send({ countries: result });
+  });
+
+  app.get("/countries/:id/cities", async (req, reply) => {
+    const { id } = CountryIdParamSchema.parse(req.params);
+    const result = await service.getCitiesByCountry(id);
     return reply.send(result);
   });
 

@@ -15,7 +15,7 @@ async function drainLoop() {
     .where("account_status", 1);
 
   for (const b of businesses) {
-    const db = getKnex(b.id, buildConnString(b));
+    const db = await getKnex(b.id, buildConnString(b));
 
     const jobs = await db
       .raw(
