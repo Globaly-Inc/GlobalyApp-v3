@@ -36,6 +36,16 @@ const envSchema = z.object({
   CHARGEBEE_SITE: z.string().optional(),
   CHARGEBEE_API_KEY: z.string().optional(),
 
+  // AI / LLM
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
+  GEMINI_EMBEDDING_MODEL: z.string().default("text-embedding-004"),
+
+  // Scrapers
+  CRAWL4AI_BASE_URL: z.string().optional(),  // e.g. https://your-crawl4ai.railway.app
+  CRAWL4AI_API_KEY: z.string().optional(),
+  FIRECRAWL_API_KEY: z.string().optional(),
+
   // Vault
   VAULT_KEK: z.string().optional(),
 });

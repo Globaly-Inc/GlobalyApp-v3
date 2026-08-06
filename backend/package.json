@@ -12,11 +12,15 @@
     "seed:globalyapp": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp",
     "seed:superadmin": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env superadmin",
     "job:auth": "node --import tsx src/modules/auth/jobs/email.worker.ts",
+    "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",
+    "job:extraction-pages": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-page.worker.ts",
+    "job:extraction-verify": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-verify.worker.ts",
     "lint": "eslint src/"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
     "@fastify/rate-limit": "^11.1.0",
+    "@google/generative-ai": "^0.24.1",
     "@opentelemetry/api": "^1.9.1",
     "amqplib": "^2.0.1",
     "dotenv": "^16.4.0",

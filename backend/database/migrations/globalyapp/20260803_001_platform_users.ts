@@ -11,7 +11,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("phone").nullable();
     t.text("username").unique().notNullable();
     t.text("refresh_token").nullable();
-    t.text("otp").nullable();
+    t.text("otp").nullable(); 
     t.timestamp("otp_expires_at").nullable();
     t.integer("account_status").notNullable().defaultTo(1);
     t.text("photo_url").nullable();
