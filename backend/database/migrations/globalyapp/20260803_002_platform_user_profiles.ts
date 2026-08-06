@@ -25,6 +25,8 @@ export async function up(knex: Knex): Promise<void> {
     t.specificType("preferred_degree_levels", "text[]").nullable();
     t.text("expected_start_date").nullable();
     t.text("city_of_residence").nullable();                      // city name from country lookup
+    t.decimal("latitude", 10, 7).nullable();
+    t.decimal("longitude", 10, 7).nullable();
     t.integer("completion_percentage").defaultTo(0);
     t.boolean("onboarding_completed").defaultTo(false);
     t.text("individual_category").nullable();

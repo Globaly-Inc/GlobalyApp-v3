@@ -20,6 +20,10 @@ export const authPlugin = fp(async (app) => {
     "/api/v3/agents/invite/accept",
     // Health
     "/healthz",
+    "/health/detailed",
+    "/health/database",
+    "/health/queue",
+    "/health/mail",
   ]);
 
   app.addHook("onRequest", async (req, reply) => {

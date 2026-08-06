@@ -56,6 +56,8 @@ export async function onboardPersonal(userId: number, data: OnboardingPersonalIn
     nationality_id: data.nationality_id,
     country_of_residence_id: data.country_of_residence_id,
     city_of_residence: data.city_of_residence,
+    latitude: data.latitude ?? null,
+    longitude: data.longitude ?? null,
     date_of_birth: data.date_of_birth,
     gender: data.gender,
     degree_level: data.degree_level,
