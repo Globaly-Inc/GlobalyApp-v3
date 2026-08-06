@@ -18,6 +18,38 @@ function getClient(): GoogleGenerativeAI {
   return genAI;
 }
 
+const MAX_RETRIES = 3;
+
+function isTransient(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /429|503|overloaded|high demand|rate limit/i.test(msg);
+}
+
+// ponytail: simple throttle to avoid hammering free-tier Gemini (15 RPM limit)
+let lastLlmCall = 0;
+const MIN_LLM_GAP_MS = 4000;
+
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const now = Date.now();
+      const wait = MIN_LLM_GAP_MS - (now - lastLlmCall);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastLlmCall = Date.now();
+      return await fn();
+    } catch (err) {
+      if (attempt < MAX_RETRIES && isTransient(err)) {
+        const delay = Math.min(2000 * Math.pow(2, attempt), 15_000) + Math.random() * 1000;
+        logger.warn(`Transient LLM error, retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("unreachable");
+}
+
 /**
  * Send a prompt to Gemini and parse JSON from the response.
  */
@@ -32,13 +64,14 @@ export async function extractJson<T>(opts: {
     model: opts.model ?? config.GEMINI_MODEL,
     systemInstruction: opts.system,
     generationConfig: {
-      maxOutputTokens: opts.maxTokens ?? 8192,
+      maxOutputTokens: opts.maxTokens ?? 16384,
       responseMimeType: "application/json",
     },
   });
 
-  const result = await model.generateContent(opts.prompt);
+  const result = await withRetry(() => model.generateContent(opts.prompt));
   const text = result.response.text();
+  const truncated = result.response.candidates?.[0]?.finishReason === "MAX_TOKENS";
 
   try {
     return JSON.parse(text) as T;
@@ -48,9 +81,40 @@ export async function extractJson<T>(opts: {
     try {
       return JSON.parse(cleaned) as T;
     } catch {
-      logger.error("LLM returned invalid JSON", { raw: text.slice(0, 500) });
+      // ponytail: try to salvage incomplete JSON regardless of finish reason
+      const salvaged = salvageTruncatedJson(cleaned);
+      if (salvaged) {
+        logger.warn("Salvaged incomplete LLM JSON response", { truncated });
+        return salvaged as T;
+      }
+      logger.error("LLM returned invalid JSON", { raw: text.slice(0, 500), truncated });
       throw new Error("LLM returned invalid JSON");
     }
+  }
+}
+
+/** Attempt to close truncated JSON by finding the last complete array element. */
+function salvageTruncatedJson(text: string): unknown | null {
+  // Find last complete object in an array (e.g. courses array cut mid-object)
+  const lastCompleteObj = text.lastIndexOf("},");
+  if (lastCompleteObj === -1) return null;
+
+  let attempt = text.slice(0, lastCompleteObj + 1);
+  // Close open brackets/braces
+  const opens = { "[": 0, "{": 0 };
+  for (const ch of attempt) {
+    if (ch === "[") opens["["]++;
+    else if (ch === "]") opens["["]--;
+    else if (ch === "{") opens["{"]++;
+    else if (ch === "}") opens["{"]--;
+  }
+  attempt += "]".repeat(Math.max(0, opens["["]));
+  attempt += "}".repeat(Math.max(0, opens["{"]));
+
+  try {
+    return JSON.parse(attempt);
+  } catch {
+    return null;
   }
 }
 
@@ -72,7 +136,7 @@ export async function complete(opts: {
     },
   });
 
-  const result = await model.generateContent(opts.prompt);
+  const result = await withRetry(() => model.generateContent(opts.prompt));
   return result.response.text();
 }
 

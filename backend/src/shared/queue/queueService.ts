@@ -46,6 +46,8 @@ class QueueService {
   private workers: Map<string, ConsumerWorker[]> = new Map();
   private metrics: Map<string, ConsumerMetrics> = new Map();
   private scalingIntervals: Map<string, NodeJS.Timeout> = new Map();
+  // Store consumer callbacks so addWorker can register real consumers
+  private consumerCallbacks: Map<string, (msg: amqp.ConsumeMessage | null) => Promise<void>> = new Map();
 
   constructor(config: QueueConfig) {
     this.config = config;
@@ -101,18 +103,22 @@ class QueueService {
     return this.channel;
   }
 
-  private async getSystemMetrics() {
-    const cpuUsage = process.cpuUsage();
-    const memoryUsage = process.memoryUsage();
-    return {
-      cpu: (cpuUsage.user + cpuUsage.system) / 1000000,
-      memory: (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100,
-    };
+  private lastCpuUsage = process.cpuUsage();
+  private lastCpuTime = Date.now();
+
+  private getSystemMetrics() {
+    const now = Date.now();
+    const elapsed = Math.max(now - this.lastCpuTime, 1) * 1000; // ms → µs
+    const current = process.cpuUsage(this.lastCpuUsage);
+    const cpuPercent = ((current.user + current.system) / elapsed) * 100;
+    this.lastCpuUsage = process.cpuUsage();
+    this.lastCpuTime = now;
+    const mem = process.memoryUsage();
+    return { cpu: cpuPercent, memory: (mem.heapUsed / mem.heapTotal) * 100 };
   }
 
   private async checkAndScale(queue: string, config: ScalingConfig) {
     try {
-      const currentTime = Date.now();
       const metrics = this.metrics.get(queue) || {
         queueSize: 0,
         processingTimes: [],
@@ -122,47 +128,36 @@ class QueueService {
 
       const queueSize = await this.getQueueSize(queue);
       metrics.queueSize = queueSize;
-      metrics.lastCheckTime = currentTime;
+      metrics.lastCheckTime = Date.now();
 
-      const errorRate = metrics.processingTimes.length > 0
-        ? metrics.errorCount / metrics.processingTimes.length
-        : 0;
-      const systemMetrics = await this.getSystemMetrics();
+      // Keep only recent processing times (bounded window)
+      const windowSize = config.processingTime.windowSize;
+      if (metrics.processingTimes.length > windowSize) {
+        metrics.processingTimes = metrics.processingTimes.slice(-windowSize);
+      }
 
+      const systemMetrics = this.getSystemMetrics();
+      const currentWorkers = this.workers.get(queue) || [];
+
+      // ponytail: scale on queue depth (the only reliable signal), with system load as a guard
       const shouldScaleUp =
-        metrics.queueSize > config.queueSize.scaleUpThreshold ||
-        metrics.processingTimes.some((time) => time > config.processingTime.threshold) ||
-        errorRate > config.errorRate.threshold ||
-        systemMetrics.cpu > config.systemLoad.cpuThreshold ||
-        systemMetrics.memory > config.systemLoad.memoryThreshold;
-
-      const shouldScaleDown =
-        metrics.queueSize < config.queueSize.scaleDownThreshold &&
-        metrics.processingTimes.every((time) => time < config.processingTime.threshold) &&
-        errorRate < config.errorRate.threshold &&
+        queueSize > config.queueSize.scaleUpThreshold &&
         systemMetrics.cpu < config.systemLoad.cpuThreshold &&
         systemMetrics.memory < config.systemLoad.memoryThreshold;
 
-      const currentWorkers = this.workers.get(queue) || [];
+      const shouldScaleDown =
+        queueSize < config.queueSize.scaleDownThreshold;
 
       if (shouldScaleUp && currentWorkers.length < config.queueSize.maxWorkers) {
         await this.addWorker(queue);
         logger.info(`Scaled up workers for queue ${queue}`, {
-          queueSize: metrics.queueSize,
-          workerCount: currentWorkers.length + 1,
+          queueSize, workerCount: currentWorkers.length,
         });
       } else if (shouldScaleDown && currentWorkers.length > 1) {
         await this.removeWorker(queue);
         logger.info(`Scaled down workers for queue ${queue}`, {
-          queueSize: metrics.queueSize,
-          workerCount: currentWorkers.length - 1,
+          queueSize, workerCount: currentWorkers.length,
         });
-      }
-
-      // Reset metrics hourly
-      if (currentTime - metrics.lastCheckTime > 3600000) {
-        metrics.processingTimes = [];
-        metrics.errorCount = 0;
       }
 
       this.metrics.set(queue, metrics);
@@ -186,14 +181,17 @@ class QueueService {
         logger.info(`Set prefetch to ${config.prefetch} for queue ${queue}`);
       }
 
-      for (let i = 0; i < initialWorkers; i++) {
+      // consume() already registered 1 worker, add the rest
+      const existing = this.workers.get(queue)?.length || 0;
+      const toAdd = Math.max(0, initialWorkers - existing);
+      for (let i = 0; i < toAdd; i++) {
         await this.addWorker(queue);
       }
 
       const interval = setInterval(() => this.checkAndScale(queue, config), 60000);
       this.scalingIntervals.set(queue, interval);
 
-      logger.info(`Started auto-scaling for queue ${queue} with ${initialWorkers} initial workers`);
+      logger.info(`Started auto-scaling for queue ${queue} with ${existing + toAdd} initial workers`);
     } catch (error) {
       logger.error(`Error starting auto-scaling for queue ${queue}`, { error });
       throw error;
@@ -221,20 +219,44 @@ class QueueService {
   }
 
   private async addWorker(queue: string) {
+    const callback = this.consumerCallbacks.get(queue);
+    if (!callback) {
+      logger.warn(`No consumer callback registered for queue ${queue}, cannot add worker`);
+      return;
+    }
+
     const channel = await this.getChannel();
     const workerId = (this.workers.get(queue)?.length || 0) + 1;
-    const consumerTag = `worker_${workerId}`;
 
-    const worker: ConsumerWorker = {
-      id: workerId,
-      channel,
-      consumerTag,
-    };
+    // Actually register a consumer — amqplib returns the real consumer tag
+    const { consumerTag } = await channel.consume(queue, async (msg) => {
+      if (msg) {
+        const startTime = Date.now();
+        try {
+          await callback(msg);
+          channel.ack(msg);
+          const metrics = this.metrics.get(queue);
+          if (metrics) {
+            metrics.processingTimes.push(Date.now() - startTime);
+            this.metrics.set(queue, metrics);
+          }
+        } catch (error) {
+          logger.error(`Error processing message on queue ${queue}`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          channel.nack(msg, false, false);
+          const metrics = this.metrics.get(queue);
+          if (metrics) {
+            metrics.errorCount++;
+            this.metrics.set(queue, metrics);
+          }
+        }
+      }
+    }, { noAck: false });
 
-    if (!this.workers.has(queue)) {
-      this.workers.set(queue, []);
-    }
-    this.workers.get(queue)?.push(worker);
+    const worker: ConsumerWorker = { id: workerId, channel, consumerTag };
+    if (!this.workers.has(queue)) this.workers.set(queue, []);
+    this.workers.get(queue)!.push(worker);
 
     logger.info(`Added worker ${workerId} for queue ${queue}`);
   }
@@ -244,7 +266,11 @@ class QueueService {
     if (workers && workers.length > 0) {
       const worker = workers.pop();
       if (worker) {
-        await worker.channel.cancel(worker.consumerTag);
+        try {
+          await worker.channel.cancel(worker.consumerTag);
+        } catch {
+          // Consumer may already be cancelled
+        }
         logger.info(`Removed worker ${worker.id} from queue ${queue}`);
       }
     }
@@ -273,7 +299,10 @@ class QueueService {
     const channel = await this.getChannel();
     await channel.assertQueue(queue, { durable: true });
 
-    await channel.consume(queue, async (msg: amqp.ConsumeMessage | null) => {
+    // Store callback so addWorker can register additional consumers
+    this.consumerCallbacks.set(queue, callback);
+
+    const { consumerTag } = await channel.consume(queue, async (msg: amqp.ConsumeMessage | null) => {
       if (msg) {
         const startTime = Date.now();
         try {
@@ -282,15 +311,13 @@ class QueueService {
 
           const metrics = this.metrics.get(queue);
           if (metrics) {
-            const processingTime = Date.now() - startTime;
-            metrics.processingTimes.push(processingTime);
-            if (metrics.processingTimes.length > 100) {
-              metrics.processingTimes.shift();
-            }
+            metrics.processingTimes.push(Date.now() - startTime);
             this.metrics.set(queue, metrics);
           }
         } catch (error) {
-          logger.error(`Error processing message on queue ${queue}`, { error });
+          logger.error(`Error processing message on queue ${queue}`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
           channel.nack(msg, false, false);
 
           const metrics = this.metrics.get(queue);
@@ -301,6 +328,10 @@ class QueueService {
         }
       }
     }, options);
+
+    // Track this initial consumer as worker 0
+    if (!this.workers.has(queue)) this.workers.set(queue, []);
+    this.workers.get(queue)!.push({ id: 0, channel, consumerTag });
 
     logger.info(`Started consuming from ${queue}`);
   }

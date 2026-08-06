@@ -151,8 +151,25 @@ async function crawl4aiScrape(
   cfg: { baseUrl: string; apiKey?: string },
 ): Promise<{ markdown: string; error?: string }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (cfg.apiKey) headers["Authorization"] = `Bearer ${cfg.apiKey}`;
+  // ponytail: new Crawl4AI Cloud uses X-API-Key, legacy self-hosted uses Bearer
+  if (cfg.apiKey) {
+    headers["X-API-Key"] = cfg.apiKey;
+    headers["Authorization"] = `Bearer ${cfg.apiKey}`;
+  }
   try {
+    // Try new Cloud API first (/v1/crawl), fall back to legacy /md
+    const newRes = await fetch(`${cfg.baseUrl}/v1/crawl`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ urls: [url], content_format: filter === "fit" ? "fit_markdown" : "raw_markdown" }),
+    });
+    if (newRes.ok) {
+      const data: any = await newRes.json().catch(() => ({}));
+      const result = Array.isArray(data?.results) ? data.results[0] : data;
+      const markdown = result?.markdown || result?.fit_markdown || result?.raw_markdown || "";
+      return { markdown, error: result?.success === false ? "crawl4ai returned success=false" : undefined };
+    }
+    // Fall back to legacy /md endpoint (self-hosted)
     const res = await fetch(`${cfg.baseUrl}/md`, {
       method: "POST",
       headers,

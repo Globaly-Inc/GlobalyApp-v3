@@ -38,7 +38,7 @@ const envSchema = z.object({
 
   // AI / LLM
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
   GEMINI_EMBEDDING_MODEL: z.string().default("text-embedding-004"),
 
   // Scrapers

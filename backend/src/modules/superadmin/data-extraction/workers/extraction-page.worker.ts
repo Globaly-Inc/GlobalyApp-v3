@@ -25,6 +25,27 @@ interface ExtractionResult {
   campuses_found: ExtractedCampus[];
 }
 
+/** Check if all queue items are done (completed or failed) and trigger verification if so. */
+async function checkAllPagesDone(jobId: string) {
+  const remaining = await masterKnex(`${S}.extraction_queue`)
+    .where({ job_id: jobId })
+    .whereIn("status", ["pending", "processing"])
+    .count("id as count")
+    .first();
+
+  if (Number(remaining?.count) === 0) {
+    logger.info("All pages processed, dispatching verification", { jobId });
+    await writeJobEvent(jobId, "extraction_complete", {
+      phase: "data_extraction", message: "All pages extracted, starting verification",
+    });
+    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+      pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "processing" }),
+      updated_at: masterKnex.fn.now(),
+    });
+    await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+  }
+}
+
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   const { jobId, queueItemId, url } = JSON.parse(msg!.content.toString());
   logger.info("Processing page", { jobId, queueItemId, url });
@@ -124,30 +145,14 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
     logger.info("Page processed", { jobId, url, coursesWritten, scraper: page.scraper });
 
-    // ── Check if all pages done → trigger verification ──
-    const remaining = await masterKnex(`${S}.extraction_queue`)
-      .where({ job_id: jobId })
-      .whereIn("status", ["pending", "processing"])
-      .count("id as count")
-      .first();
-
-    if (Number(remaining?.count) === 0) {
-      logger.info("All pages processed, dispatching verification", { jobId });
-      await writeJobEvent(jobId, "extraction_complete", {
-        phase: "data_extraction", message: "All pages extracted, starting verification",
-      });
-      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
-        pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "processing" }),
-        updated_at: masterKnex.fn.now(),
-      });
-      await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
-    }
+    await checkAllPagesDone(jobId);
 
   } catch (err) {
-    logger.error("Page processing failed", { jobId, queueItemId, url, error: err });
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error("Page processing failed", { jobId, queueItemId, url, error: errMsg });
     await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
       status: "failed",
-      error: err instanceof Error ? err.message : String(err),
+      error: errMsg,
       failure_class: err instanceof Error ? err.constructor.name : "Unknown",
       retry_count: masterKnex.raw("retry_count + 1"),
       updated_at: masterKnex.fn.now(),
@@ -155,9 +160,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
     await writeJobEvent(jobId, "page_error", {
       level: "error", phase: "data_extraction",
-      message: `Failed: ${err instanceof Error ? err.message : String(err)}`,
+      message: `Failed: ${errMsg}`,
       data: { url },
     });
+
+    await checkAllPagesDone(jobId);
   }
 });
 

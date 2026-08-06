@@ -173,14 +173,15 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     logger.info("Job discovery complete", { jobId, method: discovery.method, pages: courseUrls.length });
 
   } catch (err) {
-    logger.error("Job processing failed", { jobId, error: err });
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error("Job processing failed", { jobId, error: errMsg });
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       status: "failed",
-      error_message: err instanceof Error ? err.message : String(err),
+      error_message: errMsg,
       updated_at: masterKnex.fn.now(),
     });
     await writeJobEvent(jobId, "pipeline_error", {
-      level: "error", phase: "site_mapping", message: err instanceof Error ? err.message : String(err),
+      level: "error", phase: "site_mapping", message: errMsg,
     });
   }
 });
