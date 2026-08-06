@@ -46,6 +46,13 @@ const envSchema = z.object({
   CRAWL4AI_API_KEY: z.string().optional(),
   FIRECRAWL_API_KEY: z.string().optional(),
 
+  // GCP Storage
+  GCS_BUCKET_NAME: z.string().optional(),
+  GCS_PROJECT_ID: z.string().optional(),
+  GCS_KEY_FILE: z.string().optional(),             // path to service account JSON
+  GCS_SIGNED_URL_EXPIRY: z.coerce.number().default(3600), // seconds, default 1 hour
+  GCS_MAX_FILE_SIZE_MB: z.coerce.number().default(10),
+
   // Vault
   VAULT_KEK: z.string().optional(),
 });

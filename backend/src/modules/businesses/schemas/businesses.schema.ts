@@ -21,8 +21,8 @@ export const BusinessRegisterSchema = z.object({
 export const BusinessProfilePatchSchema = z.object({
   business_type: z.enum(BUSINESS_TYPES).nullable(),
   description: z.string().max(5000).nullable(),
-  logo_url: z.string().url().nullable(),
-  cover_url: z.string().url().nullable(),
+  logo_url: z.string().nullable(),   // relative storage path or full URL
+  cover_url: z.string().nullable(),  // relative storage path or full URL
   email: z.string().email().nullable(),
   phone: z.string().max(50).nullable(),
   country_id: z.number().int().positive().nullable(),
