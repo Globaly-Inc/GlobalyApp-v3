@@ -14,8 +14,9 @@ import { extractJson } from "../lib/llm-client.js";
 import { verificationPrompt, VERIFICATION_SYSTEM } from "../lib/extraction-prompts.js";
 import { writeJobEvent } from "../lib/staging-writer.js";
 
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+
 const logger = createChildLogger("extraction-verify-worker");
-const S = "superadmin";
 
 const MAX_COURSES_TO_VERIFY = 20;
 const FIELDS_TO_VERIFY = ["name", "degree_level", "duration_weeks", "domestic_fee_total", "international_fee_total"];

@@ -1,8 +1,7 @@
 // Staged entities + junctions repository.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
-
-const S = "superadmin";
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 // ── Generic insert/delete for staged entities ──
 

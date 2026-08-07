@@ -17,8 +17,9 @@ import { extractJson } from "../lib/llm-client.js";
 import { courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM } from "../lib/extraction-prompts.js";
 import { writeCourse, upsertCampus, writeJobEvent, type ExtractedCourse, type ExtractedCampus } from "../lib/staging-writer.js";
 
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+
 const logger = createChildLogger("extraction-page-worker");
-const S = "superadmin";
 
 interface ExtractionResult {
   courses: ExtractedCourse[];

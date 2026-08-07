@@ -1,8 +1,7 @@
 // Review repository — agents, campuses, visas, verification results reads + patches.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
-
-const S = "superadmin";
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 // ── Agents ──
 

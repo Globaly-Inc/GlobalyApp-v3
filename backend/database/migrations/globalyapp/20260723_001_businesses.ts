@@ -15,7 +15,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("subdomain").unique().notNullable();
     t.text("business_name").notNullable();
     t.text("business_type").nullable();
-    t.integer("business_category_id").unsigned().nullable();
+    t.integer("business_category_id").unsigned().nullable().references("id").inTable("business_categories").onDelete("SET NULL");
     t.text("company_size").nullable();
 
     // Registration
@@ -73,5 +73,5 @@ export async function up(knex: Knex): Promise<void> {
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.schema.dropTableIfExists("businesses");
+  await knex.raw("DROP TABLE IF EXISTS businesses CASCADE");
 }

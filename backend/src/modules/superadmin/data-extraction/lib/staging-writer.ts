@@ -2,9 +2,9 @@
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("staging-writer");
-const S = "superadmin";
 
 // ── Types matching LLM output ──
 
