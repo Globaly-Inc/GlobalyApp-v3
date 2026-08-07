@@ -20,8 +20,9 @@ import {
   writeJobEvent,
 } from "../lib/staging-writer.js";
 
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+
 const logger = createChildLogger("extraction-job-worker");
-const S = "superadmin";
 
 interface SiteAnalysisResult {
   institution: Record<string, unknown>;

@@ -3,11 +3,10 @@
 
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { ForbiddenError } from "../../../../shared/errors.js";
-
-const ALLOWED_ROLES = ["super_admin", "data_admin"];
+import { ALLOWED_ROLES } from "../../consts.js";
 
 export async function requireSuperAdmin(req: FastifyRequest, _reply: FastifyReply) {
-  if (!req.auth?.role || !ALLOWED_ROLES.includes(req.auth.role)) {
+  if (!req.auth?.role || !(ALLOWED_ROLES as readonly string[]).includes(req.auth.role)) {
     throw new ForbiddenError("Only super_admin or data_admin can access extraction endpoints");
   }
 }

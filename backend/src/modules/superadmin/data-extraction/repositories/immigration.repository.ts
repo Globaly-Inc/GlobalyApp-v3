@@ -1,8 +1,7 @@
 // Immigration repository — visas, MARA agents.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
-
-const S = "superadmin";
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 export async function listVisas(opts: { status?: string; limit: number }) {
   const query = masterKnex(`${S}.extraction_visas`).orderBy("created_at", "desc").limit(opts.limit);

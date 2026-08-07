@@ -6,8 +6,8 @@ export async function seed(knex: Knex): Promise<void> {
 
   await knex("superadmin.admin_users").insert({
     name: "Super Admin",
-    // email: "admin@globalyhub.com",
-    email: "priansu.koirala@globalyhub.com",
+    email: "admin@globalyapp.com",
+    // email: "priansu.koirala@globalyhub.com",
     role: "super_admin",
     account_status: 1,
     is_email_verified: true,

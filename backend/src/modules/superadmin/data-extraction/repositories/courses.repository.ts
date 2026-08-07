@@ -1,8 +1,7 @@
 // Extraction courses repository.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
-
-const S = "superadmin";
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
 export async function listCoursesByJob(jobId: string) {
