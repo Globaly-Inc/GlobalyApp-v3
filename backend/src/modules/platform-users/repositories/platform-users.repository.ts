@@ -12,7 +12,10 @@ export interface PlatformUserRow {
   username: string;
   otp: string | null;
   otp_expires_at: Date | null;
+  otp_attempts: number;
+  otp_locked_until: Date | null;
   refresh_token: string | null;
+  refresh_token_family: string | null;
   account_status: number;
   photo_url: string | null;
   is_email_verified: boolean;
@@ -54,6 +57,8 @@ export async function insert(data: {
   username: string;
   account_status: number;
   phone?: string;
+  user_category?: string;
+  user_sub_category?: string;
 }) {
   const [row] = await masterKnex<PlatformUserRow>("platform_users")
     .insert({ ...data, created_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() })
@@ -72,25 +77,75 @@ export async function updateUser(userId: number, data: Record<string, unknown>) 
 export async function updateOtp(userId: number, otp: string, expiresAt: Date) {
   await masterKnex("platform_users")
     .where({ id: userId })
-    .update({ otp, otp_expires_at: expiresAt, updated_at: masterKnex.fn.now() });
+    .update({ otp, otp_expires_at: expiresAt, otp_attempts: 0, otp_locked_until: null, updated_at: masterKnex.fn.now() });
 }
 
 export async function clearOtp(userId: number) {
   await masterKnex("platform_users")
     .where({ id: userId })
-    .update({ otp: null, otp_expires_at: null, updated_at: masterKnex.fn.now() });
+    .update({ otp: null, otp_expires_at: null, otp_attempts: 0, otp_locked_until: null, updated_at: masterKnex.fn.now() });
 }
 
-export async function updateRefreshToken(userId: number, token: string | null) {
+export async function incrementOtpAttempts(userId: number, attempts: number) {
   await masterKnex("platform_users")
     .where({ id: userId })
-    .update({ refresh_token: token, updated_at: masterKnex.fn.now() });
+    .update({ otp_attempts: attempts, updated_at: masterKnex.fn.now() });
+}
+
+export async function lockOtp(userId: number, attempts: number, lockedUntil: Date) {
+  await masterKnex("platform_users")
+    .where({ id: userId })
+    .update({ otp_attempts: attempts, otp_locked_until: lockedUntil, updated_at: masterKnex.fn.now() });
+}
+
+export async function updateRefreshToken(userId: number, token: string | null, family?: string | null) {
+  const update: Record<string, unknown> = { refresh_token: token, updated_at: masterKnex.fn.now() };
+  if (family !== undefined) update.refresh_token_family = family;
+  await masterKnex("platform_users")
+    .where({ id: userId })
+    .update(update);
 }
 
 export async function findByRefreshToken(token: string) {
   return masterKnex<PlatformUserRow>("platform_users")
     .where({ refresh_token: token })
     .first<PlatformUserRow>();
+}
+
+// ── Business Index (master DB) ──
+
+export async function listUserBusinesses(platformUserId: number) {
+  return masterKnex("user_business_index")
+    .join("businesses", "user_business_index.business_id", "businesses.id")
+    .where("user_business_index.platform_user_id", platformUserId)
+    .where("businesses.account_status", 1)
+    .select(
+      "businesses.id",
+      "businesses.schema_name as org_id",
+      "businesses.business_name",
+      "businesses.subdomain",
+      "businesses.logo_url",
+      "user_business_index.role",
+      "user_business_index.is_owner",
+    );
+}
+
+export async function insertUserBusinessIndex(data: {
+  platform_user_id: number;
+  business_id: number;
+  role: string;
+  is_owner: boolean;
+}) {
+  await masterKnex("user_business_index")
+    .insert({ ...data, created_at: masterKnex.fn.now() })
+    .onConflict(["platform_user_id", "business_id"])
+    .merge({ role: data.role, is_owner: data.is_owner });
+}
+
+export async function findBusinessByDbName(dbName: string) {
+  return masterKnex("businesses")
+    .where({ schema_name: dbName, account_status: 1 })
+    .first();
 }
 
 // ── Profile ──

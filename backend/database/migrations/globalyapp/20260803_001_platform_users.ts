@@ -11,8 +11,11 @@ export async function up(knex: Knex): Promise<void> {
     t.text("phone").nullable();
     t.text("username").unique().notNullable();
     t.text("refresh_token").nullable();
+    t.uuid("refresh_token_family").nullable();
     t.text("otp").nullable(); 
     t.timestamp("otp_expires_at").nullable();
+    t.integer("otp_attempts").notNullable().defaultTo(0);
+    t.timestamp("otp_locked_until").nullable();
     t.integer("account_status").notNullable().defaultTo(1);
     t.text("photo_url").nullable();
     t.boolean("is_email_verified").notNullable().defaultTo(false);

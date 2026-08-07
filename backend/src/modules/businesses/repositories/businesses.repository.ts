@@ -11,14 +11,14 @@ export async function findBusinessById(id: string): Promise<BusinessRecord | und
   return masterKnex<BusinessRecord>("businesses").where({ id }).first();
 }
 
+export async function findBusinessByDbName(dbName: string): Promise<BusinessRecord | undefined> {
+  return masterKnex<BusinessRecord>("businesses").where({ schema_name: dbName }).first();
+}
+
 export async function insertBusiness(data: {
-  first_name: string;
-  last_name: string;
-  email: string;
+  owner_id: number;
   subdomain: string;
   business_name: string;
-  db_username: string;
-  db_password: string;
   account_status: number;
   business_type?: string | null;
   description?: string | null;

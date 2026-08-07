@@ -3,16 +3,18 @@ import type { Knex } from "knex";
 export async function up(knex: Knex): Promise<void> {
 
   await knex.schema.createTable("businesses", (t) => {
-    t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));
+    t.increments("id").primary();
 
-    // Owner
-    t.text("first_name").notNullable();
-    t.text("last_name").notNullable();
-    t.text("email").unique().notNullable();
-    t.text("phone").nullable();
+    // Owner — all user details live in platform_users
+    t.integer("owner_id").unsigned().notNullable().references("id").inTable("platform_users");
 
     // Identity
     t.text("subdomain").unique().notNullable();
+
+    // Tenant schema (biz_{id} — created on registration, lives in same database)
+    t.uuid("schema_name").unique().notNullable().defaultTo(knex.raw("gen_random_uuid()"));
+    t.integer("account_status").notNullable().defaultTo(0);
+
     t.text("business_name").notNullable();
     t.text("business_type").nullable();
     t.integer("business_category_id").unsigned().nullable().references("id").inTable("business_categories").onDelete("SET NULL");
@@ -22,6 +24,10 @@ export async function up(knex: Knex): Promise<void> {
     t.text("legal_business_name").nullable();
     t.text("business_registration_number").nullable();
     t.jsonb("registration_licenses").nullable();
+
+    // Contact (business-level, distinct from owner's personal info)
+    t.text("email").nullable();
+    t.text("phone").nullable();
 
     // Profile
     t.text("description").nullable();
@@ -52,12 +58,6 @@ export async function up(knex: Knex): Promise<void> {
     t.boolean("is_published").defaultTo(false);
     t.boolean("onboarding_completed").defaultTo(false);
     t.boolean("agreed_to_t_and_c").notNullable().defaultTo(false);
-
-    // Multi-tenant database
-    t.uuid("db_name").unique().notNullable().defaultTo(knex.raw("gen_random_uuid()"));
-    t.text("db_username").notNullable();
-    t.text("db_password").notNullable();
-    t.integer("account_status").notNullable().defaultTo(0);
 
     // Subscription
     t.text("subscription_id").nullable();

@@ -1,36 +1,32 @@
-// Business DB provisioning — CREATE DATABASE, run migrations, seed defaults.
-// Called when a new business is registered.
-// For now business DBs are empty — all tables live in globalyapp.
+// Business schema provisioning — CREATE SCHEMA, run migrations, seed defaults.
+// Schema name = UUID from businesses.schema_name (non-guessable).
 
-import knex from "knex";
 import { masterKnex } from "../db/master-pool.js";
-import { config } from "../../config.js";
+import { createSchemaKnex, schemaName } from "../db/knex.js";
 
 /**
- * Provision a new business database:
- * 1. CREATE DATABASE using the UUID db_name
- * 2. Run business migrations against the new DB (empty for now)
- * 3. Seed default data
+ * Provision a new business schema:
+ * 1. CREATE SCHEMA using the UUID schema_name
+ * 2. Run business migrations (roles, agents, agent_invitations)
+ * 3. Seed default roles
  */
-export async function provisionBusinessDb(dbName: string): Promise<void> {
+export async function provisionBusinessSchema(schemaUuid: string): Promise<void> {
+  const schema = schemaName(schemaUuid);
 
-  await masterKnex.raw(`CREATE DATABASE "${dbName}"`);
+  await masterKnex.raw(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
 
-  const businessDb = knex({
-    client: "pg",
-    connection: `postgresql://${config.DB_USERNAME}:${config.DB_PASSWORD}@${config.DB_HOST}:${config.DB_PORT}/${dbName}`,
-    pool: { min: 0, max: 1 },
-  });
+  const tenantDb = createSchemaKnex(schema, { min: 0, max: 1 });
 
   try {
-    await businessDb.migrate.latest({
+    await tenantDb.migrate.latest({
       directory: "./database/migrations/business",
+      schemaName: schema,
     });
 
-    await businessDb.seed.run({
+    await tenantDb.seed.run({
       directory: "./database/seeders/business",
     });
   } finally {
-    await businessDb.destroy();
+    await tenantDb.destroy();
   }
 }

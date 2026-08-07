@@ -1,26 +1,29 @@
-// Knex instance factory + connection string builder.
-// Used by pool-manager and business provisioner to create per-business Knex instances.
+// Knex helpers for schema-per-tenant architecture.
+// All tenants live in the same database, isolated by PostgreSQL schemas.
+// Schema name = UUID from businesses.schema_name (non-guessable).
 
 import knexLib, { type Knex } from "knex";
 import { config } from "../../config.js";
 
-interface BusinessConn {
-  db_name: string;
+/** Schema name IS the UUID — no prefix, non-enumerable */
+export function schemaName(schemaUuid: string): string {
+  return schemaUuid;
 }
 
-/** Build a PostgreSQL connection string for a business */
-export function buildConnString(business: BusinessConn): string {
-  return `postgresql://${config.DB_USERNAME}:${config.DB_PASSWORD}@${config.DB_HOST}:${config.DB_PORT}/${business.db_name}`;
+/** Master DB connection string (used by pool manager for tenant schemas) */
+export function masterConnString(): string {
+  return `postgresql://${config.DB_USERNAME}:${config.DB_PASSWORD}@${config.DB_HOST}:${config.DB_PORT}/${config.DB_NAME}`;
 }
 
-/** Create a new Knex instance for a given connection string */
-export function createKnex(
-  connString: string,
+/** Create a Knex instance with a specific searchPath (for tenant schemas) */
+export function createSchemaKnex(
+  schema: string,
   poolConfig: Knex.PoolConfig = { min: 0, max: 3, idleTimeoutMillis: 30_000 },
 ): Knex {
   return knexLib({
     client: "pg",
-    connection: connString,
+    connection: masterConnString(),
+    searchPath: [schema, "public"],
     pool: poolConfig,
   });
 }

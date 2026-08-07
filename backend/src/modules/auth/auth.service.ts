@@ -1,93 +1,25 @@
-// Unified auth service — single send-otp / verify-otp / refresh for all user types.
-// Resolves user type automatically: admin_users → platform_users → agents (if subdomain provided).
+// Unified auth service — all users authenticate via platform_users.
+// Admins and business membership are role-links, not separate auth identities.
 
-import { randomInt, randomBytes, createHash } from "node:crypto";
+import { randomInt, randomBytes, createHash, randomUUID } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { config } from "../../config.js";
 import { createChildLogger } from "../../shared/logger.js";
 import { ConflictError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
 import { queueService } from "../../shared/queue/queueService.js";
 import { mailerService } from "../../shared/mail/mailerService.js";
-import { getKnex } from "../../core/db/pool-manager.js";
-import { buildConnString } from "../../core/db/knex.js";
 
-import * as adminRepo from "../superadmin/admin-users/repositories/admin-users.repository.js";
 import * as platformUserRepo from "../platform-users/repositories/platform-users.repository.js";
-import * as agentRepo from "../agents/repositories/agents.repository.js";
+import * as adminRepo from "../superadmin/admin-users/repositories/admin-users.repository.js";
+import { getKnex } from "../../core/db/pool-manager.js";
+import { schemaName } from "../../core/db/knex.js";
+
+import type { AuthClaims } from "../../core/types.js";
 
 const logger = createChildLogger("auth-service");
 
-type UserType = "admin" | "platform_user" | "agent";
-
-interface ResolvedUser {
-  type: UserType;
-  id: number;
-  email: string;
-  role?: string;
-  otp: string | null;
-  otp_expires_at: Date | null;
-  orgId?: string;
-  // repo helpers bound to this user
-  updateOtp: (otp: string, expiresAt: Date) => Promise<void>;
-  clearOtp: () => Promise<void>;
-  updateRefreshToken: (token: string | null) => Promise<void>;
-}
-
-// ── resolve ──
-
-async function resolveUser(email: string, subdomain?: string): Promise<ResolvedUser | null> {
-  const candidates: ResolvedUser[] = [];
-
-  // 1. superadmin.admin_users
-  const admin = await adminRepo.findAdminByEmail(email);
-  if (admin) {
-    candidates.push({
-      type: "admin", id: admin.id, email: admin.email, role: admin.role,
-      otp: admin.otp, otp_expires_at: admin.otp_expires_at,
-      updateOtp: (otp, exp) => adminRepo.updateOtp(admin.id, otp, exp),
-      clearOtp: () => adminRepo.clearOtp(admin.id),
-      updateRefreshToken: (t) => adminRepo.updateRefreshToken(admin.id, t),
-    });
-  }
-
-  // 2. platform users
-  const platformUser = await platformUserRepo.findByEmail(email);
-  if (platformUser) {
-    candidates.push({
-      type: "platform_user", id: platformUser.id, email: platformUser.email,
-      otp: platformUser.otp, otp_expires_at: platformUser.otp_expires_at,
-      updateOtp: (otp, exp) => platformUserRepo.updateOtp(platformUser.id, otp, exp),
-      clearOtp: () => platformUserRepo.clearOtp(platformUser.id),
-      updateRefreshToken: (t) => platformUserRepo.updateRefreshToken(platformUser.id, t),
-    });
-  }
-
-  // 3. agents (needs subdomain to resolve business DB)
-  if (subdomain) {
-    const business = await agentRepo.findBusinessBySubdomain(subdomain);
-    if (business) {
-      const db = await getKnex(business.id, buildConnString(business));
-      const agent = await agentRepo.findAgentByEmail(db, email);
-      if (agent) {
-        candidates.push({
-          type: "agent", id: agent.id, email: agent.email, role: agent.role, orgId: business.id,
-          otp: agent.otp, otp_expires_at: agent.otp_expires_at,
-          updateOtp: (otp, exp) => agentRepo.updateOtp(db, agent.id, otp, exp),
-          clearOtp: () => agentRepo.clearOtp(db, agent.id),
-          updateRefreshToken: (t) => agentRepo.updateRefreshToken(db, agent.id, t),
-        });
-      }
-    }
-  }
-
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-
-  // Multiple matches (same email in admin + platform_users): prefer the one
-  // with an active OTP so verify-otp resolves to the right account.
-  const withOtp = candidates.find((c) => c.otp && c.otp_expires_at && new Date() < c.otp_expires_at);
-  return withOtp ?? candidates[0];
-}
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_LOCKOUT_MINUTES = 30;
 
 // ── helpers ──
 
@@ -95,12 +27,38 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function signAccessToken(user: ResolvedUser) {
+/** Encode userId into refresh token so failed lookups can identify the user for family detection. */
+function encodeRefreshToken(userId: number): { raw: string; hashed: string } {
+  const random = randomBytes(40).toString("hex");
+  const raw = `${userId}.${random}`;
+  return { raw, hashed: hashToken(raw) };
+}
+
+/** Decode userId from a refresh token. Returns null if format is invalid. */
+function decodeRefreshUserId(token: string): number | null {
+  const dot = token.indexOf(".");
+  if (dot === -1) return null;
+  const id = Number(token.slice(0, dot));
+  return Number.isFinite(id) ? id : null;
+}
+
+function signAccessToken(user: {
+  id: number;
+  email: string;
+  adminRole?: string;
+  orgId?: string;
+  orgRole?: string;
+}) {
   const payload: Record<string, unknown> = {
-    sub: user.id, type: user.type, email: user.email,
+    sub: user.id,
+    type: user.adminRole ? "admin" : "platform_user",
+    email: user.email,
   };
-  if (user.role) payload.role = user.role;
-  if (user.orgId) payload.orgId = user.orgId;
+  if (user.adminRole) payload.role = user.adminRole;
+  if (user.orgId) {
+    payload.orgId = user.orgId;
+    payload.orgRole = user.orgRole;
+  }
 
   return jwt.sign(payload, config.JWT_SECRET as jwt.Secret, {
     expiresIn: config.JWT_EXPIRY as jwt.SignOptions["expiresIn"],
@@ -146,12 +104,11 @@ export async function registerUser(firstName: string, lastName: string, email: s
     account_status: 1,
   });
 
-  // Send OTP immediately so user can verify and log in
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-  await platformUserRepo.updateOtp(user.id, otp, expiresAt);
+  // Store hash, send raw in email
+  await platformUserRepo.updateOtp(user.id, hashToken(otp), expiresAt);
 
-  // ponytail: fire-and-forget — registration must not fail because email is down
   queueEmail({
     to: email,
     subject: "Your Login OTP",
@@ -162,14 +119,18 @@ export async function registerUser(firstName: string, lastName: string, email: s
   return { message: "Registered. Check your email for OTP to log in." };
 }
 
-export async function sendOtp(email: string, subdomain?: string) {
-  const user = await resolveUser(email, subdomain);
+export async function sendOtp(email: string) {
+  const user = await platformUserRepo.findByEmail(email);
   if (!user) throw new NotFoundError("Account not found");
+
+  if (user.otp_locked_until && new Date() < new Date(user.otp_locked_until)) {
+    throw new UnauthorizedError("Too many attempts. Try again later.");
+  }
 
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-  await user.updateOtp(otp, expiresAt);
+  // Store hash, send raw in email
+  await platformUserRepo.updateOtp(user.id, hashToken(otp), expiresAt);
 
   queueEmail({
     to: user.email,
@@ -177,110 +138,163 @@ export async function sendOtp(email: string, subdomain?: string) {
     html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
   }).catch((err) => logger.warn("OTP email failed", { email, err: err.message }));
 
-  logger.info("OTP sent", { type: user.type, userId: user.id });
+  logger.info("OTP sent", { userId: user.id });
   return { message: "OTP sent" };
 }
 
-export async function verifyOtp(email: string, otp: string, subdomain?: string) {
-  const user = await resolveUser(email, subdomain);
+export async function verifyOtp(email: string, otp: string) {
+  const user = await platformUserRepo.findByEmail(email);
   if (!user) throw new NotFoundError("Account not found");
 
-  if (!user.otp || user.otp !== otp) throw new UnauthorizedError("Invalid OTP");
-  if (!user.otp_expires_at || new Date() > user.otp_expires_at) throw new UnauthorizedError("OTP expired");
+  if (user.otp_locked_until && new Date() < new Date(user.otp_locked_until)) {
+    throw new UnauthorizedError("Too many attempts. Try again later.");
+  }
 
-  await user.clearOtp();
+  if (!user.otp || !user.otp_expires_at) throw new UnauthorizedError("No OTP requested");
 
-  const accessToken = signAccessToken(user);
-  const rawRefresh = randomBytes(40).toString("hex");
-  await user.updateRefreshToken(hashToken(rawRefresh));
+  if (new Date() > new Date(user.otp_expires_at)) {
+    throw new UnauthorizedError("OTP expired");
+  }
 
-  logger.info("User authenticated", { type: user.type, userId: user.id });
+  // Compare hash — OTP is stored hashed
+  if (user.otp !== hashToken(otp)) {
+    const attempts = (user.otp_attempts ?? 0) + 1;
+    if (attempts >= OTP_MAX_ATTEMPTS) {
+      const lockedUntil = new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000);
+      await platformUserRepo.lockOtp(user.id, attempts, lockedUntil);
+    } else {
+      await platformUserRepo.incrementOtpAttempts(user.id, attempts);
+    }
+    throw new UnauthorizedError("Invalid OTP");
+  }
+
+  await platformUserRepo.clearOtp(user.id);
+
+  const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
+
+  const accessToken = signAccessToken({
+    id: user.id,
+    email: user.email,
+    adminRole: adminRecord?.role,
+  });
+
+  const { raw: rawRefresh, hashed: hashedRefresh } = encodeRefreshToken(user.id);
+  const family = randomUUID();
+  await platformUserRepo.updateRefreshToken(user.id, hashedRefresh, family);
+
+  if (!user.is_email_verified) {
+    await platformUserRepo.updateUser(user.id, { is_email_verified: true });
+  }
+
+  // Include owned businesses so client can show account picker immediately
+  const businesses = await platformUserRepo.listUserBusinesses(user.id);
+
+  logger.info("User authenticated", { userId: user.id, isAdmin: !!adminRecord });
   return {
     access_token: accessToken,
     refresh_token: rawRefresh,
     user: {
       id: user.id,
       email: user.email,
-      type: user.type,
-      role: user.role ?? null,
+      type: adminRecord ? ("admin" as const) : ("platform_user" as const),
+      role: adminRecord?.role ?? null,
     },
+    businesses,
   };
 }
 
-export async function refreshAccessToken(refreshToken: string, subdomain?: string) {
+export async function refreshAccessToken(refreshToken: string) {
   const hashed = hashToken(refreshToken);
 
-  // Check admin
-  const admin = await adminRepo.findAdminByRefreshToken(hashed);
-  if (admin) {
-    const at = jwt.sign(
-      { sub: admin.id, type: "admin", role: admin.role, email: admin.email },
-      config.JWT_SECRET as jwt.Secret,
-      { expiresIn: config.JWT_EXPIRY as jwt.SignOptions["expiresIn"] },
-    );
-    const newRaw = randomBytes(40).toString("hex");
-    await adminRepo.updateRefreshToken(admin.id, hashToken(newRaw));
-    return { access_token: at, refresh_token: newRaw, type: "admin" as const };
+  const user = await platformUserRepo.findByRefreshToken(hashed);
+  if (user) {
+    // Token valid — rotate
+    const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
+
+    const accessToken = signAccessToken({
+      id: user.id,
+      email: user.email,
+      adminRole: adminRecord?.role,
+    });
+
+    const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(user.id);
+    await platformUserRepo.updateRefreshToken(user.id, newHashed, user.refresh_token_family);
+
+    return {
+      access_token: accessToken,
+      refresh_token: newRaw,
+      type: adminRecord ? ("admin" as const) : ("platform_user" as const),
+    };
   }
 
-  // Check platform user
-  const platformUser = await platformUserRepo.findByRefreshToken(hashed);
-  if (platformUser) {
-    const at = jwt.sign(
-      { sub: platformUser.id, type: "platform_user", email: platformUser.email },
-      config.JWT_SECRET as jwt.Secret,
-      { expiresIn: config.JWT_EXPIRY as jwt.SignOptions["expiresIn"] },
-    );
-    const newRaw = randomBytes(40).toString("hex");
-    await platformUserRepo.updateRefreshToken(platformUser.id, hashToken(newRaw));
-    return { access_token: at, refresh_token: newRaw, type: "platform_user" as const };
-  }
-
-  // Check agent (needs subdomain)
-  if (subdomain) {
-    const business = await agentRepo.findBusinessBySubdomain(subdomain);
-    if (business) {
-      const db = await getKnex(business.id, buildConnString(business));
-      const agent = await agentRepo.findAgentByRefreshToken(db, hashed);
-      if (agent) {
-        const at = jwt.sign(
-          { sub: agent.id, type: "agent", orgId: business.id, role: agent.role, email: agent.email },
-          config.JWT_SECRET as jwt.Secret,
-          { expiresIn: config.JWT_EXPIRY as jwt.SignOptions["expiresIn"] },
-        );
-        const newRaw = randomBytes(40).toString("hex");
-        await agentRepo.updateRefreshToken(db, agent.id, hashToken(newRaw));
-        return { access_token: at, refresh_token: newRaw, type: "agent" as const };
-      }
+  // Token not found — check for reuse (stolen token replayed after rotation)
+  const userId = decodeRefreshUserId(refreshToken);
+  if (userId) {
+    const suspect = await platformUserRepo.findByIdFull(userId);
+    if (suspect?.refresh_token_family) {
+      // Family exists but token doesn't match — reuse detected.
+      // Nuke all tokens for this user, force re-authentication.
+      logger.warn("Refresh token reuse detected — invalidating session", { userId });
+      await platformUserRepo.updateRefreshToken(userId, null, null);
     }
   }
 
   throw new UnauthorizedError("Invalid refresh token");
 }
 
-export async function getMe(auth: { sub: string; type: string; role?: string; orgId?: string; email: string }) {
+export async function switchAccount(userId: number, orgId: string) {
+  const user = await platformUserRepo.findByIdFull(userId);
+  if (!user) throw new NotFoundError("User not found");
+
+  // Look up business and verify user is an agent in it
+  const business = await platformUserRepo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+
+  const db = await getKnex(business.id, schemaName(business.schema_name));
+  const agent = await db("agents")
+    .join("roles", "agents.role_id", "roles.id")
+    .where("agents.platform_user_id", userId)
+    .select("roles.name as role")
+    .first();
+
+  if (!agent) throw new UnauthorizedError("Not a member of this business");
+
+  const accessToken = signAccessToken({
+    id: user.id,
+    email: user.email,
+    orgId,
+    orgRole: agent.role,
+  });
+
+  logger.info("Account switched", { userId, orgId, role: agent.role });
+  return { access_token: accessToken };
+}
+
+export async function getMe(auth: AuthClaims) {
   const id = Number(auth.sub);
 
+  const user = await platformUserRepo.findById(id);
+  if (!user) throw new NotFoundError("User not found");
+
+  const result: Record<string, unknown> = {
+    ...user,
+    type: auth.type,
+  };
+
   if (auth.type === "admin") {
-    const admin = await adminRepo.findAdminById(id);
-    if (!admin) throw new NotFoundError("Admin not found");
-    return { user: { ...admin, type: "admin" as const } };
+    const adminRecord = await adminRepo.findAdminByPlatformUserId(id);
+    if (adminRecord) {
+      result.admin_role = adminRecord.role;
+      result.admin_id = adminRecord.id;
+    }
   }
 
-  if (auth.type === "platform_user") {
-    const user = await platformUserRepo.findById(id);
-    if (!user) throw new NotFoundError("User not found");
-    return { user: { ...user, type: "platform_user" as const } };
+  if (auth.orgId) {
+    result.orgId = auth.orgId;
+    result.orgRole = auth.orgRole;
   }
 
-  if (auth.type === "agent" && auth.orgId) {
-    const business = await agentRepo.findBusinessById(auth.orgId);
-    if (!business) throw new NotFoundError("Business not found");
-    const db = await getKnex(business.id, buildConnString(business));
-    const agent = await agentRepo.findAgentById(db, id);
-    if (!agent) throw new NotFoundError("Agent not found");
-    return { user: { ...agent, type: "agent" as const, orgId: business.id } };
-  }
+  result.businesses = await platformUserRepo.listUserBusinesses(id);
 
-  throw new UnauthorizedError("Unknown user type");
+  return { user: result };
 }
