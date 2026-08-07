@@ -14,7 +14,6 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { Separator } from "@/components/ui/separator";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { registerAndSendOtp, resendOtp, verifySignUpOtp, resetSignupError } from "./store/signup-slice";
-import { fetchMyProfile } from "@/app/personal/store/personal-onboarding-slice";
 import { otpSchema, zodErrorsToFieldErrors, validateSignUpField, validateOtpField } from "./validation";
 import { formatCooldown, clearFieldErrorIfNowValid, validateSignUpDetails } from "./utils";
 
@@ -102,7 +101,6 @@ export function SignUpView() {
     const result = await dispatch(verifySignUpOtp({ email, otp: otpCode }));
     if (verifySignUpOtp.fulfilled.match(result)) {
       toast.success("Welcome!", { description: "Your account has been created." });
-      await dispatch(fetchMyProfile());
       router.push("/auth/role-select");
     } else if (verifySignUpOtp.rejected.match(result)) {
       toast.error("Verification failed", { description: result.error.message ?? "Please try again." });

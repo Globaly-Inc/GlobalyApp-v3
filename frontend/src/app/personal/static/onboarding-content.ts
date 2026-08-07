@@ -2,9 +2,9 @@ import { GraduationCap, Briefcase, Users, Compass } from "lucide-react";
 
 export const CATEGORIES = [
   { value: "student", icon: GraduationCap, title: "Student", description: "Searching for courses, universities, or study abroad opportunities" },
-  { value: "education_professional", icon: Briefcase, title: "Education Professional", description: "Working in the education industry as a counsellor or consultant" },
-  { value: "parent", icon: Users, title: "Parent / Guardian", description: "Exploring options for your child's education journey" },
-  { value: "exploring", icon: Compass, title: "Just Exploring", description: "Browsing to learn more about international education" },
+  { value: "education_provider", icon: Briefcase, title: "Education Professional", description: "Working in the education industry as a counsellor or consultant" },
+  { value: "parents", icon: Users, title: "Parent / Guardian", description: "Exploring options for your child's education journey" },
+  { value: "explorer", icon: Compass, title: "Just Exploring", description: "Browsing to learn more about international education" },
 ];
 
 export const GENDER_OPTIONS = [

@@ -21,7 +21,7 @@ import {
   setSelectedCategory,
   toPortalCategory,
 } from "./store/auth-slice";
-import { fetchMyProfile } from "@/app/personal/store/personal-onboarding-slice";
+import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 
 const emailSchema = z.string().trim().max(255).pipe(z.email("Invalid email address"));
 const otpSchema = z.string().trim().length(6, "Please enter the 6-digit code").regex(/^\d+$/, "Code must be numeric");
@@ -117,9 +117,17 @@ export function SignInView() {
         router.push(redirectPath);
         return;
       }
-      const profileOutcome = await dispatch(fetchMyProfile());
-      const category = fetchMyProfile.fulfilled.match(profileOutcome)
-        ? toPortalCategory(profileOutcome.payload.individual_category)
+      if (outcome.payload.type === "admin") {
+        router.push("/admin");
+        return;
+      }
+      if (outcome.payload.type !== "platform_user") {
+        router.push("/");
+        return;
+      }
+      const profileOutcome = await dispatch(fetchFullProfile());
+      const category = fetchFullProfile.fulfilled.match(profileOutcome)
+        ? toPortalCategory(profileOutcome.payload.profile.user_category)
         : null;
       dispatch(setSelectedCategory(category));
       router.push(category ? CATEGORY_ROUTES[category] : "/auth/role-select");
@@ -172,7 +180,7 @@ export function SignInView() {
                   />
                   {fieldError && <p className="text-sm text-destructive">{fieldError}</p>}
                 </div>
-                <Button type="submit" className="h-10 w-full" disabled={loading}>
+                <Button type="submit" className="h-10 w-full cursor-pointer" disabled={loading}>
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -209,7 +217,7 @@ export function SignInView() {
                   </InputOTP>
                 </div>
                 {otpFieldError && <p className="text-sm text-destructive text-center">{otpFieldError}</p>}
-                <Button type="submit" className="h-10 w-full" disabled={loading || otpCode.length !== 6}>
+                <Button type="submit" className="h-10 w-full cursor-pointer" disabled={loading || otpCode.length !== 6}>
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

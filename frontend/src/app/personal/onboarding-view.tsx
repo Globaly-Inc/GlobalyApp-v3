@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "../geo/apis";
-import { fetchMyProfile, updateMyProfile, updateSubCategory } from "./store/personal-onboarding-slice";
+import { updateProfile, updateSubCategory } from "./store/profile-slice";
 import { CATEGORIES, GENDER_OPTIONS, DEGREE_LEVELS, FIELDS_OF_STUDY } from "./static/onboarding-content";
 import { validateStep2, validateStep2Field } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
@@ -28,15 +28,10 @@ const SELECT_TRIGGER_CLASS = "w-full data-[size=default]:h-10";
 
 export function OnboardingView() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const { profile, status } = useAppSelector((state) => state.personalOnboarding);
+  const { profile, status } = useAppSelector((state) => state.profile);
 
   useEffect(() => {
-    dispatch(fetchMyProfile());
-  }, [dispatch]);
-
-  useEffect(() => {
-    if (profile?.onboarding_completed) router.replace("/personal");
+    if (profile?.onboarding_completed) router.replace("/personal/profile");
   }, [profile, router]);
 
   if (!profile || status === "loading") {
@@ -53,23 +48,25 @@ export function OnboardingView() {
 }
 
 function resumeStep(profile: StudentProfile): number {
-  return profile.individual_category ? 2 : 1;
+  return profile.user_sub_category ? 2 : 1;
 }
 
 function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentProfile }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { status } = useAppSelector((state) => state.personalOnboarding);
+  const { status } = useAppSelector((state) => state.profile);
   const saving = status === "saving";
 
   const [countries, setCountries] = useState<Country[]>([]);
   const [step, setStep] = useState(() => resumeStep(initialProfile));
-  const [category, setCategory] = useState(initialProfile.individual_category);
+  const [category, setCategory] = useState(initialProfile.user_sub_category);
   const [nationalityId, setNationalityId] = useState(initialProfile.nationality_id ? String(initialProfile.nationality_id) : "");
   const [dob, setDob] = useState(initialProfile.date_of_birth ?? "");
   const [gender, setGender] = useState(initialProfile.gender ?? "");
   const [address, setAddress] = useState(initialProfile.personal_address_street ?? "");
-  const [destinations, setDestinations] = useState<string[]>(initialProfile.preferred_destinations ?? []);
+  const [destinations, setDestinations] = useState<string[]>(
+    (initialProfile.preferred_destinations ?? []).map(String),
+  );
   const [fields, setFields] = useState<string[]>(initialProfile.preferred_fields ?? []);
   const [degreeLevel, setDegreeLevel] = useState(initialProfile.preferred_degree_levels?.[0] ?? "");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -82,8 +79,8 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
 
   const save = useCallback(
     async (patch: StudentProfilePatch) => {
-      const result = await dispatch(updateMyProfile(patch));
-      if (updateMyProfile.rejected.match(result)) {
+      const result = await dispatch(updateProfile(patch));
+      if (updateProfile.rejected.match(result)) {
         toast.error("Couldn't save", { description: result.error.message ?? "Please try again." });
         return false;
       }
@@ -115,8 +112,11 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
 
   const handleNext = useCallback(async () => {
     if (step === 1 && category) {
-      if (!(await save({ individual_category: category }))) return;
-      dispatch(updateSubCategory({ sub_categories: category }));
+      const result = await dispatch(updateSubCategory({ user_sub_category: category }));
+      if (updateSubCategory.rejected.match(result)) {
+        toast.error("Couldn't save", { description: result.error.message ?? "Please try again." });
+        return;
+      }
       setFieldErrors({});
       setStep(2);
     } else if (step === 2) {
@@ -133,7 +133,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
         personal_address_street: address,
       };
       if (category === "student") {
-        patch.preferred_destinations = destinations;
+        patch.preferred_destinations = destinations.map(Number);
         if (fields.length) patch.preferred_fields = fields;
         patch.preferred_degree_levels = [degreeLevel];
       }
@@ -141,7 +141,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
       setStep(3);
     } else if (step === 3) {
       if (!(await save({ onboarding_completed: true }))) return;
-      router.replace("/personal");
+      router.replace("/personal/profile");
     }
   }, [step, category, nationalityId, dob, gender, address, destinations, fields, degreeLevel, save, router, dispatch]);
 
@@ -155,7 +155,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
     else if (step === 2) setStep(3);
     else {
       await save({ onboarding_completed: true });
-      router.replace("/personal");
+      router.replace("/personal/profile");
     }
   }, [step, save, router]);
 
@@ -167,15 +167,15 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
     });
   }, []);
 
-  const toggleDestination = useCallback((countryName: string) => {
+  const toggleDestination = useCallback((countryId: string) => {
     setDestinations((prev) => {
-      if (prev.includes(countryName)) {
-        const next = prev.filter((c) => c !== countryName);
+      if (prev.includes(countryId)) {
+        const next = prev.filter((c) => c !== countryId);
         clearFieldErrorIfNowValid(setFieldErrors, "destinations", validateStep2Field("destinations", next) === null);
         return next;
       }
       if (prev.length >= 5) return prev;
-      const next = [...prev, countryName];
+      const next = [...prev, countryId];
       clearFieldErrorIfNowValid(setFieldErrors, "destinations", validateStep2Field("destinations", next) === null);
       return next;
     });
@@ -183,8 +183,9 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
 
   const displayStep = step > TOTAL_STEPS ? TOTAL_STEPS : step;
   const countryOptions = countries.map((c) => ({ value: String(c.id), label: c.name }));
-  const availableDestinationCountries = countries.filter((c) => !destinations.includes(c.name));
-  const destinationOptions = availableDestinationCountries.map((c) => ({ value: c.name, label: c.name }));
+  const countryNameById = new Map(countries.map((c) => [String(c.id), c.name]));
+  const availableDestinationCountries = countries.filter((c) => !destinations.includes(String(c.id)));
+  const destinationOptions = availableDestinationCountries.map((c) => ({ value: String(c.id), label: c.name }));
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -317,7 +318,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
                   {fieldErrors.address && <p className="text-sm text-destructive">{fieldErrors.address}</p>}
                 </div>
 
-                {category !== "education_professional" && (
+                {category !== "education_provider" && (
                   <>
                     <div>
                       <Label className="text-sm font-medium">
@@ -341,7 +342,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
                               className="cursor-pointer hover:bg-destructive/10"
                               onClick={() => toggleDestination(d)}
                             >
-                              {d} ×
+                              {countryNameById.get(d) ?? d} ×
                             </Badge>
                           ))}
                         </div>

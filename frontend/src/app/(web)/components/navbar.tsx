@@ -8,17 +8,19 @@ import { Menu, X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useAuthState } from "@/app/auth/store/auth-slice";
+import { NAV_LINKS } from "../const/index";
 
-const NAV_LINKS = [
-  { label: "For Students", href: "/for-students" },
-  { label: "For Institutions", href: "/for-institutions" },
-  { label: "For Agents", href: "/for-agents" },
-  { label: "Blog", href: "/blog" },
-];
+function dashboardHref(type: string | undefined): string {
+  if (type === "admin") return "/admin";
+  if (type === "platform_user") return "/personal";
+  return "/";
+}
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const { user, initializing } = useAuthState();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md">
@@ -54,21 +56,35 @@ export function Navbar() {
             <span>AI Counsellor</span>
           </Link>
 
-          <Button
-            variant="ghost"
-            className="hidden h-10 sm:inline-flex text-foreground/70 hover:text-foreground hover:bg-muted"
-            nativeButton={false}
-            render={<Link href="/auth/sign-in" />}
-          >
-            Sign In
-          </Button>
-          <Button
-            className="btn-gold h-10 rounded-full px-5"
-            nativeButton={false}
-            render={<Link href="/auth/sign-up" />}
-          >
-            Get Started
-          </Button>
+          {!initializing && (
+            user ? (
+              <Button
+                className="btn-gold h-10 rounded-full px-5"
+                nativeButton={false}
+                render={<Link href={dashboardHref(user.type)} />}
+              >
+                Dashboard
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  className="hidden h-10 sm:inline-flex text-foreground/70 hover:text-foreground hover:bg-muted"
+                  nativeButton={false}
+                  render={<Link href="/auth/sign-in" />}
+                >
+                  Sign In
+                </Button>
+                <Button
+                  className="btn-gold h-10 rounded-full px-5"
+                  nativeButton={false}
+                  render={<Link href="/auth/sign-up" />}
+                >
+                  Get Started
+                </Button>
+              </>
+            )
+          )}
 
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger
@@ -103,21 +119,35 @@ export function Navbar() {
                   </Link>
                 ))}
                 <div className="mt-4 flex flex-col gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
-                    nativeButton={false}
-                    render={<Link href="/auth/sign-in" onClick={() => setMobileOpen(false)} />}
-                  >
-                    Sign In
-                  </Button>
-                  <Button
-                    className="btn-gold h-10"
-                    nativeButton={false}
-                    render={<Link href="/auth/sign-up" onClick={() => setMobileOpen(false)} />}
-                  >
-                    Get Started
-                  </Button>
+                  {!initializing && (
+                    user ? (
+                      <Button
+                        className="btn-gold h-10"
+                        nativeButton={false}
+                        render={<Link href={dashboardHref(user.type)} onClick={() => setMobileOpen(false)} />}
+                      >
+                        Dashboard
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                          nativeButton={false}
+                          render={<Link href="/auth/sign-in" onClick={() => setMobileOpen(false)} />}
+                        >
+                          Sign In
+                        </Button>
+                        <Button
+                          className="btn-gold h-10"
+                          nativeButton={false}
+                          render={<Link href="/auth/sign-up" onClick={() => setMobileOpen(false)} />}
+                        >
+                          Get Started
+                        </Button>
+                      </>
+                    )
+                  )}
                 </div>
               </nav>
             </SheetContent>

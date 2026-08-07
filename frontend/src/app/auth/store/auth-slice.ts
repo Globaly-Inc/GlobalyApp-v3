@@ -1,12 +1,22 @@
+import { useEffect, useState } from "react";
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { authApi } from "../apis";
 import type { AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "../apis/types";
 import { clearTokens } from "@/lib/session";
+import { useAppSelector } from "@/lib/hooks";
+import type { RootState } from "@/lib/store";
 
 export type PortalCategory = "personal" | "business";
 
 export function toPortalCategory(value: string | null | undefined): PortalCategory | null {
   return value === "personal" || value === "business" ? value : null;
+}
+
+export function useAuthState() {
+  const state = useAppSelector((s) => s.auth);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return mounted ? state : { ...state, user: null, initializing: true };
 }
 
 export const sendSignInOtp = createAsyncThunk("auth/sendSignInOtp", async (params: SendOtpParams) => {
@@ -27,14 +37,25 @@ export const updateRole = createAsyncThunk("auth/updateRole", (params: UpdateRol
   authApi.updateRole(params),
 );
 
+export const restoreSession = createAsyncThunk("auth/restoreSession", () => authApi.getMe(), {
+  condition: (_, { getState }) => (getState() as RootState).auth.initializing,
+});
+
 type AuthState = {
   user: AuthUser | null;
   status: "idle" | "sendingOtp" | "verifyingOtp" | "updatingRole" | "failed";
   error: string | null;
   selectedCategory: PortalCategory | null;
+  initializing: boolean;
 };
 
-const initialState: AuthState = { user: null, status: "idle", error: null, selectedCategory: null };
+const initialState: AuthState = {
+  user: null,
+  status: "idle",
+  error: null,
+  selectedCategory: null,
+  initializing: true,
+};
 
 const authSlice = createSlice({
   name: "auth",
@@ -45,6 +66,9 @@ const authSlice = createSlice({
     },
     setSelectedCategory(state, action: PayloadAction<PortalCategory | null>) {
       state.selectedCategory = action.payload;
+    },
+    settleInitializing(state) {
+      state.initializing = false;
     },
     logout(state) {
       clearTokens();
@@ -99,9 +123,18 @@ const authSlice = createSlice({
       .addCase(updateRole.rejected, (state, action) => {
         state.status = "failed";
         state.error = action.error.message ?? "Failed to update your account type.";
+      })
+      .addCase(restoreSession.fulfilled, (state, action) => {
+        state.user = action.payload;
+        state.initializing = false;
+      })
+      .addCase(restoreSession.rejected, (state) => {
+        clearTokens();
+        state.user = null;
+        state.initializing = false;
       });
   },
 });
 
-export const { resetSignInError, setSelectedCategory, logout } = authSlice.actions;
+export const { resetSignInError, setSelectedCategory, logout, settleInitializing } = authSlice.actions;
 export const authReducer = authSlice.reducer;

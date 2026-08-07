@@ -2,53 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Sparkles, ArrowRight, GraduationCap, Building2, Users, Stamp } from "lucide-react";
+import { Search, Sparkles, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CATEGORIES, AI_PROMPTS_BY_SLUG } from "../const/index";
 
 type Mode = "ai" | "search";
 
-const CATEGORIES = [
-  { slug: "courses", name: "Courses", Icon: GraduationCap },
-  { slug: "institutions", name: "Institutions", Icon: Building2 },
-  { slug: "agents", name: "Agents", Icon: Users },
-  { slug: "visas", name: "Visas", Icon: Stamp },
-];
-
-// Generic (no-profile) prompts from V2's src/lib/aiStarterPrompts.ts
-// STARTER_PROMPTS, one set per category ("agents" here = V2's "education_agency").
-const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
-  courses: [
-    "What courses can I study abroad?",
-    "What are the popular courses in Australia?",
-    "What are the programs for bachelor's degrees?",
-    "What scholarships are available for international students?",
-  ],
-  institutions: [
-    "What are the top universities in Canada?",
-    "Which cities are best for international students?",
-    "Which countries offer affordable tuition for international students?",
-    "What are the highest-ranked universities for business?",
-  ],
-  agents: [
-    "What do education agents do?",
-    "Do I need an education agent to apply abroad?",
-    "How are education agents paid?",
-    "Find education agents who place students in the USA.",
-  ],
-  visas: [
-    "What is a student visa and how does it work?",
-    "What documents are needed for a student visa?",
-    "Can international students work on a student visa?",
-    "What are the post-study work visa options abroad?",
-  ],
-};
-
-/**
- * Ask AI / Search hero bar. Ported from V2's UnifiedSearchBar, simplified:
- * category tabs are static here (V2 reads them from the backend) since
- * /search hasn't been built in V3 yet.
- * ponytail: swap CATEGORIES for live backend data once /search lands.
- */
 export function UnifiedSearchBar() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("ai");

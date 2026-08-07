@@ -1,4 +1,4 @@
-import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from "@/lib/session";
+import { clearTokens, getAccessToken, getRefreshToken, isTokenExpired, saveTokens } from "@/lib/session";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3`;
@@ -36,6 +36,8 @@ function refreshAccessToken(): Promise<boolean> {
 }
 
 async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Response> {
+  const token = getAccessToken();
+  if (token && isTokenExpired(token)) await refreshAccessToken();
   const res = await attempt();
   if (res.status !== 401) return res;
   const refreshed = await refreshAccessToken();
@@ -83,4 +85,11 @@ export function httpPost<T>(path: string, body: unknown, init?: RequestInit): Pr
 
 export function httpPatch<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
   return httpWithBody<T>("PATCH", path, body, init);
+}
+
+export async function httpDelete(path: string, init?: RequestInit): Promise<void> {
+  const res = await withRefreshRetry(() =>
+    fetch(`${BASE_URL}${path}`, { ...init, method: "DELETE", headers: { ...authHeaders(), ...init?.headers } }),
+  );
+  if (!res.ok) throw new Error(await readError(res));
 }

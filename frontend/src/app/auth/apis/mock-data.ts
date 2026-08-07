@@ -6,6 +6,8 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+let mockUser: AuthUser | null = null;
+
 export const authMockApi = {
   sendOtp: async (params: SendOtpParams): Promise<void> => {
     void params;
@@ -13,7 +15,7 @@ export const authMockApi = {
   },
 
   updateRole: async (params: UpdateRoleParams): Promise<void> => {
-    console.log("[mock] POST /user/update", params);
+    console.log("[mock] PATCH /platform-users/me/category", params);
     await delay(300);
   },
 
@@ -22,6 +24,14 @@ export const authMockApi = {
     if (otp !== MOCK_OTP) {
       throw new Error(`Invalid or expired code. (mock mode: use ${MOCK_OTP})`);
     }
-    return { email, type: "student", role: null };
+    mockUser = { email, type: "platform_user", role: null };
+    return mockUser;
+  },
+
+  getMe: async (): Promise<AuthUser> => {
+    console.log("[mock] GET /auth/me");
+    await delay(300);
+    if (!mockUser) throw new Error("Not signed in.");
+    return mockUser;
   },
 };
