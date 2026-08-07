@@ -1,6 +1,6 @@
 export type AuthUser = {
   email: string;
-  type: "admin" | "student" | "agent";
+  type: "admin" | "platform_user" | "agent";
   role: string | null;
 };
 

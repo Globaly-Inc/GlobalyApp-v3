@@ -2,50 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SocialIcon, type SocialName } from "./social-icon";
-
-const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
-  "Get Started": [
-    { label: "For Students", href: "/for-students" },
-    { label: "For Institutions", href: "/for-institutions" },
-    { label: "For Agents", href: "/for-agents" },
-    { label: "Pricing", href: "/pricing" },
-    { label: "Ambassador Program", href: "/for-students" },
-  ],
-  "Explore Destinations": [
-    { label: "Australia", href: "/country/australia" },
-    { label: "USA", href: "/country/united-states" },
-    { label: "Canada", href: "/country/canada" },
-    { label: "United Kingdom", href: "/country/united-kingdom" },
-    { label: "Singapore", href: "/country/singapore" },
-  ],
-  Search: [
-    { label: "Courses", href: "/search?tab=courses" },
-    { label: "Institutions", href: "/search?tab=institutions" },
-    { label: "Agents", href: "/search?tab=agents" },
-    { label: "Scholarships", href: "/search?tab=scholarships" },
-    { label: "Jobs", href: "/jobs" },
-  ],
-  Resources: [
-    { label: "Blog", href: "/blog" },
-    { label: "Visa Info", href: "/blog" },
-    { label: "Study Guides", href: "/blog" },
-    { label: "Student Services", href: "/search/services" },
-  ],
-  Contact: [
-    { label: "support@globaly.app", href: "mailto:support@globaly.app" },
-    { label: "🇦🇺 Sydney, Australia", href: "#" },
-    { label: "🇺🇸 Delaware, USA", href: "#" },
-  ],
-};
-
-const SOCIALS: { name: SocialName; href: string; label: string }[] = [
-  { name: "facebook", href: "https://facebook.com/globaly.app", label: "Facebook" },
-  { name: "twitter", href: "https://twitter.com/globaly_app", label: "Twitter / X" },
-  { name: "linkedin", href: "https://linkedin.com/company/globaly-app", label: "LinkedIn" },
-  { name: "instagram", href: "https://instagram.com/globaly.app", label: "Instagram" },
-  { name: "youtube", href: "https://youtube.com/@globalyapp", label: "YouTube" },
-];
+import { SocialIcon } from "./social-icon";
+import { FOOTER_LINKS, SOCIALS } from "../const/index";
 
 export function Footer() {
   return (

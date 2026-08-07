@@ -1,0 +1,184 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { Home, Menu as MenuIcon, User as UserIcon, Building2, LogOut, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { logout } from "@/app/auth/store/auth-slice";
+import { fetchFullProfile } from "./store/profile-slice";
+
+const NAV_ITEMS = [{ label: "Home", icon: Home, href: "/personal" }];
+
+export function PersonalShell({ children }: Readonly<{ children: React.ReactNode }>) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const dispatch = useAppDispatch();
+  const { profile, status } = useAppSelector((state) => state.profile);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    // Skip if sign-in already fetched this moments ago (awaited before the redirect
+    // that lands here) — only fetch fresh on a direct nav/reload where we have nothing yet.
+    if (!profile) dispatch(fetchFullProfile());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (profile && !profile.onboarding_completed && pathname !== "/personal/onboarding") {
+      router.replace("/personal/onboarding");
+    }
+  }, [profile, pathname, router]);
+
+  const handleSignOut = () => {
+    dispatch(logout());
+    router.push("/auth/sign-in");
+  };
+
+  if (status === "loading" && !profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (profile && !profile.onboarding_completed && pathname !== "/personal/onboarding") return null;
+
+  // Onboarding has its own complete standalone header (logo, Skip, step progress) —
+  // don't stack the portal chrome on top of it.
+  if (pathname === "/personal/onboarding") return <>{children}</>;
+
+  const initial = profile?.first_name?.[0]?.toUpperCase() ?? "U";
+
+  return (
+    <div className="min-h-screen flex flex-col bg-muted/30">
+      <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 md:px-6">
+        <div className="flex items-center gap-4">
+          <Link href="/personal" className="flex items-center">
+            <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
+          </Link>
+          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+            <UserIcon className="h-3.5 w-3.5" />
+            Personal
+          </span>
+          <nav className="hidden md:flex items-center gap-1">
+            {NAV_ITEMS.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
+            }
+          >
+            <Avatar className="size-8">
+              {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+              <AvatarFallback>{initial}</AvatarFallback>
+            </Avatar>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/profile")}>
+              <UserIcon /> My Profile
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business")}>
+              <Building2 /> Business Portal
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
+              <LogOut /> Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </header>
+
+      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 md:py-6 pb-24 md:pb-6">{children}</main>
+
+      <div className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-border bg-background py-2 pb-[env(safe-area-inset-bottom)] md:hidden">
+        <Link
+          href="/personal"
+          className={cn(
+            "flex flex-col items-center gap-0.5 px-4 py-1 text-xs",
+            pathname === "/personal" ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Home className="h-5 w-5" />
+          Home
+        </Link>
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          className="flex flex-col items-center gap-0.5 px-4 py-1 text-xs text-muted-foreground"
+        >
+          <MenuIcon className="h-5 w-5" />
+          Menu
+        </button>
+      </div>
+
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent side="left">
+          <SheetHeader>
+            <SheetTitle>Personal Portal</SheetTitle>
+          </SheetHeader>
+          <nav className="flex flex-col gap-1 px-2">
+            <Link
+              href="/personal"
+              onClick={() => setDrawerOpen(false)}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
+            >
+              <Home className="h-4 w-4" /> Home
+            </Link>
+            <Link
+              href="/personal/profile"
+              onClick={() => setDrawerOpen(false)}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
+            >
+              <UserIcon className="h-4 w-4" /> My Profile
+            </Link>
+            <Link
+              href="/business"
+              onClick={() => setDrawerOpen(false)}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
+            >
+              <Building2 className="h-4 w-4" /> Business Portal
+            </Link>
+          </nav>
+          <div className="mt-auto p-2">
+            <Button variant="outline" className="w-full justify-start gap-2" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4" /> Sign Out
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}

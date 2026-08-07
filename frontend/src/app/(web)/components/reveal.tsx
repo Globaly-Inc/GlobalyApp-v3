@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useScrollReveal } from "../hooks/use-scroll-animation";
+import { REVEAL_CLASS_BY_DIRECTION } from "../const/index";
 
 interface RevealProps {
   children: ReactNode;
@@ -9,12 +10,6 @@ interface RevealProps {
   direction?: "up" | "left" | "right";
   delay?: number;
 }
-
-const REVEAL_CLASS_BY_DIRECTION = {
-  up: "reveal",
-  left: "reveal-left",
-  right: "reveal-right",
-} as const;
 
 export function Reveal({ children, className = "", direction = "up", delay = 0 }: Readonly<RevealProps>) {
   const { ref, isVisible } = useScrollReveal();

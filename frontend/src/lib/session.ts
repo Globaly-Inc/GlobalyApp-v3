@@ -25,3 +25,13 @@ export function clearTokens() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
+
+// JWT exp is seconds since epoch; a few seconds of slop avoids racing the server's own check.
+export function isTokenExpired(token: string): boolean {
+  try {
+    const { exp } = JSON.parse(atob(token.split(".")[1] ?? "")) as { exp?: number };
+    return typeof exp === "number" && Date.now() >= exp * 1000 - 5000;
+  } catch {
+    return false;
+  }
+}

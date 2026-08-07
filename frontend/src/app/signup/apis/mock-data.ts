@@ -22,6 +22,6 @@ export const signupMockApi = {
     if (otp !== MOCK_OTP) {
       throw new Error(`Invalid or expired code. (mock mode: use ${MOCK_OTP})`);
     }
-    return { email, type: "student", role: null };
+    return { email, type: "platform_user", role: null };
   },
 };
