@@ -69,6 +69,7 @@ export async function up(knex: Knex): Promise<void> {
     // Meta
     t.jsonb("meta").defaultTo("{}");
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 }
 

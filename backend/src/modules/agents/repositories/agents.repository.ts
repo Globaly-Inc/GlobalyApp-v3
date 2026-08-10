@@ -60,17 +60,17 @@ function withRole(query: Knex.QueryBuilder) {
 // ── Roles ──
 
 export async function findRoleByName(db: Knex, name: string) {
-  return db<RoleRow>("roles").where({ name }).first();
+  return db<RoleRow>("roles").where({ name }).whereNull("deleted_at").first();
 }
 
 export async function listRoles(db: Knex) {
-  return db<RoleRow>("roles").orderBy("sort_order", "asc");
+  return db<RoleRow>("roles").whereNull("deleted_at").orderBy("sort_order", "asc");
 }
 
 // ── Business lookup (globalyapp) ──
 
 export async function findBusinessByDbName(dbName: string): Promise<BusinessRecord | undefined> {
-  return masterKnex<BusinessRecord>("businesses").where({ schema_name: dbName, account_status: 1 }).first();
+  return masterKnex<BusinessRecord>("businesses").where({ schema_name: dbName, account_status: 1 }).whereNull("deleted_at").first();
 }
 
 // ── Agent queries (per-business DB) ──
@@ -79,6 +79,7 @@ export async function findAgentByPlatformUserId(db: Knex, platformUserId: number
   return withRole(db<AgentRow>("agents"))
     .select(AGENT_COLUMNS as unknown as string[])
     .where("agents.platform_user_id", platformUserId)
+    .whereNull("agents.deleted_at")
     .first();
 }
 
@@ -86,6 +87,7 @@ export async function findAgentById(db: Knex, id: number) {
   return withRole(db<AgentRow>("agents"))
     .select(AGENT_COLUMNS as unknown as string[])
     .where("agents.id", id)
+    .whereNull("agents.deleted_at")
     .first();
 }
 
@@ -106,13 +108,14 @@ export async function insertAgent(db: Knex, data: {
 export async function listAgents(db: Knex, limit: number, offset: number) {
   return withRole(db<AgentRow>("agents"))
     .select(AGENT_COLUMNS as unknown as string[])
+    .whereNull("agents.deleted_at")
     .orderBy("agents.id", "asc")
     .limit(limit)
     .offset(offset);
 }
 
 export async function countAgents(db: Knex): Promise<number> {
-  const [{ count }] = await db("agents").count("id as count");
+  const [{ count }] = await db("agents").whereNull("deleted_at").count("id as count");
   return Number(count);
 }
 
@@ -135,12 +138,14 @@ export async function insertInvitation(db: Knex, data: {
 export async function findPendingInvitationByEmail(db: Knex, email: string) {
   return db<InvitationRow>("agent_invitations")
     .where({ email, status: "pending" })
+    .whereNull("deleted_at")
     .first();
 }
 
 export async function findInvitationByToken(db: Knex, token: string) {
   return db<InvitationRow>("agent_invitations")
     .where({ invite_token: token, status: "pending" })
+    .whereNull("deleted_at")
     .first();
 }
 

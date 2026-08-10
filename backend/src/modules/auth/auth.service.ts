@@ -1,7 +1,7 @@
 // Unified auth service — all users authenticate via platform_users.
 // Admins and business membership are role-links, not separate auth identities.
 
-import { randomInt, randomBytes, createHash, randomUUID } from "node:crypto";
+import { randomInt, randomBytes, createHash, scryptSync, timingSafeEqual, randomUUID } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { config } from "../../config.js";
 import { createChildLogger } from "../../shared/logger.js";
@@ -23,8 +23,24 @@ const OTP_LOCKOUT_MINUTES = 30;
 
 // ── helpers ──
 
+/** SHA-256 hash for refresh tokens (high-entropy random data, fast hash is fine). */
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+/** Slow hash for OTP (6-digit, low-entropy — scrypt prevents brute-force if DB leaks). */
+function hashOtp(otp: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(otp, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+/** Verify OTP against scrypt hash. Constant-time comparison. */
+function verifyOtpHash(otp: string, stored: string): boolean {
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  const check = scryptSync(otp, salt, 64).toString("hex");
+  return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(check, "hex"));
 }
 
 /** Encode userId into refresh token so failed lookups can identify the user for family detection. */
@@ -101,13 +117,12 @@ export async function registerUser(firstName: string, lastName: string, email: s
     last_name: lastName,
     email,
     username: email,
-    account_status: 1,
+    account_status: 0, // inactive until OTP verified
   });
 
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-  // Store hash, send raw in email
-  await platformUserRepo.updateOtp(user.id, hashToken(otp), expiresAt);
+  await platformUserRepo.updateOtp(user.id, hashOtp(otp), expiresAt);
 
   queueEmail({
     to: email,
@@ -129,8 +144,7 @@ export async function sendOtp(email: string) {
 
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-  // Store hash, send raw in email
-  await platformUserRepo.updateOtp(user.id, hashToken(otp), expiresAt);
+  await platformUserRepo.updateOtp(user.id, hashOtp(otp), expiresAt);
 
   queueEmail({
     to: user.email,
@@ -142,7 +156,7 @@ export async function sendOtp(email: string) {
   return { message: "OTP sent" };
 }
 
-export async function verifyOtp(email: string, otp: string) {
+export async function verifyOtp(email: string, otp: string, meta?: { ip?: string; userAgent?: string }) {
   const user = await platformUserRepo.findByEmail(email);
   if (!user) throw new NotFoundError("Account not found");
 
@@ -156,8 +170,8 @@ export async function verifyOtp(email: string, otp: string) {
     throw new UnauthorizedError("OTP expired");
   }
 
-  // Compare hash — OTP is stored hashed
-  if (user.otp !== hashToken(otp)) {
+  // Compare using scrypt — slow hash, constant-time
+  if (!verifyOtpHash(otp, user.otp)) {
     const attempts = (user.otp_attempts ?? 0) + 1;
     if (attempts >= OTP_MAX_ATTEMPTS) {
       const lockedUntil = new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000);
@@ -169,6 +183,14 @@ export async function verifyOtp(email: string, otp: string) {
   }
 
   await platformUserRepo.clearOtp(user.id);
+
+  // Activate account on first verification
+  const updates: Record<string, unknown> = {};
+  if (!user.is_email_verified) updates.is_email_verified = true;
+  if (user.account_status === 0) updates.account_status = 1;
+  if (Object.keys(updates).length > 0) {
+    await platformUserRepo.updateUser(user.id, updates);
+  }
 
   const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
 
@@ -182,9 +204,12 @@ export async function verifyOtp(email: string, otp: string) {
   const family = randomUUID();
   await platformUserRepo.updateRefreshToken(user.id, hashedRefresh, family);
 
-  if (!user.is_email_verified) {
-    await platformUserRepo.updateUser(user.id, { is_email_verified: true });
-  }
+  // Bind refresh token to IP/device
+  await platformUserRepo.updateLoginMeta(user.id, {
+    ip_address: meta?.ip ?? null,
+    user_agent: meta?.userAgent ?? null,
+    last_login_at: new Date(),
+  });
 
   // Include owned businesses so client can show account picker immediately
   const businesses = await platformUserRepo.listUserBusinesses(user.id);
@@ -203,11 +228,23 @@ export async function verifyOtp(email: string, otp: string) {
   };
 }
 
-export async function refreshAccessToken(refreshToken: string) {
+export async function refreshAccessToken(refreshToken: string, meta?: { ip?: string; userAgent?: string }) {
   const hashed = hashToken(refreshToken);
 
   const user = await platformUserRepo.findByRefreshToken(hashed);
   if (user) {
+    // Warn on IP/device mismatch (defensive, not blocking — avoids locking out mobile users on carrier IP changes)
+    if (meta?.ip && user.ip_address && meta.ip !== user.ip_address) {
+      logger.warn("Refresh token used from different IP", {
+        userId: user.id, expected: user.ip_address, actual: meta.ip,
+      });
+    }
+    if (meta?.userAgent && user.user_agent && meta.userAgent !== user.user_agent) {
+      logger.warn("Refresh token used from different device", {
+        userId: user.id, expected: user.user_agent, actual: meta.userAgent,
+      });
+    }
+
     // Token valid — rotate
     const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
 
@@ -219,6 +256,13 @@ export async function refreshAccessToken(refreshToken: string) {
 
     const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(user.id);
     await platformUserRepo.updateRefreshToken(user.id, newHashed, user.refresh_token_family);
+
+    // Update IP/device on successful refresh
+    await platformUserRepo.updateLoginMeta(user.id, {
+      ip_address: meta?.ip ?? user.ip_address,
+      user_agent: meta?.userAgent ?? user.user_agent,
+      last_login_at: new Date(),
+    });
 
     return {
       access_token: accessToken,
@@ -236,6 +280,7 @@ export async function refreshAccessToken(refreshToken: string) {
       // Nuke all tokens for this user, force re-authentication.
       logger.warn("Refresh token reuse detected — invalidating session", { userId });
       await platformUserRepo.updateRefreshToken(userId, null, null);
+      await platformUserRepo.updateLoginMeta(userId, { ip_address: null, user_agent: null });
     }
   }
 
@@ -268,6 +313,12 @@ export async function switchAccount(userId: number, orgId: string) {
 
   logger.info("Account switched", { userId, orgId, role: agent.role });
   return { access_token: accessToken };
+}
+
+export async function logout(userId: number) {
+  await platformUserRepo.updateRefreshToken(userId, null, null);
+  await platformUserRepo.updateLoginMeta(userId, { ip_address: null, user_agent: null });
+  logger.info("User logged out", { userId });
 }
 
 export async function getMe(auth: AuthClaims) {

@@ -22,21 +22,22 @@ export async function insertFile(data: Omit<UploadedFileRow, "id" | "created_at"
 }
 
 export async function findFileById(id: string) {
-  return masterKnex<UploadedFileRow>("uploaded_files").where({ id }).first();
+  return masterKnex<UploadedFileRow>("uploaded_files").where({ id }).whereNull("deleted_at").first();
 }
 
 export async function findFileByPath(storagePath: string) {
-  return masterKnex<UploadedFileRow>("uploaded_files").where({ storage_path: storagePath }).first();
+  return masterKnex<UploadedFileRow>("uploaded_files").where({ storage_path: storagePath }).whereNull("deleted_at").first();
 }
 
 export async function listFilesByEntity(entityType: string, entityId: string, category?: string) {
   const q = masterKnex<UploadedFileRow>("uploaded_files")
     .where({ entity_type: entityType, entity_id: entityId })
+    .whereNull("deleted_at")
     .orderBy("created_at", "desc");
   if (category) q.where({ category });
   return q;
 }
 
 export async function deleteFileRecord(id: string) {
-  return masterKnex("uploaded_files").where({ id }).delete();
+  return masterKnex("uploaded_files").where({ id }).update({ deleted_at: masterKnex.fn.now() });
 }

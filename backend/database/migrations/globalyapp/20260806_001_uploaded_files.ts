@@ -12,6 +12,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("mime_type").notNullable();
     t.bigInteger("size_bytes").notNullable();
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 
   // Look up files by entity

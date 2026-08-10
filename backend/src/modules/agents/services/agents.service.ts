@@ -146,12 +146,14 @@ export async function acceptInvitation(orgId: string, token: string) {
   // Create or find platform_user for this email
   let platformUser = await platformUserRepo.findByEmail(invitation.email);
   if (!platformUser) {
+    details.first_name ??= "";
+    details.last_name ??= "";
     platformUser = await platformUserRepo.insert({
-      first_name: details.first_name ?? "",
-      last_name: details.last_name ?? "",
+      first_name: details.first_name,
+      last_name: details.last_name,
       email: invitation.email,
       username: invitation.email,
-      account_status: 1,
+      account_status: 0, // inactive until they verify OTP
       user_category: "business",
       user_sub_category: "agent",
     });

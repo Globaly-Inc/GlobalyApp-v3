@@ -9,6 +9,7 @@ export async function up(knex: Knex): Promise<void> {
     t.boolean("is_active").notNullable().defaultTo(true);
     t.integer("added_by").unsigned().nullable().references("id").inTable("superadmin.admin_users");
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 }
 

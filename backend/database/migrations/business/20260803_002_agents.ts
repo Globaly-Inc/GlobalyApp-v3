@@ -10,6 +10,7 @@ export async function up(knex: Knex): Promise<void> {
     t.integer("added_by").unsigned().nullable().references("id").inTable("agents");
     t.jsonb("meta").defaultTo("{}");
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 }
 

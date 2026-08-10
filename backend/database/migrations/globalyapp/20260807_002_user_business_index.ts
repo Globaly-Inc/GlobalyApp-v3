@@ -8,6 +8,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("role").notNullable().defaultTo("member");
     t.boolean("is_owner").notNullable().defaultTo(false);
     t.timestamp("created_at", { useTz: true }).notNullable().defaultTo(knex.fn.now());
+    t.timestamp("deleted_at").nullable();
     t.unique(["platform_user_id", "business_id"]);
   });
 }

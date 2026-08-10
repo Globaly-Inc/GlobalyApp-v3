@@ -10,6 +10,7 @@ export async function listBusinesses(limit: number, offset: number, search?: str
   const q = masterKnex("businesses")
     .select("id", "business_name", "subdomain", "business_type", "email", "phone",
       "status", "is_published", "country_id", "city", "logo_url", "account_status", "created_at")
+    .whereNull("deleted_at")
     .orderBy("created_at", "desc")
     .limit(limit).offset(offset);
   if (search) q.where((b) => b.whereILike("business_name", `%${search}%`).orWhereILike("email", `%${search}%`).orWhereILike("subdomain", `%${search}%`));
@@ -18,7 +19,7 @@ export async function listBusinesses(limit: number, offset: number, search?: str
 }
 
 export async function countBusinesses(search?: string, status?: string) {
-  const q = masterKnex("businesses").count("* as count");
+  const q = masterKnex("businesses").whereNull("deleted_at").count("* as count");
   if (search) q.where((b) => b.whereILike("business_name", `%${search}%`).orWhereILike("email", `%${search}%`).orWhereILike("subdomain", `%${search}%`));
   if (status) q.where({ status });
   const [row] = await q;
@@ -26,7 +27,7 @@ export async function countBusinesses(search?: string, status?: string) {
 }
 
 export async function findBusinessById(id: string) {
-  return masterKnex("businesses").where({ id }).first();
+  return masterKnex("businesses").where({ id }).whereNull("deleted_at").first();
 }
 
 export async function updateBusiness(id: string, data: Record<string, unknown>) {
@@ -35,7 +36,7 @@ export async function updateBusiness(id: string, data: Record<string, unknown>) 
 }
 
 export async function deleteBusiness(id: string) {
-  return masterKnex("businesses").where({ id }).delete();
+  return masterKnex("businesses").where({ id }).update({ deleted_at: masterKnex.fn.now() });
 }
 
 // ─── User management ───────────────────────────────────────────────────────
@@ -44,6 +45,7 @@ export async function listUsers(limit: number, offset: number, search?: string) 
   const q = masterKnex("platform_users")
     .select("id", "uuid", "first_name", "last_name", "email", "phone",
       "account_status", "photo_url", "user_category", "user_sub_category", "is_email_verified", "created_at")
+    .whereNull("deleted_at")
     .orderBy("created_at", "desc")
     .limit(limit).offset(offset);
   if (search) q.where((b) => b.whereILike("first_name", `%${search}%`).orWhereILike("last_name", `%${search}%`).orWhereILike("email", `%${search}%`));
@@ -51,14 +53,14 @@ export async function listUsers(limit: number, offset: number, search?: string) 
 }
 
 export async function countUsers(search?: string) {
-  const q = masterKnex("platform_users").count("* as count");
+  const q = masterKnex("platform_users").whereNull("deleted_at").count("* as count");
   if (search) q.where((b) => b.whereILike("first_name", `%${search}%`).orWhereILike("last_name", `%${search}%`).orWhereILike("email", `%${search}%`));
   const [row] = await q;
   return Number(row.count);
 }
 
 export async function findUserById(id: number) {
-  return masterKnex("platform_users").where({ id }).first();
+  return masterKnex("platform_users").where({ id }).whereNull("deleted_at").first();
 }
 
 export async function updateUser(id: number, data: Record<string, unknown>) {
@@ -69,7 +71,7 @@ export async function updateUser(id: number, data: Record<string, unknown>) {
 // ─── Business Categories ───────────────────────────────────────────────────
 
 export async function listBusinessCategories() {
-  return masterKnex("business_categories").orderBy("sort_order").orderBy("name");
+  return masterKnex("business_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name");
 }
 
 export async function insertBusinessCategory(data: Record<string, unknown>) {
@@ -85,7 +87,7 @@ export async function updateBusinessCategory(id: number, data: Record<string, un
 // ─── Service Categories ────────────────────────────────────────────────────
 
 export async function listServiceCategories() {
-  return masterKnex("service_categories").orderBy("sort_order").orderBy("name");
+  return masterKnex("service_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name");
 }
 
 export async function insertServiceCategory(data: Record<string, unknown>) {
@@ -124,13 +126,16 @@ export async function listCountriesAdmin() {
   return masterKnex("countries")
     .select("countries.*")
     .count("cities.id as city_count")
-    .leftJoin("cities", "cities.country_id", "countries.id")
+    .leftJoin("cities", function () {
+      this.on("cities.country_id", "countries.id").onNull("cities.deleted_at");
+    })
+    .whereNull("countries.deleted_at")
     .groupBy("countries.id")
     .orderBy("countries.name");
 }
 
 export async function findCountryById(id: number) {
-  return masterKnex("countries").where({ id }).first();
+  return masterKnex("countries").where({ id }).whereNull("deleted_at").first();
 }
 
 export async function insertCountry(data: Record<string, unknown>) {
@@ -144,13 +149,13 @@ export async function updateCountry(id: number, data: Record<string, unknown>) {
 }
 
 export async function deleteCountry(id: number) {
-  return masterKnex("countries").where({ id }).delete();
+  return masterKnex("countries").where({ id }).update({ deleted_at: masterKnex.fn.now() });
 }
 
 // ─── Cities ────────────────────────────────────────────────────────────────
 
 export async function listCitiesByCountry(countryId: number) {
-  return masterKnex("cities").where({ country_id: countryId }).orderBy("name");
+  return masterKnex("cities").where({ country_id: countryId }).whereNull("deleted_at").orderBy("name");
 }
 
 export async function insertCity(data: Record<string, unknown>) {
@@ -164,17 +169,17 @@ export async function updateCity(id: number, data: Record<string, unknown>) {
 }
 
 export async function deleteCity(id: number) {
-  return masterKnex("cities").where({ id }).delete();
+  return masterKnex("cities").where({ id }).update({ deleted_at: masterKnex.fn.now() });
 }
 
 // ─── Feature Flags ─────────────────────────────────────────────────────────
 
 export async function listFeatureFlags() {
-  return masterKnex(`${S}.feature_flags`).orderBy("flag_key");
+  return masterKnex(`${S}.feature_flags`).whereNull("deleted_at").orderBy("flag_key");
 }
 
 export async function findFeatureFlag(key: string) {
-  return masterKnex(`${S}.feature_flags`).where({ flag_key: key }).first();
+  return masterKnex(`${S}.feature_flags`).where({ flag_key: key }).whereNull("deleted_at").first();
 }
 
 export async function upsertFeatureFlag(key: string, isEnabled: boolean, updatedBy: number, description?: string) {

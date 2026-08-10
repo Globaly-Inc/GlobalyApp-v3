@@ -49,14 +49,28 @@ export async function authRoutes(app: FastifyInstance) {
     config: { rateLimit: RATE_LIMITS.verifyOtp },
   }, async (req, reply) => {
     const { email, otp } = VerifyOtpSchema.parse(req.body);
-    const result = await service.verifyOtp(email, otp);
+    const result = await service.verifyOtp(email, otp, {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
     return reply.send(result);
   });
 
   app.post("/refresh", async (req, reply) => {
     const { refresh_token } = RefreshSchema.parse(req.body);
-    const result = await service.refreshAccessToken(refresh_token);
+    const result = await service.refreshAccessToken(refresh_token, {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
     return reply.send(result);
+  });
+
+  // Authenticated — invalidate session
+  app.post("/logout", {
+    config: { rateLimit: RATE_LIMITS.logout },
+  }, async (req, reply) => {
+    await service.logout(Number(req.auth.sub));
+    return reply.status(204).send();
   });
 
   // Authenticated — switch to a business context

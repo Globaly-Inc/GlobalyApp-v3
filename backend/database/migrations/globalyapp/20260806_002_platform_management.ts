@@ -11,6 +11,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("description").nullable();
     t.integer("updated_by").unsigned().nullable();
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 
   // ── Site Access Settings (singleton) ──

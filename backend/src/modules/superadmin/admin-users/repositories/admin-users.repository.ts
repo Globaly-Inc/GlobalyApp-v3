@@ -58,6 +58,7 @@ function withUser(query: any) {
 export async function findAdminByPlatformUserId(platformUserId: number) {
   return masterKnex<AdminUserRow>("superadmin.admin_users")
     .where({ platform_user_id: platformUserId, is_active: true })
+    .whereNull("deleted_at")
     .first();
 }
 
@@ -65,6 +66,7 @@ export async function findAdminById(id: number) {
   return withUser(masterKnex<AdminUserRow>("superadmin.admin_users"))
     .select(ADMIN_WITH_USER_COLUMNS as unknown as string[])
     .where("superadmin.admin_users.id", id)
+    .whereNull("superadmin.admin_users.deleted_at")
     .first();
 }
 
@@ -72,19 +74,22 @@ export async function findAdminByEmail(email: string) {
   return withUser(masterKnex<AdminUserRow>("superadmin.admin_users"))
     .select(ADMIN_WITH_USER_COLUMNS as unknown as string[])
     .where("platform_users.email", email)
+    .whereNull("superadmin.admin_users.deleted_at")
+    .whereNull("platform_users.deleted_at")
     .first();
 }
 
 export async function listAdmins(limit: number, offset: number) {
   return withUser(masterKnex<AdminUserRow>("superadmin.admin_users"))
     .select(ADMIN_WITH_USER_COLUMNS as unknown as string[])
+    .whereNull("superadmin.admin_users.deleted_at")
     .orderBy("superadmin.admin_users.id", "asc")
     .limit(limit)
     .offset(offset);
 }
 
 export async function countAdmins(): Promise<number> {
-  const [{ count }] = await masterKnex("superadmin.admin_users").count("id as count");
+  const [{ count }] = await masterKnex("superadmin.admin_users").whereNull("deleted_at").count("id as count");
   return Number(count);
 }
 
@@ -128,6 +133,7 @@ export async function insertInvitation(data: {
 export async function findInvitationByToken(token: string) {
   return masterKnex<AdminInvitationRow>("superadmin.admin_invitations")
     .where({ invite_token: token, status: "pending" })
+    .whereNull("deleted_at")
     .first();
 }
 

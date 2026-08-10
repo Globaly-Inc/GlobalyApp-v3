@@ -16,6 +16,7 @@ export const tenantPlugin = fp(async (app) => {
 
     const business = await masterKnex<BusinessRecord>("businesses")
       .where({ schema_name: req.auth.orgId, account_status: 1 })
+      .whereNull("deleted_at")
       .first();
 
     if (!business) {

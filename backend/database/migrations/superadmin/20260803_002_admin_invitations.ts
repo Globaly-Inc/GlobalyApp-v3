@@ -12,6 +12,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("status").notNullable().defaultTo("pending");
     t.timestamp("created_at").defaultTo(knex.fn.now());
     t.timestamp("expired_at").notNullable();
+    t.timestamp("deleted_at").nullable();
   });
 }
 
