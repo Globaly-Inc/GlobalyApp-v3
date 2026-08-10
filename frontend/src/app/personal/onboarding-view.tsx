@@ -219,7 +219,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
                     type="button"
                     onClick={() => setCategory(opt.value)}
                     className={cn(
-                      "w-full flex items-center gap-4 p-4 rounded-lg border-2 text-left transition-all",
+                      "w-full flex items-center gap-4 p-4 rounded-lg border-2 text-left transition-all cursor-pointer",
                       category === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30",
                     )}
                   >

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { User, Mail, GraduationCap, Briefcase, Languages, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { User, Mail, GraduationCap, Briefcase, Languages, CheckCircle2, Circle, Loader2, Camera, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -29,8 +30,8 @@ import type {
   StudentProfilePatch,
   WorkExperience,
   WorkExperienceInput,
+  LanguageTest
 } from "../apis/types";
-import type { LanguageTest } from "../apis/types";
 import { computeCompletion } from "../profile-completion";
 import { SectionCard, OneToManySection, Field } from "./section-card";
 import { ItemRow } from "./item-row";
@@ -40,6 +41,9 @@ import { PreferencesDialog } from "./preferences-dialog";
 import { QualificationDialog } from "./qualification-dialog";
 import { WorkExperienceDialog } from "./work-experience-dialog";
 import { TestScoreDialog } from "./test-score-dialog";
+import { RoleSelectModal } from "@/app/auth/role-select-modal";
+
+const ROLE_MODAL_DELAY_MS = 30_000;
 
 function formatRange(start: string | null, end: string | null, isCurrent: boolean) {
   if (!start && !end) return null;
@@ -70,12 +74,19 @@ export function ProfileView() {
     open: false,
     item: null,
   });
+  const [roleModalOpen, setRoleModalOpen] = useState(false);
 
   useEffect(() => {
     if (status === "idle" && !profile) dispatch(fetchFullProfile());
     geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!profile || profile.user_category) return;
+    const timer = setTimeout(() => setRoleModalOpen(true), ROLE_MODAL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [profile]);
 
   if (!profile) {
     return (
@@ -137,33 +148,48 @@ export function ProfileView() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <Card>
-        <CardContent className="flex items-center gap-4">
-          <Avatar className="size-16">
+      <Card className="overflow-hidden">
+        <div className="relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="absolute right-4 top-4 gap-1.5"
+            onClick={() => toast("Coming soon", { description: "Cover photo uploads aren't available yet." })}
+          >
+            <Camera className="h-4 w-4" /> Edit cover
+          </Button>
+          <Avatar className="absolute -bottom-12 left-6 size-24 border-4 border-background">
             {profile.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
-            <AvatarFallback className="text-xl">{initial}</AvatarFallback>
+            <AvatarFallback className="text-2xl">{initial}</AvatarFallback>
           </Avatar>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">
-              {profile.first_name} {profile.last_name}
-            </h1>
-            <p className="text-sm text-muted-foreground capitalize">{profile.user_sub_category ?? "Personal account"}</p>
-            {(profile.city_of_residence || countryName(profile.country_of_residence_id)) && (
-              <p className="text-sm text-muted-foreground">
-                {[profile.city_of_residence, countryName(profile.country_of_residence_id)].filter(Boolean).join(", ")}
-              </p>
-            )}
-          </div>
+        </div>
+        <CardContent className="pt-16">
+          <h1 className="text-xl font-bold text-foreground">
+            {profile.first_name} {profile.last_name}
+          </h1>
+          {countryName(profile.nationality_id) && (
+            <p className="text-sm text-muted-foreground">From {countryName(profile.nationality_id)}</p>
+          )}
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <SectionCard icon={User} title="Personal Details" onEdit={() => setPersonalOpen(true)}>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Nationality" value={countryName(profile.nationality_id)} />
+          <SectionCard
+            icon={User}
+            title="Personal Details"
+            badge={
+              <Badge variant="secondary" className="gap-1">
+                <Lock className="h-3 w-3" /> Private
+              </Badge>
+            }
+            onEdit={() => setPersonalOpen(true)}
+          >
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <Field label="Full Name" value={`${profile.first_name} ${profile.last_name}`} />
               <Field label="Date of Birth" value={formatDate(profile.date_of_birth)} />
               <Field label="Gender" value={profile.gender} />
+              <Field label="Nationality" value={countryName(profile.nationality_id)} />
               <Field label="City of Residence" value={profile.city_of_residence} />
             </div>
           </SectionCard>
@@ -360,6 +386,7 @@ export function ProfileView() {
         onSave={handleSaveWorkExperience}
         saving={saving}
       />
+      <RoleSelectModal open={roleModalOpen} onOpenChange={setRoleModalOpen} />
     </div>
   );
 }

@@ -102,6 +102,11 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   },
 ];
 
+export function getVisibleNavGroups(role: string | null | undefined): AdminNavGroup[] {
+  if (role === "data_admin") return ADMIN_NAV_GROUPS.filter((g) => g.label === "Data");
+  return ADMIN_NAV_GROUPS;
+}
+
 /** Exact match, otherwise prefix match (query strings stripped first). */
 export function isNavPathActive(pathname: string, href: string): boolean {
   const path = href.split("?")[0];

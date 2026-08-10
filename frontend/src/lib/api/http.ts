@@ -35,13 +35,24 @@ function refreshAccessToken(): Promise<boolean> {
   return refreshPromise;
 }
 
+function forceSignIn(): never {
+  clearTokens();
+  if (typeof window !== "undefined") window.location.href = "/auth/sign-in";
+  throw new Error("Your session has expired. Please sign in again.");
+}
+
 async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Response> {
   const token = getAccessToken();
-  if (token && isTokenExpired(token)) await refreshAccessToken();
+  if (token && isTokenExpired(token)) {
+    if (!(await refreshAccessToken())) forceSignIn();
+  }
   const res = await attempt();
   if (res.status !== 401) return res;
   const refreshed = await refreshAccessToken();
-  return refreshed ? attempt() : res;
+  if (!refreshed) forceSignIn();
+  const retried = await attempt();
+  if (retried.status === 401) forceSignIn();
+  return retried;
 }
 
 async function readError(res: Response): Promise<string> {

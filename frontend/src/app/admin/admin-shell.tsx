@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { ShieldCheck, ChevronDown, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -17,27 +17,35 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMe } from "./store/admin-slice";
 import { ROLE_DISPLAY } from "./consts";
+import { getVisibleNavGroups, isNavPathActive } from "./nav-config";
 import { AdminGroupNav } from "./components/admin-group-nav";
 import { AdminSubNav } from "./components/admin-sub-nav";
 import { AdminMobileNav } from "./components/admin-mobile-nav";
 
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
+  const pathname = usePathname();
   const dispatch = useAppDispatch();
   const { me } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
-  const isSuperAdmin = authUser?.type === "admin" && authUser?.role === "super_admin";
+  const isAdmin = authUser?.type === "admin";
 
   useEffect(() => {
-    if (!initializing && !isSuperAdmin) {
+    if (!initializing && !isAdmin) {
       router.replace("/");
     }
-  }, [initializing, isSuperAdmin, router]);
+  }, [initializing, isAdmin, router]);
 
   useEffect(() => {
-    if (isSuperAdmin) dispatch(fetchMe());
+    if (isAdmin) dispatch(fetchMe());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperAdmin]);
+  }, [isAdmin]);
+  useEffect(() => {
+    if (!isAdmin || authUser?.role !== "data_admin") return;
+    if (!isNavPathActive(pathname, "/admin/overview")) return;
+    const firstVisibleHref = getVisibleNavGroups(authUser.role)[0]?.items[0]?.href;
+    if (firstVisibleHref) router.replace(firstVisibleHref);
+  }, [isAdmin, authUser?.role, pathname, router]);
 
   const handleSignOut = () => {
     dispatch(logout());
@@ -52,7 +60,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
     );
   }
 
-  if (!isSuperAdmin) return null;
+  if (!isAdmin) return null;
 
   if (!me) {
     return (
@@ -68,7 +76,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
     <div className="min-h-screen flex flex-col bg-muted/30">
       <header className="sticky top-0 z-50 h-16 w-full border-b border-border bg-background/95 backdrop-blur-md flex items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-4 min-w-0">
-          <Link href="/admin" className="flex items-center flex-shrink-0">
+          <Link href="/" className="flex items-center flex-shrink-0">
             <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
           </Link>
           <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground flex-shrink-0">
@@ -114,11 +122,11 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
               <ChevronDown className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/my-profile")}>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/profile")}>
                 My Profile
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal")}>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/portal")}>
                 Personal Portal
               </DropdownMenuItem>
               <DropdownMenuSeparator />

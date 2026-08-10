@@ -1,14 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DEGREE_LEVELS, FIELDS_OF_STUDY } from "../static/onboarding-content";
 import type { Qualification, QualificationInput } from "../apis/types";
+import { useValidatedForm, toMonthInput, fromMonthInput } from "./validation";
+import { FieldError } from "./field-error";
+
+const schema: z.ZodType<QualificationInput> = z
+  .object({
+    qualification_type: z.string().min(1, "Required"),
+    degree_title: z.string().min(1, "Required"),
+    subject_area: z.string(),
+    institution_name: z.string().min(1, "Required"),
+    grading_system: z.string(),
+    grade_value: z.string(),
+    is_current: z.boolean(),
+    start_date: z.string().min(1, "Required"),
+    end_date: z.string(),
+    sort_order: z.number(),
+  })
+  .refine((v) => v.is_current || v.end_date !== "", { message: "Required", path: ["end_date"] });
 
 const GRADING_SYSTEMS = [
   { value: "gpa_4", label: "GPA (4.0 scale)" },
@@ -20,6 +37,8 @@ const GRADING_SYSTEMS = [
   { value: "pass_fail", label: "Pass / Fail" },
   { value: "other", label: "Other" },
 ];
+
+const FIELDS_OF_STUDY_OPTIONS = FIELDS_OF_STUDY.map((f) => ({ value: f, label: f }));
 
 function toInput(item: Qualification | null): QualificationInput {
   return {
@@ -49,15 +68,17 @@ export function QualificationDialog({
   onSave: (data: QualificationInput) => Promise<boolean>;
   saving: boolean;
 }>) {
-  const [form, setForm] = useState<QualificationInput>(() => toInput(item));
+  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
 
   const handleOpenChange = (next: boolean) => {
-    if (next) setForm(toInput(item));
+    if (next) reset(toInput(item));
     onOpenChange(next);
   };
 
   const handleSubmit = async () => {
-    if (!(await onSave(form))) return;
+    const data = validate();
+    if (!data) return;
+    if (!(await onSave(data))) return;
     onOpenChange(false);
   };
 
@@ -69,48 +90,56 @@ export function QualificationDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Degree Level</Label>
-            <Select value={form.qualification_type ?? ""} onValueChange={(v) => setForm((f) => ({ ...f, qualification_type: v }))}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select degree level" /></SelectTrigger>
-              <SelectContent>
-                {DEGREE_LEVELS.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Label>Degree Level *</Label>
+            <Combobox
+              value={form.qualification_type ?? ""}
+              onChange={(v) => setForm((f) => ({ ...f, qualification_type: v }))}
+              placeholder="Select degree level"
+              options={DEGREE_LEVELS}
+              aria-invalid={!!errors.qualification_type}
+            />
+            <FieldError message={errors.qualification_type} />
           </div>
           <div className="space-y-2">
-            <Label>Degree Title</Label>
+            <Label>Degree Title *</Label>
             <Input
               value={form.degree_title ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, degree_title: e.target.value }))}
               placeholder="e.g. Bachelor of Computer Science"
+              aria-invalid={!!errors.degree_title}
             />
+            <FieldError message={errors.degree_title} />
           </div>
           <div className="space-y-2">
             <Label>Subject Area</Label>
-            <Select value={form.subject_area ?? ""} onValueChange={(v) => setForm((f) => ({ ...f, subject_area: v }))}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select subject area" /></SelectTrigger>
-              <SelectContent>
-                {FIELDS_OF_STUDY.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Combobox
+              value={form.subject_area ?? ""}
+              onChange={(v) => setForm((f) => ({ ...f, subject_area: v }))}
+              placeholder="Select or type a subject area"
+              searchPlaceholder="Search or type your own..."
+              options={FIELDS_OF_STUDY_OPTIONS}
+              creatable
+            />
           </div>
           <div className="space-y-2">
-            <Label>Institution</Label>
+            <Label>Institution *</Label>
             <Input
               value={form.institution_name ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, institution_name: e.target.value }))}
               placeholder="e.g. University of Melbourne"
+              aria-invalid={!!errors.institution_name}
             />
+            <FieldError message={errors.institution_name} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Grading System</Label>
-              <Select value={form.grading_system ?? ""} onValueChange={(v) => setForm((f) => ({ ...f, grading_system: v }))}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>
-                  {GRADING_SYSTEMS.map((g) => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Combobox
+                value={form.grading_system ?? ""}
+                onChange={(v) => setForm((f) => ({ ...f, grading_system: v }))}
+                placeholder="Select"
+                options={GRADING_SYSTEMS}
+              />
             </div>
             <div className="space-y-2">
               <Label>Grade</Label>
@@ -119,21 +148,25 @@ export function QualificationDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>Start Date (MM/YYYY)</Label>
+              <Label>Start Date *</Label>
               <Input
-                value={form.start_date ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
-                placeholder="09/2020"
+                type="month"
+                value={toMonthInput(form.start_date ?? "")}
+                onChange={(e) => setForm((f) => ({ ...f, start_date: fromMonthInput(e.target.value) }))}
+                aria-invalid={!!errors.start_date}
               />
+              <FieldError message={errors.start_date} />
             </div>
             <div className="space-y-2">
-              <Label>End Date (MM/YYYY)</Label>
+              <Label>End Date{form.is_current ? "" : " *"}</Label>
               <Input
-                value={form.end_date ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
-                placeholder="06/2024"
+                type="month"
+                value={toMonthInput(form.end_date ?? "")}
+                onChange={(e) => setForm((f) => ({ ...f, end_date: fromMonthInput(e.target.value) }))}
                 disabled={form.is_current}
+                aria-invalid={!!errors.end_date}
               />
+              <FieldError message={errors.end_date} />
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">

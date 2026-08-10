@@ -13,23 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import {
-  sendSignInOtp,
-  resendSignInOtp,
-  verifySignInOtp,
-  resetSignInError,
-  setSelectedCategory,
-  toPortalCategory,
-} from "./store/auth-slice";
-import { fetchFullProfile } from "@/app/personal/store/profile-slice";
+import { sendSignInOtp, resendSignInOtp, verifySignInOtp, resetSignInError, fetchMe } from "./store/auth-slice";
 
 const emailSchema = z.string().trim().max(255).pipe(z.email("Invalid email address"));
 const otpSchema = z.string().trim().length(6, "Please enter the 6-digit code").regex(/^\d+$/, "Code must be numeric");
-
-const CATEGORY_ROUTES: Record<"personal" | "business", string> = {
-  personal: "/personal/onboarding",
-  business: "/business/onboarding",
-};
 
 function formatCooldown(seconds: number) {
   const mins = Math.floor(seconds / 60);
@@ -117,20 +104,20 @@ export function SignInView() {
         router.push(redirectPath);
         return;
       }
-      if (outcome.payload.type === "admin") {
-        router.push("/admin");
-        return;
-      }
-      if (outcome.payload.type !== "platform_user") {
+
+      const meResult = await dispatch(fetchMe());
+      const me = fetchMe.fulfilled.match(meResult) ? meResult.payload : null;
+      if (!me) {
         router.push("/");
         return;
       }
-      const profileOutcome = await dispatch(fetchFullProfile());
-      const category = fetchFullProfile.fulfilled.match(profileOutcome)
-        ? toPortalCategory(profileOutcome.payload.profile.user_category)
-        : null;
-      dispatch(setSelectedCategory(category));
-      router.push(category ? CATEGORY_ROUTES[category] : "/auth/role-select");
+      if (me.type === "admin") {
+        router.push("/admin/overview");
+      } else if (me.role === "business") {
+        router.push("/business/profile");
+      } else {
+        router.push("/personal/profile");
+      }
     } else if (verifySignInOtp.rejected.match(outcome)) {
       toast.error("Verification failed", { description: outcome.error.message ?? "Please try again." });
     }

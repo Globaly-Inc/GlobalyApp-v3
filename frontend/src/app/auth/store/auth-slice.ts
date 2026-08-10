@@ -41,6 +41,8 @@ export const restoreSession = createAsyncThunk("auth/restoreSession", () => auth
   condition: (_, { getState }) => (getState() as RootState).auth.initializing,
 });
 
+export const fetchMe = createAsyncThunk("auth/fetchMe", () => authApi.getMe());
+
 type AuthState = {
   user: AuthUser | null;
   status: "idle" | "sendingOtp" | "verifyingOtp" | "updatingRole" | "failed";
@@ -132,6 +134,9 @@ const authSlice = createSlice({
         clearTokens();
         state.user = null;
         state.initializing = false;
+      })
+      .addCase(fetchMe.fulfilled, (state, action) => {
+        state.user = action.payload;
       });
   },
 });

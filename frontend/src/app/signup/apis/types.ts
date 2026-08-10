@@ -2,6 +2,7 @@ export type AuthUser = {
   email: string;
   type: "admin" | "platform_user" | "agent";
   role: string | null;
+  user_category: string | null;
 };
 
 export type RegisterParams = {

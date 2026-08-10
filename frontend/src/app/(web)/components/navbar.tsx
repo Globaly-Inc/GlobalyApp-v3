@@ -9,11 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useAuthState } from "@/app/auth/store/auth-slice";
+import type { AuthUser } from "@/app/auth/apis/types";
 import { NAV_LINKS } from "../const/index";
 
-function dashboardHref(type: string | undefined): string {
-  if (type === "admin") return "/admin";
-  if (type === "platform_user") return "/personal";
+function dashboardHref(user: AuthUser | null): string {
+  if (!user) return "/";
+  if (user.type === "admin") return "/admin/overview";
+  if (user.user_category === "business") return "/business/profile";
+  if (user.user_category === "personal") return "/personal/profile";
   return "/";
 }
 
@@ -61,7 +64,7 @@ export function Navbar() {
               <Button
                 className="btn-gold h-10 rounded-full px-5"
                 nativeButton={false}
-                render={<Link href={dashboardHref(user.type)} />}
+                render={<Link href={dashboardHref(user)} />}
               >
                 Dashboard
               </Button>
@@ -124,7 +127,7 @@ export function Navbar() {
                       <Button
                         className="btn-gold h-10"
                         nativeButton={false}
-                        render={<Link href={dashboardHref(user.type)} onClick={() => setMobileOpen(false)} />}
+                        render={<Link href={dashboardHref(user)} onClick={() => setMobileOpen(false)} />}
                       >
                         Dashboard
                       </Button>

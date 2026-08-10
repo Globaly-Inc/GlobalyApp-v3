@@ -2,6 +2,7 @@ export type AuthUser = {
   email: string;
   type: "admin" | "platform_user" | "agent";
   role: string | null;
+  user_category: string | null;
 };
 
 export type SendOtpParams = {
@@ -15,4 +16,12 @@ export type VerifyOtpParams = {
 
 export type UpdateRoleParams = {
   category: "personal" | "business";
+};
+
+export type AcceptInviteParams = {
+  token: string;
+};
+
+export type AcceptInviteResult = {
+  message: string;
 };

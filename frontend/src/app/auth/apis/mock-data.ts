@@ -1,4 +1,4 @@
-import type { AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "./types";
+import type { AcceptInviteParams, AcceptInviteResult, AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "./types";
 
 const MOCK_OTP = "123456";
 
@@ -17,6 +17,7 @@ export const authMockApi = {
   updateRole: async (params: UpdateRoleParams): Promise<void> => {
     console.log("[mock] PATCH /platform-users/me/category", params);
     await delay(300);
+    if (mockUser) mockUser = { ...mockUser, user_category: params.category };
   },
 
   verifyOtp: async ({ email, otp }: VerifyOtpParams): Promise<AuthUser> => {
@@ -24,7 +25,7 @@ export const authMockApi = {
     if (otp !== MOCK_OTP) {
       throw new Error(`Invalid or expired code. (mock mode: use ${MOCK_OTP})`);
     }
-    mockUser = { email, type: "platform_user", role: null };
+    mockUser = { email, type: "platform_user", role: null, user_category: null };
     return mockUser;
   },
 
@@ -33,5 +34,12 @@ export const authMockApi = {
     await delay(300);
     if (!mockUser) throw new Error("Not signed in.");
     return mockUser;
+  },
+
+  acceptInvite: async ({ token }: AcceptInviteParams): Promise<AcceptInviteResult> => {
+    console.log("[mock] GET /admin/users/invite/accept", { token });
+    await delay(500);
+    if (!token) throw new Error("Invitation not found or already used.");
+    return { message: "Invitation accepted. Your account is being set up." };
   },
 };

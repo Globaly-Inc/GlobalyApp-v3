@@ -31,7 +31,7 @@ export function UsersView() {
           <p className="text-muted-foreground mt-1">Manage who has admin access to Globaly.</p>
         </div>
         {canInvite && (
-          <Button onClick={() => setInviteOpen(true)} className="gap-1.5">
+          <Button onClick={() => setInviteOpen(true)} className="h-10 gap-1.5 cursor-pointer">
             <UserPlus className="h-4 w-4" /> Invite Admin
           </Button>
         )}

@@ -6,14 +6,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { ADMIN_NAV_GROUPS, isNavPathActive } from "../nav-config";
+import { useAuthState } from "@/app/auth/store/auth-slice";
+import { getVisibleNavGroups, isNavPathActive } from "../nav-config";
 
 export function AdminGroupNav() {
   const pathname = usePathname();
+  const { user } = useAuthState();
+  const groups = getVisibleNavGroups(user?.role);
 
   return (
     <nav className="hidden md:flex items-center gap-1 overflow-x-auto">
-      {ADMIN_NAV_GROUPS.map((group) => {
+      {groups.map((group) => {
         const active = group.items.some((item) => isNavPathActive(pathname, item.href));
         return (
           <Link
