@@ -1,9 +1,7 @@
-// Platform user routes — auth-required profile, onboarding steps, and sub-resource CRUD.
+// Platform user routes — auth-required profile, onboarding, and sub-resource CRUD.
 
 import type { FastifyInstance } from "fastify";
 import {
-  UpdateCategorySchema,
-  UpdateSubCategorySchema,
   OnboardingPersonalSchema, OnboardingBusinessSchema, OnboardingInstitutionSchema,
   ProfilePatchSchema,
   QualificationSchema, LanguageTestSchema, WorkExperienceSchema,
@@ -25,43 +23,25 @@ export async function platformUserRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  // ── Onboarding step APIs (called in order after registration) ──
+  // ── Onboarding — separate endpoints for personal and business ──
+  // A user can call both — they can have a personal profile AND own businesses.
 
-  // Step 1: Set user category (personal | business)
-  app.patch("/me/category", async (req, reply) => {
-    const { user_category } = UpdateCategorySchema.parse(req.body);
-    const result = await service.updateCategory(Number(req.auth.sub), user_category);
-    return reply.send(result);
-  });
-
-  // Step 2: Set user sub-category
-  app.patch("/me/sub-category", async (req, reply) => {
-    const { user_sub_category } = UpdateSubCategorySchema.parse(req.body);
-    const result = await service.updateSubCategory(Number(req.auth.sub), user_sub_category);
-    return reply.send(result);
-  });
-
-  // Step 3: Set onboarding profile — dispatches by user_category
-  app.patch("/me/onboarding-profile", async (req, reply) => {
-    const userId = Number(req.auth.sub);
-    const user = await service.getUserForOnboarding(userId);
-
-    if (user.user_category === "business") {
-      // institution, everything else → business with tenant DB
-      if (user.user_sub_category === "institution") {
-        const data = OnboardingInstitutionSchema.parse(req.body);
-        const result = await service.onboardInstitution(userId, data);
-        return reply.status(201).send(result);
-      }
-      const data = OnboardingBusinessSchema.parse(req.body);
-      const result = await service.onboardBusiness(userId, data);
-      return reply.status(201).send(result);
-    }
-
-    // personal (student / parents / explorer)
+  app.post("/me/onboarding/personal", async (req, reply) => {
     const data = OnboardingPersonalSchema.parse(req.body);
-    const result = await service.onboardPersonal(userId, data);
-    return reply.send(result);
+    const result = await service.onboardPersonal(Number(req.auth.sub), data);
+    return reply.status(201).send(result);
+  });
+
+  app.post("/me/onboarding/business", async (req, reply) => {
+    const data = OnboardingBusinessSchema.parse(req.body);
+    const result = await service.onboardBusiness(Number(req.auth.sub), data);
+    return reply.status(201).send(result);
+  });
+
+  app.post("/me/onboarding/institution", async (req, reply) => {
+    const data = OnboardingInstitutionSchema.parse(req.body);
+    const result = await service.onboardInstitution(Number(req.auth.sub), data);
+    return reply.status(201).send(result);
   });
 
   // ── Countries / Cities ──

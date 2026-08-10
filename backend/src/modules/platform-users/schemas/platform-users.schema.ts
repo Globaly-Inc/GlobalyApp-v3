@@ -1,26 +1,14 @@
 // Validation schemas for platform user profile management and sub-resources.
 
 import { z } from "zod";
-import { USER_CATEGORIES, ALL_SUB_CATEGORIES, GENDERS } from "../consts.js";
+import { PERSONAL_SUB_CATEGORIES, GENDERS } from "../consts.js";
 import { BUSINESS_TYPES } from "../../businesses/consts.js";
-
-// ── Onboarding step APIs ──
-
-export const UpdateCategorySchema = z.object({
-  user_category: z.enum(USER_CATEGORIES),
-});
-
-export const UpdateSubCategorySchema = z.object({
-  user_sub_category: z.enum(ALL_SUB_CATEGORIES),
-});
 
 // ── Profile (full patch — used by PATCH /me) ──
 
 export const ProfilePatchSchema = z.object({
-  // User-level fields (platform_users table)
-  user_category: z.enum(USER_CATEGORIES).nullable(),
-  user_sub_category: z.enum(ALL_SUB_CATEGORIES).nullable(),
   // Profile-level fields (platform_user_profiles table)
+  individual_category: z.enum(PERSONAL_SUB_CATEGORIES).nullable(),
   nationality_id: z.number().int().positive().nullable(),
   country_of_residence_id: z.number().int().positive().nullable(),
   city_of_residence: z.string().nullable(),
@@ -44,7 +32,6 @@ export const ProfilePatchSchema = z.object({
   fields_of_study: z.array(z.object({ name: z.string().min(1) })).nullable(),
   preferred_degree_levels: z.array(z.string()).nullable(),
   expected_start_date: z.string().nullable(),
-  individual_category: z.string().nullable(),
   personal_address_country_id: z.number().int().positive().nullable(),
   personal_address_city: z.string().nullable(),
   personal_address_state: z.string().nullable(),
@@ -55,10 +42,11 @@ export const ProfilePatchSchema = z.object({
   onboarding_completed: z.boolean(),
 }).partial().strict();
 
-// ── Onboarding profile — fields set right after sub-category selection ──
+// ── Onboarding profile — fields set right after registration ──
 
-// Personal accounts (student / parents / explorer)
+// Personal accounts (student / parents / explorer) — includes individual_category
 export const OnboardingPersonalSchema = z.object({
+  individual_category: z.enum(PERSONAL_SUB_CATEGORIES),
   nationality_id: z.number().int().positive().nullable(),
   country_of_residence_id: z.number().int().positive(),
   city_of_residence: z.string().min(1),
@@ -133,8 +121,6 @@ export const WorkExperienceSchema = z.object({
 export const IdParamSchema = z.object({ id: z.string().uuid() });
 export const CountryIdParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
-export type UpdateCategoryInput = z.infer<typeof UpdateCategorySchema>;
-export type UpdateSubCategoryInput = z.infer<typeof UpdateSubCategorySchema>;
 export type ProfilePatchInput = z.infer<typeof ProfilePatchSchema>;
 export type OnboardingPersonalInput = z.infer<typeof OnboardingPersonalSchema>;
 export type OnboardingBusinessInput = z.infer<typeof OnboardingBusinessSchema>;

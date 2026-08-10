@@ -93,7 +93,8 @@ export async function inviteAdmin(
     expired_at: expiredAt,
   });
 
-  const acceptUrl = `${config.APP_URL}/api/v3/admin/users/invite/accept?token=${token}`;
+  // Points to frontend confirmation page — the page renders a button that POSTs to the API
+  const acceptUrl = `${config.APP_URL}/invite/admin/accept?token=${token}`;
   await queueInvitationEmail({
     to: input.email,
     name: input.first_name,
@@ -120,7 +121,6 @@ export async function acceptInvitation(token: string) {
       first_name: invitation.first_name,
       last_name: invitation.last_name,
       email: invitation.email,
-      username: invitation.email,
       account_status: 1,
     });
   }

@@ -65,11 +65,12 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  // Authenticated — invalidate session
+  // Authenticated — invalidate session (pass refresh_token to logout single device, omit to logout all)
   app.post("/logout", {
     config: { rateLimit: RATE_LIMITS.logout },
   }, async (req, reply) => {
-    await service.logout(Number(req.auth.sub));
+    const body = (req.body ?? {}) as Record<string, string>;
+    await service.logout(Number(req.auth.sub), body.refresh_token);
     return reply.status(204).send();
   });
 

@@ -11,11 +11,8 @@ export async function seed(knex: Knex): Promise<void> {
         first_name: "Super",
         last_name: "Admin",
         email: adminEmail,
-        username: adminEmail,
         account_status: 1,
         is_email_verified: true,
-        user_category: "superadmin",
-        user_sub_category: "superadmin",
       })
       .returning("*");
   }
