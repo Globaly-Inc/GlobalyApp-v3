@@ -14,9 +14,6 @@ const DEFAULT_PERMISSIONS = [
   { module: "agents", action: "read", display_name: "View Team Members", description: "View agent/team member list" },
   { module: "agents", action: "write", display_name: "Manage Team Members", description: "Invite and manage agents" },
   { module: "agents", action: "delete", display_name: "Remove Team Members", description: "Remove agents from business" },
-  { module: "crm", action: "read", display_name: "View CRM Records", description: "View synced and local CRM records" },
-  { module: "crm", action: "write", display_name: "Edit CRM Records", description: "Edit and sync CRM records" },
-  { module: "crm", action: "delete", display_name: "Delete CRM Records", description: "Delete CRM records" },
 ];
 
 // module:action → which roles get it
@@ -26,21 +23,18 @@ const ROLE_PERMISSION_MAP: Record<string, string[]> = {
   "agents:read":    ["owner", "admin", "manager"],
   "agents:write":   ["owner", "admin"],
   "agents:delete":  ["owner", "admin"],
-  "crm:read":       ["owner", "admin", "manager", "counsellor", "member"],
-  "crm:write":      ["owner", "admin", "manager", "counsellor"],
-  "crm:delete":     ["owner", "admin", "manager"],
 };
 
 export async function seed(knex: Knex): Promise<void> {
   // Seed roles
   for (const role of DEFAULT_ROLES) {
-    const exists = await knex("roles").where({ name: role.name }).first();
+    const exists = await knex("roles").where({ name: role.name }).whereNull("deleted_at").first();
     if (!exists) await knex("roles").insert(role);
   }
 
   // Seed permissions
   for (const perm of DEFAULT_PERMISSIONS) {
-    const exists = await knex("permissions").where({ module: perm.module, action: perm.action }).first();
+    const exists = await knex("permissions").where({ module: perm.module, action: perm.action }).whereNull("deleted_at").first();
     if (!exists) await knex("permissions").insert(perm);
   }
 
