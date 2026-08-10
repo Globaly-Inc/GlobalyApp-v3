@@ -1,29 +1,30 @@
-// Admin-users repository — all queries against globalyapp admin_users / admin_invitations tables.
+// Admin-users repository — queries against superadmin.admin_users (role-link table).
+// Auth fields live in platform_users, not here.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
 
 export interface AdminUserRow {
   id: number;
-  uuid: string;
-  name: string;
-  email: string;
+  platform_user_id: number;
   role: string;
-  otp: string | null;
-  otp_expires_at: Date | null;
-  refresh_token: string | null;
-  photo_url: string | null;
-  account_status: number;
-  is_email_verified: boolean;
+  is_active: boolean;
   added_by: number | null;
-  meta: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
+  // joined from platform_users
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string | null;
+  photo_url?: string | null;
+  account_status?: number;
 }
 
 export interface AdminInvitationRow {
   id: string;
   email: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   role: string;
   invite_token: string;
   invited_by: number;
@@ -32,78 +33,69 @@ export interface AdminInvitationRow {
   expired_at: Date;
 }
 
-const SAFE_COLUMNS = [
-  "id",
-  "uuid",
-  "name",
-  "email",
-  "role",
-  "photo_url",
-  "account_status",
-  "is_email_verified",
-  "added_by",
-  "meta",
-  "created_at",
-  "updated_at",
+const ADMIN_WITH_USER_COLUMNS = [
+  "superadmin.admin_users.id",
+  "superadmin.admin_users.platform_user_id",
+  "superadmin.admin_users.role",
+  "superadmin.admin_users.is_active",
+  "superadmin.admin_users.added_by",
+  "superadmin.admin_users.created_at",
+  "superadmin.admin_users.updated_at",
+  "platform_users.first_name",
+  "platform_users.last_name",
+  "platform_users.email",
+  "platform_users.phone",
+  "platform_users.photo_url",
+  "platform_users.account_status",
 ] as const;
 
-export async function findAdminByEmail(email: string) {
-  return masterKnex<AdminUserRow>("superadmin.admin_users").where({ email }).first();
+function withUser(query: any) {
+  return query.join("platform_users", "superadmin.admin_users.platform_user_id", "platform_users.id");
 }
 
-export async function findAdminById(id: number) {
+// ── Lookups ──
+
+export async function findAdminByPlatformUserId(platformUserId: number) {
   return masterKnex<AdminUserRow>("superadmin.admin_users")
-    .select(SAFE_COLUMNS as unknown as string[])
-    .where({ id })
+    .where({ platform_user_id: platformUserId, is_active: true })
+    .whereNull("deleted_at")
     .first();
 }
 
-export async function findAdminByIdFull(id: number) {
-  return masterKnex<AdminUserRow>("superadmin.admin_users").where({ id }).first();
+export async function findAdminById(id: number) {
+  return withUser(masterKnex<AdminUserRow>("superadmin.admin_users"))
+    .select(ADMIN_WITH_USER_COLUMNS as unknown as string[])
+    .where("superadmin.admin_users.id", id)
+    .whereNull("superadmin.admin_users.deleted_at")
+    .first();
 }
 
-export async function updateOtp(userId: number, otp: string, expiresAt: Date) {
-  await masterKnex("superadmin.admin_users")
-    .where({ id: userId })
-    .update({ otp, otp_expires_at: expiresAt, updated_at: masterKnex.fn.now() });
-}
-
-export async function clearOtp(userId: number) {
-  await masterKnex("superadmin.admin_users")
-    .where({ id: userId })
-    .update({ otp: null, otp_expires_at: null, updated_at: masterKnex.fn.now() });
-}
-
-export async function updateRefreshToken(userId: number, token: string | null) {
-  await masterKnex("superadmin.admin_users")
-    .where({ id: userId })
-    .update({ refresh_token: token, updated_at: masterKnex.fn.now() });
-}
-
-export async function findAdminByRefreshToken(token: string) {
-  return masterKnex<AdminUserRow>("superadmin.admin_users")
-    .where({ refresh_token: token })
+export async function findAdminByEmail(email: string) {
+  return withUser(masterKnex<AdminUserRow>("superadmin.admin_users"))
+    .select(ADMIN_WITH_USER_COLUMNS as unknown as string[])
+    .where("platform_users.email", email)
+    .whereNull("superadmin.admin_users.deleted_at")
+    .whereNull("platform_users.deleted_at")
     .first();
 }
 
 export async function listAdmins(limit: number, offset: number) {
-  return masterKnex<AdminUserRow>("superadmin.admin_users")
-    .select(SAFE_COLUMNS as unknown as string[])
-    .orderBy("id", "asc")
+  return withUser(masterKnex<AdminUserRow>("superadmin.admin_users"))
+    .select(ADMIN_WITH_USER_COLUMNS as unknown as string[])
+    .whereNull("superadmin.admin_users.deleted_at")
+    .orderBy("superadmin.admin_users.id", "asc")
     .limit(limit)
     .offset(offset);
 }
 
 export async function countAdmins(): Promise<number> {
-  const [{ count }] = await masterKnex("superadmin.admin_users").count("id as count");
+  const [{ count }] = await masterKnex("superadmin.admin_users").whereNull("deleted_at").count("id as count");
   return Number(count);
 }
 
 export async function insertAdmin(data: {
-  name: string;
-  email: string;
+  platform_user_id: number;
   role: string;
-  account_status: number;
   added_by?: number;
 }) {
   const [row] = await masterKnex<AdminUserRow>("superadmin.admin_users")
@@ -116,13 +108,16 @@ export async function updateAdmin(id: number, data: Record<string, unknown>) {
   const [row] = await masterKnex<AdminUserRow>("superadmin.admin_users")
     .where({ id })
     .update({ ...data, updated_at: masterKnex.fn.now() })
-    .returning(SAFE_COLUMNS as unknown as string[]);
+    .returning("*");
   return row;
 }
 
+// ── Invitations ──
+
 export async function insertInvitation(data: {
   email: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   role: string;
   invite_token: string;
   invited_by: number;
@@ -138,6 +133,7 @@ export async function insertInvitation(data: {
 export async function findInvitationByToken(token: string) {
   return masterKnex<AdminInvitationRow>("superadmin.admin_invitations")
     .where({ invite_token: token, status: "pending" })
+    .whereNull("deleted_at")
     .first();
 }
 

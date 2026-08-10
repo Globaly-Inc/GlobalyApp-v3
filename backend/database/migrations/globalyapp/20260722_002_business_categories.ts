@@ -11,6 +11,7 @@ export async function up(knex: Knex): Promise<void> {
     t.boolean("is_active").notNullable().defaultTo(true);
     t.integer("sort_order").notNullable().defaultTo(0);
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 
   // ── Service Categories ──
@@ -23,6 +24,7 @@ export async function up(knex: Knex): Promise<void> {
     t.boolean("is_active").notNullable().defaultTo(true);
     t.integer("sort_order").notNullable().defaultTo(0);
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 
   // ── Business ↔ Service default categories junction ──

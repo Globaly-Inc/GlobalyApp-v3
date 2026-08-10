@@ -38,6 +38,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("linkedin_url").nullable();
     t.text("website_url").nullable();
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 
   await knex.schema.createTable("platform_user_qualifications", (t) => {
@@ -54,6 +55,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("end_date").nullable();
     t.integer("sort_order").defaultTo(0);
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 
   await knex.schema.createTable("platform_user_language_tests", (t) => {
@@ -66,6 +68,7 @@ export async function up(knex: Knex): Promise<void> {
     t.jsonb("sub_scores").nullable();
     t.integer("sort_order").defaultTo(0);
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 
   await knex.schema.createTable("platform_user_work_experiences", (t) => {
@@ -78,6 +81,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("end_date").nullable();
     t.integer("sort_order").defaultTo(0);
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 }
 

@@ -41,7 +41,7 @@ export async function buildServer() {
   await app.register(superadminModule);     // admin users + data extraction
   await app.register(platformUsersModule);   // platform user profiles + sub-resources
   await app.register(businessesModule);     // business registration + profiles
-  await app.register(agentsModule);         // agent auth + management (per-business DB)
+  await app.register(agentsModule);         // agent invitations + management (per-business DB)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

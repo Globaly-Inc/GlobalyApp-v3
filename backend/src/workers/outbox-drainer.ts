@@ -4,18 +4,18 @@
 
 import { masterKnex } from "../core/db/master-pool.js";
 import { getKnex } from "../core/db/pool-manager.js";
-import { buildConnString } from "../core/db/knex.js";
+import { schemaName } from "../core/db/knex.js";
 import { createChildLogger } from "../shared/logger.js";
 
 const logger = createChildLogger("outbox-drainer");
 
 async function drainLoop() {
   const businesses = await masterKnex("businesses")
-    .select("id", "db_name")
+    .select("id", "schema_name")
     .where("account_status", 1);
 
   for (const b of businesses) {
-    const db = await getKnex(b.id, buildConnString(b));
+    const db = await getKnex(b.id, schemaName(b.schema_name));
 
     const jobs = await db
       .raw(

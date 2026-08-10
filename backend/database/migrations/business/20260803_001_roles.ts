@@ -9,6 +9,7 @@ export async function up(knex: Knex): Promise<void> {
     t.boolean("is_system").notNullable().defaultTo(false); // true = cannot be deleted
     t.integer("sort_order").notNullable().defaultTo(0);
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 }
 

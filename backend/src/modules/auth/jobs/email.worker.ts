@@ -17,28 +17,26 @@ await queueService.consume("emails", async (msg) => {
   logger.info("Email sent", { to, subject });
 });
 
-// ── Create admin user on invitation accept ──
+// ── Create admin role-link on invitation accept ──
 
 await queueService.consume("admin_invitation_accept", async (msg) => {
-  const { invitation_id, name, email, role, invited_by } = JSON.parse(msg!.content.toString());
+  const { invitation_id, platform_user_id, role, invited_by } = JSON.parse(msg!.content.toString());
 
-  const existing = await adminRepo.findAdminByEmail(email);
+  const existing = await adminRepo.findAdminByPlatformUserId(platform_user_id);
   if (existing) {
-    logger.warn("Admin already exists, skipping", { email });
+    logger.warn("Admin role already exists, skipping", { platform_user_id });
     await adminRepo.markInvitationAccepted(invitation_id);
     return;
   }
 
   await adminRepo.insertAdmin({
-    name,
-    email,
+    platform_user_id,
     role,
-    account_status: 1,
     added_by: invited_by,
   });
 
   await adminRepo.markInvitationAccepted(invitation_id);
-  logger.info("Admin user created from invitation", { email, role });
+  logger.info("Admin role-link created from invitation", { platform_user_id, role });
 });
 
 logger.info("Auth worker started — consuming 'emails' + 'admin_invitation_accept' queues");

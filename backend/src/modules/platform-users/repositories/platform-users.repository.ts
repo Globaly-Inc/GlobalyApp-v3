@@ -12,12 +12,18 @@ export interface PlatformUserRow {
   username: string;
   otp: string | null;
   otp_expires_at: Date | null;
+  otp_attempts: number;
+  otp_locked_until: Date | null;
   refresh_token: string | null;
+  refresh_token_family: string | null;
   account_status: number;
   photo_url: string | null;
   is_email_verified: boolean;
   user_category: string | null;
   user_sub_category: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  last_login_at: Date | null;
   meta: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
@@ -33,18 +39,19 @@ const SAFE_COLUMNS = [
 // ── User auth ──
 
 export async function findByEmail(email: string) {
-  return masterKnex<PlatformUserRow>("platform_users").where({ email }).first() as Promise<PlatformUserRow | undefined>;
+  return masterKnex<PlatformUserRow>("platform_users").where({ email }).whereNull("deleted_at").first() as Promise<PlatformUserRow | undefined>;
 }
 
 export async function findById(id: number) {
   return masterKnex("platform_users")
     .select(SAFE_COLUMNS as unknown as string[])
     .where({ id })
+    .whereNull("deleted_at")
     .first() as Promise<PlatformUserRow | undefined>;
 }
 
 export async function findByIdFull(id: number) {
-  return masterKnex<PlatformUserRow>("platform_users").where({ id }).first<PlatformUserRow>();
+  return masterKnex<PlatformUserRow>("platform_users").where({ id }).whereNull("deleted_at").first<PlatformUserRow>();
 }
 
 export async function insert(data: {
@@ -54,6 +61,8 @@ export async function insert(data: {
   username: string;
   account_status: number;
   phone?: string;
+  user_category?: string;
+  user_sub_category?: string;
 }) {
   const [row] = await masterKnex<PlatformUserRow>("platform_users")
     .insert({ ...data, created_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() })
@@ -72,31 +81,95 @@ export async function updateUser(userId: number, data: Record<string, unknown>) 
 export async function updateOtp(userId: number, otp: string, expiresAt: Date) {
   await masterKnex("platform_users")
     .where({ id: userId })
-    .update({ otp, otp_expires_at: expiresAt, updated_at: masterKnex.fn.now() });
+    .update({ otp, otp_expires_at: expiresAt, otp_attempts: 0, otp_locked_until: null, updated_at: masterKnex.fn.now() });
 }
 
 export async function clearOtp(userId: number) {
   await masterKnex("platform_users")
     .where({ id: userId })
-    .update({ otp: null, otp_expires_at: null, updated_at: masterKnex.fn.now() });
+    .update({ otp: null, otp_expires_at: null, otp_attempts: 0, otp_locked_until: null, updated_at: masterKnex.fn.now() });
 }
 
-export async function updateRefreshToken(userId: number, token: string | null) {
+export async function incrementOtpAttempts(userId: number, attempts: number) {
   await masterKnex("platform_users")
     .where({ id: userId })
-    .update({ refresh_token: token, updated_at: masterKnex.fn.now() });
+    .update({ otp_attempts: attempts, updated_at: masterKnex.fn.now() });
+}
+
+export async function lockOtp(userId: number, attempts: number, lockedUntil: Date) {
+  await masterKnex("platform_users")
+    .where({ id: userId })
+    .update({ otp_attempts: attempts, otp_locked_until: lockedUntil, updated_at: masterKnex.fn.now() });
+}
+
+export async function updateRefreshToken(userId: number, token: string | null, family?: string | null) {
+  const update: Record<string, unknown> = { refresh_token: token, updated_at: masterKnex.fn.now() };
+  if (family !== undefined) update.refresh_token_family = family;
+  await masterKnex("platform_users")
+    .where({ id: userId })
+    .update(update);
 }
 
 export async function findByRefreshToken(token: string) {
   return masterKnex<PlatformUserRow>("platform_users")
     .where({ refresh_token: token })
+    .whereNull("deleted_at")
     .first<PlatformUserRow>();
+}
+
+export async function updateLoginMeta(userId: number, data: {
+  ip_address?: string | null;
+  user_agent?: string | null;
+  last_login_at?: Date | null;
+}) {
+  await masterKnex("platform_users")
+    .where({ id: userId })
+    .update({ ...data, updated_at: masterKnex.fn.now() });
+}
+
+// ── Business Index (master DB) ──
+
+export async function listUserBusinesses(platformUserId: number) {
+  return masterKnex("user_business_index")
+    .join("businesses", "user_business_index.business_id", "businesses.id")
+    .where("user_business_index.platform_user_id", platformUserId)
+    .where("businesses.account_status", 1)
+    .whereNull("user_business_index.deleted_at")
+    .whereNull("businesses.deleted_at")
+    .select(
+      "businesses.id",
+      "businesses.schema_name as org_id",
+      "businesses.business_name",
+      "businesses.subdomain",
+      "businesses.logo_url",
+      "user_business_index.role",
+      "user_business_index.is_owner",
+    );
+}
+
+export async function insertUserBusinessIndex(data: {
+  platform_user_id: number;
+  business_id: number;
+  role: string;
+  is_owner: boolean;
+}) {
+  await masterKnex("user_business_index")
+    .insert({ ...data, created_at: masterKnex.fn.now() })
+    .onConflict(["platform_user_id", "business_id"])
+    .merge({ role: data.role, is_owner: data.is_owner });
+}
+
+export async function findBusinessByDbName(dbName: string) {
+  return masterKnex("businesses")
+    .where({ schema_name: dbName, account_status: 1 })
+    .whereNull("deleted_at")
+    .first();
 }
 
 // ── Profile ──
 
 export async function findProfileByUserId(userId: number) {
-  return masterKnex<Record<string, unknown>>("platform_user_profiles").where({ user_id: userId }).first<Record<string, unknown>>();
+  return masterKnex<Record<string, unknown>>("platform_user_profiles").where({ user_id: userId }).whereNull("deleted_at").first<Record<string, unknown>>();
 }
 
 export async function insertProfile(userId: number, data: Record<string, unknown> = {}) {
@@ -117,7 +190,7 @@ export async function updateProfile(userId: number, data: Record<string, unknown
 // ── Qualifications ──
 
 export async function listQualifications(userId: number) {
-  return masterKnex("platform_user_qualifications").where({ user_id: userId }).orderBy("sort_order");
+  return masterKnex("platform_user_qualifications").where({ user_id: userId }).whereNull("deleted_at").orderBy("sort_order");
 }
 
 export async function insertQualification(userId: number, data: Record<string, unknown>) {
@@ -136,13 +209,13 @@ export async function updateQualification(id: string, userId: number, data: Reco
 }
 
 export async function deleteQualification(id: string, userId: number) {
-  return masterKnex("platform_user_qualifications").where({ id, user_id: userId }).delete();
+  return masterKnex("platform_user_qualifications").where({ id, user_id: userId }).update({ deleted_at: masterKnex.fn.now() });
 }
 
 // ── Language Tests ──
 
 export async function listLanguageTests(userId: number) {
-  return masterKnex("platform_user_language_tests").where({ user_id: userId }).orderBy("sort_order");
+  return masterKnex("platform_user_language_tests").where({ user_id: userId }).whereNull("deleted_at").orderBy("sort_order");
 }
 
 export async function insertLanguageTest(userId: number, data: Record<string, unknown>) {
@@ -161,13 +234,13 @@ export async function updateLanguageTest(id: string, userId: number, data: Recor
 }
 
 export async function deleteLanguageTest(id: string, userId: number) {
-  return masterKnex("platform_user_language_tests").where({ id, user_id: userId }).delete();
+  return masterKnex("platform_user_language_tests").where({ id, user_id: userId }).update({ deleted_at: masterKnex.fn.now() });
 }
 
 // ── Work Experiences ──
 
 export async function listWorkExperiences(userId: number) {
-  return masterKnex("platform_user_work_experiences").where({ user_id: userId }).orderBy("sort_order");
+  return masterKnex("platform_user_work_experiences").where({ user_id: userId }).whereNull("deleted_at").orderBy("sort_order");
 }
 
 export async function insertWorkExperience(userId: number, data: Record<string, unknown>) {
@@ -186,17 +259,17 @@ export async function updateWorkExperience(id: string, userId: number, data: Rec
 }
 
 export async function deleteWorkExperience(id: string, userId: number) {
-  return masterKnex("platform_user_work_experiences").where({ id, user_id: userId }).delete();
+  return masterKnex("platform_user_work_experiences").where({ id, user_id: userId }).update({ deleted_at: masterKnex.fn.now() });
 }
 
 // ── Institutions ──
 
 export async function findInstitutionBySubdomain(subdomain: string) {
-  return masterKnex<Record<string, unknown>>("institutions").where({ subdomain }).first<Record<string, unknown>>();
+  return masterKnex<Record<string, unknown>>("institutions").where({ subdomain }).whereNull("deleted_at").first<Record<string, unknown>>();
 }
 
 export async function findInstitutionByUserId(userId: number) {
-  return masterKnex<Record<string, unknown>>("institutions").where({ platform_user_id: userId }).first<Record<string, unknown>>();
+  return masterKnex<Record<string, unknown>>("institutions").where({ platform_user_id: userId }).whereNull("deleted_at").first<Record<string, unknown>>();
 }
 
 export async function insertInstitution(data: Record<string, unknown>) {
@@ -207,13 +280,13 @@ export async function insertInstitution(data: Record<string, unknown>) {
 // ── Countries / Cities ──
 
 export async function listCountries() {
-  return masterKnex("countries").select("id", "name", "iso2", "iso3", "phone_code", "region").where({ is_active: true }).orderBy("name");
+  return masterKnex("countries").select("id", "name", "iso2", "iso3", "phone_code", "region").where({ is_active: true }).whereNull("deleted_at").orderBy("name");
 }
 
 export async function findCountryById(id: number) {
-  return masterKnex<Record<string, unknown>>("countries").where({ id }).first<Record<string, unknown>>();
+  return masterKnex<Record<string, unknown>>("countries").where({ id }).whereNull("deleted_at").first<Record<string, unknown>>();
 }
 
 export async function listCitiesByCountry(countryId: number) {
-  return masterKnex("cities").select("id", "name", "state_name").where({ country_id: countryId }).orderBy("name");
+  return masterKnex("cities").select("id", "name", "state_name").where({ country_id: countryId }).whereNull("deleted_at").orderBy("name");
 }

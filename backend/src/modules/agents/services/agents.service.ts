@@ -1,4 +1,6 @@
-// Agent service — CRUD, invitations (OTP auth handled by unified auth module).
+// Agent service — CRUD and invitations.
+// Agents are lightweight records in per-business DB pointing to platform_users.
+// Auth stays 100% in platform_users.
 
 import { randomBytes } from "node:crypto";
 import type { Knex } from "knex";
@@ -16,18 +18,33 @@ import {
 } from "../../../shared/pagination.js";
 import type { PaginationInput } from "../../../shared/pagination.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
-import { buildConnString } from "../../../core/db/knex.js";
+import { schemaName } from "../../../core/db/knex.js";
+import { masterKnex } from "../../../core/db/master-pool.js";
 import * as repo from "../repositories/agents.repository.js";
+import * as platformUserRepo from "../../platform-users/repositories/platform-users.repository.js";
 import type { InviteAgentInput } from "../schemas/agents.schema.js";
 
 const logger = createChildLogger("agents-service");
 
-/** Resolve a business by subdomain and return its Knex instance. */
-async function resolveBusinessDb(subdomain: string) {
-  const business = await repo.findBusinessBySubdomain(subdomain);
-  if (!business) throw new NotFoundError("Organization not found");
-  const db = await getKnex(business.id, buildConnString(business));
-  return { business, db };
+/** Batch-enrich agent rows with platform_user details. One query instead of N. */
+async function enrichAgents(agents: any[]) {
+  if (agents.length === 0) return [];
+  const ids = agents.map((a) => a.platform_user_id);
+  const users = await masterKnex("platform_users")
+    .whereIn("id", ids)
+    .select("id", "first_name", "last_name", "email", "phone", "photo_url");
+  const userMap = new Map(users.map((u: any) => [u.id, u]));
+  return agents.map((agent) => {
+    const user = userMap.get(agent.platform_user_id);
+    return {
+      ...agent,
+      first_name: user?.first_name,
+      last_name: user?.last_name,
+      email: user?.email,
+      phone: user?.phone,
+      photo_url: user?.photo_url,
+    };
+  });
 }
 
 // ── CRUD ──
@@ -38,13 +55,15 @@ export async function listAgents(db: Knex, pagination: PaginationInput) {
     repo.listAgents(db, limit, offset),
     repo.countAgents(db),
   ]);
-  return buildPaginatedResponse(rows, total, pagination);
+  const enriched = await enrichAgents(rows);
+  return buildPaginatedResponse(enriched, total, pagination);
 }
 
 export async function getAgent(db: Knex, id: number) {
   const agent = await repo.findAgentById(db, id);
   if (!agent) throw new NotFoundError("Agent not found");
-  return agent;
+  const [enriched] = await enrichAgents([agent]);
+  return enriched;
 }
 
 // ── Invitations ──
@@ -52,14 +71,29 @@ export async function getAgent(db: Knex, id: number) {
 export async function inviteAgent(
   db: Knex,
   input: InviteAgentInput,
-  invitedBy: number,
-  businessId: string,
+  inviterPlatformUserId: number,
+  orgId: string,
 ) {
-  const business = await repo.findBusinessById(businessId);
+  const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Organization not found");
-  const subdomain = business.subdomain;
-  const existing = await repo.findAgentByEmail(db, input.email);
-  if (existing) throw new ConflictError("Email has already been taken by another agent");
+
+  // Check if email is already an agent in this business
+  const existingUser = await platformUserRepo.findByEmail(input.email);
+  if (existingUser) {
+    const existingAgent = await repo.findAgentByPlatformUserId(db, existingUser.id);
+    if (existingAgent) throw new ConflictError("User is already an agent in this business");
+  }
+
+  // Check for pending invitation with same email
+  const pendingInvite = await repo.findPendingInvitationByEmail(db, input.email);
+  if (pendingInvite) throw new ConflictError("Invitation already pending for this email");
+
+  // Find inviter's agent record for the invited_by FK
+  const inviterAgent = await repo.findAgentByPlatformUserId(db, inviterPlatformUserId);
+  if (!inviterAgent) throw new NotFoundError("Inviter agent record not found");
+
+  const role = await repo.findRoleByName(db, input.role);
+  if (!role) throw new NotFoundError(`Role "${input.role}" not found`);
 
   const token = randomBytes(32).toString("hex");
   const expiredAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
@@ -73,29 +107,29 @@ export async function inviteAgent(
       role: input.role,
     },
     invite_token: token,
-    invited_by: invitedBy,
+    invited_by: inviterAgent.id,
     status: "pending",
     expired_at: expiredAt,
   });
 
-  const acceptUrl = `${config.APP_URL}/api/v3/agents/invite/accept?token=${token}&subdomain=${subdomain}`;
+  const acceptUrl = `${config.APP_URL}/api/v3/agents/invite/accept?token=${token}&org_id=${business.schema_name}`;
 
-  const role = await repo.findRoleByName(db, input.role);
-  if (!role) throw new NotFoundError(`Role "${input.role}" not found`);
-
-  await queueInvitationEmail({
+  // ponytail: fire-and-forget — invitation must not fail because email is down
+  queueInvitationEmail({
     to: input.email,
     name: input.first_name,
     role: role.display_name,
     acceptUrl,
-  });
+  }).catch((err) => logger.warn("Invitation email failed (invitation created)", { email: input.email, err: err.message }));
 
-  logger.info("Agent invitation sent", { email: input.email, invitedBy, subdomain });
+  logger.info("Agent invitation sent", { email: input.email, invitedBy: inviterPlatformUserId, orgId });
   return invitation;
 }
 
-export async function acceptInvitation(subdomain: string, token: string) {
-  const { db } = await resolveBusinessDb(subdomain);
+export async function acceptInvitation(orgId: string, token: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Organization not found");
+  const db = await getKnex(business.id, schemaName(business.schema_name));
 
   const invitation = await repo.findInvitationByToken(db, token);
   if (!invitation) throw new NotFoundError("Invitation not found or already used");
@@ -109,22 +143,45 @@ export async function acceptInvitation(subdomain: string, token: string) {
   const role = await repo.findRoleByName(db, roleName);
   if (!role) throw new NotFoundError(`Role "${roleName}" not found`);
 
+  // Create or find platform_user for this email
+  let platformUser = await platformUserRepo.findByEmail(invitation.email);
+  if (!platformUser) {
+    details.first_name ??= "";
+    details.last_name ??= "";
+    platformUser = await platformUserRepo.insert({
+      first_name: details.first_name,
+      last_name: details.last_name,
+      email: invitation.email,
+      username: invitation.email,
+      account_status: 0, // inactive until they verify OTP
+      user_category: "business",
+      user_sub_category: "agent",
+    });
+  }
+
+  // Create agent in per-business DB
   const agent = await repo.insertAgent(db, {
-    first_name: details.first_name ?? "",
-    last_name: details.last_name ?? "",
-    email: invitation.email,
-    username: invitation.email,
+    platform_user_id: platformUser.id,
     role_id: role.id,
-    account_status: 1,
     is_owner: false,
+    account_status: 1,
     added_by: invitation.invited_by,
+  });
+
+  // Write to master DB index so getMe/verifyOtp can list this business
+  await platformUserRepo.insertUserBusinessIndex({
+    platform_user_id: platformUser.id,
+    business_id: Number(business.id),
+    role: roleName,
+    is_owner: false,
   });
 
   await repo.markInvitationAccepted(db, invitation.id);
 
-  logger.info("Agent invitation accepted", { agentId: agent.id, email: agent.email, subdomain });
+  logger.info("Agent invitation accepted", { agentId: agent.id, platformUserId: platformUser.id, orgId });
   return {
-    message: "Invitation accepted",
-    agent: { id: agent.id, email: agent.email, role: agent.role },
+    message: "Invitation accepted. Log in with your email to access this business.",
+    org_id: business.schema_name,
+    agent: { id: agent.id, role: agent.role },
   };
 }

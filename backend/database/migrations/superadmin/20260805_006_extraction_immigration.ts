@@ -56,7 +56,7 @@ export async function up(knex: Knex): Promise<void> {
     t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));
     t.uuid("job_id").nullable();
     t.text("status").notNullable().defaultTo("pending");
-    t.uuid("promoted_business_id").nullable().references("id").inTable("public.businesses").onDelete("SET NULL");
+    t.integer("promoted_business_id").unsigned().nullable().references("id").inTable("public.businesses").onDelete("SET NULL");
     t.text("marn").notNullable();
     t.text("agent_name").nullable();
     t.text("business_name").nullable();

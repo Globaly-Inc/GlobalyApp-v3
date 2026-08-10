@@ -1,4 +1,5 @@
-// Admin-users service — CRUD and invitations (OTP auth handled by unified auth module).
+// Admin-users service — CRUD and invitations.
+// Admins are platform_users with an admin role-link.
 
 import { randomBytes } from "node:crypto";
 import { config } from "../../../../config.js";
@@ -18,6 +19,7 @@ import {
 } from "../../../../shared/pagination.js";
 import type { PaginationInput } from "../../../../shared/pagination.js";
 import * as repo from "../repositories/admin-users.repository.js";
+import * as platformUserRepo from "../../../platform-users/repositories/platform-users.repository.js";
 import type {
   InviteAdminInput,
   UpdateAdminInput,
@@ -42,6 +44,13 @@ export async function getAdmin(id: number) {
   return admin;
 }
 
+export async function getAdminByPlatformUserId(platformUserId: number) {
+  const admin = await repo.findAdminByPlatformUserId(platformUserId);
+  if (!admin) throw new NotFoundError("Admin not found");
+  // Enrich with platform_user details
+  return repo.findAdminById(admin.id);
+}
+
 export async function updateAdmin(id: number, data: UpdateAdminInput) {
   const admin = await repo.findAdminById(id);
   if (!admin) throw new NotFoundError("Admin not found");
@@ -56,7 +65,7 @@ export function roleDisplayName(role: string): string {
 
 export async function inviteAdmin(
   input: InviteAdminInput,
-  invitedBy: number,
+  invitedByPlatformUserId: number,
   inviterRole: string,
 ) {
   if (inviterRole !== "super_admin") {
@@ -66,15 +75,20 @@ export async function inviteAdmin(
   const existing = await repo.findAdminByEmail(input.email);
   if (existing) throw new ConflictError("Email has already been taken");
 
+  // Look up the admin_users.id for the inviter (JWT.sub is platform_user_id now)
+  const inviterAdmin = await repo.findAdminByPlatformUserId(invitedByPlatformUserId);
+  if (!inviterAdmin) throw new ForbiddenError("Inviter admin record not found");
+
   const token = randomBytes(32).toString("hex");
   const expiredAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
 
   const invitation = await repo.insertInvitation({
     email: input.email,
-    name: input.name,
+    first_name: input.first_name,
+    last_name: input.last_name,
     role: input.role,
     invite_token: token,
-    invited_by: invitedBy,
+    invited_by: inviterAdmin.id,
     status: "pending",
     expired_at: expiredAt,
   });
@@ -82,12 +96,12 @@ export async function inviteAdmin(
   const acceptUrl = `${config.APP_URL}/api/v3/admin/users/invite/accept?token=${token}`;
   await queueInvitationEmail({
     to: input.email,
-    name: input.name,
+    name: input.first_name,
     role: roleDisplayName(input.role),
     acceptUrl,
   });
 
-  logger.info("Admin invitation queued", { email: input.email, invitedBy });
+  logger.info("Admin invitation queued", { email: input.email, invitedBy: invitedByPlatformUserId });
   return invitation;
 }
 
@@ -99,12 +113,23 @@ export async function acceptInvitation(token: string) {
     throw new UnauthorizedError("Invitation has expired");
   }
 
-  // Queue the user creation — fallback to direct insert when queue unavailable
+  // Create or find platform_user for this email
+  let platformUser = await platformUserRepo.findByEmail(invitation.email);
+  if (!platformUser) {
+    platformUser = await platformUserRepo.insert({
+      first_name: invitation.first_name,
+      last_name: invitation.last_name,
+      email: invitation.email,
+      username: invitation.email,
+      account_status: 1,
+    });
+  }
+
+  // Create admin role-link — fallback to direct insert when queue unavailable
   try {
     await queueService.publish("admin_invitation_accept", {
       invitation_id: invitation.id,
-      name: invitation.name,
-      email: invitation.email,
+      platform_user_id: platformUser.id,
       role: invitation.role,
       invited_by: invitation.invited_by,
     });
@@ -113,10 +138,8 @@ export async function acceptInvitation(token: string) {
     // ponytail: direct create when queue is unavailable (local dev)
     logger.warn("Queue unavailable, creating admin directly", { email: invitation.email });
     await repo.insertAdmin({
-      name: invitation.name,
-      email: invitation.email,
+      platform_user_id: platformUser.id,
       role: invitation.role,
-      account_status: 1,
       added_by: invitation.invited_by,
     });
     await repo.markInvitationAccepted(invitation.id);

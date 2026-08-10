@@ -12,6 +12,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("region").nullable();               // e.g. "Oceania"
     t.boolean("is_active").notNullable().defaultTo(true);
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 
   await knex.schema.createTable("cities", (t) => {
@@ -19,6 +20,7 @@ export async function up(knex: Knex): Promise<void> {
     t.integer("country_id").unsigned().notNullable().references("id").inTable("countries").onDelete("CASCADE");
     t.text("name").notNullable();
     t.text("state_name").nullable();
+    t.timestamp("deleted_at").nullable();
     t.index(["country_id", "name"]);
   });
 }

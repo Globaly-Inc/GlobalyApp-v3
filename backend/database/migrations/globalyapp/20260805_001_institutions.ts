@@ -2,7 +2,7 @@ import type { Knex } from "knex";
 
 export async function up(knex: Knex): Promise<void> {
   await knex.schema.createTable("institutions", (t) => {
-    t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));
+    t.increments("id").primary();
 
     // Owner (platform_user who registered it)
     t.integer("platform_user_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("CASCADE");
@@ -55,6 +55,7 @@ export async function up(knex: Knex): Promise<void> {
     // Meta
     t.jsonb("meta").defaultTo("{}");
     t.timestamps(true, true);
+    t.timestamp("deleted_at").nullable();
   });
 }
 

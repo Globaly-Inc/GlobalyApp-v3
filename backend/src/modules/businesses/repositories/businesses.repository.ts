@@ -4,21 +4,21 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import type { BusinessRecord } from "../../../core/types.js";
 
 export async function findBusinessBySubdomain(subdomain: string): Promise<BusinessRecord | undefined> {
-  return masterKnex<BusinessRecord>("businesses").where({ subdomain }).first();
+  return masterKnex<BusinessRecord>("businesses").where({ subdomain }).whereNull("deleted_at").first();
 }
 
 export async function findBusinessById(id: string): Promise<BusinessRecord | undefined> {
-  return masterKnex<BusinessRecord>("businesses").where({ id }).first();
+  return masterKnex<BusinessRecord>("businesses").where({ id }).whereNull("deleted_at").first();
+}
+
+export async function findBusinessByDbName(dbName: string): Promise<BusinessRecord | undefined> {
+  return masterKnex<BusinessRecord>("businesses").where({ schema_name: dbName }).whereNull("deleted_at").first();
 }
 
 export async function insertBusiness(data: {
-  first_name: string;
-  last_name: string;
-  email: string;
+  owner_id: number;
   subdomain: string;
   business_name: string;
-  db_username: string;
-  db_password: string;
   account_status: number;
   business_type?: string | null;
   description?: string | null;

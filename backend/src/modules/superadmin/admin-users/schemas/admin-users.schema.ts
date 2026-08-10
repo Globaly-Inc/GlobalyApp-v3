@@ -17,7 +17,8 @@ export const RefreshSchema = z.object({
 });
 
 export const InviteAdminSchema = z.object({
-  name: z.string().min(1).max(200),
+  first_name: z.string().min(1).max(100),
+  last_name: z.string().min(1).max(100),
   email: z.string().email(),
   role: z.enum(ADMIN_ROLES).default("admin"),
 });
@@ -28,10 +29,8 @@ export const AcceptInviteSchema = z.object({
 
 export const UpdateAdminSchema = z
   .object({
-    name: z.string().min(1).max(200),
     role: z.enum(ADMIN_ROLES),
-    account_status: z.number().int(),
-    photo_url: z.string().url(),
+    is_active: z.boolean(),
   })
   .partial()
   .strict();

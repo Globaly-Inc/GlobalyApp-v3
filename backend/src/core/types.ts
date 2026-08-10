@@ -5,18 +5,18 @@ import type { Knex } from "knex";
 /** JWT claims decoded from the access token */
 export interface AuthClaims {
   sub: string;
-  type: "admin" | "platform_user" | "agent";
-  role?: string;     // admin: super_admin|admin|data_admin|moderator, agent: owner|admin|member
-  orgId?: string;    // business id (agents only)
+  type: "admin" | "platform_user";
+  role?: string;     // admin role: super_admin|admin|data_admin|moderator
+  orgId?: string;    // business schema_name (when operating in business context)
+  orgRole?: string;  // business role: owner|admin|manager|counsellor|member
   email: string;
 }
 
 /** Business record from the globalyapp db */
 export interface BusinessRecord {
   id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
+  owner_id: number;
+  email: string | null;
   phone: string | null;
   subdomain: string;
   business_name: string;
@@ -48,9 +48,7 @@ export interface BusinessRecord {
   is_published: boolean;
   onboarding_completed: boolean;
   agreed_to_t_and_c: boolean;
-  db_name: string;
-  db_username: string;
-  db_password: string;
+  schema_name: string;
   account_status: number;
   subscription_id: string | null;
   customer_id: string | null;
@@ -66,6 +64,6 @@ export interface BusinessRecord {
 declare module "fastify" {
   interface FastifyRequest {
     auth: AuthClaims;
-    db: Knex;          // per-business DB (set for agent routes only)
+    db: Knex;          // per-business DB (set for business context routes)
   }
 }

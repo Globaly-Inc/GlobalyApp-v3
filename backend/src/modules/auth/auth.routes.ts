@@ -13,18 +13,19 @@ const RegisterSchema = z.object({
 
 const SendOtpSchema = z.object({
   email: z.string().email(),
-  subdomain: z.string().optional(),
 });
 
 const VerifyOtpSchema = z.object({
   email: z.string().email(),
   otp: z.string().length(6),
-  subdomain: z.string().optional(),
 });
 
 const RefreshSchema = z.object({
   refresh_token: z.string().min(1),
-  subdomain: z.string().optional(),
+});
+
+const SwitchAccountSchema = z.object({
+  org_id: z.string().min(1),
 });
 
 export async function authRoutes(app: FastifyInstance) {
@@ -39,22 +40,43 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/send-otp", {
     config: { rateLimit: RATE_LIMITS.sendOtp },
   }, async (req, reply) => {
-    const { email, subdomain } = SendOtpSchema.parse(req.body);
-    const result = await service.sendOtp(email, subdomain);
+    const { email } = SendOtpSchema.parse(req.body);
+    const result = await service.sendOtp(email);
     return reply.send(result);
   });
 
   app.post("/verify-otp", {
     config: { rateLimit: RATE_LIMITS.verifyOtp },
   }, async (req, reply) => {
-    const { email, otp, subdomain } = VerifyOtpSchema.parse(req.body);
-    const result = await service.verifyOtp(email, otp, subdomain);
+    const { email, otp } = VerifyOtpSchema.parse(req.body);
+    const result = await service.verifyOtp(email, otp, {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
     return reply.send(result);
   });
 
   app.post("/refresh", async (req, reply) => {
-    const { refresh_token, subdomain } = RefreshSchema.parse(req.body);
-    const result = await service.refreshAccessToken(refresh_token, subdomain);
+    const { refresh_token } = RefreshSchema.parse(req.body);
+    const result = await service.refreshAccessToken(refresh_token, {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+    return reply.send(result);
+  });
+
+  // Authenticated — invalidate session
+  app.post("/logout", {
+    config: { rateLimit: RATE_LIMITS.logout },
+  }, async (req, reply) => {
+    await service.logout(Number(req.auth.sub));
+    return reply.status(204).send();
+  });
+
+  // Authenticated — switch to a business context
+  app.post("/switch-account", async (req, reply) => {
+    const { org_id } = SwitchAccountSchema.parse(req.body);
+    const result = await service.switchAccount(Number(req.auth.sub), org_id);
     return reply.send(result);
   });
 

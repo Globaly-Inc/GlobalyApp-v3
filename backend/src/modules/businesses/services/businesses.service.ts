@@ -1,10 +1,9 @@
-// Business service — setup (provisions DB + creates agent owner), profile management.
+// Business service — registration (provisions schema + creates owner agent), profile management.
 
-import { randomBytes } from "node:crypto";
 import { NotFoundError, ConflictError } from "../../../shared/errors.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
-import { buildConnString } from "../../../core/db/knex.js";
-import { provisionBusinessDb } from "../../../core/business/provisioner.js";
+import { schemaName } from "../../../core/db/knex.js";
+import { provisionBusinessSchema } from "../../../core/business/provisioner.js";
 import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../platform-users/repositories/platform-users.repository.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -13,26 +12,19 @@ import type { BusinessRegisterInput, BusinessProfilePatchInput } from "../schema
 const logger = createChildLogger("businesses-service");
 
 /**
- * Register a business — owner details come from the authenticated platform_user.
- * Creates business record, provisions DB with agents table, creates owner agent.
+ * Register a business — owner is the authenticated platform_user.
+ * Creates business record, provisions schema (biz_{id}), creates owner agent.
  */
 export async function registerBusiness(userId: number, input: BusinessRegisterInput) {
   const user = await userRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
-  const dbPassword = randomBytes(16).toString("hex");
-
-  // Insert directly — let DB unique constraint handle races instead of check-then-insert
   let business;
   try {
     business = await repo.insertBusiness({
-      first_name: user.first_name,
-      last_name: user.last_name,
-      email: user.email,
+      owner_id: userId,
       subdomain: input.subdomain,
       business_name: input.business_name,
-      db_username: `user_${input.subdomain}`,
-      db_password: dbPassword,
       account_status: 0,
       business_type: input.business_type,
       description: input.description,
@@ -50,23 +42,27 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   }
 
   try {
-    await provisionBusinessDb(business.db_name);
+    await provisionBusinessSchema(business.schema_name);
   } catch (err) {
-    // Clean up — don't leave orphaned rows with a dead subdomain
     await repo.deleteBusiness(business.id);
     throw err;
   }
 
-  // Create owner agent in the new business DB
-  const db = await getKnex(business.id, buildConnString(business));
+  // Create owner agent in the business schema
+  const db = await getKnex(business.id, schemaName(business.schema_name));
   const ownerRole = await db("roles").where({ name: "owner" }).first();
   await db("agents").insert({
-    first_name: user.first_name,
-    last_name: user.last_name,
-    email: user.email,
-    username: user.email,
+    platform_user_id: userId,
     role_id: ownerRole.id,
+    is_owner: true,
     account_status: 1,
+  });
+
+  // Write to master DB index so getMe/verifyOtp can list this business
+  await userRepo.insertUserBusinessIndex({
+    platform_user_id: userId,
+    business_id: Number(business.id),
+    role: "owner",
     is_owner: true,
   });
 
@@ -75,21 +71,21 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   logger.info("Business registered", { orgId: business.id, subdomain: input.subdomain, userId });
 
   return {
-    org: { id: business.id, subdomain: business.subdomain, business_name: business.business_name },
-    message: "Business created. Use agent OTP login with your subdomain to manage it.",
+    org: { id: business.id, org_id: business.schema_name, subdomain: business.subdomain, business_name: business.business_name },
+    message: "Business created. Use account switching to manage it.",
   };
 }
 
-/** Get full business record. */
-export async function getProfile(businessId: string) {
-  const business = await repo.findBusinessById(businessId);
+/** Get full business record by schema_name (orgId from JWT). */
+export async function getProfile(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
   return business;
 }
 
-/** Update business profile fields. */
-export async function updateProfile(businessId: string, data: BusinessProfilePatchInput) {
-  const existing = await repo.findBusinessById(businessId);
+/** Update business profile fields by schema_name (orgId from JWT). */
+export async function updateProfile(orgId: string, data: BusinessProfilePatchInput) {
+  const existing = await repo.findBusinessByDbName(orgId);
   if (!existing) throw new NotFoundError("Business not found");
-  return repo.updateBusinessProfile(businessId, data);
+  return repo.updateBusinessProfile(existing.id, data);
 }
