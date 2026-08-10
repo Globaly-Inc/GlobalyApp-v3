@@ -1,10 +1,7 @@
 import type { Knex } from "knex";
 
 export async function up(knex: Knex): Promise<void> {
-  // Refresh token lookups (auth hot path)
-  await knex.schema.alterTable("platform_users", (t) => {
-    t.index(["refresh_token"]);
-  });
+  // Refresh token index moved to auth_sessions table (20260803_002_auth_tables.ts)
 
   // Sub-resource queries filter by user_id
   await knex.schema.alterTable("platform_user_qualifications", (t) => {
@@ -24,9 +21,6 @@ export async function up(knex: Knex): Promise<void> {
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.schema.alterTable("platform_users", (t) => {
-    t.dropIndex(["refresh_token"]);
-  });
   await knex.schema.alterTable("platform_user_qualifications", (t) => {
     t.dropIndex(["user_id"]);
   });

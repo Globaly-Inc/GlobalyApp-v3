@@ -68,6 +68,10 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
 
   await repo.updateBusinessStatus(business.id, 1);
 
+  // Mark user as a business account holder + track category
+  await userRepo.updateUser(userId, { is_business_account: true });
+  await userRepo.addAccountCategory(userId, { type: "business", role: input.business_type ?? "business" });
+
   logger.info("Business registered", { orgId: business.id, subdomain: input.subdomain, userId });
 
   return {

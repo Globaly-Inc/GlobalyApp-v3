@@ -14,11 +14,12 @@ import * as repo from "../repositories/agents.repository.js";
 export async function agentRoutes(app: FastifyInstance) {
   // ── Public ──
 
-  app.get("/invite/accept", {
+  app.post("/invite/accept", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (req, reply) => {
-    const { token } = AcceptInviteSchema.parse(req.query);
-    const orgId = (req.query as Record<string, string>).org_id;
+    const body = req.body as Record<string, string>;
+    const { token } = AcceptInviteSchema.parse(body);
+    const orgId = body.org_id;
     const result = await service.acceptInvitation(orgId, token);
     return reply.send(result);
   });

@@ -14,8 +14,8 @@ import * as service from "../services/admin-users.service.js";
 export async function adminUsersRoutes(app: FastifyInstance) {
   // ── Public ──
 
-  app.get("/users/invite/accept", async (req, reply) => {
-    const { token } = AcceptInviteSchema.parse(req.query);
+  app.post("/users/invite/accept", async (req, reply) => {
+    const { token } = AcceptInviteSchema.parse(req.body);
     const result = await service.acceptInvitation(token);
     return reply.send(result);
   });

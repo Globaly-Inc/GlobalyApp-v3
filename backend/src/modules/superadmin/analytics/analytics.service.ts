@@ -113,27 +113,19 @@ export async function getDashboard(preset: string) {
     institutions: institutionsGrowth.map((r: any) => ({ day: r.day, count: Number(r.count) })),
   };
 
-  // ── User breakdown by category ──
-  const usersByCategory = await masterKnex("platform_users")
-    .select("user_category")
-    .count("* as count")
-    .groupBy("user_category");
-
-  const usersBySubCategory = await masterKnex("platform_users")
-    .select("user_sub_category")
-    .count("* as count")
-    .whereNotNull("user_sub_category")
-    .groupBy("user_sub_category");
+  // ── User breakdown — from is_personal_account / is_business_account flags ──
+  const [personalUsers, businessUsers, uncategorizedUsers] = await Promise.all([
+    masterKnex("platform_users").where({ is_personal_account: true }).whereNull("deleted_at").count("* as count").first(),
+    masterKnex("platform_users").where({ is_business_account: true }).whereNull("deleted_at").count("* as count").first(),
+    masterKnex("platform_users").where({ is_personal_account: false, is_business_account: false }).whereNull("deleted_at").count("* as count").first(),
+  ]);
 
   const user_breakdown = {
-    by_category: usersByCategory.map((r: any) => ({
-      category: r.user_category ?? "uncategorized",
-      count: Number(r.count),
-    })),
-    by_sub_category: usersBySubCategory.map((r: any) => ({
-      sub_category: r.user_sub_category,
-      count: Number(r.count),
-    })),
+    by_category: [
+      { category: "personal", count: Number(personalUsers?.count ?? 0) },
+      { category: "business", count: Number(businessUsers?.count ?? 0) },
+      { category: "uncategorized", count: Number(uncategorizedUsers?.count ?? 0) },
+    ],
   };
 
   // ── Extraction pipeline stats ──
@@ -151,7 +143,8 @@ export async function getDashboard(preset: string) {
 
   // ── Recent signups ──
   const recent_signups = await masterKnex("platform_users")
-    .select("id", "uuid", "first_name", "last_name", "email", "user_category", "user_sub_category", "created_at")
+    .select("id", "uuid", "first_name", "last_name", "email", "created_at")
+    .whereNull("deleted_at")
     .orderBy("created_at", "desc")
     .limit(10);
 

@@ -112,7 +112,8 @@ export async function inviteAgent(
     expired_at: expiredAt,
   });
 
-  const acceptUrl = `${config.APP_URL}/api/v3/agents/invite/accept?token=${token}&org_id=${business.schema_name}`;
+  // Points to frontend confirmation page — the page renders a button that POSTs to the API
+  const acceptUrl = `${config.APP_URL}/invite/agent/accept?token=${token}&org_id=${business.schema_name}`;
 
   // ponytail: fire-and-forget — invitation must not fail because email is down
   queueInvitationEmail({
@@ -152,10 +153,7 @@ export async function acceptInvitation(orgId: string, token: string) {
       first_name: details.first_name,
       last_name: details.last_name,
       email: invitation.email,
-      username: invitation.email,
       account_status: 0, // inactive until they verify OTP
-      user_category: "business",
-      user_sub_category: "agent",
     });
   }
 
@@ -177,6 +175,10 @@ export async function acceptInvitation(orgId: string, token: string) {
   });
 
   await repo.markInvitationAccepted(db, invitation.id);
+
+  // Mark user as business account holder + track category
+  await platformUserRepo.updateUser(platformUser.id, { is_business_account: true });
+  await platformUserRepo.addAccountCategory(platformUser.id, { type: "business", role: roleName });
 
   logger.info("Agent invitation accepted", { agentId: agent.id, platformUserId: platformUser.id, orgId });
   return {

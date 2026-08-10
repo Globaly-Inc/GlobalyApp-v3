@@ -1,4 +1,5 @@
 // Unified auth service — all users authenticate via platform_users.
+// OTP challenges and sessions are in separate tables (not on platform_users).
 // Admins and business membership are role-links, not separate auth identities.
 
 import { randomInt, randomBytes, createHash, scryptSync, timingSafeEqual, randomUUID } from "node:crypto";
@@ -11,6 +12,7 @@ import { mailerService } from "../../shared/mail/mailerService.js";
 
 import * as platformUserRepo from "../platform-users/repositories/platform-users.repository.js";
 import * as adminRepo from "../superadmin/admin-users/repositories/admin-users.repository.js";
+import * as authRepo from "./auth.repository.js";
 import { getKnex } from "../../core/db/pool-manager.js";
 import { schemaName } from "../../core/db/knex.js";
 
@@ -20,6 +22,7 @@ const logger = createChildLogger("auth-service");
 
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_LOCKOUT_MINUTES = 30;
+const SESSION_EXPIRY_DAYS = 30;
 
 // ── helpers ──
 
@@ -56,6 +59,16 @@ function decodeRefreshUserId(token: string): number | null {
   if (dot === -1) return null;
   const id = Number(token.slice(0, dot));
   return Number.isFinite(id) ? id : null;
+}
+
+/** Derive a short device label from user-agent string. */
+function deriveDeviceLabel(ua?: string): string | null {
+  if (!ua) return null;
+  if (ua.includes("Mobile")) return "Mobile";
+  if (ua.includes("Chrome")) return "Chrome";
+  if (ua.includes("Firefox")) return "Firefox";
+  if (ua.includes("Safari")) return "Safari";
+  return "Unknown";
 }
 
 function signAccessToken(user: {
@@ -110,19 +123,26 @@ export async function queueInvitationEmail(options: {
 
 export async function registerUser(firstName: string, lastName: string, email: string) {
   const existing = await platformUserRepo.findByEmail(email);
-  if (existing) throw new ConflictError("Email already registered");
+  if (existing) {
+    // Anti-enumeration: return identical response, send "someone tried to register" email
+    queueEmail({
+      to: email,
+      subject: "Registration Attempt",
+      html: `<p>Someone tried to register an account with your email. If this was you, log in instead.</p>`,
+    }).catch((err) => logger.warn("Registration notice email failed", { email, err: err.message }));
+    return { message: "Check your email for next steps." };
+  }
 
   const user = await platformUserRepo.insert({
     first_name: firstName,
     last_name: lastName,
     email,
-    username: email,
     account_status: 0, // inactive until OTP verified
   });
 
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-  await platformUserRepo.updateOtp(user.id, hashOtp(otp), expiresAt);
+  await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
 
   queueEmail({
     to: email,
@@ -131,20 +151,22 @@ export async function registerUser(firstName: string, lastName: string, email: s
   }).catch((err) => logger.warn("OTP email failed (registration succeeded)", { email, err: err.message }));
 
   logger.info("User registered", { userId: user.id });
-  return { message: "Registered. Check your email for OTP to log in." };
+  return { message: "Check your email for next steps." };
 }
 
 export async function sendOtp(email: string) {
   const user = await platformUserRepo.findByEmail(email);
   if (!user) throw new NotFoundError("Account not found");
 
-  if (user.otp_locked_until && new Date() < new Date(user.otp_locked_until)) {
+  // Check lockout from existing challenge
+  const existing = await authRepo.findOtpChallenge(email);
+  if (existing?.locked_until && new Date() < new Date(existing.locked_until)) {
     throw new UnauthorizedError("Too many attempts. Try again later.");
   }
 
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-  await platformUserRepo.updateOtp(user.id, hashOtp(otp), expiresAt);
+  await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
 
   queueEmail({
     to: user.email,
@@ -160,29 +182,31 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
   const user = await platformUserRepo.findByEmail(email);
   if (!user) throw new NotFoundError("Account not found");
 
-  if (user.otp_locked_until && new Date() < new Date(user.otp_locked_until)) {
+  const challenge = await authRepo.findOtpChallenge(email);
+  if (!challenge) throw new UnauthorizedError("No OTP requested");
+
+  if (challenge.locked_until && new Date() < new Date(challenge.locked_until)) {
     throw new UnauthorizedError("Too many attempts. Try again later.");
   }
 
-  if (!user.otp || !user.otp_expires_at) throw new UnauthorizedError("No OTP requested");
-
-  if (new Date() > new Date(user.otp_expires_at)) {
+  if (new Date() > new Date(challenge.expires_at)) {
     throw new UnauthorizedError("OTP expired");
   }
 
   // Compare using scrypt — slow hash, constant-time
-  if (!verifyOtpHash(otp, user.otp)) {
-    const attempts = (user.otp_attempts ?? 0) + 1;
+  if (!verifyOtpHash(otp, challenge.otp_hash)) {
+    const attempts = (challenge.attempts ?? 0) + 1;
     if (attempts >= OTP_MAX_ATTEMPTS) {
       const lockedUntil = new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000);
-      await platformUserRepo.lockOtp(user.id, attempts, lockedUntil);
+      await authRepo.lockOtp(challenge.id, attempts, lockedUntil);
     } else {
-      await platformUserRepo.incrementOtpAttempts(user.id, attempts);
+      await authRepo.incrementOtpAttempts(challenge.id, attempts);
     }
     throw new UnauthorizedError("Invalid OTP");
   }
 
-  await platformUserRepo.clearOtp(user.id);
+  // OTP valid — clean up challenge
+  await authRepo.deleteOtpChallenge(challenge.id);
 
   // Activate account on first verification
   const updates: Record<string, unknown> = {};
@@ -200,15 +224,19 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     adminRole: adminRecord?.role,
   });
 
+  // Create a new session (multi-device — doesn't kill other sessions)
   const { raw: rawRefresh, hashed: hashedRefresh } = encodeRefreshToken(user.id);
   const family = randomUUID();
-  await platformUserRepo.updateRefreshToken(user.id, hashedRefresh, family);
+  const sessionExpiry = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
-  // Bind refresh token to IP/device
-  await platformUserRepo.updateLoginMeta(user.id, {
+  await authRepo.createSession({
+    platform_user_id: user.id,
+    refresh_token_hash: hashedRefresh,
+    token_family: family,
     ip_address: meta?.ip ?? null,
     user_agent: meta?.userAgent ?? null,
-    last_login_at: new Date(),
+    device_label: deriveDeviceLabel(meta?.userAgent),
+    expires_at: sessionExpiry,
   });
 
   // Include owned businesses so client can show account picker immediately
@@ -231,37 +259,44 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
 export async function refreshAccessToken(refreshToken: string, meta?: { ip?: string; userAgent?: string }) {
   const hashed = hashToken(refreshToken);
 
-  const user = await platformUserRepo.findByRefreshToken(hashed);
-  if (user) {
-    // Warn on IP/device mismatch (defensive, not blocking — avoids locking out mobile users on carrier IP changes)
-    if (meta?.ip && user.ip_address && meta.ip !== user.ip_address) {
-      logger.warn("Refresh token used from different IP", {
-        userId: user.id, expected: user.ip_address, actual: meta.ip,
-      });
+  const session = await authRepo.findSessionByRefreshToken(hashed);
+  if (session) {
+    // Check session expiry
+    if (new Date() > new Date(session.expires_at)) {
+      await authRepo.deleteSession(session.id);
+      throw new UnauthorizedError("Session expired");
     }
-    if (meta?.userAgent && user.user_agent && meta.userAgent !== user.user_agent) {
-      logger.warn("Refresh token used from different device", {
-        userId: user.id, expected: user.user_agent, actual: meta.userAgent,
+
+    const userId = session.platform_user_id;
+    const user = await platformUserRepo.findByIdFull(userId);
+    if (!user) {
+      await authRepo.deleteSession(session.id);
+      throw new UnauthorizedError("User not found");
+    }
+
+    // Warn on IP/device mismatch (defensive, not blocking)
+    if (meta?.ip && session.ip_address && meta.ip !== session.ip_address) {
+      logger.warn("Refresh token used from different IP", {
+        userId, expected: session.ip_address, actual: meta.ip,
       });
     }
 
     // Token valid — rotate
-    const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
+    const adminRecord = await adminRepo.findAdminByPlatformUserId(userId);
 
     const accessToken = signAccessToken({
-      id: user.id,
+      id: userId,
       email: user.email,
       adminRole: adminRecord?.role,
     });
 
-    const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(user.id);
-    await platformUserRepo.updateRefreshToken(user.id, newHashed, user.refresh_token_family);
+    const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(userId);
+    await authRepo.rotateRefreshToken(session.id, newHashed);
 
     // Update IP/device on successful refresh
-    await platformUserRepo.updateLoginMeta(user.id, {
-      ip_address: meta?.ip ?? user.ip_address,
-      user_agent: meta?.userAgent ?? user.user_agent,
-      last_login_at: new Date(),
+    await authRepo.updateSessionMeta(session.id, {
+      ip_address: meta?.ip ?? session.ip_address,
+      user_agent: meta?.userAgent ?? session.user_agent,
     });
 
     return {
@@ -274,13 +309,12 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
   // Token not found — check for reuse (stolen token replayed after rotation)
   const userId = decodeRefreshUserId(refreshToken);
   if (userId) {
-    const suspect = await platformUserRepo.findByIdFull(userId);
-    if (suspect?.refresh_token_family) {
-      // Family exists but token doesn't match — reuse detected.
-      // Nuke all tokens for this user, force re-authentication.
-      logger.warn("Refresh token reuse detected — invalidating session", { userId });
-      await platformUserRepo.updateRefreshToken(userId, null, null);
-      await platformUserRepo.updateLoginMeta(userId, { ip_address: null, user_agent: null });
+    // Find any session for this user to check if family exists
+    const sessions = await authRepo.findSessionsByUserId(userId);
+    if (sessions.length > 0) {
+      // Reuse detected — nuke ALL sessions for safety
+      logger.warn("Refresh token reuse detected — invalidating all sessions", { userId });
+      await authRepo.deleteAllSessions(userId);
     }
   }
 
@@ -315,9 +349,18 @@ export async function switchAccount(userId: number, orgId: string) {
   return { access_token: accessToken };
 }
 
-export async function logout(userId: number) {
-  await platformUserRepo.updateRefreshToken(userId, null, null);
-  await platformUserRepo.updateLoginMeta(userId, { ip_address: null, user_agent: null });
+export async function logout(userId: number, refreshToken?: string) {
+  if (refreshToken) {
+    // Logout single device — delete only this session
+    const hashed = hashToken(refreshToken);
+    const session = await authRepo.findSessionByRefreshToken(hashed);
+    if (session) {
+      await authRepo.deleteSession(session.id);
+    }
+  } else {
+    // Logout all devices
+    await authRepo.deleteAllSessions(userId);
+  }
   logger.info("User logged out", { userId });
 }
 

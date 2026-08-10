@@ -27,32 +27,13 @@ export async function getProfile(userId: number) {
   return { ...user, profile: profile ?? null, qualifications, language_tests, work_experiences };
 }
 
-export async function updateCategory(userId: number, category: string) {
-  const user = await repo.findById(userId);
-  if (!user) throw new NotFoundError("User not found");
-  await repo.updateUser(userId, { user_category: category });
-  return { user_category: category };
-}
-
-export async function updateSubCategory(userId: number, subCategory: string) {
-  const user = await repo.findById(userId);
-  if (!user) throw new NotFoundError("User not found");
-  await repo.updateUser(userId, { user_sub_category: subCategory });
-  return { user_sub_category: subCategory };
-}
-
-/** Fetch user with category check — shared by onboarding route. */
-export async function getUserForOnboarding(userId: number) {
-  const user = await repo.findById(userId);
-  if (!user) throw new NotFoundError("User not found");
-  if (!user.user_category) throw new BadRequestError("Set user_category first");
-  if (!user.user_sub_category) throw new BadRequestError("Set user_sub_category first");
-  return user;
-}
-
-/** Personal onboarding — upsert platform_user_profiles. */
+/** Personal onboarding — sets individual_category on profile + flips is_personal_account flag. */
 export async function onboardPersonal(userId: number, data: OnboardingPersonalInput) {
+  const user = await repo.findById(userId);
+  if (!user) throw new NotFoundError("User not found");
+
   const profileData: Record<string, unknown> = {
+    individual_category: data.individual_category,
     nationality_id: data.nationality_id,
     country_of_residence_id: data.country_of_residence_id,
     city_of_residence: data.city_of_residence,
@@ -69,6 +50,9 @@ export async function onboardPersonal(userId: number, data: OnboardingPersonalIn
   } else {
     await repo.insertProfile(userId, profileData);
   }
+
+  await repo.updateUser(userId, { is_personal_account: true });
+  await repo.addAccountCategory(userId, { type: "personal", role: data.individual_category });
 
   return getProfile(userId);
 }
@@ -122,36 +106,25 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   };
 }
 
-// ponytail: user_category/user_sub_category go to platform_users; rest to platform_user_profiles
 export async function updateProfile(userId: number, data: ProfilePatchInput) {
-  const { user_category, user_sub_category, ...profileData } = data;
+  // Update or auto-create profile
+  const hasProfileData = Object.keys(data).length > 0;
+  if (!hasProfileData) return getProfile(userId);
 
-  // Update user-level fields on platform_users
-  if (user_category !== undefined || user_sub_category !== undefined) {
-    const userUpdate: Record<string, unknown> = {};
-    if (user_category !== undefined) userUpdate.user_category = user_category;
-    if (user_sub_category !== undefined) userUpdate.user_sub_category = user_sub_category;
-    await repo.updateUser(userId, userUpdate);
+  // Serialize jsonb fields
+  const serialized: Record<string, unknown> = { ...data };
+  if (data.preferred_destinations !== undefined) {
+    serialized.preferred_destinations = JSON.stringify(data.preferred_destinations);
+  }
+  if (data.fields_of_study !== undefined) {
+    serialized.fields_of_study = JSON.stringify(data.fields_of_study);
   }
 
-  // Update or auto-create profile if there are profile-level fields
-  const hasProfileData = Object.keys(profileData).length > 0;
-  if (hasProfileData) {
-    // Serialize jsonb fields
-    const serialized: Record<string, unknown> = { ...profileData };
-    if (profileData.preferred_destinations !== undefined) {
-      serialized.preferred_destinations = JSON.stringify(profileData.preferred_destinations);
-    }
-    if (profileData.fields_of_study !== undefined) {
-      serialized.fields_of_study = JSON.stringify(profileData.fields_of_study);
-    }
-
-    const existing = await repo.findProfileByUserId(userId);
-    if (existing) {
-      await repo.updateProfile(userId, serialized);
-    } else {
-      await repo.insertProfile(userId, serialized);
-    }
+  const existing = await repo.findProfileByUserId(userId);
+  if (existing) {
+    await repo.updateProfile(userId, serialized);
+  } else {
+    await repo.insertProfile(userId, serialized);
   }
 
   return getProfile(userId);
@@ -166,7 +139,6 @@ export async function listCountries() {
 export async function getCitiesByCountry(countryId: number) {
   const country = await repo.findCountryById(countryId);
   if (!country) throw new NotFoundError("Country not found");
-  // Fetch cities from the cities table (seeded or from external API)
   const cities = await repo.listCitiesByCountry(countryId);
   return { country_id: countryId, country_name: country.name, cities };
 }

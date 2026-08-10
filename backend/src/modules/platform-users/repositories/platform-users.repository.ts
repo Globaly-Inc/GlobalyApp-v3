@@ -1,6 +1,12 @@
-// Platform user repository — all queries against globalyapp platform_users / platform_user_profiles / sub-resource tables.
+// Platform user repository — queries against globalyapp platform_users / platform_user_profiles / sub-resource tables.
+// Auth state (OTP, sessions) is in auth.repository.ts — NOT here.
 
 import { masterKnex } from "../../../core/db/master-pool.js";
+
+export interface AccountCategory {
+  type: "personal" | "business";
+  role: string;
+}
 
 export interface PlatformUserRow {
   id: number;
@@ -9,34 +15,25 @@ export interface PlatformUserRow {
   last_name: string;
   email: string;
   phone: string | null;
-  username: string;
-  otp: string | null;
-  otp_expires_at: Date | null;
-  otp_attempts: number;
-  otp_locked_until: Date | null;
-  refresh_token: string | null;
-  refresh_token_family: string | null;
   account_status: number;
   photo_url: string | null;
   is_email_verified: boolean;
-  user_category: string | null;
-  user_sub_category: string | null;
-  ip_address: string | null;
-  user_agent: string | null;
-  last_login_at: Date | null;
+  is_personal_account: boolean;
+  is_business_account: boolean;
+  account_categories: AccountCategory[];
   meta: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
 }
 
 const SAFE_COLUMNS = [
-  "id", "uuid", "first_name", "last_name", "email", "phone", "username",
+  "id", "uuid", "first_name", "last_name", "email", "phone",
   "account_status", "photo_url", "is_email_verified",
-  "user_category", "user_sub_category",
+  "is_personal_account", "is_business_account", "account_categories",
   "meta", "created_at", "updated_at",
 ] as const;
 
-// ── User auth ──
+// ── User lookups ──
 
 export async function findByEmail(email: string) {
   return masterKnex<PlatformUserRow>("platform_users").where({ email }).whereNull("deleted_at").first() as Promise<PlatformUserRow | undefined>;
@@ -58,11 +55,8 @@ export async function insert(data: {
   first_name: string;
   last_name: string;
   email: string;
-  username: string;
   account_status: number;
   phone?: string;
-  user_category?: string;
-  user_sub_category?: string;
 }) {
   const [row] = await masterKnex<PlatformUserRow>("platform_users")
     .insert({ ...data, created_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() })
@@ -78,53 +72,17 @@ export async function updateUser(userId: number, data: Record<string, unknown>) 
   return row;
 }
 
-export async function updateOtp(userId: number, otp: string, expiresAt: Date) {
+/** Append a category entry to account_categories if it doesn't already exist. */
+export async function addAccountCategory(userId: number, category: AccountCategory) {
+  const user = await findByIdFull(userId);
+  if (!user) return;
+  const existing: AccountCategory[] = Array.isArray(user.account_categories) ? user.account_categories : [];
+  const alreadyExists = existing.some((c) => c.type === category.type && c.role === category.role);
+  if (alreadyExists) return;
+  const updated = [...existing, category];
   await masterKnex("platform_users")
     .where({ id: userId })
-    .update({ otp, otp_expires_at: expiresAt, otp_attempts: 0, otp_locked_until: null, updated_at: masterKnex.fn.now() });
-}
-
-export async function clearOtp(userId: number) {
-  await masterKnex("platform_users")
-    .where({ id: userId })
-    .update({ otp: null, otp_expires_at: null, otp_attempts: 0, otp_locked_until: null, updated_at: masterKnex.fn.now() });
-}
-
-export async function incrementOtpAttempts(userId: number, attempts: number) {
-  await masterKnex("platform_users")
-    .where({ id: userId })
-    .update({ otp_attempts: attempts, updated_at: masterKnex.fn.now() });
-}
-
-export async function lockOtp(userId: number, attempts: number, lockedUntil: Date) {
-  await masterKnex("platform_users")
-    .where({ id: userId })
-    .update({ otp_attempts: attempts, otp_locked_until: lockedUntil, updated_at: masterKnex.fn.now() });
-}
-
-export async function updateRefreshToken(userId: number, token: string | null, family?: string | null) {
-  const update: Record<string, unknown> = { refresh_token: token, updated_at: masterKnex.fn.now() };
-  if (family !== undefined) update.refresh_token_family = family;
-  await masterKnex("platform_users")
-    .where({ id: userId })
-    .update(update);
-}
-
-export async function findByRefreshToken(token: string) {
-  return masterKnex<PlatformUserRow>("platform_users")
-    .where({ refresh_token: token })
-    .whereNull("deleted_at")
-    .first<PlatformUserRow>();
-}
-
-export async function updateLoginMeta(userId: number, data: {
-  ip_address?: string | null;
-  user_agent?: string | null;
-  last_login_at?: Date | null;
-}) {
-  await masterKnex("platform_users")
-    .where({ id: userId })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ account_categories: JSON.stringify(updated), updated_at: masterKnex.fn.now() });
 }
 
 // ── Business Index (master DB) ──

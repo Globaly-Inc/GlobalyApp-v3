@@ -44,7 +44,8 @@ export async function deleteBusiness(id: string) {
 export async function listUsers(limit: number, offset: number, search?: string) {
   const q = masterKnex("platform_users")
     .select("id", "uuid", "first_name", "last_name", "email", "phone",
-      "account_status", "photo_url", "user_category", "user_sub_category", "is_email_verified", "created_at")
+      "account_status", "photo_url", "is_email_verified",
+      "is_personal_account", "is_business_account", "account_categories", "created_at")
     .whereNull("deleted_at")
     .orderBy("created_at", "desc")
     .limit(limit).offset(offset);

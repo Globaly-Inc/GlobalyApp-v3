@@ -9,21 +9,13 @@ export async function up(knex: Knex): Promise<void> {
     t.text("display_name").nullable();
     t.text("email").unique().notNullable();
     t.text("phone").nullable();
-    t.text("username").unique().notNullable();
-    t.text("refresh_token").nullable();
-    t.uuid("refresh_token_family").nullable();
-    t.text("otp").nullable(); 
-    t.timestamp("otp_expires_at").nullable();
-    t.integer("otp_attempts").notNullable().defaultTo(0);
-    t.timestamp("otp_locked_until").nullable();
     t.integer("account_status").notNullable().defaultTo(0); // 0=inactive until OTP verified, 1=active
     t.text("photo_url").nullable();
     t.boolean("is_email_verified").notNullable().defaultTo(false);
-    t.text("user_category").nullable();     // 'personal' | 'business'
-    t.text("user_sub_category").nullable(); // personal: 'student'|'education_provider'|'parents'|'explorer' — business: 'education_agent'|'institution'|'service_provider'|'immigration_department'
-    t.text("ip_address").nullable();        // last login IP — bound to refresh token
-    t.text("user_agent").nullable();        // last login user-agent — bound to refresh token
-    t.timestamp("last_login_at").nullable();
+    t.boolean("is_personal_account").notNullable().defaultTo(false);
+    t.boolean("is_business_account").notNullable().defaultTo(false);
+    t.jsonb("account_categories").notNullable().defaultTo("[]"); // [{type:"personal",role:"student"}, {type:"business",role:"education_agent"}]
+    // OTP, refresh tokens, sessions moved to auth_otp_challenges + auth_sessions tables
     t.jsonb("meta").defaultTo("{}");
     t.timestamps(true, true);
     t.timestamp("deleted_at").nullable();
