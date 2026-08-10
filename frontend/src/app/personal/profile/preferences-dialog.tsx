@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DEGREE_LEVELS, FIELDS_OF_STUDY } from "../static/onboarding-content";
 import type { Country } from "../../geo/apis";
 import type { StudentProfile, StudentProfilePatch } from "../apis/types";
+import { useValidatedForm, toMonthInput, fromMonthInput } from "./validation";
+import { FieldError } from "./field-error";
 
 type FormState = {
   destinations: string[];
@@ -23,6 +24,24 @@ type FormState = {
   budgetMax: string;
   includeLiving: boolean;
 };
+
+const nonNegative = z.string().refine((v) => v === "" || Number(v) >= 0, "Must be 0 or more");
+
+const schema: z.ZodType<FormState> = z
+  .object({
+    destinations: z.array(z.string()),
+    fields: z.array(z.string()),
+    degreeLevel: z.string(),
+    expectedStartDate: z.string(),
+    budgetCurrency: z.string(),
+    budgetMin: nonNegative,
+    budgetMax: nonNegative,
+    includeLiving: z.boolean(),
+  })
+  .refine((v) => v.budgetMin === "" || v.budgetMax === "" || Number(v.budgetMin) <= Number(v.budgetMax), {
+    message: "Max must be ≥ min",
+    path: ["budgetMax"],
+  });
 
 function toForm(profile: StudentProfile): FormState {
   return {
@@ -52,14 +71,14 @@ export function PreferencesDialog({
   onSave: (patch: StudentProfilePatch) => Promise<boolean>;
   saving: boolean;
 }>) {
-  const [form, setForm] = useState<FormState>(() => toForm(profile));
+  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(profile));
   const countryNameById = new Map(countries.map((c) => [String(c.id), c.name]));
   const destinationOptions = countries
     .filter((c) => !form.destinations.includes(String(c.id)))
     .map((c) => ({ value: String(c.id), label: c.name }));
 
   const handleOpenChange = (next: boolean) => {
-    if (next) setForm(toForm(profile));
+    if (next) reset(toForm(profile));
     onOpenChange(next);
   };
 
@@ -79,15 +98,17 @@ export function PreferencesDialog({
   };
 
   const handleSubmit = async () => {
+    const data = validate();
+    if (!data) return;
     const ok = await onSave({
-      preferred_destinations: form.destinations.map(Number),
-      preferred_fields: form.fields,
-      preferred_degree_levels: form.degreeLevel ? [form.degreeLevel] : [],
-      expected_start_date: form.expectedStartDate || null,
-      budget_currency: form.budgetCurrency || null,
-      budget_min: form.budgetMin ? Number(form.budgetMin) : null,
-      budget_max: form.budgetMax ? Number(form.budgetMax) : null,
-      include_living_expenses: form.includeLiving,
+      preferred_destinations: data.destinations.map(Number),
+      preferred_fields: data.fields,
+      preferred_degree_levels: data.degreeLevel ? [data.degreeLevel] : [],
+      expected_start_date: data.expectedStartDate || null,
+      budget_currency: data.budgetCurrency || null,
+      budget_min: data.budgetMin ? Number(data.budgetMin) : null,
+      budget_max: data.budgetMax ? Number(data.budgetMax) : null,
+      include_living_expenses: data.includeLiving,
     });
     if (ok) onOpenChange(false);
   };
@@ -99,7 +120,7 @@ export function PreferencesDialog({
           <DialogTitle>Edit Study Preferences</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Preferred Destinations (max 5)</Label>
             <Combobox
               value=""
@@ -136,19 +157,19 @@ export function PreferencesDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Degree Level</Label>
-              <Select value={form.degreeLevel} onValueChange={(v) => setForm((f) => ({ ...f, degreeLevel: v ?? "" }))}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>
-                  {DEGREE_LEVELS.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Combobox
+                value={form.degreeLevel}
+                onChange={(v) => setForm((f) => ({ ...f, degreeLevel: v }))}
+                placeholder="Select"
+                options={DEGREE_LEVELS}
+              />
             </div>
             <div className="space-y-2">
-              <Label>Expected Start (MM-YYYY)</Label>
+              <Label>Expected Start</Label>
               <Input
-                value={form.expectedStartDate}
-                onChange={(e) => setForm((f) => ({ ...f, expectedStartDate: e.target.value }))}
-                placeholder="09-2026"
+                type="month"
+                value={toMonthInput(form.expectedStartDate, "-")}
+                onChange={(e) => setForm((f) => ({ ...f, expectedStartDate: fromMonthInput(e.target.value, "-") }))}
               />
             </div>
           </div>
@@ -159,11 +180,23 @@ export function PreferencesDialog({
             </div>
             <div className="space-y-2">
               <Label>Budget Min</Label>
-              <Input type="number" value={form.budgetMin} onChange={(e) => setForm((f) => ({ ...f, budgetMin: e.target.value }))} />
+              <Input
+                type="number"
+                value={form.budgetMin}
+                onChange={(e) => setForm((f) => ({ ...f, budgetMin: e.target.value }))}
+                aria-invalid={!!errors.budgetMin}
+              />
+              <FieldError message={errors.budgetMin} />
             </div>
             <div className="space-y-2">
               <Label>Budget Max</Label>
-              <Input type="number" value={form.budgetMax} onChange={(e) => setForm((f) => ({ ...f, budgetMax: e.target.value }))} />
+              <Input
+                type="number"
+                value={form.budgetMax}
+                onChange={(e) => setForm((f) => ({ ...f, budgetMax: e.target.value }))}
+                aria-invalid={!!errors.budgetMax}
+              />
+              <FieldError message={errors.budgetMax} />
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">

@@ -1,4 +1,4 @@
-import { configureStore } from "@reduxjs/toolkit"
+import { combineReducers, configureStore } from "@reduxjs/toolkit"
 import { signupReducer } from "@/app/signup/store/signup-slice"
 import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
@@ -27,37 +27,54 @@ import { trainingReducer } from "@/app/admin/monitoring/training/store/training-
 import { ambassadorProgramsReducer } from "@/app/admin/monitoring/ambassador-programs/store/ambassador-programs-slice"
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
 
+const appReducer = combineReducers({
+    signup: signupReducer,
+    auth: authReducer,
+    profile: profileReducer,
+    businessOnboarding: businessOnboardingReducer,
+    admin: adminReducer,
+    overview: overviewReducer,
+    adminUsers: usersReducer,
+    platformBusinesses: businessesReducer,
+    platformCategories: categoriesReducer,
+    platformCountries: countriesReducer,
+    platformFeatureFlags: featureFlagsReducer,
+    dataAllExtractions: allExtractionsReducer,
+    dataExtractedData: extractedDataReducer,
+    dataAgentcisImport: agentcisImportReducer,
+    dataAiExtraction: aiExtractionReducer,
+    dataAiMemory: aiMemoryReducer,
+    dataAiKnowledge: aiKnowledgeReducer,
+    dataVisas: visasReducer,
+    dataMaraAgents: maraAgentsReducer,
+    monitoringEnquiries: enquiriesReducer,
+    monitoringModeration: moderationReducer,
+    monitoringScholarships: scholarshipsReducer,
+    monitoringJobs: jobsReducer,
+    monitoringEvents: eventsReducer,
+    monitoringTraining: trainingReducer,
+    monitoringAmbassadorPrograms: ambassadorProgramsReducer,
+    monitoringLogs: logsReducer,
+})
+
+// Wipe every slice back to its initial state whenever the signed-in identity
+// changes (sign out, or a fresh OTP verification) — otherwise a previous
+// account's data (profile, admin lists, etc.) lingers in the client-side
+// Redux store and leaks into the newly signed-in user's screens until a full
+// page reload happens to blow the store away.
+const IDENTITY_RESET_ACTIONS = new Set([
+    "auth/logout",
+    "auth/verifySignInOtp/fulfilled",
+    "signup/verifySignUpOtp/fulfilled",
+])
+
+const rootReducer: typeof appReducer = (state, action) => {
+    return appReducer(IDENTITY_RESET_ACTIONS.has(action.type) ? undefined : state, action)
+}
+
 export const makeStore = () => {
     return configureStore({
-        reducer: {
-            signup: signupReducer,
-            auth: authReducer,
-            profile: profileReducer,
-            businessOnboarding: businessOnboardingReducer,
-            admin: adminReducer,
-            overview: overviewReducer,
-            adminUsers: usersReducer,
-            platformBusinesses: businessesReducer,
-            platformCategories: categoriesReducer,
-            platformCountries: countriesReducer,
-            platformFeatureFlags: featureFlagsReducer,
-            dataAllExtractions: allExtractionsReducer,
-            dataExtractedData: extractedDataReducer,
-            dataAgentcisImport: agentcisImportReducer,
-            dataAiExtraction: aiExtractionReducer,
-            dataAiMemory: aiMemoryReducer,
-            dataAiKnowledge: aiKnowledgeReducer,
-            dataVisas: visasReducer,
-            dataMaraAgents: maraAgentsReducer,
-            monitoringEnquiries: enquiriesReducer,
-            monitoringModeration: moderationReducer,
-            monitoringScholarships: scholarshipsReducer,
-            monitoringJobs: jobsReducer,
-            monitoringEvents: eventsReducer,
-            monitoringTraining: trainingReducer,
-            monitoringAmbassadorPrograms: ambassadorProgramsReducer,
-            monitoringLogs: logsReducer,
-        }
+        reducer: rootReducer,
     })
 }
 

@@ -9,6 +9,7 @@ export function computeCompletion(
 ): { percentage: number; items: CompletionItem[] } {
   const items: CompletionItem[] = [
     { label: "Full name", met: !!(profile.first_name && profile.last_name) },
+    { label: "Profile photo", met: !!profile.photo_url },
     { label: "Nationality", met: !!profile.nationality_id },
     { label: "Country of residence", met: !!profile.country_of_residence_id },
     { label: "Education background", met: qualifications.length > 0 },

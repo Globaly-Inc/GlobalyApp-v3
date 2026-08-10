@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Separator } from "@/components/ui/separator";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { fetchMe } from "@/app/auth/store/auth-slice";
 import { registerAndSendOtp, resendOtp, verifySignUpOtp, resetSignupError } from "./store/signup-slice";
 import { otpSchema, zodErrorsToFieldErrors, validateSignUpField, validateOtpField } from "./validation";
 import { formatCooldown, clearFieldErrorIfNowValid, validateSignUpDetails } from "./utils";
@@ -101,7 +102,20 @@ export function SignUpView() {
     const result = await dispatch(verifySignUpOtp({ email, otp: otpCode }));
     if (verifySignUpOtp.fulfilled.match(result)) {
       toast.success("Welcome!", { description: "Your account has been created." });
-      router.push("/auth/role-select");
+
+      const meResult = await dispatch(fetchMe());
+      const me = fetchMe.fulfilled.match(meResult) ? meResult.payload : null;
+      if (!me) {
+        router.push("/");
+        return;
+      }
+      if (me.type === "admin") {
+        router.push("/admin/overview");
+      } else if (me.role === "business") {
+        router.push("/business/profile");
+      } else {
+        router.push("/personal/profile");
+      }
     } else if (verifySignUpOtp.rejected.match(result)) {
       toast.error("Verification failed", { description: result.error.message ?? "Please try again." });
     }

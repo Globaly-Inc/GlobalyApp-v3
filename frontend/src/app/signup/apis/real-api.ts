@@ -20,6 +20,7 @@ export const signupRealApi = {
       user: { id: number; email: string; type: AuthUser["type"]; role: string | null };
     }>("/auth/verify-otp", { email: email.trim().toLowerCase(), otp: otp.trim() });
     saveTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
-    return { email, type: data.user.type, role: data.user.role };
+    // verify-otp doesn't return user_category — the caller dispatches fetchMe() right after to get it.
+    return { email, type: data.user.type, role: data.user.role, user_category: null };
   },
 };

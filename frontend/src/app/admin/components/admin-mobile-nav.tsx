@@ -1,9 +1,5 @@
 "use client";
 
-// Mobile nav — a "Menu" trigger button that opens a left Sheet listing every group as a
-// labeled section. Simpler than V2's collapsible Accordion drawer (no accordion primitive
-// in this app yet); ponytail: revisit if the flat grouped list gets too long to scan.
-
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -11,10 +7,13 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { ADMIN_NAV_GROUPS, isNavPathActive } from "../nav-config";
+import { useAuthState } from "@/app/auth/store/auth-slice";
+import { getVisibleNavGroups, isNavPathActive } from "../nav-config";
 
 export function AdminMobileNav() {
   const pathname = usePathname();
+  const { user } = useAuthState();
+  const groups = getVisibleNavGroups(user?.role);
   const [open, setOpen] = useState(false);
 
   return (
@@ -29,7 +28,7 @@ export function AdminMobileNav() {
             <SheetTitle>Super Admin</SheetTitle>
           </SheetHeader>
           <nav className="flex flex-col gap-4 px-2 pb-4">
-            {ADMIN_NAV_GROUPS.map((group) => (
+            {groups.map((group) => (
               <div key={group.label} className="space-y-1">
                 <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {group.label}

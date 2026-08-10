@@ -93,8 +93,7 @@ export async function inviteAdmin(
     expired_at: expiredAt,
   });
 
-  // Points to frontend confirmation page — the page renders a button that POSTs to the API
-  const acceptUrl = `${config.APP_URL}/invite/admin/accept?token=${token}`;
+  const acceptUrl = `${config.CORS_ORIGINS}/auth/accept-invite?token=${token}`;
   await queueInvitationEmail({
     to: input.email,
     name: input.first_name,

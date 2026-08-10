@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { LanguageTest, LanguageTestInput } from "../apis/types";
+import { useValidatedForm } from "./validation";
+import { FieldError } from "./field-error";
 
 const TEST_TYPES = ["IELTS", "TOEFL", "PTE", "Duolingo", "OET", "SAT", "GMAT", "ACT", "GRE", "LSAT"];
+const TEST_TYPE_OPTIONS = TEST_TYPES.map((t) => ({ value: t, label: t }));
 
 const SUB_SCORE_FIELDS: Record<string, string[]> = {
   IELTS: ["Reading", "Writing", "Listening", "Speaking"],
@@ -22,6 +26,18 @@ const SUB_SCORE_FIELDS: Record<string, string[]> = {
   GRE: ["Verbal", "Quantitative", "Analytical Writing"],
   LSAT: [],
 };
+
+const schema: z.ZodType<LanguageTestInput> = z
+  .object({
+    test_status: z.string(),
+    test_type: z.string().min(1, "Required"),
+    overall_score: z.string(),
+    test_date: z.string(),
+    sub_scores: z.record(z.string(), z.string()),
+    sort_order: z.number(),
+  })
+  .refine((v) => v.test_status !== "completed" || v.overall_score !== "", { message: "Required", path: ["overall_score"] })
+  .refine((v) => v.test_status !== "completed" || v.test_date !== "", { message: "Required", path: ["test_date"] });
 
 function toInput(item: LanguageTest | null): LanguageTestInput {
   return {
@@ -47,16 +63,17 @@ export function TestScoreDialog({
   onSave: (data: LanguageTestInput) => Promise<boolean>;
   saving: boolean;
 }>) {
-  const [form, setForm] = useState<LanguageTestInput>(() => toInput(item));
+  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
 
   const handleOpenChange = (next: boolean) => {
-    if (next) setForm(toInput(item));
+    if (next) reset(toInput(item));
     onOpenChange(next);
   };
 
   const handleSubmit = async () => {
-    if (!form.test_type) return;
-    if (!(await onSave(form))) return;
+    const data = validate();
+    if (!data) return;
+    if (!(await onSave(data))) return;
     onOpenChange(false);
   };
 
@@ -71,13 +88,15 @@ export function TestScoreDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Test Type</Label>
-            <Select value={form.test_type ?? ""} onValueChange={(v) => setForm((f) => ({ ...f, test_type: v, sub_scores: {} }))}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select test" /></SelectTrigger>
-              <SelectContent>
-                {TEST_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Label>Test Type *</Label>
+            <Combobox
+              value={form.test_type ?? ""}
+              onChange={(v) => setForm((f) => ({ ...f, test_type: v, sub_scores: {} }))}
+              placeholder="Select test"
+              options={TEST_TYPE_OPTIONS}
+              aria-invalid={!!errors.test_type}
+            />
+            <FieldError message={errors.test_type} />
           </div>
           <div className="flex gap-2">
             <Button
@@ -101,19 +120,25 @@ export function TestScoreDialog({
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Overall Score</Label>
+                  <Label>Overall Score *</Label>
                   <Input
                     value={form.overall_score ?? ""}
                     onChange={(e) => setForm((f) => ({ ...f, overall_score: e.target.value }))}
+                    aria-invalid={!!errors.overall_score}
                   />
+                  <FieldError message={errors.overall_score} />
                 </div>
-                <div className="space-y-2">
-                  <Label>Test Date</Label>
-                  <Input
-                    type="date"
+                <div className="flex flex-col gap-2">
+                  <Label>Test Date *</Label>
+                  <DatePicker
                     value={form.test_date ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, test_date: e.target.value }))}
+                    onChange={(v) => setForm((f) => ({ ...f, test_date: v }))}
+                    placeholder="Select test date"
+                    toYear={new Date().getFullYear()}
+                    disabled={(date) => date > new Date()}
+                    aria-invalid={!!errors.test_date}
                   />
+                  <FieldError message={errors.test_date} />
                 </div>
               </div>
               {subFields.length > 0 && (

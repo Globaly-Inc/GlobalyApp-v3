@@ -7,11 +7,13 @@ import { Badge } from "@/components/ui/badge";
 export function SectionCard({
   icon: Icon,
   title,
+  badge,
   onEdit,
   children,
 }: Readonly<{
   icon: ComponentType<{ className?: string }>;
   title: string;
+  badge?: React.ReactNode;
   onEdit?: () => void;
   children: React.ReactNode;
 }>) {
@@ -21,6 +23,7 @@ export function SectionCard({
         <CardTitle className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
           {title}
+          {badge}
         </CardTitle>
         {onEdit && (
           <CardAction>

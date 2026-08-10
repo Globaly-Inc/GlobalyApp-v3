@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Check, ChevronsUpDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ export function Combobox({
   loading = false,
   loadingText = "Loading...",
   disabled = false,
+  creatable = false,
   id,
   className,
   "aria-invalid": ariaInvalid,
@@ -36,6 +37,8 @@ export function Combobox({
   loading?: boolean;
   loadingText?: string;
   disabled?: boolean;
+  /** Allow committing the typed search text when it doesn't match any option. */
+  creatable?: boolean;
   id?: string;
   className?: string;
   "aria-invalid"?: boolean;
@@ -43,6 +46,7 @@ export function Combobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const selected = options.find((o) => o.value === value);
 
   const filtered = useMemo(
@@ -50,8 +54,18 @@ export function Combobox({
     [options, query]
   );
 
+  const trimmedQuery = query.trim();
+  const showCreateOption =
+    creatable && trimmedQuery.length > 0 && !options.some((o) => o.label.toLowerCase() === trimmedQuery.toLowerCase());
+
   function select(option: ComboboxOption) {
     onChange(option.value);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function createFromQuery() {
+    onChange(trimmedQuery);
     setOpen(false);
     setQuery("");
   }
@@ -59,7 +73,7 @@ export function Combobox({
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
+      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1 + (showCreateOption ? 1 : 0)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, 0));
@@ -67,6 +81,7 @@ export function Combobox({
       e.preventDefault();
       const option = filtered[activeIndex];
       if (option) select(option);
+      else if (showCreateOption && activeIndex === filtered.length) createFromQuery();
     }
   }
 
@@ -84,6 +99,7 @@ export function Combobox({
       <PopoverTrigger
         render={
           <Button
+            ref={triggerRef}
             id={id}
             type="button"
             variant="outline"
@@ -98,6 +114,8 @@ export function Combobox({
                 {selected.icon}
                 <span className="truncate">{selected.label}</span>
               </span>
+            ) : creatable && value ? (
+              <span className="truncate">{value}</span>
             ) : (
               <span className="text-muted-foreground">{loading ? loadingText : placeholder}</span>
             )}
@@ -105,44 +123,62 @@ export function Combobox({
           </Button>
         }
       />
-      <PopoverContent className="w-(--anchor-width) p-0" align="start">
-        <div className="relative border-b p-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
-          <Input
-            autoFocus
-            placeholder={searchPlaceholder}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActiveIndex(0);
-            }}
-            onKeyDown={onKeyDown}
-            className="h-8 border-none pl-8 shadow-none focus-visible:ring-0"
-          />
-        </div>
-        <div className="max-h-[250px] overflow-y-auto p-1">
-          {filtered.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
-          ) : (
-            filtered.map((option, index) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => select(option)}
-                onMouseEnter={() => setActiveIndex(index)}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden",
-                  index === activeIndex && "bg-muted text-foreground"
+      {open && (
+        <PopoverContent anchor={triggerRef} className="w-(--anchor-width) p-0" align="start">
+          <div className="relative border-b p-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
+            <Input
+              autoFocus
+              placeholder={searchPlaceholder}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActiveIndex(0);
+              }}
+              onKeyDown={onKeyDown}
+              className="h-8 border-none pl-8 shadow-none focus-visible:ring-0"
+            />
+          </div>
+          <div className="max-h-[250px] overflow-y-auto p-1">
+            {filtered.length === 0 && !showCreateOption ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
+            ) : (
+              <>
+                {filtered.map((option, index) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => select(option)}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    className={cn(
+                      "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden",
+                      index === activeIndex && "bg-muted text-foreground"
+                    )}
+                  >
+                    <Check className={cn("h-4 w-4 shrink-0", value === option.value ? "opacity-100" : "opacity-0")} />
+                    {option.icon}
+                    <span className="truncate">{option.label}</span>
+                  </button>
+                ))}
+                {showCreateOption && (
+                  <button
+                    type="button"
+                    onClick={createFromQuery}
+                    onMouseEnter={() => setActiveIndex(filtered.length)}
+                    className={cn(
+                      "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden",
+                      activeIndex === filtered.length && "bg-muted text-foreground"
+                    )}
+                  >
+                    <Check className="h-4 w-4 shrink-0 opacity-0" />
+                    <span className="truncate">Use &quot;{trimmedQuery}&quot;</span>
+                  </button>
                 )}
-              >
-                <Check className={cn("h-4 w-4 shrink-0", value === option.value ? "opacity-100" : "opacity-0")} />
-                {option.icon}
-                <span className="truncate">{option.label}</span>
-              </button>
-            ))
-          )}
-        </div>
-      </PopoverContent>
+              </>
+            )}
+          </div>
+        </PopoverContent>
+      )}
     </Popover>
   );
 }

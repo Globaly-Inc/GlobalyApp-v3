@@ -44,7 +44,7 @@ export function UnifiedSearchBar() {
             type="button"
             onClick={() => setActiveSlug(cat.slug)}
             className={cn(
-              "flex-shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors duration-200",
+              "flex-shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors duration-200 cursor-pointer",
               activeSlug === cat.slug
                 ? "bg-white text-primary border-white"
                 : "bg-transparent text-white border-white/40 hover:border-white/70",
@@ -64,7 +64,7 @@ export function UnifiedSearchBar() {
             aria-pressed={mode === "ai"}
             title="Ask AI"
             className={cn(
-              "flex items-center px-3 h-8 rounded-full text-xs font-semibold transition-colors duration-200",
+              "flex items-center px-3 h-8 rounded-full text-xs font-semibold transition-colors duration-200 cursor-pointer",
               mode === "ai" ? "bg-primary text-primary-foreground" : "text-slate-600 hover:text-slate-900",
             )}
           >
@@ -76,7 +76,7 @@ export function UnifiedSearchBar() {
             aria-pressed={mode === "search"}
             title="Search"
             className={cn(
-              "flex items-center px-3 h-8 rounded-full text-xs font-semibold transition-colors duration-200",
+              "flex items-center px-3 h-8 rounded-full text-xs font-semibold transition-colors duration-200 cursor-pointer",
               mode === "search" ? "bg-primary text-primary-foreground" : "text-slate-600 hover:text-slate-900",
             )}
           >
@@ -96,7 +96,7 @@ export function UnifiedSearchBar() {
         <button
           type="button"
           onClick={submit}
-          className="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center gap-1.5 flex-shrink-0 transition-colors duration-200 hover:bg-primary/90"
+          className="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center gap-1.5 flex-shrink-0 transition-colors duration-200 hover:bg-primary/90 cursor-pointer"
         >
           {mode === "ai" ? "Ask AI" : "Search"}
           <ArrowRight className="h-3.5 w-3.5" />
@@ -111,7 +111,7 @@ export function UnifiedSearchBar() {
               type="button"
               onClick={() => setQuery(prompt)}
               className={cn(
-                "group text-left rounded-lg px-4 py-3 bg-white border border-white hover:border-white/70 transition-colors duration-200",
+                "group text-left rounded-lg px-4 py-3 bg-white border border-white hover:border-white/70 transition-colors duration-200 cursor-pointer",
                 idx >= 2 && "hidden md:block",
               )}
             >

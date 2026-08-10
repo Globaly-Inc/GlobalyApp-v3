@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { GENDER_OPTIONS } from "../static/onboarding-content";
 import type { Country } from "../../geo/apis";
 import type { StudentProfile, StudentProfilePatch } from "../apis/types";
+import { useValidatedForm } from "./validation";
+import { FieldError } from "./field-error";
 
 type FormState = {
   nationalityId: string;
@@ -19,6 +20,14 @@ type FormState = {
   dateOfBirth: string;
   gender: string;
 };
+
+const schema: z.ZodType<FormState> = z.object({
+  nationalityId: z.string().min(1, "Required"),
+  countryOfResidenceId: z.string().min(1, "Required"),
+  cityOfResidence: z.string(),
+  dateOfBirth: z.string().min(1, "Required"),
+  gender: z.string().min(1, "Required"),
+});
 
 function toForm(profile: StudentProfile): FormState {
   return {
@@ -45,21 +54,23 @@ export function PersonalDetailsDialog({
   onSave: (patch: StudentProfilePatch) => Promise<boolean>;
   saving: boolean;
 }>) {
-  const [form, setForm] = useState<FormState>(() => toForm(profile));
+  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(profile));
   const countryOptions = countries.map((c) => ({ value: String(c.id), label: c.name }));
 
   const handleOpenChange = (next: boolean) => {
-    if (next) setForm(toForm(profile));
+    if (next) reset(toForm(profile));
     onOpenChange(next);
   };
 
   const handleSubmit = async () => {
+    const data = validate();
+    if (!data) return;
     const ok = await onSave({
-      nationality_id: form.nationalityId ? Number(form.nationalityId) : null,
-      country_of_residence_id: form.countryOfResidenceId ? Number(form.countryOfResidenceId) : null,
-      city_of_residence: form.cityOfResidence || null,
-      date_of_birth: form.dateOfBirth || null,
-      gender: form.gender || null,
+      nationality_id: data.nationalityId ? Number(data.nationalityId) : null,
+      country_of_residence_id: data.countryOfResidenceId ? Number(data.countryOfResidenceId) : null,
+      city_of_residence: data.cityOfResidence || null,
+      date_of_birth: data.dateOfBirth || null,
+      gender: data.gender || null,
     });
     if (ok) onOpenChange(false);
   };
@@ -71,48 +82,56 @@ export function PersonalDetailsDialog({
           <DialogTitle>Edit Personal Details</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Nationality</Label>
+          <div className="flex flex-col gap-2">
+            <Label>Nationality *</Label>
             <Combobox
               value={form.nationalityId}
               onChange={(v) => setForm((f) => ({ ...f, nationalityId: v }))}
               placeholder="Select nationality"
               searchPlaceholder="Search countries..."
               options={countryOptions}
+              aria-invalid={!!errors.nationalityId}
             />
+            <FieldError message={errors.nationalityId} />
           </div>
-          <div className="space-y-2">
-            <Label>Country of Residence</Label>
+          <div className="flex flex-col gap-2">
+            <Label>Country of Residence *</Label>
             <Combobox
               value={form.countryOfResidenceId}
               onChange={(v) => setForm((f) => ({ ...f, countryOfResidenceId: v }))}
               placeholder="Select country"
               searchPlaceholder="Search countries..."
               options={countryOptions}
+              aria-invalid={!!errors.countryOfResidenceId}
             />
+            <FieldError message={errors.countryOfResidenceId} />
           </div>
           <div className="space-y-2">
             <Label>City of Residence</Label>
             <Input value={form.cityOfResidence} onChange={(e) => setForm((f) => ({ ...f, cityOfResidence: e.target.value }))} />
           </div>
-          <div className="space-y-2">
-            <Label>Date of Birth</Label>
+          <div className="flex flex-col gap-2">
+            <Label>Date of Birth *</Label>
             <DatePicker
               value={form.dateOfBirth}
               onChange={(v) => setForm((f) => ({ ...f, dateOfBirth: v }))}
               placeholder="Select date of birth"
               toYear={new Date().getFullYear()}
               disabled={(date) => date > new Date()}
+              aria-invalid={!!errors.dateOfBirth}
             />
+            <FieldError message={errors.dateOfBirth} />
           </div>
           <div className="space-y-2">
-            <Label>Gender</Label>
-            <Select value={form.gender} onValueChange={(v) => setForm((f) => ({ ...f, gender: v ?? "" }))}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select gender" /></SelectTrigger>
-              <SelectContent>
-                {GENDER_OPTIONS.map((g) => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Label>Gender *</Label>
+            <Combobox
+              value={form.gender}
+              onChange={(v) => setForm((f) => ({ ...f, gender: v }))}
+              placeholder="Select gender"
+              options={GENDER_OPTIONS}
+              aria-invalid={!!errors.gender}
+            />
+            <FieldError message={errors.gender} />
           </div>
         </div>
         <DialogFooter>

@@ -106,7 +106,7 @@ function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }:
               disabled={isDisabled}
               onClick={() => onSelect(date)}
               className={cn(
-                "h-8 w-8 rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30",
+                "h-8 w-8 cursor-pointer rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30",
                 isSelected && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
               )}
             >

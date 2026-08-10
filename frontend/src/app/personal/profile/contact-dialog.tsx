@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,8 @@ import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Country } from "../../geo/apis";
 import type { StudentProfile, StudentProfilePatch } from "../apis/types";
+import { useValidatedForm } from "./validation";
+import { FieldError } from "./field-error";
 
 type FormState = {
   countryId: string;
@@ -18,6 +20,18 @@ type FormState = {
   linkedinUrl: string;
   websiteUrl: string;
 };
+
+const urlField = z.string().refine((v) => v === "" || /^https?:\/\/\S+\.\S+/.test(v), "Enter a valid URL");
+
+const schema: z.ZodType<FormState> = z.object({
+  countryId: z.string().min(1, "Required"),
+  state: z.string(),
+  city: z.string(),
+  street: z.string(),
+  postcode: z.string(),
+  linkedinUrl: urlField,
+  websiteUrl: urlField,
+});
 
 function toForm(profile: StudentProfile): FormState {
   return {
@@ -46,23 +60,25 @@ export function ContactDialog({
   onSave: (patch: StudentProfilePatch) => Promise<boolean>;
   saving: boolean;
 }>) {
-  const [form, setForm] = useState<FormState>(() => toForm(profile));
+  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(profile));
   const countryOptions = countries.map((c) => ({ value: String(c.id), label: c.name }));
 
   const handleOpenChange = (next: boolean) => {
-    if (next) setForm(toForm(profile));
+    if (next) reset(toForm(profile));
     onOpenChange(next);
   };
 
   const handleSubmit = async () => {
+    const data = validate();
+    if (!data) return;
     const ok = await onSave({
-      personal_address_country_id: form.countryId ? Number(form.countryId) : null,
-      personal_address_state: form.state || null,
-      personal_address_city: form.city || null,
-      personal_address_street: form.street || null,
-      personal_address_postcode: form.postcode || null,
-      linkedin_url: form.linkedinUrl || null,
-      website_url: form.websiteUrl || null,
+      personal_address_country_id: data.countryId ? Number(data.countryId) : null,
+      personal_address_state: data.state || null,
+      personal_address_city: data.city || null,
+      personal_address_street: data.street || null,
+      personal_address_postcode: data.postcode || null,
+      linkedin_url: data.linkedinUrl || null,
+      website_url: data.websiteUrl || null,
     });
     if (ok) onOpenChange(false);
   };
@@ -74,15 +90,17 @@ export function ContactDialog({
           <DialogTitle>Edit Contact Details</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Country</Label>
+          <div className="flex flex-col gap-2">
+            <Label>Country *</Label>
             <Combobox
               value={form.countryId}
               onChange={(v) => setForm((f) => ({ ...f, countryId: v }))}
               placeholder="Select country"
               searchPlaceholder="Search countries..."
               options={countryOptions}
+              aria-invalid={!!errors.countryId}
             />
+            <FieldError message={errors.countryId} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
@@ -108,7 +126,9 @@ export function ContactDialog({
               value={form.linkedinUrl}
               onChange={(e) => setForm((f) => ({ ...f, linkedinUrl: e.target.value }))}
               placeholder="https://linkedin.com/in/..."
+              aria-invalid={!!errors.linkedinUrl}
             />
+            <FieldError message={errors.linkedinUrl} />
           </div>
           <div className="space-y-2">
             <Label>Website URL</Label>
@@ -116,7 +136,9 @@ export function ContactDialog({
               value={form.websiteUrl}
               onChange={(e) => setForm((f) => ({ ...f, websiteUrl: e.target.value }))}
               placeholder="https://..."
+              aria-invalid={!!errors.websiteUrl}
             />
+            <FieldError message={errors.websiteUrl} />
           </div>
         </div>
         <DialogFooter>

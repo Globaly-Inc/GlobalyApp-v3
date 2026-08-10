@@ -21,4 +21,11 @@ export const adminMockApi = {
     await delay(300);
     return mockMe;
   },
+
+  updateMe: async (id: number, patch: Partial<Pick<AdminUser, "name">>): Promise<AdminUser> => {
+    console.log("[mock] PATCH /admin/users/" + id, patch);
+    await delay(300);
+    Object.assign(mockMe, patch);
+    return mockMe;
+  },
 };
