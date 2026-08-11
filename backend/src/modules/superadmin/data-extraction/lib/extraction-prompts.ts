@@ -51,7 +51,7 @@ Extract this JSON structure:
 export function urlDiscoveryPrompt(links: string[], patterns: string[]) {
   return `From these URLs found on an educational institution website, identify which ones are likely course detail or listing pages.
 
-Known course URL patterns for this site: ${patterns.join(", ") || "none identified yet"}
+Known course URL patterns for this site: ${patterns?.join(", ") || "none identified yet"}
 
 URLs found (${links.length}):
 ${links.slice(0, 500).join("\n")}
@@ -75,11 +75,20 @@ export const COURSE_EXTRACTION_SYSTEM = `You are a data extraction specialist. E
 Always respond in valid JSON. Extract everything you can find — fees, intakes, campuses, entry requirements.
 If a field is not found on the page, use null. Never invent data.`;
 
-export function courseExtractionPrompt(url: string, pageText: string, guidanceNotes?: string | null) {
+export function courseExtractionPrompt(
+  url: string, pageText: string,
+  guidanceNotes?: string | null,
+  siteHints?: { fee_structure?: unknown; extraction_hints?: string[] } | null,
+) {
+  const hints: string[] = [];
+  if (guidanceNotes) hints.push(`Admin guidance: ${guidanceNotes}`);
+  if (siteHints?.extraction_hints?.length) hints.push(`Site hints: ${siteHints.extraction_hints.join("; ")}`);
+  if (siteHints?.fee_structure) hints.push(`Fee info: ${JSON.stringify(siteHints.fee_structure)}`);
+
   return `Extract all courses/programs from this educational institution page.
 
 URL: ${url}
-${guidanceNotes ? `\nAdmin guidance: ${guidanceNotes}` : ""}
+${hints.length ? "\n" + hints.join("\n") : ""}
 
 Page content:
 ${pageText}
@@ -168,28 +177,32 @@ Rules:
 - If the page is a single course detail page, return exactly 1 course
 - If it's a listing page with multiple courses, extract all of them
 - Never invent fees or dates — only extract what's explicitly stated
-- For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)`;
+- For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
+- Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
+- If fees link to an external PDF or schedule page, include that URL in the fee name (e.g. "See fee schedule: <url>")
+- Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")`;
 }
 
 // ── Phase 3: Verification (verify worker) ──
 
-export const VERIFICATION_SYSTEM = `You compare extracted data against live web page content to verify accuracy.
+export const VERIFICATION_SYSTEM = `You verify extracted course data against live web page content.
+You understand that data may be represented differently — e.g. "3 years" = 156 weeks, "AUD $45,000" = 45000.
 Respond in valid JSON only.`;
 
 export function verificationPrompt(
   courseData: { name: string; fields: Record<string, string> },
   livePageText: string,
 ) {
-  return `Verify this extracted course data against the current page content.
+  return `Verify this extracted course data against the current live page.
 
-Extracted course: ${courseData.name}
-Fields to verify:
+Course: ${courseData.name}
+Extracted fields:
 ${Object.entries(courseData.fields).map(([k, v]) => `- ${k}: ${v}`).join("\n")}
 
-Current page content:
+Live page content:
 ${livePageText}
 
-For each field, determine if the extracted value matches what's on the page.
+For each field, search the page for the equivalent information and compare.
 
 Return JSON:
 {
@@ -197,9 +210,16 @@ Return JSON:
     {
       "field_name": "field name",
       "extracted_value": "what was extracted",
-      "live_value": "what the page currently shows (or null if not found)",
+      "live_value": "what the page currently shows (or null if truly absent)",
       "status": "match|mismatch|not_found"
     }
   ]
-}`;
+}
+
+Rules:
+- "match": the extracted value is semantically equivalent to what's on the page, even if formatted differently (e.g. "156" weeks vs "3 years", "Bachelor" vs "Bachelor's Degree")
+- "mismatch": the page shows a DIFFERENT value for this field (e.g. extracted "2 years" but page says "3 years")
+- "not_found": the field genuinely does not appear anywhere on the page (fees behind external links count as not_found, not mismatch)
+- Search the ENTIRE page content, not just headers — data may be in tables, sidebars, or accordion sections
+- For null extracted values, mark as "match" if the page also doesn't show this info`;
 }

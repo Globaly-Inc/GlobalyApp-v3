@@ -20,8 +20,8 @@ export async function up(knex: Knex): Promise<void> {
     t.integer("verification_total").notNullable().defaultTo(0);
     t.timestamp("created_at", { useTz: true }).notNullable().defaultTo(knex.fn.now());
     t.timestamp("updated_at", { useTz: true }).notNullable().defaultTo(knex.fn.now());
-    t.uuid("business_category_id").nullable(); // FK target: public.business_categories(id), add when table exists
-    t.uuid("service_category_id").nullable();  // FK target: public.service_categories(id), add when table exists
+    t.integer("business_category_id").unsigned().nullable();
+    t.integer("service_category_id").unsigned().nullable();
     t.jsonb("guided_urls").nullable().defaultTo("{}");
     t.text("guidance_notes").nullable();
     t.jsonb("pipeline_progress").nullable().defaultTo("{}");

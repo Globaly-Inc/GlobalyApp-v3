@@ -29,6 +29,13 @@ function isTransient(err: unknown): boolean {
 let lastLlmCall = 0;
 const MIN_LLM_GAP_MS = 4000;
 
+// ponytail: parse "retryDelay":"52s" from Gemini 429 errors
+function parseRetryDelay(err: unknown): number | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  const match = msg.match(/retryDelay.*?(\d+)s/i) || msg.match(/retry in (\d+)/i);
+  return match ? Number(match[1]) * 1000 : null;
+}
+
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -39,8 +46,10 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       return await fn();
     } catch (err) {
       if (attempt < MAX_RETRIES && isTransient(err)) {
-        const delay = Math.min(2000 * Math.pow(2, attempt), 15_000) + Math.random() * 1000;
-        logger.warn(`Transient LLM error, retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        // Respect server's retry delay if provided, otherwise exponential backoff
+        const serverDelay = parseRetryDelay(err);
+        const delay = serverDelay ?? Math.min(2000 * Math.pow(2, attempt), 15_000) + Math.random() * 1000;
+        logger.warn(`Transient LLM error, retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }

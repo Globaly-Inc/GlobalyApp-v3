@@ -131,10 +131,14 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     courseUrls = [...new Set([...courseUrls, ...guidedUrls])];
 
     // If we have too many URLs, let LLM pick the best ones
+    // ponytail: bump maxTokens — response is a URL list that easily exceeds 16K default
+    const patterns = analysis.course_page_patterns ?? [];
+
     if (courseUrls.length > 200) {
       const urlResult = await extractJson<UrlDiscoveryResult>({
         system: SITE_ANALYSIS_SYSTEM,
-        prompt: urlDiscoveryPrompt(courseUrls.slice(0, 500), analysis.course_page_patterns),
+        prompt: urlDiscoveryPrompt(courseUrls.slice(0, 500), patterns),
+        maxTokens: 65536,
       });
       courseUrls = [...new Set([...(urlResult.course_urls ?? []), ...guidedUrls])];
     }
@@ -143,7 +147,8 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     if (courseUrls.length === 0 && allUrls.length > 0) {
       const urlResult = await extractJson<UrlDiscoveryResult>({
         system: SITE_ANALYSIS_SYSTEM,
-        prompt: urlDiscoveryPrompt(allUrls.slice(0, 500), analysis.course_page_patterns),
+        prompt: urlDiscoveryPrompt(allUrls.slice(0, 500), patterns),
+        maxTokens: 65536,
       });
       courseUrls = urlResult.course_urls ?? [];
     }

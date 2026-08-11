@@ -15,7 +15,7 @@ import { scrapeMarkdown } from "../lib/scraper.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import { courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM } from "../lib/extraction-prompts.js";
-import { writeCourse, upsertCampus, writeJobEvent, type ExtractedCourse, type ExtractedCampus } from "../lib/staging-writer.js";
+import { writeCourse, upsertCampus, normaliseCampusName, writeJobEvent, type ExtractedCourse, type ExtractedCampus } from "../lib/staging-writer.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -24,6 +24,31 @@ const logger = createChildLogger("extraction-page-worker");
 interface ExtractionResult {
   courses: ExtractedCourse[];
   campuses_found: ExtractedCampus[];
+}
+
+// ponytail: merge duplicate campuses created by parallel workers (race condition)
+async function deduplicateCampuses(jobId: string) {
+  const campuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId });
+  const groups = new Map<string, typeof campuses>();
+  for (const c of campuses) {
+    const key = normaliseCampusName(c.name);
+    const arr = groups.get(key) || [];
+    arr.push(c);
+    groups.set(key, arr);
+  }
+  for (const [, dupes] of groups) {
+    if (dupes.length <= 1) continue;
+    const keep = dupes[0];
+    const removeIds = dupes.slice(1).map(d => d.id);
+    // Re-point junction rows to the kept campus
+    await masterKnex(`${S}.extraction_course_campuses`)
+      .whereIn("campus_id", removeIds)
+      .update({ campus_id: keep.id });
+    await masterKnex(`${S}.extraction_campuses`)
+      .whereIn("id", removeIds)
+      .delete();
+    logger.info("Merged duplicate campuses", { kept: keep.name, removed: removeIds.length });
+  }
 }
 
 /** Check if all queue items are done (completed or failed) and trigger verification if so. */
@@ -36,6 +61,7 @@ async function checkAllPagesDone(jobId: string) {
 
   if (Number(remaining?.count) === 0) {
     logger.info("All pages processed, dispatching verification", { jobId });
+    await deduplicateCampuses(jobId);
     await writeJobEvent(jobId, "extraction_complete", {
       phase: "data_extraction", message: "All pages extracted, starting verification",
     });
@@ -51,11 +77,17 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   const { jobId, queueItemId, url } = JSON.parse(msg!.content.toString());
   logger.info("Processing page", { jobId, queueItemId, url });
 
-  // Check job is still active
-  const job = await masterKnex(`${S}.extraction_jobs`)
-    .select("status", "stop_requested", "guidance_notes")
-    .where({ id: jobId })
-    .first();
+  // Check job is still active + load site intelligence hints
+  const [job, siteIntel] = await Promise.all([
+    masterKnex(`${S}.extraction_jobs`)
+      .select("status", "stop_requested", "guidance_notes")
+      .where({ id: jobId })
+      .first(),
+    masterKnex(`${S}.extraction_site_intelligence`)
+      .select("fee_structure", "extraction_hints")
+      .where({ job_id: jobId })
+      .first(),
+  ]);
 
   if (!job || job.stop_requested || ["paused", "failed", "declined"].includes(job.status)) {
     logger.info("Job not active, skipping page", { jobId, status: job?.status });
@@ -89,7 +121,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     // ── LLM extraction ──
     const extracted = await extractJson<ExtractionResult>({
       system: COURSE_EXTRACTION_SYSTEM,
-      prompt: courseExtractionPrompt(url, markdown, job.guidance_notes),
+      prompt: courseExtractionPrompt(url, markdown, job.guidance_notes, siteIntel),
       maxTokens: 16384,
     });
 
@@ -100,7 +132,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       for (const campus of extracted.campuses_found) {
         if (!campus.name) continue;
         const campusId = await upsertCampus(jobId, campus);
-        if (campusId) campusIdMap.set(campus.name.toLowerCase(), campusId);
+        if (campusId) campusIdMap.set(normaliseCampusName(campus.name), campusId);
       }
     }
 
@@ -114,7 +146,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         // Upsert campuses mentioned in this course
         if (course.campus_names?.length) {
           for (const cn of course.campus_names) {
-            if (!campusIdMap.has(cn.toLowerCase())) {
+            if (!campusIdMap.has(normaliseCampusName(cn))) {
               const cid = await upsertCampus(jobId, { name: cn });
               if (cid) campusIdMap.set(cn.toLowerCase(), cid);
             }
