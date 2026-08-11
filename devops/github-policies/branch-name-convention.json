@@ -1,0 +1,49 @@
+{
+  "id": 18293761,
+  "name": "branch-name-convention",
+  "target": "branch",
+  "source_type": "Repository",
+  "source": "Globaly-Inc/GlobalyOS-v3",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [
+        "refs/heads/main",
+        "refs/heads/production",
+        "refs/heads/staging",
+        "refs/heads/develop",
+        "refs/heads/product-hotfix**",
+        "refs/heads/product-bug**",
+        "refs/heads/product-design**",
+        "refs/heads/product-feat**",
+        "refs/heads/product-prd**",
+        "refs/heads/dev-bug**",
+        "refs/heads/dev-design**",
+        "refs/heads/dev-feat**",
+        "refs/heads/dev-hotfix**",
+        "refs/heads/devops**"
+      ],
+      "include": [
+        "~ALL"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "branch_name_pattern",
+      "parameters": {
+        "operator": "starts_with",
+        "pattern": "^((product|dev)-(feat|bug|design)/.+|product-(hotfix|prd)/.+|dev-hotfix/.+|devops/.+)$",
+        "negate": false,
+        "name": ""
+      }
+    },
+    {
+      "type": "creation"
+    }
+  ],
+  "bypass_actors": []
+}

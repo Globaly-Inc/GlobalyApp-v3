@@ -1,0 +1,26 @@
+FROM node:24.18.0
+
+WORKDIR /globalyapp/backend
+
+RUN apt-get update && apt-get install -y nginx \
+        wget \
+        nano \
+        dnsutils \
+        net-tools \
+        git \
+        curl \
+        cmake \
+        unzip \
+        build-essential \
+        software-properties-common \
+        zip \
+        cron \
+        gpg
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# COPY . .
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]

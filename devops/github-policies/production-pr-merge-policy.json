@@ -1,0 +1,72 @@
+{
+  "id": 19872855,
+  "name": "production-pr-merge-policy",
+  "target": "branch",
+  "source_type": "Repository",
+  "source": "Globaly-Inc/GlobalyOS-v3",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": [
+        "refs/heads/production",
+        "refs/heads/main"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": false,
+        "required_reviewers": [
+          {
+            "minimum_approvals": 1,
+            "file_patterns": [
+              "*"
+            ],
+            "reviewer": {
+              "id": 18261254,
+              "type": "Team"
+            }
+          }
+        ],
+        "require_code_owner_review": false,
+        "dismissal_restriction": {
+          "enabled": false,
+          "allowed_actors": []
+        },
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true,
+        "allowed_merge_methods": [
+          "merge",
+          "squash"
+        ]
+      }
+    }
+  ],
+  "bypass_actors": [
+    {
+      "actor_id": 16639612,
+      "actor_type": "User",
+      "bypass_mode": "always"
+    },
+    {
+      "actor_id": 173022736,
+      "actor_type": "User",
+      "bypass_mode": "always"
+    },
+    {
+      "actor_id": 173246535,
+      "actor_type": "User",
+      "bypass_mode": "always"
+    }
+  ]
+}
