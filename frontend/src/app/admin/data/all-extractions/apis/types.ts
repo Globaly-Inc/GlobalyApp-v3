@@ -28,8 +28,6 @@ export type ExtractionJob = {
   verification_total: number;
   pages_scraped: number;
   pages_failed: number;
-  // Absent on the real API — V3's list query doesn't compute it (V2's did, via a
-  // correlated subquery). Only present when mock data sets it explicitly.
   agent_count?: number;
   created_at: string;
   updated_at: string;
@@ -37,6 +35,9 @@ export type ExtractionJob = {
 
 export type CreateJobParams = {
   institution_url: string;
+  business_category_id?: number;
+  service_category_id?: number;
+  source_type?: string;
 };
 
 export type InstitutionOverview = {

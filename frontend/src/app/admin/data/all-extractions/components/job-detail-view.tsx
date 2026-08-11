@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -26,8 +26,11 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { jobFull, jobFullStatus } = useAppSelector((state) => state.dataAllExtractions);
+  const fetchedIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (fetchedIdRef.current === jobId) return;
+    fetchedIdRef.current = jobId;
     dispatch(fetchJobFull(jobId));
   }, [dispatch, jobId]);
 

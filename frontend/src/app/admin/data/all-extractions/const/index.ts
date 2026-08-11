@@ -39,6 +39,10 @@ export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "
 export const PAUSABLE_STATUSES: ExtractionStatus[] = ["scraping", "extracting"];
 export const FINISHED_STATUSES: ExtractionStatus[] = ["done", "completed", "approved", "verified", "exported", "pushed"];
 
+export const SOURCE_TYPE_OPTIONS = [
+  { value: "institution", label: "Institution Website" },
+];
+
 export type SortOrder = "newest" | "oldest" | "name_asc" | "name_desc";
 
 export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
