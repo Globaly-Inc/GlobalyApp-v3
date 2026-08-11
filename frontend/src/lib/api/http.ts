@@ -1,4 +1,11 @@
-import { clearTokens, getAccessToken, getRefreshToken, isTokenExpired, saveTokens } from "@/lib/session";
+import {
+  clearTokens,
+  getAccessToken,
+  getRefreshToken,
+  getSelectedOrgId,
+  isTokenExpired,
+  saveTokens,
+} from "@/lib/session";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3`;
@@ -41,21 +48,95 @@ function forceSignIn(): never {
   throw new Error("Your session has expired. Please sign in again.");
 }
 
+// ── Business context ──
+// Tenant-scoped endpoints (everything behind requireBusinessContext) need an
+// `orgId` claim, and POST /auth/switch-account is the ONLY thing that mints one:
+// both verify-otp and refresh sign context-free tokens. That means context is
+// not just missing at login — it is silently DROPPED every time the access token
+// is refreshed, so re-establishing it has to be automatic, not a one-off on mount.
+
+function orgIdFromToken(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const { orgId } = JSON.parse(atob(token.split(".")[1] ?? "")) as { orgId?: string };
+    return orgId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function hasBusinessContext(): boolean {
+  return orgIdFromToken(getAccessToken()) !== null;
+}
+
+let switchPromise: Promise<boolean> | null = null;
+
+/**
+ * Upgrades the current access token to one scoped to the user's business.
+ * Resolves false when the user has no business to switch into — callers decide
+ * whether that is an error or just "not a business account".
+ */
+export function ensureBusinessContext(force = false): Promise<boolean> {
+  if (!force && hasBusinessContext()) return Promise.resolve(true);
+
+  switchPromise ??= (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) return false;
+
+    const meRes = await fetch(`${BASE_URL}/auth/me`, { headers: authHeaders() });
+    if (!meRes.ok) return false;
+    const me = (await meRes.json()) as { user?: { businesses?: { id: number; org_id: string }[] } };
+    const businesses = me.user?.businesses ?? [];
+    if (businesses.length === 0) return false;
+
+    // Honour the user's pick when it is still a valid membership; otherwise fall
+    // back to the lowest business id. Sorting matters: listUserBusinesses has no
+    // ORDER BY, so "the first row" is whatever Postgres happens to return and the
+    // active business would otherwise change between reloads.
+    const selected = getSelectedOrgId();
+    const orgId = businesses.some((b) => b.org_id === selected)
+      ? selected!
+      : [...businesses].sort((a, b) => a.id - b.id)[0]!.org_id;
+
+    const res = await fetch(`${BASE_URL}/auth/switch-account`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ org_id: orgId }),
+    });
+    if (!res.ok) return false;
+
+    const { access_token } = (await res.json()) as { access_token: string };
+    saveTokens({ accessToken: access_token, refreshToken });
+    return true;
+  })().finally(() => {
+    switchPromise = null;
+  });
+
+  return switchPromise;
+}
+
 async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Response> {
   const token = getAccessToken();
   if (token && isTokenExpired(token)) {
     if (!(await refreshAccessToken())) forceSignIn();
   }
-  const res = await attempt();
-  // A 401 only means "my access token expired" when there was a token to begin with — pre-auth
-  // calls (register, send-otp, verify-otp) have none, and a 401 there means e.g. "invalid OTP",
-  // not a session expiry. Let it fall through as a normal ApiError instead of hard-redirecting.
-  if (res.status !== 401 || !token) return res;
-  const refreshed = await refreshAccessToken();
-  if (!refreshed) forceSignIn();
-  const retried = await attempt();
-  if (retried.status === 401) forceSignIn();
-  return retried;
+  let res = await attempt();
+
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (!refreshed) forceSignIn();
+    res = await attempt();
+    if (res.status === 401) forceSignIn();
+  }
+
+  // A 403 on a token with no orgId means context was never established, or a
+  // refresh just stripped it. Re-switch once and retry. Genuine permission
+  // denials keep their orgId, so they fall straight through untouched.
+  if (res.status === 403 && !hasBusinessContext()) {
+    if (await ensureBusinessContext(true)) res = await attempt();
+  }
+
+  return res;
 }
 
 export class ApiError extends Error {

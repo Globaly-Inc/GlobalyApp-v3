@@ -11,6 +11,9 @@ import type { BusinessRecord } from "../types.js";
 export const tenantPlugin = fp(async (app) => {
   app.decorateRequest("db", null as unknown as Knex);
   app.decorateRequest("business", null as unknown as BusinessRecord);
+  // `auth.orgId` is the schema_name (a uuid); routes that write central rows need
+  // the numeric businesses.id. Resolved here so they don't each re-query for it.
+  app.decorateRequest("businessId", null as unknown as number);
 
   app.addHook("onRequest", async (req, reply) => {
     if (!req.auth?.orgId) return;
@@ -24,6 +27,10 @@ export const tenantPlugin = fp(async (app) => {
       return reply.status(404).send({ error: "Business not found or inactive" });
     }
 
+    // Coerced: BusinessRecord types `id` as string, but businesses.id is an
+    // integer column. Correcting that interface cascades into the businesses
+    // module, so it stays a local coercion.
+    req.businessId = Number(business.id);
     req.db = await getKnex(business.id, schemaName(business.schema_name));
     req.business = business;
   });

@@ -1,7 +1,7 @@
 import { httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import { saveAccessToken, saveTokens } from "@/lib/session";
 import type {
-  AcceptInviteParams, AcceptInviteResult, AuthMeUser, AuthUser, SendOtpParams,
+  AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthMeUser, AuthUser, SendOtpParams,
   SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
 } from "./types";
 
@@ -23,6 +23,12 @@ export const authRealApi = {
     }>("/auth/verify-otp", { email: email.trim().toLowerCase(), otp: otp.trim() });
     saveTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
     return { email, type: data.user.type, role: data.user.role, user_category: null, businesses: [], orgId: null };
+  },
+
+  /** The businesses this user is an agent in — the org_ids valid for switch-account. */
+  listMyBusinesses: async (): Promise<AuthMeBusiness[]> => {
+    const data = await httpGet<{ user: AuthMeUser }>("/auth/me");
+    return data.user.businesses ?? [];
   },
 
   getMe: async (): Promise<AuthUser> => {

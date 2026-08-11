@@ -29,6 +29,8 @@ import geoModule from "./modules/geo/index.js";
 import searchModule from "./modules/search/index.js";
 import scholarshipsPublicModule from "./modules/scholarships/index.js";
 import aiCounsellorModule, { publicAiCounsellorModule } from "./modules/ai-counsellor/index.js";
+import enquiriesModule from "./modules/enquiries/index.js";
+import coursesModule from "./modules/courses/index.js";
 
 const logger = createChildLogger("server");
 
@@ -54,6 +56,8 @@ export async function buildServer() {
     await protectedApp.register(feedModule);          // cross-portal social feed
     await protectedApp.register(otherServicesModule);      // service listings, orders, reviews
     await protectedApp.register(aiCounsellorModule);   // AI counsellor — chat, credits, sessions, embed configs
+    await protectedApp.register(enquiriesModule);      // student enquiry creation + lookup
+    await protectedApp.register(coursesModule);        // student course browse (extracted courses)
   });
 
   await app.register(blogModule);            // public blog reads (no auth)

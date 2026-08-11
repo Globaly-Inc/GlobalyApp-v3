@@ -6,6 +6,9 @@ import { homeReducer } from "@/app/personal/portal/store/home-slice"
 import { myServicesReducer } from "@/app/personal/earn/services/store/my-services-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { businessProfileDetailReducer } from "@/app/business/profile/store/business-profile-detail-slice"
+import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enquiries/store/enquiries-slice"
+import { coursesReducer } from "@/app/personal/courses/store/courses-slice"
+import { businessEnquiriesReducer } from "@/app/business/enquiries/store/business-enquiries-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
@@ -20,7 +23,6 @@ import { aiMemoryReducer } from "@/app/admin/data/ai-memory/store/ai-memory-slic
 import { aiKnowledgeReducer } from "@/app/admin/data/ai-knowledge/store/ai-knowledge-slice"
 import { visasReducer } from "@/app/admin/data/visas/store/visas-slice"
 import { maraAgentsReducer } from "@/app/admin/data/mara-agents/store/mara-agents-slice"
-import { enquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 import { moderationReducer } from "@/app/admin/monitoring/moderation/store/moderation-slice"
 import { scholarshipsReducer } from "@/app/admin/monitoring/scholarships/store/scholarships-slice"
 import { jobsReducer } from "@/app/admin/monitoring/jobs/store/jobs-slice"
@@ -31,6 +33,7 @@ import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-s
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
 import { aiWidgetReducer } from "@/app/business/ai-widget/store/ai-widget-slice"
+import { enquiriesReducer as monitoringEnquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
@@ -40,6 +43,9 @@ const appReducer = combineReducers({
     myServices: myServicesReducer,
     businessOnboarding: businessOnboardingReducer,
     businessProfileDetail: businessProfileDetailReducer,
+    enquiries: personalEnquiriesReducer,
+    courses: coursesReducer,
+    businessEnquiries: businessEnquiriesReducer,
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,
@@ -54,7 +60,6 @@ const appReducer = combineReducers({
     dataAiKnowledge: aiKnowledgeReducer,
     dataVisas: visasReducer,
     dataMaraAgents: maraAgentsReducer,
-    monitoringEnquiries: enquiriesReducer,
     monitoringModeration: moderationReducer,
     monitoringScholarships: scholarshipsReducer,
     monitoringJobs: jobsReducer,
@@ -65,6 +70,7 @@ const appReducer = combineReducers({
     monitoringOtherServices: adminOtherServicesReducer,
     aiChat: aiChatReducer,
     aiWidget: aiWidgetReducer,
+    monitoringEnquiries: monitoringEnquiriesReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

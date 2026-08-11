@@ -4,6 +4,9 @@ export type AuthMeBusiness = {
   business_name: string;
   subdomain: string;
   logo_url: string | null;
+  /** Authoritative owner. Prefer this over `is_owner`, which is a denormalised
+   * copy that only registerBusiness maintains. */
+  owner_id: number;
   role: string;
   is_owner: boolean;
 };

@@ -74,6 +74,16 @@ export async function up(knex: Knex): Promise<void> {
 
     // Meta
     t.jsonb("meta").defaultTo("{}");
+
+    // Enquiry module [PROPOSED — enquiry-system.md §8]
+    t.boolean("enquiry_enabled").notNullable().defaultTo(true);
+    t.boolean("is_suspended").notNullable().defaultTo(false);
+    t.decimal("latitude", 10, 6).nullable();
+    t.decimal("longitude", 10, 6).nullable();
+    // Distinguishes PRD §12 "verified rep" (a business's representation of an
+    // institution/course confirmed genuine) from `status` (onboarding state).
+    t.text("verification_status").notNullable().defaultTo("unverified");
+
     t.timestamps(true, true);
     t.timestamp("deleted_at").nullable();
 
@@ -85,6 +95,12 @@ export async function up(knex: Knex): Promise<void> {
     t.text("claim_token").nullable();
     t.timestamp("claim_token_expires_at").nullable();
   });
+
+  await knex.raw(`
+    ALTER TABLE businesses
+    ADD CONSTRAINT businesses_verification_status_check
+    CHECK (verification_status IN ('verified', 'unverified'))
+  `);
 }
 
 export async function down(knex: Knex): Promise<void> {
