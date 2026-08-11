@@ -56,7 +56,9 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  app.post("/refresh", async (req, reply) => {
+  app.post("/refresh", {
+    config: { rateLimit: RATE_LIMITS.refresh },
+  }, async (req, reply) => {
     const { refresh_token } = RefreshSchema.parse(req.body);
     const result = await service.refreshAccessToken(refresh_token, {
       ip: req.ip,
@@ -75,7 +77,9 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   // Authenticated — switch to a business context
-  app.post("/switch-account", async (req, reply) => {
+  app.post("/switch-account", {
+    config: { rateLimit: RATE_LIMITS.switchAccount },
+  }, async (req, reply) => {
     const { org_id } = SwitchAccountSchema.parse(req.body);
     const result = await service.switchAccount(Number(req.auth.sub), org_id);
     return reply.send(result);

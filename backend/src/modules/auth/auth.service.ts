@@ -6,7 +6,7 @@ import { randomInt, randomBytes, createHash, scryptSync, timingSafeEqual, random
 import jwt from "jsonwebtoken";
 import { config } from "../../config.js";
 import { createChildLogger } from "../../shared/logger.js";
-import { ConflictError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
+import { NotFoundError, UnauthorizedError } from "../../shared/errors.js";
 import { queueService } from "../../shared/queue/queueService.js";
 import { mailerService } from "../../shared/mail/mailerService.js";
 
@@ -20,9 +20,7 @@ import type { AuthClaims } from "../../core/types.js";
 
 const logger = createChildLogger("auth-service");
 
-const OTP_MAX_ATTEMPTS = 5;
-const OTP_LOCKOUT_MINUTES = 30;
-const SESSION_EXPIRY_DAYS = 30;
+// ponytail: configurable via env — OTP_MAX_ATTEMPTS, OTP_LOCKOUT_MINUTES, SESSION_EXPIRY_DAYS
 
 // ── helpers ──
 
@@ -196,8 +194,8 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
   // Compare using scrypt — slow hash, constant-time
   if (!verifyOtpHash(otp, challenge.otp_hash)) {
     const attempts = (challenge.attempts ?? 0) + 1;
-    if (attempts >= OTP_MAX_ATTEMPTS) {
-      const lockedUntil = new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000);
+    if (attempts >= config.OTP_MAX_ATTEMPTS) {
+      const lockedUntil = new Date(Date.now() + config.OTP_LOCKOUT_MINUTES * 60 * 1000);
       await authRepo.lockOtp(challenge.id, attempts, lockedUntil);
     } else {
       await authRepo.incrementOtpAttempts(challenge.id, attempts);
@@ -227,7 +225,7 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
   // Create a new session (multi-device — doesn't kill other sessions)
   const { raw: rawRefresh, hashed: hashedRefresh } = encodeRefreshToken(user.id);
   const family = randomUUID();
-  const sessionExpiry = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  const sessionExpiry = new Date(Date.now() + config.SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   await authRepo.createSession({
     platform_user_id: user.id,

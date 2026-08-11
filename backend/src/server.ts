@@ -60,7 +60,7 @@ export async function buildServer() {
       const amqp = await import("amqplib");
       const conn = await amqp.connect(config.LAVINMQ_URL);
       await conn.close();
-      return { status: "ok", details: { host: config.LAVINMQ_HOST, port: config.LAVINMQ_PORT } };
+      return { status: "ok", details: { url: config.LAVINMQ_URL } };
     } catch (err) {
       return { status: "error", error: err instanceof Error ? err.message : String(err) };
     }

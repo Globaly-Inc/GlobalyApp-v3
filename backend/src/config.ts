@@ -16,6 +16,9 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1),
   JWT_EXPIRY: z.string().default("15m"),
   JWT_REFRESH_EXPIRY: z.string().default("7d"),
+  OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
+  OTP_LOCKOUT_MINUTES: z.coerce.number().default(30),
+  SESSION_EXPIRY_DAYS: z.coerce.number().default(30),
 
   // Server
   PORT: z.coerce.number().default(3000),
@@ -24,10 +27,7 @@ const envSchema = z.object({
 
   // Third-party (optional at skeleton stage)
   DRAGONFLY_URL: z.string().optional(),
-  LAVINMQ_HOST: z.string().default("localhost"),
-  LAVINMQ_PORT: z.coerce.number().default(5672),
-  LAVINMQ_USERNAME: z.string().default("guest"),
-  LAVINMQ_PASSWORD: z.string().default("guest"),
+  LAVINMQ_URL: z.string().default("amqp://guest:guest@localhost:5672"),
   SMTP_HOST: z.string().optional(),
   MAIL_PORT: z.coerce.number().default(587),
   MAIL_USERNAME: z.string().optional(),
@@ -53,8 +53,6 @@ const envSchema = z.object({
   GCS_SIGNED_URL_EXPIRY: z.coerce.number().default(3600), // seconds, default 1 hour
   GCS_MAX_FILE_SIZE_MB: z.coerce.number().default(10),
 
-  // Vault
-  VAULT_KEK: z.string().optional(),
 });
 
 const parsed = envSchema.parse(process.env);
@@ -62,7 +60,6 @@ const parsed = envSchema.parse(process.env);
 export const config = {
   ...parsed,
   MASTER_DB_URL: `postgresql://${parsed.DB_USERNAME}:${parsed.DB_PASSWORD}@${parsed.DB_HOST}:${parsed.DB_PORT}/${parsed.DB_NAME}`,
-  LAVINMQ_URL: `amqp://${parsed.LAVINMQ_USERNAME}:${parsed.LAVINMQ_PASSWORD}@${parsed.LAVINMQ_HOST}:${parsed.LAVINMQ_PORT}`,
 };
 
 export type Config = typeof config;
