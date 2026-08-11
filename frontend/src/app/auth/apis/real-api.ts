@@ -1,6 +1,6 @@
 import { httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import { saveTokens } from "@/lib/session";
-import type { AcceptInviteParams, AcceptInviteResult, AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "./types";
+import type { AcceptInviteParams, AcceptInviteResult, AuthMeUser, AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "./types";
 
 export const authRealApi = {
   sendOtp: ({ email }: SendOtpParams): Promise<void> =>
@@ -23,14 +23,12 @@ export const authRealApi = {
   },
 
   getMe: async (): Promise<AuthUser> => {
-    const data = await httpGet<{
-      user: { email: string; type: AuthUser["type"]; role?: string | null; user_category?: string | null };
-    }>("/auth/me");
+    const data = await httpGet<{ user: AuthMeUser }>("/auth/me");
     return {
       email: data.user.email,
       type: data.user.type,
-      role: data.user.role ?? null,
-      user_category: data.user.user_category ?? null,
+      role: data.user.admin_role ?? null,
+      user_category: null,
     };
   },
 };

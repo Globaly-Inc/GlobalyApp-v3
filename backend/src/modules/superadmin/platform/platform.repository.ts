@@ -1,4 +1,6 @@
-// Repository for platform management — businesses, users, categories, countries, feature flags, site access.
+// Repository for platform management — businesses, users, countries, feature flags, site access.
+// Categories and catalog (business/service categories, lookups, fee types, accreditations)
+// live in ./categories/repositories/categories.repository.ts.
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../consts.js";
@@ -67,58 +69,6 @@ export async function findUserById(id: number) {
 export async function updateUser(id: number, data: Record<string, unknown>) {
   const [row] = await masterKnex("platform_users").where({ id }).update({ ...data, updated_at: now() }).returning("*");
   return row;
-}
-
-// ─── Business Categories ───────────────────────────────────────────────────
-
-export async function listBusinessCategories() {
-  return masterKnex("business_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name");
-}
-
-export async function insertBusinessCategory(data: Record<string, unknown>) {
-  const [row] = await masterKnex("business_categories").insert(data).returning("*");
-  return row;
-}
-
-export async function updateBusinessCategory(id: number, data: Record<string, unknown>) {
-  const [row] = await masterKnex("business_categories").where({ id }).update({ ...data, updated_at: now() }).returning("*");
-  return row;
-}
-
-// ─── Service Categories ────────────────────────────────────────────────────
-
-export async function listServiceCategories() {
-  return masterKnex("service_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name");
-}
-
-export async function insertServiceCategory(data: Record<string, unknown>) {
-  const [row] = await masterKnex("service_categories").insert(data).returning("*");
-  return row;
-}
-
-export async function updateServiceCategory(id: number, data: Record<string, unknown>) {
-  const [row] = await masterKnex("service_categories").where({ id }).update({ ...data, updated_at: now() }).returning("*");
-  return row;
-}
-
-// ─── Default Services junction ─────────────────────────────────────────────
-
-export async function getDefaultServices(businessCategoryId: number) {
-  return masterKnex("business_category_default_services")
-    .join("service_categories", "service_categories.id", "business_category_default_services.service_category_id")
-    .where({ business_category_id: businessCategoryId })
-    .select("service_categories.*");
-}
-
-export async function replaceDefaultServices(businessCategoryId: number, serviceCategoryIds: number[]) {
-  await masterKnex.transaction(async (trx) => {
-    await trx("business_category_default_services").where({ business_category_id: businessCategoryId }).delete();
-    if (serviceCategoryIds.length > 0) {
-      await trx("business_category_default_services").insert(
-        serviceCategoryIds.map((id) => ({ business_category_id: businessCategoryId, service_category_id: id })),
-      );
-    }
-  });
 }
 
 // ─── Countries ─────────────────────────────────────────────────────────────

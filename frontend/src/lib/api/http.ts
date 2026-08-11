@@ -73,7 +73,7 @@ export async function httpGet<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function httpWithBody<T>(
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "PUT",
   path: string,
   body: unknown,
   init?: RequestInit,
@@ -96,6 +96,10 @@ export function httpPost<T>(path: string, body: unknown, init?: RequestInit): Pr
 
 export function httpPatch<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
   return httpWithBody<T>("PATCH", path, body, init);
+}
+
+export function httpPut<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
+  return httpWithBody<T>("PUT", path, body, init);
 }
 
 export async function httpDelete(path: string, init?: RequestInit): Promise<void> {

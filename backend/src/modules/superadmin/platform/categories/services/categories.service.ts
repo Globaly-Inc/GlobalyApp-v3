@@ -1,0 +1,146 @@
+// Categories service — business/service categories, degree_levels/areas_of_study lookups,
+// fee types, issuing organizations, accreditations.
+
+import { NotFoundError } from "../../../../../shared/errors.js";
+import * as repo from "../repositories/categories.repository.js";
+import type { LookupTable } from "../repositories/categories.repository.js";
+import type {
+  AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput,
+} from "../schemas/categories.schema.js";
+
+// ── Business Categories ──
+
+export const listBusinessCategories = repo.listBusinessCategories;
+
+export function createBusinessCategory(data: CategoryInput) {
+  return repo.insertBusinessCategory(data);
+}
+
+export function updateBusinessCategory(id: number, data: Partial<CategoryInput>) {
+  return repo.updateBusinessCategory(id, data);
+}
+
+// ── Default Services junction ──
+
+export const getDefaultServices = repo.getDefaultServices;
+export const replaceDefaultServices = repo.replaceDefaultServices;
+
+// ── Service Categories ──
+
+export const listServiceCategories = repo.listServiceCategories;
+
+export function createServiceCategory(data: CategoryInput) {
+  return repo.insertServiceCategory(data);
+}
+
+export function updateServiceCategory(id: number, data: Partial<CategoryInput>) {
+  return repo.updateServiceCategory(id, data);
+}
+
+// ── Lookups (degree_levels, areas_of_study) ──
+
+export function listLookup(table: LookupTable) {
+  return repo.listLookup(table);
+}
+
+export function createLookup(table: LookupTable, data: LookupInput) {
+  return repo.insertLookup(table, data);
+}
+
+export async function updateLookup(table: LookupTable, id: number, data: Partial<LookupInput>) {
+  const row = await repo.updateLookup(table, id, data);
+  if (!row) throw new NotFoundError("Not found");
+  return row;
+}
+
+// ── Fee Types ──
+
+export const listFeeTypes = repo.listFeeTypes;
+
+export function createFeeType(data: FeeTypeInput) {
+  // Admin-created fee types are platform reference data, already approved.
+  return repo.insertFeeType({ ...data, business_id: null, status: "approved", is_global: data.is_global ?? true });
+}
+
+async function requireFeeType(id: number) {
+  const row = await repo.findFeeTypeById(id);
+  if (!row) throw new NotFoundError("Fee type not found");
+  return row;
+}
+
+export async function updateFeeType(id: number, data: Partial<FeeTypeInput>) {
+  await requireFeeType(id);
+  return repo.updateFeeType(id, data);
+}
+
+export async function reviewFeeType(id: number, decision: "approved" | "rejected", reviewedBy: number) {
+  await requireFeeType(id);
+  return repo.updateFeeType(id, {
+    status: decision,
+    is_global: decision === "approved",
+    reviewed_by: reviewedBy,
+    reviewed_at: new Date(),
+  });
+}
+
+export async function deleteFeeType(id: number) {
+  await requireFeeType(id);
+  await repo.deleteFeeType(id);
+}
+
+// ── Issuing Organizations ──
+
+export const listIssuingOrganizations = repo.listIssuingOrganizations;
+
+export function createIssuingOrganization(data: IssuingOrgInput) {
+  return repo.insertIssuingOrganization(data);
+}
+
+export async function updateIssuingOrganization(id: number, data: Partial<IssuingOrgInput>) {
+  const row = await repo.updateIssuingOrganization(id, data);
+  if (!row) throw new NotFoundError("Issuing organization not found");
+  return row;
+}
+
+// ── Accreditations ──
+
+export const listAccreditations = repo.listAccreditations;
+
+export function createAccreditation(data: AccreditationInput) {
+  const { scope_country_ids = [], ...rest } = data;
+  return repo.insertAccreditation({
+    ...rest,
+    business_id: null,
+    status: "approved",
+    // "no countries selected" means the accreditation applies everywhere.
+    is_global: scope_country_ids.length === 0,
+  }, scope_country_ids);
+}
+
+async function requireAccreditation(id: number) {
+  const row = await repo.findAccreditationById(id);
+  if (!row) throw new NotFoundError("Accreditation not found");
+  return row;
+}
+
+export async function updateAccreditation(id: number, data: Partial<AccreditationInput>) {
+  await requireAccreditation(id);
+  const { scope_country_ids, ...rest } = data;
+  const patch = scope_country_ids ? { ...rest, is_global: scope_country_ids.length === 0 } : rest;
+  return repo.updateAccreditation(id, patch, scope_country_ids);
+}
+
+export async function reviewAccreditation(id: number, decision: "approved" | "rejected", reviewedBy: number) {
+  await requireAccreditation(id);
+  return repo.updateAccreditation(id, {
+    status: decision,
+    is_global: decision === "approved",
+    reviewed_by: reviewedBy,
+    reviewed_at: new Date(),
+  });
+}
+
+export async function deleteAccreditation(id: number) {
+  await requireAccreditation(id);
+  await repo.deleteAccreditation(id);
+}

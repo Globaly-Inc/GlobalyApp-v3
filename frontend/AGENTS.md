@@ -37,3 +37,36 @@ Rules:
 - Register the slice's reducer in `src/lib/store.ts` under a distinct state key matching the feature name.
 - Default to mock data (`NEXT_PUBLIC_MOCK_DATA`) even when the real backend endpoint doesn't exist yet — `real-api.ts` still assumes the eventual contract.
 - Don't add a folder with nothing real to put in it yet — e.g. skip `utils/` if the feature genuinely has no helper logic.
+
+# Component reuse
+
+Before writing a new component, check whether it already exists as a shared component under
+`src/components/` (imported as `@/components/...` — e.g. `@/components/ui/button`,
+`@/components/combobox`, `@/components/field-error`). If a matching component already
+exists there, reuse it instead of writing a new one.
+
+If no match exists, decide where the new component belongs:
+- **Reusable across features** (generic UI with no feature-specific data or business logic —
+  buttons, dialogs, form fields, pickers): create it under `src/components/` so other features
+  can import it via `@/components/...`.
+- **Specific to one feature** (renders that feature's data, dispatches that feature's thunks,
+  or otherwise has no use outside it): create it inside that feature's own `components/` folder
+  per the structure above, not in `src/components/`.
+
+Don't duplicate a component that already exists in either location under a new name.
+
+# Combobox layout
+
+Never wrap a `<Combobox>` (or any field containing it) in a `space-y-*` container.
+`space-y-*` applies margin via a sibling selector to EVERY child, including the
+invisible `position: fixed` focus-guard `<span>` elements base-ui inserts into
+the DOM when the Combobox's popover opens. Inside a `Dialog` (which has a CSS
+`transform` on it for centering), those guards visually collapse to zero size,
+but their `space-y` margin still inflates the parent's height by ~8px, pushing
+every field below it down the moment the dropdown opens/closes — the "gap
+appears below the combobox" bug.
+
+Always use `flex flex-col gap-*` for any wrapper div that contains a
+`Combobox`, matching `frontend/src/app/personal/profile/personal-details-dialog.tsx`.
+Flex `gap` only spaces actual flex-participating boxes, so the out-of-flow
+guard spans are ignored.

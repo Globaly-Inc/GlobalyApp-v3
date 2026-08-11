@@ -16,7 +16,7 @@ export type ThemeSettings = {
 export function defaultThemeSettings(companyName: string): ThemeSettings {
   return {
     primaryColor: DEFAULT_PRIMARY,
-    font: "var(--font-inter)",
+    font: `ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji"`,
     companyName,
     logoUrl: null,
     faviconUrl: null,

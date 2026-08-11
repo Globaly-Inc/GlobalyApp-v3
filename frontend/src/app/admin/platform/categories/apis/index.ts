@@ -3,4 +3,4 @@ import { categoriesMockApi } from "./mock-data";
 import { categoriesRealApi } from "./real-api";
 
 export const categoriesApi = createApi({ mock: categoriesMockApi, real: categoriesRealApi });
-export type { CategoriesByTab } from "./types";
+export type * from "./types";
