@@ -12,7 +12,8 @@ export async function up(knex: Knex): Promise<void> {
     t.timestamp("expires_at", { useTz: true }).notNullable();
     t.timestamp("created_at", { useTz: true }).notNullable().defaultTo(knex.fn.now());
   });
-  await knex.raw("CREATE INDEX idx_otp_email ON auth_otp_challenges (email)");
+  await knex.raw("CREATE UNIQUE INDEX idx_otp_email ON auth_otp_challenges (email)");
+  await knex.raw("CREATE INDEX idx_otp_expires ON auth_otp_challenges (expires_at)");
 
   // Per-device sessions — one row per login, supports multi-device.
   // Refresh token rotation + family-based reuse detection per session.
@@ -29,7 +30,8 @@ export async function up(knex: Knex): Promise<void> {
     t.timestamp("created_at", { useTz: true }).notNullable().defaultTo(knex.fn.now());
   });
   await knex.raw("CREATE INDEX idx_sessions_user ON auth_sessions (platform_user_id)");
-  await knex.raw("CREATE INDEX idx_sessions_token ON auth_sessions (refresh_token_hash)");
+  await knex.raw("CREATE UNIQUE INDEX idx_sessions_token ON auth_sessions (refresh_token_hash)");
+  await knex.raw("CREATE INDEX idx_sessions_expires ON auth_sessions (expires_at)");
 }
 
 export async function down(knex: Knex): Promise<void> {

@@ -6,10 +6,10 @@ import { masterKnex } from "../../core/db/master-pool.js";
 // ── OTP Challenges ──
 
 export async function createOtpChallenge(email: string, otpHash: string, expiresAt: Date) {
-  // Remove any previous challenge for this email first
-  await masterKnex("auth_otp_challenges").where({ email }).delete();
   const [row] = await masterKnex("auth_otp_challenges")
-    .insert({ email, otp_hash: otpHash, expires_at: expiresAt })
+    .insert({ email, otp_hash: otpHash, expires_at: expiresAt, attempts: 0, locked_until: null })
+    .onConflict("email")
+    .merge({ otp_hash: otpHash, expires_at: expiresAt, attempts: 0, locked_until: null })
     .returning("*");
   return row;
 }
