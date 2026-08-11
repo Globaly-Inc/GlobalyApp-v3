@@ -53,6 +53,12 @@ const envSchema = z.object({
   GCS_SIGNED_URL_EXPIRY: z.coerce.number().default(3600), // seconds, default 1 hour
   GCS_MAX_FILE_SIZE_MB: z.coerce.number().default(10),
 
+  // AgentCIS
+  AGENTCIS_BASE_URL: z.string().optional(),
+  AGENTCIS_API_KEY: z.string().optional(),
+
+  // Vault
+  VAULT_KEK: z.string().optional(),
 });
 
 const parsed = envSchema.parse(process.env);

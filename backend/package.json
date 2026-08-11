@@ -15,6 +15,9 @@
     "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",
     "job:extraction-pages": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-page.worker.ts",
     "job:extraction-verify": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-verify.worker.ts",
+    "job:extraction-step": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-step.worker.ts",
+    "job:extraction-schedule": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-schedule.worker.ts",
+    "job:extraction-agentcis": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-agentcis.worker.ts",
     "lint": "eslint src/"
   },
   "dependencies": {

@@ -21,6 +21,18 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("extraction-page-worker");
 
+// ponytail: ported from V2's classifyFailure + routeFailure
+type FailureClass = "anti_bot" | "not_a_course" | "ai_5xx" | "parse_error" | "other";
+
+function classifyFailure(error: string): FailureClass {
+  const e = error.toLowerCase();
+  if (e.includes("blocked") || e.includes("minimal_content") || e.includes("empty") || e.includes("anti-bot")) return "anti_bot";
+  if (e.includes("not a course") || e.includes("blog") || e.includes("news") || e.includes("staff")) return "not_a_course";
+  if (e.includes("429") || e.includes("503") || /5\d{2}/.test(e) || e.includes("5xx")) return "ai_5xx";
+  if (e.includes("parse") || e.includes("no structured data")) return "parse_error";
+  return "other";
+}
+
 interface ExtractionResult {
   courses: ExtractedCourse[];
   campuses_found: ExtractedCampus[];
@@ -74,7 +86,13 @@ async function checkAllPagesDone(jobId: string) {
 }
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
-  const { jobId, queueItemId, url } = JSON.parse(msg!.content.toString());
+  let jobId: string, queueItemId: string, url: string;
+  try {
+    ({ jobId, queueItemId, url } = JSON.parse(msg!.content.toString()));
+  } catch {
+    logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
+    return;
+  }
   logger.info("Processing page", { jobId, queueItemId, url });
 
   // Check job is still active + load site intelligence hints
@@ -92,6 +110,27 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   if (!job || job.stop_requested || ["paused", "failed", "declined"].includes(job.status)) {
     logger.info("Job not active, skipping page", { jobId, status: job?.status });
     return;
+  }
+
+  // ponytail: check URL against blocklist before scraping
+  const blocklistRow = await masterKnex(`${S}.extraction_additional_info`)
+    .where({ job_id: jobId, key: "url_blocklist_patterns" })
+    .select("value")
+    .first();
+  if (blocklistRow?.value) {
+    try {
+      const patterns: string[] = JSON.parse(blocklistRow.value);
+      if (patterns.some((p) => new RegExp(p, "i").test(url))) {
+        logger.info("URL blocklisted, skipping", { jobId, url });
+        await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+          status: "completed",
+          extracted_data: JSON.stringify({ skipped: true, reason: "blocklisted" }),
+          updated_at: masterKnex.fn.now(),
+        });
+        await checkAllPagesDone(jobId);
+        return;
+      }
+    } catch { /* ignore malformed blocklist */ }
   }
 
   // Mark queue item processing
@@ -148,7 +187,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           for (const cn of course.campus_names) {
             if (!campusIdMap.has(normaliseCampusName(cn))) {
               const cid = await upsertCampus(jobId, { name: cn });
-              if (cid) campusIdMap.set(cn.toLowerCase(), cid);
+              if (cid) campusIdMap.set(normaliseCampusName(cn), cid);
             }
           }
         }
@@ -183,18 +222,47 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error("Page processing failed", { jobId, queueItemId, url, error: errMsg });
+
+    // ponytail: V2-style failure classification with retry routing
+    const failureClass = classifyFailure(errMsg);
+    const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
+    const retries = item?.retry_count ?? 0;
+    const meta = { ...(item?.processing_meta ?? {}), last_error: errMsg, last_failure_class: failureClass };
+
+    let nextStatus = "failed";
+
+    if (failureClass === "anti_bot" && retries < 2) {
+      nextStatus = "pending";
+      meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
+    } else if (failureClass === "ai_5xx" && retries < 3) {
+      nextStatus = "pending";
+      meta.retry_strategy = "default";
+      meta.retry_after_ms = Math.min(60_000, 1000 * 2 ** retries);
+    }
+
     await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
-      status: "failed",
-      error: errMsg,
-      failure_class: err instanceof Error ? err.constructor.name : "Unknown",
-      retry_count: masterKnex.raw("retry_count + 1"),
+      status: nextStatus,
+      error: nextStatus === "failed" ? errMsg : null,
+      failure_class: failureClass,
+      retry_count: retries + 1,
+      processing_meta: JSON.stringify(meta),
       updated_at: masterKnex.fn.now(),
     });
-    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
+
+    if (nextStatus === "pending") {
+      // Re-publish for retry with strategy hint
+      await queueService.publish(EXTRACTION_QUEUES.PAGES, {
+        jobId, queueItemId, url, forceFirecrawl: meta.retry_strategy !== "default",
+      });
+      logger.info("Re-queued for retry", { jobId, queueItemId, failureClass, retries: retries + 1, strategy: meta.retry_strategy });
+    } else {
+      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
+    }
+
     await writeJobEvent(jobId, "page_error", {
       level: "error", phase: "data_extraction",
-      message: `Failed: ${errMsg}`,
-      data: { url },
+      message: `Failed: ${errMsg} [${failureClass}${nextStatus === "pending" ? ", retrying" : ""}]`,
+      data: { url, failure_class: failureClass, retry: nextStatus === "pending" },
     });
 
     await checkAllPagesDone(jobId);

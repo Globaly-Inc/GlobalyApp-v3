@@ -7,4 +7,10 @@ export const EXTRACTION_QUEUES = {
   PAGES: "extraction_pages",
   /** All pages done → worker verifies extracted data against live site */
   VERIFY: "extraction_verify",
+  /** Admin-triggered step re-runs (institution, branches, agents, etc.) */
+  STEPS: "extraction_steps",
+  /** Trigger a schedule check (cron or manual) */
+  SCHEDULE: "extraction_schedule",
+  /** AgentCIS institution import — one message per institution_id */
+  AGENTCIS: "extraction_agentcis",
 } as const;

@@ -327,6 +327,123 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   return courseId;
 }
 
+/**
+ * Replace all campuses for a job — delete existing + re-insert.
+ * Re-links course-campus junctions by matching normalised campus names.
+ * Returns a map of normalised name → new campus ID.
+ */
+export async function replaceCampuses(
+  jobId: string,
+  campuses: ExtractedCampus[],
+): Promise<Map<string, string>> {
+  // Load existing junctions before deleting campuses
+  const existingJunctions = await masterKnex(`${S}.extraction_course_campuses`)
+    .where({ job_id: jobId })
+    .select("course_id", "campus_id", "campus_name");
+
+  // Build old-id → name map from existing campuses
+  const oldCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId });
+  const oldIdToName = new Map<string, string>();
+  for (const c of oldCampuses) {
+    oldIdToName.set(c.id, normaliseCampusName(c.name));
+  }
+
+  // Delete existing campuses (cascade deletes junctions via DB or we re-create)
+  await masterKnex(`${S}.extraction_course_campuses`).where({ job_id: jobId }).delete();
+  await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).delete();
+
+  // Insert new campuses, dedup by normalised name
+  const idMap = new Map<string, string>();
+  for (const campus of campuses) {
+    if (!campus.name) continue;
+    const norm = normaliseCampusName(campus.name);
+    if (idMap.has(norm)) continue;
+    const [row] = await masterKnex(`${S}.extraction_campuses`)
+      .insert({ job_id: jobId, ...campus })
+      .returning("id");
+    idMap.set(norm, row.id);
+  }
+
+  // Re-link junctions by matching normalised campus name
+  for (const junc of existingJunctions) {
+    const oldNorm = junc.campus_name
+      ? normaliseCampusName(junc.campus_name)
+      : oldIdToName.get(junc.campus_id) ?? "";
+    const newCampusId = idMap.get(oldNorm);
+    if (newCampusId) {
+      await masterKnex(`${S}.extraction_course_campuses`)
+        .insert({
+          job_id: jobId,
+          course_id: junc.course_id,
+          campus_id: newCampusId,
+          campus_name: junc.campus_name,
+        })
+        .onConflict().ignore();
+    }
+  }
+
+  logger.info("Replaced campuses", { jobId, count: idMap.size });
+  return idMap;
+}
+
+/**
+ * Upsert an agent by (job_id, external_id).
+ * Returns the agent row ID.
+ */
+export async function upsertAgent(
+  jobId: string,
+  agent: Record<string, unknown>,
+  externalId: string,
+): Promise<string> {
+  const existing = await masterKnex(`${S}.extraction_agents`)
+    .where({ job_id: jobId, external_id: externalId })
+    .first();
+
+  if (existing) {
+    // Merge: only overwrite nulls
+    const updates: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(agent)) {
+      if (key === "job_id" || key === "external_id" || key === "id") continue;
+      if (val != null && val !== "" && (existing[key] == null || existing[key] === "")) {
+        updates[key] = val;
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = masterKnex.fn.now();
+      await masterKnex(`${S}.extraction_agents`).where({ id: existing.id }).update(updates);
+    }
+    return existing.id;
+  }
+
+  const [row] = await masterKnex(`${S}.extraction_agents`)
+    .insert({ job_id: jobId, external_id: externalId, ...agent })
+    .returning("id");
+  return row.id;
+}
+
+/**
+ * Insert agent locations for an agent within a job.
+ * Deletes existing locations for the agent first to allow re-runs.
+ */
+export async function writeAgentLocations(
+  agentId: string,
+  jobId: string,
+  locations: Array<Record<string, unknown>>,
+): Promise<void> {
+  await masterKnex(`${S}.extraction_agent_locations`)
+    .where({ agent_id: agentId, job_id: jobId })
+    .delete();
+
+  if (locations.length === 0) return;
+
+  const rows = locations.map((loc) => ({
+    agent_id: agentId,
+    job_id: jobId,
+    ...loc,
+  }));
+  await masterKnex(`${S}.extraction_agent_locations`).insert(rows);
+}
+
 /** Insert a queue item for a discovered URL */
 export async function insertQueueItem(jobId: string, url: string) {
   const [row] = await masterKnex(`${S}.extraction_queue`)

@@ -36,7 +36,13 @@ interface UrlDiscoveryResult {
 }
 
 await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
-  const { jobId, resumed } = JSON.parse(msg!.content.toString());
+  let jobId: string, resumed: boolean | undefined;
+  try {
+    ({ jobId, resumed } = JSON.parse(msg!.content.toString()));
+  } catch {
+    logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
+    return;
+  }
   logger.info("Received job", { jobId, resumed: !!resumed });
 
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
@@ -111,6 +117,26 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     const origin = new URL(job.institution_url).origin;
     let allUrls = filterUrls(discovery.urls, origin);
 
+    // ponytail: apply URL blocklist before heuristic filter
+    const blocklistRow = await masterKnex(`${S}.extraction_additional_info`)
+      .where({ job_id: jobId, key: "url_blocklist_patterns" })
+      .select("value")
+      .first();
+    let blocklistRegexes: RegExp[] = [];
+    if (blocklistRow?.value) {
+      try {
+        const patterns: string[] = JSON.parse(blocklistRow.value);
+        blocklistRegexes = patterns.map((p) => new RegExp(p, "i"));
+      } catch { /* ignore malformed blocklist */ }
+    }
+    if (blocklistRegexes.length > 0) {
+      const before = allUrls.length;
+      allUrls = allUrls.filter((u) => !blocklistRegexes.some((rx) => rx.test(u)));
+      if (before !== allUrls.length) {
+        logger.info("Blocklist filtered URLs", { jobId, before, after: allUrls.length });
+      }
+    }
+
     await writeJobEvent(jobId, "urls_discovered_raw", {
       phase: "course_discovery",
       message: `Discovered ${allUrls.length} URLs via ${discovery.method}`,
@@ -124,11 +150,28 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     let guidedUrls: string[] = [];
     if (job.guided_urls) {
       const parsed = typeof job.guided_urls === "string" ? JSON.parse(job.guided_urls) : job.guided_urls;
-      if (Array.isArray(parsed)) guidedUrls = parsed;
-      else if (parsed?.urls && Array.isArray(parsed.urls)) guidedUrls = parsed.urls;
-      else guidedUrls = Object.values(parsed).filter((v): v is string => typeof v === "string");
+      if (Array.isArray(parsed)) {
+        guidedUrls = parsed;
+      } else if (parsed && typeof parsed === "object") {
+        // Extract URL arrays from structured guided_urls object
+        // e.g. { course_list_urls: [...], contact_urls: [...], branches_urls: [...] }
+        const urlKeys = ["course_list_urls", "contact_urls", "branches_urls", "agents_urls"];
+        for (const key of urlKeys) {
+          const val = (parsed as Record<string, unknown>)[key];
+          if (Array.isArray(val)) {
+            for (const u of val) { if (typeof u === "string") guidedUrls.push(u); }
+          }
+        }
+      }
     }
     courseUrls = [...new Set([...courseUrls, ...guidedUrls])];
+
+    // ponytail: check stop_requested before LLM-heavy URL classification
+    const stopCheck1 = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
+    if (stopCheck1?.stop_requested) {
+      logger.info("Stop requested, aborting", { jobId });
+      return;
+    }
 
     // If we have too many URLs, let LLM pick the best ones
     // ponytail: bump maxTokens — response is a URL list that easily exceeds 16K default

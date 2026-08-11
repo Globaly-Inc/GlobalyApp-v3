@@ -31,7 +31,13 @@ interface VerifyResult {
 }
 
 await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
-  const { jobId } = JSON.parse(msg!.content.toString());
+  let jobId: string;
+  try {
+    ({ jobId } = JSON.parse(msg!.content.toString()));
+  } catch {
+    logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
+    return;
+  }
   logger.info("Starting verification", { jobId });
 
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();

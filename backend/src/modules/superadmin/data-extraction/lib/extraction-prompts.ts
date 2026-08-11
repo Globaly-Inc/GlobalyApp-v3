@@ -183,6 +183,285 @@ Rules:
 - Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")`;
 }
 
+// ── Phase 2b: Institution extraction (step worker) ──
+
+export const INSTITUTION_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for an education platform.
+Your ONLY job is to extract institution-level information from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer or guess.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function institutionExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract institution-level information from this webpage.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "name": "full institution name or null",
+  "logo_url": "logo image URL or null",
+  "website": "institution website or null",
+  "email": "main contact email or null",
+  "phone": "main phone or null",
+  "description": "brief description or null",
+  "country": "country or null",
+  "state": "state/province or null",
+  "city": "city or null",
+  "address": "street address or null",
+  "zip_code": "postal code or null",
+  "facebook_url": "null if not found",
+  "instagram_url": "null if not found",
+  "twitter_url": "null if not found",
+  "linkedin_url": "null if not found",
+  "youtube_url": "null if not found"
+}`;
+}
+
+// ── Phase 2c: Campus extraction (step worker) ──
+
+export const CAMPUS_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for an education platform.
+Extract campus/branch/location information from the provided webpage content.
+
+CRITICAL RULES:
+1. ONLY extract information explicitly stated in the TEXT — not from URLs, map embeds, or image alt text
+2. NEVER infer, guess, or make up any information — use null for missing fields
+3. Look for NAMED campuses, branches, or locations — return each distinct NAMED location separately
+4. STRICT ADDRESS RULE: Only create a campus entry if it has a complete street address (street number + street name + city or postcode). Prefixes like "Level", "Suite", "Unit" before the street number are acceptable
+5. Skip vague entries: city name alone, country alone, or region without full address
+6. FOOTER RULE: Pay SPECIAL attention to the footer — institutions commonly list campus addresses there
+7. DEDUP: Same campus mentioned multiple times = ONE entry with the most complete address
+8. SINGLE SOURCE PRINCIPLE: Extract only campuses clearly listed on THIS page — do not invent additional ones
+Respond in valid JSON only.`;
+
+export function campusExtractionPrompt(
+  url: string,
+  pageText: string,
+  singleCampusMode?: boolean,
+) {
+  return `Extract all campus, branch, and location information from this webpage.
+Check the FOOTER carefully — campus addresses are frequently listed there.
+Return EVERY distinct location as a separate entry, but do NOT create duplicates.
+${singleCampusMode ? "This institution likely has only ONE campus — extract it if found." : ""}
+
+Source URL: ${url}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "campuses": [
+    {
+      "name": "campus/branch name or null",
+      "address": "full street address or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "country": "country or null",
+      "phone": "phone or null",
+      "email": "email or null"
+    }
+  ]
+}`;
+}
+
+// ── Phase 2d: Agent extraction (step worker) ──
+
+export const AGENT_EXTRACTION_SYSTEM = `You are a data extraction assistant for an education platform.
+Extract REGISTERED EDUCATION AGENTS or RECRUITMENT AGENCIES listed on the page.
+These are companies or individuals who officially recruit international students on behalf of the institution.
+
+Extract ONLY entries that represent agents/agencies with at least a name or country.
+DO NOT extract: sponsors, donors, industry partners, news mentions, or general business partnerships.
+NEVER guess or infer contact details not explicitly shown on the page.
+Capture the FULL postal address verbatim when shown. Populate structured fields when possible.
+Leave all fields null if not explicitly stated.
+Respond in valid JSON only.`;
+
+export function agentExtractionPrompt(
+  url: string,
+  pageText: string,
+  institutionName?: string | null,
+) {
+  return `Extract all registered education agent and recruitment agency listings from this page.
+${institutionName ? `Institution: ${institutionName}` : ""}
+Source URL: ${url}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "agents": [
+    {
+      "name": "agent/agency name",
+      "country": "country or null",
+      "email": "email or null",
+      "phone": "phone or null",
+      "website": "website or null",
+      "address": "full address or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "postcode": "postcode or null"
+    }
+  ]
+}`;
+}
+
+// ── Phase 2e: Course list extraction (step worker) ──
+
+export const COURSE_LIST_SYSTEM = `You are a course catalogue data extractor for an education platform.
+
+Your primary task: identify whether this page lists REAL individual courses or just CATEGORY/SUBJECT AREA groupings.
+
+REAL INDIVIDUAL COURSE — has ALL of these signals:
+- A qualification code (e.g. "CHC30125", "SIT40521", "BSB50120") OR
+- A clear qualification level in the name ("Certificate III in...", "Diploma of...", "Bachelor of...", "Master of...")
+- Links directly to a single course detail page
+
+STUDY UNIT / SUBJECT (EXCLUDE — these are NOT courses):
+- Has a short alphanumeric code: 2-4 letters + 2-3 digits (e.g. "ACC203", "ICT100")
+- These are individual subjects/modules taken WITHIN a degree program
+- NEVER extract these as courses
+
+CATEGORY / SUBJECT AREA LISTING — the page shows groupings like:
+- "Early Childhood Education and Care — 2 Courses"
+- "Kitchen and Hospitality Management"
+These are NOT real courses — they are folders containing multiple courses.
+
+Respond in valid JSON only.`;
+
+export function courseListPrompt(url: string, pageText: string) {
+  return `Analyse this page and extract courses or detect category listings.
+Source URL: ${url}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "is_category_listing": false,
+  "category_urls": [],
+  "courses": [
+    {
+      "name": "exact course name as displayed",
+      "url": "direct URL to course detail page or null",
+      "degree_level": "Certificate|Diploma|Advanced Diploma|Associate Degree|Bachelor|Graduate Certificate|Graduate Diploma|Master|PhD|Short Course|Other"
+    }
+  ]
+}
+
+Rules:
+- If the page lists REAL individual courses, set is_category_listing=false and populate courses
+- If the page lists SUBJECT AREA CATEGORIES, set is_category_listing=true and populate category_urls
+- Extract EVERY real course — be thorough
+- Do NOT extract navigation links, footer links, blog posts, news, staff profiles`;
+}
+
+// ── Phase 2f: Bulk fee extraction (step worker) ──
+
+export const BULK_FEE_SYSTEM = `You are a precise fee extraction assistant for an education data platform.
+You match fees from fee tables/pages to specific courses.
+Only extract fees that are explicitly stated — do NOT guess or infer amounts.
+Respond in valid JSON only.`;
+
+export function bulkFeePrompt(
+  courseNames: string[],
+  feePageText: string,
+  siteHints?: { currency?: string; country?: string } | null,
+) {
+  const currency = siteHints?.currency || "USD";
+  const countryNote = siteHints?.country ? ` (institution is based in ${siteHints.country})` : "";
+  const courseList = courseNames.map((c, i) => `${i + 1}. ${c}`).join("\n");
+
+  return `Below is content from an educational institution's FEES PAGE, followed by a numbered list of ALL courses.
+
+Your task: Extract the fee for EACH course in the list. Match course names against fee tables, headings, or categories.
+
+Rules:
+- If a fee applies to a category (e.g. "all Bachelor programs"), map it to each matching course
+- Extract both domestic and international fees where available
+- If a fee is per semester/term, calculate the annual total
+- If you cannot find a fee for a specific course, set its totals to 0
+- Currency: default to ${currency}${countryNote}. Only use a different code if explicitly stated
+- Only extract fees explicitly stated — do NOT guess
+
+=== FEES PAGE ===
+${feePageText}
+
+=== COURSE LIST ===
+${courseList}
+
+Return JSON:
+{
+  "fee_schedule": [
+    {
+      "course_name": "course name as listed",
+      "domestic_total": 0,
+      "international_total": 0,
+      "currency": "${currency}",
+      "period_type": "Per Year|Per Term|Total"
+    }
+  ]
+}`;
+}
+
+// ── Phase 2g: Course data re-extraction (step worker) ──
+
+export const COURSE_DATA_SYSTEM = `You are a course data extraction assistant for an education platform.
+Extract the requested data type accurately from the page content.
+Only extract fields that are explicitly stated — do NOT guess.
+Respond in valid JSON only.`;
+
+export function courseDataPrompt(
+  url: string,
+  pageText: string,
+  dataType: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+
+  const schemas: Record<string, string> = {
+    fees: `{
+  "domestic_fee_total": null,
+  "international_fee_total": null,
+  "currency": "AUD",
+  "fees": [{ "name": "fee description", "student_type": "domestic|international|both", "period_type": "Per Year|Per Semester|Total", "total_amount": 0 }]
+}`,
+    intakes: `{
+  "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD or null", "intake_month": null, "intake_year": null, "admission_deadline": "YYYY-MM-DD or null" }]
+}`,
+    units: `{
+  "study_units": [{ "unit_code": "code or null", "unit_name": "unit name", "credit_points": null }]
+}`,
+    eligibility: `{
+  "requirements": [{ "name": "requirement name", "applicable_to": "domestic|international|both", "description": "details", "min_score_percent": null }],
+  "english_requirements": [{ "test_type_name": "IELTS|TOEFL|PTE", "overall_score": null, "listening_score": null, "reading_score": null, "writing_score": null, "speaking_score": null }]
+}`,
+    accreditations: `{
+  "accreditations": [{ "name": "accreditation body name", "issuing_organization": "org or null" }]
+}`,
+    course: `{
+  "name": "full course name", "short_name": null, "description": "2-4 sentences", "degree_level": "Bachelor|Master|Diploma|Certificate|etc",
+  "subject_area": null, "duration_weeks": null, "study_mode": null, "career_paths": [], "awarding_institution": null
+}`,
+  };
+
+  return `Extract ${dataType} information for this course page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON matching this schema:
+${schemas[dataType] || "{}"}`;
+}
+
 // ── Phase 3: Verification (verify worker) ──
 
 export const VERIFICATION_SYSTEM = `You verify extracted course data against live web page content.
