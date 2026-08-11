@@ -53,7 +53,7 @@ export function MyProfileView() {
 
   if (!me) return null;
 
-  const initial = me.name?.[0]?.toUpperCase() ?? "A";
+  const initial = me.name?.[0]?.toUpperCase() ?? "";
 
   const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
