@@ -2,11 +2,18 @@
 // accreditations, and issuing organizations.
 
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../../../shared/pagination.js";
 import {
   AccreditationInputSchema, FeeTypeInputSchema, IdParamSchema,
   IssuingOrgInputSchema, LookupInputSchema, ReviewInputSchema,
 } from "../schemas/categories.schema.js";
 import * as service from "../services/categories.service.js";
+
+const IssuingOrgListQuery = PaginationSchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  search: z.string().trim().min(1).optional(),
+});
 
 export async function catalogRoutes(app: FastifyInstance) {
   // ── Degree Levels & Areas of Study ──
@@ -15,8 +22,14 @@ export async function catalogRoutes(app: FastifyInstance) {
     ["degree-levels", "degree_levels"],
     ["areas-of-study", "areas_of_study"],
   ] as const) {
-    app.get(`/${path}`, async (_req, reply) => {
-      return reply.send({ items: await service.listLookup(table) });
+    app.get(`/${path}`, async (req, reply) => {
+      const pagination = PaginationSchema.parse(req.query);
+      const { limit, offset } = paginationToOffset(pagination);
+      const [rows, total] = await Promise.all([
+        service.listLookup(table, limit, offset),
+        service.countLookup(table),
+      ]);
+      return reply.send(buildPaginatedResponse(rows, total, pagination));
     });
 
     app.post(`/${path}`, async (req, reply) => {
@@ -34,8 +47,14 @@ export async function catalogRoutes(app: FastifyInstance) {
 
   // ── Fee Types ──
 
-  app.get("/fee-types", async (_req, reply) => {
-    return reply.send({ items: await service.listFeeTypes() });
+  app.get("/fee-types", async (req, reply) => {
+    const pagination = PaginationSchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      service.listFeeTypes(limit, offset),
+      service.countFeeTypes(),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
   app.post("/fee-types", async (req, reply) => {
@@ -66,8 +85,14 @@ export async function catalogRoutes(app: FastifyInstance) {
 
   // ── Issuing Organizations ──
 
-  app.get("/issuing-organizations", async (_req, reply) => {
-    return reply.send({ items: await service.listIssuingOrganizations() });
+  app.get("/issuing-organizations", async (req, reply) => {
+    const { search, ...pagination } = IssuingOrgListQuery.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      service.listIssuingOrganizations(limit, offset, search),
+      service.countIssuingOrganizations(search),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
   app.post("/issuing-organizations", async (req, reply) => {
@@ -84,8 +109,14 @@ export async function catalogRoutes(app: FastifyInstance) {
 
   // ── Accreditations ──
 
-  app.get("/accreditations", async (_req, reply) => {
-    return reply.send({ items: await service.listAccreditations() });
+  app.get("/accreditations", async (req, reply) => {
+    const pagination = PaginationSchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      service.listAccreditations(limit, offset),
+      service.countAccreditations(),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
   app.post("/accreditations", async (req, reply) => {

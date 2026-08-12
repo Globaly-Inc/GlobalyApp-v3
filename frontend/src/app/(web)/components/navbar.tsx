@@ -16,8 +16,7 @@ function dashboardHref(user: AuthUser | null): string {
   if (!user) return "/";
   if (user.type === "admin") return "/admin/overview";
   if (user.user_category === "business") return "/business/profile";
-  if (user.user_category === "personal") return "/personal/profile";
-  return "/";
+  return "/personal/profile";
 }
 
 export function Navbar() {

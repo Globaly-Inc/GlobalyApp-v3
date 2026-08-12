@@ -137,6 +137,7 @@ const authSlice = createSlice({
       })
       .addCase(fetchMe.fulfilled, (state, action) => {
         state.user = action.payload;
+        state.initializing = false;
       });
   },
 });

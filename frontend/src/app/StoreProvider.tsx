@@ -4,6 +4,7 @@ import { Provider } from 'react-redux'
 import { makeStore, type AppStore } from '../lib/store'
 import { restoreSession, settleInitializing } from './auth/store/auth-slice'
 import { getAccessToken } from '@/lib/session'
+import { RoleSelectGate } from './auth/role-select-gate'
 
 export default function StoreProvider({
   children
@@ -20,5 +21,10 @@ export default function StoreProvider({
     else store.dispatch(settleInitializing())
   }, [store])
 
-  return <Provider store={store}>{children}</Provider>
+  return (
+    <Provider store={store}>
+      {children}
+      <RoleSelectGate />
+    </Provider>
+  )
 }

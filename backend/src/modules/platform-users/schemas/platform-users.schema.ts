@@ -118,6 +118,8 @@ export const WorkExperienceSchema = z.object({
   sort_order: z.number().int().optional(),
 });
 
+export const UpdateCategorySchema = z.object({ user_category: z.enum(["personal", "business"]) });
+
 export const IdParamSchema = z.object({ id: z.string().uuid() });
 export const CountryIdParamSchema = z.object({ id: z.coerce.number().int().positive() });
 

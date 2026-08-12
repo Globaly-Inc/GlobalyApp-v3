@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Globe, X } from "lucide-react";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +13,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/combobox";
 import { FieldError } from "@/components/field-error";
 import { useValidatedForm } from "@/lib/use-validated-form";
+import { categoriesApi } from "../apis";
 import { RequiredMark } from "./required-mark";
 import { flagFromIso2 } from "../utils";
 import type { Accreditation, AccreditationInput, CountryOption, IssuingOrganization } from "../apis/types";
+
+const ORG_SEARCH_DEBOUNCE_MS = 300;
 
 type FormState = {
   name: string;
@@ -59,6 +62,21 @@ export function AccreditationDialog({
   saving: boolean;
 }>) {
   const [creatingOrg, setCreatingOrg] = useState(false);
+  const [searchResults, setSearchResults] = useState<IssuingOrganization[] | null>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const orgOptions = searchResults ?? organizations;
+
+  const handleOrgQueryChange = (query: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (!query.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    searchDebounceRef.current = setTimeout(async () => {
+      const { data } = await categoriesApi.getIssuingOrganizations({ search: query.trim(), limit: 10 });
+      setSearchResults(data);
+    }, ORG_SEARCH_DEBOUNCE_MS);
+  };
 
   const initial = (): FormState =>
     editing
@@ -79,13 +97,17 @@ export function AccreditationDialog({
   // `open` flips from the parent (row click), not from Dialog's own onOpenChange,
   // so the form has to re-sync here rather than in the close-only handler below.
   useEffect(() => {
-    if (open) reset(initial());
+    if (open) {
+      reset(initial());
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the previous open's search on each re-open
+      setSearchResults(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing]);
 
   // Combobox is creatable: a value matching no option id is a new organisation name.
   const handleOrganizationChange = async (value: string) => {
-    if (organizations.some((o) => String(o.id) === value)) {
+    if (orgOptions.some((o) => String(o.id) === value)) {
       setForm((f) => ({ ...f, organizationId: value }));
       return;
     }
@@ -148,9 +170,10 @@ export function AccreditationDialog({
               creatable
               loading={creatingOrg}
               loadingText="Creating…"
-              options={organizations.map((o) => ({ value: String(o.id), label: o.name }))}
+              options={orgOptions.map((o) => ({ value: String(o.id), label: o.name }))}
               value={form.organizationId}
               onChange={handleOrganizationChange}
+              onQueryChange={handleOrgQueryChange}
               placeholder="Select or create…"
               searchPlaceholder="Search organisations…"
             />

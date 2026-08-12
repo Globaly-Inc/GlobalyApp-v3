@@ -1,11 +1,25 @@
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
-  FeeType, FeeTypeInput, IssuingOrganization, Lookup, LookupInput, LookupKind,
-  ModerationStatus,
+  FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
+  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
 } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function paginate<T>(rows: T[], { page = 1, limit = 20 }: ListParams): Paginated<T> {
+  const offset = (page - 1) * limit;
+  return {
+    data: rows.slice(offset, offset + limit),
+    meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)) },
+  };
+}
+
+function searchByName<T extends { name: string }>(rows: T[], search?: string): T[] {
+  if (!search) return rows;
+  const needle = search.toLowerCase();
+  return rows.filter((r) => r.name.toLowerCase().includes(needle));
 }
 
 let nextId = 100;
@@ -23,14 +37,14 @@ function removeRow<T extends { id: number }>(table: T[], id: number) {
 }
 
 const businessCategories: Category[] = [
-  { id: 1, slug: "education-agent", name: "Education Agent", description: "Recruitment and placement agencies.", icon: "Users", is_active: true, sort_order: 0 },
-  { id: 2, slug: "institution", name: "Institution", description: "Universities, colleges and schools.", icon: "GraduationCap", is_active: true, sort_order: 1 },
-  { id: 3, slug: "immigration-department", name: "Immigration Department", description: null, icon: "Landmark", is_active: false, sort_order: 2 },
+  { id: 1, slug: "education-agent", name: "Education Agent", description: "Recruitment and placement agencies.", icon: "Users", is_active: true, sort_order: 0, schema_fields: [] },
+  { id: 2, slug: "institution", name: "Institution", description: "Universities, colleges and schools.", icon: "GraduationCap", is_active: true, sort_order: 1, schema_fields: [] },
+  { id: 3, slug: "immigration-department", name: "Immigration Department", description: null, icon: "Landmark", is_active: false, sort_order: 2, schema_fields: [] },
 ];
 
 const serviceCategories: Category[] = [
-  { id: 1, slug: "courses", name: "Courses", description: "Academic programs offered by institutions.", icon: "BookOpen", is_active: true, sort_order: 0 },
-  { id: 2, slug: "accommodation", name: "Accommodation", description: "Student housing and homestay.", icon: "Home", is_active: true, sort_order: 1 },
+  { id: 1, slug: "courses", name: "Courses", description: "Academic programs offered by institutions.", icon: "BookOpen", is_active: true, sort_order: 0, schema_fields: [] },
+  { id: 2, slug: "accommodation", name: "Accommodation", description: "Student housing and homestay.", icon: "Home", is_active: true, sort_order: 1, schema_fields: [] },
 ];
 
 const degreeLevels: Lookup[] = [
@@ -67,24 +81,31 @@ const countries: CountryOption[] = [
   { id: 4, name: "New Zealand", iso2: "NZ" },
 ];
 
+const defaultServicesByBusinessCategory: Record<number, number[]> = {
+  1: [1, 2],
+};
+
+const schemaFieldsByCategory: Record<string, SchemaField[]> = {};
+
 const lookupTable = (kind: LookupKind) => (kind === "degree-levels" ? degreeLevels : areasOfStudy);
 const categoryTable = (kind: "business" | "service") => (kind === "business" ? businessCategories : serviceCategories);
+const schemaFieldsKey = (kind: "business" | "service", categoryId: number) => `${kind}:${categoryId}`;
 
 export const categoriesMockApi = {
-  getBusinessCategories: async (): Promise<Category[]> => {
-    console.log("[mock] getBusinessCategories");
+  getBusinessCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
+    console.log("[mock] getBusinessCategories", search, params);
     await delay(300);
-    return [...businessCategories];
+    return paginate(searchByName(businessCategories, search), params);
   },
-  getServiceCategories: async (): Promise<Category[]> => {
-    console.log("[mock] getServiceCategories");
+  getServiceCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
+    console.log("[mock] getServiceCategories", search, params);
     await delay(300);
-    return [...serviceCategories];
+    return paginate(searchByName(serviceCategories, search), params);
   },
   createCategory: async (kind: "business" | "service", input: CategoryInput): Promise<Category> => {
     console.log("[mock] createCategory", kind, input);
     await delay(300);
-    const row = { ...input, id: newId() };
+    const row: Category = { ...input, id: newId(), schema_fields: [] };
     categoryTable(kind).push(row);
     return row;
   },
@@ -94,10 +115,56 @@ export const categoriesMockApi = {
     return patchRow(categoryTable(kind), id, input);
   },
 
-  getLookups: async (kind: LookupKind): Promise<Lookup[]> => {
-    console.log("[mock] getLookups", kind);
+  getSchemaFields: async (kind: "business" | "service", categoryId: number): Promise<SchemaField[]> => {
+    console.log("[mock] getSchemaFields", kind, categoryId);
     await delay(300);
-    return [...lookupTable(kind)];
+    return schemaFieldsByCategory[schemaFieldsKey(kind, categoryId)] ?? [];
+  },
+  createSchemaField: async (kind: "business" | "service", categoryId: number, input: SchemaFieldInput): Promise<SchemaField> => {
+    console.log("[mock] createSchemaField", kind, categoryId, input);
+    await delay(300);
+    const row: SchemaField = { ...input, id: newId() };
+    const key = schemaFieldsKey(kind, categoryId);
+    schemaFieldsByCategory[key] = [...(schemaFieldsByCategory[key] ?? []), row];
+    return row;
+  },
+  updateSchemaField: async (id: number, input: Partial<SchemaFieldInput>): Promise<SchemaField> => {
+    console.log("[mock] updateSchemaField", id, input);
+    await delay(300);
+    for (const key of Object.keys(schemaFieldsByCategory)) {
+      const rows = schemaFieldsByCategory[key]!;
+      const index = rows.findIndex((row) => row.id === id);
+      if (index === -1) continue;
+      const updated = { ...rows[index]!, ...input };
+      rows[index] = updated;
+      return updated;
+    }
+    throw new Error(`Schema field ${id} not found`);
+  },
+  deleteSchemaField: async (id: number): Promise<void> => {
+    console.log("[mock] deleteSchemaField", id);
+    await delay(300);
+    for (const key of Object.keys(schemaFieldsByCategory)) {
+      schemaFieldsByCategory[key] = schemaFieldsByCategory[key]!.filter((row) => row.id !== id);
+    }
+  },
+
+  getDefaultServices: async (businessCategoryId: number): Promise<Category[]> => {
+    console.log("[mock] getDefaultServices", businessCategoryId);
+    await delay(300);
+    const ids = defaultServicesByBusinessCategory[businessCategoryId] ?? [];
+    return serviceCategories.filter((c) => ids.includes(c.id));
+  },
+  setDefaultServices: async (businessCategoryId: number, serviceCategoryIds: number[]): Promise<void> => {
+    console.log("[mock] setDefaultServices", businessCategoryId, serviceCategoryIds);
+    await delay(300);
+    defaultServicesByBusinessCategory[businessCategoryId] = serviceCategoryIds;
+  },
+
+  getLookups: async (kind: LookupKind, params: ListParams = {}): Promise<Paginated<Lookup>> => {
+    console.log("[mock] getLookups", kind, params);
+    await delay(300);
+    return paginate(lookupTable(kind), params);
   },
   createLookup: async (kind: LookupKind, input: LookupInput): Promise<Lookup> => {
     console.log("[mock] createLookup", kind, input);
@@ -112,10 +179,10 @@ export const categoriesMockApi = {
     return patchRow(lookupTable(kind), id, input);
   },
 
-  getFeeTypes: async (): Promise<FeeType[]> => {
-    console.log("[mock] getFeeTypes");
+  getFeeTypes: async (params: ListParams = {}): Promise<Paginated<FeeType>> => {
+    console.log("[mock] getFeeTypes", params);
     await delay(300);
-    return [...feeTypes];
+    return paginate(feeTypes, params);
   },
   createFeeType: async (input: FeeTypeInput): Promise<FeeType> => {
     console.log("[mock] createFeeType", input);
@@ -140,10 +207,10 @@ export const categoriesMockApi = {
     removeRow(feeTypes, id);
   },
 
-  getAccreditations: async (): Promise<Accreditation[]> => {
-    console.log("[mock] getAccreditations");
+  getAccreditations: async (params: ListParams = {}): Promise<Paginated<Accreditation>> => {
+    console.log("[mock] getAccreditations", params);
     await delay(300);
-    return [...accreditations];
+    return paginate(accreditations, params);
   },
   createAccreditation: async (input: AccreditationInput): Promise<Accreditation> => {
     console.log("[mock] createAccreditation", input);
@@ -179,10 +246,10 @@ export const categoriesMockApi = {
     removeRow(accreditations, id);
   },
 
-  getIssuingOrganizations: async (): Promise<IssuingOrganization[]> => {
-    console.log("[mock] getIssuingOrganizations");
+  getIssuingOrganizations: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<IssuingOrganization>> => {
+    console.log("[mock] getIssuingOrganizations", search, params);
     await delay(300);
-    return [...issuingOrganizations];
+    return paginate(searchByName(issuingOrganizations, search), params);
   },
   createIssuingOrganization: async (name: string): Promise<IssuingOrganization> => {
     console.log("[mock] createIssuingOrganization", name);

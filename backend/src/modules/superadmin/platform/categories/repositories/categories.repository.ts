@@ -6,10 +6,63 @@ import { masterKnex } from "../../../../../core/db/master-pool.js";
 
 const now = () => masterKnex.fn.now();
 
+// ─── Schema Fields (polymorphic: business_categories | service_categories) ─
+
+export type SchemaFieldEntityType = "business_categories" | "service_categories";
+
+const schemaFieldsFor = (entityType: SchemaFieldEntityType) => masterKnex.raw(
+  `COALESCE((
+    SELECT json_agg(json_build_object(
+      'id', sf.id, 'label', sf.label, 'key', sf.key, 'type', sf.type,
+      'is_required', sf.is_required, 'filterable', sf.filterable, 'is_default', sf.is_default, 'options', sf.options
+    ) ORDER BY sf.id)
+    FROM schema_fields sf WHERE sf.entity_id = "${entityType}".id AND sf.entity_type = ?
+  ), '[]'::json) as schema_fields`,
+  [entityType],
+);
+
+export async function listSchemaFields(entityType: SchemaFieldEntityType, entityId: number) {
+  return masterKnex("schema_fields").where({ entity_id: entityId, entity_type: entityType }).orderBy("id");
+}
+
+export async function findSchemaFieldById(id: number) {
+  return masterKnex("schema_fields").where({ id }).first();
+}
+
+// pg serializes plain JS arrays as Postgres array literals, not JSON — stringify explicitly for the json column.
+const serializeOptions = (data: Record<string, unknown>) =>
+  "options" in data ? { ...data, options: data.options == null ? null : JSON.stringify(data.options) } : data;
+
+export async function insertSchemaField(entityType: SchemaFieldEntityType, entityId: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("schema_fields")
+    .insert({ ...serializeOptions(data), entity_id: entityId, entity_type: entityType })
+    .returning("*");
+  return row;
+}
+
+export async function updateSchemaField(id: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("schema_fields").where({ id }).update({ ...serializeOptions(data), updated_at: now() }).returning("*");
+  return row;
+}
+
+export async function deleteSchemaField(id: number) {
+  return masterKnex("schema_fields").where({ id }).delete();
+}
+
 // ─── Business Categories ───────────────────────────────────────────────────
 
-export async function listBusinessCategories() {
-  return masterKnex("business_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name");
+export async function listBusinessCategories(limit: number, offset: number, search?: string) {
+  const q = masterKnex("business_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
+    .select("business_categories.*", schemaFieldsFor("business_categories"));
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
+}
+
+export async function countBusinessCategories(search?: string) {
+  const q = masterKnex("business_categories").whereNull("deleted_at").count("* as count");
+  if (search) q.whereILike("name", `%${search}%`);
+  const [row] = await q;
+  return Number(row.count);
 }
 
 export async function insertBusinessCategory(data: Record<string, unknown>) {
@@ -24,8 +77,18 @@ export async function updateBusinessCategory(id: number, data: Record<string, un
 
 // ─── Service Categories ────────────────────────────────────────────────────
 
-export async function listServiceCategories() {
-  return masterKnex("service_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name");
+export async function listServiceCategories(limit: number, offset: number, search?: string) {
+  const q = masterKnex("service_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
+    .select("service_categories.*", schemaFieldsFor("service_categories"));
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
+}
+
+export async function countServiceCategories(search?: string) {
+  const q = masterKnex("service_categories").whereNull("deleted_at").count("* as count");
+  if (search) q.whereILike("name", `%${search}%`);
+  const [row] = await q;
+  return Number(row.count);
 }
 
 export async function insertServiceCategory(data: Record<string, unknown>) {
@@ -63,8 +126,13 @@ export async function replaceDefaultServices(businessCategoryId: number, service
 
 export type LookupTable = "degree_levels" | "areas_of_study";
 
-export async function listLookup(table: LookupTable) {
-  return masterKnex(table).whereNull("deleted_at").orderBy("sort_order").orderBy("name");
+export async function listLookup(table: LookupTable, limit: number, offset: number) {
+  return masterKnex(table).whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset);
+}
+
+export async function countLookup(table: LookupTable) {
+  const [row] = await masterKnex(table).whereNull("deleted_at").count("* as count");
+  return Number(row.count);
 }
 
 export async function insertLookup(table: LookupTable, data: Record<string, unknown>) {
@@ -80,8 +148,13 @@ export async function updateLookup(table: LookupTable, id: number, data: Record<
 
 // ─── Fee Types ─────────────────────────────────────────────────────────────
 
-export async function listFeeTypes() {
-  return masterKnex("fee_types").whereNull("deleted_at").orderBy("sort_order").orderBy("name");
+export async function listFeeTypes(limit: number, offset: number) {
+  return masterKnex("fee_types").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset);
+}
+
+export async function countFeeTypes() {
+  const [row] = await masterKnex("fee_types").whereNull("deleted_at").count("* as count");
+  return Number(row.count);
 }
 
 export async function findFeeTypeById(id: number) {
@@ -105,8 +178,17 @@ export async function deleteFeeType(id: number) {
 
 // ─── Issuing Organizations ─────────────────────────────────────────────────
 
-export async function listIssuingOrganizations() {
-  return masterKnex("issuing_organizations").orderBy("name");
+export async function listIssuingOrganizations(limit: number, offset: number, search?: string) {
+  const q = masterKnex("issuing_organizations").orderBy("name").limit(limit).offset(offset);
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
+}
+
+export async function countIssuingOrganizations(search?: string) {
+  const q = masterKnex("issuing_organizations").count("* as count");
+  if (search) q.whereILike("name", `%${search}%`);
+  const [row] = await q;
+  return Number(row.count);
 }
 
 export async function insertIssuingOrganization(data: Record<string, unknown>) {
@@ -127,12 +209,18 @@ const scopeCountryIds = masterKnex.raw(`COALESCE((
   FROM accreditation_scope_countries s WHERE s.accreditation_id = a.id
 ), '[]'::json) as scope_country_ids`);
 
-export async function listAccreditations() {
+export async function listAccreditations(limit: number, offset: number) {
   return masterKnex("accreditations as a")
     .leftJoin("issuing_organizations as o", "o.id", "a.issuing_organization_id")
     .whereNull("a.deleted_at")
     .orderBy("a.sort_order").orderBy("a.name")
+    .limit(limit).offset(offset)
     .select("a.*", "o.name as issuing_organization_name", "o.logo_url as issuing_organization_logo_url", scopeCountryIds);
+}
+
+export async function countAccreditations() {
+  const [row] = await masterKnex("accreditations").whereNull("deleted_at").count("* as count");
+  return Number(row.count);
 }
 
 export async function findAccreditationById(id: number) {

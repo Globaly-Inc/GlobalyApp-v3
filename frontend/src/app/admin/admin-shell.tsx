@@ -26,7 +26,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   const router = useRouter();
   const pathname = usePathname();
   const dispatch = useAppDispatch();
-  const { me } = useAppSelector((state) => state.admin);
+  const { me, status, error } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
   const isAdmin = authUser?.type === "admin";
 
@@ -61,6 +61,23 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   }
 
   if (!isAdmin) return null;
+
+  if (status === "failed") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center px-4">
+        <p className="text-sm text-muted-foreground">
+          {error ?? "Failed to load admin profile."}
+        </p>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="text-sm font-medium text-primary underline underline-offset-4"
+        >
+          Sign out
+        </button>
+      </div>
+    );
+  }
 
   if (!me) {
     return (

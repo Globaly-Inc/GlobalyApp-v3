@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
 import { categoriesApi } from "../apis";
 import { ADD_LABEL, CATEGORY_TABS } from "../const";
 import {
-  fetchCatalog, fetchIssuingOrganizations, removeAccreditation, removeFeeType, reviewAccreditation, reviewFeeType,
+  fetchAccreditations, fetchBusinessCategories, fetchCatalog, fetchFeeTypes, fetchIssuingOrganizations,
+  fetchLookup, fetchServiceCategories, removeAccreditation, removeFeeType, reviewAccreditation, reviewFeeType,
   saveAccreditation, saveCategory, saveFeeType, saveLookup,
   toggleCategory, toggleLookup,
 } from "../store/categories-slice";
@@ -42,6 +45,7 @@ type Deleting = { kind: "fee_type" | "accreditation"; id: number; name: string }
 
 export function CategoriesView() {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const catalog = useAppSelector((state) => state.platformCategories);
   const [tab, setTab] = useState<CategoryTab>("business");
   const [saving, setSaving] = useState(false);
@@ -71,9 +75,27 @@ export function CategoriesView() {
   };
 
   const categoryKind = tab === "business" ? "business" : "service";
-  const categories = tab === "business" ? catalog.businessCategories : catalog.serviceCategories;
+  const categoryList = tab === "business" ? catalog.businessCategories : catalog.serviceCategories;
+  const categories = categoryList.data;
   const lookupTab = tab === "degree_levels" || tab === "areas_of_study" ? tab : null;
-  const lookups = lookupTab === "degree_levels" ? catalog.degreeLevels : catalog.areasOfStudy;
+  const lookupList = lookupTab === "degree_levels" ? catalog.degreeLevels : catalog.areasOfStudy;
+  const lookups = lookupList.data;
+
+  const handlePageChange = (page: number) => {
+    if (tab === "business") dispatch(fetchBusinessCategories({ page }));
+    else if (tab === "service") dispatch(fetchServiceCategories({ page }));
+    else if (lookupTab) dispatch(fetchLookup({ kind: LOOKUP_KIND[lookupTab], page }));
+    else if (tab === "fee_types") dispatch(fetchFeeTypes({ page }));
+    else if (tab === "accreditations") dispatch(fetchAccreditations({ page }));
+  };
+
+  const activePagination = tab === "business" || tab === "service"
+    ? categoryList
+    : lookupTab
+      ? lookupList
+      : tab === "fee_types"
+        ? catalog.feeTypes
+        : catalog.accreditations;
 
   const handleAdd = () => {
     if (tab === "business" || tab === "service") setCategoryDialog({ open: true, editing: null });
@@ -145,7 +167,7 @@ export function CategoriesView() {
             onToggle={(id, is_active) =>
               void run(dispatch(toggleCategory({ kind: categoryKind, id, is_active })), "Category updated")
             }
-            onEdit={(editing) => setCategoryDialog({ open: true, editing })}
+            onEdit={(editing) => router.push(`/admin/platform/categories/${categoryKind}/${editing.id}`)}
           />
         )}
 
@@ -162,7 +184,7 @@ export function CategoriesView() {
 
         {tab === "fee_types" && (
           <FeeTypeList
-            items={catalog.feeTypes}
+            items={catalog.feeTypes.data}
             onReview={(id, decision) => handleReview("fee_type", id, decision)}
             onEdit={(editing) => setFeeTypeDialog({ open: true, editing })}
             onDelete={(item) => setDeleting({ kind: "fee_type", id: item.id, name: item.name })}
@@ -171,7 +193,7 @@ export function CategoriesView() {
 
         {tab === "accreditations" && (
           <AccreditationList
-            items={catalog.accreditations}
+            items={catalog.accreditations.data}
             countries={catalog.countries}
             onReview={(id, decision) => handleReview("accreditation", id, decision)}
             onEdit={(editing) => setAccreditationDialog({ open: true, editing })}
@@ -203,15 +225,26 @@ export function CategoriesView() {
 
       {tabContent}
 
-      <CategoryDialog
-        open={categoryDialog.open}
-        onOpenChange={(open) => setCategoryDialog((s) => ({ ...s, open }))}
-        kind={categoryKind}
-        editing={categoryDialog.editing}
-        nextSortOrder={categories.length}
-        onSave={handleSaveCategory}
-        saving={saving}
-      />
+      {catalog.status === "idle" && (
+        <Pagination
+          page={activePagination.page}
+          limit={activePagination.limit}
+          total={activePagination.total}
+          onPageChange={handlePageChange}
+        />
+      )}
+
+      {(tab === "business" || tab === "service") && (
+        <CategoryDialog
+          open={categoryDialog.open}
+          onOpenChange={(open) => setCategoryDialog((s) => ({ ...s, open }))}
+          kind={categoryKind}
+          editing={categoryDialog.editing}
+          nextSortOrder={categoryList.total}
+          onSave={handleSaveCategory}
+          saving={saving}
+        />
+      )}
 
       {lookupTab && (
         <LookupDialog
@@ -219,7 +252,7 @@ export function CategoriesView() {
           onOpenChange={(open) => setLookupDialog((s) => ({ ...s, open }))}
           title={LOOKUP_TITLE[lookupTab]}
           editing={lookupDialog.editing}
-          nextSortOrder={lookups.length}
+          nextSortOrder={lookupList.total}
           onSave={handleSaveLookup}
           saving={saving}
         />
@@ -229,7 +262,7 @@ export function CategoriesView() {
         open={feeTypeDialog.open}
         onOpenChange={(open) => setFeeTypeDialog((s) => ({ ...s, open }))}
         editing={feeTypeDialog.editing}
-        nextSortOrder={catalog.feeTypes.length}
+        nextSortOrder={catalog.feeTypes.total}
         onSave={handleSaveFeeType}
         saving={saving}
       />
@@ -238,7 +271,7 @@ export function CategoriesView() {
         open={accreditationDialog.open}
         onOpenChange={(open) => setAccreditationDialog((s) => ({ ...s, open }))}
         editing={accreditationDialog.editing}
-        nextSortOrder={catalog.accreditations.length}
+        nextSortOrder={catalog.accreditations.total}
         organizations={catalog.issuingOrganizations}
         countries={catalog.countries}
         onCreateOrganization={handleCreateOrganization}
