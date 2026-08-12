@@ -12,6 +12,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "../../geo/apis";
 import {
   fetchFullProfile,
+  refreshCompletion,
   updateProfile,
   addQualification,
   editQualification,
@@ -32,7 +33,6 @@ import type {
   WorkExperienceInput,
   LanguageTest
 } from "../apis/types";
-import { computeCompletion } from "../profile-completion";
 import { SectionCard, OneToManySection, Field } from "./section-card";
 import { ItemRow } from "./item-row";
 import { PersonalDetailsDialog } from "./personal-details-dialog";
@@ -56,7 +56,14 @@ function formatDate(value: string | null) {
 
 export function ProfileView() {
   const dispatch = useAppDispatch();
-  const { profile, qualifications, languageTests, workExperiences, status } = useAppSelector((state) => state.profile);
+  const {
+    profile,
+    qualifications,
+    languageTests,
+    workExperiences,
+    status,
+    completion: completionState,
+  } = useAppSelector((state) => state.profile);
   const [countries, setCountries] = useState<Country[]>([]);
 
   const [personalOpen, setPersonalOpen] = useState(false);
@@ -81,6 +88,13 @@ export function ProfileView() {
     geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Any edit here can change the score, and the backend has already recomputed it — re-read the one
+  // authoritative value rather than deriving a second one client-side.
+  useEffect(() => {
+    if (profile) dispatch(refreshCompletion());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, qualifications.length, languageTests.length]);
 
   useEffect(() => {
     if (!profile || profile.user_category) return;
@@ -143,7 +157,8 @@ export function ProfileView() {
 
   const confirmDelete = (label: string) => window.confirm(`Delete this ${label}?`);
 
-  const completion = computeCompletion(profile, qualifications, languageTests);
+  // Backend-authoritative — the same value the Home completion card shows and the enquiry gate reads.
+  const completion = completionState ?? { percentage: 0, badges: [] };
   const initial = profile.first_name?.[0]?.toUpperCase() ?? "U";
 
   return (
@@ -288,11 +303,11 @@ export function ProfileView() {
                 </p>
               ) : (
                 <ul className="space-y-1.5">
-                  {completion.items
-                    .filter((i) => !i.met)
-                    .map((i) => (
-                      <li key={i.label} className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Circle className="h-3.5 w-3.5" /> {i.label}
+                  {completion.badges
+                    .filter((b) => !b.done)
+                    .map((b) => (
+                      <li key={b.key} className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Circle className="h-3.5 w-3.5" /> {b.label}
                       </li>
                     ))}
                 </ul>

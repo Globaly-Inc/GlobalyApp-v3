@@ -20,6 +20,9 @@ export const authPlugin = fp(async (app) => {
     "/api/v3/admin/users/invite/accept",
     "/api/v3/auth/register",
     "/api/v3/agents/invite/accept",
+    // Signed file reads — an <img>/<video> src cannot carry a bearer token, so the HMAC + expiry in the
+    // query string is what authorizes these (see modules/files).
+    "/api/v3/files/local",
     // Health
     "/healthz",
     "/health/detailed",

@@ -1,6 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { personalApi } from "../apis";
 import type {
+  Completion,
   LanguageTest,
   LanguageTestInput,
   Qualification,
@@ -20,6 +21,9 @@ export const fetchFullProfile = createAsyncThunk("profile/fetchFullProfile", () 
 export const updateProfile = createAsyncThunk("profile/updateProfile", (patch: StudentProfilePatch) =>
   personalApi.updateMyProfile(patch),
 );
+
+/** Re-reads the authoritative completion after any change that could affect it. */
+export const refreshCompletion = createAsyncThunk("profile/refreshCompletion", () => personalApi.getCompletion());
 
 export const updateSubCategory = createAsyncThunk("profile/updateSubCategory", (params: UpdateSubCategoryParams) =>
   personalApi.updateSubCategory(params),
@@ -66,6 +70,8 @@ type ProfileState = {
   qualifications: Qualification[];
   languageTests: LanguageTest[];
   workExperiences: WorkExperience[];
+  /** Backend-authoritative. Never derived here — the same number gates enquiries server-side. */
+  completion: Completion | null;
   status: "idle" | "loading" | "saving" | "failed";
   error: string | null;
 };
@@ -75,6 +81,7 @@ const initialState: ProfileState = {
   qualifications: [],
   languageTests: [],
   workExperiences: [],
+  completion: null,
   status: "idle",
   error: null,
 };
@@ -105,6 +112,10 @@ const profileSlice = createSlice({
         state.qualifications = action.payload.qualifications;
         state.languageTests = action.payload.languageTests;
         state.workExperiences = action.payload.workExperiences;
+        state.completion = action.payload.completion;
+      })
+      .addCase(refreshCompletion.fulfilled, (state, action) => {
+        state.completion = action.payload;
       })
       .addCase(fetchFullProfile.rejected, (state, action) => {
         state.status = "failed";

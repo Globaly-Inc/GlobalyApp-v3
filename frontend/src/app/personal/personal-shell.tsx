@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
+import { fetchUnreadCount } from "./notifications/store/notifications-slice";
 
 const NAV_ITEMS = [
   { label: "Home", icon: Home, href: "/personal/portal" },
@@ -45,6 +46,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const pathname = usePathname();
   const dispatch = useAppDispatch();
   const { profile, status } = useAppSelector((state) => state.profile);
+  const unreadCount = useAppSelector((state) => state.notifications.unreadCount);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const portalTarget =
@@ -56,8 +58,20 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
 
   useEffect(() => {
     if (!profile) dispatch(fetchFullProfile());
+    dispatch(fetchUnreadCount());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ponytail: onboarding gate removed for now — an un-onboarded user goes straight to the portal instead of
+  // being redirected to /personal/onboarding. The route and its view are untouched and still reachable
+  // directly, so restoring the gate is re-adding this effect:
+  //
+  //   useEffect(() => {
+  //     if (!profile || pathname?.startsWith("/personal/onboarding")) return;   // loop guard is required:
+  //     if (!profile.onboarding_completed) router.replace("/personal/onboarding");  // onboarding-view pushes
+  //   }, [profile, pathname, router]);                                              // to /personal/profile
+  //
+  // Profile completion still gates enquiries — that is a separate, server-side check and is unaffected.
 
   const handleSignOut = () => {
     dispatch(logout());
@@ -107,10 +121,16 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
         <div className="flex items-center gap-2">
           <Link
             href="/personal/notifications"
-            className="hidden md:inline-flex items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Notifications"
+            className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
           >
             <Bell className="h-4.5 w-4.5" />
+            {/* No producers write notifications yet, so this is 0 at launch and the badge simply stays hidden. */}
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-4 text-destructive-foreground">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </Link>
           <Link
             href="/personal/messages"
@@ -170,6 +190,29 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
       <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 md:py-6 pb-24 md:pb-6">{children}</main>
 
       <div className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-border bg-background py-2 pb-[env(safe-area-inset-bottom)] md:hidden">
+        <Link
+          href="/personal/portal"
+          className={cn(
+            "flex flex-col items-center gap-0.5 px-4 py-1 text-xs",
+            pathname === "/personal/portal" ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Home className="h-5 w-5" />
+          Home
+        </Link>
+        <Link
+          href="/personal/notifications"
+          className={cn(
+            "relative flex flex-col items-center gap-0.5 px-4 py-1 text-xs",
+            pathname === "/personal/notifications" ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute right-2.5 top-0 size-2 rounded-full bg-destructive" />
+          )}
+          Alerts
+        </Link>
         <Link
           href="/personal/profile"
           className={cn(

@@ -21,6 +21,10 @@ import superadminModule from "./modules/superadmin/index.js";
 import platformUsersModule from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
 import agentsModule from "./modules/agents/index.js";
+import feedModule from "./modules/feed/index.js";
+import notificationsModule from "./modules/notifications/index.js";
+import personalHomeModule from "./modules/personal-home/index.js";
+import filesModule from "./modules/files/index.js";
 
 const logger = createChildLogger("server");
 
@@ -42,6 +46,10 @@ export async function buildServer() {
   await app.register(platformUsersModule);   // platform user profiles + sub-resources
   await app.register(businessesModule);     // business registration + profiles
   await app.register(agentsModule);         // agent invitations + management (per-business DB)
+  await app.register(feedModule);            // cross-portal social feed
+  await app.register(notificationsModule);   // unread count for the portal shells
+  await app.register(personalHomeModule);    // personal Home aggregator (owns no tables)
+  await app.register(filesModule);           // signed public reads for locally-stored files
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

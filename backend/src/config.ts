@@ -46,6 +46,12 @@ const envSchema = z.object({
   CRAWL4AI_API_KEY: z.string().optional(),
   FIRECRAWL_API_KEY: z.string().optional(),
 
+  // Local storage fallback — used automatically when GCS_BUCKET_NAME is unset, so uploads work in
+  // development without a bucket. API_PUBLIC_URL is the origin the browser can reach this API on: media
+  // <img>/<video> tags cannot send an Authorization header, so file URLs must be absolute and self-signed.
+  LOCAL_STORAGE_DIR: z.string().default(".uploads"),
+  API_PUBLIC_URL: z.string().optional(),
+
   // GCP Storage
   GCS_BUCKET_NAME: z.string().optional(),
   GCS_PROJECT_ID: z.string().optional(),

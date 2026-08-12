@@ -7,6 +7,8 @@ export type {
   StudentProfile,
   StudentProfilePatch,
   FullProfile,
+  Completion,
+  CompletionBadge,
   Qualification,
   QualificationInput,
   LanguageTest,
