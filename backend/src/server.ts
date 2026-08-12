@@ -23,6 +23,7 @@ import businessesModule from "./modules/businesses/index.js";
 import agentsModule from "./modules/agents/index.js";
 import feedModule from "./modules/feed/index.js";
 import blogModule from "./modules/blog/index.js";
+import servicesModule from "./modules/services/index.js";
 
 const logger = createChildLogger("server");
 
@@ -46,6 +47,7 @@ export async function buildServer() {
     await protectedApp.register(businessesModule);   // business registration + profiles
     await protectedApp.register(agentsModule);       // agent invitations + management (per-business DB)
     await protectedApp.register(feedModule);          // cross-portal social feed
+    await protectedApp.register(servicesModule);      // service listings, orders, reviews
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
