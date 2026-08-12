@@ -41,16 +41,6 @@ export const VISIBILITY_OPTIONS = [
 export const MAX_POST_LENGTH = 5000;
 export const MAX_MEDIA = 4;
 
-/** One fixed colour per enquiry status, so a status reads the same everywhere in the portal. */
-export const ENQUIRY_STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  viewed: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
-  responded: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  assigned: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
-  converted: "bg-green-500/10 text-green-700 dark:text-green-400",
-  closed: "bg-muted text-muted-foreground",
-};
-
 export const DEFAULT_REACTION = "👍";
 
 /** Offered in the reaction picker. The API accepts any emoji, so this is presentation, not a constraint. */

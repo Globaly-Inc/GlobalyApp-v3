@@ -1,10 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { homeApi } from "../apis";
-import type { ComposeWithAiInput, CreatePostInput, FeedPost, HomeSummary, ReactionGroup } from "../apis/types";
+import type { ComposeWithAiInput, CreatePostInput, FeedPost, ReactionGroup } from "../apis/types";
 import type { RootState } from "@/lib/store";
-
-// Separate status per region: the summary failing must not blank the feed, and vice versa.
-export const fetchHomeSummary = createAsyncThunk("home/fetchSummary", () => homeApi.getSummary());
 
 export const fetchFeedPage = createAsyncThunk(
   "home/fetchFeedPage",
@@ -55,19 +52,6 @@ export const removePostReaction = createAsyncThunk("home/removeReaction", async 
   return id;
 });
 
-export const respondToInvite = createAsyncThunk(
-  "home/respondToInvite",
-  async ({ inviteId, action }: { inviteId: string; action: "accept" | "decline" }) => {
-    await homeApi.respondToInvite(inviteId, action);
-    return inviteId;
-  },
-);
-
-export const confirmPosition = createAsyncThunk("home/confirmPosition", async (membershipId: number) => {
-  await homeApi.confirmPosition(membershipId);
-  return membershipId;
-});
-
 /** Mirrors the server's cap, so the client's stack never shows more faces than a refetch would. */
 const MAX_REACTOR_AVATARS = 3;
 
@@ -96,31 +80,23 @@ function withoutMe(
 type RegionStatus = "idle" | "loading" | "failed";
 
 type HomeState = {
-  summary: HomeSummary | null;
-  summaryStatus: RegionStatus;
-  summaryError: string | null;
   posts: FeedPost[];
   nextCursor: string | null;
   feedStatus: RegionStatus;
   feedLoadingMore: boolean;
   feedError: string | null;
   postType: string;
-  actionError: string | null;
   /** null = not checked yet; the composer hides the AI affordance when the backend has no key. */
   aiAvailable: boolean | null;
 };
 
 const initialState: HomeState = {
-  summary: null,
-  summaryStatus: "idle",
-  summaryError: null,
   posts: [],
   nextCursor: null,
   feedStatus: "idle",
   feedLoadingMore: false,
   feedError: null,
   postType: "all",
-  actionError: null,
   aiAvailable: null,
 };
 
@@ -136,19 +112,6 @@ const homeSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchHomeSummary.pending, (state) => {
-        state.summaryStatus = "loading";
-        state.summaryError = null;
-      })
-      .addCase(fetchHomeSummary.fulfilled, (state, action) => {
-        state.summaryStatus = "idle";
-        state.summary = action.payload;
-      })
-      .addCase(fetchHomeSummary.rejected, (state, action) => {
-        state.summaryStatus = "failed";
-        state.summaryError = action.error.message ?? "Couldn't load your dashboard.";
-      })
-
       .addCase(fetchFeedPage.pending, (state, action) => {
         if (action.meta.arg.cursor) state.feedLoadingMore = true;
         else state.feedStatus = "loading";
@@ -210,24 +173,6 @@ const homeSlice = createSlice({
               }
             : p,
         );
-      })
-
-      // Acting on an invite or position removes the row locally — no page reload, no refetch.
-      .addCase(respondToInvite.fulfilled, (state, action) => {
-        if (!state.summary) return;
-        state.summary.pending_invites = state.summary.pending_invites.filter((i) => i.id !== action.payload);
-      })
-      .addCase(respondToInvite.rejected, (state, action) => {
-        state.actionError = action.error.message ?? "Couldn't respond to the invitation.";
-      })
-      .addCase(confirmPosition.fulfilled, (state, action) => {
-        if (!state.summary) return;
-        state.summary.position_updates = state.summary.position_updates.filter(
-          (p) => p.membership_id !== action.payload,
-        );
-      })
-      .addCase(confirmPosition.rejected, (state, action) => {
-        state.actionError = action.error.message ?? "Couldn't confirm the position.";
       });
   },
 });

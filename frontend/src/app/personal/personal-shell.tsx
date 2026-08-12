@@ -32,7 +32,6 @@ import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
-import { fetchUnreadCount } from "./notifications/store/notifications-slice";
 
 /**
  * One width for the whole portal: the bar and the page body share it so the logo lines up with the content
@@ -55,7 +54,6 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const pathname = usePathname();
   const dispatch = useAppDispatch();
   const { profile, status } = useAppSelector((state) => state.profile);
-  const unreadCount = useAppSelector((state) => state.notifications.unreadCount);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const portalTarget =
@@ -67,7 +65,6 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
 
   useEffect(() => {
     if (!profile) dispatch(fetchFullProfile());
-    dispatch(fetchUnreadCount());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -134,15 +131,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           <Link
             href="/personal/notifications"
             className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
+            aria-label="Notifications"
           >
+            {/* No unread badge: the notifications table and its count endpoint were removed in review. */}
             <Bell className="h-4.5 w-4.5" />
-            {/* No producers write notifications yet, so this is 0 at launch and the badge simply stays hidden. */}
-            {unreadCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-4 text-destructive-foreground">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
           </Link>
           <Link
             href="/personal/messages"
@@ -223,9 +215,6 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           )}
         >
           <Bell className="h-5 w-5" />
-          {unreadCount > 0 && (
-            <span className="absolute right-2.5 top-0 size-2 rounded-full bg-destructive" />
-          )}
           Alerts
         </Link>
         <Link

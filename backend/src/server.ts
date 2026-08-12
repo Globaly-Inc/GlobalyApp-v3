@@ -22,8 +22,6 @@ import platformUsersModule from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
 import agentsModule from "./modules/agents/index.js";
 import feedModule from "./modules/feed/index.js";
-import notificationsModule from "./modules/notifications/index.js";
-import personalHomeModule from "./modules/personal-home/index.js";
 import filesModule from "./modules/files/index.js";
 import servicesModule from "./modules/services/index.js";
 
@@ -48,8 +46,6 @@ export async function buildServer() {
   await app.register(businessesModule);     // business registration + profiles
   await app.register(agentsModule);         // agent invitations + management (per-business DB)
   await app.register(feedModule);            // cross-portal social feed
-  await app.register(notificationsModule);   // unread count for the portal shells
-  await app.register(personalHomeModule);    // personal Home aggregator (owns no tables)
   await app.register(filesModule);           // signed public reads for locally-stored files
   await app.register(servicesModule);        // Earn → My Services: listings + order lifecycle
 

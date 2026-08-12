@@ -2,7 +2,7 @@
 
 import { ForbiddenError, NotFoundError, BadRequestError } from "../../../shared/errors.js";
 import * as repo from "../repositories/feed.repository.js";
-import * as membershipRepo from "../../platform-users/repositories/memberships.repository.js";
+
 import * as mediaService from "./feed-media.service.js";
 import type { CreatePostInput, ListPostsQuery } from "../schemas/feed.schema.js";
 
@@ -34,7 +34,7 @@ export async function listPosts(viewerId: number, query: ListPostsQuery) {
 export async function createPost(authorId: number, input: CreatePostInput) {
   // Posting to a business feed requires actually being in that business.
   if (input.business_id != null) {
-    const isMember = await membershipRepo.membershipExists(authorId, input.business_id);
+    const isMember = await repo.isBusinessMember(authorId, input.business_id);
     if (!isMember) throw new ForbiddenError("You are not a member of that business");
   }
 

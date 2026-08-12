@@ -1,33 +1,8 @@
-import type { ComposeWithAiInput, CreatePostInput, FeedPage, FeedPost, HomeSummary, PendingInvite, PositionUpdate, PostMedia, ReactionGroup } from "./types";
+import type { ComposeWithAiInput, CreatePostInput, FeedPage, FeedPost, PostMedia, ReactionGroup } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-let mockInvites: PendingInvite[] = [
-  {
-    id: "11111111-1111-4111-8111-111111111111",
-    business_id: 1,
-    tenant_invitation_id: "22222222-2222-4222-8222-222222222222",
-    role: "counsellor",
-    position: null,
-    expires_at: new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
-    business_name: "Northbridge Education",
-    logo_url: null,
-    org_id: "mock-org",
-  },
-];
-
-let mockPositions: PositionUpdate[] = [
-  {
-    membership_id: 1,
-    business_id: 1,
-    business_name: "Northbridge Education",
-    position: "Senior Counsellor",
-    previous_position: "Counsellor",
-    kind: "changed",
-  },
-];
 
 let mockPosts: FeedPost[] = [
   {
@@ -95,48 +70,6 @@ function dropMockReaction(groups: ReactionGroup[], previousEmoji: string | null)
 }
 
 export const homeMockApi = {
-  getSummary: async (): Promise<HomeSummary> => {
-    console.log("[mock] GET /personal-home/summary");
-    await delay(300);
-    return {
-      completion: {
-        percentage: 60,
-        badges: [
-          { key: "personal_info", label: "Personal info", done: true },
-          { key: "education_history", label: "Education history", done: true },
-          { key: "english_scores", label: "English scores", done: false },
-          { key: "preferences", label: "Preferences", done: false },
-          { key: "profile_photo", label: "Profile photo", done: false },
-        ],
-      },
-      enquiries_count: 12, // deliberately > 5: the tile must show the true total, not the recent count
-      recent_enquiries: [
-        {
-          id: 1,
-          message: "I'd like to know about scholarship options for the Master of Data Science.",
-          status: "responded",
-          preferred_intake: "February",
-          preferred_year: 2027,
-          created_at: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
-          institution_name: "University of Melbourne",
-        },
-        {
-          id: 2,
-          message: "Can I apply with a 6.5 IELTS?",
-          status: "pending",
-          preferred_intake: "July",
-          preferred_year: 2027,
-          created_at: new Date(Date.now() - 5 * 86400 * 1000).toISOString(),
-          institution_name: "Monash University",
-        },
-      ],
-      favorites_count: 7,
-      pending_invites: mockInvites,
-      position_updates: mockPositions,
-      degraded: [],
-    };
-  },
-
   listFeed: async (params: { postType?: string; cursor?: string | null }): Promise<FeedPage> => {
     console.log("[mock] GET /feed/posts", params);
     await delay(300);
@@ -245,15 +178,4 @@ export const homeMockApi = {
     );
   },
 
-  respondToInvite: async (inviteId: string, action: "accept" | "decline"): Promise<void> => {
-    console.log("[mock] POST /platform-users/me/business-invites/:id/respond", inviteId, action);
-    await delay(250);
-    mockInvites = mockInvites.filter((i) => i.id !== inviteId);
-  },
-
-  confirmPosition: async (membershipId: number): Promise<void> => {
-    console.log("[mock] POST /platform-users/me/position-updates/:id/confirm", membershipId);
-    await delay(250);
-    mockPositions = mockPositions.filter((p) => p.membership_id !== membershipId);
-  },
 };
