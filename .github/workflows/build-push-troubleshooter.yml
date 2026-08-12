@@ -7,10 +7,9 @@ on:
       - 'production'
       - 'staging'
       - 'develop'
-      - 'devops-initial-cicd'
 
-    # paths:
-    #   - "devops/docker/troubleshooter/**"
+    paths:
+      - "devops/docker/troubleshooter/**"
 
 env:
   RED_COLOR_MESSAGE: "\e[31m"
