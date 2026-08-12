@@ -3,7 +3,6 @@ import { signupReducer } from "@/app/signup/store/signup-slice"
 import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
 import { homeReducer } from "@/app/personal/portal/store/home-slice"
-import { notificationsReducer } from "@/app/personal/notifications/store/notifications-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
@@ -34,7 +33,6 @@ const appReducer = combineReducers({
     auth: authReducer,
     profile: profileReducer,
     home: homeReducer,
-    notifications: notificationsReducer,
     businessOnboarding: businessOnboardingReducer,
     admin: adminReducer,
     overview: overviewReducer,

@@ -1,15 +1,4 @@
-import type { Completion } from "@/app/personal/apis/types";
-import type { FeedPost, PendingInvite, PositionUpdate, RecentEnquiry } from "../apis/types";
-
-export type CompletionCardProps = { completion: Completion };
-
-export type StatTilesProps = { favorites: number; enquiries: number; completionPct: number };
-
-export type RecentEnquiriesCardProps = { enquiries: RecentEnquiry[] };
-
-export type PendingInvitesCardProps = { invites: PendingInvite[] };
-
-export type PendingPositionsCardProps = { positions: PositionUpdate[] };
+import type { FeedPost } from "../apis/types";
 
 export type FeedPostCardProps = { post: FeedPost; currentUserIsAuthor: boolean };
 

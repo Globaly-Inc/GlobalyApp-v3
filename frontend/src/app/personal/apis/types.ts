@@ -77,18 +77,9 @@ export type WorkExperience = {
 
 export type WorkExperienceInput = Omit<WorkExperience, "id">;
 
-/**
- * Profile completion as computed by the backend. Never recomputed client-side: the same percentage gates
- * enquiries server-side, and a second definition here is how V2 ended up showing five green badges next to
- * a sub-100% number.
- */
-export type CompletionBadge = { key: string; label: string; done: boolean };
-export type Completion = { percentage: number; badges: CompletionBadge[] };
-
 export type FullProfile = {
   profile: StudentProfile;
   qualifications: Qualification[];
   languageTests: LanguageTest[];
   workExperiences: WorkExperience[];
-  completion: Completion;
 };

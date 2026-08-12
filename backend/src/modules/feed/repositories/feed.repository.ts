@@ -197,6 +197,19 @@ export async function reactionSummaries(postIds: number[]): Promise<Map<number, 
   return summaries;
 }
 
+/**
+ * Is the caller a member of this business? Needed to stop someone posting into a business feed they do not
+ * belong to. Lives here rather than in a shared memberships repository so the feed owns the one query it
+ * needs — user_business_index is a plain table, not another module's private state.
+ */
+export async function isBusinessMember(platformUserId: number, businessId: number): Promise<boolean> {
+  const row = await masterKnex("user_business_index")
+    .where({ platform_user_id: platformUserId, business_id: businessId })
+    .whereNull("deleted_at")
+    .first();
+  return !!row;
+}
+
 export async function findPost(id: number) {
   return masterKnex("feed_posts").where({ id }).whereNull("deleted_at").first() as Promise<FeedPostRow | undefined>;
 }

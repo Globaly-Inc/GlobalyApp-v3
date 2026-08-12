@@ -2,7 +2,6 @@
 
 import { NotFoundError, ConflictError, BadRequestError } from "../../../shared/errors.js";
 import * as repo from "../repositories/platform-users.repository.js";
-import { computeCompletion, recomputeCompletion } from "./profile-completion.service.js";
 import * as bizRepo from "../../businesses/repositories/businesses.repository.js";
 import { registerBusiness } from "../../businesses/services/businesses.service.js";
 import type {
@@ -19,16 +18,13 @@ export async function getProfile(userId: number) {
 
   const profile = await repo.findProfileByUserId(userId);
 
-  const [qualifications, language_tests, work_experiences, completion] = await Promise.all([
+  const [qualifications, language_tests, work_experiences] = await Promise.all([
     repo.listQualifications(userId),
     repo.listLanguageTests(userId),
     repo.listWorkExperiences(userId),
-    // Computed, not read from the stored column — so a stale column can never mislead the client.
-    // The column stays authoritative for server-side gating and is kept fresh by recomputeCompletion().
-    computeCompletion(userId),
   ]);
 
-  return { ...user, profile: profile ?? null, qualifications, language_tests, work_experiences, completion };
+  return { ...user, profile: profile ?? null, qualifications, language_tests, work_experiences };
 }
 
 /** Personal onboarding — sets individual_category on profile + flips is_personal_account flag. */
@@ -54,7 +50,6 @@ export async function onboardPersonal(userId: number, data: OnboardingPersonalIn
   } else {
     await repo.insertProfile(userId, profileData);
   }
-  await recomputeCompletion(userId);
 
   await repo.updateUser(userId, { is_personal_account: true });
   await repo.addAccountCategory(userId, { type: "personal", role: data.individual_category });
@@ -131,7 +126,6 @@ export async function updateProfile(userId: number, data: ProfilePatchInput) {
   } else {
     await repo.insertProfile(userId, serialized);
   }
-  await recomputeCompletion(userId);
 
   return getProfile(userId);
 }
@@ -152,48 +146,38 @@ export async function getCitiesByCountry(countryId: number) {
 // ── Qualifications ──
 
 export async function addQualification(userId: number, data: QualificationInput) {
-  const row = await repo.insertQualification(userId, data);
-  await recomputeCompletion(userId);
-  return row;
+  return repo.insertQualification(userId, data);
 }
 
 export async function editQualification(id: string, userId: number, data: Partial<QualificationInput>) {
   const row = await repo.updateQualification(id, userId, data);
   if (!row) throw new NotFoundError("Qualification not found");
-  await recomputeCompletion(userId);
   return row;
 }
 
 export async function removeQualification(id: string, userId: number) {
   const deleted = await repo.deleteQualification(id, userId);
   if (!deleted) throw new NotFoundError("Qualification not found");
-  await recomputeCompletion(userId);
 }
 
 // ── Language Tests ──
 
 export async function addLanguageTest(userId: number, data: LanguageTestInput) {
-  const row = await repo.insertLanguageTest(userId, data);
-  await recomputeCompletion(userId);
-  return row;
+  return repo.insertLanguageTest(userId, data);
 }
 
 export async function editLanguageTest(id: string, userId: number, data: Partial<LanguageTestInput>) {
   const row = await repo.updateLanguageTest(id, userId, data);
   if (!row) throw new NotFoundError("Language test not found");
-  await recomputeCompletion(userId);
   return row;
 }
 
 export async function removeLanguageTest(id: string, userId: number) {
   const deleted = await repo.deleteLanguageTest(id, userId);
   if (!deleted) throw new NotFoundError("Language test not found");
-  await recomputeCompletion(userId);
 }
 
 // ── Work Experiences ──
-// No recomputeCompletion() here on purpose: work experience carries no completion points, so recomputing
-// would be wasted work. If it ever becomes scored, add the calls in the same change as the scoring.
 
 export async function addWorkExperience(userId: number, data: WorkExperienceInput) {
   return repo.insertWorkExperience(userId, data);

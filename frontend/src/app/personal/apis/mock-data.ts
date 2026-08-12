@@ -1,5 +1,4 @@
 import type {
-  Completion,
   FullProfile,
   LanguageTest,
   LanguageTestInput,
@@ -51,35 +50,6 @@ let mockQualifications: Qualification[] = [];
 let mockLanguageTests: LanguageTest[] = [];
 let mockWorkExperiences: WorkExperience[] = [];
 
-// Same weighting as the backend service, so the mock and the real API agree on what a percentage means.
-function mockCompletion(): Completion {
-  const badges = [
-    {
-      key: "personal_info",
-      label: "Personal info",
-      done: !!(mockProfile.first_name && mockProfile.last_name && mockProfile.nationality_id && mockProfile.country_of_residence_id),
-    },
-    { key: "education_history", label: "Education history", done: mockQualifications.length > 0 },
-    { key: "english_scores", label: "English scores", done: mockLanguageTests.length > 0 },
-    {
-      key: "preferences",
-      label: "Preferences",
-      done: !!(mockProfile.budget_min && mockProfile.budget_max && mockProfile.preferred_destinations?.length),
-    },
-    { key: "profile_photo", label: "Profile photo", done: !!mockProfile.photo_url },
-  ];
-  const points =
-    (mockProfile.first_name && mockProfile.last_name ? 1 : 0) +
-    (mockProfile.nationality_id ? 1 : 0) +
-    (mockProfile.country_of_residence_id ? 1 : 0) +
-    (mockQualifications.length ? 3 : 0) +
-    (mockLanguageTests.length ? 1 : 0) +
-    (mockProfile.budget_min && mockProfile.budget_max ? 1 : 0) +
-    (mockProfile.preferred_destinations?.length ? 1 : 0) +
-    (mockProfile.photo_url ? 1 : 0);
-  return { percentage: Math.round((points / 10) * 100), badges };
-}
-
 export const personalMockApi = {
   getMyProfile: async (): Promise<StudentProfile> => {
     console.log("[mock] GET /platform-users/me");
@@ -107,14 +77,7 @@ export const personalMockApi = {
       qualifications: mockQualifications,
       languageTests: mockLanguageTests,
       workExperiences: mockWorkExperiences,
-      completion: mockCompletion(),
     };
-  },
-
-  getCompletion: async (): Promise<Completion> => {
-    console.log("[mock] POST /platform-users/me/completion/recompute");
-    await delay(150);
-    return mockCompletion();
   },
 
   addQualification: async (input: QualificationInput): Promise<Qualification> => {

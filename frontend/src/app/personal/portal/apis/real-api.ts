@@ -1,14 +1,13 @@
 import { httpDelete, httpGet, httpPost, httpPostForm, httpPostNoContent } from "@/lib/api/http";
-import type { ComposeWithAiInput, CreatePostInput, FeedPage, FeedPost, HomeSummary, PostMedia } from "./types";
+import type { ComposeWithAiInput, CreatePostInput, FeedPage, FeedPost, PostMedia } from "./types";
 
 /**
  * Normalize at the boundary.
  *
- * The types describe the contract, but at runtime the response is whatever the deployed backend actually
- * sends — an older build, a partial payload, a proxy that drops a field. A component doing `post.media.length`
- * on a missing array throws during render and takes the whole page down, which is exactly what the
- * per-region error handling is supposed to prevent. Every array and scalar the UI indexes into gets a
- * default here, once, rather than a `?.` in each of a dozen call sites.
+ * The types describe the contract, but at runtime the response is whatever the deployed backend sends — an
+ * older build, a partial payload, a proxy that drops a field. A component doing `post.media.length` on a
+ * missing array throws during render and takes the whole page down, so every array and scalar the UI indexes
+ * into gets a default here, once, rather than a `?.` in each of a dozen call sites.
  */
 
 function toArray<T>(value: unknown): T[] {
@@ -39,24 +38,7 @@ function normalizePost(raw: Partial<FeedPost> | undefined | null): FeedPost {
   };
 }
 
-function normalizeSummary(raw: Partial<HomeSummary> | undefined | null): HomeSummary {
-  const summary = raw ?? {};
-  const completion = summary.completion ?? { percentage: 0, badges: [] };
-  return {
-    completion: { percentage: Number(completion.percentage ?? 0), badges: toArray(completion.badges) },
-    enquiries_count: Number(summary.enquiries_count ?? 0),
-    recent_enquiries: toArray(summary.recent_enquiries),
-    favorites_count: Number(summary.favorites_count ?? 0),
-    pending_invites: toArray(summary.pending_invites),
-    position_updates: toArray(summary.position_updates),
-    degraded: toArray(summary.degraded),
-  };
-}
-
 export const homeRealApi = {
-  getSummary: async (): Promise<HomeSummary> =>
-    normalizeSummary(await httpGet<Partial<HomeSummary>>("/personal-home/summary")),
-
   listFeed: async (params: { postType?: string; cursor?: string | null; limit?: number }): Promise<FeedPage> => {
     const query = new URLSearchParams();
     if (params.postType && params.postType !== "all") query.set("postType", params.postType);
@@ -86,10 +68,4 @@ export const homeRealApi = {
   setReaction: (id: number, emoji: string): Promise<void> =>
     httpPostNoContent(`/feed/posts/${id}/reactions`, { emoji }),
   removeReaction: (id: number): Promise<void> => httpDelete(`/feed/posts/${id}/reactions`),
-
-  respondToInvite: (inviteId: string, action: "accept" | "decline"): Promise<void> =>
-    httpPostNoContent(`/platform-users/me/business-invites/${inviteId}/respond`, { action }),
-
-  confirmPosition: (membershipId: number): Promise<void> =>
-    httpPostNoContent(`/platform-users/me/position-updates/${membershipId}/confirm`),
 };

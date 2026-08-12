@@ -5,7 +5,6 @@ import { z } from "zod";
 import * as storage from "../../../shared/storage/storageService.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as userRepo from "../repositories/platform-users.repository.js";
-import { recomputeCompletion } from "../services/profile-completion.service.js";
 import { NotFoundError, ForbiddenError } from "../../../shared/errors.js";
 
 const FileIdParam = z.object({ id: z.string().uuid() });
@@ -43,10 +42,9 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
       size_bytes: buffer.length,
     });
 
-    // If profile photo, update photo_url on platform_users — this scores a completion point.
+    // If profile photo, update photo_url on platform_users
     if (fileCategory === "profile") {
       await userRepo.updateUser(userId, { photo_url: storagePath });
-      await recomputeCompletion(userId);
     }
 
     return reply.status(201).send({
@@ -113,10 +111,9 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
     await storage.deleteFile(file.storage_path);
     await filesRepo.deleteFileRecord(id);
 
-    // Clear photo_url if deleting profile photo — loses a completion point.
+    // Clear photo_url if deleting profile photo
     if (file.category === "profile") {
       await userRepo.updateUser(Number(req.auth.sub), { photo_url: null });
-      await recomputeCompletion(Number(req.auth.sub));
     }
 
     return reply.status(204).send();

@@ -32,7 +32,7 @@ export interface InvitationRow {
   id: string;
   email: string;
   user_details: Record<string, unknown> | null;
-  invite_token: string | null; // cleared on decline so an emailed link cannot still accept it
+  invite_token: string;
   invited_by: number;
   status: string;
   created_at: Date;
@@ -149,40 +149,6 @@ export async function findInvitationByToken(db: Knex, token: string) {
     .first();
 }
 
-export async function findInvitationById(db: Knex, id: string) {
-  return db<InvitationRow>("agent_invitations").where({ id }).whereNull("deleted_at").first();
-}
-
 export async function markInvitationAccepted(db: Knex, id: string) {
   await db("agent_invitations").where({ id }).update({ status: "accepted" });
-}
-
-/** Clears the token too — otherwise the emailed link could still accept a declined invitation. */
-export async function markInvitationDeclined(db: Knex, id: string) {
-  await db("agent_invitations").where({ id }).update({ status: "declined", invite_token: null });
-}
-
-// ── Reconciliation scans (tenant side) ──
-
-/** Incremental pass: invitations created since the watermark. */
-export async function listInvitationsSince(db: Knex, since: Date | null, limit = 500) {
-  const query = db<InvitationRow>("agent_invitations").whereNull("deleted_at").orderBy("created_at", "asc").limit(limit);
-  if (since) query.where("created_at", ">", since);
-  return query;
-}
-
-/** Full ID audit: every non-deleted invitation id, paged. Ids only — rows are fetched only when needed. */
-export async function listInvitationIdsPaged(db: Knex, afterId: string | null, limit = 1000) {
-  const query = db<InvitationRow>("agent_invitations")
-    .whereNull("deleted_at")
-    .orderBy("id", "asc")
-    .limit(limit)
-    .select("id");
-  if (afterId) query.where("id", ">", afterId);
-  return query as unknown as Promise<{ id: string }[]>;
-}
-
-export async function findInvitationsByIds(db: Knex, ids: string[]) {
-  if (!ids.length) return [];
-  return db<InvitationRow>("agent_invitations").whereIn("id", ids);
 }

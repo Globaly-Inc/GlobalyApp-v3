@@ -1,6 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import type {
-  Completion,
   FullProfile,
   LanguageTest,
   LanguageTestInput,
@@ -47,10 +46,7 @@ type PlatformUserMeResponse = {
   qualifications: Qualification[];
   language_tests: LanguageTest[];
   work_experiences: WorkExperience[];
-  completion: Completion;
 };
-
-const EMPTY_COMPLETION: Completion = { percentage: 0, badges: [] };
 
 function toStudentProfile(raw: PlatformUserMeResponse): StudentProfile {
   const profile = raw.profile;
@@ -115,13 +111,8 @@ export const personalRealApi = {
       qualifications: raw.qualifications,
       languageTests: raw.language_tests,
       workExperiences: raw.work_experiences,
-      completion: raw.completion ?? EMPTY_COMPLETION,
     };
   },
-
-  // Asks the backend to recompute and return the authoritative completion. The client never derives it.
-  getCompletion: async (): Promise<Completion> =>
-    (await httpPost<{ completion: Completion }>("/platform-users/me/completion/recompute", {})).completion,
 
   addQualification: (input: QualificationInput): Promise<Qualification> =>
     httpPost("/platform-users/me/qualifications", input),
