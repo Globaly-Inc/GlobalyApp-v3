@@ -7,10 +7,10 @@ on:
       - 'production'
       - 'staging'
       - 'develop'
+      - 'devops-initial-cicd'
 
-
-    paths:
-      - "backend/**"
+    # paths:
+    #   - "backend/**"
 
 env:
   RED_COLOR_MESSAGE: "\e[31m"
