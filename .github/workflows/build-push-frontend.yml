@@ -9,7 +9,6 @@ on:
       - 'develop'   
       - 'devops-staging-release'
 
-      
     # paths:
     #   - "frontend/**"
 
