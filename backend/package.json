@@ -11,6 +11,7 @@
     "migrate:tenants": "node --import tsx src/workers/migration-runner.ts",
     "seed:globalyapp": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp",
     "seed:superadmin": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env superadmin",
+    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "job:auth": "node --import tsx src/modules/auth/jobs/email.worker.ts",
     "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",
     "job:extraction-pages": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-page.worker.ts",
