@@ -16,6 +16,7 @@ import feedModule from "../src/modules/feed/index.js";
 import notificationsModule from "../src/modules/notifications/index.js";
 import personalHomeModule from "../src/modules/personal-home/index.js";
 import filesModule from "../src/modules/files/index.js";
+import servicesModule from "../src/modules/services/index.js";
 import multipart from "@fastify/multipart";
 
 /**
@@ -34,6 +35,7 @@ async function buildTestApp() {
   await app.register(notificationsModule);
   await app.register(personalHomeModule);
   await app.register(filesModule);
+  await app.register(servicesModule);
   return app;
 }
 
@@ -66,6 +68,7 @@ export async function resetDb() {
   await masterKnex.raw(`
     TRUNCATE uploaded_files, feed_reactions, feed_posts, enquiries, user_favorites, notifications,
              business_invitation_index, user_business_index,
+             service_reviews, service_orders, service_listings,
              platform_user_work_experiences, platform_user_language_tests,
              platform_user_qualifications, platform_user_profiles, platform_users,
              businesses, institutions
@@ -121,4 +124,52 @@ export async function createPost(authorId: number, overrides: Record<string, unk
     .insert({ author_platform_user_id: authorId, content: "hello", post_type: "social", visibility: "everyone", ...overrides })
     .returning("*");
   return post as { id: number };
+}
+
+export async function createListing(providerId: number, overrides: Record<string, unknown> = {}) {
+  const [listing] = await masterKnex("service_listings")
+    .insert({
+      provider_id: providerId,
+      title: "Airport Pickup — Sydney",
+      category: "airport_pickup",
+      price_minor: 5000, // $50.00
+      currency: "AUD",
+      ...overrides,
+    })
+    .returning("*");
+  return listing as { id: number; price_minor: number; currency: string };
+}
+
+/**
+ * Insert an order directly.
+ *
+ * There is no order-creation endpoint — a buyer acquires a service on the public marketplace, which this
+ * phase does not build (see the PRD's scope). Everything downstream of an order existing is what these
+ * tests cover, so the fixture is the order itself.
+ */
+export async function createOrder(
+  listing: { id: number; price_minor: number; currency: string },
+  buyerId: number,
+  providerId: number,
+  overrides: Record<string, unknown> = {},
+) {
+  const [order] = await masterKnex("service_orders")
+    .insert({
+      listing_id: listing.id,
+      buyer_id: buyerId,
+      provider_id: providerId,
+      amount_minor: listing.price_minor,
+      currency: listing.currency,
+      status: "pending_payment",
+      ...overrides,
+    })
+    .returning("*");
+  return order as {
+    id: number;
+    amount_minor: number;
+    currency: string;
+    status: string;
+    payment_session_id: string | null;
+    payment_intent_id: string | null;
+  };
 }

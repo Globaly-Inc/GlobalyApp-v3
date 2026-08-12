@@ -25,6 +25,7 @@ import feedModule from "./modules/feed/index.js";
 import notificationsModule from "./modules/notifications/index.js";
 import personalHomeModule from "./modules/personal-home/index.js";
 import filesModule from "./modules/files/index.js";
+import servicesModule from "./modules/services/index.js";
 
 const logger = createChildLogger("server");
 
@@ -50,6 +51,7 @@ export async function buildServer() {
   await app.register(notificationsModule);   // unread count for the portal shells
   await app.register(personalHomeModule);    // personal Home aggregator (owns no tables)
   await app.register(filesModule);           // signed public reads for locally-stored files
+  await app.register(servicesModule);        // Earn → My Services: listings + order lifecycle
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));
