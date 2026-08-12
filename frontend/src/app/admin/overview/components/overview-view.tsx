@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchOverviewStats } from "../store/overview-slice";
 import { STAT_CARDS } from "../const";
@@ -11,7 +11,10 @@ export function OverviewView() {
   const dispatch = useAppDispatch();
   const { stats, status } = useAppSelector((state) => state.overview);
 
+  const fetchedRef = useRef(false);
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     dispatch(fetchOverviewStats());
   }, [dispatch]);
 

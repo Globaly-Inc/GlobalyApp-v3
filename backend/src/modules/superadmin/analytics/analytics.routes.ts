@@ -23,4 +23,10 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const data = await service.getDashboard(preset);
     return reply.send(data);
   });
+
+  // GET /overview — stat cards for /admin/overview
+  app.get("/overview", async (_req, reply) => {
+    const data = await service.getOverviewStats();
+    return reply.send(data);
+  });
 }

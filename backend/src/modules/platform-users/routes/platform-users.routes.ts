@@ -3,7 +3,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   OnboardingPersonalSchema, OnboardingBusinessSchema, OnboardingInstitutionSchema,
-  ProfilePatchSchema,
+  ProfilePatchSchema, UpdateCategorySchema,
   QualificationSchema, LanguageTestSchema, WorkExperienceSchema,
   IdParamSchema, CountryIdParamSchema,
 } from "../schemas/platform-users.schema.js";
@@ -20,6 +20,12 @@ export async function platformUserRoutes(app: FastifyInstance) {
   app.patch("/me", async (req, reply) => {
     const data = ProfilePatchSchema.parse(req.body);
     const result = await service.updateProfile(Number(req.auth.sub), data);
+    return reply.send(result);
+  });
+
+  app.patch("/me/category", async (req, reply) => {
+    const { user_category } = UpdateCategorySchema.parse(req.body);
+    const result = await service.updateCategory(Number(req.auth.sub), user_category);
     return reply.send(result);
   });
 

@@ -70,3 +70,23 @@ Always use `flex flex-col gap-*` for any wrapper div that contains a
 `Combobox`, matching `frontend/src/app/personal/profile/personal-details-dialog.tsx`.
 Flex `gap` only spaces actual flex-participating boxes, so the out-of-flow
 guard spans are ignored.
+
+
+# Double-fetch on mount (React Strict Mode)
+
+Dev mode double-invokes effects, so a bare `useEffect(() => { dispatch(fetchX()) }, [dispatch])`
+fires the request twice on every mount — this has caused repeated duplicate-network-call bugs.
+
+Every `<feature>-view.tsx` that dispatches a fetch-on-mount thunk MUST guard it with a ref:
+
+```tsx
+const fetchedRef = useRef(false);
+useEffect(() => {
+  if (fetchedRef.current) return;
+  fetchedRef.current = true;
+  dispatch(fetchX());
+}, [dispatch]);
+```
+
+Reference: `frontend/src/app/admin/platform/categories/components/categories-view.tsx`.
+Apply this to every new `-view.tsx` with a mount-time fetch, not just the ones that hit it in testing.

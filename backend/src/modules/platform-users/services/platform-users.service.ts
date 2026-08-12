@@ -24,7 +24,24 @@ export async function getProfile(userId: number) {
     repo.listWorkExperiences(userId),
   ]);
 
-  return { ...user, profile: profile ?? null, qualifications, language_tests, work_experiences };
+  let user_category: "business" | "personal" | null = null;
+  if (user.is_business_account) user_category = "business";
+  else if (user.is_personal_account) user_category = "personal";
+
+  return { ...user, user_category, profile: profile ?? null, qualifications, language_tests, work_experiences };
+}
+
+/** Sets which portal the user lands in — flips is_personal_account / is_business_account. */
+export async function updateCategory(userId: number, category: "personal" | "business") {
+  const user = await repo.findById(userId);
+  if (!user) throw new NotFoundError("User not found");
+
+  await repo.updateUser(userId, {
+    is_personal_account: category === "personal" ? true : user.is_personal_account,
+    is_business_account: category === "business" ? true : user.is_business_account,
+  });
+
+  return getProfile(userId);
 }
 
 /** Personal onboarding — sets individual_category on profile + flips is_personal_account flag. */

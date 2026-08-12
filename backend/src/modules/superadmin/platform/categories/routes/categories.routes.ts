@@ -1,15 +1,62 @@
 // Category management routes — business categories + service categories.
 
 import type { FastifyInstance } from "fastify";
-import { CategoryInputSchema, DefaultServicesInputSchema, IdParamSchema } from "../schemas/categories.schema.js";
+import { z } from "zod";
+import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../../../shared/pagination.js";
+import {
+  CategoryInputSchema, DefaultServicesInputSchema, IdParamSchema,
+  SchemaFieldEntityTypeSchema, SchemaFieldInputSchema, SchemaFieldUpdateSchema,
+} from "../schemas/categories.schema.js";
 import * as service from "../services/categories.service.js";
 
+const SchemaFieldParentParams = z.object({
+  entityType: SchemaFieldEntityTypeSchema,
+  entityId: z.coerce.number().int().positive(),
+});
+
+const CategoryListQuery = PaginationSchema.extend({
+  search: z.string().trim().min(1).optional(),
+});
+
 export async function categoryRoutes(app: FastifyInstance) {
+  // ── Schema Fields (polymorphic: business_categories | service_categories) ──
+
+  app.get("/:entityType/:entityId/schema-fields", async (req, reply) => {
+    const { entityType, entityId } = SchemaFieldParentParams.parse(req.params);
+    const rows = await service.listSchemaFields(entityType, entityId);
+    return reply.send({ schema_fields: rows });
+  });
+
+  app.post("/:entityType/:entityId/schema-fields", async (req, reply) => {
+    const { entityType, entityId } = SchemaFieldParentParams.parse(req.params);
+    const data = SchemaFieldInputSchema.parse(req.body);
+    const row = await service.createSchemaField(entityType, entityId, data);
+    return reply.status(201).send(row);
+  });
+
+  app.patch("/schema-fields/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const data = SchemaFieldUpdateSchema.parse(req.body);
+    const row = await service.updateSchemaField(id, data);
+    return reply.send(row);
+  });
+
+  app.delete("/schema-fields/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    await service.deleteSchemaField(id);
+    return reply.status(204).send();
+  });
+
   // ── Business Categories ──
 
-  app.get("/business-categories", async (_req, reply) => {
-    const rows = await service.listBusinessCategories();
-    return reply.send({ categories: rows });
+  app.get("/business-categories", async (req, reply) => {
+    const { search, ...pagination } = CategoryListQuery.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      service.listBusinessCategories(limit, offset, search),
+      service.countBusinessCategories(search),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
   app.post("/business-categories", async (req, reply) => {
@@ -41,9 +88,14 @@ export async function categoryRoutes(app: FastifyInstance) {
 
   // ── Service Categories ──
 
-  app.get("/service-categories", async (_req, reply) => {
-    const rows = await service.listServiceCategories();
-    return reply.send({ categories: rows });
+  app.get("/service-categories", async (req, reply) => {
+    const { search, ...pagination } = CategoryListQuery.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      service.listServiceCategories(limit, offset, search),
+      service.countServiceCategories(search),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
   app.post("/service-categories", async (req, reply) => {

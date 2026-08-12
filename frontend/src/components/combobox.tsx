@@ -24,6 +24,7 @@ export function Combobox({
   loadingText = "Loading...",
   disabled = false,
   creatable = false,
+  onQueryChange,
   id,
   className,
   "aria-invalid": ariaInvalid,
@@ -37,8 +38,8 @@ export function Combobox({
   loading?: boolean;
   loadingText?: string;
   disabled?: boolean;
-  /** Allow committing the typed search text when it doesn't match any option. */
   creatable?: boolean;
+  onQueryChange?: (query: string) => void;
   id?: string;
   className?: string;
   "aria-invalid"?: boolean;
@@ -134,6 +135,7 @@ export function Combobox({
               onChange={(e) => {
                 setQuery(e.target.value);
                 setActiveIndex(0);
+                onQueryChange?.(e.target.value);
               }}
               onKeyDown={onKeyDown}
               className="h-8 border-none pl-8 shadow-none focus-visible:ring-0"

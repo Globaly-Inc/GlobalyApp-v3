@@ -14,6 +14,7 @@ import { createJob } from "../store/all-extractions-slice";
 import { SOURCE_TYPE_OPTIONS } from "../const";
 
 const STEPS = ["Categories", "Source"];
+const SEARCH_DEBOUNCE_MS = 300;
 
 const toOptions = (categories: Category[]) =>
   categories.map((c) => ({ value: String(c.id), label: c.name }));
@@ -33,24 +34,41 @@ export function NewExtractionDialog({
   const [serviceOptions, setServiceOptions] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const fetchedForOpenRef = useRef(false);
+  const businessSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serviceSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!open) {
       fetchedForOpenRef.current = false;
       return;
     }
-    // Guards against React StrictMode's dev-only double-invoke of this effect on open.
     if (fetchedForOpenRef.current) return;
     fetchedForOpenRef.current = true;
     setLoadingCategories(true);
-    Promise.all([categoriesApi.getBusinessCategories(), categoriesApi.getServiceCategories()])
+    Promise.all([categoriesApi.getBusinessCategories({ limit: 10 }), categoriesApi.getServiceCategories({ limit: 10 })])
       .then(([business, service]) => {
-        setBusinessOptions(business);
-        setServiceOptions(service);
+        setBusinessOptions(business.data);
+        setServiceOptions(service.data);
       })
       .catch(() => toast.error("Couldn't load categories"))
       .finally(() => setLoadingCategories(false));
   }, [open]);
+
+  const handleBusinessSearch = (query: string) => {
+    if (businessSearchRef.current) clearTimeout(businessSearchRef.current);
+    businessSearchRef.current = setTimeout(async () => {
+      const { data } = await categoriesApi.getBusinessCategories({ search: query.trim() || undefined, limit: 10 });
+      setBusinessOptions(data);
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleServiceSearch = (query: string) => {
+    if (serviceSearchRef.current) clearTimeout(serviceSearchRef.current);
+    serviceSearchRef.current = setTimeout(async () => {
+      const { data } = await categoriesApi.getServiceCategories({ search: query.trim() || undefined, limit: 10 });
+      setServiceOptions(data);
+    }, SEARCH_DEBOUNCE_MS);
+  };
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
@@ -120,8 +138,10 @@ export function NewExtractionDialog({
                 options={toOptions(businessOptions)}
                 value={businessCategory}
                 onChange={setBusinessCategory}
+                onQueryChange={handleBusinessSearch}
                 loading={loadingCategories}
                 placeholder="Select business category"
+                searchPlaceholder="Search business categories…"
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -131,8 +151,10 @@ export function NewExtractionDialog({
                 options={toOptions(serviceOptions)}
                 value={serviceCategory}
                 onChange={setServiceCategory}
+                onQueryChange={handleServiceSearch}
                 loading={loadingCategories}
                 placeholder="Select service category"
+                searchPlaceholder="Search service categories…"
               />
             </div>
             <div className="flex flex-col gap-2">

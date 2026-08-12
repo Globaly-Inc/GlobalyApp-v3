@@ -24,11 +24,14 @@ export const authRealApi = {
 
   getMe: async (): Promise<AuthUser> => {
     const data = await httpGet<{ user: AuthMeUser }>("/auth/me");
+    let user_category: AuthUser["user_category"] = null;
+    if (data.user.is_business_account) user_category = "business";
+    else if (data.user.is_personal_account) user_category = "personal";
     return {
       email: data.user.email,
       type: data.user.type,
       role: data.user.admin_role ?? null,
-      user_category: null,
+      user_category,
     };
   },
 };

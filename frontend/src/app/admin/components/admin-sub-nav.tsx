@@ -15,8 +15,8 @@ export function AdminSubNav() {
   if (!activeGroup || activeGroup.items.length <= 1) return null;
 
   return (
-    <div className="sticky top-16 z-40 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-      <nav className="flex items-center gap-1 overflow-x-auto px-4 md:px-6">
+    <div className="hidden md:block sticky top-16 z-40 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+      <nav className="flex items-center gap-1 -mb-px overflow-x-auto scrollbar-none px-4 md:px-6">
         {activeGroup.items.map((item) => {
           const active = isNavPathActive(pathname, item.href);
           return (

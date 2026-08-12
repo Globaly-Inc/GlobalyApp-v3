@@ -41,9 +41,6 @@ import { PreferencesDialog } from "./preferences-dialog";
 import { QualificationDialog } from "./qualification-dialog";
 import { WorkExperienceDialog } from "./work-experience-dialog";
 import { TestScoreDialog } from "./test-score-dialog";
-import { RoleSelectModal } from "@/app/auth/role-select-modal";
-
-const ROLE_MODAL_DELAY_MS = 30_000;
 
 function formatRange(start: string | null, end: string | null, isCurrent: boolean) {
   if (!start && !end) return null;
@@ -74,19 +71,11 @@ export function ProfileView() {
     open: false,
     item: null,
   });
-  const [roleModalOpen, setRoleModalOpen] = useState(false);
-
   useEffect(() => {
     if (status === "idle" && !profile) dispatch(fetchFullProfile());
     geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!profile || profile.user_category) return;
-    const timer = setTimeout(() => setRoleModalOpen(true), ROLE_MODAL_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [profile]);
 
   if (!profile) {
     return (
@@ -386,7 +375,6 @@ export function ProfileView() {
         onSave={handleSaveWorkExperience}
         saving={saving}
       />
-      <RoleSelectModal open={roleModalOpen} onOpenChange={setRoleModalOpen} />
     </div>
   );
 }

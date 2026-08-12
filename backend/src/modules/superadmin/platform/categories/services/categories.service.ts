@@ -3,14 +3,39 @@
 
 import { NotFoundError } from "../../../../../shared/errors.js";
 import * as repo from "../repositories/categories.repository.js";
-import type { LookupTable } from "../repositories/categories.repository.js";
+import type { LookupTable, SchemaFieldEntityType } from "../repositories/categories.repository.js";
 import type {
-  AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput,
+  AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput, SchemaFieldInput,
 } from "../schemas/categories.schema.js";
+
+export function listSchemaFields(entityType: SchemaFieldEntityType, entityId: number) {
+  return repo.listSchemaFields(entityType, entityId);
+}
+
+export function createSchemaField(entityType: SchemaFieldEntityType, entityId: number, data: SchemaFieldInput) {
+  return repo.insertSchemaField(entityType, entityId, data);
+}
+
+async function requireSchemaField(id: number) {
+  const row = await repo.findSchemaFieldById(id);
+  if (!row) throw new NotFoundError("Schema field not found");
+  return row;
+}
+
+export async function updateSchemaField(id: number, data: Partial<SchemaFieldInput>) {
+  await requireSchemaField(id);
+  return repo.updateSchemaField(id, data);
+}
+
+export async function deleteSchemaField(id: number) {
+  await requireSchemaField(id);
+  await repo.deleteSchemaField(id);
+}
 
 // ── Business Categories ──
 
 export const listBusinessCategories = repo.listBusinessCategories;
+export const countBusinessCategories = repo.countBusinessCategories;
 
 export function createBusinessCategory(data: CategoryInput) {
   return repo.insertBusinessCategory(data);
@@ -28,6 +53,7 @@ export const replaceDefaultServices = repo.replaceDefaultServices;
 // ── Service Categories ──
 
 export const listServiceCategories = repo.listServiceCategories;
+export const countServiceCategories = repo.countServiceCategories;
 
 export function createServiceCategory(data: CategoryInput) {
   return repo.insertServiceCategory(data);
@@ -39,8 +65,12 @@ export function updateServiceCategory(id: number, data: Partial<CategoryInput>) 
 
 // ── Lookups (degree_levels, areas_of_study) ──
 
-export function listLookup(table: LookupTable) {
-  return repo.listLookup(table);
+export function listLookup(table: LookupTable, limit: number, offset: number) {
+  return repo.listLookup(table, limit, offset);
+}
+
+export function countLookup(table: LookupTable) {
+  return repo.countLookup(table);
 }
 
 export function createLookup(table: LookupTable, data: LookupInput) {
@@ -56,6 +86,7 @@ export async function updateLookup(table: LookupTable, id: number, data: Partial
 // ── Fee Types ──
 
 export const listFeeTypes = repo.listFeeTypes;
+export const countFeeTypes = repo.countFeeTypes;
 
 export function createFeeType(data: FeeTypeInput) {
   // Admin-created fee types are platform reference data, already approved.
@@ -90,7 +121,13 @@ export async function deleteFeeType(id: number) {
 
 // ── Issuing Organizations ──
 
-export const listIssuingOrganizations = repo.listIssuingOrganizations;
+export function listIssuingOrganizations(limit: number, offset: number, search?: string) {
+  return repo.listIssuingOrganizations(limit, offset, search);
+}
+
+export function countIssuingOrganizations(search?: string) {
+  return repo.countIssuingOrganizations(search);
+}
 
 export function createIssuingOrganization(data: IssuingOrgInput) {
   return repo.insertIssuingOrganization(data);
@@ -105,6 +142,7 @@ export async function updateIssuingOrganization(id: number, data: Partial<Issuin
 // ── Accreditations ──
 
 export const listAccreditations = repo.listAccreditations;
+export const countAccreditations = repo.countAccreditations;
 
 export function createAccreditation(data: AccreditationInput) {
   const { scope_country_ids = [], ...rest } = data;
