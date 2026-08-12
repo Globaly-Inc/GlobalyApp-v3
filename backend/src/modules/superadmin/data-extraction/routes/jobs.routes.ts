@@ -1,7 +1,9 @@
 // Extraction jobs routes — maps V2 endpoints E1-E4, RJ1-RJ4, C9-C16.
 
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import * as service from "../services/jobs.service.js";
+import * as stepService from "../services/step.service.js";
 import {
   CreateJobSchema,
   FailJobSchema,
@@ -13,6 +15,16 @@ import {
   FilteredJobsQuerySchema,
   JobEventsQuerySchema,
 } from "../schemas/jobs.schema.js";
+import { RunStepSchema } from "../schemas/step.schema.js";
+import { masterKnex } from "../../../../core/db/master-pool.js";
+import { logAudit } from "../shared/audit.js";
+import { NotFoundError } from "../../../../shared/errors.js";
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+
+const ScheduleAgentsSchema = z.object({
+  cadence: z.enum(["daily", "weekly", "monthly"]),
+  enabled: z.boolean(),
+});
 
 export async function jobsRoutes(app: FastifyInstance) {
   const adminId = (req: any) => Number(req.auth.sub);
@@ -114,5 +126,74 @@ export async function jobsRoutes(app: FastifyInstance) {
     return reply.send(await service.mergeDuplicates(id, dry_run, adminId(req)));
   });
 
+  // Phase 3: POST /jobs/:id/run-step — dispatch a single pipeline step
+  app.post("/jobs/:id/run-step", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const input = RunStepSchema.parse(req.body);
+    return reply.send(await stepService.dispatchStep(id, input, adminId(req)));
+  });
+
   // C15: POST /jobs/:jobId/courses — handled in courses.routes.ts
+
+  // ── Phase 9: Agent extraction schedule ──
+
+  // POST /jobs/:id/schedule-agents — create or update schedule
+  app.post("/jobs/:id/schedule-agents", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const input = ScheduleAgentsSchema.parse(req.body);
+
+    const job = await masterKnex(`${S}.extraction_jobs`).where({ id }).first();
+    if (!job) throw new NotFoundError("Extraction job not found");
+
+    const existing = await masterKnex(`${S}.agent_extraction_schedule`).where({ job_id: id }).first();
+
+    if (existing) {
+      await masterKnex(`${S}.agent_extraction_schedule`).where({ id: existing.id }).update({
+        cadence: input.cadence,
+        enabled: input.enabled,
+        updated_at: masterKnex.fn.now(),
+      });
+      await logAudit(adminId(req), "EXTRACTION_SCHEDULE_UPDATE", {
+        entityType: "agent_extraction_schedule",
+        entityId: existing.id,
+        details: { job_id: id, ...input },
+      });
+      return reply.send({ schedule_id: existing.id });
+    }
+
+    const [row] = await masterKnex(`${S}.agent_extraction_schedule`).insert({
+      job_id: id,
+      cadence: input.cadence,
+      enabled: input.enabled,
+    }).returning("id");
+
+    await logAudit(adminId(req), "EXTRACTION_SCHEDULE_CREATE", {
+      entityType: "agent_extraction_schedule",
+      entityId: row.id,
+      details: { job_id: id, ...input },
+    });
+
+    return reply.status(201).send({ schedule_id: row.id });
+  });
+
+  // GET /jobs/:id/schedule-agents — get schedule for job
+  app.get("/jobs/:id/schedule-agents", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const schedule = await masterKnex(`${S}.agent_extraction_schedule`).where({ job_id: id }).first();
+    return reply.send({ schedule: schedule ?? null });
+  });
+
+  // DELETE /jobs/:id/schedule-agents — remove schedule
+  app.delete("/jobs/:id/schedule-agents", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const deleted = await masterKnex(`${S}.agent_extraction_schedule`).where({ job_id: id }).del();
+    if (!deleted) throw new NotFoundError("No schedule found for this job");
+
+    await logAudit(adminId(req), "EXTRACTION_SCHEDULE_DELETE", {
+      entityType: "agent_extraction_schedule",
+      details: { job_id: id },
+    });
+
+    return reply.send({ deleted: true });
+  });
 }

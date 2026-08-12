@@ -2,8 +2,13 @@
 
 import { NotFoundError } from "../../../../shared/errors.js";
 import { logAudit } from "../shared/audit.js";
+import { masterKnex } from "../../../../core/db/master-pool.js";
+import { createChildLogger } from "../../../../shared/logger.js";
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import * as repo from "../repositories/supporting.repository.js";
 import type { SaveAndLearnInput } from "../schemas/supporting.schema.js";
+
+const logger = createChildLogger("supporting-service");
 
 // ── Site profiles ──
 
@@ -109,7 +114,42 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
     details: { patch_keys: Object.keys(patch) },
   });
 
-  // ponytail: skipping Phase 2 embedding — add when LLM memory search is implemented
+  // Phase 3: auto-create lesson if ≥2 corrections on same domain+step+field
+  // Ported from V2 extraction-memory "learn" action
+  const step = TABLE_TO_STEP[table] ?? table;
+  for (const field of Object.keys(patch)) {
+    const correctionCount = await masterKnex(`${S}.extraction_memory`)
+      .where({ domain, step, entity_type: table })
+      .whereRaw(`diff::text LIKE ?`, [`%"${field}"%`])
+      .count("id as count")
+      .first();
+
+    if (Number(correctionCount?.count) >= 2) {
+      // Check if lesson already exists for this domain+step+field
+      const existing = await masterKnex(`${S}.extraction_lessons`)
+        .where({ domain, step, scope: "domain" })
+        .whereRaw(`rule LIKE ?`, [`%${field}%`])
+        .first();
+
+      if (!existing) {
+        const beforeVal = original[field] != null ? String(original[field]) : null;
+        const afterVal = patch[field] != null ? String(patch[field]) : null;
+
+        await masterKnex(`${S}.extraction_lessons`).insert({
+          scope: "domain",
+          domain,
+          step,
+          rule: `For "${field}": admin has corrected this field ${correctionCount?.count}+ times on ${domain}. Use the corrected pattern.`,
+          example_bad: beforeVal,
+          example_good: afterVal,
+          source: "auto_learned",
+          weight: 2,
+          is_active: true,
+        });
+        logger.info("Auto-created lesson from corrections", { domain, step, field, corrections: correctionCount?.count });
+      }
+    }
+  }
 
   return { success: true };
 }

@@ -43,9 +43,31 @@ export interface ExtractedIntake {
   intake_name?: string | null;
   start_date?: string | null;
   end_date?: string | null;
-  intake_month?: number | null;
-  intake_year?: number | null;
+  intake_month?: number | string | null;
+  intake_year?: number | string | null;
   admission_deadline?: string | null;
+}
+
+// ponytail: LLM sometimes returns "September" instead of 9
+const MONTH_NAMES: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+function coerceMonth(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return v >= 1 && v <= 12 ? v : null;
+  const s = String(v).trim().toLowerCase();
+  const n = Number(s);
+  if (!isNaN(n) && n >= 1 && n <= 12) return n;
+  return MONTH_NAMES[s] ?? null;
+}
+
+function coerceInt(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return isNaN(n) ? null : Math.floor(n);
 }
 
 export interface ExtractedStudyOption {
@@ -140,15 +162,24 @@ export async function writeSiteIntelligence(jobId: string, data: SiteIntelligenc
   return row;
 }
 
+// ponytail: LLM returns "Sydney", "Sydney Campus", "sydney" — normalize to match
+export function normaliseCampusName(name: string): string {
+  return name.trim().toLowerCase()
+    .replace(/\s+campus$/i, "")
+    .replace(/\s+/g, " ");
+}
+
 /**
- * Upsert a campus for a job — deduplicates by name within the same job.
+ * Upsert a campus for a job — deduplicates by normalised name within the same job.
  */
 export async function upsertCampus(jobId: string, campus: ExtractedCampus): Promise<string> {
   if (!campus.name) return "";
 
-  const existing = await masterKnex(`${S}.extraction_campuses`)
-    .where({ job_id: jobId, name: campus.name })
-    .first();
+  const allCampuses = await masterKnex(`${S}.extraction_campuses`)
+    .where({ job_id: jobId });
+
+  const norm = normaliseCampusName(campus.name);
+  const existing = allCampuses.find(c => normaliseCampusName(c.name) === norm);
 
   if (existing) return existing.id;
 
@@ -170,7 +201,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     short_name: course.short_name ?? null,
     degree_level: course.degree_level ?? null,
     subject_area: course.subject_area ?? null,
-    duration_weeks: course.duration_weeks ?? null,
+    duration_weeks: coerceInt(course.duration_weeks),
     study_mode: course.study_mode ?? null,
     description: course.description ?? null,
     domestic_fee_total: course.domestic_fee_total ?? null,
@@ -196,7 +227,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
           student_type: fee.student_type ?? "both",
           period_type: fee.period_type ?? "Per Year",
           currency: fee.currency ?? "AUD",
-          total_amount: fee.total_amount ?? 0,
+          total_amount: coerceInt(fee.total_amount) ?? 0,
         })
         .returning("id");
       await masterKnex(`${S}.extraction_course_fee_assignments`)
@@ -215,8 +246,8 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
           intake_name: intake.intake_name ?? null,
           start_date: intake.start_date ?? null,
           end_date: intake.end_date ?? null,
-          intake_month: intake.intake_month ?? null,
-          intake_year: intake.intake_year ?? null,
+          intake_month: coerceMonth(intake.intake_month),
+          intake_year: coerceInt(intake.intake_year),
           admission_deadline: intake.admission_deadline ?? null,
         })
         .returning("id");
@@ -235,7 +266,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
           name: opt.name ?? null,
           study_mode: opt.study_mode ?? "on_campus",
           study_load: opt.study_load ?? "full_time",
-          duration_value: opt.duration_value ?? null,
+          duration_value: coerceInt(opt.duration_value),
           duration_unit: opt.duration_unit ?? "months",
         })
         .returning("id");
@@ -254,7 +285,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
           name: elig.name ?? null,
           applicable_to: elig.applicable_to ?? "both",
           description: elig.description ?? null,
-          min_score_percent: elig.min_score_percent ?? null,
+          min_score_percent: coerceInt(elig.min_score_percent),
           min_degree_level: elig.min_degree_level ?? null,
         })
         .returning("id");
@@ -283,7 +314,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Campus links ──
   if (course.campus_names?.length) {
     for (const campusName of course.campus_names) {
-      const campusId = campusIdMap.get(campusName.toLowerCase());
+      const campusId = campusIdMap.get(normaliseCampusName(campusName));
       if (campusId) {
         await masterKnex(`${S}.extraction_course_campuses`)
           .insert({ job_id: jobId, course_id: courseId, campus_id: campusId, campus_name: campusName })
@@ -294,6 +325,123 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
 
   logger.info("Wrote course", { jobId, courseId, name: course.name });
   return courseId;
+}
+
+/**
+ * Replace all campuses for a job — delete existing + re-insert.
+ * Re-links course-campus junctions by matching normalised campus names.
+ * Returns a map of normalised name → new campus ID.
+ */
+export async function replaceCampuses(
+  jobId: string,
+  campuses: ExtractedCampus[],
+): Promise<Map<string, string>> {
+  // Load existing junctions before deleting campuses
+  const existingJunctions = await masterKnex(`${S}.extraction_course_campuses`)
+    .where({ job_id: jobId })
+    .select("course_id", "campus_id", "campus_name");
+
+  // Build old-id → name map from existing campuses
+  const oldCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId });
+  const oldIdToName = new Map<string, string>();
+  for (const c of oldCampuses) {
+    oldIdToName.set(c.id, normaliseCampusName(c.name));
+  }
+
+  // Delete existing campuses (cascade deletes junctions via DB or we re-create)
+  await masterKnex(`${S}.extraction_course_campuses`).where({ job_id: jobId }).delete();
+  await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).delete();
+
+  // Insert new campuses, dedup by normalised name
+  const idMap = new Map<string, string>();
+  for (const campus of campuses) {
+    if (!campus.name) continue;
+    const norm = normaliseCampusName(campus.name);
+    if (idMap.has(norm)) continue;
+    const [row] = await masterKnex(`${S}.extraction_campuses`)
+      .insert({ job_id: jobId, ...campus })
+      .returning("id");
+    idMap.set(norm, row.id);
+  }
+
+  // Re-link junctions by matching normalised campus name
+  for (const junc of existingJunctions) {
+    const oldNorm = junc.campus_name
+      ? normaliseCampusName(junc.campus_name)
+      : oldIdToName.get(junc.campus_id) ?? "";
+    const newCampusId = idMap.get(oldNorm);
+    if (newCampusId) {
+      await masterKnex(`${S}.extraction_course_campuses`)
+        .insert({
+          job_id: jobId,
+          course_id: junc.course_id,
+          campus_id: newCampusId,
+          campus_name: junc.campus_name,
+        })
+        .onConflict().ignore();
+    }
+  }
+
+  logger.info("Replaced campuses", { jobId, count: idMap.size });
+  return idMap;
+}
+
+/**
+ * Upsert an agent by (job_id, external_id).
+ * Returns the agent row ID.
+ */
+export async function upsertAgent(
+  jobId: string,
+  agent: Record<string, unknown>,
+  externalId: string,
+): Promise<string> {
+  const existing = await masterKnex(`${S}.extraction_agents`)
+    .where({ job_id: jobId, external_id: externalId })
+    .first();
+
+  if (existing) {
+    // Merge: only overwrite nulls
+    const updates: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(agent)) {
+      if (key === "job_id" || key === "external_id" || key === "id") continue;
+      if (val != null && val !== "" && (existing[key] == null || existing[key] === "")) {
+        updates[key] = val;
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = masterKnex.fn.now();
+      await masterKnex(`${S}.extraction_agents`).where({ id: existing.id }).update(updates);
+    }
+    return existing.id;
+  }
+
+  const [row] = await masterKnex(`${S}.extraction_agents`)
+    .insert({ job_id: jobId, external_id: externalId, ...agent })
+    .returning("id");
+  return row.id;
+}
+
+/**
+ * Insert agent locations for an agent within a job.
+ * Deletes existing locations for the agent first to allow re-runs.
+ */
+export async function writeAgentLocations(
+  agentId: string,
+  jobId: string,
+  locations: Array<Record<string, unknown>>,
+): Promise<void> {
+  await masterKnex(`${S}.extraction_agent_locations`)
+    .where({ agent_id: agentId, job_id: jobId })
+    .delete();
+
+  if (locations.length === 0) return;
+
+  const rows = locations.map((loc) => ({
+    agent_id: agentId,
+    job_id: jobId,
+    ...loc,
+  }));
+  await masterKnex(`${S}.extraction_agent_locations`).insert(rows);
 }
 
 /** Insert a queue item for a discovered URL */

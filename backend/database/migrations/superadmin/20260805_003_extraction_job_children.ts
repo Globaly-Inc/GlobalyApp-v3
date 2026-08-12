@@ -115,12 +115,12 @@ export async function up(knex: Knex): Promise<void> {
     t.text("study_mode").nullable();
     t.text("description").nullable();
     t.decimal("domestic_fee_total", null).nullable();
-    t.text("domestic_fee_installments").nullable();
+    t.jsonb("domestic_fee_installments").nullable();
     t.text("domestic_fee_heading").nullable();
     t.text("domestic_currency").nullable();
     t.text("domestic_eligibility").nullable();
     t.decimal("international_fee_total", null).nullable();
-    t.text("international_fee_installments").nullable();
+    t.jsonb("international_fee_installments").nullable();
     t.text("international_currency").nullable();
     t.text("international_eligibility").nullable();
     t.text("awarding_institution").nullable();
