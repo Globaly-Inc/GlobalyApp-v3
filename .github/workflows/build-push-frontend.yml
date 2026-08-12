@@ -7,9 +7,10 @@ on:
       - 'production'
       - 'staging'
       - 'develop'   
+      - 'devops-staging-release'
 
-    paths:
-      - "frontend/**"
+    # paths:
+    #   - "frontend/**"
 
 env:
   RED_COLOR_MESSAGE: "\e[31m"
