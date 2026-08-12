@@ -7,10 +7,9 @@ on:
       - 'production'
       - 'staging'
       - 'develop'
-      - 'devops-staging-release'
 
-    # paths:
-    #   - "backend/**"
+    paths:
+      - "backend/**"
     
 
 env:
