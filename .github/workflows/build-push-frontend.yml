@@ -7,7 +7,7 @@ on:
       - 'production'
       - 'staging'
       - 'develop'   
-      - 'devops-staging-release'
+      # - 'devops-staging-release'
 
     # paths:
     #   - "frontend/**"
