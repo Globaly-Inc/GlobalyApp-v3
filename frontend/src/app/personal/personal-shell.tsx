@@ -33,6 +33,15 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 
+/**
+ * One width for the whole portal: the bar and the page body share it so the logo lines up with the content
+ * instead of hugging the screen edge, and the dashboard stops stretching across ultrawide displays.
+ *
+ * 1280px matches the app's `.container` cap, but the padding is set here rather than inherited from it —
+ * `.container` hardcodes `padding-inline: 2rem`, which is too much on a phone and would fight these classes.
+ */
+const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
+
 const NAV_ITEMS = [
   { label: "Home", icon: Home, href: "/personal/portal" },
   { label: "Explore", icon: Compass, href: "/personal/explore" },
@@ -59,6 +68,17 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ponytail: onboarding gate removed for now — an un-onboarded user goes straight to the portal instead of
+  // being redirected to /personal/onboarding. The route and its view are untouched and still reachable
+  // directly, so restoring the gate is re-adding this effect:
+  //
+  //   useEffect(() => {
+  //     if (!profile || pathname?.startsWith("/personal/onboarding")) return;   // loop guard is required:
+  //     if (!profile.onboarding_completed) router.replace("/personal/onboarding");  // onboarding-view pushes
+  //   }, [profile, pathname, router]);                                              // to /personal/profile
+  //
+  // Profile completion still gates enquiries — that is a separate, server-side check and is unaffected.
+
   const handleSignOut = () => {
     dispatch(logout());
     router.push("/auth/sign-in");
@@ -75,7 +95,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
-      <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 md:px-6">
+      {/* The bar spans the viewport (so the border does too) but its contents sit in the same centred
+          container as the page body — otherwise the logo hugs the screen edge while the content is inset. */}
+      <header className="h-16 border-b border-border bg-background">
+        <div className={cn(SHELL_WIDTH, "flex h-16 items-center justify-between")}>
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center">
             <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
@@ -107,9 +130,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
         <div className="flex items-center gap-2">
           <Link
             href="/personal/notifications"
-            className="hidden md:inline-flex items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Notifications"
           >
+            {/* No unread badge: the notifications table and its count endpoint were removed in review. */}
             <Bell className="h-4.5 w-4.5" />
           </Link>
           <Link
@@ -165,11 +189,34 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        </div>
       </header>
 
-      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 md:py-6 pb-24 md:pb-6">{children}</main>
+      <main className="flex-1 py-4 md:py-6 pb-24 md:pb-6">
+        <div className={SHELL_WIDTH}>{children}</div>
+      </main>
 
       <div className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-border bg-background py-2 pb-[env(safe-area-inset-bottom)] md:hidden">
+        <Link
+          href="/personal/portal"
+          className={cn(
+            "flex flex-col items-center gap-0.5 px-4 py-1 text-xs",
+            pathname === "/personal/portal" ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Home className="h-5 w-5" />
+          Home
+        </Link>
+        <Link
+          href="/personal/notifications"
+          className={cn(
+            "relative flex flex-col items-center gap-0.5 px-4 py-1 text-xs",
+            pathname === "/personal/notifications" ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Bell className="h-5 w-5" />
+          Alerts
+        </Link>
         <Link
           href="/personal/profile"
           className={cn(

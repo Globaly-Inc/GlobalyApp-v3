@@ -2,6 +2,7 @@ import { combineReducers, configureStore } from "@reduxjs/toolkit"
 import { signupReducer } from "@/app/signup/store/signup-slice"
 import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
+import { homeReducer } from "@/app/personal/portal/store/home-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
@@ -31,6 +32,7 @@ const appReducer = combineReducers({
     signup: signupReducer,
     auth: authReducer,
     profile: profileReducer,
+    home: homeReducer,
     businessOnboarding: businessOnboardingReducer,
     admin: adminReducer,
     overview: overviewReducer,
