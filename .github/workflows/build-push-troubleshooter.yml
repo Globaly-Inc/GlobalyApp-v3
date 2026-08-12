@@ -141,7 +141,7 @@ jobs:
            cd repo
 
            echo "Updating image tag in $VALUES_FILE_PATH..."
-           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/troubleshooter-globalyos.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/troubleshooter-globalyapp.yml"
 
            echo "updating globalyos-images..."
            git config user.name "devops-github-actions"
