@@ -100,17 +100,18 @@ export function HomeView() {
         That is safe because these cards are pure renders of `summary` — they fetch nothing, so there is one
         source of data and no chance of the two copies drifting.
       */}
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6">
-        <div className="order-1 space-y-3 lg:order-2 lg:col-span-1">
+      {/* One spacing scale throughout: 4 (16px) between cards, 6 (24px) between regions and columns. */}
+      <div className="flex flex-col gap-4 md:gap-6 lg:grid lg:grid-cols-3 lg:items-start">
+        <div className="order-1 space-y-4 lg:order-2 lg:col-span-1">
           <RegionBoundary label="your pending items">
-            <div className="space-y-3">{actionableCards}</div>
+            <div className="space-y-4">{actionableCards}</div>
           </RegionBoundary>
           <RegionBoundary label="your activity">
-            <div className="hidden space-y-3 lg:block">{informationalCards}</div>
+            <div className="hidden space-y-4 lg:block">{informationalCards}</div>
           </RegionBoundary>
         </div>
 
-        <div className="order-2 space-y-3 lg:order-1 lg:col-span-2">
+        <div className="order-2 space-y-4 lg:order-1 lg:col-span-2">
           <RegionBoundary label="the composer">
             <FeedComposer />
           </RegionBoundary>
@@ -120,7 +121,7 @@ export function HomeView() {
         </div>
 
         <RegionBoundary label="your activity">
-          <div className="order-3 space-y-3 lg:hidden">{informationalCards}</div>
+          <div className="order-3 space-y-4 lg:hidden">{informationalCards}</div>
         </RegionBoundary>
       </div>
     </div>

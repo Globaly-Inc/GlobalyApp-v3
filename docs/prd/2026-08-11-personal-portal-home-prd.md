@@ -219,6 +219,8 @@ The hero gradient is unchanged (`from-primary via-primary to-primary/70`) — it
 
 Layout: `lg+` is `grid-cols-3` (feed spans 2); below `lg` a single column ordered hero → actionable → composer → timeline → informational.
 
+**Width and rhythm.** The shell centres both the top bar's contents and the page body on one shared width (`mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6`), so the logo lines up with the content instead of hugging the screen edge and the dashboard stops stretching across ultrawide displays. 1280px matches the app's `.container` cap, but padding is set explicitly rather than inherited — `.container` hardcodes `padding-inline: 2rem`, which is too much on a phone and would fight the responsive classes. Spacing uses one scale: **4 (16px) between cards, 6 (24px) between regions and columns**.
+
 New shared plumbing: `httpPostNoContent` and `httpPostForm` in `lib/api/http.ts` (the 204 routes would throw on `res.json()`; multipart must not carry a hand-set `Content-Type`).
 
 **Resilience, learned the hard way.** A frontend pointed at a backend that predated the `media` column rendered `post.media.length` on `undefined` and React unmounted the whole page — "Something went wrong" where a hero, a composer and five cards should have been. Two fixes, both at the level the problem actually lives at:

@@ -34,6 +34,15 @@ import { logout } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { fetchUnreadCount } from "./notifications/store/notifications-slice";
 
+/**
+ * One width for the whole portal: the bar and the page body share it so the logo lines up with the content
+ * instead of hugging the screen edge, and the dashboard stops stretching across ultrawide displays.
+ *
+ * 1280px matches the app's `.container` cap, but the padding is set here rather than inherited from it —
+ * `.container` hardcodes `padding-inline: 2rem`, which is too much on a phone and would fight these classes.
+ */
+const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
+
 const NAV_ITEMS = [
   { label: "Home", icon: Home, href: "/personal/portal" },
   { label: "Explore", icon: Compass, href: "/personal/explore" },
@@ -89,7 +98,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
-      <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 md:px-6">
+      {/* The bar spans the viewport (so the border does too) but its contents sit in the same centred
+          container as the page body — otherwise the logo hugs the screen edge while the content is inset. */}
+      <header className="h-16 border-b border-border bg-background">
+        <div className={cn(SHELL_WIDTH, "flex h-16 items-center justify-between")}>
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center">
             <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
@@ -185,9 +197,12 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        </div>
       </header>
 
-      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 md:py-6 pb-24 md:pb-6">{children}</main>
+      <main className="flex-1 py-4 md:py-6 pb-24 md:pb-6">
+        <div className={SHELL_WIDTH}>{children}</div>
+      </main>
 
       <div className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-border bg-background py-2 pb-[env(safe-area-inset-bottom)] md:hidden">
         <Link
