@@ -71,7 +71,7 @@ export async function buildServer() {
     const ok = await mailerService.verifyConnection();
     return {
       status: ok ? "ok" : "degraded",
-      details: { smtp_host: config.SMTP_HOST ?? null, configured: !!config.SMTP_HOST },
+      details: { smtp_host: config.MAIL_HOST ?? null, configured: !!config.MAIL_HOST },
     };
   });
 
