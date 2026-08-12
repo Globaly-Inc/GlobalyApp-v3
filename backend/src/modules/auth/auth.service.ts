@@ -172,6 +172,8 @@ export async function sendOtp(email: string) {
     html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
   }).catch((err) => logger.warn("OTP email failed", { email, err: err.message }));
 
+  // ponytail: dev-only OTP log, remove when SMTP is wired
+  if (process.env.NODE_ENV !== "production") logger.info(`[DEV-OTP] ${email} → ${otp}`);
   logger.info("OTP sent", { userId: user.id });
   return { message: "OTP sent" };
 }

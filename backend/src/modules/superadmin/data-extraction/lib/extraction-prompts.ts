@@ -462,6 +462,658 @@ Return JSON matching this schema:
 ${schemas[dataType] || "{}"}`;
 }
 
+// ── Service: Accommodation extraction ──
+
+export const ACCOMMODATION_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for a student services platform.
+Extract student accommodation and housing listings from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer, guess, or fabricate data.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function accommodationExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract all student accommodation listings from this page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "accommodations": [
+    {
+      "name": "property/listing name",
+      "provider_name": "management company or provider name or null",
+      "type": "student_housing|homestay|shared_room|studio|apartment|residence|other or null",
+      "property_type": "e.g. purpose-built, converted house, apartment block or null",
+      "description": "description or null",
+      "address": "full address or null",
+      "street1": "street line 1 or null",
+      "street2": "street line 2 or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "country": "country or null",
+      "postcode": "postal code or null",
+      "latitude": null,
+      "longitude": null,
+      "distance_to_campus": "e.g. 5 min walk, 2 km or null",
+      "nearest_public_transport": "nearest station/stop or null",
+      "price_amount": null,
+      "price_currency": "currency code or null",
+      "price_period": "per_week|per_month|per_semester|per_year or null",
+      "price_from": null,
+      "price_to": null,
+      "deposit_amount": null,
+      "bond_amount": null,
+      "application_fee": null,
+      "bills_included": null,
+      "room_type": "single|twin_share|ensuite|studio|apartment or null",
+      "bed_type": "single|double|king or null",
+      "bathroom_type": "private|shared or null",
+      "furnished": null,
+      "bedrooms": null,
+      "bathrooms": null,
+      "room_size_sqm": null,
+      "min_stay_weeks": null,
+      "max_stay_weeks": null,
+      "availability": "available|waitlist|sold_out or null",
+      "lease_type": "fixed|flexible or null",
+      "amenities": [],
+      "facilities": [],
+      "wifi_included": null,
+      "meals_included": null,
+      "meal_plan_details": "meal plan description or null",
+      "cancellation_policy": "cancellation terms or null",
+      "pet_policy": "pet rules or null",
+      "guest_policy": "guest rules or null",
+      "smoking_policy": "smoking rules or null",
+      "alcohol_policy": "alcohol rules or null",
+      "gender_policy": "mixed|female_only|male_only or null",
+      "security_features": [],
+      "wheelchair_accessible": null,
+      "images": [],
+      "virtual_tour_url": "virtual tour link or null",
+      "average_rating": null,
+      "review_count": null,
+      "contact_name": "contact person or null",
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "contact_whatsapp": "whatsapp number or null",
+      "website": "website or null",
+      "booking_url": "booking link or null",
+      "nearby_institutions": [],
+      "managed_by": "management entity or null"
+    }
+  ]
+}
+
+Rules:
+- Extract ALL accommodation listings visible on this page
+- If the page shows a single property, return exactly 1 item
+- Never invent prices, availability, or amenities — only extract what is explicitly stated
+- amenities, facilities, security_features, nearby_institutions, images are JSON arrays of strings
+- Boolean fields (bills_included, wifi_included, furnished, meals_included, wheelchair_accessible) should be true, false, or null if not stated
+- Price fields are numbers (no currency symbols)`;
+}
+
+// ── Service: Insurance extraction ──
+
+export const INSURANCE_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for a student services platform.
+Extract student insurance products (OSHC, OVHC, health, travel) from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer, guess, or fabricate data.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function insuranceExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract all student insurance product listings from this page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "insurance_products": [
+    {
+      "name": "product/plan name",
+      "provider_name": "insurer name or null",
+      "type": "oshc|ovhc|health|travel or null",
+      "plan_tier": "e.g. basic, standard, premium or null",
+      "product_code": "product code or null",
+      "cover_type": "single|couple|family or null",
+      "age_min": null,
+      "age_max": null,
+      "premium_amount": null,
+      "premium_currency": "currency code or null",
+      "premium_period": "per_month|per_year|per_week or null",
+      "premium_annual": null,
+      "premium_monthly": null,
+      "payment_frequency": "monthly|quarterly|annually or null",
+      "cover_duration_months": null,
+      "benefits": [],
+      "hospital_cover": null,
+      "dental_cover": null,
+      "optical_cover": null,
+      "mental_health_cover": null,
+      "ambulance_cover": null,
+      "prescription_cover": null,
+      "pregnancy_cover": null,
+      "emergency_cover": null,
+      "repatriation_cover": null,
+      "annual_limit": null,
+      "lifetime_limit": null,
+      "exclusions": [],
+      "waiting_period": "waiting period description or null",
+      "excess_amount": null,
+      "gap_cover": null,
+      "pre_existing_conditions_covered": null,
+      "meets_visa_requirement": null,
+      "government_approved": null,
+      "fund_code": "fund code or null",
+      "claiming_process": "how to claim or null",
+      "claims_phone": "claims phone or null",
+      "claims_email": "claims email or null",
+      "claims_portal_url": "claims portal URL or null",
+      "country_code": "country code or null",
+      "visa_types_eligible": [],
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "website": "website or null",
+      "quote_url": "get a quote link or null",
+      "apply_url": "apply link or null",
+      "pds_url": "product disclosure statement URL or null"
+    }
+  ]
+}
+
+Rules:
+- Extract ALL insurance products/plans visible on this page
+- Cover booleans (hospital_cover, dental_cover, etc.) should be true, false, or null if not stated
+- Premium amounts are numbers (no currency symbols)
+- benefits, exclusions, visa_types_eligible are JSON arrays of strings
+- If a plan has multiple cover_type variants (single/couple/family), extract each as a separate entry
+- Never invent coverage details or premiums — only extract what is explicitly stated`;
+}
+
+// ── Service: Banking extraction ──
+
+export const BANKING_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for a student services platform.
+Extract student banking products and financial service offerings from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer, guess, or fabricate data.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function bankingExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract all student banking products and account offerings from this page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "banking_products": [
+    {
+      "name": "account/product name",
+      "provider_name": "bank/institution name or null",
+      "type": "savings|everyday|term_deposit or null",
+      "account_type": "e.g. student, international student, youth or null",
+      "product_code": "product code or null",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "fee_currency": "currency code or null",
+      "fee_waiver_available": null,
+      "fee_waiver_conditions": "conditions for fee waiver or null",
+      "atm_fee_domestic": null,
+      "atm_fee_international": null,
+      "international_transaction_fee_percent": null,
+      "interest_rate": null,
+      "interest_type": "variable|fixed or null",
+      "bonus_interest_rate": null,
+      "bonus_interest_conditions": "conditions for bonus rate or null",
+      "has_debit_card": null,
+      "card_type": "visa|mastercard|eftpos or null",
+      "has_mobile_app": null,
+      "has_internet_banking": null,
+      "has_branch_access": null,
+      "has_apple_pay": null,
+      "has_google_pay": null,
+      "has_samsung_pay": null,
+      "has_payid": null,
+      "has_bpay": null,
+      "has_international_transfers": null,
+      "features": [],
+      "eligibility": [],
+      "min_age": null,
+      "max_age": null,
+      "visa_types_accepted": [],
+      "min_deposit": null,
+      "documents_required": [],
+      "can_open_before_arrival": null,
+      "daily_transfer_limit": null,
+      "daily_withdrawal_limit": null,
+      "sign_up_bonus": "bonus description or null",
+      "sign_up_bonus_conditions": "conditions for bonus or null",
+      "country_code": "country code or null",
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "website": "website or null",
+      "apply_url": "apply link or null"
+    }
+  ]
+}
+
+Rules:
+- Extract ALL banking products/accounts visible on this page
+- Fee and rate fields are numbers (no currency symbols or % signs)
+- Boolean fields (has_debit_card, has_mobile_app, fee_waiver_available, can_open_before_arrival, etc.) should be true, false, or null if not stated
+- features, eligibility, visa_types_accepted, documents_required are JSON arrays of strings
+- Never invent fees, rates, or features — only extract what is explicitly stated`;
+}
+
+// ── Service: Visa Services extraction ──
+
+export const VISA_SERVICES_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for a student services platform.
+Extract visa service providers and migration agent listings from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer, guess, or fabricate data.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function visaServicesExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract all visa service providers and migration agent listings from this page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "visa_services": [
+    {
+      "name": "business/agent name",
+      "provider_name": "parent company or null",
+      "type": "visa_application|migration_advice|appeal or null",
+      "registration_number": "MARN or registration number or null",
+      "registration_body": "e.g. MARA, OMARA or null",
+      "registration_status": "active|suspended|cancelled or null",
+      "registration_expiry": "YYYY-MM-DD or null",
+      "registration_level": "e.g. full, limited or null",
+      "visa_types_handled": [],
+      "services_offered": [],
+      "specializations": "areas of specialization or null",
+      "fee_amount": null,
+      "fee_currency": "currency code or null",
+      "fee_type": "flat|hourly|per_application or null",
+      "fee_from": null,
+      "fee_to": null,
+      "consultation_fee": null,
+      "consultation_free": null,
+      "success_rate": null,
+      "cases_handled": null,
+      "years_experience": null,
+      "team_size": null,
+      "countries_serviced": [],
+      "nationalities_serviced": [],
+      "languages_spoken": [],
+      "address": "full address or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "country": "country or null",
+      "contact_name": "contact person or null",
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "contact_whatsapp": "whatsapp number or null",
+      "website": "website or null",
+      "booking_url": "booking link or null",
+      "operating_hours": "business hours or null",
+      "appointment_required": null,
+      "online_consultations": null,
+      "average_rating": null,
+      "review_count": null
+    }
+  ]
+}
+
+Rules:
+- Extract ALL visa service providers visible on this page
+- visa_types_handled, services_offered, countries_serviced, nationalities_serviced, languages_spoken are JSON arrays of strings
+- Fee fields are numbers (no currency symbols)
+- Boolean fields (consultation_free, appointment_required, online_consultations) should be true, false, or null if not stated
+- success_rate is a number 0-100 representing percentage, or null
+- Never invent credentials, fees, or success rates — only extract what is explicitly stated`;
+}
+
+// ── Service: Test Preparation extraction ──
+
+export const TEST_PREPARATION_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for a student services platform.
+Extract test preparation course listings (IELTS, TOEFL, PTE, etc.) from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer, guess, or fabricate data.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function testPreparationExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract all test preparation course listings from this page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "test_prep_courses": [
+    {
+      "name": "course/program name",
+      "provider_name": "provider/school name or null",
+      "test_type": "ielts|toefl|pte|cambridge|oet|gmat|gre or null",
+      "test_variant": "e.g. Academic, General Training or null",
+      "format": "in_person|online|hybrid or null",
+      "duration_hours": null,
+      "duration_weeks": null,
+      "level": "e.g. beginner, intermediate, advanced or null",
+      "target_score": null,
+      "guaranteed_score": null,
+      "modules": [],
+      "skills_covered": "e.g. reading, writing, speaking, listening or null",
+      "practice_tests_count": null,
+      "total_lessons": null,
+      "class_size_max": null,
+      "includes_mock_test": null,
+      "includes_materials": null,
+      "includes_marking": null,
+      "includes_feedback": null,
+      "includes_certificate": null,
+      "one_on_one_available": null,
+      "recorded_sessions": null,
+      "schedule": [],
+      "start_dates": [],
+      "flexible_start": null,
+      "intake_frequency": "weekly|monthly|quarterly or null",
+      "fee_amount": null,
+      "fee_currency": "currency code or null",
+      "fee_period": "per_course|per_week|per_month or null",
+      "fee_per_hour": null,
+      "average_score_improvement": null,
+      "pass_rate": null,
+      "students_trained": null,
+      "teacher_qualifications": "teacher credentials or null",
+      "native_speakers": null,
+      "address": "full address or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "country": "country or null",
+      "contact_name": "contact person or null",
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "website": "website or null",
+      "booking_url": "enrol/book link or null"
+    }
+  ]
+}
+
+Rules:
+- Extract ALL test preparation courses visible on this page
+- modules, schedule, start_dates are JSON arrays of strings
+- Boolean fields (includes_mock_test, includes_materials, flexible_start, native_speakers, etc.) should be true, false, or null if not stated
+- Fee fields are numbers (no currency symbols)
+- target_score and guaranteed_score are numbers (e.g. 7.0 for IELTS)
+- pass_rate is a number 0-100 representing percentage, or null
+- Never invent scores, fees, or class details — only extract what is explicitly stated`;
+}
+
+// ── Service: Career Services extraction ──
+
+export const CAREER_SERVICES_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for a student services platform.
+Extract career service offerings (resume writing, job placement, internships, coaching) from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer, guess, or fabricate data.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function careerServicesExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract all career service offerings from this page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "career_services": [
+    {
+      "name": "service/package name",
+      "provider_name": "provider/company name or null",
+      "type": "resume_writing|job_placement|internship|career_coaching or null",
+      "services_offered": [],
+      "industries": "target industries or null",
+      "job_types": "e.g. full-time, part-time, casual or null",
+      "fee_amount": null,
+      "fee_currency": "currency code or null",
+      "fee_type": "flat|hourly|per_session or null",
+      "fee_from": null,
+      "fee_to": null,
+      "free_initial_consultation": null,
+      "free_services_available": null,
+      "duration": "service duration or null",
+      "sessions_included": null,
+      "session_duration": "e.g. 30 min, 1 hour or null",
+      "delivery_mode": "in_person|online|hybrid or null",
+      "inclusions": [],
+      "resume_review": null,
+      "cover_letter": null,
+      "linkedin_optimization": null,
+      "portfolio_review": null,
+      "interview_coaching": null,
+      "turnaround_time": "e.g. 3 business days or null",
+      "placement_rate": null,
+      "average_salary": null,
+      "employer_partnerships_count": null,
+      "partner_companies": [],
+      "candidates_placed": null,
+      "eligibility": "eligibility criteria or null",
+      "visa_types_eligible": [],
+      "target_audience": "e.g. international students, graduates or null",
+      "address": "full address or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "country": "country or null",
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "website": "website or null",
+      "booking_url": "booking link or null"
+    }
+  ]
+}
+
+Rules:
+- Extract ALL career service offerings visible on this page
+- services_offered, inclusions, partner_companies, visa_types_eligible are JSON arrays of strings
+- Boolean fields (free_initial_consultation, free_services_available, resume_review, cover_letter, linkedin_optimization, portfolio_review, interview_coaching) should be true, false, or null if not stated
+- Fee fields are numbers (no currency symbols)
+- placement_rate is a number 0-100 representing percentage, or null
+- Never invent placement rates, fees, or partner details — only extract what is explicitly stated`;
+}
+
+// ── Service: Translation extraction ──
+
+export const TRANSLATION_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for a student services platform.
+Extract translation and interpreting service providers from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer, guess, or fabricate data.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function translationExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract all translation and interpreting service listings from this page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "translation_services": [
+    {
+      "name": "business/service name",
+      "provider_name": "parent company or null",
+      "type": "document_translation|interpreting|naati_certified|notarised or null",
+      "languages_from": [],
+      "languages_to": [],
+      "language_pairs_count": null,
+      "document_types": "accepted document types or null",
+      "specializations": "specialization areas or null",
+      "certification": "e.g. NAATI Certified or null",
+      "certification_number": "certification number or null",
+      "certification_body": "e.g. NAATI or null",
+      "certification_level": "e.g. Certified, Recognised or null",
+      "is_sworn_translator": null,
+      "court_approved": null,
+      "fee_amount": null,
+      "fee_currency": "currency code or null",
+      "fee_type": "per_page|per_word|per_document|flat or null",
+      "fee_per_page": null,
+      "fee_per_word": null,
+      "minimum_charge": null,
+      "rush_fee_multiplier": null,
+      "notarisation_fee": null,
+      "turnaround_time": "standard turnaround or null",
+      "express_available": null,
+      "express_turnaround": "express turnaround time or null",
+      "delivery_format": "e.g. PDF, hard copy, email or null",
+      "accepts_online_orders": null,
+      "quality_assurance": "QA process or null",
+      "revision_included": null,
+      "revision_count": null,
+      "address": "full address or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "country": "country or null",
+      "contact_name": "contact person or null",
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "website": "website or null",
+      "order_url": "order/submit link or null",
+      "quote_url": "get a quote link or null"
+    }
+  ]
+}
+
+Rules:
+- Extract ALL translation service listings visible on this page
+- languages_from, languages_to are JSON arrays of language names (e.g. ["English", "Mandarin"])
+- Boolean fields (is_sworn_translator, court_approved, express_available, accepts_online_orders, revision_included) should be true, false, or null if not stated
+- Fee fields are numbers (no currency symbols)
+- rush_fee_multiplier is a number (e.g. 1.5 for 50% surcharge), or null
+- Never invent certifications, fees, or language pairs — only extract what is explicitly stated`;
+}
+
+// ── Service: Transport extraction ──
+
+export const TRANSPORT_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for a student services platform.
+Extract transport service listings (airport pickup, shuttles, local transport) from the provided webpage content.
+ONLY extract information that is EXPLICITLY stated on the page. NEVER infer, guess, or fabricate data.
+If a field is not found, use null. Respond in valid JSON only.`;
+
+export function transportExtractionPrompt(
+  url: string,
+  pageText: string,
+  guidanceNotes?: string | null,
+) {
+  const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  return `Extract all transport service listings from this page.
+Source URL: ${url}${guidance}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "transport_services": [
+    {
+      "name": "service/company name",
+      "provider_name": "parent company or null",
+      "type": "airport_pickup|shuttle|local_transport|car_rental or null",
+      "coverage_area": "service area or null",
+      "airports_serviced": [],
+      "cities_serviced": [],
+      "routes": [],
+      "pickup_points": "pickup locations or null",
+      "dropoff_points": "dropoff locations or null",
+      "vehicle_types": "vehicle types available or null",
+      "max_passengers": null,
+      "wheelchair_accessible": null,
+      "child_seat_available": null,
+      "luggage_capacity": "luggage info or null",
+      "luggage_included": null,
+      "fee_amount": null,
+      "fee_currency": "currency code or null",
+      "fee_type": "flat|per_km|per_trip or null",
+      "fee_from": null,
+      "fee_to": null,
+      "surge_pricing": null,
+      "group_discount": null,
+      "student_discount": null,
+      "payment_methods": "accepted payment methods or null",
+      "booking_method": "how to book or null",
+      "advance_booking_required": null,
+      "min_notice_hours": null,
+      "booking_url": "booking link or null",
+      "app_name": "mobile app name or null",
+      "operating_hours": "operating hours or null",
+      "twenty_four_hour_service": null,
+      "frequency": "service frequency or null",
+      "meet_and_greet": null,
+      "flight_monitoring": null,
+      "door_to_door": null,
+      "shared_ride_available": null,
+      "gps_tracking": null,
+      "wifi_onboard": null,
+      "multilingual_drivers": null,
+      "languages_spoken": [],
+      "address": "full address or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "country": "country or null",
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "website": "website or null",
+      "license_number": "license/permit number or null"
+    }
+  ]
+}
+
+Rules:
+- Extract ALL transport services visible on this page
+- airports_serviced, cities_serviced, routes, languages_spoken are JSON arrays of strings
+- Boolean fields (wheelchair_accessible, child_seat_available, luggage_included, surge_pricing, group_discount, student_discount, advance_booking_required, twenty_four_hour_service, meet_and_greet, flight_monitoring, door_to_door, shared_ride_available, gps_tracking, wifi_onboard, multilingual_drivers) should be true, false, or null if not stated
+- Fee fields are numbers (no currency symbols)
+- Never invent fees, routes, or service details — only extract what is explicitly stated`;
+}
+
 // ── Phase 3: Verification (verify worker) ──
 
 export const VERIFICATION_SYSTEM = `You verify extracted course data against live web page content.

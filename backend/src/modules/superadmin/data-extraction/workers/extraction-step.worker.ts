@@ -20,6 +20,14 @@ import {
   courseListPrompt, COURSE_LIST_SYSTEM,
   bulkFeePrompt, BULK_FEE_SYSTEM,
   courseDataPrompt, COURSE_DATA_SYSTEM,
+  ACCOMMODATION_EXTRACTION_SYSTEM, accommodationExtractionPrompt,
+  INSURANCE_EXTRACTION_SYSTEM, insuranceExtractionPrompt,
+  BANKING_EXTRACTION_SYSTEM, bankingExtractionPrompt,
+  VISA_SERVICES_EXTRACTION_SYSTEM, visaServicesExtractionPrompt,
+  TEST_PREPARATION_EXTRACTION_SYSTEM, testPreparationExtractionPrompt,
+  CAREER_SERVICES_EXTRACTION_SYSTEM, careerServicesExtractionPrompt,
+  TRANSLATION_EXTRACTION_SYSTEM, translationExtractionPrompt,
+  TRANSPORT_EXTRACTION_SYSTEM, transportExtractionPrompt,
 } from "../lib/extraction-prompts.js";
 import {
   writeInstitutionOverview,
@@ -28,6 +36,8 @@ import {
   writeAgentLocations,
   insertQueueItem,
   writeJobEvent,
+  writeServiceItem,
+  SERVICE_EXTRACTION_TABLES,
   normaliseCampusName,
   type ExtractedCampus,
   type InstitutionOverview,
@@ -1039,6 +1049,88 @@ async function handleCourseDataStep(
   });
 }
 
+// ── Service category extraction ────────────────────────────────────────────
+
+function getServicePrompts(serviceType: string): {
+  system: string;
+  promptFn: (url: string, pageText: string, guidanceNotes?: string | null) => string;
+} {
+  switch (serviceType) {
+    case "accommodation": return { system: ACCOMMODATION_EXTRACTION_SYSTEM, promptFn: accommodationExtractionPrompt };
+    case "insurance": return { system: INSURANCE_EXTRACTION_SYSTEM, promptFn: insuranceExtractionPrompt };
+    case "banking": return { system: BANKING_EXTRACTION_SYSTEM, promptFn: bankingExtractionPrompt };
+    case "visa_services": return { system: VISA_SERVICES_EXTRACTION_SYSTEM, promptFn: visaServicesExtractionPrompt };
+    case "test_preparation": return { system: TEST_PREPARATION_EXTRACTION_SYSTEM, promptFn: testPreparationExtractionPrompt };
+    case "career_services": return { system: CAREER_SERVICES_EXTRACTION_SYSTEM, promptFn: careerServicesExtractionPrompt };
+    case "translation": return { system: TRANSLATION_EXTRACTION_SYSTEM, promptFn: translationExtractionPrompt };
+    case "transport": return { system: TRANSPORT_EXTRACTION_SYSTEM, promptFn: transportExtractionPrompt };
+    default: throw new Error(`No prompts for service type: ${serviceType}`);
+  }
+}
+
+async function handleServiceExtractionStep(jobId: string, serviceType: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+
+  const table = SERVICE_EXTRACTION_TABLES[serviceType];
+  if (!table) throw new Error(`Unknown service type: ${serviceType}`);
+
+  const guided = parseGuidedUrls(job);
+  const serviceUrls: string[] = (guided[`${serviceType}_urls`] as string[]) || [];
+
+  // Fallback: use institution_url as the source
+  const urlsToScrape = serviceUrls.length > 0 ? serviceUrls : [job.institution_url];
+
+  await writeJobEvent(jobId, "step_start", {
+    phase: serviceType,
+    message: `Extracting ${serviceType} from ${urlsToScrape.length} URLs`,
+  });
+
+  const domain = domainOf(job.institution_url);
+  const recalled = await recallMemory(domain, serviceType);
+  const addendum = buildSystemAddendum(recalled);
+
+  const { system: systemPrompt, promptFn } = getServicePrompts(serviceType);
+  const system = addendum ? `${systemPrompt}\n\n${addendum}` : systemPrompt;
+
+  let totalItems = 0;
+
+  for (const url of urlsToScrape) {
+    const sc = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
+    if (sc?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
+    await heartbeat(jobId);
+
+    const markdown = await scrapeUrl(url);
+    if (!markdown) continue;
+
+    const pageText = truncateMarkdown(markdown, 25000);
+    const result = await extractJson<{ items: Record<string, unknown>[] }>({
+      system,
+      prompt: promptFn(url, pageText, job.guidance_notes),
+    });
+
+    const items = result.items || [];
+    for (const item of items) {
+      if (!item.name) continue;
+      item.source_url = url;
+      await writeServiceItem(jobId, table, item);
+      totalItems++;
+    }
+  }
+
+  await rememberMemory({
+    job_id: jobId, domain, step: serviceType,
+    entity_type: serviceType,
+    ai_output: { total: totalItems },
+  });
+
+  await writeJobEvent(jobId, "step_complete", {
+    phase: serviceType,
+    message: `${totalItems} ${serviceType} items extracted`,
+    data: { count: totalItems },
+  });
+}
+
 // ── Main consumer ───────────────────────────────────────────────────────────
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
@@ -1061,6 +1153,16 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       case "enrichment":    await handleEnrichmentStep(jobId); break;
       case "verification":  await handleVerificationStep(jobId); break;
       case "course_data":   await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
+      case "accommodation":
+      case "insurance":
+      case "banking":
+      case "visa_services":
+      case "test_preparation":
+      case "career_services":
+      case "translation":
+      case "transport":
+        await handleServiceExtractionStep(jobId, step);
+        break;
       default:
         logger.warn("Unknown step", { step });
     }

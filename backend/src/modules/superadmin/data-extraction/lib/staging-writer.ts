@@ -468,3 +468,36 @@ export async function writeJobEvent(jobId: string, kind: string, opts?: {
     data: opts?.data ? JSON.stringify(opts.data) : "{}",
   });
 }
+
+// ── Service category extraction ──
+
+export const SERVICE_EXTRACTION_TABLES: Record<string, string> = {
+  accommodation: "extraction_accommodation",
+  insurance: "extraction_insurance",
+  banking: "extraction_banking",
+  visa_services: "extraction_visa_services",
+  test_preparation: "extraction_test_preparation",
+  career_services: "extraction_career_services",
+  translation: "extraction_translation",
+  transport: "extraction_transport",
+};
+
+export async function writeServiceItem(
+  jobId: string,
+  table: string,
+  data: Record<string, unknown>,
+): Promise<string> {
+  const insert: Record<string, unknown> = { job_id: jobId };
+  for (const [key, val] of Object.entries(data)) {
+    if (key === "id" || key === "job_id") continue;
+    if (val != null && val !== "") {
+      // Stringify arrays and objects for jsonb columns
+      insert[key] = (Array.isArray(val) || (typeof val === "object" && val !== null))
+        ? JSON.stringify(val)
+        : val;
+    }
+  }
+  const [row] = await masterKnex(`${S}.${table}`).insert(insert).returning("id");
+  logger.info(`Wrote ${table} item`, { jobId, id: row.id });
+  return row.id;
+}

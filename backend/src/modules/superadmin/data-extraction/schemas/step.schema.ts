@@ -5,6 +5,8 @@ import { z } from "zod";
 export const PIPELINE_STEPS = [
   "institution", "branches", "agents", "discovery",
   "courses", "enrichment", "verification", "course_data",
+  "accommodation", "insurance", "banking", "visa_services",
+  "test_preparation", "career_services", "translation", "transport",
 ] as const;
 
 export type PipelineStep = (typeof PIPELINE_STEPS)[number];
