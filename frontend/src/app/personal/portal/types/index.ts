@@ -1,7 +1,4 @@
-import type { Completion } from "@/app/personal/apis/types";
 import type { FeedPost } from "../apis/types";
-
-export type CompletionCardProps = { completion: Completion };
 
 export type FeedPostCardProps = { post: FeedPost; currentUserIsAuthor: boolean };
 

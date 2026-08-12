@@ -6,21 +6,19 @@ import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import { HomeHero } from "./home-hero";
 import { FeedComposer } from "./feed-composer";
 import { FeedTimeline } from "./feed-timeline";
-import { CompletionCard } from "./completion-card";
 import { QuickActions } from "./quick-actions";
 import { RegionBoundary } from "./region-boundary";
 
 /**
- * Home = hero + feed + a rail carrying profile completion and quick actions.
+ * Home = hero + feed + quick actions.
  *
- * The rail's counts, pending invites, position confirmations and recent enquiries were removed in review:
- * the enquiries/favorites/notifications tables and the personal-home aggregator went with them, so there is
- * no source for those cards. Completion comes from GET /platform-users/me, which already returns it — which
- * is exactly why the separate summary endpoint was redundant.
+ * The rail's counts, invites, position confirmations, recent enquiries and the profile-completion card were
+ * all removed in PR review along with their data sources (the enquiries/favorites/notifications tables, the
+ * personal-home aggregator and the backend completion service). The profile page keeps its own progress bar.
  */
 export function HomeView() {
   const dispatch = useAppDispatch();
-  const { profile, completion } = useAppSelector((state) => state.profile);
+  const profile = useAppSelector((state) => state.profile.profile);
 
   useEffect(() => {
     if (!profile) dispatch(fetchFullProfile());
@@ -36,20 +34,17 @@ export function HomeView() {
 
       {/*
         lg+: feed spans two columns with the rail beside it.
-        below lg: single column — completion first (it gates enquiries), then the feed.
+        below lg: single column — feed first, quick actions after.
         One spacing scale: 4 (16px) between cards, 6 (24px) between regions and columns.
       */}
       <div className="flex flex-col gap-4 md:gap-6 lg:grid lg:grid-cols-3 lg:items-start">
-        <div className="order-1 space-y-4 lg:order-2 lg:col-span-1">
-          <RegionBoundary label="your profile progress">
-            {completion && <CompletionCard completion={completion} />}
-          </RegionBoundary>
+        <div className="order-2 space-y-4 lg:col-span-1">
           <RegionBoundary label="quick actions">
             <QuickActions />
           </RegionBoundary>
         </div>
 
-        <div className="order-2 space-y-4 lg:order-1 lg:col-span-2">
+        <div className="order-1 space-y-4 lg:col-span-2">
           <RegionBoundary label="the composer">
             <FeedComposer />
           </RegionBoundary>

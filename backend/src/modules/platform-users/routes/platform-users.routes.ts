@@ -8,7 +8,6 @@ import {
   IdParamSchema, CountryIdParamSchema,
 } from "../schemas/platform-users.schema.js";
 import * as service from "../services/platform-users.service.js";
-import { recomputeCompletion } from "../services/profile-completion.service.js";
 
 export async function platformUserRoutes(app: FastifyInstance) {
   // ── Profile ──
@@ -19,16 +18,9 @@ export async function platformUserRoutes(app: FastifyInstance) {
   });
 
   app.patch("/me", async (req, reply) => {
-    // ProfilePatchSchema has no completion field, so a client-supplied percentage is stripped here and can
-    // never reach the stored column the enquiry gate reads.
     const data = ProfilePatchSchema.parse(req.body);
     const result = await service.updateProfile(Number(req.auth.sub), data);
     return reply.send(result);
-  });
-
-  app.post("/me/completion/recompute", async (req, reply) => {
-    const completion = await recomputeCompletion(Number(req.auth.sub));
-    return reply.send({ completion });
   });
 
   // ── Onboarding — separate endpoints for personal and business ──

@@ -1,6 +1,5 @@
-// Storage abstraction — upload, signed download/preview URLs.
+// GCS storage abstraction — upload, signed download/preview URLs.
 // All paths are relative (no bucket prefix). DB stores the same relative path.
-// Backed by GCS when GCS_BUCKET_NAME is set, otherwise by the local filesystem driver.
 
 import { Storage, GetSignedUrlConfig } from "@google-cloud/storage";
 import { randomBytes } from "crypto";
@@ -8,7 +7,6 @@ import { extname } from "path";
 import { config } from "../../config.js";
 import { createChildLogger } from "../logger.js";
 import { BadRequestError } from "../errors.js";
-import * as local from "./local-driver.js";
 
 const logger = createChildLogger("storage-service");
 
@@ -29,14 +27,6 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const MAX_FILE_SIZE = config.GCS_MAX_FILE_SIZE_MB * 1024 * 1024;
 const SIGNED_URL_EXPIRY = config.GCS_SIGNED_URL_EXPIRY; // seconds
-
-// ─── Driver selection ──────────────────────────────────────────────────────
-// No bucket configured → the filesystem driver. Every caller above is unaware of which one is active, so a
-// deployment without GCS still has working uploads instead of a hard failure on every attempt.
-
-function useLocal(): boolean {
-  return !config.GCS_BUCKET_NAME;
-}
 
 // ─── GCS client ────────────────────────────────────────────────────────────
 
@@ -114,12 +104,6 @@ export async function uploadFile(
   buffer: Buffer,
   mimeType: string,
 ): Promise<UploadResult> {
-  if (useLocal()) {
-    await local.save(storagePath, buffer);
-    logger.info("File uploaded (local)", { storagePath, sizeBytes: buffer.length, mimeType });
-    return { storagePath, sizeBytes: buffer.length, mimeType };
-  }
-
   const file = bucket().file(storagePath);
   await file.save(buffer, {
     contentType: mimeType,
@@ -161,8 +145,6 @@ export async function getSignedDownloadUrl(
   originalName?: string,
   expiresInSeconds = SIGNED_URL_EXPIRY,
 ): Promise<string> {
-  if (useLocal()) return local.signUrl(storagePath, expiresInSeconds, true);
-
   const file = bucket().file(storagePath);
   const opts: GetSignedUrlConfig = {
     version: "v4",
@@ -181,8 +163,6 @@ export async function getSignedViewUrl(
   storagePath: string,
   expiresInSeconds = SIGNED_URL_EXPIRY,
 ): Promise<string> {
-  if (useLocal()) return local.signUrl(storagePath, expiresInSeconds);
-
   const file = bucket().file(storagePath);
   const [url] = await file.getSignedUrl({
     version: "v4",
@@ -199,8 +179,6 @@ export async function getSignedViewUrl(
  * Delete a file from GCS. Silently succeeds if file doesn't exist.
  */
 export async function deleteFile(storagePath: string): Promise<void> {
-  if (useLocal()) return local.remove(storagePath);
-
   try {
     await bucket().file(storagePath).delete();
     logger.info("File deleted", { storagePath });
@@ -213,12 +191,6 @@ export async function deleteFile(storagePath: string): Promise<void> {
 
 // ─── Utility ───────────────────────────────────────────────────────────────
 
-/** True when storage works at all — GCS if configured, otherwise the local driver. */
 export function isConfigured(): boolean {
-  return true;
-}
-
-/** True when GCS is the active backend (as opposed to the local development fallback). */
-export function isCloudConfigured(): boolean {
   return !!config.GCS_BUCKET_NAME;
 }

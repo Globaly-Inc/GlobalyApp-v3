@@ -21,7 +21,6 @@ const envSchema = z.object({
   SESSION_EXPIRY_DAYS: z.coerce.number().default(30),
 
   // Server
-  NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().default(3000),
   APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
@@ -37,10 +36,6 @@ const envSchema = z.object({
   CHARGEBEE_SITE: z.string().optional(),
   CHARGEBEE_API_KEY: z.string().optional(),
 
-  // Payments (Earn → My Services). Unset outside production selects the dev driver, so the order
-  // lifecycle is exercisable locally without a Stripe account. See modules/services/payments.
-  STRIPE_SECRET_KEY: z.string().optional(),
-
   // AI / LLM
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
@@ -50,12 +45,6 @@ const envSchema = z.object({
   CRAWL4AI_BASE_URL: z.string().optional(),  // e.g. https://your-crawl4ai.railway.app
   CRAWL4AI_API_KEY: z.string().optional(),
   FIRECRAWL_API_KEY: z.string().optional(),
-
-  // Local storage fallback — used automatically when GCS_BUCKET_NAME is unset, so uploads work in
-  // development without a bucket. API_PUBLIC_URL is the origin the browser can reach this API on: media
-  // <img>/<video> tags cannot send an Authorization header, so file URLs must be absolute and self-signed.
-  LOCAL_STORAGE_DIR: z.string().default(".uploads"),
-  API_PUBLIC_URL: z.string().optional(),
 
   // GCP Storage
   GCS_BUCKET_NAME: z.string().optional(),

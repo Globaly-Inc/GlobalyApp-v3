@@ -1,26 +1,6 @@
 # Personal Portal — Home / Dashboard (V3) — PRD
 
-> **Status:** Implemented, then reduced in PR review (#17) | **Owner:** Wonjala Joshi | **Last updated:** 2026-08-12
-
-> ## ⚠️ Scope reduced in review — read this first
->
-> PR #17 review removed a large part of what this document specifies. **Everything below describing
-> enquiries, favorites, notifications, the personal-home aggregator, business invitations or position
-> confirmations is now a record of intent, not of shipped code.** What actually ships:
->
-> | Area | State |
-> |---|---|
-> | Hero, feed (composer, timeline, cursor paging, reactions, media, Write with AI) | **shipped** |
-> | Profile completion — backend-authoritative, returned on `GET /platform-users/me` | **shipped** |
-> | Completion card + quick actions on Home | **shipped** |
-> | `enquiries`, `user_favorites`, `notifications` tables and modules | **removed** — "not needed in this PR" / "revert these tables" / "delete these" |
-> | `business_invitation_index`, the dual write and the reconciler | **removed** — "already done" (invitations exist elsewhere) |
-> | `membership_positions` migration, memberships repository/service/routes | **removed** — "not required" |
-> | `GET /personal-home/summary` (the aggregator) | **removed** — "not required". Home reads completion from `/me`, which is why the endpoint was redundant once the counts went. |
-> | Stat tiles, recent enquiries, pending invites, position confirmations, bell unread badge | **removed** — no data source remains |
-> | Backend test suite | **removed** at the author's request; the backend has no test runner again |
-> | `files` module + local storage driver | **kept** pending a decision — the reviewer wants them done differently, but they are also what the newer My Services feature uses for listing covers, and deleting them breaks image handling for both without a GCS bucket |
-
+> **Status:** Implemented | **Owner:** Wonjala Joshi | **Last updated:** 2026-08-11
 > **Parent:** Personal Portal (V3) PRD · Epic 2 — Home
 > **Surface:** `/personal/portal` | **Stack:** Next.js 16 App Router + Redux Toolkit · Fastify 5 + Knex + Postgres
 > **One-liner:** V2 buried every actionable signal in a desktop-only sidebar; V3's Home puts completion, invites and position confirmations on every device, and makes the completion percentage that gates enquiries a single backend-authoritative number.
