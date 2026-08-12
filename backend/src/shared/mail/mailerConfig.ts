@@ -9,7 +9,7 @@ export interface MailerConfig {
 }
 
 export const mailerConfig: MailerConfig = {
-  host: config.SMTP_HOST,
+  host: config.MAIL_HOST,
   port: config.MAIL_PORT,
   user: config.MAIL_USERNAME,
   pass: config.MAIL_PASSWORD,

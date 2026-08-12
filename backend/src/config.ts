@@ -28,7 +28,7 @@ const envSchema = z.object({
   // Third-party (optional at skeleton stage)
   DRAGONFLY_URL: z.string().optional(),
   LAVINMQ_URL: z.string().default("amqp://guest:guest@localhost:5672"),
-  SMTP_HOST: z.string().optional(),
+  MAIL_HOST: z.string().optional(),
   MAIL_PORT: z.coerce.number().default(587),
   MAIL_USERNAME: z.string().optional(),
   MAIL_PASSWORD: z.string().optional(),

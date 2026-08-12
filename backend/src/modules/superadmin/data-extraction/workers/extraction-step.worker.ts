@@ -10,7 +10,7 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeMarkdown } from "../lib/scraper.js";
+import { scrapeMarkdown, scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
 import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
@@ -35,6 +35,13 @@ import {
 import { parseAddress } from "../lib/address-parser.js";
 import { normalizeAgentRow } from "../lib/agent-normalizers.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
+import { detectAgentSource } from "../lib/agent-sources/index.js";
+import type { AgentRow as AgentSourceRow } from "../lib/agent-sources/types.js";
+import { parseAgentRowsFromHtml } from "../lib/agent-table-parser.js";
+import { enrichAgents } from "../lib/agent-enrichment.js";
+import { matchFeesToCourses } from "../lib/fee-matcher.js";
+import { parseInstallments } from "../lib/installment-parser.js";
+import { createDocumentExtractor, buildDocumentContext, type DocInput } from "../lib/document-extractor.js";
 import type { PipelineStep, CourseDataType } from "../schemas/step.schema.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
@@ -77,6 +84,98 @@ async function scrapeUrl(url: string): Promise<string | null> {
 
 function sha1(...parts: (string | null | undefined)[]): string {
   return createHash("sha1").update(parts.map(p => p ?? "").join("|")).digest("hex");
+}
+
+/** Detect paginated sibling pages from links (DataTables, ?page=N, /page/N). Ported from V2. */
+function detectPaginationUrls(baseUrl: string, links: string[], markdown: string): string[] {
+  let baseObj: URL | null = null;
+  try { baseObj = new URL(baseUrl); } catch { return []; }
+  const pageNums = new Set<number>();
+  for (const l of links) {
+    const m = l.match(/[?&]page=(\d+)|\/page\/(\d+)/i);
+    if (m) { const n = parseInt(m[1] || m[2], 10); if (n >= 1 && n <= 1000) pageNums.add(n); }
+  }
+  // DataTables "Showing 1 to 10 of 486 entries"
+  const dtMatch = markdown.match(/Showing\s+\d+\s+to\s+(\d+)\s+of\s+(\d+)\s+entries/i);
+  if (dtMatch) {
+    const perPage = parseInt(dtMatch[1], 10);
+    const total = parseInt(dtMatch[2], 10);
+    if (perPage > 0 && total > perPage) {
+      for (let i = 2; i <= Math.ceil(total / perPage); i++) pageNums.add(i);
+    }
+  }
+  if (!baseObj || pageNums.size === 0) return [];
+  const out: string[] = [];
+  Array.from(pageNums).forEach(n => {
+    if (n === 1) return;
+    const u = new URL(baseObj!.toString());
+    u.searchParams.set("page", String(n));
+    out.push(u.toString());
+  });
+  return out.sort((a, b) => {
+    const pa = parseInt(new URL(a).searchParams.get("page") || "0", 10);
+    const pb = parseInt(new URL(b).searchParams.get("page") || "0", 10);
+    return pa - pb;
+  });
+}
+
+/** 3-layer campus dedup matching V2: street-number filter → name dedup → address dedup. */
+function dedupCampuses(campuses: ExtractedCampus[]): ExtractedCampus[] {
+  // Layer 1: must have a digit in address (street number)
+  const withAddress = campuses.filter(c => c.address && /\d/.test(c.address));
+  // Layer 2: name-based dedup — keep entry with most fields
+  const byName = new Map<string, ExtractedCampus>();
+  const noName: ExtractedCampus[] = [];
+  for (const c of withAddress) {
+    const key = c.name ? c.name.toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z0-9]/g, "") : "";
+    if (!key) { noName.push(c); continue; }
+    const existing = byName.get(key);
+    if (!existing) { byName.set(key, c); continue; }
+    if (Object.values(c).filter(v => v != null && v !== "").length >
+        Object.values(existing).filter(v => v != null && v !== "").length) byName.set(key, c);
+  }
+  // Layer 3: address-based dedup
+  const afterName = Array.from(byName.values()).concat(noName);
+  const seenAddr = new Set<string>();
+  const final: ExtractedCampus[] = [];
+  for (const c of afterName) {
+    const addrKey = `${c.address || ""}${c.city || ""}${c.state || ""}`
+      .toLowerCase().replace(/\bstreet\b/g, "st").replace(/\broad\b/g, "rd")
+      .replace(/\bavenue\b/g, "ave").replace(/\bdrive\b/g, "dr").replace(/[^a-z0-9]/g, "");
+    if (!addrKey || !seenAddr.has(addrKey)) {
+      if (addrKey) seenAddr.add(addrKey);
+      final.push(c);
+    }
+  }
+  return final;
+}
+
+/** Map URLs under a path prefix via Firecrawl map API. */
+async function mapUrlsUnderPath(baseOrigin: string, pathPrefix: string): Promise<string[]> {
+  const result = await mapUrlsDetailed(`${baseOrigin}${pathPrefix}`, { limit: 50 });
+  if (!result.success) return [];
+  return result.links.filter(u => {
+    try {
+      const p = new URL(u);
+      return p.origin === baseOrigin && p.pathname.startsWith(pathPrefix)
+        && p.pathname.replace(pathPrefix, "").replace(/\/$/, "").length > 0;
+    } catch { return false; }
+  });
+}
+
+/** Convert raw LLM agent output to AgentSourceRow for enrichment pipeline. */
+function llmAgentToSourceRow(raw: Record<string, unknown>): AgentSourceRow | null {
+  const name = (raw.name as string) || "";
+  if (!name.trim()) return null;
+  return {
+    name, country: (raw.country as string) || null,
+    email: (raw.email as string) || null, phone: (raw.phone as string) || null,
+    website: (raw.website as string) || null, address: (raw.address as string) || null,
+    street1: (raw.street1 as string) || null, street2: (raw.street2 as string) || null,
+    city: (raw.city as string) || null, state: (raw.state as string) || null,
+    postcode: (raw.postcode as string) || null,
+    external_id: null, location_count: 1,
+  };
 }
 
 // ── Step handlers ───────────────────────────────────────────────────────────
@@ -134,6 +233,25 @@ async function handleInstitutionStep(jobId: string) {
     }
   }
 
+  // Process supporting documents (PDFs/files attached to the job)
+  const docs: DocInput[] = Array.isArray(job.supporting_documents) ? job.supporting_documents : [];
+  if (docs.length > 0) {
+    const docExtractor = createDocumentExtractor();
+    const docContext = await buildDocumentContext(docExtractor, docs, 30000);
+    if (docContext.length > 200) {
+      await heartbeat(jobId);
+      const docData = await extractJson<Record<string, unknown>>({
+        system,
+        prompt: institutionExtractionPrompt("supporting-documents", docContext, job.guidance_notes),
+      });
+      for (const [key, val] of Object.entries(docData)) {
+        if (val != null && val !== "" && (merged[key] == null || merged[key] === "")) {
+          merged[key] = val;
+        }
+      }
+    }
+  }
+
   // Preserve existing manual edits
   const existing = await masterKnex(`${S}.extraction_institution_overview`)
     .where({ job_id: jobId }).first();
@@ -182,17 +300,11 @@ async function handleBranchesStep(jobId: string) {
 
   const guided = parseGuidedUrls(job);
   const branchUrls: string[] = (guided.branches_urls as string[]) || [];
-
-  // Fallback paths if no guided URLs
   const origin = (() => {
     try { return new URL(job.institution_url).origin; } catch { return ""; }
   })();
-  const fallbackPaths = ["/campuses", "/locations", "/contact", "/about"];
-  const urlsToScrape = branchUrls.length > 0
-    ? branchUrls
-    : fallbackPaths.map(p => `${origin}${p}`);
 
-  await writeJobEvent(jobId, "step_start", { phase: "branches", message: `Scraping ${urlsToScrape.length} URLs for campus data` });
+  await writeJobEvent(jobId, "step_start", { phase: "branches", message: "Extracting campuses (3-phase discovery)" });
 
   const domain = domainOf(job.institution_url);
   const recalled = await recallMemory(domain, "branches");
@@ -201,36 +313,74 @@ async function handleBranchesStep(jobId: string) {
 
   let allCampuses: ExtractedCampus[] = [];
 
-  // Phase 1: Scrape provided URLs
-  for (const url of urlsToScrape) {
-    await heartbeat(jobId);
-    const markdown = await scrapeUrl(url);
-    if (!markdown) continue;
+  // ── Phase 1: Guided URLs or authoritative overview/contact pages ──
+  const overviewPaths = ["/contact", "/contact-us", "/campuses", "/locations",
+    "/our-campuses", "/study-locations", "/campus", "/our-locations"];
+  const phase1Urls = branchUrls.length > 0
+    ? branchUrls
+    : overviewPaths.map(p => `${origin}${p}`);
 
-    const pageText = truncateMarkdown(markdown, 15000);
+  const phase1Results = await Promise.all(phase1Urls.map(u => scrapeUrl(u)));
+  const validPages = phase1Urls
+    .map((url, i) => ({ url, markdown: phase1Results[i] }))
+    .filter(p => p.markdown && p.markdown.length > 500);
+
+  if (validPages.length > 0) {
+    // Use first valid page (contact pages listed first = highest priority)
+    const best = validPages[0];
+    await heartbeat(jobId);
     const result = await extractJson<{ campuses: ExtractedCampus[] }>({
       system,
-      prompt: campusExtractionPrompt(url, pageText),
+      prompt: campusExtractionPrompt(best.url, truncateMarkdown(best.markdown!, 15000)),
     });
     if (result.campuses?.length) allCampuses.push(...result.campuses);
+    logger.info("Phase 1 campus extraction", { count: allCampuses.length, url: best.url });
   }
 
-  // Phase 2: If empty and no guided URLs, try homepage + /about
+  // ── Phase 2: Discover + scrape individual campus sub-pages ──
   if (allCampuses.length === 0 && branchUrls.length === 0) {
-    const fallback2 = [job.institution_url, `${origin}/about`];
-    for (const url of fallback2) {
+    const subPagePaths = ["/campuses", "/locations", "/our-campuses",
+      "/study-locations", "/campus", "/our-locations"];
+    let subPageUrls: string[] = [];
+    for (const sp of subPagePaths) {
+      subPageUrls = await mapUrlsUnderPath(origin, sp);
+      if (subPageUrls.length > 0) {
+        logger.info("Phase 2: found sub-pages", { count: subPageUrls.length, path: sp });
+        break;
+      }
+    }
+
+    if (subPageUrls.length > 0 && subPageUrls.length <= 15) {
+      const subResults = await Promise.all(subPageUrls.map(u => scrapeUrl(u)));
+      const validSubs = subPageUrls
+        .map((url, i) => ({ url, markdown: subResults[i] }))
+        .filter(p => p.markdown && p.markdown.length > 300);
+
+      for (const { url, markdown } of validSubs) {
+        await heartbeat(jobId);
+        // Single campus mode: at most 1 entry per sub-page
+        const result = await extractJson<{ campuses: ExtractedCampus[] }>({
+          system,
+          prompt: campusExtractionPrompt(url, truncateMarkdown(markdown!, 15000), true),
+        });
+        if (result.campuses?.length) allCampuses.push(result.campuses[0]);
+      }
+      logger.info("Phase 2 sub-page extraction", { count: allCampuses.length });
+    }
+  }
+
+  // ── Phase 3: Fallback to homepage + /about ──
+  if (allCampuses.length === 0) {
+    const fallbackUrls = [job.institution_url, `${origin}/about`];
+    for (const url of fallbackUrls) {
       await heartbeat(jobId);
       const markdown = await scrapeUrl(url);
       if (!markdown) continue;
-      const pageText = truncateMarkdown(markdown, 15000);
       const result = await extractJson<{ campuses: ExtractedCampus[] }>({
         system,
-        prompt: campusExtractionPrompt(url, pageText, true),
+        prompt: campusExtractionPrompt(url, truncateMarkdown(markdown, 15000), true),
       });
-      if (result.campuses?.length) {
-        allCampuses.push(...result.campuses);
-        break;
-      }
+      if (result.campuses?.length) { allCampuses.push(...result.campuses); break; }
     }
   }
 
@@ -244,19 +394,23 @@ async function handleBranchesStep(jobId: string) {
     }
   }
 
+  // 3-layer dedup (street filter → name → address)
+  const deduped = dedupCampuses(allCampuses);
+  logger.info("Campus dedup", { raw: allCampuses.length, final: deduped.length });
+
   // Replace existing campuses, re-link junctions
-  const idMap = await replaceCampuses(jobId, allCampuses);
+  const idMap = await replaceCampuses(jobId, deduped);
 
   await rememberMemory({
     job_id: jobId, domain, step: "branches",
     entity_type: "campus",
-    ai_output: allCampuses,
+    ai_output: deduped,
   });
 
   await writeJobEvent(jobId, "step_complete", {
     phase: "branches",
-    message: `${idMap.size} campuses extracted`,
-    data: { count: idMap.size },
+    message: `${idMap.size} campuses extracted (3-phase discovery, ${allCampuses.length} raw → ${deduped.length} deduped)`,
+    data: { count: idMap.size, raw: allCampuses.length },
   });
 }
 
@@ -266,10 +420,7 @@ async function handleAgentsStep(jobId: string) {
 
   const guided = parseGuidedUrls(job);
   const agentUrls: string[] = (guided.agents_urls as string[]) || [];
-
-  if (agentUrls.length === 0) {
-    throw new Error("No agents_urls provided in guided_urls");
-  }
+  if (agentUrls.length === 0) throw new Error("No agents_urls provided in guided_urls");
 
   await writeJobEvent(jobId, "step_start", { phase: "agents", message: `Extracting agents from ${agentUrls.length} URLs` });
 
@@ -278,81 +429,140 @@ async function handleAgentsStep(jobId: string) {
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${AGENT_EXTRACTION_SYSTEM}\n\n${addendum}` : AGENT_EXTRACTION_SYSTEM;
 
-  let totalAgents = 0;
+  const allRawAgents: AgentSourceRow[] = [];
+  let pagesScraped = 0;
+  const maxPages = 100;
 
-  for (const url of agentUrls) {
-    // ponytail: stop check per agent page
+  for (const seedUrl of agentUrls) {
     const sc = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
     if (sc?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
-
     await heartbeat(jobId);
-    const markdown = await scrapeUrl(url);
-    if (!markdown) continue;
 
-    const pageText = truncateMarkdown(markdown, 20000);
-    const result = await extractJson<{ agents: Record<string, unknown>[] }>({
-      system,
-      prompt: agentExtractionPrompt(url, pageText, job.institution_name),
-    });
+    // Scrape markdown (with links for pagination detection)
+    const scrapeResult = await scrapeMarkdown(seedUrl, { onlyMainContent: false, withLinks: true });
+    const markdown = scrapeResult.markdown && scrapeResult.markdown.length > 50 ? scrapeResult.markdown : null;
 
-    for (const rawAgent of (result.agents || [])) {
-      // Normalize
-      const normalized = normalizeAgentRow(rawAgent as any);
-      const name = (rawAgent.name as string) || "";
-      if (!name.trim()) continue;
-
-      // Generate external_id: sha1(name|country|email|source_url)
-      const externalId = sha1(name, normalized.country, normalized.email, url);
-
-      const agentData: Record<string, unknown> = {
-        name,
-        country: normalized.country,
-        state: normalized.state,
-        city: normalized.city,
-        address: normalized.address,
-        postcode: normalized.postcode,
-        phone: normalized.phone,
-        email: normalized.email,
-        website: normalized.website,
-        source_url: url,
-      };
-
-      const agentId = await upsertAgent(jobId, agentData, externalId);
-
-      // Write agent locations (single location from the extraction)
-      if (normalized.city || normalized.country) {
-        await writeAgentLocations(agentId, jobId, [{
-          country: normalized.country,
-          state: normalized.state,
-          city: normalized.city,
-          address: normalized.address,
-          postcode: normalized.postcode,
-        }]);
+    // ── 1. Provider detection (AscentOne, StudyLink, iframe) ──
+    const { html: renderedHtml } = await scrapeRenderedHtml(seedUrl);
+    const detected = detectAgentSource(seedUrl, renderedHtml || undefined);
+    if (detected) {
+      logger.info("Agent provider detected", { provider: detected.provider.id, url: seedUrl });
+      const provResult = await detected.provider.fetch(detected.detection);
+      if (provResult && provResult.agents.length > 0) {
+        allRawAgents.push(...provResult.agents);
+        pagesScraped++;
+        continue; // Provider handles its own pagination internally
       }
+    }
 
-      totalAgents++;
+    // ── 2. HTML table parsing fast path ──
+    let foundFromTable = false;
+    if (renderedHtml) {
+      const tableRows = parseAgentRowsFromHtml(renderedHtml);
+      if (tableRows.length >= 2) {
+        logger.info("Parsed agents from HTML table", { count: tableRows.length, url: seedUrl });
+        allRawAgents.push(...tableRows);
+        pagesScraped++;
+        foundFromTable = true;
+      }
+    }
+
+    // ── 3. LLM fallback ──
+    if (!foundFromTable && markdown) {
+      const pageText = truncateMarkdown(markdown, 20000);
+      const result = await extractJson<{ agents: Record<string, unknown>[] }>({
+        system,
+        prompt: agentExtractionPrompt(seedUrl, pageText, job.institution_name),
+      });
+      for (const raw of (result.agents || [])) {
+        const row = llmAgentToSourceRow(raw);
+        if (row) allRawAgents.push(row);
+      }
+      pagesScraped++;
+    }
+
+    // ── 4. Pagination — iterate additional pages (table or LLM) ──
+    if (pagesScraped < maxPages && markdown) {
+      const pageUrls = detectPaginationUrls(seedUrl, scrapeResult.links, markdown);
+      for (const pageUrl of pageUrls) {
+        if (pagesScraped >= maxPages) break;
+        const sc2 = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
+        if (sc2?.stop_requested) break;
+        await heartbeat(jobId);
+
+        if (foundFromTable) {
+          // Paginated table pages — fetch HTML and parse
+          const { html: pageHtml } = await scrapeRenderedHtml(pageUrl);
+          if (pageHtml) {
+            const rows = parseAgentRowsFromHtml(pageHtml);
+            if (rows.length > 0) { allRawAgents.push(...rows); pagesScraped++; continue; }
+          }
+        }
+        // LLM on paginated page
+        const pageMd = await scrapeUrl(pageUrl);
+        if (pageMd) {
+          const result = await extractJson<{ agents: Record<string, unknown>[] }>({
+            system,
+            prompt: agentExtractionPrompt(pageUrl, truncateMarkdown(pageMd, 20000), job.institution_name),
+          });
+          for (const raw of (result.agents || [])) {
+            const row = llmAgentToSourceRow(raw);
+            if (row) allRawAgents.push(row);
+          }
+          pagesScraped++;
+        }
+      }
     }
   }
 
-  // Write agent extraction run history
+  // ── Enrichment: address parsing (heuristic + AI fallback), website derivation ──
+  const enrichStats = await enrichAgents(allRawAgents);
+  logger.info("Agent enrichment complete", enrichStats);
+
+  // ── Write to DB ──
+  let totalAgents = 0;
+  for (const agent of allRawAgents) {
+    if (!agent.name?.trim()) continue;
+    const normalized = normalizeAgentRow(agent as any);
+    const externalId = agent.external_id || sha1(agent.name, normalized.country, normalized.email, agent.website);
+
+    const agentData: Record<string, unknown> = {
+      name: agent.name, country: normalized.country, state: normalized.state,
+      city: normalized.city, address: normalized.address, postcode: normalized.postcode,
+      phone: normalized.phone, email: normalized.email,
+      website: normalized.website || agent.website,
+      source_url: agentUrls[0],
+    };
+
+    const agentId = await upsertAgent(jobId, agentData, externalId);
+
+    // Write locations — from provider data or single location
+    const locs = agent.locations?.length
+      ? agent.locations.map(l => ({ country: l.country, state: l.state, city: l.city, address: l.address, postcode: l.postcode }))
+      : (normalized.city || normalized.country)
+        ? [{ country: normalized.country, state: normalized.state, city: normalized.city, address: normalized.address, postcode: normalized.postcode }]
+        : [];
+    if (locs.length) await writeAgentLocations(agentId, jobId, locs);
+    totalAgents++;
+  }
+
+  // Write run history
   await masterKnex(`${S}.extraction_agent_extraction_runs`).insert({
-    job_id: jobId,
-    source: "step_worker",
-    urls_scraped: agentUrls.length,
-    agents_found: totalAgents,
+    job_id: jobId, source: "step_worker",
+    urls_scraped: pagesScraped, agents_found: totalAgents,
     status: "completed",
   });
 
   await rememberMemory({
     job_id: jobId, domain, step: "agents",
     entity_type: "agent",
-    ai_output: { total: totalAgents },
+    ai_output: { total: totalAgents, pages: pagesScraped, ...enrichStats },
   });
 
   await writeJobEvent(jobId, "step_complete", {
     phase: "agents",
-    message: `${totalAgents} agents extracted from ${agentUrls.length} URLs`,
-    data: { count: totalAgents },
+    message: `${totalAgents} agents extracted from ${pagesScraped} pages (${enrichStats.addresses_ai_parsed} AI-parsed addresses)`,
+    data: { count: totalAgents, pages: pagesScraped, ...enrichStats },
   });
 }
 
@@ -464,12 +674,10 @@ async function handleCoursesStep(jobId: string) {
 }
 
 async function handleEnrichmentStep(jobId: string) {
-  // ponytail: stub — Phase 6 will complete this with fee-matcher.ts
-  // For now, attempt basic bulk fee extraction from fee page
   const job = await loadJob(jobId);
   if (!job) return;
 
-  await writeJobEvent(jobId, "step_start", { phase: "enrichment", message: "Starting enrichment (bulk fees)" });
+  await writeJobEvent(jobId, "step_start", { phase: "enrichment", message: "Starting enrichment (bulk fees with fuzzy matching)" });
 
   const siteIntel = await masterKnex(`${S}.extraction_site_intelligence`)
     .where({ job_id: jobId }).first();
@@ -507,21 +715,17 @@ async function handleEnrichmentStep(jobId: string) {
 
   if (!feePageText) {
     await writeJobEvent(jobId, "step_complete", {
-      phase: "enrichment",
-      message: "Enrichment skipped — no fee page found. Full enrichment available in Phase 6.",
-      level: "warn",
+      phase: "enrichment", message: "Enrichment skipped — no fee page found", level: "warn",
     });
     return;
   }
 
-  // Load courses for this job
+  // Load courses (with duration for installment calculation)
   const courses = await masterKnex(`${S}.extraction_courses`)
-    .where({ job_id: jobId }).select("id", "name").orderBy("name");
+    .where({ job_id: jobId }).select("id", "name", "duration_weeks").orderBy("name");
 
   if (courses.length === 0) {
-    await writeJobEvent(jobId, "step_complete", {
-      phase: "enrichment", message: "No courses to enrich",
-    });
+    await writeJobEvent(jobId, "step_complete", { phase: "enrichment", message: "No courses to enrich" });
     return;
   }
 
@@ -530,7 +734,6 @@ async function handleEnrichmentStep(jobId: string) {
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${BULK_FEE_SYSTEM}\n\n${addendum}` : BULK_FEE_SYSTEM;
 
-  // ponytail: stop check before fee extraction LLM call
   const scEnrich = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
   if (scEnrich?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
 
@@ -552,40 +755,52 @@ async function handleEnrichmentStep(jobId: string) {
     maxTokens: 32768,
   });
 
-  // ponytail: simple name matching, full fuzzy matcher in Phase 6
-  let linked = 0;
-  const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-
+  // Transform LLM output → FeeEntry[] for fuzzy matcher
+  const feeEntries: Array<{ course_name: string; student_type: string; amount: number; currency: string; period: string }> = [];
   for (const entry of (result.fee_schedule || [])) {
-    const target = normName(entry.course_name);
-    const match = courses.find((c: { name: string }) => normName(c.name) === target)
-      || courses.find((c: { name: string }) => normName(c.name).includes(target) || target.includes(normName(c.name)));
-    if (!match) continue;
-
     const currency = entry.currency || siteIntel?.currency || "USD";
-    for (const [studentType, total] of [
-      ["domestic", entry.domestic_total],
-      ["international", entry.international_total],
-    ] as const) {
-      if (!total || total <= 0) continue;
-      const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-        .insert({
-          job_id: jobId, student_type: studentType,
-          total_amount: total, currency,
-          period_type: entry.period_type || "Per Year",
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_fee_assignments`)
-        .insert({ job_id: jobId, course_id: match.id, course_fee_id: feeRow.id })
-        .onConflict(["course_id", "course_fee_id"]).ignore();
-      linked++;
+    const period = entry.period_type || "Per Year";
+    if (entry.domestic_total && entry.domestic_total > 0) {
+      feeEntries.push({ course_name: entry.course_name, student_type: "domestic", amount: entry.domestic_total, currency, period });
     }
+    if (entry.international_total && entry.international_total > 0) {
+      feeEntries.push({ course_name: entry.course_name, student_type: "international", amount: entry.international_total, currency, period });
+    }
+  }
+
+  // Fuzzy match fees to courses (token overlap + Levenshtein, threshold 0.5)
+  const courseEntries = courses.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }));
+  const matches = matchFeesToCourses(feeEntries, courseEntries);
+  logger.info("Fee fuzzy matching", { feeEntries: feeEntries.length, matches: matches.length, courses: courses.length });
+
+  // Insert matched fees with installment breakdown
+  let linked = 0;
+  for (const { courseId, fee } of matches) {
+    const course = courses.find((c: { id: string; duration_weeks?: number }) => c.id === courseId);
+    const installments = parseInstallments({
+      totalAmount: fee.amount,
+      periodType: fee.period,
+      durationWeeks: course?.duration_weeks ?? null,
+    });
+
+    const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
+      .insert({
+        job_id: jobId, student_type: fee.student_type,
+        total_amount: fee.amount, currency: fee.currency,
+        period_type: fee.period,
+        installments: installments.length > 0 ? JSON.stringify(installments) : null,
+      })
+      .returning("id");
+    await masterKnex(`${S}.extraction_course_fee_assignments`)
+      .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id })
+      .onConflict(["course_id", "course_fee_id"]).ignore();
+    linked++;
   }
 
   await writeJobEvent(jobId, "step_complete", {
     phase: "enrichment",
-    message: `Bulk fees: ${linked} course-fee links created`,
-    data: { linked },
+    message: `Bulk fees: ${linked} course-fee links created (fuzzy matched from ${feeEntries.length} fee entries)`,
+    data: { linked, fee_entries: feeEntries.length, unmatched: feeEntries.length - matches.length },
   });
 }
 
@@ -665,6 +880,11 @@ async function handleCourseDataStep(
       const fees = (extracted.fees as Array<Record<string, unknown>>) || [];
       for (const fee of fees) {
         if (!fee.total_amount || (fee.total_amount as number) <= 0) continue;
+        const installments = parseInstallments({
+          totalAmount: fee.total_amount as number,
+          periodType: (fee.period_type as string) ?? "Per Year",
+          durationWeeks: course.duration_weeks ?? null,
+        });
         const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
           .insert({
             job_id: jobId,
@@ -673,6 +893,7 @@ async function handleCourseDataStep(
             period_type: fee.period_type ?? "Per Year",
             currency: fee.currency ?? "AUD",
             total_amount: fee.total_amount,
+            installments: installments.length > 0 ? JSON.stringify(installments) : null,
           })
           .returning("id");
         await masterKnex(`${S}.extraction_course_fee_assignments`)
