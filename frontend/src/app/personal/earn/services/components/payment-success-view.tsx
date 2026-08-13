@@ -75,13 +75,13 @@ export function PaymentSuccessView() {
                 {state.orderId > 0 && (
                   <Button
                     className="flex-1"
-                    render={<Link href={`/personal/services/orders/${state.orderId}`}>View Order</Link>}
+                    render={<Link href={`/personal/earn/services/orders/${state.orderId}`}>View Order</Link>}
                   />
                 )}
                 <Button
                   variant="outline"
                   className="flex-1"
-                  render={<Link href="/personal/services">My Services</Link>}
+                  render={<Link href="/personal/earn/services">My Services</Link>}
                 />
               </div>
             </>
@@ -100,7 +100,7 @@ export function PaymentSuccessView() {
               <Button
                 variant="outline"
                 className="mt-2"
-                render={<Link href="/personal/services">Back to Services</Link>}
+                render={<Link href="/personal/earn/services">Back to Services</Link>}
               />
             </>
           )}

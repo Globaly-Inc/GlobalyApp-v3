@@ -20,7 +20,9 @@ export interface ListingDto {
   provider_id: number;
   title: string;
   description: string | null;
-  category: string;
+  category_id: number;
+  category_slug: string;
+  category_name: string;
   price_minor: number;
   currency: string;
   country_id: number | null;
@@ -58,7 +60,10 @@ export async function toDto(row: repo.HydratedListingRow): Promise<ListingDto> {
     provider_id: row.provider_id,
     title: row.title,
     description: row.description,
-    category: row.category,
+    category_id: row.category_id,
+    category_slug: row.category_slug,
+    // Sent alongside the id so a card can render the label without a second lookup.
+    category_name: row.category_name,
     price_minor: row.price_minor,
     currency: row.currency,
     country_id: row.country_id,
@@ -111,14 +116,22 @@ async function assertOwnedCover(userId: number, path: string) {
   }
 }
 
+/** The FK guarantees the category exists; this rejects a retired one with a sentence instead of a 500. */
+async function assertCategory(categoryId: number) {
+  if (!(await repo.findCategoryById(categoryId))) {
+    throw new BadRequestError("That category is no longer available");
+  }
+}
+
 export async function create(providerId: number, input: CreateListingInput): Promise<ListingDto> {
+  await assertCategory(input.category_id);
   await assertLocationValid(input.country_id, input.city_id);
   if (input.cover_storage_path) await assertOwnedCover(providerId, input.cover_storage_path);
 
   const row = await repo.insertListing({
     provider_id: providerId,
     title: input.title,
-    category: input.category,
+    category_id: input.category_id,
     description: input.description ?? null,
     price_minor: input.price_minor,
     currency: input.currency,
@@ -133,6 +146,7 @@ export async function create(providerId: number, input: CreateListingInput): Pro
 
 export async function update(id: number, userId: number, input: UpdateListingInput): Promise<ListingDto> {
   const existing = await ownedListing(id, userId);
+  if (input.category_id !== undefined) await assertCategory(input.category_id);
 
   // Resolve the location the patch actually produces BEFORE validating it. Moving a listing to another
   // country clears a city the caller did not re-pick — so validating the raw combination first would reject

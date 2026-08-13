@@ -1,16 +1,8 @@
 import { z } from "zod";
 
-// The 7 categories carry over from V2 unchanged. A const, not a table: they are a fixed taxonomy this
-// feature owns, and the existing service_categories table is the *business* category taxonomy.
-export const SERVICE_CATEGORIES = [
-  "airport_pickup",
-  "city_orientation",
-  "rental_support",
-  "employment_support",
-  "assignment_help",
-  "private_tutoring",
-  "other",
-] as const;
+// Categories are rows in service_categories, administered at /admin/platform/categories — not an enum here.
+// The seven the feature launched with are inserted by 20260813_001; an admin can add, rename or retire one
+// without a deploy, which a CHECK constraint made impossible.
 
 export const CURRENCIES = ["AUD", "USD", "GBP", "EUR"] as const;
 
@@ -23,7 +15,6 @@ export const ORDER_STATUSES = [
   "cancelled",
 ] as const;
 
-export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
 export type Currency = (typeof CURRENCIES)[number];
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
@@ -45,7 +36,7 @@ const priceMinor = z
 
 const listingFields = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
-  category: z.enum(SERVICE_CATEGORIES, { errorMap: () => ({ message: "Pick a category" }) }),
+  category_id: z.number({ invalid_type_error: "Pick a category" }).int().positive("Pick a category"),
   description: z.string().trim().max(5000).nullable().optional(),
   price_minor: priceMinor,
   currency: z.enum(CURRENCIES).default("AUD"),
@@ -77,6 +68,39 @@ export const ListingIdParamSchema = z.object({ serviceId: z.coerce.number().int(
 // ─── Orders ────────────────────────────────────────────────────────────────
 
 export const OrderIdParamSchema = z.object({ orderId: z.coerce.number().int().positive() });
+
+/**
+ * Placing an order.
+ *
+ * The buyer sends the listing and nothing else that costs money — amount, currency and provider are read from
+ * the listing server-side and snapshotted onto the order, so a client cannot name its own price.
+ */
+export const CreateOrderSchema = z
+  .object({
+    listing_id: z.number().int().positive(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+  })
+  .strict();
+
+/** Public browse. Every filter optional; `limit` capped server-side. */
+export const BrowseQuerySchema = z
+  .object({
+    search: z.string().trim().max(200).optional(),
+    category_id: z.coerce.number().int().positive().optional(),
+    country_id: z.coerce.number().int().positive().optional(),
+    city_id: z.coerce.number().int().positive().optional(),
+    currency: z.enum(CURRENCIES).optional(),
+    // Minor units, like every other amount on the wire — the UI converts once.
+    min_price: z.coerce.number().int().nonnegative().optional(),
+    max_price: z.coerce.number().int().positive().optional(),
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(48).default(12),
+  })
+  // An inverted range would silently return nothing; say so instead.
+  .refine((v) => v.min_price === undefined || v.max_price === undefined || v.min_price <= v.max_price, {
+    message: "The minimum price cannot be above the maximum",
+    path: ["min_price"],
+  });
 
 export const VerifyPaymentSchema = z.object({ session_id: z.string().trim().min(1).max(255) }).strict();
 

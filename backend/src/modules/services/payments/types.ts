@@ -24,8 +24,26 @@ export interface PaymentRefund {
   status: string;
 }
 
+export interface CheckoutRequest {
+  orderId: number;
+  amountMinor: number;
+  currency: string;
+  productName: string;
+  description?: string | null;
+  buyerEmail?: string | null;
+  successUrl: string;
+  cancelUrl: string;
+}
+
+export interface CheckoutSession {
+  sessionId: string;
+  /** Where to send the buyer to pay. */
+  url: string;
+}
+
 export interface PaymentDriver {
   readonly name: "stripe" | "dev";
+  createCheckoutSession(request: CheckoutRequest): Promise<CheckoutSession>;
   retrieveSession(sessionId: string): Promise<PaymentSession>;
   /** Every refund the provider already holds for this PaymentIntent. The long-delay recovery path. */
   listRefunds(paymentIntentId: string): Promise<PaymentRefund[]>;

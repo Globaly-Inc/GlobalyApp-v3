@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Sparkles,
   Menu as MenuIcon,
+  ChevronDown,
   User as UserIcon,
   Building2,
   LogOut,
@@ -99,17 +100,31 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           container as the page body — otherwise the logo hugs the screen edge while the content is inset. */}
       <header className="h-16 border-b border-border bg-background">
         <div className={cn(SHELL_WIDTH, "flex h-16 items-center justify-between")}>
-        <div className="flex items-center gap-4">
-          <Link href="/" className="flex items-center">
-            <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
+        <div className="flex items-center gap-3">
+          {/* The square mark, not the wordmark: the portal header is dense and the icon reads at 36px where
+              "Globaly.app" would either dominate the row or shrink past legibility. */}
+          <Link href="/" className="flex shrink-0 items-center">
+            <Image
+              src="/globaly-red-icon.png"
+              alt="Globaly"
+              width={283}
+              height={283}
+              className="size-9 rounded-[10px]"
+              priority
+            />
           </Link>
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            <UserIcon className="h-3.5 w-3.5" />
+          {/* Plain label, not a pill — the pill competed with the active nav item, which is the only thing in
+              this row that should read as selected. */}
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+            <UserIcon className="h-4 w-4" />
             Personal
           </span>
+          <span className="hidden sm:block h-6 w-px shrink-0 bg-border" aria-hidden />
           <nav className="hidden md:flex items-center gap-1">
             {NAV_ITEMS.map((item) => {
-              const active = pathname === item.href;
+              // Prefix match, not equality: Earn owns sub-routes (/personal/earn/services and its pages), and
+              // an equality check would leave the top-level item dark the moment you opened the module.
+              const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
               return (
                 <Link
                   key={item.href}
@@ -160,15 +175,22 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           </Link>
 
           <DropdownMenu>
+            {/* Bordered, with a chevron: without them the bare avatar gave no affordance that it opens a
+                menu, and it sat flush against the credits pill with no visual boundary. */}
             <DropdownMenuTrigger
               render={
-                <button className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
+                <button
+                  className="flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                  type="button"
+                  aria-label="Account menu"
+                />
               }
             >
-              <Avatar className="size-8">
+              <Avatar className="size-7">
                 {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
                 <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/profile")}>
@@ -192,7 +214,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
         </div>
       </header>
 
-      <main className="flex-1 py-4 md:py-6 pb-24 md:pb-6">
+      {/* overflow-x-clip lets a page render a full-bleed band (the Earn sub-nav's rule) without the 100vw
+          box adding the scrollbar's width to the page as horizontal scroll. `clip` rather than `hidden`:
+          it creates no scroll container, so sticky and anchored elements inside still behave. */}
+      <main className="flex-1 overflow-x-clip py-4 md:py-6 pb-24 md:pb-6">
         <div className={SHELL_WIDTH}>{children}</div>
       </main>
 

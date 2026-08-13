@@ -187,9 +187,9 @@ ${TAG} done.
     #${inDispute.id}   Disputed — read-only
 
   Payment return, walk these in the browser:
-    verifies : /personal/services/payment-success?session_id=${pendingSession}
+    verifies : /personal/earn/services/payment-success?session_id=${pendingSession}
                (reload it — it must still read as success, and order #${awaitingReturn.id} must count once)
-    refuses  : /personal/services/payment-success?session_id=${mismatchedSession}
+    refuses  : /personal/earn/services/payment-success?session_id=${mismatchedSession}
                (amount disagrees with order #${shouldFail.id} — must fail, not succeed)
 `);
 }

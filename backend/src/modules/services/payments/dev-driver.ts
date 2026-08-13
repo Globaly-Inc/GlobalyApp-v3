@@ -13,7 +13,7 @@
 // index.ts for why that guard lives there and not here.
 
 import { randomBytes } from "crypto";
-import type { PaymentDriver, PaymentRefund, PaymentSession } from "./types.js";
+import type { CheckoutSession, PaymentDriver, PaymentRefund, PaymentSession } from "./types.js";
 
 export interface DevSessionSpec {
   paymentStatus?: string;
@@ -38,6 +38,23 @@ const refundsByKey = new Map<string, PaymentRefund>();
 
 export const devDriver: PaymentDriver = {
   name: "dev",
+
+  /**
+   * "Pay" by going straight to the return URL.
+   *
+   * There is no card form and no money: this stands in for the hop out to a provider so the rest of the flow
+   * — return, reconciliation, held payment, dual confirmation — can be walked end to end with no Stripe
+   * account. The amount and currency are baked into the session id, so the reconciliation still has real
+   * values to check the order against rather than ones it supplied itself.
+   */
+  async createCheckoutSession(req): Promise<CheckoutSession> {
+    const sessionId = makeDevSessionId({ amountMinor: req.amountMinor, currency: req.currency });
+    return {
+      sessionId,
+      // Same placeholder contract as Stripe, substituted here instead of by the provider.
+      url: req.successUrl.replace("{CHECKOUT_SESSION_ID}", sessionId),
+    };
+  },
 
   async retrieveSession(sessionId: string): Promise<PaymentSession> {
     // An unparseable id is reported as an unusable session rather than throwing, so a junk `?session_id=`

@@ -112,12 +112,25 @@ export async function createCountryWithCity(slot: 1 | 2 = 1, cityName = "Testvil
   };
 }
 
+/**
+ * Category ids by slug.
+ *
+ * Categories are rows now, seeded by migration 20260813_001 and NOT truncated by resetDb — they are
+ * reference data an admin manages, not per-test fixtures. Looked up by slug so a test never hardcodes an id
+ * that depends on insert order.
+ */
+export async function categoryId(slug = "airport_pickup"): Promise<number> {
+  const row = await masterKnex("service_categories").select("id").where({ slug }).first();
+  if (!row) throw new Error(`Seeded service category "${slug}" is missing — run the migrations`);
+  return row.id as number;
+}
+
 export async function createListing(providerId: number, overrides: Record<string, unknown> = {}) {
   const [listing] = await masterKnex("service_listings")
     .insert({
       provider_id: providerId,
       title: "Airport Pickup — Sydney",
-      category: "airport_pickup",
+      category_id: overrides.category_id ?? (await categoryId()),
       price_minor: 5000, // $50.00
       currency: "AUD",
       ...overrides,

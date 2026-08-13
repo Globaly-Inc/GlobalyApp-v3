@@ -103,7 +103,7 @@ export function ServicesView() {
         </div>
         <Button
           render={
-            <Link href="/personal/services/new">
+            <Link href="/personal/earn/services/new">
               <Plus />
               Create Service
             </Link>
@@ -146,7 +146,7 @@ export function ServicesView() {
                 title="You haven't created any service listings yet."
                 hint="Offer airport pickups, tutoring or accommodation help — set your price and get paid."
                 action={
-                  <Button render={<Link href="/personal/services/new">Create Your First Service</Link>} />
+                  <Button render={<Link href="/personal/earn/services/new">Create Your First Service</Link>} />
                 }
               />
             )
@@ -176,8 +176,8 @@ export function ServicesView() {
             purchases.length === 0 && (
               <EmptyState
                 title="You haven't bought any services yet."
-                // No public marketplace exists in this phase, so there is nowhere honest to send them yet.
-                hint="Services other students offer will appear here once you buy one."
+                hint="Airport pickups, tutoring, accommodation help — offered by students who have already done it."
+                action={<Button variant="outline" render={<Link href="/services">Browse services</Link>} />}
               />
             )
           }
@@ -200,7 +200,8 @@ export function ServicesView() {
             received.length === 0 && (
               <EmptyState
                 title="No orders received yet."
-                hint="Listings with a clear title, a cover image and a fair price get found first."
+                hint="Listings with a clear title, a cover image and a fair price get found first. Yours appear on the public marketplace as soon as they're active."
+                action={<Button variant="outline" render={<Link href="/services">See the marketplace</Link>} />}
               />
             )
           }

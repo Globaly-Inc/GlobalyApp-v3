@@ -3,7 +3,7 @@ import { signupReducer } from "@/app/signup/store/signup-slice"
 import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
 import { homeReducer } from "@/app/personal/portal/store/home-slice"
-import { myServicesReducer } from "@/app/personal/services/store/my-services-slice"
+import { myServicesReducer } from "@/app/personal/earn/services/store/my-services-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
@@ -27,6 +27,7 @@ import { eventsReducer } from "@/app/admin/monitoring/events/store/events-slice"
 import { trainingReducer } from "@/app/admin/monitoring/training/store/training-slice"
 import { ambassadorProgramsReducer } from "@/app/admin/monitoring/ambassador-programs/store/ambassador-programs-slice"
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
+import { adminServicesReducer } from "@/app/admin/monitoring/services/store/admin-services-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
@@ -57,6 +58,7 @@ const appReducer = combineReducers({
     monitoringTraining: trainingReducer,
     monitoringAmbassadorPrograms: ambassadorProgramsReducer,
     monitoringLogs: logsReducer,
+    monitoringServices: adminServicesReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

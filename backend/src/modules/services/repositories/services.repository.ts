@@ -4,14 +4,14 @@
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { OPEN_ORDER_STATUSES } from "../schemas/services.schema.js";
-import type { Currency, OrderStatus, ServiceCategory } from "../schemas/services.schema.js";
+import type { Currency, OrderStatus } from "../schemas/services.schema.js";
 
 export interface ListingRow {
   id: number;
   provider_id: number;
   title: string;
   description: string | null;
-  category: ServiceCategory;
+  category_id: number;
   price_minor: number;
   currency: Currency;
   country_id: number | null;
@@ -28,9 +28,17 @@ export interface ListingRow {
 
 /** A listing plus the joined names the UI shows and the open-order count the delete guard needs. */
 export interface HydratedListingRow extends ListingRow {
+  category_slug: string;
+  category_name: string;
   country_name: string | null;
   city_name: string | null;
   open_orders_count: number;
+}
+
+/** The public shape: adds the seller's identity, drops anything only the owner should see. */
+export interface PublicListingRow extends HydratedListingRow {
+  provider_name: string;
+  provider_photo_url: string | null;
 }
 
 export interface OrderRow {
@@ -79,10 +87,13 @@ const fullName = (alias: string) => `trim(concat(${alias}.first_name, ' ', coale
 
 function hydratedListingQuery(db: Knex | Knex.Transaction = masterKnex) {
   return db("service_listings as l")
+    .join("service_categories as cat", "cat.id", "l.category_id")
     .leftJoin("countries as co", "co.id", "l.country_id")
     .leftJoin("cities as ci", "ci.id", "l.city_id")
     .select(
       "l.*",
+      "cat.slug as category_slug",
+      "cat.name as category_name",
       "co.name as country_name",
       "ci.name as city_name",
       // Counted in the same pass rather than per-card: the hub renders this as an "N orders open" chip and
@@ -142,6 +153,151 @@ export async function cityBelongsToCountry(cityId: number, countryId: number): P
   return !!row;
 }
 
+// ─── Categories ────────────────────────────────────────────────────────────
+
+export interface CategoryRow {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+}
+
+/** Active categories only — retiring one in admin hides it from new listings without touching old ones. */
+export async function listCategories(): Promise<CategoryRow[]> {
+  return masterKnex("service_categories")
+    .select("id", "slug", "name", "description", "icon")
+    .where({ is_active: true })
+    .whereNull("deleted_at")
+    .orderBy(["sort_order", "name"]);
+}
+
+export async function findCategoryById(id: number): Promise<CategoryRow | null> {
+  const row = await masterKnex("service_categories")
+    .select("id", "slug", "name", "description", "icon")
+    .where({ id, is_active: true })
+    .whereNull("deleted_at")
+    .first();
+  return row ?? null;
+}
+
+// ─── Public browse ─────────────────────────────────────────────────────────
+
+export interface BrowseFilters {
+  search?: string;
+  category_id?: number;
+  country_id?: number;
+  city_id?: number;
+  currency?: Currency;
+  /** Minor units, inclusive both ends. */
+  min_price?: number;
+  max_price?: number;
+}
+
+/**
+ * Only listings a buyer may actually act on: active, not soft-deleted.
+ *
+ * A paused listing is invisible here while staying fully visible to its owner — that is the whole point of
+ * Pause, and the reason deleting is refused while orders are open.
+ */
+function publicListingQuery(filters: BrowseFilters) {
+  const query = masterKnex("service_listings as l")
+    .join("service_categories as cat", "cat.id", "l.category_id")
+    .join("platform_users as p", "p.id", "l.provider_id")
+    .leftJoin("countries as co", "co.id", "l.country_id")
+    .leftJoin("cities as ci", "ci.id", "l.city_id")
+    .where("l.is_active", true)
+    .whereNull("l.deleted_at");
+
+  if (filters.category_id) query.where("l.category_id", filters.category_id);
+  if (filters.country_id) query.where("l.country_id", filters.country_id);
+  if (filters.city_id) query.where("l.city_id", filters.city_id);
+  if (filters.currency) query.where("l.currency", filters.currency);
+  // Compared in minor units against the stored column, so no rounding happens anywhere in the filter.
+  if (filters.min_price !== undefined) query.where("l.price_minor", ">=", filters.min_price);
+  if (filters.max_price !== undefined) query.where("l.price_minor", "<=", filters.max_price);
+  if (filters.search) {
+    // ILIKE over title + description. Good enough at this size; a trigram index or tsvector is the upgrade
+    // when the table is big enough for it to matter.
+    const term = `%${filters.search}%`;
+    query.where((q) => q.whereILike("l.title", term).orWhereILike("l.description", term));
+  }
+  return query;
+}
+
+export async function browseListings(
+  filters: BrowseFilters,
+  limit: number,
+  offset: number,
+): Promise<PublicListingRow[]> {
+  return publicListingQuery(filters)
+    .select(
+      "l.*",
+      "cat.slug as category_slug",
+      "cat.name as category_name",
+      "co.name as country_name",
+      "ci.name as city_name",
+      "p.photo_url as provider_photo_url",
+      masterKnex.raw(`${fullName("p")} as provider_name`),
+      masterKnex.raw("0 as open_orders_count"),
+    )
+    // Highest rated first, then newest: a buyer's default ordering is quality, not recency.
+    .orderBy([
+      { column: "l.avg_rating", order: "desc" },
+      { column: "l.created_at", order: "desc" },
+      { column: "l.id", order: "desc" },
+    ])
+    .limit(limit)
+    .offset(offset) as unknown as Promise<PublicListingRow[]>;
+}
+
+export async function countListings_public(filters: BrowseFilters): Promise<number> {
+  const row = await publicListingQuery(filters).count<{ count: string }>("l.id as count").first();
+  return Number(row?.count ?? 0);
+}
+
+export async function findPublicListing(id: number): Promise<PublicListingRow | null> {
+  const row = await publicListingQuery({})
+    .andWhere("l.id", id)
+    .select(
+      "l.*",
+      "cat.slug as category_slug",
+      "cat.name as category_name",
+      "co.name as country_name",
+      "ci.name as city_name",
+      "p.photo_url as provider_photo_url",
+      masterKnex.raw(`${fullName("p")} as provider_name`),
+      masterKnex.raw("0 as open_orders_count"),
+    )
+    .first();
+  return (row as PublicListingRow) ?? null;
+}
+
+export interface PublicReviewRow {
+  id: number;
+  rating: number;
+  comment: string | null;
+  created_at: Date;
+  reviewer_name: string;
+  reviewer_photo_url: string | null;
+}
+
+export async function listReviewsForListing(listingId: number, limit: number): Promise<PublicReviewRow[]> {
+  return masterKnex("service_reviews as r")
+    .join("platform_users as u", "u.id", "r.reviewer_id")
+    .where("r.listing_id", listingId)
+    .select(
+      "r.id",
+      "r.rating",
+      "r.comment",
+      "r.created_at",
+      "u.photo_url as reviewer_photo_url",
+      masterKnex.raw(`${fullName("u")} as reviewer_name`),
+    )
+    .orderBy("r.created_at", "desc")
+    .limit(limit) as unknown as Promise<PublicReviewRow[]>;
+}
+
 // ─── Orders ────────────────────────────────────────────────────────────────
 
 function hydratedOrderQuery(db: Knex | Knex.Transaction = masterKnex) {
@@ -184,6 +340,25 @@ export async function findOrderById(id: number): Promise<HydratedOrderRow | null
  */
 export async function lockOrder(id: number, trx: Knex.Transaction): Promise<OrderRow | null> {
   const row = await trx<OrderRow>("service_orders").where({ id }).forUpdate().first();
+  return row ?? null;
+}
+
+export async function insertOrder(data: Partial<OrderRow>): Promise<OrderRow> {
+  const [row] = await orders().insert(data).returning("*");
+  return row;
+}
+
+/**
+ * An unpaid order this buyer already holds for this listing.
+ *
+ * Pressing Buy twice should resume the existing checkout rather than stack up abandoned rows against the
+ * same listing — each of which would separately block the seller from deleting it.
+ */
+export async function findResumableOrder(listingId: number, buyerId: number): Promise<OrderRow | null> {
+  const row = await orders()
+    .where({ listing_id: listingId, buyer_id: buyerId, status: "pending_payment" })
+    .orderBy("id", "desc")
+    .first();
   return row ?? null;
 }
 

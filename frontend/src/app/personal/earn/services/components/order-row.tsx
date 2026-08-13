@@ -24,7 +24,7 @@ export function OrderRow({ order }: Readonly<{ order: Order }>) {
 
   return (
     <Link
-      href={`/personal/services/orders/${order.id}`}
+      href={`/personal/earn/services/orders/${order.id}`}
       className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/50"
     >
       <div className="min-w-0 flex-1 space-y-1">

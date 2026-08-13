@@ -28,9 +28,18 @@ export const authPlugin = fp(async (app) => {
     "/health/mail",
   ]);
 
+  /**
+   * Public routes whose path carries an id, which the exact-match Set above cannot express.
+   *
+   * Deliberately anchored and digit-only: `/api/v3/services/12` and `/api/v3/services/12/reviews` are open,
+   * while everything a seller owns lives under the separate `/api/v3/my-services` prefix and cannot match
+   * this at all.
+   */
+  const publicPatterns = [/^\/api\/v3\/services(\/(categories|\d+(\/reviews)?))?$/];
+
   app.addHook("onRequest", async (req, reply) => {
     const path = req.url.split("?")[0];
-    if (publicPaths.has(path)) return;
+    if (publicPaths.has(path) || publicPatterns.some((pattern) => pattern.test(path))) return;
 
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) {

@@ -1,14 +1,7 @@
-import type { OrderStatus, ServiceCategory } from "../apis";
+import type { OrderStatus } from "../apis";
 
-export const CATEGORY_LABELS: Record<ServiceCategory, string> = {
-  airport_pickup: "Airport Pickup",
-  city_orientation: "City Orientation",
-  rental_support: "Rental Support",
-  employment_support: "Employment Setup & Support",
-  assignment_help: "Assignment Help",
-  private_tutoring: "Private Tutoring",
-  other: "Other",
-};
+// No CATEGORY_LABELS map any more. Categories are rows in service_categories with their own `name`, so the
+// label travels with the data — a hardcoded map here would go stale the moment an admin renamed one.
 
 /**
  * Order status labels.

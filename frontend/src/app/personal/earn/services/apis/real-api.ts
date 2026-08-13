@@ -1,5 +1,8 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm } from "@/lib/api/http";
 import type {
+  BrowseFilters,
+  BrowseResult,
+  CheckoutSession,
   City,
   Currency,
   Listing,
@@ -7,6 +10,8 @@ import type {
   Order,
   OrderRole,
   OrderStatus,
+  PublicReview,
+  PublicService,
   Review,
   ServiceCategory,
   ServicesMeta,
@@ -14,9 +19,11 @@ import type {
   UploadedCover,
   VerifyPaymentResult,
 } from "./types";
-import { CURRENCIES, ORDER_STATUSES, SERVICE_CATEGORIES } from "./types";
+import { CURRENCIES, ORDER_STATUSES } from "./types";
 
 const BASE = "/my-services";
+/** Unauthenticated marketplace routes. Separate prefix, separate file on the server. */
+const PUBLIC = "/services";
 
 /**
  * Normalize at the boundary.
@@ -48,7 +55,9 @@ function normalizeListing(raw: Partial<Listing> | undefined | null): Listing {
     provider_id: Number(l.provider_id ?? 0),
     title: l.title ?? "Untitled service",
     description: l.description ?? null,
-    category: oneOf<ServiceCategory>(l.category, SERVICE_CATEGORIES, "other"),
+    category_id: Number(l.category_id ?? 0),
+    category_slug: l.category_slug ?? "other",
+    category_name: l.category_name ?? "Other",
     price_minor: toMinor(l.price_minor),
     currency: oneOf<Currency>(l.currency, CURRENCIES, "AUD"),
     country_id: l.country_id ?? null,
@@ -113,17 +122,116 @@ function normalizeSummary(raw: Partial<Summary> | undefined | null): Summary {
   };
 }
 
+function normalizeCategory(raw: Partial<ServiceCategory> | undefined | null): ServiceCategory {
+  const c = raw ?? {};
+  return {
+    id: Number(c.id ?? 0),
+    slug: c.slug ?? "other",
+    name: c.name ?? "Other",
+    description: c.description ?? null,
+    icon: c.icon ?? null,
+  };
+}
+
+/**
+ * Normalizing must not invent selectable options.
+ *
+ * A backend older than the category migration returns the previous enum — bare strings, not rows. Each one
+ * normalizes to `{ id: 0, name: "Other" }`, so the picker filled up with seven identical "Other" entries that
+ * all submitted `category_id: 0` and got a 400. Defaulting a field the UI *reads* is right; keeping an entry
+ * the UI can *choose* when it has no id is not. An empty picker is the honest signal.
+ */
+function usableCategories(raw: unknown): ServiceCategory[] {
+  return toArray<Partial<ServiceCategory>>(raw).map(normalizeCategory).filter((c) => c.id > 0);
+}
+
+function normalizePublicService(raw: Partial<PublicService> | undefined | null): PublicService {
+  const s = raw ?? {};
+  return {
+    id: Number(s.id ?? 0),
+    title: s.title ?? "Untitled service",
+    description: s.description ?? null,
+    category_id: Number(s.category_id ?? 0),
+    category_slug: s.category_slug ?? "other",
+    category_name: s.category_name ?? "Other",
+    price_minor: toMinor(s.price_minor),
+    currency: oneOf<Currency>(s.currency, CURRENCIES, "AUD"),
+    country_name: s.country_name ?? null,
+    city_name: s.city_name ?? null,
+    cover_url: s.cover_url ?? null,
+    avg_rating: Number(s.avg_rating ?? 0),
+    total_reviews: Number(s.total_reviews ?? 0),
+    total_orders: Number(s.total_orders ?? 0),
+    provider_id: Number(s.provider_id ?? 0),
+    provider_name: s.provider_name?.trim() || "A student",
+    provider_photo_url: s.provider_photo_url ?? null,
+    created_at: s.created_at ?? new Date().toISOString(),
+  };
+}
+
 export const servicesRealApi = {
   getMeta: async (): Promise<ServicesMeta> => {
     const raw = await httpGet<Partial<ServicesMeta>>(`${BASE}/meta`);
-    const categories = toArray<ServiceCategory>(raw?.categories);
-    const currencies = toArray<Currency>(raw?.currencies);
     return {
-      categories: categories.length ? categories : [...SERVICE_CATEGORIES],
-      currencies: currencies.length ? currencies : [...CURRENCIES],
+      categories: usableCategories(raw?.categories),
+      currencies: (() => {
+        const c = toArray<Currency>(raw?.currencies);
+        return c.length ? c : [...CURRENCIES];
+      })(),
       cover_upload_available: raw?.cover_upload_available === true,
       payments_live: raw?.payments_live === true,
     };
+  },
+
+  // ── Public marketplace. No token required; these are the only unauthenticated calls in the feature. ──
+
+  browse: async (filters: BrowseFilters = {}): Promise<BrowseResult> => {
+    const params = new URLSearchParams();
+    if (filters.search) params.set("search", filters.search);
+    if (filters.category_id) params.set("category_id", String(filters.category_id));
+    if (filters.country_id) params.set("country_id", String(filters.country_id));
+    if (filters.city_id) params.set("city_id", String(filters.city_id));
+    if (filters.currency) params.set("currency", filters.currency);
+    if (filters.min_price !== undefined) params.set("min_price", String(filters.min_price));
+    if (filters.max_price !== undefined) params.set("max_price", String(filters.max_price));
+    if (filters.page) params.set("page", String(filters.page));
+    if (filters.limit) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+
+    const raw = await httpGet<Partial<BrowseResult>>(`${PUBLIC}${qs ? `?${qs}` : ""}`);
+    return {
+      services: toArray<Partial<PublicService>>(raw?.services).map(normalizePublicService),
+      meta: {
+        page: Number(raw?.meta?.page ?? 1),
+        limit: Number(raw?.meta?.limit ?? 12),
+        total: Number(raw?.meta?.total ?? 0),
+        totalPages: Number(raw?.meta?.totalPages ?? 1),
+      },
+    };
+  },
+
+  getPublicService: async (serviceId: number): Promise<PublicService> =>
+    normalizePublicService(await httpGet<Partial<PublicService>>(`${PUBLIC}/${serviceId}`)),
+
+  getPublicReviews: async (serviceId: number): Promise<PublicReview[]> => {
+    const raw = await httpGet<{ reviews?: PublicReview[] }>(`${PUBLIC}/${serviceId}/reviews`);
+    return toArray<PublicReview>(raw?.reviews);
+  },
+
+  getPublicCategories: async (): Promise<ServiceCategory[]> => {
+    const raw = await httpGet<{ categories?: Partial<ServiceCategory>[] }>(`${PUBLIC}/categories`);
+    return usableCategories(raw?.categories);
+  },
+
+  // ── Buying ──
+
+  createOrder: async (listingId: number, notes?: string | null): Promise<Order> =>
+    normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders`, { listing_id: listingId, notes: notes ?? null })),
+
+  startCheckout: async (orderId: number): Promise<CheckoutSession> => {
+    const raw = await httpPost<Partial<CheckoutSession>>(`${BASE}/orders/${orderId}/checkout`, {});
+    if (!raw?.url) throw new Error("Checkout did not return a payment URL");
+    return { url: raw.url, session_id: raw.session_id ?? "" };
   },
 
   getSummary: async (): Promise<Summary> => normalizeSummary(await httpGet<Partial<Summary>>(`${BASE}/summary`)),
