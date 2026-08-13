@@ -1,0 +1,273 @@
+services:
+  postgres:
+    container_name: globalyapp-postgres
+    image: postgres:17
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./.docker/storage/postgres:/var/lib/postgresql/data
+    networks:
+      - globalyapp
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  frontend-dev:
+    container_name: globalyapp-frontend-dev
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      args:
+        NEXT_PUBLIC_MOCK_DATA: ${NEXT_PUBLIC_MOCK_DATA}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    env_file:
+      - ./frontend/.env
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_MOCK_DATA: ${NEXT_PUBLIC_MOCK_DATA}
+    # command: tail -f /dev/null
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./frontend:/globalyapp/frontend
+      - /globalyapp/frontend/node_modules
+    networks:
+      - globalyapp
+
+  # frontend:
+  #   container_name: globalyapp-frontend
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     args:
+  #       NEXT_PUBLIC_MOCK_DATA: ${NEXT_PUBLIC_MOCK_DATA}
+  #       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+  #   env_file:
+  #     - ./frontend/.env
+  #   environment:
+  #     NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+  #     NEXT_PUBLIC_MOCK_DATA: ${NEXT_PUBLIC_MOCK_DATA}
+  #   command: service nginx start && yarn start
+  #   ports:
+  #     - "4000:3001"
+  #     - "4080:80"
+  #   networks:
+  #     - globalyapp
+
+  backend:
+    container_name: globalyapp-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    image: globalyapp-backend:local
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  auth-worker:
+    container_name: globalyapp-auth-worker
+    image: globalyapp-backend:local
+    command: npm run job:auth
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  extraction-worker:
+    container_name: globalyapp-extraction-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction"]
+    command: npm run job:extraction
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  extraction-pages-worker:
+    container_name: globalyapp-extraction-pages-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-pages"]
+    command: npm run job:extraction-pages
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  extraction-verify-worker:
+    container_name: globalyapp-extraction-verify-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-verify"]
+    command: npm run job:extraction-verify
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  extraction-step-worker:
+    container_name: globalyapp-extraction-step-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-step"]
+    command: npm run job:extraction-step
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  extraction-schedule-worker:
+    container_name: globalyapp-extraction-schedule-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-schedule"]
+    command: npm run job:extraction-schedule
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  extraction-agentcis-worker:
+    container_name: globalyapp-extraction-agentcis-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-agentcis"]
+    command: npm run job:extraction-agentcis
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  lavinmq:
+    container_name: globalyapp-lavinmq
+    image: cloudamqp/lavinmq:2.4
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    networks:
+      - globalyapp
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  dragonfly:
+    container_name: globalyapp-dragonfly
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
+    ports:
+      - "6379:6379"
+    volumes:
+      - dragonfly-data:/data
+    networks:
+      - globalyapp
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+
+  mailpit:
+    container_name: globalyapp-mailpit
+    image: axllent/mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - globalyapp
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+networks:
+  globalyapp:
+    name: globalyapp
+
+volumes:
+  dragonfly-data:

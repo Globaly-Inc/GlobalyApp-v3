@@ -32,7 +32,7 @@ jobs:
       - name: Resolve environment
         run: |
           printf "\n\n =======================================================================\n"
-          if [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/devops-mail-setup-test") ]]; then
+          if [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/production") ]]; then
             echo "env_name=production" >> $GITHUB_ENV
             echo "Selected environment: ${{ env.GREEN_COLOR_MESSAGE }} production ${{ env.RESET_COLOR_MESSAGE }}"
           elif [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/develop" || "${{ github.ref }}" == "refs/heads/staging") ]]; then
