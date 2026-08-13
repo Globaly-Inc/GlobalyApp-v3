@@ -3,24 +3,43 @@
 // behaves like a real backend while the flag is set.
 
 import type {
+  BrowseFilters,
+  BrowseResult,
+  CheckoutSession,
   City,
   Listing,
   ListingInput,
   Order,
+  PublicReview,
+  PublicService,
   Review,
+  ServiceCategory,
   ServicesMeta,
   Summary,
   UploadedCover,
   VerifyPaymentResult,
 } from "./types";
-import { CURRENCIES, SERVICE_CATEGORIES } from "./types";
+import { CURRENCIES } from "./types";
 
 const delay = (ms = 350) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Mirrors what migration 20260813_001 seeds into service_categories.
+const MOCK_CATEGORIES: ServiceCategory[] = [
+  { id: 1, slug: "airport_pickup", name: "Airport Pickup" },
+  { id: 2, slug: "city_orientation", name: "City Orientation" },
+  { id: 3, slug: "rental_support", name: "Rental Support" },
+  { id: 4, slug: "employment_support", name: "Employment Setup & Support" },
+  { id: 5, slug: "assignment_help", name: "Assignment Help" },
+  { id: 6, slug: "private_tutoring", name: "Private Tutoring" },
+  { id: 7, slug: "other", name: "Other" },
+];
 
 const listing = (over: Partial<Listing> & { id: number; title: string }): Listing => ({
   provider_id: 1,
   description: null,
-  category: "other",
+  category_id: 7,
+  category_slug: "other",
+  category_name: "Other",
   price_minor: 5000,
   currency: "AUD",
   country_id: null,
@@ -66,7 +85,9 @@ let listings: Listing[] = [
   listing({
     id: 1,
     title: "Airport Pickup — Sydney",
-    category: "airport_pickup",
+    category_id: 1,
+    category_slug: "airport_pickup",
+    category_name: "Airport Pickup",
     price_minor: 5000,
     city_name: "Sydney",
     country_name: "Australia",
@@ -78,7 +99,9 @@ let listings: Listing[] = [
   listing({
     id: 2,
     title: "Assignment Help — Statistics",
-    category: "assignment_help",
+    category_id: 5,
+    category_slug: "assignment_help",
+    category_name: "Assignment Help",
     price_minor: 3500,
     currency: "GBP",
     is_active: false,
@@ -109,6 +132,28 @@ const reviews = new Map<number, Review>();
 let nextId = 100;
 
 const allOrders = () => [...purchases, ...received];
+
+/** The seller's row, narrowed to what a buyer is allowed to see. */
+const toPublic = (l: Listing): PublicService => ({
+  id: l.id,
+  title: l.title,
+  description: l.description,
+  category_id: l.category_id,
+  category_slug: l.category_slug,
+  category_name: l.category_name,
+  price_minor: l.price_minor,
+  currency: l.currency,
+  country_name: l.country_name,
+  city_name: l.city_name,
+  cover_url: l.cover_url,
+  avg_rating: l.avg_rating,
+  total_reviews: l.total_reviews,
+  total_orders: l.total_orders,
+  provider_id: l.provider_id,
+  provider_name: "Marco Demo",
+  provider_photo_url: null,
+  created_at: l.created_at,
+});
 
 function recompute(o: Order): Order {
   const both = o.buyer_confirmed && o.provider_confirmed;
@@ -143,7 +188,7 @@ export const servicesMockApi = {
     console.log("[mock] getMeta");
     await delay(100);
     return {
-      categories: [...SERVICE_CATEGORIES],
+      categories: MOCK_CATEGORIES,
       currencies: [...CURRENCIES],
       cover_upload_available: true,
       payments_live: false,
@@ -295,6 +340,80 @@ export const servicesMockApi = {
     reviews.set(orderId, review);
     mutate(orderId, (o) => o);
     return review;
+  },
+
+  // ── Public marketplace ──
+
+  browse: async (filters: BrowseFilters = {}): Promise<BrowseResult> => {
+    console.log("[mock] browse", filters);
+    await delay();
+    const visible = listings.filter((l) => l.is_active);
+    const matched = visible.filter(
+      (l) =>
+        (!filters.search || l.title.toLowerCase().includes(filters.search.toLowerCase())) &&
+        (!filters.category_id || l.category_id === filters.category_id) &&
+        (!filters.currency || l.currency === filters.currency),
+    );
+    return {
+      services: matched.map(toPublic),
+      meta: { page: 1, limit: 12, total: matched.length, totalPages: 1 },
+    };
+  },
+
+  getPublicService: async (serviceId: number): Promise<PublicService> => {
+    console.log("[mock] getPublicService", serviceId);
+    await delay();
+    const found = listings.find((l) => l.id === serviceId && l.is_active);
+    if (!found) throw new Error("Service not found");
+    return toPublic(found);
+  },
+
+  getPublicReviews: async (serviceId: number): Promise<PublicReview[]> => {
+    console.log("[mock] getPublicReviews", serviceId);
+    await delay(150);
+    return [...reviews.values()]
+      .filter((r) => r.listing_id === serviceId)
+      .map((r) => ({
+        id: r.id,
+        rating: r.rating,
+        comment: r.comment,
+        created_at: r.created_at,
+        reviewer_name: "Priya Demo",
+        reviewer_photo_url: null,
+      }));
+  },
+
+  getPublicCategories: async (): Promise<ServiceCategory[]> => {
+    console.log("[mock] getPublicCategories");
+    await delay(120);
+    return MOCK_CATEGORIES;
+  },
+
+  createOrder: async (listingId: number, notes?: string | null): Promise<Order> => {
+    console.log("[mock] createOrder", listingId, notes);
+    await delay();
+    const listing = listings.find((l) => l.id === listingId);
+    if (!listing) throw new Error("Service listing not found");
+    const created = order({
+      id: ++nextId,
+      listing_id: listing.id,
+      listing_title: listing.title,
+      role: "buyer",
+      status: "pending_payment",
+      paid_at: null,
+      amount_minor: listing.price_minor,
+      currency: listing.currency,
+      notes: notes ?? null,
+    });
+    purchases = [created, ...purchases];
+    return created;
+  },
+
+  startCheckout: async (orderId: number): Promise<CheckoutSession> => {
+    console.log("[mock] startCheckout", orderId);
+    await delay(400);
+    const session = `dev_paid_mock_${orderId}`;
+    return { url: `/personal/earn/services/payment-success?session_id=${session}`, session_id: session };
   },
 
   getCities: async (countryId: number): Promise<City[]> => {

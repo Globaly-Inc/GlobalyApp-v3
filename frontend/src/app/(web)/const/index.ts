@@ -45,6 +45,9 @@ export const SOCIALS: { name: SocialName; href: string; label: string }[] = [
   { name: "youtube", href: "https://youtube.com/@globalyapp", label: "YouTube" },
 ];
 
+// No "Services" entry here on purpose — the marketplace is reached from the hero search switcher
+// ("Other Services"), alongside Courses / Institutions / Agents / Visas, because it is something people
+// search rather than another marketing page.
 export const NAV_LINKS = [
   { label: "For Students", href: "/for-students" },
   { label: "For Institutions", href: "/for-institutions" },
@@ -71,14 +74,27 @@ export const SOCIAL_ICON_PATHS: Record<SocialName, string> = {
     "M22 12s0-3.05-.39-4.52a2.5 2.5 0 0 0-1.76-1.77C18.38 5.3 12 5.3 12 5.3s-6.38 0-7.85.4a2.5 2.5 0 0 0-1.76 1.78C2 8.95 2 12 2 12s0 3.05.39 4.52c.22.82.87 1.46 1.76 1.68C5.62 18.6 12 18.6 12 18.6s6.38 0 7.85-.4a2.5 2.5 0 0 0 1.76-1.68C22 15.05 22 12 22 12ZM10 15.02V8.98L15.27 12 10 15.02Z",
 };
 
-import { GraduationCap, Building2, Users, Stamp } from "lucide-react";
+import { GraduationCap, Building2, Users, Stamp, Handshake } from "lucide-react";
 
+// The hero search switcher. Every slug but `other-services` resolves to /search?tab=<slug>; that one goes to
+// the peer-to-peer marketplace instead — see SEARCH_DESTINATIONS below and unified-search-bar's submit().
 export const CATEGORIES = [
   { slug: "courses", name: "Courses", Icon: GraduationCap },
   { slug: "institutions", name: "Institutions", Icon: Building2 },
   { slug: "agents", name: "Agents", Icon: Users },
   { slug: "visas", name: "Visas", Icon: Stamp },
+  { slug: "other-services", name: "Other Services", Icon: Handshake },
 ];
+
+/**
+ * Slugs whose search lives outside /search, as `[path, queryParam]`.
+ *
+ * The marketplace is its own page with its own query param, so the switcher has to know that rather than
+ * building `/search?tab=other-services&q=…`, which nothing serves.
+ */
+export const SEARCH_DESTINATIONS: Record<string, { path: string; param: string }> = {
+  "other-services": { path: "/services", param: "search" },
+};
 
 export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
   courses: [
@@ -104,5 +120,13 @@ export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
     "What documents are needed for a student visa?",
     "Can international students work on a student visa?",
     "What are the post-study work visa options abroad?",
+  ],
+  // Its own set, so switching to Other Services in AI mode doesn't leave course prompts on screen via the
+  // `?? AI_PROMPTS_BY_SLUG.courses` fallback.
+  "other-services": [
+    "How do I get from the airport when I arrive?",
+    "Can someone help me find accommodation?",
+    "Where can I find a tutor for my course?",
+    "What help do other students offer where I'm going?",
   ],
 };

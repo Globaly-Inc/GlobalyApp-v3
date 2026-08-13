@@ -4,17 +4,16 @@
 // directions, so no money value is ever a float in JSON. The single major↔minor conversion lives in
 // utils/index.ts and is used by the form and the formatter — nowhere else.
 
-export const SERVICE_CATEGORIES = [
-  "airport_pickup",
-  "city_orientation",
-  "rental_support",
-  "employment_support",
-  "assignment_help",
-  "private_tutoring",
-  "other",
-] as const;
-
 export const CURRENCIES = ["AUD", "USD", "GBP", "EUR"] as const;
+
+/** A row in service_categories, administered at /admin/platform/categories — not an enum. */
+export interface ServiceCategory {
+  id: number;
+  slug: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+}
 
 export const ORDER_STATUSES = [
   "pending_payment",
@@ -25,7 +24,6 @@ export const ORDER_STATUSES = [
   "cancelled",
 ] as const;
 
-export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
 export type Currency = (typeof CURRENCIES)[number];
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export type OrderRole = "buyer" | "provider";
@@ -35,7 +33,9 @@ export interface Listing {
   provider_id: number;
   title: string;
   description: string | null;
-  category: ServiceCategory;
+  category_id: number;
+  category_slug: string;
+  category_name: string;
   price_minor: number;
   currency: Currency;
   country_id: number | null;
@@ -56,7 +56,7 @@ export interface Listing {
 
 export interface ListingInput {
   title: string;
-  category: ServiceCategory;
+  category_id: number;
   description?: string | null;
   price_minor: number;
   currency: Currency;
@@ -120,6 +120,61 @@ export interface Summary {
    * order values, not money the seller has received. The UI must not imply otherwise.
    */
   payouts_live: boolean;
+}
+
+/** What a buyer sees. Narrower than `Listing` — no storage paths, no open-order counts. */
+export interface PublicService {
+  id: number;
+  title: string;
+  description: string | null;
+  category_id: number;
+  category_slug: string;
+  category_name: string;
+  price_minor: number;
+  currency: Currency;
+  country_name: string | null;
+  city_name: string | null;
+  cover_url: string | null;
+  avg_rating: number;
+  total_reviews: number;
+  total_orders: number;
+  /** Exposed so the UI can recognise your own listing and hide Buy. */
+  provider_id: number;
+  provider_name: string;
+  provider_photo_url: string | null;
+  created_at: string;
+}
+
+export interface PublicReview {
+  id: number;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  reviewer_name: string;
+  reviewer_photo_url: string | null;
+}
+
+export interface BrowseFilters {
+  search?: string;
+  category_id?: number;
+  country_id?: number;
+  city_id?: number;
+  currency?: Currency;
+  /** Minor units, matching every other amount on the wire. */
+  min_price?: number;
+  max_price?: number;
+  page?: number;
+  limit?: number;
+}
+
+export interface BrowseResult {
+  services: PublicService[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface CheckoutSession {
+  url: string;
+  session_id: string;
 }
 
 export interface ServicesMeta {

@@ -5,6 +5,11 @@ import { servicesRealApi } from "./real-api";
 export const servicesApi = createApi({ mock: servicesMockApi, real: servicesRealApi });
 
 export type {
+  BrowseFilters,
+  BrowseResult,
+  CheckoutSession,
+  PublicReview,
+  PublicService,
   City,
   Currency,
   CurrencyTotals,
@@ -20,4 +25,4 @@ export type {
   UploadedCover,
   VerifyPaymentResult,
 } from "./types";
-export { CURRENCIES, ORDER_STATUSES, SERVICE_CATEGORIES } from "./types";
+export { CURRENCIES, ORDER_STATUSES } from "./types";

@@ -302,7 +302,7 @@ function ConfirmRow({
 function BackLink() {
   return (
     <Link
-      href="/personal/services"
+      href="/personal/earn/services"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="h-4 w-4" />

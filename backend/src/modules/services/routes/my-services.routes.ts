@@ -9,9 +9,10 @@ import {
   VerifyPaymentSchema,
   DisputeSchema,
   CreateReviewSchema,
-  SERVICE_CATEGORIES,
+  CreateOrderSchema,
   CURRENCIES,
 } from "../schemas/services.schema.js";
+import * as publicServices from "../services/public-services.service.js";
 import * as listings from "../services/listings.service.js";
 import * as orders from "../services/orders.service.js";
 import * as reviews from "../services/reviews.service.js";
@@ -28,7 +29,8 @@ export async function myServicesRoutes(app: FastifyInstance) {
    */
   app.get("/meta", async (_req, reply) =>
     reply.send({
-      categories: SERVICE_CATEGORIES,
+      // Rows from service_categories, so an admin adding one shows up in the form without a deploy.
+      categories: await publicServices.categories(),
       currencies: CURRENCIES,
       cover_upload_available: storage.isConfigured(),
       payments_live: paymentsConfigured(),
@@ -81,6 +83,20 @@ export async function myServicesRoutes(app: FastifyInstance) {
   });
 
   // ── Orders ──
+
+  /** Place an order. The buyer sends a listing id; price and provider come from the listing. */
+  app.post("/orders", async (req, reply) => {
+    const input = CreateOrderSchema.parse(req.body);
+    const order = await orders.createOrder(Number(req.auth.sub), input);
+    return reply.status(201).send(order);
+  });
+
+  /** Start payment. Returns somewhere to pay — the provider's page, or the dev driver's return URL. */
+  app.post("/orders/:orderId/checkout", async (req, reply) => {
+    const { orderId } = OrderIdParamSchema.parse(req.params);
+    const result = await orders.startCheckout(orderId, Number(req.auth.sub), req.auth.email ?? null);
+    return reply.send(result);
+  });
 
   app.get("/orders", async (req, reply) =>
     reply.send({ orders: await orders.listPurchases(Number(req.auth.sub)) }),

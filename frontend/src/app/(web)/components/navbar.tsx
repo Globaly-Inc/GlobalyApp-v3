@@ -1,18 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Menu, X, Sparkles } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu, X, Sparkles, ChevronDown, User as UserIcon, ShieldCheck, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { useAuthState } from "@/app/auth/store/auth-slice";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { logout, useAuthState } from "@/app/auth/store/auth-slice";
+import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
 import { NAV_LINKS } from "../const/index";
 
-function dashboardHref(user: AuthUser | null): string {
+/**
+ * Where a signed-in user's own profile lives.
+ *
+ * `user_category` is NOT a usable signal: getMe() and verifyOtp() both hardcode it to null (see
+ * auth/apis/real-api.ts), so every branch keyed on it is dead and this function used to fall through to "/"
+ * for every platform user — sending them back to the marketing page they just clicked away from. `type` is
+ * the field that actually carries a value.
+ */
+function profileHref(user: AuthUser | null): string {
   if (!user) return "/";
   if (user.type === "admin") return "/admin/overview";
   if (user.user_category === "business") return "/business/profile";
@@ -22,7 +40,27 @@ function dashboardHref(user: AuthUser | null): string {
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const dispatch = useAppDispatch();
   const { user, initializing } = useAuthState();
+  const profile = useAppSelector((state) => state.profile.profile);
+
+  // getMe() returns only email/type/role/user_category — no name or photo — so the avatar needs the profile.
+  // Fetched only for a signed-in platform user: an admin has no /platform-users/me row, and a signed-out
+  // visitor to the marketing site should never trigger an authenticated request. The thunk already
+  // short-circuits while one is in flight, and it populates the same slice the portal reads, so walking from
+  // here into /personal costs nothing extra.
+  useEffect(() => {
+    if (user?.type === "platform_user" && !profile) dispatch(fetchFullProfile());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.type]);
+
+  const handleSignOut = () => {
+    dispatch(logout());
+    router.push("/auth/sign-in");
+  };
+
+  const initial = (profile?.first_name?.[0] ?? user?.email?.[0] ?? "U").toUpperCase();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md">
@@ -60,13 +98,48 @@ export function Navbar() {
 
           {!initializing && (
             user ? (
-              <Button
-                className="btn-gold h-10 rounded-full px-5"
-                nativeButton={false}
-                render={<Link href={dashboardHref(user)} />}
-              >
-                Dashboard
-              </Button>
+              // The same profile badge as the portal shell, so signing in doesn't change what the account
+              // control looks like between the marketing site and the app. No credits pill here — there is no
+              // credits balance in V3 to put in it.
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      className="flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                      type="button"
+                      aria-label="Account menu"
+                    />
+                  }
+                >
+                  <Avatar className="size-7">
+                    {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+                    <AvatarFallback>{initial}</AvatarFallback>
+                  </Avatar>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(profileHref(user))}>
+                    <UserIcon /> My Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {/* Keyed on `type`, the only field getMe actually populates. Every platform user can enter
+                      the Personal Portal — its shell gates on authentication, not on a category. */}
+                  {user.type === "platform_user" && (
+                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/portal")}>
+                      <UserIcon /> Personal Portal
+                    </DropdownMenuItem>
+                  )}
+                  {user.type === "admin" && (
+                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/overview")}>
+                      <ShieldCheck /> Super Admin
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
+                    <LogOut /> Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <>
                 <Button
@@ -123,13 +196,30 @@ export function Navbar() {
                 <div className="mt-4 flex flex-col gap-2">
                   {!initializing && (
                     user ? (
-                      <Button
-                        className="btn-gold h-10"
-                        nativeButton={false}
-                        render={<Link href={dashboardHref(user)} onClick={() => setMobileOpen(false)} />}
-                      >
-                        Dashboard
-                      </Button>
+                      // The drawer replaces the dropdown below lg, so it offers the same destinations rather
+                      // than a single "Dashboard" whose target was never well defined.
+                      <>
+                        <Button
+                          className="btn-gold h-10"
+                          nativeButton={false}
+                          render={
+                            <Link
+                              href={user.type === "admin" ? "/admin/overview" : "/personal/portal"}
+                              onClick={() => setMobileOpen(false)}
+                            />
+                          }
+                        >
+                          {user.type === "admin" ? "Super Admin" : "Personal Portal"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                          nativeButton={false}
+                          render={<Link href={profileHref(user)} onClick={() => setMobileOpen(false)} />}
+                        >
+                          My Profile
+                        </Button>
+                      </>
                     ) : (
                       <>
                         <Button

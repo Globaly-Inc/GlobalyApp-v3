@@ -16,9 +16,9 @@ import { FieldError } from "@/components/field-error";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { useValidatedForm } from "@/lib/use-validated-form";
 import { geoApi, type Country } from "@/app/geo/apis";
-import { servicesApi, type City, type Currency, type Listing, type ServiceCategory } from "../apis";
-import { CURRENCIES, SERVICE_CATEGORIES } from "../apis";
-import { CATEGORY_LABELS, MAX_COVER_MB } from "../const";
+import { servicesApi, type City, type Currency, type Listing } from "../apis";
+import { CURRENCIES } from "../apis";
+import { MAX_COVER_MB } from "../const";
 import { currencySymbol, formatMoney, toMajorUnitsInput, toMinorUnits } from "../utils";
 import {
   clearListing,
@@ -35,7 +35,8 @@ import { SectionError } from "./section-error";
 // only infers an implicit index signature for type aliases. Every other form in this app does the same.
 type FormState = {
   title: string;
-  category: string;
+  /** The combobox works in strings; converted to a number id on submit. */
+  categoryId: string;
   description: string;
   /** The price exactly as typed, in currency units. Converted to minor units once, on submit. */
   price: string;
@@ -48,7 +49,7 @@ type CoverState = { storagePath: string | null; url: string | null };
 
 const schema: z.ZodType<FormState> = z.object({
   title: z.string().trim().min(1, "Give your service a title").max(200, "Keep the title under 200 characters"),
-  category: z.string().min(1, "Pick a category"),
+  categoryId: z.string().min(1, "Pick a category"),
   description: z.string().max(5000, "Keep the description under 5000 characters"),
   // The user types "50", not "5000". Validated in the units they typed, so the message matches what they see.
   price: z
@@ -64,7 +65,7 @@ const schema: z.ZodType<FormState> = z.object({
 
 const emptyForm = (): FormState => ({
   title: "",
-  category: "",
+  categoryId: "",
   description: "",
   price: "",
   currency: "AUD",
@@ -74,7 +75,7 @@ const emptyForm = (): FormState => ({
 
 const toForm = (listing: Listing): FormState => ({
   title: listing.title,
-  category: listing.category,
+  categoryId: String(listing.category_id),
   description: listing.description ?? "",
   // 5000 → "50.00". The word "cents" appears nowhere in this UI.
   price: toMajorUnitsInput(listing.price_minor),
@@ -191,12 +192,9 @@ function ListingForm({
         : [],
     [cityCache, form.countryId],
   );
+  // Straight from service_categories — an admin adding one appears here with no deploy.
   const categoryOptions = useMemo(
-    () =>
-      (meta?.categories ?? SERVICE_CATEGORIES).map((c) => ({
-        value: c,
-        label: CATEGORY_LABELS[c as ServiceCategory] ?? c,
-      })),
+    () => (meta?.categories ?? []).map((c) => ({ value: String(c.id), label: c.name })),
     [meta],
   );
   const currencyOptions = useMemo(
@@ -236,7 +234,7 @@ function ListingForm({
 
     const payload = {
       title: data.title,
-      category: data.category as ServiceCategory,
+      category_id: Number(data.categoryId),
       description: data.description.trim() ? data.description.trim() : null,
       price_minor: minor,
       currency: data.currency as Currency,
@@ -257,7 +255,7 @@ function ListingForm({
     }
 
     toast.success(isEdit ? "Service updated" : "Service created");
-    router.push("/personal/services");
+    router.push("/personal/earn/services");
   };
 
   return (
@@ -292,13 +290,13 @@ function ListingForm({
             <Combobox
               id="category"
               options={categoryOptions}
-              value={form.category}
-              onChange={(value) => setForm((f) => ({ ...f, category: value }))}
+              value={form.categoryId}
+              onChange={(value) => setForm((f) => ({ ...f, categoryId: value }))}
               placeholder="Choose a category"
               searchPlaceholder="Search categories..."
-              aria-invalid={!!errors.category}
+              aria-invalid={!!errors.categoryId}
             />
-            <FieldError message={errors.category} />
+            <FieldError message={errors.categoryId} />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -407,7 +405,7 @@ function ListingForm({
 function BackLink() {
   return (
     <Link
-      href="/personal/services"
+      href="/personal/earn/services"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="h-4 w-4" />

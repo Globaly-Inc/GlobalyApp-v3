@@ -7,7 +7,7 @@
 
 import { config } from "../../../config.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import type { PaymentDriver, PaymentRefund, PaymentSession } from "./types.js";
+import type { CheckoutSession, PaymentDriver, PaymentRefund, PaymentSession } from "./types.js";
 
 const logger = createChildLogger("payments-stripe");
 
@@ -56,6 +56,34 @@ const intentId = (value: StripeSession["payment_intent"]): string | null =>
 
 export const stripeDriver: PaymentDriver = {
   name: "stripe",
+
+  async createCheckoutSession(req): Promise<CheckoutSession> {
+    // Form-encoded nested keys are how Stripe takes line items over the REST API.
+    const form: Record<string, string> = {
+      mode: "payment",
+      "line_items[0][quantity]": "1",
+      "line_items[0][price_data][currency]": req.currency.toLowerCase(),
+      // The amount the caller computed from the listing — never a client-supplied figure.
+      "line_items[0][price_data][unit_amount]": String(req.amountMinor),
+      "line_items[0][price_data][product_data][name]": req.productName,
+      success_url: req.successUrl,
+      cancel_url: req.cancelUrl,
+      // Echoed back on the session so verification can cross-check the order it claims to settle.
+      "metadata[order_id]": String(req.orderId),
+    };
+    if (req.description) form["line_items[0][price_data][product_data][description]"] = req.description;
+    if (req.buyerEmail) form.customer_email = req.buyerEmail;
+
+    const session = await call<{ id: string; url: string | null }>("/checkout/sessions", {
+      method: "POST",
+      form,
+      // One checkout per order: a double-submitted Buy resumes the same session instead of creating a
+      // second one the buyer could also pay.
+      idempotencyKey: `service-order-checkout-${req.orderId}`,
+    });
+    if (!session.url) throw new Error("Stripe returned a session with no URL");
+    return { sessionId: session.id, url: session.url };
+  },
 
   async retrieveSession(sessionId: string): Promise<PaymentSession> {
     const s = await call<StripeSession>(`/checkout/sessions/${encodeURIComponent(sessionId)}`, { method: "GET" });

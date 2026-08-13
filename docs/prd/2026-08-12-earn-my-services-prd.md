@@ -1,11 +1,11 @@
 # Earn → My Services (V3) — PRD
 
-> **Status:** Implemented | **Owner:** Wonjala Joshi | **Last updated:** 2026-08-12
+> **Status:** Implemented | **Owner:** Wonjala Joshi | **Last updated:** 2026-08-13
 > **Parent:** Personal Portal (V3) · Epic 5 — Earn, Feature 1
-> **Surface:** `/personal/services` | **Stack:** Next.js 16 App Router + Redux Toolkit · Fastify 5 + Knex + Postgres
+> **Surface:** `/personal/earn/services` | **Stack:** Next.js 16 App Router + Redux Toolkit · Fastify 5 + Knex + Postgres
 > **One-liner:** V2 asked sellers to type their price in cents and let them delete a listing with a paid order against it; V3 takes the price the way a person says it, refuses to strand a payment, and makes every order row lead to the order it names.
 
-**Scope: My Services only — seller listing management plus the post-order lifecycle.** Buyer acquisition, order creation and the public marketplace are deferred. This documents what shipped, not an aspiration; where the source PRD asked for something this does not do, it is recorded as a scope cut with the reason.
+**Scope: the whole loop — create a listing, have it found publicly, be ordered, be paid for, and be completed.** Seller listing management, the public marketplace, order creation, checkout, the post-order lifecycle, and read-only admin oversight. This documents what shipped, not an aspiration; where the source PRD asked for something this does not do, it is recorded as a scope cut with the reason.
 
 ---
 
@@ -23,7 +23,9 @@ My Services is a genuine two-sided marketplace inside the Personal portal: the s
 | Ratings are never recomputed | No trigger, no function, nothing recomputes `avg_rating`/`total_reviews` after a review insert — every listing showed 0 stars however many reviews it had | Recomputed **from the rows, in the same transaction** as the review insert. |
 | The status enum has no DB constraint | The six values live only in `serviceConstants.ts` | `CHECK` constraint on `service_orders.status`. |
 | The payment return can double-fire | Verification is idempotent server-side, but the client has no reload guard | Fires **exactly once per mount** behind a ref guard; a replay reads as success, never as a failure. |
-| **The buyer path does not exist at all** | `createServiceOrderCheckout()` has **zero callers**; nothing anywhere inserts into `service_orders`; `/student-service/:id` renders the *business* course page and reads `useParams<{slug}>` for a route with no `slug` | Unchanged — still out of scope. See §3 and §9. |
+| **The buyer path does not exist at all** | `createServiceOrderCheckout()` has **zero callers**; nothing anywhere inserts into `service_orders`; `/student-service/:id` renders the *business* course page and reads `useParams<{slug}>` for a route with no `slug`. No buyer could ever complete a purchase. | **Built.** A public marketplace at `/services`, a detail page at `/service/:id`, order creation, and checkout — so a listing can be found, bought, paid for and completed. |
+| Categories are a hardcoded enum | `serviceConstants.ts` — seven slugs in code, so adding one is a deploy | Rows in `service_categories`, administered at `/admin/platform/categories`. See §5. |
+| Nobody can see what is on the marketplace | No admin view of services at all | Read-only oversight at **Admin → Monitoring → Services**. |
 
 ---
 
@@ -43,41 +45,65 @@ Refunds *are* real when Stripe is configured: refunding money the platform alrea
 ## 3. Scope
 
 ### In scope (shipped)
-- `/personal/services` — earnings strip + three counted tabs (My Listings · My Purchases · Received Orders)
-- `/personal/services/new` and `/personal/services/[serviceId]/edit` — create and edit, one form
-- `/personal/services/orders/[orderId]` — order detail, dual confirmation, review, dispute, cancel, refund
-- `/personal/services/payment-success` — the payment return, verified once and safe to reload
+
+**Seller**
+- `/personal/earn/services` — earnings strip + three counted tabs (My Listings · My Purchases · Received Orders)
+- `/personal/earn/services/new` and `/personal/earn/services/[serviceId]/edit` — create and edit, one form
 - Listing lifecycle: active ⇄ paused → deleted (soft), with deletion refused while money is committed
-- Order lifecycle after creation: `pending_payment` → `paid` → `completed` / `disputed` / `refunded` / `cancelled`
+- **View public page** on a listing card — a real destination now
+
+**Buyer**
+- `/services` — the public marketplace: search, category filter, pagination. **Unauthenticated**
+- `/service/:serviceId` — public detail with reviews, the seller, and **Book this service**. Unauthenticated to read; signing in is required only to buy, and returns you to the listing you were on
+- Order creation, checkout, and the payment return
+
+**Both**
+- `/personal/earn/services/orders/[orderId]` — order detail, dual confirmation, review, dispute, cancel, refund
+- `/personal/earn/services/payment-success` — the payment return, verified once and safe to reload
+- Order lifecycle: `pending_payment` → `paid` → `completed` / `disputed` / `refunded` / `cancelled`
 - A payment driver seam: real Stripe when configured, a dev driver otherwise
+
+**Admin**
+- **Monitoring → Services** — read-only listings and orders, with per-currency totals
+- Categories administered at **Platform → Categories**, the screen that already existed
 
 ### Out of scope, and why
 | Cut | Reason |
 |---|---|
-| **Order creation / the Buy flow** | A buyer acquires a service on the public marketplace, which does not exist in V3. This module owns everything *after* an order exists. V2 had no order creator either — its buyer path was unreachable. |
-| **Public `/services` browse and `/service/:id` detail** | Same epic as the buy flow. The source PRD's "View public page" action on a listing card is therefore **omitted rather than pointed at a route that 404s**. |
-| **Stripe Checkout session creation** | The source PRD puts it out of scope — the portal "redirects out and handles the return". The driver implements only what this feature needs: session retrieval and refunds. |
-| **Stripe webhook** | Settlement is verify-on-return and is idempotent. A buyer who closes the tab mid-checkout leaves the order `pending_payment` until they return; a webhook is the fix when that matters. |
+| **Admin moderation of services** | The screen is read-only. Pausing someone's listing or forcing a refund are real powers needing their own audit trail and permission story; this phase answers "what is on the marketplace and what is being bought". |
+| **Stripe webhook** | Settlement is verify-on-return and is idempotent. A buyer who closes the tab mid-checkout leaves the order `pending_payment` until they return — recoverable, because pressing Buy again resumes that same order rather than creating a second one. A webhook is the fix when abandoned checkouts matter. |
 | **Seller payouts / Stripe Connect** | See §2. |
 | **Dispute resolution** | `disputed` is a status this UI renders read-only with the escalation stated. Resolving it is Ops. |
-| **Ambassador and Referrals** | Deferred entirely — no route, page, tab, API, table, reducer or nav entry, **not even placeholders**. |
-| **The Earn module shell / landing** | `/personal/earn` stays `ComingSoon`. Two of the source PRD's three landing cards point at Ambassador and Referrals, so building it would ship two dead links. |
-| **A navigation entry** | `personal-shell.tsx` is untouched. See §9. |
+| **Ambassador and Referrals as features** | Both exist only as `ComingSoon` tabs in the Earn sub-nav, so the module shows its real shape. No route beyond the stub, no API, table, reducer or feature work. |
+| **The Earn landing state** | `/personal/earn` redirects to My Services rather than resolving between three entry cards. Two of the source PRD's three paths are unbuilt, so choosing between them would be theatre. |
 | **Cover image upload in this environment** | Built and wired, but storage is GCS-only on this branch and no bucket is configured. See §6.4. |
 
 ---
 
 ## 4. Routes
 
+My Services is nested **under the Earn module**, which owns a second-level nav (My Services · Ambassadors · Referrals) rendered by `personal/earn/layout.tsx`. Nesting the URLs rather than only the chrome means the Earn top-nav item highlights on every sub-route with a plain prefix match, and the sub-nav persists across the form, an order and the payment return without any per-page wiring.
+
 | # | Route | Page | Notes |
 |---|---|---|---|
-| 1 | `/personal/services` | Services hub | Earnings strip + 3 counted tabs |
-| 2 | `/personal/services/new` | Listing form | The static `new` segment is matched before `[serviceId]` by the App Router, so the source PRD's ordering requirement holds by construction |
-| 3 | `/personal/services/[serviceId]/edit` | Listing form | Non-numeric id → `notFound()` before any request is made |
-| 4 | `/personal/services/orders/[orderId]` | Order detail | Either party may read it; nobody else learns it exists |
-| 5 | `/personal/services/payment-success` | Payment return | Requires `?session_id=`; without it, the error state — decided at first render, not by an effect |
+| 0 | `/personal/earn` | — | Redirects to My Services |
+| 1 | `/personal/earn/services` | Services hub | Earnings strip + 3 counted tabs |
+| 2 | `/personal/earn/services/new` | Listing form | The static `new` segment is matched before `[serviceId]` by the App Router, so the source PRD's ordering requirement holds by construction |
+| 3 | `/personal/earn/services/[serviceId]/edit` | Listing form | Non-numeric id → `notFound()` before any request is made |
+| 4 | `/personal/earn/services/orders/[orderId]` | Order detail | Either party may read it; nobody else learns it exists |
+| 5 | `/personal/earn/services/payment-success` | Payment return | Requires `?session_id=`; without it, the error state — decided at first render, not by an effect |
+| 6 | `/personal/earn/ambassadors` · `/personal/earn/referrals` | `ComingSoon` | Tabs, not features — see §3 |
 
-All five are authenticated by the existing global `onRequest` hook. No `/student/*` path is emitted anywhere.
+**Public** (no token, and no portal shell — these render in the `(web)` marketing layout):
+
+| # | Route | Page | Notes |
+|---|---|---|---|
+| 7 | `/services` | Marketplace | Search, category chips, pagination |
+| 8 | `/service/:serviceId` | Service detail | Reviews, seller, Book this service |
+
+**Admin:** `/admin/monitoring/services`.
+
+Everything under `/personal/*` and `/admin/*` is authenticated by the existing global `onRequest` hook. No `/student/*` path is emitted anywhere.
 
 ---
 
@@ -88,7 +114,11 @@ All five are authenticated by the existing global `onRequest` hook. No `/student
 Named **`service_listings`**, not `services`: `service_categories` already exists and is a *business* category taxonomy (`business_category_default_services`), an unrelated thing. A bare `services` table beside it would read as its parent.
 
 ### `service_listings`
-`provider_id` → `platform_users` CASCADE · `title` · `description` · `category` · `price_minor` · `currency` · `country_id` → `countries` · `city_id` → `cities` · `cover_storage_path` · `is_active` · `avg_rating` · `total_reviews` · `total_orders` · timestamps · `deleted_at`.
+`provider_id` → `platform_users` CASCADE · `title` · `description` · **`category_id` → `service_categories` RESTRICT** · `price_minor` · `currency` · `country_id` → `countries` · `city_id` → `cities` · `cover_storage_path` · `is_active` · `avg_rating` · `total_reviews` · `total_orders` · timestamps · `deleted_at`.
+
+**Categories are data, not an enum** (`20260813_001`). The first migration pinned `category` to seven slugs with a `CHECK`. That is right for an enum and wrong for a taxonomy someone administers: an admin adding a category in `/admin/platform/categories` could not use it, because the constraint would reject the write. Listings now reference `service_categories` — the table that already carried slug/name/description/icon/is_active/sort_order **and already had a superadmin CRUD screen** — so no new table and no new admin UI were needed.
+
+The seven rows are inserted by that migration rather than a seeder: they are the values the dropped `CHECK` used to enforce, so the schema change and the values it depends on have to travel together or a migrated database has a category picker with nothing in it. `RESTRICT` on the FK means a category with listings against it **cannot be deleted** — an admin retires it (`is_active = false`), which hides it from new listings while leaving existing ones intact.
 
 - **Money is an integer minor amount**, never `numeric` and never a float. V2 stored `numeric` *and* asked the seller to type it; the units are a storage decision the UI never sees.
 - Location **reuses the existing `countries`/`cities` tables** rather than V2's free text, which is why V2's listings could not be filtered by location reliably.
@@ -117,7 +147,9 @@ V2 had no rating check — the 1–5 range lived only in a Zod schema, so anythi
 
 | Route | Purpose |
 |---|---|
-| `GET /meta` | The 7 categories, 4 currencies, and what this environment can do (`cover_upload_available`, `payments_live`) |
+| `GET /meta` | Categories (rows), currencies, and what this environment can do (`cover_upload_available`, `payments_live`) |
+| `POST /orders` | **Place an order.** The buyer sends a listing id and nothing that costs money |
+| `POST /orders/:orderId/checkout` | Start payment; returns somewhere to pay |
 | `GET /summary` | Per-currency order-value totals + counts + `payouts_live: false` |
 | `GET · POST /listings` · `GET · PATCH · DELETE /listings/:serviceId` | Listing CRUD, ownership from the JWT |
 | `POST /listings/cover` | Cover upload (multipart), declared before `/:serviceId` |
@@ -128,6 +160,29 @@ V2 had no rating check — the 1–5 range lived only in a Zod schema, so anythi
 | `GET · POST /orders/:orderId/review` | Buyer-only, `completed`-only, once |
 
 Every schema is `.strict()`, so `provider_id`, `avg_rating`, `total_reviews`, `total_orders` or an `id` in the body is rejected loudly rather than silently stripped.
+
+### Public — `/api/v3/services`, no token
+
+| Route | Purpose |
+|---|---|
+| `GET /` | Browse: `search`, `category_id`, `country_id`, `city_id`, `currency`, `page`, `limit` (capped at 48) |
+| `GET /:serviceId` | Detail |
+| `GET /:serviceId/reviews` | Reviews with reviewer names |
+| `GET /categories` | Active categories, for the filter and the seller's form |
+
+Mounted on a **separate prefix and a separate file**, so "is this endpoint public?" is answered by which file a route lives in rather than by reading a regex. `auth.plugin.ts`'s allow-list is an exact-match `Set` that cannot express `/services/:id`, so a small anchored, digit-only pattern list sits beside it — everything a seller owns is under `/api/v3/my-services` and cannot match it at all.
+
+The public shape is deliberately narrower than the seller's: no `cover_storage_path`, no `open_orders_count`, no provider email. A paused or deleted listing 404s rather than 403s — a buyer has no business learning that a seller took something down.
+
+### Admin — `/api/v3/admin/platform/services`
+
+`GET /services` (filter by search/category/status incl. `deleted`) · `GET /services/orders` · `GET /services/stats`. Read-only, inside the platform module so it inherits the existing `super_admin` / `data_admin` guard.
+
+### Ordering
+
+The buyer sends **only a listing id**. Amount, currency and provider are read from the listing and snapshotted onto the order — that is what stops a client naming its own price, and what keeps a later price edit from changing what an existing order owes. Self-purchase and paused listings are refused, and pressing Buy twice **resumes the buyer's existing unpaid order** rather than stacking abandoned rows, each of which would separately block the seller from deleting the listing.
+
+Checkout stores the session id on the order, which is what the return path looks it up by and what the unique index makes one-to-one. Both drivers take the same `{CHECKOUT_SESSION_ID}` placeholder contract: Stripe substitutes it, the dev driver substitutes it itself.
 
 ### 6.1 Payment verification is a six-point reconciliation, not a boolean
 
@@ -179,7 +234,7 @@ Uses `shared/storage/storageService.ts` **unchanged** — an image-only allow-li
 
 ## 7. Frontend
 
-`src/app/personal/services/` in the mandated `frontend/AGENTS.md` shape — `apis/{types,mock-data,real-api,index}`, `store/my-services-slice.ts`, `const/`, `utils/`, `components/`, thin `page.tsx`, pass-through `layout.tsx`. Reducer registered as `myServices`.
+`src/app/personal/earn/services/` in the mandated `frontend/AGENTS.md` shape — `apis/{types,mock-data,real-api,index}`, `store/my-services-slice.ts`, `const/`, `utils/`, `components/`, thin `page.tsx`, pass-through `layout.tsx`. Reducer registered as `myServices`.
 
 - **Money on the wire is an integer minor amount in both directions**, so no money value is ever a float in JSON. Conversion happens at exactly one point on each side: `toMinorUnits` / `formatMoney` in `utils/`. `toMinorUnits` rejects anything that is not a plain decimal (`1e3`, `1,000`, `50abc`) and rounds *after* multiplying — `19.99 * 100` is `1998.9999…` in binary floating point, so truncating would silently charge a cent less.
 - **Per-region status fields** (`summaryStatus` / `listingsStatus` / `purchasesStatus` / `receivedStatus` / `listingStatus` / `orderStatus`) so a failure in one region leaves the others rendered. Each tab renders loading → error+retry → empty → content, in that order.
@@ -188,7 +243,7 @@ Uses `shared/storage/storageService.ts` **unchanged** — an image-only allow-li
 - **`type FormState`, not `interface`** — `useValidatedForm` takes `T extends Record<string, unknown>` and TypeScript only infers an implicit index signature for type aliases. Every other form in the app does the same.
 - Comboboxes sit in `flex flex-col gap-*`, never `space-y-*` — base-ui's focus-guard spans inherit sibling margins and shift the layout when a popover opens (documented in `frontend/AGENTS.md`).
 - **`citiesLoading` is derived, not stored** (`a country is selected but its cities have not arrived`), and cities are cached against the country they belong to, so a stale list can never be shown for a newly picked country.
-- **Local `services-tabs.tsx`.** There is no shadcn Tabs primitive in this app; the admin portal's equivalent stays where it is rather than being moved, which would touch two unrelated views.
+- **Local `services-tabs.tsx`.** There is no shadcn Tabs primitive in this app; the admin portal's equivalent stays where it is rather than being moved, which would touch two unrelated views. It is the *in-page* switcher (My Listings / My Purchases / Received Orders) and is a different thing from `earn-sub-nav.tsx`, which is the module's second-level **route** nav and lives one level up in `personal/earn/`.
 - Responsive: card grid `md:2 lg:3`, stacked order rows, `max-w-2xl` forms; the shell's existing `pb-24 md:pb-6` already clears the mobile bar.
 
 ---
@@ -221,10 +276,9 @@ Uses `shared/storage/storageService.ts` **unchanged** — an image-only allow-li
 
 ## 9. Deferred dependencies — documented, not built
 
-1. **No navigation entry point.** `/personal/services` is fully functional by URL, but nothing links to it, because linking means editing `personal-shell.tsx`. The whole fix is one line at `personal-shell.tsx:40` — repointing `Earn` to `/personal/services`, or giving `NAV_ITEMS` an optional `match` prefix so the item highlights on sub-routes.
-2. **Nothing creates orders.** Both order tabs, order detail, confirmation, dispute, cancel, refund and the payment return are built and tested; they have nothing to show until a buy flow exists. Orders come from test fixtures and the dev seed script, never from a production code path.
-3. **Seller payouts.** See §2.
-4. **Cover upload needs `GCS_BUCKET_NAME`.** See §6.4.
+1. **Seller payouts.** See §2. The loop is complete except that money stops at the platform.
+2. **Cover upload needs `GCS_BUCKET_NAME`.** See §6.4. Listings work without a cover; the marketplace card falls back to a titled placeholder rather than an empty grey frame.
+3. **A seller viewing their own listing publicly still sees "Book this service".** The public page is unauthenticated, so the server cannot mark a listing as the viewer's, and the profile slice carries no user id to compare against. Rather than add an authenticated call to a public page purely to hide a button, the server's refusal — *"You cannot buy your own service"* — surfaces in a toast. Closing this properly means an optional-auth read that sets `is_mine`.
 
 ---
 
@@ -270,10 +324,42 @@ Uses `shared/storage/storageService.ts` **unchanged** — an image-only allow-li
 | 36 | The dev payment driver is refused in production, and only there | `services.test.ts` — dev in development, throws in production, stripe with a key |
 | 37 | Every route requires authentication | `services.test.ts` — 401 across five routes. **Live: 401** |
 | 38 | Meta reports what this environment can actually do | `services.test.ts`. **Live: `cover_upload_available: false`, `payments_live: false`** |
+| 39 | Browse, detail, reviews and categories are readable with no token at all | `services.test.ts` — four routes, 200 each. **Live: all four with no `Authorization` header** |
+| 40 | The public shape leaks nothing seller-only | `services.test.ts` — `cover_storage_path` and `open_orders_count` absent. **Live: none of `cover_storage_path`, `open_orders_count`, `provider_email` present** |
+| 41 | A paused or deleted listing disappears from the marketplace entirely | `services.test.ts` — gone from browse, 404 on detail, back on resume. **Live: 0 results, detail 404, still visible and editable to its owner** |
+| 42 | Browse filters and pages | `services.test.ts` — category, search, currency, `limit`/`page` with correct `totalPages`. **Live: category 1, search 1, no-match 0** |
+| 43 | A buyer orders, and the price comes from the listing | `services.test.ts` — `amount_minor` 5000 snapshotted, provider from the listing. **Live: `amount=5000 AUD`** |
+| 44 | A client cannot name its own price, provider or status when ordering | `services.test.ts` — `amount_minor`, `currency`, `provider_id`, `status` each 400 |
+| 45 | You cannot buy your own service, or a paused one | `services.test.ts` — 400 and 409. **Live: "You cannot buy your own service"** |
+| 46 | Pressing Buy twice resumes the same unpaid order | `services.test.ts` — same id, exactly one row |
+| 47 | Checkout returns somewhere to pay and binds the session to the order | `services.test.ts` — placeholder substituted, session stored, provider 403. **Live: return URL carries the session** |
+| 48 | The whole buyer journey works end to end | `services.test.ts` — order → pay → held → both confirm → review reaches the public listing. **Live: all nine steps** |
+| 49 | A listing can use any active category; a retired or missing one is refused | `services.test.ts` — new category usable immediately, retired 400, unknown 400 |
+| 50 | A category with listings cannot be deleted | `services.test.ts` — the `RESTRICT` FK rejects it, so an admin retires instead of orphaning |
+| 51 | Admin sees listings, orders and per-currency totals, and only admins do | **Live: stats/listings/orders correct; a platform user 403, no token 401** |
 
-**Automated:** 40 backend tests, all passing (`DB_NAME=globalyapp_test npm test`). Migration applies, rolls back and re-applies cleanly; all 9 CHECK constraints and 11 indexes verified present. `npx tsc --noEmit` clean on both sides. `yarn lint` introduces no new problems — back to the exact pre-existing baseline (2 errors in `auth/`, 2 `<img>` warnings in `admin/`). `yarn build` succeeds with all five routes compiled.
+**Automated:** 50 backend tests, all passing (`DB_NAME=globalyapp_test npm test`). Migration applies, rolls back and re-applies cleanly; all 9 CHECK constraints and 11 indexes verified present. `npx tsc --noEmit` clean on both sides. `yarn lint` introduces no new problems — back to the exact pre-existing baseline (2 errors in `auth/`, 2 `<img>` warnings in `admin/`). `yarn build` succeeds with all five routes compiled.
 
-**Live:** a full HTTP walk against `node --import tsx src/server.ts` on a seeded database — 20 numbered steps covering listing CRUD, the price fix, the delete guard, all four reconciliation refusals, reload idempotency, dual confirmation, reviews, cancel, dispute, refund **and its split-failure recovery**, the summary, role separation, terminal refusals and ownership.
+**Live:** two full HTTP walks against `node --import tsx src/server.ts` on a scratch database.
+
+*Seller and post-order* — 20 numbered steps: listing CRUD, the price fix, the delete guard, all four reconciliation refusals, reload idempotency, dual confirmation, reviews, cancel, dispute, refund **and its split-failure recovery**, the summary, role separation, terminal refusals and ownership.
+
+*The whole loop, from nothing* — 11 numbered steps on an empty database:
+
+```
+①  categories come from the DB          7 rows, ids and slugs
+②  seller creates a listing at 50       price_minor=5000, category "Airport Pickup"
+③  it appears publicly, NO token        1 result; category/search/no-match filters correct
+④  public detail, NO token              nothing seller-only leaked
+⑤  buyer places an order                amount=5000 AUD, snapshotted
+    seller buying their own             "You cannot buy your own service"
+⑥  buyer starts checkout                return URL carries a session encoding 5000 AUD
+⑦  buyer returns, order settles         paid; two reloads → already_verified, counted once
+⑧  buyer confirms → still held          seller confirms → completed, completed_at set
+⑨  buyer reviews                        public listing: rating 5, 1 review, 1 order
+⑩  seller pauses                        0 public results, detail 404, still theirs
+⑪  admin oversight                      stats + rows correct; platform user 403, no token 401
+```
 
 ---
 
@@ -292,17 +378,20 @@ There is no frontend test runner in this repo and adding one was out of scope, s
 
 ---
 
-## 12. Launch reality — which tabs are empty and why
+## 12. Launch reality
 
-No V2 data is migrated and the producer for orders does not exist yet. Recorded rather than papered over; no seed or fake producer was added to make the hub look populated.
+No V2 data is migrated, so every surface starts empty — but every one of them now has a real producer. Recorded rather than papered over; no fake producer was added to make anything look populated.
 
-| Region | Producer in this scope | At launch |
+| Region | Producer | At launch |
 |---|---|---|
 | My Listings | the form built here | **real** |
-| Earnings strip | the orders below it | real, and **0 in every currency** until an order exists |
-| My Purchases | none until a buy flow exists | **empty** |
-| Received Orders | none until a buy flow exists | **empty** |
-| Cover images | needs `GCS_BUCKET_NAME` | field hidden until a bucket is set |
+| Public marketplace | any active listing | **real** — a listing is findable the moment it is created |
+| My Purchases · Received Orders | the Buy flow built here | **real** — no longer structurally empty |
+| Earnings strip | the orders above | real, **0 in every currency** until someone buys |
+| Admin → Services | everything above | **real** |
+| Categories | seeded by migration, edited in Platform → Categories | **real**, 7 rows |
+| Cover images | needs `GCS_BUCKET_NAME` | field hidden until a bucket is set; cards fall back to a titled placeholder |
+| Seller payouts | none — no Connect account | **not live**, and the UI says so |
 
 For demos, seed with `node --import tsx scripts/seed-services-demo.ts --email=you@example.com` — a standalone script, idempotent, never part of `npm run seed:globalyapp`, and it refuses to run with `NODE_ENV=production`.
 
@@ -326,7 +415,7 @@ node --import tsx scripts/seed-services-demo.ts --email=you@example.com
 
 **A note on the local migration ledger.** Commit `2f0cbfc` renumbered the `20260811_*` migrations, and a database that applied them under the old names reports *"the migration directory is corrupt"* and refuses to run anything. The schema is fine; only the ledger's filenames are stale. This is pre-existing and unrelated to this feature, but it blocks `migrate:latest` on any environment in that state.
 
-### Files changed outside this feature — four, each the minimum
+### Files changed outside this feature
 
 | File | Change | Why unavoidable |
 |---|---|---|
@@ -334,8 +423,12 @@ node --import tsx scripts/seed-services-demo.ts --email=you@example.com
 | `src/config.ts` | `NODE_ENV` and `STRIPE_SECRET_KEY`, both optional | `config.ts` is documented as the only place `process.env` is read |
 | `package.json` | one `"test"` script | There was none; this is the only way the suite can run. No dependency added |
 | `frontend/src/lib/store.ts` | one reducer line | `frontend/AGENTS.md` mandates registering the slice there |
+| `personal-shell.tsx` | prefix nav match · `overflow-x-clip` on `<main>` · V2 header (square mark, plain "Personal" + divider, bordered avatar with chevron) | Equality left `Earn` dark the moment you opened anything it owns; `overflow-x-clip` lets the sub-nav's rule span the viewport without the 100vw box adding scrollbar-width of horizontal scroll; the header work was requested directly |
+| `core/plugins/auth.plugin.ts` | a `publicPatterns` list beside the exact-match `publicPaths` Set | The Set cannot express `/api/v3/services/:id`. The pattern is anchored and digit-only, and everything a seller owns is under the separate `/api/v3/my-services` prefix, so nothing authenticated can match it |
+| `superadmin/platform/index.ts` | one `app.register(adminServicesRoutes)` line | Puts the admin routes inside the module that already carries the `super_admin` / `data_admin` guard, rather than re-implementing it |
+| `admin/nav-config.ts` · `(web)/components/navbar.tsx` · `personal/page.tsx` | one nav row · the profile dropdown · a redirect for a section root that 404'd | Each requested directly; the `/personal` 404 predates this work (commit `e694e14` moved Home to `/personal/portal` and left no redirect) |
 
-`tests/helpers.ts` and `tests/services.test.ts` are new files, not edits. `personal-shell.tsx`, `auth.plugin.ts`, `shared/*`, `app/geo/*`, the admin components and `app/personal/earn/page.tsx` are untouched.
+`tests/helpers.ts` and `tests/services.test.ts` are new files, not edits. `shared/*` and `app/geo/*` are consumed unchanged.
 
 ---
 
@@ -343,8 +436,8 @@ node --import tsx scripts/seed-services-demo.ts --email=you@example.com
 
 | Item | Why |
 |---|---|
-| A nav entry for `/personal/services` | One line; deliberately deferred to keep this change inside its own module |
-| Order creation + a public detail page | Until then both order tabs are structurally empty |
+| An optional-auth public read, so a seller doesn't see "Book" on their own listing | See §9.3 |
+| A location filter on the marketplace | The API takes `country_id`/`city_id`; the UI offers search + category only |
 | **A defined funds-holding model before any escrow language ships** | Blocks renaming "Payment held" to "In Escrow" — see §2 |
 | Stripe Connect payouts | Blocks any claim that a seller has been paid |
 | A Stripe webhook | Closes the abandoned-checkout gap that verify-on-return leaves |

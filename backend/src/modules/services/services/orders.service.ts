@@ -5,6 +5,7 @@
 // phase does not build. See the PRD's scope section.
 
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../../shared/errors.js";
+import { config } from "../../../config.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { withTransaction } from "../../../core/db/transaction.js";
@@ -72,6 +73,86 @@ function toDto(row: repo.HydratedOrderRow, viewerId: number): OrderDto {
     cancelled_at: iso(row.cancelled_at),
     refunded_at: iso(row.refunded_at),
   };
+}
+
+// ─── Placing an order ──────────────────────────────────────────────────────
+
+/**
+ * Create an order against a listing.
+ *
+ * Amount, currency and provider are read from the listing and **snapshotted onto the order** — the buyer
+ * sends only which listing they want. That is what stops a client naming its own price, and what keeps a
+ * later price edit from retroactively changing what an existing order owes.
+ *
+ * Pressing Buy twice resumes the buyer's existing unpaid order for the same listing rather than stacking up
+ * abandoned rows, each of which would separately block the seller from deleting the listing.
+ */
+export async function createOrder(
+  buyerId: number,
+  input: { listing_id: number; notes?: string | null },
+): Promise<OrderDto> {
+  const listing = await repo.findListingById(input.listing_id);
+  if (!listing) throw new NotFoundError("Service listing not found");
+
+  // A paused listing is off the market: it cannot be found publicly, so it cannot be bought either.
+  if (!listing.is_active) throw new ConflictError("This service is not currently available");
+
+  // The database refuses buyer_id = provider_id as well; this turns it into a sentence rather than a 500.
+  if (listing.provider_id === buyerId) throw new BadRequestError("You cannot buy your own service");
+
+  const existing = await repo.findResumableOrder(listing.id, buyerId);
+  if (existing) return getOne(existing.id, buyerId);
+
+  const order = await repo.insertOrder({
+    listing_id: listing.id,
+    buyer_id: buyerId,
+    provider_id: listing.provider_id,
+    amount_minor: listing.price_minor,
+    currency: listing.currency,
+    status: "pending_payment",
+    notes: input.notes ?? null,
+  });
+
+  return getOne(order.id, buyerId);
+}
+
+/**
+ * Start payment for an order and hand back somewhere to pay.
+ *
+ * The session id is stored on the order, which is what the return path looks the order up by, and what the
+ * unique index makes one-to-one.
+ */
+export async function startCheckout(
+  orderId: number,
+  userId: number,
+  buyerEmail: string | null,
+): Promise<{ url: string; session_id: string }> {
+  const order = await repo.findOrderById(orderId);
+  if (!order) throw new NotFoundError("Order not found");
+  if (order.buyer_id !== userId) throw new ForbiddenError("Only the buyer can pay for this order");
+  if (order.status !== "pending_payment") {
+    throw new ConflictError(`This order is ${readableStatus(order.status)} and cannot be paid`);
+  }
+
+  const driver = getDriver();
+  const returnTo = `${config.WEB_APP_URL}/personal/earn/services`;
+  const session = await driver.createCheckoutSession({
+    orderId: order.id,
+    amountMinor: order.amount_minor,
+    currency: order.currency,
+    productName: order.listing_title,
+    buyerEmail,
+    // The provider substitutes the placeholder; the dev driver does the same substitution itself.
+    successUrl: `${returnTo}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${returnTo}/orders/${order.id}`,
+  });
+
+  await repo.updateOrder(order.id, {
+    payment_session_id: session.sessionId,
+    payment_provider: driver.name,
+  });
+
+  return { url: session.url, session_id: session.sessionId };
 }
 
 export async function listPurchases(buyerId: number): Promise<OrderDto[]> {

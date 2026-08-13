@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { Pause, Pencil, Play, Star, Trash2 } from "lucide-react";
+import { ExternalLink, Pause, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Listing } from "../apis";
-import { CATEGORY_LABELS } from "../const";
 import { formatMoney } from "../utils";
 
 export function ListingCard({
@@ -60,7 +59,8 @@ export function ListingCard({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          {CATEGORY_LABELS[listing.category]}
+          {/* The label travels with the row, so an admin renaming a category shows up here immediately. */}
+          {listing.category_name}
           {listing.city_name ? ` · ${listing.city_name}` : ""}
           {listing.country_name ? `, ${listing.country_name}` : ""}
         </p>
@@ -96,7 +96,7 @@ export function ListingCard({
             size="sm"
             className="flex-1"
             render={
-              <Link href={`/personal/services/${listing.id}/edit`}>
+              <Link href={`/personal/earn/services/${listing.id}/edit`}>
                 <Pencil />
                 Edit
               </Link>
@@ -111,6 +111,19 @@ export function ListingCard({
           >
             {listing.is_active ? <Pause /> : <Play />}
           </Button>
+          {/* Now a real destination — the public marketplace exists. Only meaningful while the listing is
+              actually listed, so a paused one doesn't offer a link to a 404. */}
+          {listing.is_active && (
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label="View public page"
+              title="View how buyers see it"
+              render={<Link href={`/service/${listing.id}`} target="_blank" rel="noopener noreferrer" />}
+            >
+              <ExternalLink />
+            </Button>
+          )}
           <Button
             variant="outline"
             size="icon-sm"

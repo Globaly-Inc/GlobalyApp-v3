@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Sparkles, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CATEGORIES, AI_PROMPTS_BY_SLUG } from "../const/index";
+import { CATEGORIES, AI_PROMPTS_BY_SLUG, SEARCH_DESTINATIONS } from "../const/index";
 
 type Mode = "ai" | "search";
 
@@ -30,6 +30,14 @@ export function UnifiedSearchBar() {
       const params = trimmed ? `?q=${encodeURIComponent(trimmed)}` : "";
       router.push(`/ai${params}`);
     } else {
+      // A few slugs have their own page rather than a tab on /search. Carrying the typed query across
+      // matters: dropping it would send someone who typed "airport pickup" to an unfiltered list.
+      const destination = SEARCH_DESTINATIONS[activeSlug];
+      if (destination) {
+        const params = trimmed ? `?${destination.param}=${encodeURIComponent(trimmed)}` : "";
+        router.push(`${destination.path}${params}`);
+        return;
+      }
       const params = trimmed ? `&q=${encodeURIComponent(trimmed)}` : "";
       router.push(`/search?tab=${activeSlug}${params}`);
     }

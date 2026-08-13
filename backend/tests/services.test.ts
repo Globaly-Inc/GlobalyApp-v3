@@ -13,6 +13,7 @@ import {
   resetDb,
   createUser,
   createCountryWithCity,
+  categoryId,
   createListing,
   createOrder,
   readOrder,
@@ -31,9 +32,17 @@ import {
 } from "../src/modules/services/payments/dev-driver.js";
 
 const BASE = "/api/v3/my-services";
+const PUBLIC = "/api/v3/services";
+
+/**
+ * Resolved once. Categories are seeded by migration 20260813_001 and deliberately survive resetDb — they are
+ * reference data an admin owns, not per-test fixtures.
+ */
+let otherCat: number;
 
 before(async () => {
   await getApp();
+  otherCat = await categoryId("other");
 });
 after(closeApp);
 beforeEach(async () => {
@@ -73,7 +82,7 @@ test("a listing is created with a price in minor units and read back", async () 
     method: "POST",
     url: `${BASE}/listings`,
     headers: auth(seller.id, seller.email),
-    payload: { title: "City Orientation", category: "city_orientation", price_minor: 5000, currency: "AUD" },
+    payload: { title: "City Orientation", category_id: await categoryId("city_orientation"), price_minor: 5000, currency: "AUD" },
   });
   assert.equal(created.statusCode, 201);
   const listing = created.json();
@@ -91,7 +100,7 @@ test("a listing is created with a price in minor units and read back", async () 
 test("a zero, negative or fractional price is refused", async () => {
   const app = await getApp();
   const seller = await createUser();
-  const base = { title: "T", category: "other" as const, currency: "AUD" as const };
+  const base = { title: "T", category_id: await categoryId("other"), currency: "AUD" as const };
 
   for (const price_minor of [0, -100, 12.5]) {
     const res = await app.inject({
@@ -121,7 +130,7 @@ test("a client cannot set the owner or any derived figure", async () => {
       method: "POST",
       url: `${BASE}/listings`,
       headers: auth(seller.id, seller.email),
-      payload: { title: "T", category: "other", price_minor: 1000, ...forged },
+      payload: { title: "T", category_id: otherCat, price_minor: 1000, ...forged },
     });
     // .strict() — rejected loudly, not silently stripped.
     assert.equal(res.statusCode, 400, `${JSON.stringify(forged)} should be rejected`);
@@ -191,7 +200,7 @@ test("a city must belong to the chosen country, and changing country clears a st
     headers: h,
     payload: {
       title: "T",
-      category: "other",
+      category_id: otherCat,
       price_minor: 1000,
       country_id: elsewhere.country.id,
       city_id: home.city.id,
@@ -203,7 +212,7 @@ test("a city must belong to the chosen country, and changing country clears a st
     method: "POST",
     url: `${BASE}/listings`,
     headers: h,
-    payload: { title: "T", category: "other", price_minor: 1000, city_id: home.city.id },
+    payload: { title: "T", category_id: otherCat, price_minor: 1000, city_id: home.city.id },
   });
   assert.equal(cityAlone.statusCode, 400);
 
@@ -211,7 +220,7 @@ test("a city must belong to the chosen country, and changing country clears a st
     method: "POST",
     url: `${BASE}/listings`,
     headers: h,
-    payload: { title: "T", category: "other", price_minor: 1000, country_id: home.country.id, city_id: home.city.id },
+    payload: { title: "T", category_id: otherCat, price_minor: 1000, country_id: home.country.id, city_id: home.city.id },
   });
   assert.equal(ok.statusCode, 201);
   assert.equal(ok.json().city_name, home.city.name);
@@ -991,18 +1000,317 @@ test("meta reports the taxonomy and what this environment can actually do", asyn
   const res = await app.inject({ method: "GET", url: `${BASE}/meta`, headers: auth(user.id, user.email) });
   const body = res.json();
 
-  assert.equal(body.categories.length, 7);
-  assert.ok(body.categories.includes("airport_pickup"));
+  // Rows now, not an enum: an admin can add or retire one without a deploy.
+  assert.ok(body.categories.length >= 7);
+  const slugs = body.categories.map((c: { slug: string }) => c.slug);
+  assert.ok(slugs.includes("airport_pickup"), "the seeded taxonomy should be present");
+  for (const c of body.categories) {
+    assert.equal(typeof c.id, "number");
+    assert.equal(typeof c.name, "string");
+  }
   assert.deepEqual(body.currencies, ["AUD", "USD", "GBP", "EUR"]);
   // Booleans, so the client can hide an affordance instead of offering one that can only fail.
   assert.equal(typeof body.cover_upload_available, "boolean");
   assert.equal(typeof body.payments_live, "boolean");
 });
 
-test("every route requires authentication", async () => {
+test("every seller route requires authentication", async () => {
   const app = await getApp();
   for (const url of [`${BASE}/meta`, `${BASE}/summary`, `${BASE}/listings`, `${BASE}/orders`, `${BASE}/received-orders`]) {
     const res = await app.inject({ method: "GET", url });
     assert.equal(res.statusCode, 401, `${url} should require auth`);
   }
+});
+
+// ── The public marketplace ─────────────────────────────────────────────────
+
+test("browse, detail, reviews and categories are readable with no token at all", async () => {
+  const app = await getApp();
+  const { listing } = await scenario();
+
+  for (const url of [PUBLIC, `${PUBLIC}/categories`, `${PUBLIC}/${listing.id}`, `${PUBLIC}/${listing.id}/reviews`]) {
+    const res = await app.inject({ method: "GET", url });
+    assert.equal(res.statusCode, 200, `${url} should be public`);
+  }
+
+  const browse = await app.inject({ method: "GET", url: PUBLIC });
+  assert.equal(browse.json().services.length, 1);
+  const card = browse.json().services[0];
+  assert.equal(card.title, "Airport Pickup — Sydney");
+  assert.equal(card.price_minor, 5000);
+  assert.equal(card.category_name, "Airport Pickup");
+  // The seller is named so a buyer knows who they are dealing with...
+  assert.equal(typeof card.provider_name, "string");
+  // ...but nothing about the seller's own book is exposed.
+  assert.equal(card.cover_storage_path, undefined);
+  assert.equal(card.open_orders_count, undefined);
+});
+
+test("a paused or deleted listing disappears from the marketplace entirely", async () => {
+  const app = await getApp();
+  const { seller, listing } = await scenario();
+  const h = auth(seller.id, seller.email);
+
+  await app.inject({ method: "PATCH", url: `${BASE}/listings/${listing.id}`, headers: h, payload: { is_active: false } });
+
+  assert.equal((await app.inject({ method: "GET", url: PUBLIC })).json().services.length, 0);
+  // 404, not 403: a buyer has no business learning that a seller took something down.
+  assert.equal((await app.inject({ method: "GET", url: `${PUBLIC}/${listing.id}` })).statusCode, 404);
+
+  await app.inject({ method: "PATCH", url: `${BASE}/listings/${listing.id}`, headers: h, payload: { is_active: true } });
+  assert.equal((await app.inject({ method: "GET", url: PUBLIC })).json().services.length, 1);
+
+  await app.inject({ method: "DELETE", url: `${BASE}/listings/${listing.id}`, headers: h });
+  assert.equal((await app.inject({ method: "GET", url: PUBLIC })).json().services.length, 0);
+});
+
+test("browse filters and pages", async () => {
+  const app = await getApp();
+  const seller = await createUser();
+  const pickupCat = await categoryId("airport_pickup");
+  await createListing(seller.id, { title: "Airport run to the city", category_id: pickupCat });
+  await createListing(seller.id, { title: "Maths tutoring", category_id: otherCat, currency: "GBP", price_minor: 2000 });
+  await createListing(seller.id, { title: "Essay proofreading", category_id: otherCat });
+
+  const byCategory = await app.inject({ method: "GET", url: `${PUBLIC}?category_id=${pickupCat}` });
+  assert.equal(byCategory.json().services.length, 1);
+
+  const bySearch = await app.inject({ method: "GET", url: `${PUBLIC}?search=tutoring` });
+  assert.equal(bySearch.json().services.length, 1);
+  assert.equal(bySearch.json().services[0].title, "Maths tutoring");
+
+  const byCurrency = await app.inject({ method: "GET", url: `${PUBLIC}?currency=GBP` });
+  assert.equal(byCurrency.json().services.length, 1);
+
+  const paged = await app.inject({ method: "GET", url: `${PUBLIC}?limit=2&page=1` });
+  assert.equal(paged.json().services.length, 2);
+  assert.equal(paged.json().meta.total, 3);
+  assert.equal(paged.json().meta.totalPages, 2);
+});
+
+// ── Placing and paying for an order ────────────────────────────────────────
+
+test("a buyer orders a listing, and the price comes from the listing", async () => {
+  const app = await getApp();
+  const { seller, buyer, listing } = await scenario();
+
+  const res = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders`,
+    headers: auth(buyer.id, buyer.email),
+    payload: { listing_id: listing.id },
+  });
+  assert.equal(res.statusCode, 201);
+  const order = res.json();
+  assert.equal(order.status, "pending_payment");
+  assert.equal(order.role, "buyer");
+  // Snapshotted from the listing — the buyer never sends an amount.
+  assert.equal(order.amount_minor, 5000);
+  assert.equal(order.currency, "AUD");
+
+  const row = await readOrder(order.id);
+  assert.equal(row.provider_id, seller.id);
+
+  // It shows up on both sides immediately.
+  assert.equal((await app.inject({ method: "GET", url: `${BASE}/orders`, headers: auth(buyer.id, buyer.email) })).json().orders.length, 1);
+  assert.equal(
+    (await app.inject({ method: "GET", url: `${BASE}/received-orders`, headers: auth(seller.id, seller.email) })).json().orders.length,
+    1,
+  );
+});
+
+test("a client cannot name its own price, provider or status when ordering", async () => {
+  const app = await getApp();
+  const { buyer, listing } = await scenario();
+  const attacker = await createUser();
+
+  for (const forged of [{ amount_minor: 1 }, { currency: "GBP" }, { provider_id: attacker.id }, { status: "paid" }]) {
+    const res = await app.inject({
+      method: "POST",
+      url: `${BASE}/orders`,
+      headers: auth(buyer.id, buyer.email),
+      payload: { listing_id: listing.id, ...forged },
+    });
+    assert.equal(res.statusCode, 400, `${JSON.stringify(forged)} should be rejected`);
+  }
+});
+
+test("you cannot buy your own service, or one that is paused", async () => {
+  const app = await getApp();
+  const { seller, buyer, listing } = await scenario();
+
+  const own = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders`,
+    headers: auth(seller.id, seller.email),
+    payload: { listing_id: listing.id },
+  });
+  assert.equal(own.statusCode, 400);
+
+  await app.inject({
+    method: "PATCH",
+    url: `${BASE}/listings/${listing.id}`,
+    headers: auth(seller.id, seller.email),
+    payload: { is_active: false },
+  });
+  const paused = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders`,
+    headers: auth(buyer.id, buyer.email),
+    payload: { listing_id: listing.id },
+  });
+  assert.equal(paused.statusCode, 409);
+});
+
+test("pressing Buy twice resumes the same unpaid order instead of stacking rows", async () => {
+  const app = await getApp();
+  const { buyer, listing } = await scenario();
+  const place = () =>
+    app.inject({
+      method: "POST",
+      url: `${BASE}/orders`,
+      headers: auth(buyer.id, buyer.email),
+      payload: { listing_id: listing.id },
+    });
+
+  const first = (await place()).json();
+  const second = (await place()).json();
+  assert.equal(second.id, first.id);
+  // Otherwise every abandoned checkout would separately block the seller from deleting the listing.
+  assert.equal(await masterKnex("service_orders").count("id as c").first().then((r) => Number(r!.c)), 1);
+});
+
+test("checkout hands back somewhere to pay and binds the session to the order", async () => {
+  const app = await getApp();
+  const { buyer, listing } = await scenario();
+  const order = (
+    await app.inject({
+      method: "POST",
+      url: `${BASE}/orders`,
+      headers: auth(buyer.id, buyer.email),
+      payload: { listing_id: listing.id },
+    })
+  ).json();
+
+  const checkout = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/checkout`,
+    headers: auth(buyer.id, buyer.email),
+  });
+  assert.equal(checkout.statusCode, 200);
+  const { url, session_id } = checkout.json();
+  assert.ok(url.includes("/payment-success"), "should return somewhere that lands on the return page");
+  assert.ok(url.includes(session_id), "the placeholder must be substituted, not passed through");
+  assert.equal((await readOrder(order.id)).payment_session_id, session_id);
+
+  // Only the buyer pays, and only while it is unpaid.
+  const seller = await masterKnex("service_listings").where({ id: listing.id }).first();
+  const asProvider = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/checkout`,
+    headers: auth(seller!.provider_id, "provider@example.com"),
+  });
+  assert.equal(asProvider.statusCode, 403);
+});
+
+test("the whole buyer journey: order → pay → held → both confirm → review", async () => {
+  const app = await getApp();
+  const { seller, buyer, listing } = await scenario();
+  const buyerH = auth(buyer.id, buyer.email);
+  const sellerH = auth(seller.id, seller.email);
+
+  // 1. Order it.
+  const order = (
+    await app.inject({ method: "POST", url: `${BASE}/orders`, headers: buyerH, payload: { listing_id: listing.id } })
+  ).json();
+
+  // 2. Pay — the dev driver hands back the return URL with a session encoding the real amount.
+  const { session_id } = (
+    await app.inject({ method: "POST", url: `${BASE}/orders/${order.id}/checkout`, headers: buyerH })
+  ).json();
+
+  // 3. Come back and settle.
+  const verified = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/payment/verify`,
+    headers: buyerH,
+    payload: { session_id },
+  });
+  assert.equal(verified.json().already_verified, false);
+  assert.equal((await readOrder(order.id)).status, "paid");
+  assert.equal((await readListing(listing.id)).total_orders, 1);
+
+  // 4. One confirmation is not enough.
+  await app.inject({ method: "POST", url: `${BASE}/orders/${order.id}/complete`, headers: buyerH });
+  assert.equal((await readOrder(order.id)).status, "paid");
+
+  // 5. Both are.
+  const done = await app.inject({ method: "POST", url: `${BASE}/orders/${order.id}/complete`, headers: sellerH });
+  assert.equal(done.json().status, "completed");
+
+  // 6. The buyer reviews, and it reaches the public listing.
+  await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/review`,
+    headers: buyerH,
+    payload: { rating: 5, comment: "Spot on" },
+  });
+  const publicView = await app.inject({ method: "GET", url: `${PUBLIC}/${listing.id}` });
+  assert.equal(publicView.json().avg_rating, 5);
+  assert.equal(publicView.json().total_reviews, 1);
+
+  const publicReviews = await app.inject({ method: "GET", url: `${PUBLIC}/${listing.id}/reviews` });
+  assert.equal(publicReviews.json().reviews.length, 1);
+  assert.equal(publicReviews.json().reviews[0].comment, "Spot on");
+});
+
+// ── Categories are administered data ───────────────────────────────────────
+
+test("a listing can use any active category, and a retired one is refused", async () => {
+  const app = await getApp();
+  const seller = await createUser();
+  const h = auth(seller.id, seller.email);
+
+  // An admin adding a category makes it immediately usable — the old CHECK constraint made that impossible.
+  const [fresh] = await masterKnex("service_categories")
+    .insert({ slug: `test_cat_${Date.now()}`, name: "Bike Repair", is_active: true })
+    .returning("*");
+
+  const created = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings`,
+    headers: h,
+    payload: { title: "Bike fix", category_id: fresh.id, price_minor: 1500 },
+  });
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.json().category_name, "Bike Repair");
+
+  await masterKnex("service_categories").where({ id: fresh.id }).update({ is_active: false });
+  const retired = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings`,
+    headers: h,
+    payload: { title: "Another", category_id: fresh.id, price_minor: 1500 },
+  });
+  assert.equal(retired.statusCode, 400);
+
+  // A category that does not exist at all is refused too, rather than reaching the FK as a 500.
+  const missing = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings`,
+    headers: h,
+    payload: { title: "Another", category_id: 999999, price_minor: 1500 },
+  });
+  assert.equal(missing.statusCode, 400);
+
+  // A category with listings against it cannot be deleted — RESTRICT, so an admin has to retire it rather
+  // than orphan live listings. This is why retiring exists as a separate concept.
+  await assert.rejects(
+    () => masterKnex("service_categories").where({ id: fresh.id }).del(),
+    /violates|RESTRICT/i,
+  );
+
+  // Teardown: the listing goes first, then the category is deletable.
+  await masterKnex("service_listings").where({ category_id: fresh.id }).del();
+  await masterKnex("service_categories").where({ id: fresh.id }).del();
 });
