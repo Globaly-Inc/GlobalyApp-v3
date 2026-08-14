@@ -1,0 +1,4 @@
+# Keep GitHub security/branch-protection ruleset policy and Claude Code
+# harness config out of AI tool context (.gitignore syntax)
+devops/github-policies/
+.claude/
