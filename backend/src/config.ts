@@ -47,7 +47,8 @@ const envSchema = z.object({
   // AI / LLM
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
-  GEMINI_EMBEDDING_MODEL: z.string().default("text-embedding-004"),
+  // text-embedding-004 is retired — it 404s on embedContent for current keys.
+  GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
 
   // Scrapers
   CRAWL4AI_BASE_URL: z.string().optional(),  // e.g. https://your-crawl4ai.railway.app

@@ -149,14 +149,46 @@ export async function complete(opts: {
   return result.response.text();
 }
 
+/** Width of every `embedding vector(...)` column in the superadmin schema. */
+export const EMBEDDING_DIMS = 768;
+
 /**
- * Generate embedding vector for text (used by extraction memory).
+ * Generate embedding vector for text (extraction memory + AI Knowledge documents).
+ *
+ * gemini-embedding-001 returns 3072 dimensions by default and only normalises at that
+ * width — a truncated vector comes back with ‖v‖ ≈ 0.57, so we re-normalise here.
+ * Cosine distance would cope, but storing unit vectors keeps inner-product and L2
+ * searches honest too.
  */
 export async function embed(text: string): Promise<number[]> {
-  const ai = getClient();
-  const model = ai.getGenerativeModel({ model: config.GEMINI_EMBEDDING_MODEL });
-  const result = await model.embedContent(text);
-  return result.embedding.values;
+  // Called over REST rather than through the SDK: @google/generative-ai@0.24.1 has no
+  // outputDimensionality on EmbedContentRequest, and without it the model returns 3072.
+  const model = config.GEMINI_EMBEDDING_MODEL;
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${config.GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: `models/${model}`,
+        content: { parts: [{ text }] },
+        outputDimensionality: EMBEDDING_DIMS,
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Embedding failed (${res.status}): ${detail.slice(0, 200)}`);
+  }
+
+  const values: number[] = (await res.json())?.embedding?.values ?? [];
+  if (values.length !== EMBEDDING_DIMS) {
+    throw new Error(`Embedding returned ${values.length} dims, expected ${EMBEDDING_DIMS}`);
+  }
+
+  const norm = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0));
+  return norm > 0 ? values.map((v) => v / norm) : values;
 }
 
 export function isConfigured(): boolean {
