@@ -5,22 +5,12 @@ on:
     branches:
       - main
       - production
+      - staging
       - devops-git-policy
-    paths:
-      - "devops/github-policies/git-security.json"
   schedule:
-    # Runs every 30 minutes, keeping the ruleset in sync even without a push.
+    # Runs every 15 minutes, keeping the ruleset in sync even without a push.
     # GitHub only triggers scheduled workflows from the default branch.
-    - cron: "*/30 * * * *"
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Target environment (only used for manual runs)"
-        type: choice
-        required: true
-        default: gitops
-        options:
-          - gitops
+    - cron: "*/15 * * * *"
 
 concurrency:
   group: sync-git-security-policy-${{ github.ref }}
@@ -40,9 +30,7 @@ jobs:
       - name: Resolve environment
         id: resolve
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            env_name="${{ inputs.environment }}"
-          elif [[ "${{ github.ref_name }}" == "production" ]]; then
+          if [[ "${{ github.ref_name }}" == "production" ]]; then
             env_name="production"
           else
             env_name="gitops"
