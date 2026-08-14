@@ -35,7 +35,7 @@ export async function uploadMedia(input: {
   storage.validateFile(input.mimeType, input.buffer.length, FEED_MEDIA_TYPES);
   const kind = kindFor(input.mimeType);
 
-  const storagePath = storage.buildPath("platform-users", user.uuid, "feed-media", input.filename);
+  const storagePath = storage.buildPath("public", "platform-users", String(input.userId), "feed-media", input.filename);
   await storage.uploadFile(storagePath, input.buffer, input.mimeType);
 
   await filesRepo.insertFile({
