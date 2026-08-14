@@ -7,6 +7,7 @@ import type { PatchAgentInput, PatchCampusInput } from "../schemas/review.schema
 
 // ── Agents ──
 
+// repo returns { agents, agent_locations } — already the wire shape.
 export async function listAgents(jobId: string) {
   return repo.listAgentsByJob(jobId);
 }

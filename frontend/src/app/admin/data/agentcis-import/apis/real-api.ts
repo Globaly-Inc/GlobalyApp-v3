@@ -1,7 +1,18 @@
-import { httpGet } from "@/lib/api/http";
-import type { AgentcisImportBatch } from "./types";
+import { httpPost } from "@/lib/api/http";
+import type { AgentCISResult, ImportResult } from "./types";
 
-// No V3 backend endpoint for this yet — assumed future contract.
 export const agentcisImportRealApi = {
-  getBatches: (): Promise<AgentcisImportBatch[]> => httpGet("/admin/data-extraction/agentcis-import"),
+  search: async (query: string): Promise<AgentCISResult[]> => {
+    const { results } = await httpPost<{ results: AgentCISResult[] }>(
+      "/admin/data-extraction/agentcis/search",
+      { query },
+    );
+    return results;
+  },
+
+  importInstitutions: async (ids: number[]): Promise<ImportResult> => {
+    return httpPost<ImportResult>("/admin/data-extraction/agentcis/import", {
+      institution_ids: ids,
+    });
+  },
 };

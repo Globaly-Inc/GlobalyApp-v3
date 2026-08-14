@@ -1,7 +1,12 @@
-export type AgentcisImportBatch = {
-  id: number | string;
-  batch: string;
-  agents: string;
-  status: string;
-  date: string;
+export type AgentCISResult = {
+  id: number;
+  name: string;
+  type: string;
+  country: string;
+  region: string;
+};
+
+export type ImportResult = {
+  dispatched: boolean;
+  job_count: number;
 };

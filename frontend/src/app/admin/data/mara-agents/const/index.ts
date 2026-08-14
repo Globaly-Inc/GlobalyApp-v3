@@ -1,8 +1,6 @@
-import type { AdminListColumn } from "../../../components/admin-placeholder-view";
-
-export const MARA_AGENT_COLUMNS: AdminListColumn[] = [
-  { key: "name", label: "Agent" },
-  { key: "marn", label: "MARN" },
-  { key: "location", label: "Location" },
-  { key: "status", label: "Status" },
-];
+export const MARA_STATUS_TABS = [
+  { value: "pending", label: "Pending" },
+  { value: "promoted", label: "Promoted" },
+  { value: "discarded", label: "Discarded" },
+  { value: "all", label: "All" },
+] as const;

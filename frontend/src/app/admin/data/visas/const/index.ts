@@ -1,8 +1,6 @@
-import type { AdminListColumn } from "../../../components/admin-placeholder-view";
-
-export const VISA_COLUMNS: AdminListColumn[] = [
-  { key: "name", label: "Visa" },
-  { key: "subclass", label: "Subclass" },
-  { key: "country", label: "Country" },
-  { key: "status", label: "Status" },
-];
+export const VISA_STATUS_TABS = [
+  { value: "pending", label: "Pending" },
+  { value: "promoted", label: "Promoted" },
+  { value: "discarded", label: "Discarded" },
+  { value: "all", label: "All" },
+] as const;

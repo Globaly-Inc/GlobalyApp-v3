@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/combobox";
 import {
@@ -123,7 +124,7 @@ export function AllExtractionsView() {
   };
 
   return (
-    <div>
+    <div className="pb-20">
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-foreground">All Extractions</h1>
         <p className="text-muted-foreground mt-1">Every extraction job — ongoing, completed, failed, declined. Nothing is hidden.</p>
@@ -141,12 +142,12 @@ export function AllExtractionsView() {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search by name or URL..."
+              placeholder="Search by name or URL…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-10 w-56 pl-8 text-xs"
+              className="h-8 w-56 pl-7 text-xs"
             />
           </div>
 
@@ -154,20 +155,22 @@ export function AllExtractionsView() {
             options={SORT_OPTIONS}
             value={sortOrder}
             onChange={(v) => setSortOrder(v as SortOrder)}
-            className="h-10 w-40 text-xs cursor-pointer"
+            className="h-8 w-40 text-xs cursor-pointer"
           />
 
-          <Button variant="outline" className="h-10 text-xs cursor-pointer" onClick={toggleSelectAllVisible}>
-            {allVisibleSelected ? "Deselect all" : "Select all"}
-          </Button>
-
-          {declinedCount > 0 && (
-            <Button variant="ghost" className="gap-1.5 text-xs text-muted-foreground cursor-pointer" onClick={() => setShowDeclined((s) => !s)}>
-              {showDeclined ? "Hide" : "Show"} declined ({declinedCount})
+          {visibleJobs.length > 0 && (
+            <Button variant="ghost" className="h-8 gap-1.5 text-xs cursor-pointer" onClick={toggleSelectAllVisible}>
+              {/* ponytail: rendered as a span — a real checkbox button inside a button is invalid HTML */}
+              <Checkbox checked={allVisibleSelected} render={<span />} className="pointer-events-none" />
+              {allVisibleSelected ? "Deselect all" : "Select all"}
             </Button>
           )}
 
-          <Button size="lg" className="h-10 gap-1.5 px-4 cursor-pointer" onClick={() => setShowNewForm(true)}>
+          <Button variant="ghost" className="h-8 gap-1.5 text-xs text-muted-foreground cursor-pointer" onClick={() => setShowDeclined((s) => !s)}>
+            {showDeclined ? "Hide" : "Show"} declined ({declinedCount})
+          </Button>
+
+          <Button className="gap-2 px-4 cursor-pointer" onClick={() => setShowNewForm(true)}>
             <Plus className="h-4 w-4" />
             New Extraction
           </Button>
@@ -194,20 +197,24 @@ export function AllExtractionsView() {
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-background border border-border shadow-lg rounded-full px-4 py-2 flex items-center gap-3">
           <span className="text-sm font-medium">{selectedIds.size} selected</span>
           <span className="text-xs text-muted-foreground">({selectablePublishCount} publishable)</span>
-          <Button variant="ghost" className="cursor-pointer" onClick={() => setSelectedIds(new Set())}>
+          <Button variant="ghost" size="sm" className="h-8 cursor-pointer" onClick={() => setSelectedIds(new Set())}>
             Clear
           </Button>
-          <Button className="gap-1.5 cursor-pointer" disabled={bulkBusy || selectablePublishCount === 0} onClick={handleBulkPublish}>
+          <Button size="sm" className="h-8 gap-1.5 cursor-pointer" disabled={bulkBusy || selectablePublishCount === 0} onClick={handleBulkPublish}>
+            <Upload className="h-3.5 w-3.5" />
             Publish {selectablePublishCount} to Business
           </Button>
           <Dialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
-            <Button variant="destructive" className="gap-1.5 cursor-pointer" disabled={bulkBusy} onClick={() => setConfirmBulkDelete(true)}>
+            <Button variant="destructive" size="sm" className="h-8 gap-1.5 cursor-pointer" disabled={bulkBusy} onClick={() => setConfirmBulkDelete(true)}>
+              <Trash2 className="h-3.5 w-3.5" />
               Delete {selectedIds.size}
             </Button>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Delete {selectedIds.size} extraction(s)?</DialogTitle>
-                <DialogDescription>This cannot be undone.</DialogDescription>
+                <DialogTitle>Delete {selectedIds.size} extraction{selectedIds.size === 1 ? "" : "s"}?</DialogTitle>
+                <DialogDescription>
+                  This will permanently delete all extracted data for the selected job{selectedIds.size === 1 ? "" : "s"}. This action cannot be undone.
+                </DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <Button variant="outline" className="cursor-pointer" onClick={() => setConfirmBulkDelete(false)}>

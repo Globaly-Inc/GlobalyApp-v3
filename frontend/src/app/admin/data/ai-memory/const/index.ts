@@ -1,7 +1,11 @@
-import type { AdminListColumn } from "../../../components/admin-placeholder-view";
+export const SCOPE_OPTIONS = [
+  { value: "all", label: "All scopes" },
+  { value: "global", label: "Global" },
+  { value: "domain", label: "Domain-specific" },
+];
 
-export const AI_MEMORY_COLUMNS: AdminListColumn[] = [
-  { key: "domain", label: "Domain" },
-  { key: "corrections", label: "Corrections learned" },
-  { key: "updated", label: "Last updated" },
+export const SOURCE_OPTIONS = [
+  { value: "all", label: "All sources" },
+  { value: "manual", label: "Manual" },
+  { value: "auto", label: "Auto-learned" },
 ];

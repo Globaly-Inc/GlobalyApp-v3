@@ -12,22 +12,24 @@ export const CreateCourseSchema = z.object({
   description: z.string().optional(),
 });
 
+// Every optional column is nullable: clearing a field in the review UI has to be able
+// to write NULL back, not just omit the key.
 export const PatchCourseSchema = z
   .object({
     name: z.string(),
-    short_name: z.string(),
-    degree_level: z.string(),
-    subject_area: z.string(),
-    duration_weeks: z.number().int(),
-    study_mode: z.string(),
-    description: z.string(),
-    domestic_fee_total: z.number(),
-    domestic_currency: z.string(),
-    international_fee_total: z.number(),
-    international_currency: z.string(),
-    awarding_institution: z.string(),
-    career_paths: z.array(z.string()),
-    source_url: z.string(),
+    short_name: z.string().nullable(),
+    degree_level: z.string().nullable(),
+    subject_area: z.string().nullable(),
+    duration_weeks: z.number().int().nullable(),
+    study_mode: z.string().nullable(),
+    description: z.string().nullable(),
+    domestic_fee_total: z.number().nullable(),
+    domestic_currency: z.string().nullable(),
+    international_fee_total: z.number().nullable(),
+    international_currency: z.string().nullable(),
+    awarding_institution: z.string().nullable(),
+    career_paths: z.array(z.string()).nullable(),
+    source_url: z.string().nullable(),
   })
   .partial();
 
