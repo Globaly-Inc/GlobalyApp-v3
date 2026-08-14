@@ -58,7 +58,16 @@ export interface OrderRow {
   paid_at: Date | null;
   cancelled_at: Date | null;
   refunded_at: Date | null;
-  // ponytail: `completed_at`, `buyer_confirmed` and `provider_confirmed` still exist on the table but are
+  // Booking handshake (20260815_001). `completed_at` is back in use: the seller now declares completion.
+  booking_answers: Record<string, unknown> | null;
+  booking_note: string | null;
+  decline_reason: string | null;
+  requested_at: Date | null;
+  accepted_at: Date | null;
+  declined_at: Date | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  // ponytail: `buyer_confirmed` and `provider_confirmed` still exist on the table but are
   // deliberately absent here. Dual confirmation was removed, so nothing writes them and nothing should read
   // them; the columns stay so the historical orders that did complete keep their record. Drop them in a
   // migration once no such rows matter.
@@ -80,6 +89,9 @@ export interface HydratedOrderRow extends OrderRow {
   provider_name: string;
   review_id: number | null;
   message_count: number;
+  listing_category_id: number;
+  buyer_email: string;
+  provider_email: string;
 }
 
 const listings = () => masterKnex<ListingRow>("other_service_listings");
@@ -334,9 +346,14 @@ function hydratedOrderQuery(db: Knex | Knex.Transaction = masterKnex) {
       db.raw("(l.deleted_at IS NOT NULL) as listing_deleted"),
       db.raw(`${fullName("b")} as buyer_name`),
       db.raw(`${fullName("p")} as provider_name`),
+      // Both addresses ride along so the booking mails need no second lookup per transition.
+      "b.email as buyer_email",
+      "p.email as provider_email",
       "r.id as review_id",
       // Subquery rather than a join + group by: the review leftJoin above would multiply the message rows.
       db.raw("(SELECT count(*)::int FROM other_service_order_messages m WHERE m.order_id = o.id) as message_count"),
+      // Needed to pair stored booking answers back to the questions their category asked.
+      "l.category_id as listing_category_id",
     );
 }
 
@@ -378,9 +395,16 @@ export async function insertOrder(data: Partial<OrderRow>): Promise<OrderRow> {
  * Pressing Buy twice should resume the existing checkout rather than stack up abandoned rows against the
  * same listing — each of which would separately block the seller from deleting it.
  */
+/**
+ * The buyer's existing live request for this listing, if any.
+ *
+ * `requested` counts as well as `pending_payment`: pressing Book twice must not queue a second request at the
+ * seller, and an accepted-but-unpaid order is still the one to return to rather than start again.
+ */
 export async function findResumableOrder(listingId: number, buyerId: number): Promise<OrderRow | null> {
   const row = await orders()
-    .where({ listing_id: listingId, buyer_id: buyerId, status: "pending_payment" })
+    .where({ listing_id: listingId, buyer_id: buyerId })
+    .whereIn("status", ["requested", "pending_payment"])
     .orderBy("id", "desc")
     .first();
   return row ?? null;
@@ -563,4 +587,32 @@ export async function countListings(providerId: number): Promise<number> {
 export async function countPurchases(buyerId: number): Promise<number> {
   const row = await orders().where({ buyer_id: buyerId }).count<{ count: string }>("id as count").first();
   return Number(row?.count ?? 0);
+}
+
+// ─── Booking question definitions ──────────────────────────────────────────
+//
+// Appended as one block. The questions a category asks are rows in `schema_fields`, the same polymorphic
+// table the superadmin category editor already writes to — so "Airport Pickup needs a date, a time and a
+// pickup address" is three rows an admin creates, not a code change here.
+
+export interface BookingFieldRow {
+  id: number;
+  key: string;
+  label: string;
+  type: "text" | "number" | "boolean" | "date" | "select" | "multi_select";
+  is_required: boolean;
+  options: (string | number)[] | null;
+}
+
+/**
+ * The questions a category asks its buyers, in the order an admin arranged them.
+ *
+ * `entity_type` is "service_categories" because that is what the shared schema_fields table keys on — the
+ * table was not renamed with the Earn tables, since it also serves business categories.
+ */
+export async function listBookingFields(categoryId: number): Promise<BookingFieldRow[]> {
+  return masterKnex("schema_fields")
+    .select("id", "key", "label", "type", "is_required", "options")
+    .where({ entity_type: "service_categories", entity_id: categoryId })
+    .orderBy("id") as unknown as Promise<BookingFieldRow[]>;
 }

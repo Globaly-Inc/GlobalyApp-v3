@@ -171,6 +171,15 @@ const slice = createSlice({
       state.listingStatus = "idle";
       state.listingError = null;
     },
+    /**
+     * Swap in an order the caller already has.
+     *
+     * The booking transitions each return the updated order, so refetching would be a second round trip for
+     * a row we are already holding. Reuses replaceOrder so the lists stay in step with the detail.
+     */
+    replaceOrderLocally(state, action: { payload: Order }) {
+      replaceOrder(state, action.payload);
+    },
     clearOrder(state) {
       state.order = null;
       state.messages = [];
@@ -358,5 +367,5 @@ const slice = createSlice({
   },
 });
 
-export const { clearListing, clearOrder } = slice.actions;
+export const { clearListing, clearOrder, replaceOrderLocally } = slice.actions;
 export const myServicesReducer = slice.reducer;

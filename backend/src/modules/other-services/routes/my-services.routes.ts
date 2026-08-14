@@ -9,7 +9,8 @@ import {
   VerifyPaymentSchema,
   DisputeSchema,
   CreateReviewSchema,
-  CreateOrderSchema,
+  CreateBookingSchema,
+  DeclineBookingSchema,
   SendMessageSchema,
   CURRENCIES,
 } from "../schemas/services.schema.js";
@@ -86,9 +87,15 @@ export async function myServicesRoutes(app: FastifyInstance) {
 
   // ── Orders ──
 
-  /** Place an order. The buyer sends a listing id; price and provider come from the listing. */
+  /**
+   * Submit a booking request. The buyer sends a listing id plus whatever that category asks for; price and
+   * provider come from the listing, and nothing is payable until the seller accepts.
+   *
+   * Still POST /orders: an order is what a request becomes, and giving the same resource two creation URLs
+   * would leave every client guessing which one it is looking at.
+   */
   app.post("/orders", async (req, reply) => {
-    const input = CreateOrderSchema.parse(req.body);
+    const input = CreateBookingSchema.parse(req.body);
     const order = await orders.createOrder(Number(req.auth.sub), input);
     return reply.status(201).send(order);
   });
@@ -166,4 +173,36 @@ export async function myServicesRoutes(app: FastifyInstance) {
     const input = CreateReviewSchema.parse(req.body);
     return reply.status(201).send(await reviews.create(serviceId, Number(req.auth.sub), input));
   });
+
+  // ── The booking handshake ──
+  //
+  // Appended as one block. The seller decides; the buyer pays only once they have.
+
+  /** What the buyer answered, paired with the questions asked. Either party may read it. */
+  app.get("/orders/:orderId/booking", async (req, reply) => {
+    const { orderId } = OrderIdParamSchema.parse(req.params);
+    return reply.send(await orders.bookingDetails(orderId, Number(req.auth.sub)));
+  });
+
+  app.post("/orders/:orderId/accept", async (req, reply) => {
+    const { orderId } = OrderIdParamSchema.parse(req.params);
+    return reply.send(await orders.acceptBooking(orderId, Number(req.auth.sub)));
+  });
+
+  app.post("/orders/:orderId/decline", async (req, reply) => {
+    const { orderId } = OrderIdParamSchema.parse(req.params);
+    const { reason } = DeclineBookingSchema.parse(req.body);
+    return reply.send(await orders.declineBooking(orderId, Number(req.auth.sub), reason));
+  });
+
+  app.post("/orders/:orderId/start", async (req, reply) => {
+    const { orderId } = OrderIdParamSchema.parse(req.params);
+    return reply.send(await orders.startWork(orderId, Number(req.auth.sub)));
+  });
+
+  app.post("/orders/:orderId/finish", async (req, reply) => {
+    const { orderId } = OrderIdParamSchema.parse(req.params);
+    return reply.send(await orders.finishWork(orderId, Number(req.auth.sub)));
+  });
+
 }

@@ -5,7 +5,7 @@
 > **Surface:** `/personal/earn/services` | **Stack:** Next.js 16 App Router + Redux Toolkit · Fastify 5 + Knex + Postgres
 > **One-liner:** V2 asked sellers to type their price in cents and let them delete a listing with a paid order against it; V3 takes the price the way a person says it, refuses to strand a payment, and makes every order row lead to the order it names.
 
-**Scope: the whole loop — create a listing, have it found publicly, be ordered, be paid for, and be talked about.** Seller listing management, the public marketplace, order creation, checkout, the post-purchase conversation, open reviews, an admin-owned category list, and admin oversight. This documents what shipped, not an aspiration; where the source PRD asked for something this does not do, it is recorded as a scope cut with the reason.
+**Scope: the whole loop — create a listing, have it found publicly, be ordered, be paid for, and be talked about.** Seller listing management, the public marketplace, order creation, checkout, the booking handshake, the post-purchase conversation, open reviews, an admin-owned category list, and admin oversight. This documents what shipped, not an aspiration; where the source PRD asked for something this does not do, it is recorded as a scope cut with the reason.
 
 ---
 
@@ -25,6 +25,7 @@ My Services is a genuine two-sided marketplace inside the Personal portal: the s
 | The status enum has no DB constraint | The six values live only in `serviceConstants.ts` | `CHECK` constraint on `service_orders.status`. |
 | The payment return can double-fire | Verification is idempotent server-side, but the client has no reload guard | Fires **exactly once per mount** behind a ref guard; a replay reads as success, never as a failure. |
 | Buyer and seller cannot reach each other | No messaging anywhere in V2's services flow; the order was a dead end once paid | An **order thread** — see §2c. |
+| A buyer could pay for a slot the seller was never free for | V2 took payment on order creation; nothing asked the seller anything | The seller accepts or declines **before** payment, and the request carries whatever the category asks. See §2e. |
 | **The buyer path does not exist at all** | `createServiceOrderCheckout()` has **zero callers**; nothing anywhere inserts into `service_orders`; `/student-service/:id` renders the *business* course page and reads `useParams<{slug}>` for a route with no `slug`. No buyer could ever complete a purchase. | **Built.** A public marketplace at `/services`, a detail page at `/service/:id`, order creation, and checkout — so a listing can be found, bought and paid for. |
 | Categories are a hardcoded enum | `serviceConstants.ts` — seven slugs in code, so adding one is a deploy | Rows in `service_categories`, administered at `/admin/platform/categories`. See §5. |
 | Nobody can see what is on the marketplace | No admin view of services at all | Oversight at **Admin → Monitoring → Other Services**. |
@@ -36,13 +37,13 @@ My Services is a genuine two-sided marketplace inside the Personal portal: the s
 
 The one place this deliberately departs from the source PRD's language, because that wording would have the product promise something it cannot deliver.
 
-- **Nothing closes an order.** Dual confirmation was removed by product decision (see §2c). An order settles into `paid` and stays there; `refunded`, `cancelled` and `disputed` are the only other places it can go. There is no terminal success state, and no `completed` is produced any more.
+- **The seller closes an order, and only the seller.** Dual confirmation was removed (§2c) and then replaced by a one-sided declaration (§2e): the provider marks work `in_progress` and then `completed`. The buyer's recourse if they disagree is Report a problem.
 - **No money reaches the seller in this phase.** There is no Stripe Connect account, no transfer and no payout — a paid order's funds sit in the platform's own balance, exactly as in V2.
 - **`paid` renders as "Payment held", not "In Escrow".** *Escrow* names a specific legal and operational arrangement: a segregated account, a defined release trigger, a named custodian. None of that exists here, and the fact that the refund path *is* real does not make the holding arrangement escrow. The stored value stays `paid`; this is one entry in `const/index.ts`. **The word "escrow" appears nowhere in this feature's UI.**
 - **The buyer-facing copy says only what is true**: the money is held by Globaly rather than passed straight to the provider, and a problem can be reported from the order. It no longer says the payment is held "until both confirm", because there is nothing left to confirm.
 - The earnings strip reports **order values, not balances** — *Payment held* · *Refunded* · *Orders received*, per currency, never summed across currencies — and carries the line *"These are order values, not payouts."* `GET /summary` returns `payouts_live: false` so no client can imply otherwise.
 
-Refunds *are* real when Stripe is configured: refunding money the platform already holds needs no Connect account. With completion gone, **a refund is the only thing that moves value**, which is why it replaced "confirmed complete" in the seller's totals — a column that could only ever read 0 would be a lie about the flow.
+Refunds *are* real when Stripe is configured: refunding money the platform already holds needs no Connect account. A refund is still the only thing that moves value **back** — `completed` records that work happened, not that anyone was paid.
 
 ---
 
@@ -105,6 +106,70 @@ Reviewing no longer requires having bought. Any signed-in user can review any li
 **The verified-purchase marker is the signal that survived.** The claim moved from *"every review here is trustworthy"* to *"you can see which ones are"* — the public list sorts verified purchases first, and the empty state says so rather than repeating the old promise. Anything past `pending_payment` and `cancelled` counts as a purchase, **including `refunded`**: they bought it and it went wrong, which is exactly the review a reader wants.
 
 **This is a fraud surface and is recorded as one.** A determined actor with several accounts can still move a listing's average. Rate limiting, account age and reviewer reputation are the follow-ups; none is built.
+
+---
+
+## 2e. The booking handshake
+
+Pressing Book used to create an order in `pending_payment` and let the buyer pay immediately. That assumes the
+seller is free, and they are not: an airport pickup at 6am on Tuesday is a commitment against one person's
+calendar. Taking the money first would mean refunding it every time the answer is no.
+
+```
+buyer submits booking + category answers
+      ↓
+  requested ──(seller declines, reason required)──► declined
+      │
+      └──(seller accepts)──► pending_payment ──(buyer pays)──► paid
+                                    ↑                           │
+                          email: "pay to confirm"     (seller) ──► in_progress ──► completed
+```
+
+**Payment gating falls out of the state machine rather than being a separate rule.** `startCheckout` already
+required `pending_payment`; accepting is what puts an order there. There is no "payable" flag to keep in step
+with the status, and no path to checkout that does not pass through the seller.
+
+**`completed` is back in use, and means something narrower than before.** It was orphaned when dual
+confirmation was removed — the value stayed in the enum for historical rows but nothing produced it. It is now
+the *seller's own declaration* that the work is done. That is deliberately one-sided and weaker than the mutual
+confirmation it replaces: a seller can mark work complete that the buyer disputes, and the buyer's recourse is
+Report a problem, the same escape hatch as before. The UI says so rather than implying agreement.
+
+**A decline must carry a reason**, enforced three deep — the zod schema, the service, and
+`CHECK (status <> 'declined' OR decline_reason IS NOT NULL)`. The buyer reads it on the order and in the
+email. A refusal nobody can act on is a dead end.
+
+**Emails**, all through `queueEmail` and all failure-swallowing: the state change is already written and
+visible in both parties' lists, so SMTP being down must not fail the request that caused it.
+
+| Trigger | To | Says |
+|---|---|---|
+| Request submitted | seller | who, what, the answers, and that nothing is payable until they answer |
+| Accepted | buyer | pay to confirm — this is the one that asks for money |
+| Declined | buyer | the reason, and that they have not been charged |
+
+### Category questions come from `schema_fields`
+
+Different services need different things: a pickup needs a date, a time and an address; assignment help needs
+a subject and a deadline. **None of that is coded here.** `schema_fields` already existed — polymorphic over
+`service_categories`, carrying `label`, `key`, `type`, `is_required` and `options`, and already
+editable in the superadmin category editor. So "Airport Pickup asks four questions" is four rows an admin
+creates, not a release.
+
+- **The dialog renders whatever it is handed.** `GET /api/v3/services/:id` returns `booking_fields`
+  alongside the listing, so the form is built from one request rather than fetching the category after the page
+  has drawn. A category that asks nothing renders a plain confirm.
+- **Answers are `jsonb`, not columns.** The questions are data and change without a deploy; a column per
+  question would mean a migration every time someone adds one.
+- **The server re-validates every answer** against the definitions read at request time — required, type,
+  and select options — because jsonb will accept anything. Client-side checks only save a round trip.
+- **An answer to a question the category does not ask is an error, not something to drop.** Silently
+  discarding it would tell the buyer their booking was recorded in full when part of it was thrown away.
+- **Answers are paired with labels at read time.** The stored keys mean nothing alone, so the API returns
+  `{ key, label, value }`; a question deleted after a booking leaves its answer unlabelled rather than
+  hidden, because it is still what the buyer told us.
+- **A field type this code has not learned falls back to a text input** rather than vanishing, so a newly
+  added type is usable before the frontend catches up.
 
 ---
 
@@ -208,6 +273,8 @@ Constraints doing real work:
 
 Reviewing does not require a purchase (§2d), so `order_id` went nullable and its uniqueness became **partial** — `UNIQUE (order_id) WHERE order_id IS NOT NULL` still means one review per order, without NULLs colliding. **`UNIQUE (listing_id, reviewer_id)`** is what replaced the gate: one review per person per listing, enforced by the database rather than a raceable handler.
 
+`other_service_orders` also carries the booking handshake (20260815_001): `booking_answers` jsonb · `booking_note` · `decline_reason` · `requested_at` · `accepted_at` · `declined_at` · `started_at`, plus three statuses on the existing CHECK — `requested`, `declined`, `in_progress` — and `CHECK (status <> 'declined' OR decline_reason IS NOT NULL)`. A partial index on `(provider_id, created_at DESC) WHERE status = 'requested'` serves the seller's queue, which is small and frequently read while the table is neither.
+
 ### `service_order_messages`
 `order_id` → `service_orders` CASCADE · `sender_id` → `platform_users` CASCADE · `body` · `created_at`, indexed `(order_id, created_at)` because a thread is always read oldest-first for one order.
 
@@ -230,6 +297,9 @@ V2 had no rating check — the 1–5 range lived only in a Zod schema, so anythi
 | `GET /orders` · `GET /received-orders` · `GET /orders/:orderId` | Buyer / seller / either-party reads |
 | `POST /orders/payment/verify` | The return path — six-point reconciliation, idempotent |
 | `GET · POST /orders/:orderId/messages` | The order thread — either party, see §2c |
+| `GET /orders/:orderId/booking` | The buyer's answers, paired with the questions asked. Either party |
+| `POST /orders/:orderId/accept` · `/decline` | Provider only; decline requires `reason`. See §2e |
+| `POST /orders/:orderId/start` · `/finish` | Provider only; `paid` → `in_progress` → `completed` |
 | `POST /orders/:orderId/dispute` · `/cancel` · `/refund` | Report a problem · `pending_payment`→`cancelled` · `paid`→`refunded` |
 | `GET /listings/:serviceId/my-review` · `POST /listings/:serviceId/reviews` | Keyed on the **listing**, not an order: buying is not required |
 
@@ -351,10 +421,15 @@ Most listings will never carry an uploaded image — the bucket is unset here, a
 | **Empty** | Nothing yet | Per-tab empty state; Listings offers Create, the order tabs explain how orders arrive |
 | **Loading** | Any region fetching | Per-region skeletons preserving grid height; tabs never block each other |
 | **Error** | Validation · upload · payment · blocked delete | The specific cause and its remedy; **nothing half-saved**; Pause offered when Delete is refused |
-| **Partial** | Payment verification in flight, or a thread still loading | The payment is explicitly held; no double count; the thread shows a spinner rather than an empty state it might contradict |
+| **Partial** | Payment verification in flight, a thread still loading, or a booking awaiting an answer | The payment is explicitly held; no double count; the thread shows a spinner rather than an empty state it might contradict; a `requested` order says who it is waiting on |
 | **Malformed response** | Backend omits a field the UI indexes into | Normalized in `real-api.ts` at the boundary, so a missing array or scalar cannot throw during render |
 
 ### Edge cases handled
+- **A booking answer to a question the category doesn't ask** → 400 naming the key, rather than silently dropped
+- **A required answer left blank** → 400 naming the field, and the dialog blocks it client-side first
+- **A select answer outside its options** → 400 listing what is allowed
+- **Paying a booking the seller hasn't accepted** → refused; `pending_payment` is only reachable through acceptance
+- **A question deleted after a booking was made** → its answer still shows, unlabelled, rather than disappearing
 - **A business service category submitted as a listing's category** → 400 naming it unavailable, and it was never in the picker to begin with
 - **A retired category** → hidden from new listings; every listing already using it keeps working
 - **A category with listings against it, deleted** → the database refuses (`RESTRICT`); retiring is the supported move
@@ -444,8 +519,17 @@ Most listings will never carry an uploaded image — the bucket is unset here, a
 | 55 | A person cannot create a category | **Live: no such route under `/my-services` (404); the admin route refuses a seller token (403)** |
 | 56 | Scope is a closed set | **Live: `scope: "whatever"` → 400 naming `["business","personal"]`; the DB CHECK backs it** |
 | 57 | A business category cannot be defaulted to a personal service | The scope filter sits on `replaceDefaultServices`, at the write — the FK alone would accept a personal id posted directly |
+| 58 | A booking starts as a request, not a purchase | **Live: `POST /orders` → `status: requested`** |
+| 59 | The buyer cannot pay until the seller accepts | **Live: checkout on a `requested` order → "This order is requested and cannot be paid"; after accept → `pending_payment`, and payment then settles to `paid`** |
+| 60 | The category's questions are enforced, not decorative | **Live: missing required → "Pickup date is required"; unknown key → "This service does not ask for: favourite_colour"; bad option → "Luggage must be one of: Hand only, 1 suitcase, 2+ suitcases"** |
+| 61 | The seller reads the answers with their labels | **Live: 4 answers + note rendered from `schema_fields`, not from anything hardcoded** |
+| 62 | Only the provider decides | **Live: buyer accept → "Only the provider can do that"** |
+| 63 | A decline must carry a reason, and it reaches the buyer | **Live: `{}` and `"   "` both 400; with a reason → `declined`, and the buyer reads it back on the order.** The DB CHECK refuses a direct `UPDATE` that nulls it |
+| 64 | A decision cannot be taken twice, or on a decided booking | **Live: second accept → "This booking is pending payment and cannot be accepted"; accepting a declined one → refused; paying a declined one → refused** |
+| 65 | The seller drives the work forward, and only the seller | **Live: buyer start → "Only the provider can do that"; seller → `in_progress` → `completed`; finishing twice → refused** |
+| 66 | The whole handshake end to end | **Live: request → refused payment → seller reads answers → accept → pay → in progress → completed → buyer reviews as a verified purchase** |
 
-**Automated:** 55 backend tests, all passing (`DB_NAME=globalyapp_test npm test`). Every migration applies, rolls back and re-applies cleanly. `npx tsc --noEmit` clean on both sides. `yarn lint` introduces no new problems — back to the pre-existing baseline — now 3 errors and 2 warnings, the third having arrived with the rebase onto main in `admin/platform/categories/components/schema-fields-editor.tsx` (commit a39ca35). `next build` compiles every route.
+**Automated: none.** The 55-test suite was removed at review (PR #23), along with the `test` script — see §13. It was used to verify the refactors in that round before deletion; everything after it, including the whole booking handshake, is covered by live HTTP walks only. That is a real reduction in cover on the money path, and it is recorded here rather than glossed. `npx tsc --noEmit` clean on both sides. `yarn lint` introduces no new problems — back to the pre-existing baseline — now 3 errors and 2 warnings, the third having arrived with the rebase onto main in `admin/platform/categories/components/schema-fields-editor.tsx` (commit a39ca35). `next build` compiles every route.
 
 **Live:** two full HTTP walks against `node --import tsx src/server.ts` on a scratch database.
 
@@ -484,6 +568,8 @@ No browser automation exists in this repo, so the following were built to spec b
 - The **Other Service Categories** tab in a browser — its rule was walked over HTTP against the same endpoints the tab calls, and the tab reuses the existing category list, dialog and editor rather than introducing new UI
 - **The order thread and the review form as rendered components.** Both were walked over HTTP against exactly the endpoints they call, and `is_mine` was confirmed to flip per reader, but the chat layout, the scroll behaviour of a long thread and the star picker on the public detail page were not observed in a browser
 - **Concurrency in a thread.** There is no polling, no websocket and no refetch-on-focus: a message sent by the other party appears only on the next load of the page. Deliberate — see §14
+- **The booking dialog and the seller's Accept/Decline panel as rendered components.** Both were walked over HTTP against exactly the endpoints they call, and the field definitions that drive the form were seeded and read back, but neither was opened in a browser
+- **The three booking emails as delivered mail.** `queueEmail` resolves without throwing and no send logged a failure, but no SMTP transport is configured here, so nothing left the process
 
 There is no frontend test runner in this repo and adding one was out of scope, so the frontend is covered by typecheck, lint, build and review.
 
@@ -577,6 +663,9 @@ The columns it added (`verification_status`, `verification_note`, `verified_by`,
 | **A defined release for held money** | Now the most pressing item: with dual confirmation removed, nothing closes an order at all, so a payment sits held indefinitely and a refund is the only way out. See §2c |
 | **Review abuse controls** | One-per-person and no-self-review are the only guards. Rate limiting, account age and reviewer reputation are unbuilt — a determined actor with several accounts can still move a listing's average. See §2d |
 | Messaging beyond the order | No inbox, no notifications, no attachments, no read receipts. `/personal/messages` is still a `ComingSoon` stub; the thread lives only on the order |
+| **A request that is never answered sits forever** | Nothing expires a `requested` booking. A buyer waiting on a seller who has stopped using the app has no signal and no way out but to ignore it. An expiry — or at least a nudge — is the obvious next step |
+| **No availability model** | The seller answers each request by hand because the system knows nothing about their calendar. Real availability (working hours, blackout dates, double-booking) would let obvious clashes be refused before a human sees them |
+| **`completed` is the seller's word alone** | See §2e. The buyer's only recourse is Report a problem, and dispute resolution is still Ops-owned and unbuilt |
 | Dispute resolution tooling | `disputed` is rendered; resolving it is Ops-owned and unbuilt |
 | Multiple images, seller availability, buyer↔seller messaging | Source-PRD "future consideration"; order notes are the only channel today |
 | A platform fee | None today: the listing price is what the buyer pays and what the seller is owed |

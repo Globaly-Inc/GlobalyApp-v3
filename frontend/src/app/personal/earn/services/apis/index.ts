@@ -24,5 +24,9 @@ export type {
   Summary,
   UploadedCover,
   VerifyPaymentResult,
+  // Appended: the booking handshake.
+  BookingField,
+  BookingAnswerValue,
+  BookingDetails,
 } from "./types";
 export { CURRENCIES, ORDER_STATUSES } from "./types";

@@ -10,6 +10,9 @@ import { createChildLogger } from "../../../shared/logger.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { withTransaction } from "../../../core/db/transaction.js";
 import * as repo from "../repositories/services.repository.js";
+import * as booking from "./booking.service.js";
+import * as notify from "./booking-notify.service.js";
+import type { BookingAnswers } from "../schemas/services.schema.js";
 import { getDriver } from "../payments/index.js";
 
 const logger = createChildLogger("services-orders");
@@ -79,12 +82,12 @@ function toDto(row: repo.HydratedOrderRow, viewerId: number): OrderDto {
  */
 export async function createOrder(
   buyerId: number,
-  input: { listing_id: number; notes?: string | null },
+  input: { listing_id: number; answers?: BookingAnswers; note?: string | null; notes?: string | null },
 ): Promise<OrderDto> {
   const listing = await repo.findListingById(input.listing_id);
   if (!listing) throw new NotFoundError("Service listing not found");
 
-  // A paused listing is off the market: it cannot be found publicly, so it cannot be bought either.
+  // A paused listing is off the market: it cannot be found publicly, so it cannot be booked either.
   if (!listing.is_active) throw new ConflictError("This service is not currently available");
 
   // The database refuses buyer_id = provider_id as well; this turns it into a sentence rather than a 500.
@@ -93,17 +96,36 @@ export async function createOrder(
   const existing = await repo.findResumableOrder(listing.id, buyerId);
   if (existing) return getOne(existing.id, buyerId);
 
+  // Checked against the questions this listing's category actually asks — see booking.service.
+  const answers = await booking.validateAnswers(listing.category_id, input.answers ?? {});
+
   const order = await repo.insertOrder({
     listing_id: listing.id,
     buyer_id: buyerId,
     provider_id: listing.provider_id,
     amount_minor: listing.price_minor,
     currency: listing.currency,
-    status: "pending_payment",
-    notes: input.notes ?? null,
+    // A request, not a purchase. Nothing is payable until the seller accepts: their calendar decides whether
+    // this can happen at all, and taking money before they have said yes would have to be refunded whenever
+    // the answer is no.
+    status: "requested",
+    booking_answers: answers,
+    booking_note: input.note ?? input.notes ?? null,
+    requested_at: new Date(),
+    notes: null,
   });
 
-  return getOne(order.id, buyerId);
+  const row = (await repo.findOrderById(order.id))!;
+  await notify.notifySellerOfRequest({
+    to: row.provider_email,
+    orderId: order.id,
+    listingTitle: listing.title,
+    buyerName: row.buyer_name?.trim() || "A student",
+    amountMinor: order.amount_minor,
+    currency: order.currency,
+    answers: await booking.describeAnswers(listing.category_id, answers),
+  });
+  return toDto(row, buyerId);
 }
 
 /**
@@ -472,4 +494,114 @@ export async function summary(userId: number): Promise<SummaryDto> {
     received_count: totals.reduce((sum, t) => sum + t.orders_count, 0),
     payouts_live: false,
   };
+}
+
+// ─── The booking handshake ─────────────────────────────────────────────────
+//
+// Appended as one block. A request is the seller's decision to make: their availability is the constraint, and
+// nothing is payable until they have taken it.
+//
+//   requested ──accept──► pending_payment ──buyer pays──► paid ──start──► in_progress ──finish──► completed
+//        └─────decline (reason required)──► declined
+//
+// Every transition below re-reads the order under a row lock and checks the caller against the order itself,
+// never against the request body. Each one names the status it found when it refuses, because "cannot do that"
+// without saying why is the error a support ticket gets opened about.
+
+/** The seller's own view of a request: what the buyer answered, paired with the questions asked. */
+export async function bookingDetails(orderId: number, userId: number) {
+  const order = await repo.findOrderById(orderId);
+  if (!order) throw new NotFoundError("Order not found");
+  if (order.buyer_id !== userId && order.provider_id !== userId) throw new NotFoundError("Order not found");
+  return {
+    answers: await booking.describeAnswers(order.listing_category_id, order.booking_answers),
+    note: order.booking_note,
+    decline_reason: order.decline_reason,
+  };
+}
+
+/** Only the provider decides, and only while the request is still waiting. */
+async function lockForProvider(orderId: number, userId: number, trx: Parameters<typeof repo.lockOrder>[1]) {
+  const order = await repo.lockOrder(orderId, trx);
+  if (!order) throw new NotFoundError("Order not found");
+  if (order.provider_id !== userId) throw new ForbiddenError("Only the provider can do that");
+  return order;
+}
+
+export async function acceptBooking(orderId: number, userId: number): Promise<OrderDto> {
+  await withTransaction(masterKnex, async (trx) => {
+    const order = await lockForProvider(orderId, userId, trx);
+    if (order.status !== "requested") {
+      throw new ConflictError(`This booking is ${readableStatus(order.status)} and cannot be accepted`);
+    }
+    // pending_payment is what startCheckout already requires, so accepting is exactly what unlocks payment —
+    // no separate "payable" flag to keep in step with the status.
+    await repo.updateOrder(orderId, { status: "pending_payment", accepted_at: new Date() }, trx);
+  });
+
+  const row = (await repo.findOrderById(orderId))!;
+  await notify.notifyBuyerAccepted({
+    to: row.buyer_email,
+    orderId,
+    listingTitle: row.listing_title,
+    providerName: row.provider_name?.trim() || "The provider",
+    amountMinor: row.amount_minor,
+    currency: row.currency,
+  });
+  return toDto(row, userId);
+}
+
+export async function declineBooking(orderId: number, userId: number, reason: string): Promise<OrderDto> {
+  await withTransaction(masterKnex, async (trx) => {
+    const order = await lockForProvider(orderId, userId, trx);
+    if (order.status !== "requested") {
+      throw new ConflictError(`This booking is ${readableStatus(order.status)} and cannot be declined`);
+    }
+    await repo.updateOrder(
+      orderId,
+      { status: "declined", declined_at: new Date(), decline_reason: reason },
+      trx,
+    );
+  });
+
+  const row = (await repo.findOrderById(orderId))!;
+  await notify.notifyBuyerDeclined({
+    to: row.buyer_email,
+    orderId,
+    listingTitle: row.listing_title,
+    providerName: row.provider_name?.trim() || "The provider",
+    reason,
+  });
+  return toDto(row, userId);
+}
+
+/**
+ * The seller says the work has started, then that it is done.
+ *
+ * Seller-driven rather than mutually confirmed. That is a weaker claim than the dual confirmation this
+ * replaced — the seller can mark work complete that a buyer disputes — and the buyer's recourse is Report a
+ * problem, which moves the order to `disputed` and is the same escape hatch as before.
+ */
+export async function startWork(orderId: number, userId: number): Promise<OrderDto> {
+  await withTransaction(masterKnex, async (trx) => {
+    const order = await lockForProvider(orderId, userId, trx);
+    if (order.status !== "paid") {
+      throw new ConflictError(`Work can only start on a paid order — this one is ${readableStatus(order.status)}`);
+    }
+    await repo.updateOrder(orderId, { status: "in_progress", started_at: new Date() }, trx);
+  });
+  return getOne(orderId, userId);
+}
+
+export async function finishWork(orderId: number, userId: number): Promise<OrderDto> {
+  await withTransaction(masterKnex, async (trx) => {
+    const order = await lockForProvider(orderId, userId, trx);
+    // Both are allowed: a short job may never be marked in_progress, and forcing the seller through two
+    // clicks to record one visit would just train them to click twice.
+    if (order.status !== "in_progress" && order.status !== "paid") {
+      throw new ConflictError(`This order is ${readableStatus(order.status)} and cannot be completed`);
+    }
+    await repo.updateOrder(orderId, { status: "completed", completed_at: new Date() }, trx);
+  });
+  return getOne(orderId, userId);
 }

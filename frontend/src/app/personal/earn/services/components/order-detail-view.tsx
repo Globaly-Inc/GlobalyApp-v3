@@ -20,8 +20,17 @@ import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { STATUS_EXPLANATIONS, STATUS_LABELS, STATUS_STYLES } from "../const";
 import { formatDate, formatMoney } from "../utils";
-import { cancelOrder, clearOrder, disputeOrder, fetchOrder, refundOrder } from "../store/my-services-slice";
+import {
+  cancelOrder,
+  clearOrder,
+  disputeOrder,
+  fetchOrder,
+  refundOrder,
+  replaceOrderLocally,
+} from "../store/my-services-slice";
 import { OrderThread } from "./order-thread";
+import { BookingPanel } from "./booking-panel";
+import { SellerWorkActions } from "./seller-work-actions";
 import { SectionError } from "./section-error";
 
 export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
@@ -58,6 +67,8 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
 
   const isBuyer = order.role === "buyer";
   const held = order.status === "paid";
+  // Paid work has money committed against it, whether or not the seller has marked it started.
+  const working = order.status === "paid" || order.status === "in_progress";
 
   const act = async (
     thunk: typeof cancelOrder | typeof refundOrder,
@@ -128,7 +139,7 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
 
           {held && (
             // Says exactly what is true: the money sits with the platform, and the refund path is the only
-            // way it moves. Nothing closes an order, so nothing here promises that it will.
+            // way it moves back.
             <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               The payment is held by Globaly. If something goes wrong, report a problem and we&apos;ll look at
               the order.
@@ -167,6 +178,14 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
           )}
         </CardContent>
       </Card>
+
+      {/* What the buyer asked for, and — for the provider — Accept / Decline. */}
+      <BookingPanel order={order} onOrderChange={(o) => dispatch(replaceOrderLocally(o))} />
+
+      {/* The provider drives the work forward once it is paid for. */}
+      {working && order.role === "provider" && (
+        <SellerWorkActions order={order} onOrderChange={(o) => dispatch(replaceOrderLocally(o))} />
+      )}
 
       {/* The post-purchase conversation, in place of the confirmation checklist that used to live here. */}
       <OrderThread orderId={orderId} status={order.status} counterpartyName={order.counterparty_name} />

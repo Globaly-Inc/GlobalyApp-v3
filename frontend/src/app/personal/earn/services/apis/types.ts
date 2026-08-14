@@ -16,6 +16,10 @@ export interface ServiceCategory {
 }
 
 export const ORDER_STATUSES = [
+  // Appended: the booking handshake. See the backend schema for the lifecycle.
+  "requested",
+  "declined",
+  "in_progress",
   "pending_payment",
   "paid",
   "completed",
@@ -149,6 +153,8 @@ export interface PublicService {
   category_slug: string;
   category_name: string;
   category_icon: string | null;
+  /** The questions this listing's category asks, so the booking dialog renders from one request. */
+  booking_fields: BookingField[];
   price_minor: number;
   currency: Currency;
   country_name: string | null;
@@ -222,4 +228,27 @@ export interface UploadedCover {
 export interface City {
   id: number;
   name: string;
+}
+
+// ─── Booking requests ──────────────────────────────────────────────────────
+//
+// Appended as one block. A buyer asks, the seller answers, and only then is there anything to pay for.
+
+/** One question a category asks its buyers, defined by an admin in the superadmin category editor. */
+export interface BookingField {
+  id: number;
+  key: string;
+  label: string;
+  type: "text" | "number" | "boolean" | "date" | "select" | "multi_select";
+  is_required: boolean;
+  options: (string | number)[] | null;
+}
+
+export type BookingAnswerValue = string | number | boolean | string[] | null;
+
+/** What the seller reads on a request: answers already paired with the questions that produced them. */
+export interface BookingDetails {
+  answers: { key: string; label: string; value: string }[];
+  note: string | null;
+  decline_reason: string | null;
 }
