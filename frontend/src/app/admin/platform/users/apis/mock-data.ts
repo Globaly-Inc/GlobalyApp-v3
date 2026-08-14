@@ -22,7 +22,7 @@ export const usersMockApi = {
       {
         id: mockAdmins.length + 1,
         uuid: crypto.randomUUID(),
-        name: params.name,
+        name: `${params.first_name} ${params.last_name}`,
         email: params.email,
         role: params.role,
         photo_url: null,
