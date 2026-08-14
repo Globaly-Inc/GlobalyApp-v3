@@ -12,20 +12,24 @@ const logger = createChildLogger("extraction-jobs-service");
 
 // ── Reads ──
 
+// Institution jobs get their title from the overview row, service jobs from their
+// own category's staging table. Only the still-nameless rows cost a second query.
+// overview_name is a query-only column — it never reaches the wire.
+async function withResolvedNames(rows: any[]) {
+  const unnamed = rows.filter((r: any) => !r.institution_name && !r.overview_name);
+  const serviceNames = await repo.findServiceNames(unnamed);
+  return rows.map(({ overview_name, ...job }: any) => ({
+    ...job,
+    institution_name: job.institution_name ?? overview_name ?? serviceNames.get(job.id) ?? null,
+  }));
+}
+
 export async function listJobs(opts: { status?: string; q?: string; limit: number }) {
   const [rows, counts] = await Promise.all([
     repo.listJobs(opts),
     repo.countJobsByStatus(),
   ]);
-  // Institution jobs get their title from the overview row, service jobs from their
-  // own category's staging table. Only the still-nameless rows cost a second query.
-  const unnamed = rows.filter((r: any) => !r.institution_name && !r.overview_name);
-  const serviceNames = await repo.findServiceNames(unnamed);
-  const jobs = rows.map(({ overview_name, ...job }: any) => ({
-    ...job,
-    institution_name: job.institution_name ?? overview_name ?? serviceNames.get(job.id) ?? null,
-  }));
-  return { jobs, counts };
+  return { jobs: await withResolvedNames(rows), counts };
 }
 
 export async function listJobsFiltered(opts: {
@@ -34,7 +38,7 @@ export async function listJobsFiltered(opts: {
   excludeSourceType?: string;
   limit: number;
 }) {
-  return { jobs: await repo.listJobsFiltered(opts) };
+  return { jobs: await withResolvedNames(await repo.listJobsFiltered(opts)) };
 }
 
 export async function getJob(id: string) {

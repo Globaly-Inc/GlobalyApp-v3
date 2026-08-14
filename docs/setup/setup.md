@@ -35,16 +35,51 @@ cd GlobalyApp-v3
 
 ---
 
-## 3. Backend setup
+## 3. Git branch setup
 
-### 3.1 Install dependencies
+The default branch is `staging`. Always start from a fresh `staging` before creating your branch.
+
+### 3.1 Fetch & pull staging
+
+```bash
+git fetch origin
+git checkout staging
+git pull origin staging
+```
+
+### 3.2 Create your branch
+
+Use the prefix that matches your team and the type of work:
+
+#### Product team
+
+| Type | Prefix | Example |
+|------|--------|---------|
+| New feature | `product-feat-` | `product-feat-onboarding-flow` |
+| Hotfix | `product-hotfix-` | `product-hotfix-login-redirect-bug` |
+
+```bash
+# Feature
+git checkout -b product-feat-<your-branch-name>
+
+# Hotfix
+git checkout -b product-hotfix-<your-branch-name>
+```
+
+Replace `<your-branch-name>` with a short, descriptive name in kebab-case (e.g. `add-student-filters`, `fix-otp-expiry`).
+
+---
+
+## 4. Backend setup
+
+### 4.1 Install dependencies
 
 ```bash
 cd backend
 npm install
 ```
 
-### 3.2 PostgreSQL
+### 4.2 PostgreSQL
 
 Connect as the superuser and create the database user + database:
 
@@ -70,14 +105,14 @@ psql -U master_user -d globalyapp -h localhost
 # Should connect without errors
 ```
 
-### 3.3 LavinMQ
+### 4.3 LavinMQ
 
 ```bash
 sudo apt-get install -y lavinmq
 sudo systemctl start lavinmq
 ```
 
-### 3.4 Environment
+### 4.4 Environment
 
 ```bash
 cp .env.example .env
@@ -104,7 +139,7 @@ Edit `.env`:
 | `PORT` | Server port | `3000` |
 | `CORS_ORIGINS` | Allowed origins | `http://localhost:3001` |
 
-### 3.5 Migrations & seed
+### 4.5 Migrations & seed
 
 ```bash
 npm run migrate:superadmin
@@ -113,7 +148,7 @@ npm run seed:superadmin       # creates default super_admin user
 npm run seed:globalyapp       # populates countries table
 ```
 
-### 3.6 Start the backend
+### 4.6 Start the backend
 
 Terminal 1 — server:
 
@@ -129,7 +164,7 @@ npm run job:auth
 
 Server runs at `http://localhost:3000`.
 
-### 3.7 Verify
+### 4.7 Verify
 
 ```bash
 curl http://localhost:3000/healthz
@@ -138,7 +173,7 @@ curl http://localhost:3000/healthz
 
 ---
 
-## 4. Frontend setup
+## 5. Frontend setup
 
 ```bash
 cd frontend
@@ -146,7 +181,7 @@ npm install -g yarn    # if yarn isn't installed
 yarn install
 ```
 
-### 4.1 Environment
+### 5.1 Environment
 
 ```bash
 cp .env.example .env
@@ -159,7 +194,7 @@ cp .env.example .env
 
 Set `NEXT_PUBLIC_MOCK_DATA=false` when running against the real backend.
 
-### 4.2 Start the frontend
+### 5.2 Start the frontend
 
 ```bash
 yarn dev
@@ -169,7 +204,7 @@ App runs at `http://localhost:3001`.
 
 ---
 
-## 5. Auth flow (OTP-based)
+## 6. Auth flow (OTP-based)
 
 There are no passwords — login is email OTP for all user types (admin, student, agent).
 
@@ -191,7 +226,7 @@ Use `access_token` as `Authorization: Bearer <token>` for protected endpoints.
 
 ---
 
-## 6. Background workers (optional)
+## 7. Background workers (optional)
 
 Run in separate terminals if needed:
 
@@ -206,7 +241,7 @@ Requires LavinMQ running at `localhost:5672`.
 
 ---
 
-## 7. Useful scripts
+## 8. Useful scripts
 
 ### Backend (`cd backend`)
 
@@ -232,7 +267,7 @@ Requires LavinMQ running at `localhost:5672`.
 
 ---
 
-## 8. Kill a stuck port
+## 9. Kill a stuck port
 
 ```bash
 fuser -k 3000/tcp   # backend

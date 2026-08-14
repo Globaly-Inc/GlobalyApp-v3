@@ -61,9 +61,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: "Data",
     items: [
       { icon: FileCheck, label: "All Extractions", href: "/admin/data/all-extractions" },
-      { icon: FileCheck, label: "Extracted Data", href: "/admin/data/extracted-data" },
       { icon: Upload, label: "AgentCIS Import", href: "/admin/data/agentcis-import" },
-      { icon: Sparkles, label: "AI Extraction", href: "/admin/data/ai-extraction" },
       { icon: Brain, label: "AI Memory", href: "/admin/data/ai-memory" },
       { icon: Bot, label: "AI Knowledge", href: "/admin/data/ai-knowledge" },
       { icon: Sparkles, label: "Visas", href: "/admin/data/visas" },

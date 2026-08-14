@@ -29,6 +29,7 @@ export type ExtractionJob = {
   pages_scraped: number;
   pages_failed: number;
   agent_count?: number;
+  campus_count?: number;
   source_type?: string | null;
   aggregator_name?: string | null;
   sample_course_url?: string | null;
@@ -43,6 +44,11 @@ export type ExtractionJob = {
   created_at: string;
   updated_at: string;
 };
+
+export type PipelineStage = { status: string; total?: number; done?: number };
+
+/** Loose map — the AI pipeline writes mapping/intelligence/scraping/..., per-tab reruns write others. */
+export type PipelineProgress = Record<string, PipelineStage | undefined>;
 
 export type SupportingDoc = {
   file_name: string;

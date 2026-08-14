@@ -1,23 +1,33 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { agentcisImportApi } from "../apis";
-import type { AgentCISResult, ImportResult } from "../apis/types";
+import type { AgentCISResult, AgentcisJob, ImportResult } from "../apis/types";
 
 export const searchAgentCIS = createAsyncThunk("dataAgentcisImport/search", (query: string) =>
   agentcisImportApi.search(query),
 );
 
-export const importAgentCIS = createAsyncThunk("dataAgentcisImport/import", (ids: number[]) =>
+export const importAgentCIS = createAsyncThunk("dataAgentcisImport/import", (ids: string[]) =>
   agentcisImportApi.importInstitutions(ids),
+);
+
+export const fetchAgentcisJobs = createAsyncThunk("dataAgentcisImport/fetchJobs", () =>
+  agentcisImportApi.getJobs(),
+);
+
+export const deleteAgentcisJob = createAsyncThunk("dataAgentcisImport/deleteJob", (id: string) =>
+  agentcisImportApi.deleteJob(id).then(() => id),
 );
 
 type AgentcisImportState = {
   searchResults: AgentCISResult[];
-  // Array, not a Set — redux state has to stay serializable.
-  selectedIds: number[];
+  // Stored as strings — AgentCIS ids can be string or number from the API.
+  selectedIds: string[];
   searchStatus: "idle" | "loading" | "failed";
   importStatus: "idle" | "loading" | "failed";
   importResult: ImportResult | null;
   error: string | null;
+  jobs: AgentcisJob[];
+  jobsStatus: "idle" | "loading" | "failed";
 };
 
 const initialState: AgentcisImportState = {
@@ -27,13 +37,15 @@ const initialState: AgentcisImportState = {
   importStatus: "idle",
   importResult: null,
   error: null,
+  jobs: [],
+  jobsStatus: "idle",
 };
 
 const agentcisImportSlice = createSlice({
   name: "dataAgentcisImport",
   initialState,
   reducers: {
-    toggleSelection: (state, action: { payload: number }) => {
+    toggleSelection: (state, action: { payload: string }) => {
       const at = state.selectedIds.indexOf(action.payload);
       if (at === -1) state.selectedIds.push(action.payload);
       else state.selectedIds.splice(at, 1);
@@ -71,6 +83,19 @@ const agentcisImportSlice = createSlice({
       .addCase(importAgentCIS.rejected, (state, action) => {
         state.importStatus = "failed";
         state.error = action.error.message ?? "Import failed.";
+      })
+      .addCase(fetchAgentcisJobs.pending, (state) => {
+        if (state.jobs.length === 0) state.jobsStatus = "loading";
+      })
+      .addCase(fetchAgentcisJobs.fulfilled, (state, action) => {
+        state.jobsStatus = "idle";
+        state.jobs = action.payload;
+      })
+      .addCase(fetchAgentcisJobs.rejected, (state) => {
+        state.jobsStatus = "failed";
+      })
+      .addCase(deleteAgentcisJob.fulfilled, (state, action) => {
+        state.jobs = state.jobs.filter((j) => j.id !== action.payload);
       });
   },
 });
