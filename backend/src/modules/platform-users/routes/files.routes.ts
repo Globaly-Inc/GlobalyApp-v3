@@ -7,7 +7,7 @@ import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as userRepo from "../repositories/platform-users.repository.js";
 import { NotFoundError, ForbiddenError } from "../../../shared/errors.js";
 
-const FileIdParam = z.object({ id: z.string().uuid() });
+const FileIdParam = z.object({ id: z.coerce.number().int().positive() });
 const CategoryQuery = z.object({ category: z.string().optional() });
 
 export async function platformUserFileRoutes(app: FastifyInstance) {
