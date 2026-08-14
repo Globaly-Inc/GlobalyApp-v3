@@ -15,12 +15,8 @@ import { formatDate, formatMoney } from "../utils";
  * unreachable from the list that should feed it. The whole row is the link, so it works on a phone.
  */
 export function OrderRow({ order }: Readonly<{ order: Order }>) {
-  // At most one flag: whichever action this caller actually owes.
-  const flag = order.awaiting_my_confirmation
-    ? "Confirm completion"
-    : order.can_review
-      ? "Leave a review"
-      : null;
+  // The thread is the only thing a row can usefully surface now that nothing needs confirming.
+  const flag = order.message_count > 0 ? `${order.message_count} message${order.message_count === 1 ? "" : "s"}` : null;
 
   return (
     <Link
@@ -34,7 +30,7 @@ export function OrderRow({ order }: Readonly<{ order: Order }>) {
             {STATUS_LABELS[order.status]}
           </Badge>
           {flag && (
-            <Badge variant="outline" className="shrink-0 border-amber-500/50 text-amber-700 dark:text-amber-400">
+            <Badge variant="outline" className="shrink-0">
               {flag}
             </Badge>
           )}

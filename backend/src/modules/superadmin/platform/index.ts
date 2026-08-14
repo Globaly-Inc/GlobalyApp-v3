@@ -9,7 +9,7 @@ import { adminUserRoutes } from "./routes/users.routes.js";
 import { adminCountryRoutes } from "./routes/countries.routes.js";
 import { adminFeatureFlagRoutes } from "./routes/feature-flags.routes.js";
 import categoriesModule from "./categories/index.js";
-import { adminServicesRoutes } from "./routes/services.routes.js";
+import { adminOtherServicesRoutes } from "./routes/other-services.routes.js";
 
 export default async function platformModule(app: FastifyInstance) {
   // Guard: super_admin or data_admin
@@ -24,5 +24,5 @@ export default async function platformModule(app: FastifyInstance) {
   app.register(adminCountryRoutes);
   app.register(adminFeatureFlagRoutes);
   app.register(categoriesModule);
-  app.register(adminServicesRoutes); // read-only oversight of Earn → My Services
+  app.register(adminOtherServicesRoutes); // read-only oversight of Earn → My Services
 }

@@ -11,6 +11,8 @@ import type {
   OrderRole,
   OrderStatus,
   PublicReview,
+  MyReviewState,
+  OrderMessage,
   PublicService,
   Review,
   ServiceCategory,
@@ -57,6 +59,7 @@ function normalizeListing(raw: Partial<Listing> | undefined | null): Listing {
     description: l.description ?? null,
     category_id: Number(l.category_id ?? 0),
     category_slug: l.category_slug ?? "other",
+    category_icon: l.category_icon ?? null,
     category_name: l.category_name ?? "Other",
     price_minor: toMinor(l.price_minor),
     currency: oneOf<Currency>(l.currency, CURRENCIES, "AUD"),
@@ -90,18 +93,28 @@ function normalizeOrder(raw: Partial<Order> | undefined | null): Order {
     // affordances instead.
     role: oneOf<OrderRole>(o.role, ["buyer", "provider"], "provider"),
     counterparty_name: o.counterparty_name?.trim() || "Someone",
-    buyer_confirmed: !!o.buyer_confirmed,
-    provider_confirmed: !!o.provider_confirmed,
-    awaiting_my_confirmation: !!o.awaiting_my_confirmation,
-    can_review: !!o.can_review,
+    message_count: Number(o.message_count ?? 0),
     has_review: !!o.has_review,
     notes: o.notes ?? null,
     payment_refund_id: o.payment_refund_id ?? null,
     created_at: o.created_at ?? new Date().toISOString(),
     paid_at: o.paid_at ?? null,
-    completed_at: o.completed_at ?? null,
     cancelled_at: o.cancelled_at ?? null,
     refunded_at: o.refunded_at ?? null,
+  };
+}
+
+/** Defaults every field the thread UI touches, so a partial response cannot throw during render. */
+function normalizeMessage(m: Partial<OrderMessage> | undefined | null): OrderMessage {
+  const raw = m ?? {};
+  return {
+    id: Number(raw.id ?? 0),
+    body: raw.body ?? "",
+    created_at: raw.created_at ?? new Date().toISOString(),
+    sender_id: Number(raw.sender_id ?? 0),
+    sender_name: raw.sender_name?.trim() || "Someone",
+    // Default false: a missing flag renders the bubble as the counterparty's, which is the safer wrong.
+    is_mine: raw.is_mine === true,
   };
 }
 
@@ -111,7 +124,7 @@ function normalizeSummary(raw: Partial<Summary> | undefined | null): Summary {
     totals: toArray<Partial<Summary["totals"][number]>>(s.totals).map((t) => ({
       currency: oneOf<Currency>(t.currency, CURRENCIES, "AUD"),
       held_minor: toMinor(t.held_minor),
-      confirmed_minor: toMinor(t.confirmed_minor),
+      refunded_minor: toMinor(t.refunded_minor),
       orders_count: Number(t.orders_count ?? 0),
     })),
     listings_count: Number(s.listings_count ?? 0),
@@ -154,6 +167,7 @@ function normalizePublicService(raw: Partial<PublicService> | undefined | null):
     category_id: Number(s.category_id ?? 0),
     category_slug: s.category_slug ?? "other",
     category_name: s.category_name ?? "Other",
+    category_icon: s.category_icon ?? null,
     price_minor: toMinor(s.price_minor),
     currency: oneOf<Currency>(s.currency, CURRENCIES, "AUD"),
     country_name: s.country_name ?? null,
@@ -284,9 +298,6 @@ export const servicesRealApi = {
     };
   },
 
-  confirmCompletion: async (orderId: number): Promise<Order> =>
-    normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders/${orderId}/complete`, {})),
-
   disputeOrder: async (orderId: number, reason: string): Promise<Order> =>
     normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders/${orderId}/dispute`, { reason })),
 
@@ -296,13 +307,32 @@ export const servicesRealApi = {
   refundOrder: async (orderId: number): Promise<Order> =>
     normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders/${orderId}/refund`, {})),
 
-  getReview: async (orderId: number): Promise<Review | null> => {
-    const raw = await httpGet<{ review?: Review | null }>(`${BASE}/orders/${orderId}/review`);
-    return raw?.review ?? null;
+  // ── Order thread ──
+
+  getMessages: async (orderId: number): Promise<OrderMessage[]> => {
+    const raw = await httpGet<{ messages?: OrderMessage[] }>(`${BASE}/orders/${orderId}/messages`);
+    return toArray<Partial<OrderMessage>>(raw?.messages).map(normalizeMessage);
   },
 
-  createReview: (orderId: number, input: { rating: number; comment?: string | null }): Promise<Review> =>
-    httpPost<Review>(`${BASE}/orders/${orderId}/review`, input),
+  sendMessage: async (orderId: number, body: string): Promise<OrderMessage> =>
+    normalizeMessage(await httpPost<Partial<OrderMessage>>(`${BASE}/orders/${orderId}/messages`, { body })),
+
+  // ── Reviews ──
+  //
+  // Keyed on the listing, not the order: reviewing does not require having bought.
+
+  getMyReview: async (serviceId: number): Promise<MyReviewState> => {
+    const raw = await httpGet<Partial<MyReviewState>>(`${BASE}/listings/${serviceId}/my-review`);
+    return {
+      // Default false: a missing field must never offer a form the server would refuse.
+      can_review: raw?.can_review === true,
+      reason: raw?.reason ?? null,
+      review: raw?.review ?? null,
+    };
+  },
+
+  createReview: (serviceId: number, input: { rating: number; comment?: string | null }): Promise<Review> =>
+    httpPost<Review>(`${BASE}/listings/${serviceId}/reviews`, input),
 
   /**
    * Cities for the listing form's location pair.

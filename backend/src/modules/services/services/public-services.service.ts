@@ -19,6 +19,7 @@ export interface PublicListingDto {
   category_id: number;
   category_slug: string;
   category_name: string;
+  category_icon: string | null;
   price_minor: number;
   currency: string;
   country_name: string | null;
@@ -51,6 +52,7 @@ async function toPublicDto(row: repo.PublicListingRow): Promise<PublicListingDto
     category_id: row.category_id,
     category_slug: row.category_slug,
     category_name: row.category_name,
+    category_icon: row.category_icon,
     price_minor: row.price_minor,
     currency: row.currency,
     country_name: row.country_name,
@@ -124,6 +126,8 @@ export async function reviews(serviceId: number) {
     created_at: new Date(r.created_at).toISOString(),
     reviewer_name: r.reviewer_name?.trim() || "A student",
     reviewer_photo_url: r.reviewer_photo_url,
+    // Reviews are open to anyone now, so a reader needs to see which ones came from an actual buyer.
+    is_verified_purchase: !!r.is_verified_purchase,
   }));
 }
 

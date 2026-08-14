@@ -6,7 +6,7 @@ import type {
   Paginated,
 } from "./types";
 
-const BASE = "/admin/platform/services";
+const BASE = "/admin/platform/other-services";
 
 function toArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
@@ -25,7 +25,7 @@ function paginate<T>(raw: Partial<Paginated<T>> | undefined | null): Paginated<T
   };
 }
 
-export const adminServicesRealApi = {
+export const adminOtherServicesRealApi = {
   getStats: async (): Promise<AdminServicesStats> => {
     const raw = await httpGet<Partial<AdminServicesStats>>(`${BASE}/stats`);
     return {

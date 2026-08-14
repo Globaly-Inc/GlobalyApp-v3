@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { ExternalLink, Pause, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Listing } from "../apis";
+import { CategoryCover } from "./category-cover";
 import { formatMoney } from "../utils";
 
 export function ListingCard({
@@ -24,23 +24,18 @@ export function ListingCard({
 
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card">
-      {listing.cover_url && (
-        // 16:9 so a row of cards lines up regardless of the uploaded aspect ratio.
-        <div className="relative aspect-video w-full bg-muted">
-          <Image
-            src={listing.cover_url}
-            alt={listing.title}
-            fill
-            className="object-cover"
-            sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-            // A signed URL can expire between render and load; a broken frame is worse than none.
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
-            }}
-            unoptimized
-          />
-        </div>
-      )}
+      {/* Always drawn: a card with no image used to render as a bare title block, which read as broken.
+          CategoryCover falls back to this category's own wash and icon. */}
+      <CategoryCover
+        coverUrl={listing.cover_url}
+        categorySlug={listing.category_slug}
+        categoryName={listing.category_name}
+        categoryIcon={listing.category_icon}
+        title={listing.title}
+        sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+        className="aspect-video w-full"
+        iconClassName="size-9"
+      />
 
       <div className="flex flex-1 flex-col gap-2 p-4">
         <div className="flex items-start justify-between gap-2">

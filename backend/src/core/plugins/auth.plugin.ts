@@ -34,12 +34,18 @@ export const authPlugin = fp(async (app) => {
    * Deliberately anchored and digit-only: `/api/v3/services/12` and `/api/v3/services/12/reviews` are open,
    * while everything a seller owns lives under the separate `/api/v3/my-services` prefix and cannot match
    * this at all.
+   *
+   * **GET only.** The marketplace is public to *read*; nothing here may be written anonymously. Without the
+   * method check, adding `POST /api/v3/services/:id/reviews` beside the existing GET would have silently
+   * opened anonymous review posting, because this allow-list matches on path alone.
    */
   const publicPatterns = [/^\/api\/v3\/services(\/(categories|\d+(\/reviews)?))?$/];
+  const isPublicRead = (method: string, path: string) =>
+    (method === "GET" || method === "HEAD") && publicPatterns.some((pattern) => pattern.test(path));
 
   app.addHook("onRequest", async (req, reply) => {
     const path = req.url.split("?")[0];
-    if (publicPaths.has(path) || publicPatterns.some((pattern) => pattern.test(path))) return;
+    if (publicPaths.has(path) || isPublicRead(req.method, path)) return;
 
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) {

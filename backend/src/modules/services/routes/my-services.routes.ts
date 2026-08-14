@@ -10,6 +10,7 @@ import {
   DisputeSchema,
   CreateReviewSchema,
   CreateOrderSchema,
+  SendMessageSchema,
   CURRENCIES,
 } from "../schemas/services.schema.js";
 import * as publicServices from "../services/public-services.service.js";
@@ -29,7 +30,8 @@ export async function myServicesRoutes(app: FastifyInstance) {
    */
   app.get("/meta", async (_req, reply) =>
     reply.send({
-      // Rows from service_categories, so an admin adding one shows up in the form without a deploy.
+      // The fixed list a seller must choose from: personal-scope rows of service_categories. Only an admin
+      // can add to it, and one added there shows up in this form without a deploy.
       categories: await publicServices.categories(),
       currencies: CURRENCIES,
       cover_upload_available: storage.isConfigured(),
@@ -117,11 +119,6 @@ export async function myServicesRoutes(app: FastifyInstance) {
     return reply.send(await orders.getOne(orderId, Number(req.auth.sub)));
   });
 
-  app.post("/orders/:orderId/complete", async (req, reply) => {
-    const { orderId } = OrderIdParamSchema.parse(req.params);
-    return reply.send(await orders.confirmCompletion(orderId, Number(req.auth.sub)));
-  });
-
   app.post("/orders/:orderId/dispute", async (req, reply) => {
     const { orderId } = OrderIdParamSchema.parse(req.params);
     const { reason } = DisputeSchema.parse(req.body);
@@ -138,16 +135,35 @@ export async function myServicesRoutes(app: FastifyInstance) {
     return reply.send(await orders.refund(orderId, Number(req.auth.sub)));
   });
 
-  // ── Reviews ──
+  // ── Order messages ──
+  //
+  // The post-purchase conversation. Scoped to one order rather than a general inbox — V3 has no messaging
+  // module, and a thread that already knows both participants needs no contact list.
 
-  app.get("/orders/:orderId/review", async (req, reply) => {
+  app.get("/orders/:orderId/messages", async (req, reply) => {
     const { orderId } = OrderIdParamSchema.parse(req.params);
-    return reply.send({ review: await reviews.getForOrder(orderId, Number(req.auth.sub)) });
+    return reply.send({ messages: await orders.listMessages(orderId, Number(req.auth.sub)) });
   });
 
-  app.post("/orders/:orderId/review", async (req, reply) => {
+  app.post("/orders/:orderId/messages", async (req, reply) => {
     const { orderId } = OrderIdParamSchema.parse(req.params);
+    const { body } = SendMessageSchema.parse(req.body);
+    return reply.status(201).send(await orders.sendMessage(orderId, Number(req.auth.sub), body));
+  });
+
+  // ── Reviews ──
+  //
+  // Keyed on the listing, not the order: reviewing no longer requires having bought. Authenticated because
+  // the reviewer is attributed and limited to one per listing — see reviews.service.
+
+  app.get("/listings/:serviceId/my-review", async (req, reply) => {
+    const { serviceId } = ListingIdParamSchema.parse(req.params);
+    return reply.send(await reviews.myReviewFor(serviceId, Number(req.auth.sub)));
+  });
+
+  app.post("/listings/:serviceId/reviews", async (req, reply) => {
+    const { serviceId } = ListingIdParamSchema.parse(req.params);
     const input = CreateReviewSchema.parse(req.body);
-    return reply.status(201).send(await reviews.create(orderId, Number(req.auth.sub), input));
+    return reply.status(201).send(await reviews.create(serviceId, Number(req.auth.sub), input));
   });
 }

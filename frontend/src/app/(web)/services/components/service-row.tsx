@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
-import { Briefcase, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PublicService } from "@/app/personal/earn/services/apis";
+import { CategoryCover } from "@/app/personal/earn/services/components/category-cover";
 import { formatDate, formatMoney } from "@/app/personal/earn/services/utils";
 
 /**
@@ -19,16 +19,16 @@ export function ServiceRow({ service }: Readonly<{ service: PublicService }>) {
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-shadow hover:shadow-sm sm:flex-row">
       <div className="flex flex-1 gap-3 p-4">
-        {/* The cover if there is one, otherwise a plain glyph — no bucket is configured in every environment. */}
-        <div className="relative size-12 shrink-0 overflow-hidden rounded-md bg-muted">
-          {service.cover_url ? (
-            <Image src={service.cover_url} alt="" fill className="object-cover" sizes="48px" unoptimized />
-          ) : (
-            <span className="flex h-full items-center justify-center text-muted-foreground">
-              <Briefcase className="h-5 w-5" />
-            </span>
-          )}
-        </div>
+        {/* The cover if there is one, otherwise this category's wash — see CategoryCover. */}
+        <CategoryCover
+          coverUrl={service.cover_url}
+          categorySlug={service.category_slug}
+          categoryName={service.category_name}
+          categoryIcon={service.category_icon}
+          sizes="48px"
+          className="size-12 shrink-0 rounded-md"
+          iconClassName="size-5"
+        />
 
         <div className="min-w-0 space-y-1">
           <Link href={`/service/${service.id}`} className="block">

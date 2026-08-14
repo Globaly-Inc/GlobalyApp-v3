@@ -37,7 +37,8 @@ export const STATUS_STYLES: Record<OrderStatus, string> = {
 /** One-line explanation shown on the order detail, so a status never has to be guessed at. */
 export const STATUS_EXPLANATIONS: Record<OrderStatus, string> = {
   pending_payment: "This order has not been paid yet.",
-  paid: "The payment is held. This order closes when both parties confirm completion.",
+  paid: "The payment is held. Message the other party on this order to sort out the details.",
+  // Kept for orders placed before dual confirmation was removed; nothing produces this status now.
   completed: "Both parties confirmed completion.",
   disputed: "A problem was reported. Our team reviews disputed orders — no further action is available here.",
   refunded: "The payment was returned to the buyer.",

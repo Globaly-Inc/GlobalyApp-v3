@@ -5,6 +5,15 @@ export type Paginated<T> = { data: T[]; meta: PaginationMeta };
 export type ListParams = { page?: number; limit?: number };
 export type SearchListParams = ListParams & { search?: string };
 
+/**
+ * Which taxonomy a service category belongs to.
+ *
+ * One table, two audiences: "business" feeds a business category's default services, "personal" is the
+ * fixed list a person sells from through Earn — shown in admin as **Other Service Categories**.
+ */
+export type CategoryScope = "business" | "personal";
+export type ScopedListParams = SearchListParams & { scope?: CategoryScope };
+
 export type SchemaFieldType = "text" | "number" | "boolean" | "date" | "select" | "multi_select";
 
 export type SchemaField = {
@@ -31,6 +40,8 @@ export type Category = {
   is_active: boolean;
   sort_order: number;
   schema_fields: SchemaField[];
+  /** Service categories only; business categories have no such column. */
+  scope?: CategoryScope;
 };
 
 export type CategoryInput = {
@@ -40,6 +51,8 @@ export type CategoryInput = {
   icon: string | null;
   is_active: boolean;
   sort_order: number;
+  /** Set on create only — the server refuses to move a category between taxonomies. */
+  scope?: CategoryScope;
 };
 
 /** degree_levels and areas_of_study share one shape. */

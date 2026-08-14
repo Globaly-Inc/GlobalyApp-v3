@@ -6,6 +6,7 @@ const LISTINGS: AdminServiceListing[] = [
   {
     id: 1,
     title: "Airport Pickup — Sydney",
+    description: "Meet you at arrivals and drive you to your accommodation.",
     price_minor: 5000,
     currency: "AUD",
     is_active: true,
@@ -22,6 +23,7 @@ const LISTINGS: AdminServiceListing[] = [
   {
     id: 2,
     title: "Assignment Help — Statistics",
+    description: "Stats tutoring and assignment review for first-year units.",
     price_minor: 3500,
     currency: "GBP",
     is_active: false,
@@ -73,7 +75,7 @@ const page = <T,>(data: T[]): Paginated<T> => ({
   meta: { page: 1, limit: 20, total: data.length, totalPages: 1 },
 });
 
-export const adminServicesMockApi = {
+export const adminOtherServicesMockApi = {
   getStats: async (): Promise<AdminServicesStats> => {
     console.log("[mock] admin getStats");
     await delay();

@@ -1,17 +1,17 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { adminServicesApi } from "../apis";
+import { adminOtherServicesApi } from "../apis";
 import type { AdminServiceListing, AdminServiceOrder, AdminServicesStats } from "../apis";
 
-export const fetchServicesStats = createAsyncThunk("adminServices/stats", () => adminServicesApi.getStats());
+export const fetchServicesStats = createAsyncThunk("adminOtherServices/stats", () => adminOtherServicesApi.getStats());
 
 export const fetchServiceListings = createAsyncThunk(
-  "adminServices/listings",
-  (params: { search?: string; status?: string; page?: number } = {}) => adminServicesApi.getListings(params),
+  "adminOtherServices/listings",
+  (params: { search?: string; status?: string; page?: number } = {}) => adminOtherServicesApi.getListings(params),
 );
 
 export const fetchServiceOrders = createAsyncThunk(
-  "adminServices/orders",
-  (params: { status?: string; page?: number } = {}) => adminServicesApi.getOrders(params),
+  "adminOtherServices/orders",
+  (params: { status?: string; page?: number } = {}) => adminOtherServicesApi.getOrders(params),
 );
 
 type Status = "idle" | "loading" | "failed";
@@ -42,7 +42,7 @@ const initialState: State = {
 };
 
 const slice = createSlice({
-  name: "adminServices",
+  name: "adminOtherServices",
   initialState,
   reducers: {},
   extraReducers: (builder) => {
@@ -87,4 +87,4 @@ const slice = createSlice({
   },
 });
 
-export const adminServicesReducer = slice.reducer;
+export const adminOtherServicesReducer = slice.reducer;

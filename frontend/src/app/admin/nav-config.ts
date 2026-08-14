@@ -78,7 +78,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { icon: CalendarDays, label: "Events", href: "/admin/monitoring/events" },
       { icon: Briefcase, label: "Jobs", href: "/admin/monitoring/jobs" },
       { icon: Handshake, label: "Ambassadors", href: "/admin/monitoring/ambassador-programs" },
-      { icon: Briefcase, label: "Services", href: "/admin/monitoring/services" },
+      { icon: Briefcase, label: "Other Services", href: "/admin/monitoring/other-services" },
       { icon: GraduationCap, label: "Scholarships", href: "/admin/monitoring/scholarships" },
       { icon: FileText, label: "Logs", href: "/admin/monitoring/monitoring-logs" },
     ],

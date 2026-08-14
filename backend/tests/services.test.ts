@@ -262,7 +262,7 @@ test("a listing holding an open order cannot be deleted, and the open orders are
 test("a listing with only closed orders deletes, and its order history survives", async () => {
   const app = await getApp();
   const { seller, buyer, listing } = await scenario();
-  const order = await createOrder(listing, buyer.id, seller.id, { status: "completed", completed_at: new Date() });
+  const order = await createOrder(listing, buyer.id, seller.id, { status: "refunded", refunded_at: new Date() });
 
   const res = await app.inject({
     method: "DELETE",
@@ -287,18 +287,20 @@ test("a listing with only closed orders deletes, and its order history survives"
   assert.equal(listed.json().listings.length, 0);
 });
 
-test("a paused listing's existing order still completes normally", async () => {
+test("pausing a listing does not disturb an order already running against it", async () => {
   const app = await getApp();
   const { seller, buyer, order } = await paidOrder();
   await masterKnex("service_listings").where({ provider_id: seller.id }).update({ is_active: false });
 
-  await app.inject({ method: "POST", url: `${BASE}/orders/${order.id}/complete`, headers: auth(buyer.id, buyer.email) });
-  const done = await app.inject({
+  // Pause takes the listing off the marketplace; it does not reach back into orders already placed.
+  const sent = await app.inject({
     method: "POST",
-    url: `${BASE}/orders/${order.id}/complete`,
-    headers: auth(seller.id, seller.email),
+    url: `${BASE}/orders/${order.id}/messages`,
+    headers: auth(buyer.id, buyer.email),
+    payload: { body: "Still on for Tuesday?" },
   });
-  assert.equal(done.json().status, "completed");
+  assert.equal(sent.statusCode, 201);
+  assert.equal((await readOrder(order.id)).status, "paid");
 });
 
 // ── Payment verification: the six-point reconciliation ─────────────────────
@@ -470,249 +472,344 @@ test("a terminal order cannot be settled by a late payment return", async () => 
   assert.equal((await readOrder(order.id)).status, "cancelled");
 });
 
-// ── Completion ─────────────────────────────────────────────────────────────
+// ── Order messages ──────────────────────────────────────────────────────────
+//
+// The post-purchase conversation replaced dual confirmation: nothing closes an order any more, so talking to
+// the other party is what a buyer does next.
 
-test("one confirmation is not enough; both close the order", async () => {
+test("both parties can talk on a paid order, and each sees who said what", async () => {
   const app = await getApp();
   const { seller, buyer, order } = await paidOrder();
 
-  const first = await app.inject({
+  const sent = await app.inject({
     method: "POST",
-    url: `${BASE}/orders/${order.id}/complete`,
+    url: `${BASE}/orders/${order.id}/messages`,
+    headers: auth(buyer.id, buyer.email),
+    payload: { body: "Landing Tuesday 6am, terminal 1." },
+  });
+  assert.equal(sent.statusCode, 201);
+  assert.equal(sent.json().is_mine, true);
+
+  const replied = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/messages`,
+    headers: auth(seller.id, seller.email),
+    payload: { body: "I'll be at arrivals with a sign." },
+  });
+  assert.equal(replied.statusCode, 201);
+
+  // is_mine is resolved server-side per reader, so neither client compares ids to lay out the thread.
+  const asBuyer = await app.inject({
+    method: "GET",
+    url: `${BASE}/orders/${order.id}/messages`,
     headers: auth(buyer.id, buyer.email),
   });
-  assert.equal(first.statusCode, 200);
-  // Still held. Neither party is told it finished.
-  assert.equal(first.json().status, "paid");
-  assert.equal(first.json().buyer_confirmed, true);
-  assert.equal(first.json().provider_confirmed, false);
-  assert.equal(first.json().awaiting_my_confirmation, false);
-  assert.equal((await readOrder(order.id)).completed_at, null);
+  const messages = asBuyer.json().messages;
+  assert.equal(messages.length, 2);
+  // Oldest first — a conversation reads top to bottom.
+  assert.match(messages[0].body, /Landing Tuesday/);
+  assert.equal(messages[0].is_mine, true);
+  assert.equal(messages[1].is_mine, false);
+  assert.equal(messages[1].sender_id, seller.id);
 
-  const second = await app.inject({
-    method: "POST",
-    url: `${BASE}/orders/${order.id}/complete`,
+  const asSeller = await app.inject({
+    method: "GET",
+    url: `${BASE}/orders/${order.id}/messages`,
     headers: auth(seller.id, seller.email),
   });
-  assert.equal(second.json().status, "completed");
-  assert.notEqual((await readOrder(order.id)).completed_at, null);
-});
+  assert.equal(asSeller.json().messages[0].is_mine, false);
 
-test("the confirming party is taken from the order, not the request", async () => {
-  const app = await getApp();
-  const { seller, buyer, order } = await paidOrder();
-
-  // The provider confirming sets the *provider* flag, whoever asks.
-  const res = await app.inject({
-    method: "POST",
-    url: `${BASE}/orders/${order.id}/complete`,
-    headers: auth(seller.id, seller.email),
-  });
-  assert.equal(res.json().provider_confirmed, true);
-  assert.equal(res.json().buyer_confirmed, false);
-  assert.equal(res.json().role, "provider");
-
-  // The same party cannot confirm twice to force the order closed on its own.
-  const twice = await app.inject({
-    method: "POST",
-    url: `${BASE}/orders/${order.id}/complete`,
-    headers: auth(seller.id, seller.email),
-  });
-  assert.equal(twice.statusCode, 409);
-  assert.equal((await readOrder(order.id)).status, "paid");
-
-  void buyer;
-});
-
-test("a stranger can neither see nor confirm an order", async () => {
-  const app = await getApp();
-  const { order } = await paidOrder();
-  const stranger = await createUser();
-  const h = auth(stranger.id, stranger.email);
-
-  // 404, not 403 — a stranger learns nothing about whether the order exists.
-  assert.equal((await app.inject({ method: "GET", url: `${BASE}/orders/${order.id}`, headers: h })).statusCode, 404);
-  assert.equal(
-    (await app.inject({ method: "POST", url: `${BASE}/orders/${order.id}/complete`, headers: h })).statusCode,
-    403,
-  );
-});
-
-test("an unpaid order cannot be confirmed", async () => {
-  const app = await getApp();
-  const { seller, buyer, listing } = await scenario();
-  const order = await createOrder(listing, buyer.id, seller.id);
-
-  const res = await app.inject({
-    method: "POST",
-    url: `${BASE}/orders/${order.id}/complete`,
-    headers: auth(buyer.id, buyer.email),
-  });
-  assert.equal(res.statusCode, 409);
-});
-
-test("terminal and disputed orders offer nothing", async () => {
-  const app = await getApp();
-
-  // NOTE on `refunded`: these fixtures deliberately carry no payment_refund_id, so refund is refused on the
-  // *status* check. An order that really was refunded — one that carries a refund id — instead returns an
-  // idempotent success, because that short-circuit is what makes retrying a failed persist safe. Both paths
-  // have their own test below; this one must not be read as "refund is always 409 once refunded".
-  for (const status of ["completed", "refunded", "cancelled", "disputed"]) {
-    await resetDb();
-    const { seller, buyer, listing } = await scenario();
-    const order = await createOrder(listing, buyer.id, seller.id, { status });
-
-    for (const action of ["complete", "cancel", "refund"]) {
-      const res = await app.inject({
-        method: "POST",
-        url: `${BASE}/orders/${order.id}/${action}`,
-        headers: auth(action === "refund" ? seller.id : buyer.id, action === "refund" ? seller.email : buyer.email),
-      });
-      assert.equal(res.statusCode, 409, `${status}: ${action} should be refused`);
-    }
-
-    // A completed order is the one status where a review is legitimate, so only check the others.
-    if (status !== "completed") {
-      const review = await app.inject({
-        method: "POST",
-        url: `${BASE}/orders/${order.id}/review`,
-        headers: auth(buyer.id, buyer.email),
-        payload: { rating: 5 },
-      });
-      assert.equal(review.statusCode, 409, `${status}: review should be refused`);
-    }
-  }
-});
-
-// ── Reviews ────────────────────────────────────────────────────────────────
-
-async function completedOrder() {
-  const s = await scenario();
-  const order = await createOrder(s.listing, s.buyer.id, s.seller.id, {
-    status: "completed",
-    paid_at: new Date(),
-    completed_at: new Date(),
-    buyer_confirmed: true,
-    provider_confirmed: true,
-    payment_intent_id: "pi_dev_fixture",
-  });
-  return { ...s, order };
-}
-
-test("the buyer reviews once, and the listing's rating is recomputed", async () => {
-  const app = await getApp();
-  const { buyer, listing, order } = await completedOrder();
-
-  const res = await app.inject({
-    method: "POST",
-    url: `${BASE}/orders/${order.id}/review`,
-    headers: auth(buyer.id, buyer.email),
-    payload: { rating: 4, comment: "On time" },
-  });
-  assert.equal(res.statusCode, 201);
-  assert.equal(res.json().rating, 4);
-
-  // V2 never recomputed these — every listing showed 0 stars however many reviews it had.
-  const row = await readListing(listing.id);
-  assert.equal(Number(row.avg_rating), 4);
-  assert.equal(row.total_reviews, 1);
-
-  // The order now reports the review and stops offering the form.
+  // The count rides along on the order, so a row can say "2 messages" without opening the thread.
   const detail = await app.inject({
     method: "GET",
     url: `${BASE}/orders/${order.id}`,
     headers: auth(buyer.id, buyer.email),
   });
-  assert.equal(detail.json().has_review, true);
-  assert.equal(detail.json().can_review, false);
+  assert.equal(detail.json().message_count, 2);
+});
 
-  const again = await app.inject({
+test("a stranger cannot read or write an order's thread", async () => {
+  const app = await getApp();
+  const { buyer, order } = await paidOrder();
+  const stranger = await createUser();
+  const h = auth(stranger.id, stranger.email);
+
+  await app.inject({
     method: "POST",
-    url: `${BASE}/orders/${order.id}/review`,
+    url: `${BASE}/orders/${order.id}/messages`,
     headers: auth(buyer.id, buyer.email),
-    payload: { rating: 1 },
+    payload: { body: "private" },
   });
-  assert.equal(again.statusCode, 409);
+
+  // 404, not 403 — a stranger learns nothing about whether the order exists.
+  assert.equal(
+    (await app.inject({ method: "GET", url: `${BASE}/orders/${order.id}/messages`, headers: h })).statusCode,
+    404,
+  );
+  const wrote = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/messages`,
+    headers: h,
+    payload: { body: "let me in" },
+  });
+  assert.equal(wrote.statusCode, 404);
+  assert.equal(await masterKnex("service_order_messages").where({ order_id: order.id }).count("id as c").first().then((r) => Number(r.c)), 1);
+});
+
+test("an empty message is refused by the schema and by the database", async () => {
+  const app = await getApp();
+  const { buyer, order } = await paidOrder();
+
+  for (const body of ["", "   ", "\n\t "]) {
+    const res = await app.inject({
+      method: "POST",
+      url: `${BASE}/orders/${order.id}/messages`,
+      headers: auth(buyer.id, buyer.email),
+      payload: { body },
+    });
+    assert.equal(res.statusCode, 400, `"${body}" should be refused`);
+  }
+
+  // The CHECK is the backstop for anything that bypasses the API.
+  await assert.rejects(
+    () => masterKnex("service_order_messages").insert({ order_id: order.id, sender_id: buyer.id, body: "  " }),
+    /service_order_messages_body_chk/,
+  );
+});
+
+test("the thread opens when the money is committed and closes when the order does", async () => {
+  const app = await getApp();
+
+  // Nothing to discuss before payment: the order may never be paid at all.
+  const unpaid = await scenario();
+  const pending = await createOrder(unpaid.listing, unpaid.buyer.id, unpaid.seller.id);
+  const early = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${pending.id}/messages`,
+    headers: auth(unpaid.buyer.id, unpaid.buyer.email),
+    payload: { body: "hello?" },
+  });
+  assert.equal(early.statusCode, 409);
+
+  // Disputed stays open on purpose — that is exactly when they need to sort it out.
+  const dis = await paidOrder({ status: "disputed" });
+  const during = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${dis.order.id}/messages`,
+    headers: auth(dis.buyer.id, dis.buyer.email),
+    payload: { body: "the driver never came" },
+  });
+  assert.equal(during.statusCode, 201);
+
+  for (const status of ["cancelled", "refunded"] as const) {
+    const closed = await paidOrder({ status });
+    const late = await app.inject({
+      method: "POST",
+      url: `${BASE}/orders/${closed.order.id}/messages`,
+      headers: auth(closed.buyer.id, closed.buyer.email),
+      payload: { body: "one more thing" },
+    });
+    assert.equal(late.statusCode, 409, `${status} should close the conversation`);
+    // Still readable — a closed conversation is history, not a deletion.
+    const read = await app.inject({
+      method: "GET",
+      url: `${BASE}/orders/${closed.order.id}/messages`,
+      headers: auth(closed.buyer.id, closed.buyer.email),
+    });
+    assert.equal(read.statusCode, 200);
+  }
+});
+
+test("confirming completion is gone, not merely hidden", async () => {
+  const app = await getApp();
+  const { buyer, order } = await paidOrder();
+
+  // The route was removed with the flow; a client still calling it gets a 404 rather than a silent no-op.
+  const res = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/complete`,
+    headers: auth(buyer.id, buyer.email),
+  });
+  assert.equal(res.statusCode, 404);
+  assert.equal((await readOrder(order.id)).status, "paid");
+});
+
+// ── Reviews ────────────────────────────────────────────────────────────────
+//
+// Open to any signed-in user: buying is not required. The purchase gate is replaced by one-per-person,
+// no-self-review, and a verified-purchase marker on the reviews that did come from a buyer.
+
+test("anyone signed in can review, and the listing's rating is recomputed", async () => {
+  const app = await getApp();
+  const { seller, listing } = await scenario();
+  const passerby = await createUser();
+
+  const posted = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings/${listing.id}/reviews`,
+    headers: auth(passerby.id, passerby.email),
+    payload: { rating: 4, comment: "Heard good things." },
+  });
+  assert.equal(posted.statusCode, 201);
+  // No order behind it, so it is not a verified purchase — but it counts toward the rating.
+  assert.equal(posted.json().order_id, null);
+  assert.equal(posted.json().is_verified_purchase, false);
+
+  // V2 never recomputed at all; the aggregates must follow from the rows.
+  const row = await readListing(listing.id);
+  assert.equal(Number(row.avg_rating), 4);
+  assert.equal(row.total_reviews, 1);
+
+  const publicView = await app.inject({ method: "GET", url: `${PUBLIC}/${listing.id}/reviews` });
+  assert.equal(publicView.json().reviews.length, 1);
+  assert.equal(publicView.json().reviews[0].is_verified_purchase, false);
+  assert.equal(seller.id > 0, true);
+});
+
+test("a reviewer who bought is marked as a verified purchase", async () => {
+  const app = await getApp();
+  const { buyer, listing, order } = await paidOrder();
+
+  const posted = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings/${listing.id}/reviews`,
+    headers: auth(buyer.id, buyer.email),
+    payload: { rating: 5, comment: "Exactly as described." },
+  });
+  assert.equal(posted.statusCode, 201);
+  // The order is attached automatically — the buyer never tells us which one.
+  assert.equal(posted.json().order_id, order.id);
+  assert.equal(posted.json().is_verified_purchase, true);
+
+  const publicView = await app.inject({ method: "GET", url: `${PUBLIC}/${listing.id}/reviews` });
+  assert.equal(publicView.json().reviews[0].is_verified_purchase, true);
+});
+
+test("a review no longer waits for the order to close", async () => {
+  const app = await getApp();
+  // The old rule refused anything but a completed order. Nothing closes an order now, so a held payment must
+  // be reviewable or no buyer could ever review at all.
+  const { buyer, listing } = await paidOrder();
+
+  const res = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings/${listing.id}/reviews`,
+    headers: auth(buyer.id, buyer.email),
+    payload: { rating: 5 },
+  });
+  assert.equal(res.statusCode, 201);
+});
+
+test("one review per person per listing", async () => {
+  const app = await getApp();
+  const { listing } = await scenario();
+  const reviewer = await createUser();
+  const h = auth(reviewer.id, reviewer.email);
+  const post = (rating: number) =>
+    app.inject({ method: "POST", url: `${BASE}/listings/${listing.id}/reviews`, headers: h, payload: { rating } });
+
+  assert.equal((await post(5)).statusCode, 201);
+  // Without this, one account could rate a rival into the ground.
+  assert.equal((await post(1)).statusCode, 409);
   assert.equal((await readListing(listing.id)).total_reviews, 1);
+
+  // The unique index is the real guarantee, so a direct insert loses too.
+  await assert.rejects(
+    () => masterKnex("service_reviews").insert({ listing_id: listing.id, reviewer_id: reviewer.id, rating: 3 }),
+    /service_reviews_listing_reviewer_uniq/,
+  );
+});
+
+test("you cannot review your own service", async () => {
+  const app = await getApp();
+  const { seller, listing } = await scenario();
+
+  const res = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings/${listing.id}/reviews`,
+    headers: auth(seller.id, seller.email),
+    payload: { rating: 5, comment: "I am excellent." },
+  });
+  // Rating your own listing is not a review, it is an advert.
+  assert.equal(res.statusCode, 403);
+  assert.equal((await readListing(listing.id)).total_reviews, 0);
+
+  const mine = await app.inject({
+    method: "GET",
+    url: `${BASE}/listings/${listing.id}/my-review`,
+    headers: auth(seller.id, seller.email),
+  });
+  assert.equal(mine.json().can_review, false);
+  assert.equal(mine.json().reason, "own_listing");
+});
+
+test("my-review tells the viewer what they may do", async () => {
+  const app = await getApp();
+  const { listing } = await scenario();
+  const reviewer = await createUser();
+  const h = auth(reviewer.id, reviewer.email);
+
+  const before = await app.inject({ method: "GET", url: `${BASE}/listings/${listing.id}/my-review`, headers: h });
+  assert.equal(before.json().can_review, true);
+  assert.equal(before.json().review, null);
+
+  await app.inject({ method: "POST", url: `${BASE}/listings/${listing.id}/reviews`, headers: h, payload: { rating: 4 } });
+
+  const after = await app.inject({ method: "GET", url: `${BASE}/listings/${listing.id}/my-review`, headers: h });
+  assert.equal(after.json().can_review, false);
+  assert.equal(after.json().reason, "already_reviewed");
+  assert.equal(after.json().review.rating, 4);
 });
 
 test("the average is the mean of every review on the listing", async () => {
   const app = await getApp();
-  const { seller, buyer, listing } = await scenario();
-  const otherBuyer = await createUser();
+  const { listing } = await scenario();
 
-  for (const [who, rating] of [
-    [buyer, 5],
-    [otherBuyer, 2],
-  ] as const) {
-    const order = await createOrder(listing, who.id, seller.id, {
-      status: "completed",
-      completed_at: new Date(),
-      buyer_confirmed: true,
-      provider_confirmed: true,
-    });
+  for (const rating of [5, 4, 3]) {
+    const reviewer = await createUser();
     const res = await app.inject({
       method: "POST",
-      url: `${BASE}/orders/${order.id}/review`,
-      headers: auth(who.id, who.email),
+      url: `${BASE}/listings/${listing.id}/reviews`,
+      headers: auth(reviewer.id, reviewer.email),
       payload: { rating },
     });
     assert.equal(res.statusCode, 201);
   }
 
   const row = await readListing(listing.id);
-  assert.equal(Number(row.avg_rating), 3.5);
-  assert.equal(row.total_reviews, 2);
-});
-
-test("the provider is never offered a review, at any status", async () => {
-  const app = await getApp();
-  const { seller, order } = await completedOrder();
-
-  const res = await app.inject({
-    method: "POST",
-    url: `${BASE}/orders/${order.id}/review`,
-    headers: auth(seller.id, seller.email),
-    payload: { rating: 5 },
-  });
-  assert.equal(res.statusCode, 403);
-
-  const detail = await app.inject({
-    method: "GET",
-    url: `${BASE}/orders/${order.id}`,
-    headers: auth(seller.id, seller.email),
-  });
-  assert.equal(detail.json().can_review, false);
-  assert.equal(detail.json().role, "provider");
-});
-
-test("a review cannot be posted before both parties confirm", async () => {
-  const app = await getApp();
-  const { buyer, order } = await paidOrder();
-
-  const res = await app.inject({
-    method: "POST",
-    url: `${BASE}/orders/${order.id}/review`,
-    headers: auth(buyer.id, buyer.email),
-    payload: { rating: 5 },
-  });
-  assert.equal(res.statusCode, 409);
+  assert.equal(Number(row.avg_rating), 4);
+  assert.equal(row.total_reviews, 3);
 });
 
 test("a rating outside 1–5 is refused", async () => {
   const app = await getApp();
-  const { buyer, order } = await completedOrder();
+  const { listing } = await scenario();
 
-  for (const rating of [0, 6, -1, 2.5]) {
+  for (const rating of [0, 6, 2.5, -1]) {
+    const reviewer = await createUser();
     const res = await app.inject({
       method: "POST",
-      url: `${BASE}/orders/${order.id}/review`,
-      headers: auth(buyer.id, buyer.email),
+      url: `${BASE}/listings/${listing.id}/reviews`,
+      headers: auth(reviewer.id, reviewer.email),
       payload: { rating },
     });
     assert.equal(res.statusCode, 400, `rating ${rating} should be refused`);
   }
+  assert.equal((await readListing(listing.id)).total_reviews, 0);
+});
+
+test("reviewing needs an account — the public prefix is readable but not writable", async () => {
+  const app = await getApp();
+  const { listing } = await scenario();
+
+  // The public allow-list matches on path; without the GET-only check, this POST would have skipped auth.
+  const anon = await app.inject({
+    method: "POST",
+    url: `${PUBLIC}/${listing.id}/reviews`,
+    payload: { rating: 5 },
+  });
+  assert.equal(anon.statusCode, 401);
+  assert.equal((await readListing(listing.id)).total_reviews, 0);
 });
 
 // ── Cancel and dispute ─────────────────────────────────────────────────────
@@ -899,15 +996,21 @@ test("a refund the provider already holds with no local row is reconciled, not d
 
 // ── Order lists and summary ────────────────────────────────────────────────
 
-test("purchases and received orders are separated by role and flag what needs attention", async () => {
+test("purchases and received orders are separated by role and carry the thread count", async () => {
   const app = await getApp();
   const { seller, buyer, order } = await paidOrder();
+  await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/messages`,
+    headers: auth(buyer.id, buyer.email),
+    payload: { body: "On my way" },
+  });
 
   const purchases = await app.inject({ method: "GET", url: `${BASE}/orders`, headers: auth(buyer.id, buyer.email) });
   assert.equal(purchases.json().orders.length, 1);
   assert.equal(purchases.json().orders[0].role, "buyer");
-  // Held and unconfirmed by this caller — the row that should read "Confirm completion".
-  assert.equal(purchases.json().orders[0].awaiting_my_confirmation, true);
+  // The row can say "1 message" without opening the thread.
+  assert.equal(purchases.json().orders[0].message_count, 1);
 
   const received = await app.inject({
     method: "GET",
@@ -916,7 +1019,7 @@ test("purchases and received orders are separated by role and flag what needs at
   });
   assert.equal(received.json().orders.length, 1);
   assert.equal(received.json().orders[0].role, "provider");
-  assert.equal(received.json().orders[0].awaiting_my_confirmation, true);
+  assert.equal(received.json().orders[0].message_count, 1);
 
   // The seller's own purchases list is empty — the two tabs are not the same query.
   const sellerPurchases = await app.inject({
@@ -926,10 +1029,15 @@ test("purchases and received orders are separated by role and flag what needs at
   });
   assert.equal(sellerPurchases.json().orders.length, 0);
 
-  // Once this caller confirms, their flag clears while the counterparty's does not.
-  await app.inject({ method: "POST", url: `${BASE}/orders/${order.id}/complete`, headers: auth(buyer.id, buyer.email) });
+  // The count follows the thread, and both sides see the same number.
+  await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/messages`,
+    headers: auth(seller.id, seller.email),
+    payload: { body: "See you there" },
+  });
   const after = await app.inject({ method: "GET", url: `${BASE}/orders`, headers: auth(buyer.id, buyer.email) });
-  assert.equal(after.json().orders[0].awaiting_my_confirmation, false);
+  assert.equal(after.json().orders[0].message_count, 2);
 });
 
 test("the summary buckets by currency, never converting, and never claims a payout", async () => {
@@ -941,7 +1049,7 @@ test("the summary buckets by currency, never converting, and never claims a payo
   const gbp = await createListing(seller.id, { price_minor: 3000, currency: "GBP" });
   await createOrder(aud, buyer.id, seller.id, { status: "paid", paid_at: new Date() });
   await createOrder(gbp, buyer.id, seller.id, { status: "paid", paid_at: new Date() });
-  await createOrder(gbp, buyer.id, seller.id, { status: "completed", completed_at: new Date() });
+  await createOrder(gbp, buyer.id, seller.id, { status: "refunded", refunded_at: new Date() });
 
   const res = await app.inject({ method: "GET", url: `${BASE}/summary`, headers: auth(seller.id, seller.email) });
   const body = res.json();
@@ -949,9 +1057,9 @@ test("the summary buckets by currency, never converting, and never claims a payo
   const byCurrency = Object.fromEntries(body.totals.map((t: { currency: string }) => [t.currency, t]));
   // A GBP listing viewed by anyone stays GBP — the two buckets are never summed into one figure.
   assert.equal(byCurrency.AUD.held_minor, 5000);
-  assert.equal(byCurrency.AUD.confirmed_minor, 0);
+  assert.equal(byCurrency.AUD.refunded_minor, 0);
   assert.equal(byCurrency.GBP.held_minor, 3000);
-  assert.equal(byCurrency.GBP.confirmed_minor, 3000);
+  assert.equal(byCurrency.GBP.refunded_minor, 3000);
 
   assert.equal(body.listings_count, 2);
   assert.equal(body.received_count, 3);
@@ -1213,7 +1321,7 @@ test("checkout hands back somewhere to pay and binds the session to the order", 
   assert.equal(asProvider.statusCode, 403);
 });
 
-test("the whole buyer journey: order → pay → held → both confirm → review", async () => {
+test("the whole buyer journey: order → pay → held → talk → review", async () => {
   const app = await getApp();
   const { seller, buyer, listing } = await scenario();
   const buyerH = auth(buyer.id, buyer.email);
@@ -1240,21 +1348,32 @@ test("the whole buyer journey: order → pay → held → both confirm → revie
   assert.equal((await readOrder(order.id)).status, "paid");
   assert.equal((await readListing(listing.id)).total_orders, 1);
 
-  // 4. One confirmation is not enough.
-  await app.inject({ method: "POST", url: `${BASE}/orders/${order.id}/complete`, headers: buyerH });
-  assert.equal((await readOrder(order.id)).status, "paid");
-
-  // 5. Both are.
-  const done = await app.inject({ method: "POST", url: `${BASE}/orders/${order.id}/complete`, headers: sellerH });
-  assert.equal(done.json().status, "completed");
-
-  // 6. The buyer reviews, and it reaches the public listing.
+  // 4. They sort out the details between themselves. This is what replaced dual confirmation.
   await app.inject({
     method: "POST",
-    url: `${BASE}/orders/${order.id}/review`,
+    url: `${BASE}/orders/${order.id}/messages`,
+    headers: buyerH,
+    payload: { body: "Landing Tuesday 6am." },
+  });
+  const reply = await app.inject({
+    method: "POST",
+    url: `${BASE}/orders/${order.id}/messages`,
+    headers: sellerH,
+    payload: { body: "See you at arrivals." },
+  });
+  assert.equal(reply.statusCode, 201);
+
+  // 5. The order stays held — nothing closes it now, and the refund path is the only way value moves back.
+  assert.equal((await readOrder(order.id)).status, "paid");
+
+  // 6. The buyer reviews, and it reaches the public listing as a verified purchase.
+  const review = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings/${listing.id}/reviews`,
     headers: buyerH,
     payload: { rating: 5, comment: "Spot on" },
   });
+  assert.equal(review.json().is_verified_purchase, true);
   const publicView = await app.inject({ method: "GET", url: `${PUBLIC}/${listing.id}` });
   assert.equal(publicView.json().avg_rating, 5);
   assert.equal(publicView.json().total_reviews, 1);
@@ -1262,6 +1381,7 @@ test("the whole buyer journey: order → pay → held → both confirm → revie
   const publicReviews = await app.inject({ method: "GET", url: `${PUBLIC}/${listing.id}/reviews` });
   assert.equal(publicReviews.json().reviews.length, 1);
   assert.equal(publicReviews.json().reviews[0].comment, "Spot on");
+  assert.equal(publicReviews.json().reviews[0].is_verified_purchase, true);
 });
 
 // ── Categories are administered data ───────────────────────────────────────
@@ -1273,7 +1393,7 @@ test("a listing can use any active category, and a retired one is refused", asyn
 
   // An admin adding a category makes it immediately usable — the old CHECK constraint made that impossible.
   const [fresh] = await masterKnex("service_categories")
-    .insert({ slug: `test_cat_${Date.now()}`, name: "Bike Repair", is_active: true })
+    .insert({ slug: `test_cat_${Date.now()}`, name: "Bike Repair", is_active: true, scope: "personal" })
     .returning("*");
 
   const created = await app.inject({
@@ -1313,4 +1433,35 @@ test("a listing can use any active category, and a retired one is refused", asyn
   // Teardown: the listing goes first, then the category is deletable.
   await masterKnex("service_listings").where({ category_id: fresh.id }).del();
   await masterKnex("service_categories").where({ id: fresh.id }).del();
+});
+
+test("a business service category is not on offer to a person", async () => {
+  const app = await getApp();
+  const seller = await createUser();
+  const h = auth(seller.id, seller.email);
+
+  // service_categories serves two taxonomies. This one belongs to the business side, which has nothing to
+  // do with Earn: a student must not be able to list under it, and must not even see it.
+  const [business] = await masterKnex("service_categories")
+    .insert({ slug: `biz_cat_${Date.now()}`, name: "Campus Catering Contracts", is_active: true, scope: "business" })
+    .returning("*");
+
+  const refused = await app.inject({
+    method: "POST",
+    url: `${BASE}/listings`,
+    headers: h,
+    payload: { title: "Catering", category_id: business.id, price_minor: 1500 },
+  });
+  assert.equal(refused.statusCode, 400);
+
+  // Absent from the seller's picker and from the public marketplace filter — not merely rejected on submit.
+  const meta = await app.inject({ method: "GET", url: `${BASE}/meta`, headers: h });
+  const offered = meta.json().categories.map((c: { id: number }) => c.id);
+  assert.ok(!offered.includes(business.id), "a business category must not be offered to a seller");
+  assert.ok(offered.includes(otherCat), "the personal categories are still offered");
+
+  const publicCats = await app.inject({ method: "GET", url: `${PUBLIC}/categories` });
+  assert.ok(!publicCats.json().categories.some((c: { id: number }) => c.id === business.id));
+
+  await masterKnex("service_categories").where({ id: business.id }).del();
 });

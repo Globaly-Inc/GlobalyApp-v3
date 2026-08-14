@@ -1,7 +1,7 @@
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
+  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, ScopedListParams, SearchListParams,
 } from "./types";
 
 function delay(ms: number) {
@@ -45,6 +45,9 @@ const businessCategories: Category[] = [
 const serviceCategories: Category[] = [
   { id: 1, slug: "courses", name: "Courses", description: "Academic programs offered by institutions.", icon: "BookOpen", is_active: true, sort_order: 0, schema_fields: [] },
   { id: 2, slug: "accommodation", name: "Accommodation", description: "Student housing and homestay.", icon: "Home", is_active: true, sort_order: 1, schema_fields: [] },
+  // Personal-scope rows — what a person may sell through Earn, listed under Other Service Categories.
+  { id: 11, slug: "airport-pickup", name: "Airport Pickup", description: "Meeting arrivals and driving on.", icon: "Plane", is_active: true, sort_order: 1, schema_fields: [], scope: "personal" },
+  { id: 12, slug: "assignment-help", name: "Assignment Help", description: "Tutoring and assignment review.", icon: "BookOpen", is_active: true, sort_order: 5, schema_fields: [], scope: "personal" },
 ];
 
 const degreeLevels: Lookup[] = [
@@ -97,10 +100,12 @@ export const categoriesMockApi = {
     await delay(300);
     return paginate(searchByName(businessCategories, search), params);
   },
-  getServiceCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
-    console.log("[mock] getServiceCategories", search, params);
+  getServiceCategories: async ({ search, scope = "business", ...params }: ScopedListParams = {}): Promise<Paginated<Category>> => {
+    console.log("[mock] getServiceCategories", scope, search, params);
     await delay(300);
-    return paginate(searchByName(serviceCategories, search), params);
+    // Mirrors the server's default: a caller that doesn't say gets the business taxonomy.
+    const rows = serviceCategories.filter((c) => (c.scope ?? "business") === scope);
+    return paginate(searchByName(rows, search), params);
   },
   createCategory: async (kind: "business" | "service", input: CategoryInput): Promise<Category> => {
     console.log("[mock] createCategory", kind, input);

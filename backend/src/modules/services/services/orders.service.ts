@@ -27,17 +27,13 @@ export interface OrderDto {
   /** Decided server-side from the order row. The client never infers which side it is on. */
   role: OrderRole;
   counterparty_name: string;
-  buyer_confirmed: boolean;
-  provider_confirmed: boolean;
-  /** True when this caller still owes a confirmation on a held order — drives the row's action flag. */
-  awaiting_my_confirmation: boolean;
-  can_review: boolean;
+  /** Enough to show "3 messages" on a row without opening the thread. */
+  message_count: number;
   has_review: boolean;
   notes: string | null;
   payment_refund_id: string | null;
   created_at: string;
   paid_at: string | null;
-  completed_at: string | null;
   cancelled_at: string | null;
   refunded_at: string | null;
 }
@@ -48,7 +44,6 @@ const readableStatus = (status: string) => status.replace(/_/g, " ");
 
 function toDto(row: repo.HydratedOrderRow, viewerId: number): OrderDto {
   const role: OrderRole = row.buyer_id === viewerId ? "buyer" : "provider";
-  const mineConfirmed = role === "buyer" ? row.buyer_confirmed : row.provider_confirmed;
   return {
     id: row.id,
     listing_id: row.listing_id,
@@ -59,17 +54,12 @@ function toDto(row: repo.HydratedOrderRow, viewerId: number): OrderDto {
     status: row.status,
     role,
     counterparty_name: role === "buyer" ? row.provider_name : row.buyer_name,
-    buyer_confirmed: row.buyer_confirmed,
-    provider_confirmed: row.provider_confirmed,
-    awaiting_my_confirmation: row.status === "paid" && !mineConfirmed,
-    // Reviews are the buyer's alone, and only once the order actually closed.
-    can_review: role === "buyer" && row.status === "completed" && row.review_id === null,
+    message_count: Number(row.message_count ?? 0),
     has_review: row.review_id !== null,
     notes: row.notes,
     payment_refund_id: row.payment_refund_id,
     created_at: new Date(row.created_at).toISOString(),
     paid_at: iso(row.paid_at),
-    completed_at: iso(row.completed_at),
     cancelled_at: iso(row.cancelled_at),
     refunded_at: iso(row.refunded_at),
   };
@@ -262,51 +252,68 @@ export async function verifyPayment(
   });
 }
 
-// ─── Completion ────────────────────────────────────────────────────────────
+// ─── Messages ──────────────────────────────────────────────────────────────
 
 /**
- * Confirm completion as whichever party the caller actually is.
+ * The order thread — what happens after a purchase now that dual confirmation is gone.
  *
- * The flag set is derived from the order row, never from the request body, so a buyer cannot confirm on the
- * provider's behalf. The order closes only when both flags are true; one-sided confirmation leaves it exactly
- * where it was and neither party is told it finished.
- *
- * `completed` means both parties confirmed. It is not a payout — no money moves in this phase.
+ * Scoped to one order rather than being a general inbox: V3 has no messaging module, and a thread that
+ * already knows both participants needs no contact list, no presence and no blocking. Either party may read
+ * and write; a stranger is told the order does not exist rather than that they are not allowed in, matching
+ * every other read on this resource.
  */
-export async function confirmCompletion(orderId: number, userId: number): Promise<OrderDto> {
-  await withTransaction(masterKnex, async (trx) => {
-    const order = await repo.lockOrder(orderId, trx);
-    if (!order) throw new NotFoundError("Order not found");
+export interface OrderMessageDto {
+  id: number;
+  body: string;
+  created_at: string;
+  sender_id: number;
+  sender_name: string;
+  /** Resolved server-side so the client never compares ids to decide which side of the thread to render. */
+  is_mine: boolean;
+}
 
-    const role: OrderRole | null =
-      order.buyer_id === userId ? "buyer" : order.provider_id === userId ? "provider" : null;
-    if (!role) throw new ForbiddenError("You are not part of this order");
+/** Both parties, or a 404. Shared by the read and the write so they can never disagree on who may look. */
+async function assertParticipant(orderId: number, userId: number) {
+  const order = await repo.findOrderById(orderId);
+  if (!order) throw new NotFoundError("Order not found");
+  if (order.buyer_id !== userId && order.provider_id !== userId) throw new NotFoundError("Order not found");
+  return order;
+}
 
-    if (order.status !== "paid") {
-      throw new ConflictError(
-        `Only a held payment can be confirmed — this order is ${readableStatus(order.status)}`,
-      );
-    }
+export async function listMessages(orderId: number, userId: number): Promise<OrderMessageDto[]> {
+  await assertParticipant(orderId, userId);
+  const rows = await repo.listOrderMessages(orderId);
+  return rows.map((row) => ({
+    id: row.id,
+    body: row.body,
+    created_at: new Date(row.created_at).toISOString(),
+    sender_id: row.sender_id,
+    sender_name: row.sender_name,
+    is_mine: row.sender_id === userId,
+  }));
+}
 
-    const alreadyMine = role === "buyer" ? order.buyer_confirmed : order.provider_confirmed;
-    if (alreadyMine) throw new ConflictError("You have already confirmed this order");
+export async function sendMessage(orderId: number, userId: number, body: string): Promise<OrderMessageDto> {
+  const order = await assertParticipant(orderId, userId);
 
-    const buyerConfirmed = role === "buyer" ? true : order.buyer_confirmed;
-    const providerConfirmed = role === "provider" ? true : order.provider_confirmed;
-    const both = buyerConfirmed && providerConfirmed;
+  // Nothing to talk about before the money is committed, and nothing to add once the order is closed out.
+  // `disputed` deliberately stays open: that is exactly when the two of them need to sort it out.
+  if (order.status === "pending_payment") {
+    throw new ConflictError("You can message once the payment has gone through");
+  }
+  if (order.status === "cancelled" || order.status === "refunded") {
+    throw new ConflictError(`This order is ${readableStatus(order.status)} — the conversation is closed`);
+  }
 
-    await repo.updateOrder(
-      orderId,
-      {
-        buyer_confirmed: buyerConfirmed,
-        provider_confirmed: providerConfirmed,
-        ...(both ? { status: "completed" as const, completed_at: new Date() } : {}),
-      },
-      trx,
-    );
-  });
-
-  return getOne(orderId, userId);
+  const row = await repo.insertOrderMessage({ order_id: orderId, sender_id: userId, body });
+  return {
+    id: row.id,
+    body: row.body,
+    created_at: new Date(row.created_at).toISOString(),
+    sender_id: row.sender_id,
+    sender_name: row.sender_name,
+    is_mine: true,
+  };
 }
 
 // ─── Dispute ───────────────────────────────────────────────────────────────

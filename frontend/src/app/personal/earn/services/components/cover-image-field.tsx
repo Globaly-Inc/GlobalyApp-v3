@@ -14,9 +14,14 @@ import { COVER_ACCEPT, MAX_COVER_MB } from "../const";
  * object, not a local blob that might not have made it. V2 previewed a base64 string and, on failure, could
  * leave a listing pointing at nothing.
  *
- * `available` is false when the environment has no storage bucket configured. The field then renders nothing
- * at all — a disabled control that can only fail is worse than an absent optional one, and the cover is
- * optional.
+ * `available` is false when the environment has no storage bucket configured (no `GCS_BUCKET_NAME`). The
+ * field still renders — the seller should be able to see that covers exist and are coming — but the picker is
+ * **disabled and says why**, because a control that can only fail is worse than an honest one that is off.
+ * The cover is optional either way, and a listing without one falls back to its category's cover.
+ *
+ * The wiring behind it is already complete: `POST /my-services/listings/cover` uploads through the shared
+ * storage service, and the returned path attaches to the listing. Setting the bucket flips `available` to
+ * true and this control starts working with no code change.
  */
 export function CoverImageField({
   available,
@@ -32,7 +37,6 @@ export function CoverImageField({
   onRemove: () => void;
 }>) {
   const inputRef = useRef<HTMLInputElement>(null);
-  if (!available) return null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -51,17 +55,25 @@ export function CoverImageField({
           </button>
         </div>
       ) : (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-auto w-full flex-col gap-1 py-6"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-        >
-          {uploading ? <Loader2 className="animate-spin" /> : <ImagePlus />}
-          <span className="text-sm">{uploading ? "Uploading…" : "Add a cover image"}</span>
-          <span className="text-xs text-muted-foreground">JPG, PNG or WebP · up to {MAX_COVER_MB}MB</span>
-        </Button>
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto w-full flex-col gap-1 py-6"
+            disabled={uploading || !available}
+            onClick={() => inputRef.current?.click()}
+          >
+            {uploading ? <Loader2 className="animate-spin" /> : <ImagePlus />}
+            <span className="text-sm">{uploading ? "Uploading…" : "Add a cover image"}</span>
+            <span className="text-xs text-muted-foreground">JPG, PNG or WebP · up to {MAX_COVER_MB}MB</span>
+          </Button>
+          {/* Says why rather than leaving a dead button to be discovered by clicking it. */}
+          <p className="text-xs text-muted-foreground">
+            {available
+              ? "Optional — without one, your service shows its category's cover."
+              : "Image upload isn't switched on in this environment yet. Your service will show its category's cover in the meantime."}
+          </p>
+        </>
       )}
 
       <input
