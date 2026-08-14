@@ -100,6 +100,8 @@ jobs:
           echo "${{ env.YELLOW_COLOR_MESSAGE }} Prequities setup ${{ env.RESET_COLOR_MESSAGE }}"
           cp -r "${{ github.workspace }}/devops/nginx" devops-tmp/nginx
           gcloud storage cp ${{ vars.ENV_BUCKET  }}/backend/.env "${{ github.workspace }}/backend/.env"
+          gcloud storage cp ${{ vars.ENV_BUCKET  }}/backend/gcp-service-account-key.json "${{ github.workspace }}/backend/gcp-service-account-key.json"
+
 
           echo "${{ env.YELLOW_COLOR_MESSAGE }} Building docker image ${{ env.RESET_COLOR_MESSAGE }}"
           docker build -f Dockerfile -t "${{ env.IMAGE }}:${{ env.IMAGE_TAG }}" .
@@ -148,6 +150,13 @@ jobs:
 
            echo "Updating image tag in $VALUES_FILE_PATH..."
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/api-globalyapp.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-auth.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-agentcis.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-pages.yml"                                 
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-schedule.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-step.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-verify.yml"                                 
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction.yml"               
 
            echo "updating globalyos-images..."
            git config user.name "devops-github-actions"

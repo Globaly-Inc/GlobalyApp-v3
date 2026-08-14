@@ -28,5 +28,6 @@ EXPOSE 80
 RUN rm -f /etc/nginx/sites-enabled/default
 COPY devops-tmp/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY devops-tmp/nginx/backend/globalyapp-backend.conf /etc/nginx/conf.d/backend.conf
+COPY gcp-service-account-key.json /globalyapp/backend/gcp-service-account-key.json
 
 CMD ["bash", "-c", "service nginx start && npm start"]
