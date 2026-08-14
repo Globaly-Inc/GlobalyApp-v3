@@ -5,31 +5,12 @@ on:
     branches:
       - main
       - production
+      - staging
       - devops-git-policy
-    paths:
-      - "devops/github-policies/git-security.json"
   schedule:
-    # Runs every 30 minutes, keeping the ruleset in sync even without a push.
+    # Runs every 15 minutes, keeping the ruleset in sync even without a push.
     # GitHub only triggers scheduled workflows from the default branch.
-    - cron: "*/30 * * * *"
-  repository_dispatch:
-    # Fired by an external webhook receiver listening for the "repository_ruleset"
-    # (or branch protection) webhook event, so out-of-band edits made via the GUI
-    # or the gh/API are resynced immediately instead of waiting for the next cron tick.
-    # GitHub Actions has no native workflow trigger for ruleset/branch-protection
-    # changes, so this requires a separate webhook -> `gh api repos/${REPO}/dispatches`
-    # relay to actually fire it.
-    types:
-      - policy-drift-detected
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Target environment (only used for manual runs)"
-        type: choice
-        required: true
-        default: gitops
-        options:
-          - gitops
+    - cron: "*/15 * * * *"
 
 concurrency:
   group: sync-git-security-policy-${{ github.ref }}
@@ -49,9 +30,7 @@ jobs:
       - name: Resolve environment
         id: resolve
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            env_name="${{ inputs.environment }}"
-          elif [[ "${{ github.ref_name }}" == "production" ]]; then
+          if [[ "${{ github.ref_name }}" == "production" ]]; then
             env_name="production"
           else
             env_name="gitops"
