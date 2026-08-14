@@ -15,6 +15,7 @@ const SchemaFieldParentParams = z.object({
 });
 
 const CategoryListQuery = PaginationSchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().trim().min(1).optional(),
 });
 

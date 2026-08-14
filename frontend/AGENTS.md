@@ -55,6 +55,22 @@ If no match exists, decide where the new component belongs:
 
 Don't duplicate a component that already exists in either location under a new name.
 
+# Prefer Combobox over Select
+
+When building any dropdown-list field (category pickers, country pickers, status
+pickers, anything selecting one value from a list), default to `@/components/combobox`
+(`Combobox`) instead of `@/components/ui/select` (`Select`). Combobox is searchable,
+supports an optional per-option `icon` (e.g. a flag), and keeps a consistent `h-10`
+trigger height and visual style across the app — `Select`'s trigger defaults to `h-8`
+and has no search, which reads as inconsistent next to `Combobox` and `Input` fields
+in the same form.
+
+Reach for `Select` only when there's a specific reason `Combobox` doesn't fit (e.g. a
+tiny fixed enum rendered inline at a non-standard size, like the `h-8`/`w-[130px]`
+sharing-scope picker in `frontend/src/app/admin/platform/businesses/components/link-branch-dialog.tsx`).
+Reference for the default pattern: the category/country/phone-code Comboboxes in
+`frontend/src/app/admin/platform/businesses/components/business-header-dialog.tsx`.
+
 # Combobox layout
 
 Never wrap a `<Combobox>` (or any field containing it) in a `space-y-*` container.
@@ -90,3 +106,8 @@ useEffect(() => {
 
 Reference: `frontend/src/app/admin/platform/categories/components/categories-view.tsx`.
 Apply this to every new `-view.tsx` with a mount-time fetch, not just the ones that hit it in testing.
+
+
+# max Line of code
+keep max 300 lines of code
+create components to manage line of codes in files 

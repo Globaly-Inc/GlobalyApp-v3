@@ -55,42 +55,18 @@ async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Respo
   return retried;
 }
 
-/** Zod issue shape as sent by the backend's error-handler ({ error, details: ZodIssue[] }). */
-export type ApiFieldIssue = { path: (string | number)[]; message: string };
-
-/**
- * Thrown on any non-2xx response. `.message` stays a plain string so every existing
- * `catch (e) { e instanceof Error ? e.message : ... }` call site keeps working unchanged.
- * `.code` (e.g. "CONFLICT") and `.details` (Zod issues on 400s) are there for callers that
- * want to map a failure back onto individual form fields instead of a single toast.
- */
 export class ApiError extends Error {
   code?: string;
-  details?: ApiFieldIssue[];
-
-  constructor(message: string, code?: string, details?: ApiFieldIssue[]) {
+  constructor(message: string, code?: string) {
     super(message);
-    this.name = "ApiError";
     this.code = code;
-    this.details = details;
   }
-}
-
-/** Flattens `ApiError.details` into `{ fieldName: message }` for a `useValidatedForm`-style errors object. */
-export function fieldErrorsFrom(err: unknown): Record<string, string> {
-  if (!(err instanceof ApiError) || !err.details) return {};
-  const errors: Record<string, string> = {};
-  for (const issue of err.details) {
-    const key = String(issue.path[0]);
-    if (!errors[key]) errors[key] = issue.message;
-  }
-  return errors;
 }
 
 async function readError(res: Response): Promise<ApiError> {
   try {
-    const data = (await res.json()) as { error?: string; message?: string; code?: string; details?: ApiFieldIssue[] };
-    return new ApiError(data.error || data.message || "Please try again.", data.code, data.details);
+    const data = (await res.json()) as { error?: string; message?: string; code?: string };
+    return new ApiError(data.error || data.message || "Please try again.", data.code);
   } catch {
     return new ApiError("Please try again.");
   }

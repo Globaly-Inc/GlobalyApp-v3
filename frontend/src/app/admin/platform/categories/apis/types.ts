@@ -107,4 +107,11 @@ export type CountryOption = {
   id: number;
   name: string;
   iso2: string;
+  phoneCode: string | null;
+};
+
+export type CityOption = {
+  id: number;
+  name: string;
+  stateName: string | null;
 };
