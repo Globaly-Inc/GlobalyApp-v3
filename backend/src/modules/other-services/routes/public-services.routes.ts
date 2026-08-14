@@ -3,12 +3,22 @@ import { BrowseQuerySchema, ListingIdParamSchema } from "../schemas/services.sch
 import * as publicServices from "../services/public-services.service.js";
 
 /**
- * The marketplace a buyer browses. Unauthenticated — see the `publicPatterns` entry in auth.plugin.ts.
+ * The marketplace a buyer browses. Unauthenticated.
  *
  * Mounted on its own prefix rather than as public routes inside /my-services, so "is this endpoint public?"
- * is answered by which file a route is in, not by reading a regex.
+ * is answered by which file a route is in, not by a pattern kept somewhere else.
+ *
+ * Every route in this file is marked public by the onRoute hook below, and auth.plugin.ts honours that flag
+ * generically. Two consequences worth stating: a route added here is public the moment it is added, with
+ * nothing to remember; and a route added to my-services.routes.ts is authenticated, also with nothing to
+ * remember. The earlier approach — a path regex in the auth plugin — could be true of a GET and accidentally
+ * true of a POST on the same path, which is precisely the hole that reached review.
  */
 export async function publicServicesRoutes(app: FastifyInstance) {
+  app.addHook("onRoute", (routeOptions) => {
+    routeOptions.config = { ...routeOptions.config, public: true };
+  });
+
   /** The category filter, and the picker on the listing form. Rows, not an enum — admins manage these. */
   app.get("/categories", async (_req, reply) =>
     reply.send({ categories: await publicServices.categories() }),

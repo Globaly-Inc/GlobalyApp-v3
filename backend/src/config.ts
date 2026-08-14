@@ -38,7 +38,7 @@ const envSchema = z.object({
   CHARGEBEE_API_KEY: z.string().optional(),
 
   // Payments (Earn → My Services). Unset outside production selects the dev driver, so the order lifecycle
-  // is exercisable locally without a Stripe account. See modules/services/payments.
+  // is exercisable locally without a Stripe account. See modules/other-services/payments.
   STRIPE_SECRET_KEY: z.string().optional(),
   // Where the browser reaches the frontend. Checkout must return the buyer to a real origin, and the API's
   // own APP_URL is a different host.
