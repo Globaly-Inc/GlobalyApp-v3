@@ -14,7 +14,18 @@
       "Bash(cat .claude/settings.json)",
       "Bash(cat ./.claude/settings.json)",
       "PowerShell(Get-Content .claude/settings.json)",
-      "PowerShell(type .claude/settings.json)"
+      "PowerShell(type .claude/settings.json)",
+      "Bash(gh *)",
+      "WebFetch(domain:api.github.com)"
     ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "deniedDomains": [
+        "api.github.com"
+      ]
+    }
   }
 }
