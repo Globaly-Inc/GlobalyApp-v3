@@ -13,7 +13,8 @@ import { ADMIN_ROLES, ROLE_DISPLAY } from "../../../consts";
 import { fetchAdmins, inviteAdmin } from "../store/users-slice";
 import type { AdminRole } from "../apis/types";
 
-const nameSchema = z.string().trim().min(1, "Name is required");
+const firstNameSchema = z.string().trim().min(1, "First name is required");
+const lastNameSchema = z.string().trim().min(1, "Last name is required");
 const emailSchema = z
   .string()
   .trim()
@@ -25,33 +26,41 @@ export function InviteUserDialog({
   onOpenChange,
 }: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void }>) {
   const dispatch = useAppDispatch();
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<AdminRole>("admin");
   const [saving, setSaving] = useState(false);
-  const [nameError, setNameError] = useState<string | null>(null);
+  const [firstNameError, setFirstNameError] = useState<string | null>(null);
+  const [lastNameError, setLastNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
-      setName("");
+      setFirstName("");
+      setLastName("");
       setEmail("");
       setRole("admin");
-      setNameError(null);
+      setFirstNameError(null);
+      setLastNameError(null);
       setEmailError(null);
     }
     onOpenChange(next);
   };
 
   const handleSubmit = async () => {
-    const nameResult = nameSchema.safeParse(name);
+    const firstNameResult = firstNameSchema.safeParse(firstName);
+    const lastNameResult = lastNameSchema.safeParse(lastName);
     const emailResult = emailSchema.safeParse(email);
-    setNameError(nameResult.success ? null : (nameResult.error.issues[0]?.message ?? "Invalid name"));
+    setFirstNameError(firstNameResult.success ? null : (firstNameResult.error.issues[0]?.message ?? "Invalid first name"));
+    setLastNameError(lastNameResult.success ? null : (lastNameResult.error.issues[0]?.message ?? "Invalid last name"));
     setEmailError(emailResult.success ? null : (emailResult.error.issues[0]?.message ?? "Invalid email"));
-    if (!nameResult.success || !emailResult.success) return;
+    if (!firstNameResult.success || !lastNameResult.success || !emailResult.success) return;
 
     setSaving(true);
-    const result = await dispatch(inviteAdmin({ name: nameResult.data, email: emailResult.data, role }));
+    const result = await dispatch(
+      inviteAdmin({ first_name: firstNameResult.data, last_name: lastNameResult.data, email: emailResult.data, role }),
+    );
     setSaving(false);
     if (inviteAdmin.rejected.match(result)) {
       toast.error("Couldn't send invitation", { description: result.error.message ?? "Please try again." });
@@ -69,21 +78,44 @@ export function InviteUserDialog({
           <DialogTitle>Invite Admin</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (nameError) setNameError(null);
-              }}
-              aria-invalid={!!nameError}
-            />
-            {nameError && <p className="text-sm text-destructive">{nameError}</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>
+                First Name <span className={firstNameError ? "text-destructive" : ""}>*</span>
+              </Label>
+              <Input
+                className="h-10"
+                value={firstName}
+                onChange={(e) => {
+                  setFirstName(e.target.value);
+                  if (firstNameError) setFirstNameError(null);
+                }}
+                aria-invalid={!!firstNameError}
+              />
+              {firstNameError && <p className="text-sm text-destructive">{firstNameError}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label>
+                Last Name <span className={lastNameError ? "text-destructive" : ""}>*</span>
+              </Label>
+              <Input
+                className="h-10"
+                value={lastName}
+                onChange={(e) => {
+                  setLastName(e.target.value);
+                  if (lastNameError) setLastNameError(null);
+                }}
+                aria-invalid={!!lastNameError}
+              />
+              {lastNameError && <p className="text-sm text-destructive">{lastNameError}</p>}
+            </div>
           </div>
           <div className="space-y-2">
-            <Label>Email</Label>
+            <Label>
+              Email <span className={emailError ? "text-destructive" : ""}>*</span>
+            </Label>
             <Input
+              className="h-10"
               type="email"
               value={email}
               onChange={(e) => {
