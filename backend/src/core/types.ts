@@ -66,4 +66,14 @@ declare module "fastify" {
     auth: AuthClaims;
     db: Knex;          // per-business DB (set for business context routes)
   }
+
+  interface FastifyContextConfig {
+    /**
+     * A route opting out of the global auth hook, set by the route file that owns it.
+     *
+     * Declared here rather than per-feature so auth.plugin.ts stays generic: it honours the flag without
+     * knowing which feature set it. See public-services.routes.ts for the only current user.
+     */
+    public?: boolean;
+  }
 }

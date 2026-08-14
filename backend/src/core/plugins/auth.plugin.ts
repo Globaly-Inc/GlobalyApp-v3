@@ -28,24 +28,15 @@ export const authPlugin = fp(async (app) => {
     "/health/mail",
   ]);
 
-  /**
-   * Public routes whose path carries an id, which the exact-match Set above cannot express.
-   *
-   * Deliberately anchored and digit-only: `/api/v3/services/12` and `/api/v3/services/12/reviews` are open,
-   * while everything a seller owns lives under the separate `/api/v3/my-services` prefix and cannot match
-   * this at all.
-   *
-   * **GET only.** The marketplace is public to *read*; nothing here may be written anonymously. Without the
-   * method check, adding `POST /api/v3/services/:id/reviews` beside the existing GET would have silently
-   * opened anonymous review posting, because this allow-list matches on path alone.
-   */
-  const publicPatterns = [/^\/api\/v3\/services(\/(categories|\d+(\/reviews)?))?$/];
-  const isPublicRead = (method: string, path: string) =>
-    (method === "GET" || method === "HEAD") && publicPatterns.some((pattern) => pattern.test(path));
-
   app.addHook("onRequest", async (req, reply) => {
     const path = req.url.split("?")[0];
-    if (publicPaths.has(path) || isPublicRead(req.method, path)) return;
+    if (publicPaths.has(path)) return;
+
+    // A route may declare itself public via `config: { public: true }`, which route files set for themselves.
+    // Generic on purpose: no feature is named here, and a route's publicness lives next to the route rather
+    // than in a path pattern maintained at a distance — the failure mode of a pattern is that it silently
+    // matches, or fails to match, a route nobody re-checked.
+    if ((req.routeOptions?.config as { public?: boolean } | undefined)?.public === true) return;
 
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) {

@@ -13,7 +13,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { PaginationSchema, paginationToOffset, buildPaginatedResponse } from "../../../../shared/pagination.js";
-import { ORDER_STATUSES } from "../../../services/schemas/services.schema.js";
+import { ORDER_STATUSES } from "../../../other-services/schemas/services.schema.js";
 
 const ListingQuery = z.object({
   search: z.string().trim().max(200).optional(),
@@ -36,7 +36,7 @@ export async function adminOtherServicesRoutes(app: FastifyInstance) {
     const { limit, offset } = paginationToOffset(page);
 
     const base = () => {
-      const q = masterKnex("service_listings as l")
+      const q = masterKnex("other_service_listings as l")
         .join("service_categories as cat", "cat.id", "l.category_id")
         .join("platform_users as p", "p.id", "l.provider_id");
       if (filters.category_id) q.where("l.category_id", filters.category_id);
@@ -85,8 +85,8 @@ export async function adminOtherServicesRoutes(app: FastifyInstance) {
     const { limit, offset } = paginationToOffset(page);
 
     const base = () => {
-      const q = masterKnex("service_orders as o")
-        .join("service_listings as l", "l.id", "o.listing_id")
+      const q = masterKnex("other_service_orders as o")
+        .join("other_service_listings as l", "l.id", "o.listing_id")
         .join("platform_users as b", "b.id", "o.buyer_id")
         .join("platform_users as pr", "pr.id", "o.provider_id");
       if (filters.status) q.where("o.status", filters.status);
@@ -121,14 +121,14 @@ export async function adminOtherServicesRoutes(app: FastifyInstance) {
   /** Headline counts for the screen's top strip, per currency so nothing is summed across them. */
   app.get("/other-services/stats", async (_req, reply) => {
     const [listings, orders] = await Promise.all([
-      masterKnex("service_listings")
+      masterKnex("other_service_listings")
         .select(
           masterKnex.raw("count(*) FILTER (WHERE deleted_at IS NULL)::int as total"),
           masterKnex.raw("count(*) FILTER (WHERE is_active AND deleted_at IS NULL)::int as active"),
           masterKnex.raw("count(*) FILTER (WHERE NOT is_active AND deleted_at IS NULL)::int as paused"),
         )
         .first(),
-      masterKnex("service_orders")
+      masterKnex("other_service_orders")
         .select("currency")
         .select(
           masterKnex.raw("count(*)::int as orders_count"),

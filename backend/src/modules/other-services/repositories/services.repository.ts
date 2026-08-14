@@ -1,4 +1,4 @@
-// My Services repository — service_listings / service_orders / service_reviews in the globalyapp DB.
+// My Services repository — other_service_listings / other_service_orders / other_service_reviews in the globalyapp DB.
 // Queries only; every authorization decision lives in the service layer.
 
 import type { Knex } from "knex";
@@ -82,15 +82,15 @@ export interface HydratedOrderRow extends OrderRow {
   message_count: number;
 }
 
-const listings = () => masterKnex<ListingRow>("service_listings");
-const orders = () => masterKnex<OrderRow>("service_orders");
+const listings = () => masterKnex<ListingRow>("other_service_listings");
+const orders = () => masterKnex<OrderRow>("other_service_orders");
 
 const fullName = (alias: string) => `trim(concat(${alias}.first_name, ' ', coalesce(${alias}.last_name, '')))`;
 
 // ─── Listings ──────────────────────────────────────────────────────────────
 
 function hydratedListingQuery(db: Knex | Knex.Transaction = masterKnex) {
-  return db("service_listings as l")
+  return db("other_service_listings as l")
     .join("service_categories as cat", "cat.id", "l.category_id")
     .leftJoin("countries as co", "co.id", "l.country_id")
     .leftJoin("cities as ci", "ci.id", "l.city_id")
@@ -104,7 +104,7 @@ function hydratedListingQuery(db: Knex | Knex.Transaction = masterKnex) {
       // Counted in the same pass rather than per-card: the hub renders this as an "N orders open" chip and
       // the delete guard reads the same number, so both come from one query.
       db.raw(
-        `(SELECT count(*)::int FROM service_orders o
+        `(SELECT count(*)::int FROM other_service_orders o
             WHERE o.listing_id = l.id AND o.status IN (${OPEN_ORDER_STATUSES.map((s) => `'${s}'`).join(", ")})
          ) as open_orders_count`,
       ),
@@ -216,7 +216,7 @@ export interface BrowseFilters {
  * Pause, and the reason deleting is refused while orders are open.
  */
 function publicListingQuery(filters: BrowseFilters) {
-  const query = masterKnex("service_listings as l")
+  const query = masterKnex("other_service_listings as l")
     .join("service_categories as cat", "cat.id", "l.category_id")
     .join("platform_users as p", "p.id", "l.provider_id")
     .leftJoin("countries as co", "co.id", "l.country_id")
@@ -302,7 +302,7 @@ export interface PublicReviewRow {
 }
 
 export async function listReviewsForListing(listingId: number, limit: number): Promise<PublicReviewRow[]> {
-  return masterKnex("service_reviews as r")
+  return masterKnex("other_service_reviews as r")
     .join("platform_users as u", "u.id", "r.reviewer_id")
     .where("r.listing_id", listingId)
     .select(
@@ -323,11 +323,11 @@ export async function listReviewsForListing(listingId: number, limit: number): P
 // ─── Orders ────────────────────────────────────────────────────────────────
 
 function hydratedOrderQuery(db: Knex | Knex.Transaction = masterKnex) {
-  return db("service_orders as o")
-    .join("service_listings as l", "l.id", "o.listing_id")
+  return db("other_service_orders as o")
+    .join("other_service_listings as l", "l.id", "o.listing_id")
     .join("platform_users as b", "b.id", "o.buyer_id")
     .join("platform_users as p", "p.id", "o.provider_id")
-    .leftJoin("service_reviews as r", "r.order_id", "o.id")
+    .leftJoin("other_service_reviews as r", "r.order_id", "o.id")
     .select(
       "o.*",
       "l.title as listing_title",
@@ -336,7 +336,7 @@ function hydratedOrderQuery(db: Knex | Knex.Transaction = masterKnex) {
       db.raw(`${fullName("p")} as provider_name`),
       "r.id as review_id",
       // Subquery rather than a join + group by: the review leftJoin above would multiply the message rows.
-      db.raw("(SELECT count(*)::int FROM service_order_messages m WHERE m.order_id = o.id) as message_count"),
+      db.raw("(SELECT count(*)::int FROM other_service_order_messages m WHERE m.order_id = o.id) as message_count"),
     );
 }
 
@@ -363,7 +363,7 @@ export async function findOrderById(id: number): Promise<HydratedOrderRow | null
  * FOR UPDATE cannot be combined with the LEFT JOIN above, so this returns the bare row.
  */
 export async function lockOrder(id: number, trx: Knex.Transaction): Promise<OrderRow | null> {
-  const row = await trx<OrderRow>("service_orders").where({ id }).forUpdate().first();
+  const row = await trx<OrderRow>("other_service_orders").where({ id }).forUpdate().first();
   return row ?? null;
 }
 
@@ -396,7 +396,7 @@ export async function updateOrder(
   data: Partial<OrderRow>,
   db: Knex | Knex.Transaction = masterKnex,
 ): Promise<OrderRow> {
-  const [row] = await db<OrderRow>("service_orders")
+  const [row] = await db<OrderRow>("other_service_orders")
     .where({ id })
     .update({ ...data, updated_at: db.fn.now() })
     .returning("*");
@@ -404,7 +404,7 @@ export async function updateOrder(
 }
 
 export async function incrementListingOrders(listingId: number, trx: Knex.Transaction): Promise<void> {
-  await trx("service_listings").where({ id: listingId }).increment("total_orders", 1);
+  await trx("other_service_listings").where({ id: listingId }).increment("total_orders", 1);
 }
 
 // ─── Reviews ───────────────────────────────────────────────────────────────
@@ -424,7 +424,7 @@ export async function findReviewByOrder(
   orderId: number,
   db: Knex | Knex.Transaction = masterKnex,
 ): Promise<ReviewRow | null> {
-  const row = await db<ReviewRow>("service_reviews").where({ order_id: orderId }).first();
+  const row = await db<ReviewRow>("other_service_reviews").where({ order_id: orderId }).first();
   return row ?? null;
 }
 
@@ -434,7 +434,7 @@ export async function findReviewByReviewer(
   reviewerId: number,
   db: Knex | Knex.Transaction = masterKnex,
 ): Promise<ReviewRow | null> {
-  const row = await db<ReviewRow>("service_reviews").where({ listing_id: listingId, reviewer_id: reviewerId }).first();
+  const row = await db<ReviewRow>("other_service_reviews").where({ listing_id: listingId, reviewer_id: reviewerId }).first();
   return row ?? null;
 }
 
@@ -450,7 +450,7 @@ export async function findSettledOrderForReviewer(
   buyerId: number,
   db: Knex | Knex.Transaction = masterKnex,
 ): Promise<{ id: number } | null> {
-  const row = await db("service_orders")
+  const row = await db("other_service_orders")
     .select("id")
     .where({ listing_id: listingId, buyer_id: buyerId })
     .whereNotIn("status", ["pending_payment", "cancelled"])
@@ -463,7 +463,7 @@ export async function insertReview(
   data: Omit<ReviewRow, "id" | "created_at">,
   trx: Knex.Transaction,
 ): Promise<ReviewRow> {
-  const [row] = await trx<ReviewRow>("service_reviews").insert(data).returning("*");
+  const [row] = await trx<ReviewRow>("other_service_reviews").insert(data).returning("*");
   return row;
 }
 
@@ -475,12 +475,12 @@ export async function insertReview(
  */
 export async function recomputeListingRating(listingId: number, trx: Knex.Transaction): Promise<void> {
   await trx.raw(
-    `UPDATE service_listings l
+    `UPDATE other_service_listings l
         SET avg_rating = coalesce(agg.avg_rating, 0),
             total_reviews = coalesce(agg.total_reviews, 0),
             updated_at = now()
        FROM (SELECT round(avg(rating)::numeric, 2) AS avg_rating, count(*)::int AS total_reviews
-               FROM service_reviews WHERE listing_id = ?) agg
+               FROM other_service_reviews WHERE listing_id = ?) agg
       WHERE l.id = ?`,
     [listingId, listingId],
   );
@@ -498,7 +498,7 @@ export interface OrderMessageRow {
 }
 
 const messageQuery = () =>
-  masterKnex("service_order_messages as m")
+  masterKnex("other_service_order_messages as m")
     .join("platform_users as u", "u.id", "m.sender_id")
     .select("m.id", "m.order_id", "m.sender_id", "m.body", "m.created_at", masterKnex.raw(`${fullName("u")} as sender_name`));
 
@@ -514,7 +514,7 @@ export async function insertOrderMessage(data: {
   sender_id: number;
   body: string;
 }): Promise<OrderMessageRow> {
-  const [inserted] = await masterKnex("service_order_messages").insert(data).returning("id");
+  const [inserted] = await masterKnex("other_service_order_messages").insert(data).returning("id");
   const row = await messageQuery().where("m.id", inserted.id).first();
   return row as OrderMessageRow;
 }
@@ -538,7 +538,7 @@ export interface CurrencyTotals {
  * Neither figure is money in the seller's hands; there are no payouts in this phase.
  */
 export async function summariseProviderOrders(providerId: number): Promise<CurrencyTotals[]> {
-  const rows = await masterKnex("service_orders")
+  const rows = await masterKnex("other_service_orders")
     .select("currency")
     .select(
       masterKnex.raw("coalesce(sum(amount_minor) FILTER (WHERE status = 'paid'), 0)::int as held_minor"),
