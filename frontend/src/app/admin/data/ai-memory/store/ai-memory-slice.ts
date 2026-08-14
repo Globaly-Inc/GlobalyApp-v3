@@ -1,16 +1,29 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { aiMemoryApi } from "../apis";
-import type { SiteProfileSummary } from "../apis/types";
+import type { Lesson } from "../apis/types";
 
-export const fetchSiteProfiles = createAsyncThunk("dataAiMemory/fetch", () => aiMemoryApi.getSiteProfiles());
+export const fetchLessons = createAsyncThunk("dataAiMemory/fetch", () => aiMemoryApi.getLessons());
+
+export const toggleLesson = createAsyncThunk(
+  "dataAiMemory/toggle",
+  async ({ id, isActive }: { id: string; isActive: boolean }) => {
+    await aiMemoryApi.toggleLesson(id, isActive);
+    return { id, isActive };
+  },
+);
+
+export const deleteLesson = createAsyncThunk("dataAiMemory/delete", async (id: string) => {
+  await aiMemoryApi.deleteLesson(id);
+  return id;
+});
 
 type AiMemoryState = {
-  profiles: SiteProfileSummary[];
+  lessons: Lesson[];
   status: "idle" | "loading" | "failed";
   error: string | null;
 };
 
-const initialState: AiMemoryState = { profiles: [], status: "idle", error: null };
+const initialState: AiMemoryState = { lessons: [], status: "idle", error: null };
 
 const aiMemorySlice = createSlice({
   name: "dataAiMemory",
@@ -18,17 +31,24 @@ const aiMemorySlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchSiteProfiles.pending, (state) => {
+      .addCase(fetchLessons.pending, (state) => {
         state.status = "loading";
         state.error = null;
       })
-      .addCase(fetchSiteProfiles.fulfilled, (state, action) => {
+      .addCase(fetchLessons.fulfilled, (state, action) => {
         state.status = "idle";
-        state.profiles = action.payload;
+        state.lessons = action.payload;
       })
-      .addCase(fetchSiteProfiles.rejected, (state, action) => {
+      .addCase(fetchLessons.rejected, (state, action) => {
         state.status = "failed";
-        state.error = action.error.message ?? "Failed to load site profiles.";
+        state.error = action.error.message ?? "Failed to load lessons.";
+      })
+      .addCase(toggleLesson.fulfilled, (state, action) => {
+        const { id, isActive } = action.payload;
+        state.lessons = state.lessons.map((l) => (l.id === id ? { ...l, is_active: isActive } : l));
+      })
+      .addCase(deleteLesson.fulfilled, (state, action) => {
+        state.lessons = state.lessons.filter((l) => l.id !== action.payload);
       });
   },
 });

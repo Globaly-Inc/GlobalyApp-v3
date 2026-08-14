@@ -4,3 +4,9 @@ export type Country = {
   iso2: string;
   phoneCode: string | null;
 };
+
+export type City = {
+  id: number;
+  name: string;
+  stateName: string | null;
+};

@@ -43,6 +43,93 @@ export const SOURCE_TYPE_OPTIONS = [
   { value: "institution", label: "Institution Website" },
 ];
 
+// Queue item statuses, in the order the counter row shows them. "completed" is what
+// the V3 page worker writes — V2 called the same state "done".
+export const QUEUE_STATS: { status: string; label: string; color: string }[] = [
+  { status: "pending", label: "Pending", color: "text-muted-foreground" },
+  { status: "processing", label: "Processing", color: "text-primary" },
+  { status: "paused", label: "Paused", color: "text-amber-600" },
+  { status: "stopped", label: "Stopped", color: "text-destructive" },
+  { status: "completed", label: "Done", color: "text-emerald-600" },
+  { status: "failed", label: "Failed", color: "text-destructive" },
+  { status: "ignored", label: "Ignored", color: "text-muted-foreground" },
+];
+
+export const QUEUE_FILTERS: { value: string; label: string }[] = [
+  { value: "all", label: "All" },
+  ...QUEUE_STATS.map((s) => ({ value: s.status, label: s.label })),
+];
+
+export const UNIT_TYPE_OPTIONS = [
+  { value: "compulsory", label: "Compulsory" },
+  { value: "elective", label: "Elective" },
+];
+
+export const ENGLISH_TEST_OPTIONS = ["IELTS", "TOEFL iBT", "PTE Academic", "Duolingo English Test", "Cambridge English"]
+  .map((t) => ({ value: t, label: t }));
+
+export const ACADEMIC_TEST_OPTIONS = ["SAT", "ACT", "GMAT", "GRE", "MCAT", "LSAT"].map((t) => ({ value: t, label: t }));
+
+/** Sub-scores captured per English test, in the order the form shows them. */
+export const ENGLISH_SUBSCORES = [
+  { key: "reading_score", label: "Reading" },
+  { key: "writing_score", label: "Writing" },
+  { key: "listening_score", label: "Listening" },
+  { key: "speaking_score", label: "Speaking" },
+] as const;
+
+export const SCORE_TYPE_OPTIONS = [
+  { value: "percentage", label: "Percentage (%)" },
+  { value: "gpa", label: "GPA" },
+  { value: "grade", label: "Grade" },
+];
+
+export const STUDENT_TYPE_OPTIONS = [
+  { value: "domestic", label: "Domestic Students" },
+  { value: "international", label: "International Students" },
+  { value: "both", label: "Both" },
+];
+
+export const PERIOD_TYPE_OPTIONS = [
+  { value: "Per Year", label: "Per Year" },
+  { value: "Per Semester", label: "Per Semester" },
+  { value: "Per Trimester", label: "Per Trimester" },
+  { value: "Per Unit", label: "Per Unit" },
+  { value: "Total", label: "Total" },
+];
+
+export const CURRENCY_OPTIONS = ["AUD", "NZD", "CAD", "USD", "GBP", "EUR", "NPR", "INR"].map((c) => ({
+  value: c,
+  label: c,
+}));
+
+// Study option enums — values are what the extractor writes to the staging tables.
+export const STUDY_MODE_OPTIONS = [
+  { value: "on_campus", label: "On Campus" },
+  { value: "online", label: "Online" },
+  { value: "hybrid", label: "Hybrid" },
+];
+
+export const STUDY_LOAD_OPTIONS = [
+  { value: "full_time", label: "Full Time" },
+  { value: "part_time", label: "Part Time" },
+];
+
+export const DURATION_UNIT_OPTIONS = [
+  { value: "years", label: "Years" },
+  { value: "months", label: "Months" },
+  { value: "weeks", label: "Weeks" },
+];
+
+export const APPLICABLE_TO_OPTIONS = [
+  { value: "domestic", label: "Domestic" },
+  { value: "international", label: "International" },
+  { value: "both", label: "Both" },
+];
+
+/** guided_urls keys a pipeline step can require before it will run. */
+export type ContextKey = "branches_urls" | "agents_urls" | "course_list_urls" | "extract_fields";
+
 export type SortOrder = "newest" | "oldest" | "name_asc" | "name_desc";
 
 export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [

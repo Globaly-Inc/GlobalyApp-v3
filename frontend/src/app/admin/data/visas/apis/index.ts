@@ -3,4 +3,4 @@ import { visasMockApi } from "./mock-data";
 import { visasRealApi } from "./real-api";
 
 export const visasApi = createApi({ mock: visasMockApi, real: visasRealApi });
-export type { VisaSummary } from "./types";
+export type { VisaExtraction, VisaExtractionStatus } from "./types";

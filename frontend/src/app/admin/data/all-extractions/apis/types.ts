@@ -29,8 +29,25 @@ export type ExtractionJob = {
   pages_scraped: number;
   pages_failed: number;
   agent_count?: number;
+  source_type?: string | null;
+  aggregator_name?: string | null;
+  sample_course_url?: string | null;
+  business_category_id?: number | null;
+  business_category_name?: string | null;
+  service_category_id?: number | null;
+  service_category_name?: string | null;
+  guided_urls?: Record<string, unknown> | null;
+  guidance_notes?: string | null;
+  pipeline_progress?: Record<string, unknown> | null;
+  supporting_documents?: SupportingDoc[] | null;
   created_at: string;
   updated_at: string;
+};
+
+export type SupportingDoc = {
+  file_name: string;
+  file_url: string;
+  guidance?: string;
 };
 
 export type CreateJobParams = {
@@ -69,13 +86,33 @@ export type CampusRow = TimestampedRow & { id: string };
 export type AgentRow = TimestampedRow & { id: string };
 export type CourseRow = TimestampedRow & { id: string; name: string; verification_status?: string | null };
 
+/** A row in one of the extraction_course_* junction tables. */
+export type CourseAssignment = { id: string; course_id: string } & Record<string, string | null>;
+
+/** Junction slugs the backend's /junctions/:junction/assign endpoint accepts. */
+export type JunctionSlug =
+  | "course-fees"
+  | "intakes"
+  | "eligibility-requirements"
+  | "study-units"
+  | "study-options"
+  | "accreditations"
+  | "campuses";
+
 export type CourseLinks = {
-  course_fees: TimestampedRow[];
-  intakes: TimestampedRow[];
-  eligibility_requirements: TimestampedRow[];
-  study_units: TimestampedRow[];
-  study_options: TimestampedRow[];
-  accreditations: TimestampedRow[];
+  course_fees: CourseFee[];
+  intakes: Intake[];
+  eligibility_requirements: EligibilityRequirement[];
+  study_units: StudyUnit[];
+  study_options: StudyOption[];
+  accreditations: Accreditation[];
+  fee_assignments: CourseAssignment[];
+  intake_assignments: CourseAssignment[];
+  eligibility_assignments: CourseAssignment[];
+  study_unit_assignments: CourseAssignment[];
+  study_option_assignments: CourseAssignment[];
+  accreditation_assignments: CourseAssignment[];
+  course_campuses: CourseAssignment[];
 };
 
 export type JobFull = {
@@ -86,3 +123,240 @@ export type JobFull = {
   courses: CourseRow[];
   courseLinks: CourseLinks;
 };
+
+// ── Full entity types for tab views ──────────────────────────────
+
+export type CourseFull = {
+  id: string;
+  name: string;
+  short_name?: string | null;
+  source_url: string | null;
+  degree_level: string | null;
+  subject_area: string | null;
+  duration_weeks: number | null;
+  study_mode: string | null;
+  description: string | null;
+  domestic_fee_total: number | null;
+  domestic_currency: string | null;
+  international_fee_total: number | null;
+  international_currency: string | null;
+  awarding_institution: string | null;
+  career_paths: string[] | null;
+  verification_status: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CampusFull = {
+  id: string;
+  name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  map_link: string | null;
+  source_url: string | null;
+  postcode: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentFull = {
+  id: string;
+  name: string | null;
+  country: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  source_url: string | null;
+  external_id: string | null;
+  source_status: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type QueueItem = {
+  id: string;
+  job_id: string;
+  url: string;
+  status: string;
+  error: string | null;
+  extracted_data: Record<string, unknown> | null;
+  retry_count: number;
+  failure_class: string | null;
+  processing_meta: Record<string, unknown>;
+  kind: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobEvent = {
+  id: string;
+  job_id: string;
+  kind: string;
+  level: string;
+  phase: string | null;
+  message: string | null;
+  data: Record<string, unknown>;
+  created_at: string;
+};
+
+/** Matches the backend's CreateAgentSchema. */
+export type CreateAgentParams = { job_id: string } & Partial<
+  Record<"name" | "country" | "email" | "phone" | "website" | "address" | "city" | "state" | "postcode", string | null>
+>;
+
+/** A row of superadmin.agent_extraction_runs — the Agents tab's extraction history. */
+export type AgentRun = {
+  id: string;
+  job_id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  provider: string | null;
+  agents_found: number;
+  agents_new: number;
+  agents_updated: number;
+  agents_removed: number;
+  error_message: string | null;
+};
+
+/** Matches the backend's CreateCampusSchema — every field but job_id is optional. */
+export type CreateCampusParams = { job_id: string } & Partial<
+  Record<"name" | "address" | "city" | "state" | "country" | "phone" | "email" | "map_link" | "postcode" | "source_url", string | null>
+>;
+
+export type UpdateCourseParams = Partial<Omit<CourseFull, "id" | "created_at" | "updated_at" | "verification_status">>;
+export type CreateCourseParams = { name: string; source_url?: string; degree_level?: string; subject_area?: string; duration_weeks?: number; study_mode?: string; description?: string };
+/** Tables the backend's save-and-learn endpoint accepts a patch for. */
+export type EditableTable =
+  | "extraction_courses"
+  | "extraction_institution_overview"
+  | "extraction_campuses"
+  | "extraction_agents"
+  | "extraction_intakes"
+  | "extraction_course_fees"
+  | "extraction_eligibility_requirements"
+  | "extraction_study_units"
+  | "extraction_accreditations";
+
+export type UpdateContextParams = { guided_urls?: Record<string, string> | null; guidance_notes?: string | null };
+
+// ── Course-linked entity types ──────────────────────────────────
+
+/** One installment of a fee. `lines` breaks it down by fee type; amount is their sum. */
+export type FeeInstallment = {
+  label: string;
+  amount: number;
+  lines?: { fee_type: string; amount: number }[];
+};
+
+export type CourseFee = {
+  id: string;
+  name: string | null;
+  student_type: string | null;
+  period_type: string | null;
+  currency: string | null;
+  total_amount: number | null;
+  installments?: FeeInstallment[] | null;
+  save_for_reuse?: boolean;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type CourseFeeParams = {
+  name?: string | null;
+  student_type?: string;
+  period_type?: string;
+  currency?: string;
+  total_amount?: number;
+  installments?: FeeInstallment[];
+  save_for_reuse?: boolean;
+};
+export type Intake = {
+  id: string;
+  intake_name: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  orientation_date: string | null;
+  admission_deadline: string | null;
+  intake_month: number | null;
+  intake_year: number | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type IntakeParams = {
+  intake_name?: string;
+  start_date?: string;
+  end_date?: string;
+  orientation_date?: string;
+  admission_deadline?: string;
+  intake_month?: number;
+  intake_year?: number;
+};
+/** One row of an eligibility requirement's language_tests / academic_tests jsonb. */
+export type LanguageTest = {
+  test_type_name: string;
+  overall_score: string;
+  listening_score?: string;
+  reading_score?: string;
+  writing_score?: string;
+  speaking_score?: string;
+};
+
+export type AcademicTest = { test_name: string; score: string };
+
+export type EligibilityRequirement = {
+  id: string;
+  name: string | null;
+  applicable_to: string | null;
+  min_degree_level: string | null;
+  score_type: string | null;
+  min_score: number | null;
+  min_score_percent: number | null;
+  description: string | null;
+  language_tests?: LanguageTest[] | null;
+  academic_tests?: AcademicTest[] | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type EligibilityParams = {
+  name?: string;
+  applicable_to?: string;
+  min_degree_level?: string | null;
+  score_type?: string | null;
+  min_score?: number | null;
+  min_score_percent?: number | null;
+  description?: string | null;
+  language_tests?: LanguageTest[];
+  academic_tests?: AcademicTest[];
+};
+export type StudyUnit = { id: string; unit_code: string | null; unit_name: string; credit_points: number | null; unit_type: string | null; description: string | null; created_at: string; updated_at?: string };
+
+export type StudyUnitParams = {
+  unit_name?: string;
+  unit_code?: string | null;
+  credit_points?: number | null;
+  unit_type?: string | null;
+  description?: string | null;
+};
+export type StudyOption = { id: string; name: string | null; study_mode: string | null; study_load: string | null; duration_value: number | null; duration_unit: string | null; applicable_to: string | null; save_for_reuse?: boolean; created_at: string; updated_at?: string };
+
+export type StudyOptionParams = {
+  name?: string | null;
+  study_mode?: string | null;
+  study_load?: string | null;
+  duration_value?: number | null;
+  duration_unit?: string | null;
+  applicable_to?: string | null;
+  save_for_reuse?: boolean;
+};
+export type Accreditation = { id: string; name: string; issuing_organization: string | null; website: string | null; description: string | null; created_at: string; updated_at?: string };

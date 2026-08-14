@@ -30,7 +30,8 @@ export const PatchStudyOptionSchema = z
 // ── Course fees (CE1-CE2) ──
 export const CreateCourseFeeSchema = z.object({
   job_id: z.string().uuid(),
-  name: z.string().optional(),
+  // nullable so an edit can clear the name, not just omit it
+  name: z.string().nullable().optional(),
   student_type: z.string().optional(),
   period_type: z.string().optional(),
   currency: z.string().optional(),
@@ -38,6 +39,8 @@ export const CreateCourseFeeSchema = z.object({
   installments: z.array(z.unknown()).optional(),
   save_for_reuse: z.boolean().optional(),
 });
+
+export const PatchCourseFeeSchema = CreateCourseFeeSchema.omit({ job_id: true }).partial();
 
 // ── Intakes (CE3-CE4) ──
 export const CreateIntakeSchema = z.object({
@@ -66,6 +69,8 @@ export const CreateEligibilitySchema = z.object({
   language_tests: z.array(z.unknown()).optional(),
 });
 
+export const PatchEligibilitySchema = CreateEligibilitySchema.omit({ job_id: true }).partial();
+
 // ── Study units (CE7-CE8) ──
 export const CreateStudyUnitSchema = z.object({
   job_id: z.string().uuid(),
@@ -75,6 +80,8 @@ export const CreateStudyUnitSchema = z.object({
   description: z.string().optional(),
   unit_type: z.string().optional(),
 });
+
+export const PatchStudyUnitSchema = CreateStudyUnitSchema.omit({ job_id: true }).partial();
 
 // ── Staged accreditations (SA1-SA2) ──
 export const CreateStagedAccreditationSchema = z.object({
@@ -120,6 +127,10 @@ export const CreateAgentSchema = z.object({
   email: z.string().optional(),
   phone: z.string().optional(),
   website: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  postcode: z.string().optional(),
 });
 
 export const CreateCampusSchema = z.object({

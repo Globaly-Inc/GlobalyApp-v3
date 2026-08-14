@@ -13,10 +13,18 @@ const logger = createChildLogger("extraction-jobs-service");
 // ── Reads ──
 
 export async function listJobs(opts: { status?: string; q?: string; limit: number }) {
-  const [jobs, counts] = await Promise.all([
+  const [rows, counts] = await Promise.all([
     repo.listJobs(opts),
     repo.countJobsByStatus(),
   ]);
+  // Institution jobs get their title from the overview row, service jobs from their
+  // own category's staging table. Only the still-nameless rows cost a second query.
+  const unnamed = rows.filter((r: any) => !r.institution_name && !r.overview_name);
+  const serviceNames = await repo.findServiceNames(unnamed);
+  const jobs = rows.map(({ overview_name, ...job }: any) => ({
+    ...job,
+    institution_name: job.institution_name ?? overview_name ?? serviceNames.get(job.id) ?? null,
+  }));
   return { jobs, counts };
 }
 
@@ -32,7 +40,8 @@ export async function listJobsFiltered(opts: {
 export async function getJob(id: string) {
   const { job, overview } = await repo.findJobWithOverview(id);
   if (!job) throw new NotFoundError("Extraction job not found");
-  return { job, overview };
+  // Same title fallback the list uses — the overview row is already loaded here.
+  return { job: { ...job, institution_name: job.institution_name ?? overview?.name ?? null }, overview };
 }
 
 export async function getJobEvents(jobId: string, limit: number) {

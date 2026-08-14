@@ -32,6 +32,7 @@ export const studyOptions = {
 
 export const courseFees = {
   insert: (data: Record<string, unknown>) => insertEntity("extraction_course_fees", data),
+  update: (id: string, data: Record<string, unknown>) => updateEntity("extraction_course_fees", id, data),
   delete: (id: string) => deleteEntity("extraction_course_fees", id),
 };
 
@@ -46,6 +47,7 @@ export const intakes = {
 
 export const eligibility = {
   insert: (data: Record<string, unknown>) => insertEntity("extraction_eligibility_requirements", data),
+  update: (id: string, data: Record<string, unknown>) => updateEntity("extraction_eligibility_requirements", id, data),
   delete: (id: string) => deleteEntity("extraction_eligibility_requirements", id),
 };
 
@@ -53,6 +55,7 @@ export const eligibility = {
 
 export const studyUnits = {
   insert: (data: Record<string, unknown>) => insertEntity("extraction_study_units", data),
+  update: (id: string, data: Record<string, unknown>) => updateEntity("extraction_study_units", id, data),
   delete: (id: string) => deleteEntity("extraction_study_units", id),
 };
 

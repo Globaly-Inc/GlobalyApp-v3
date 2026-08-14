@@ -9,6 +9,17 @@ import { JobHeader } from "./job-header";
 import { JobStats } from "./job-stats";
 import { JobTabsBar, type JobTab } from "./job-tabs-bar";
 import { OverviewTab } from "./overview-tab";
+import { ContextTab } from "./context-tab";
+import { InstitutionTab } from "./institution-tab";
+import { CoursesTab } from "./courses-tab";
+import { BranchesTab } from "./branches-tab";
+import { AgentsTab } from "./agents-tab";
+import { FeesTab } from "./fees-tab";
+import { IntakesTab } from "./intakes-tab";
+import { EligibilityTab } from "./eligibility-tab";
+import { StudyUnitsTab } from "./study-units-tab";
+import { StudyOptionsTab } from "./study-options-tab";
+import { AccreditationsTab } from "./accreditations-tab";
 
 const VALID_TABS: JobTab[] = [
   "overview", "context", "institution", "branches", "agents",
@@ -33,6 +44,8 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
     fetchedIdRef.current = jobId;
     dispatch(fetchJobFull(jobId));
   }, [dispatch, jobId]);
+
+  const reload = () => dispatch(fetchJobFull(jobId));
 
   const activeTab = parseTab(searchParams.get("tab"));
 
@@ -59,7 +72,29 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
       <JobStats job={full.job} courses={full.courses} />
       <JobTabsBar active={activeTab} onChange={setTab} />
       {activeTab === "overview" ? (
-        <OverviewTab full={full} onJumpToTab={setTab} />
+        <OverviewTab full={full} onJumpToTab={setTab} onReload={reload} />
+      ) : activeTab === "context" ? (
+        <ContextTab job={full.job} onReload={reload} />
+      ) : activeTab === "institution" ? (
+        <InstitutionTab overview={full.overview} jobId={jobId} onReload={reload} />
+      ) : activeTab === "courses" ? (
+        <CoursesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+      ) : activeTab === "branches" ? (
+        <BranchesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+      ) : activeTab === "agents" ? (
+        <AgentsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+      ) : activeTab === "fees" ? (
+        <FeesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+      ) : activeTab === "intakes" ? (
+        <IntakesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+      ) : activeTab === "eligibility" ? (
+        <EligibilityTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+      ) : activeTab === "units" ? (
+        <StudyUnitsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+      ) : activeTab === "study_options" ? (
+        <StudyOptionsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+      ) : activeTab === "accreditations" ? (
+        <AccreditationsTab jobId={jobId} />
       ) : (
         <p className="text-sm text-muted-foreground py-12 text-center">
           This tab hasn&apos;t been migrated from V2 yet.

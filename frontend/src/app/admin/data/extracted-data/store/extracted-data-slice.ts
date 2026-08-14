@@ -1,16 +1,23 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { extractedDataApi } from "../apis";
-import type { ExtractedInstitution } from "../apis/types";
+import type { ExtractedJob } from "../apis/types";
 
-export const fetchExtractedData = createAsyncThunk("dataExtractedData/fetch", () => extractedDataApi.getExtracted());
+export const fetchExtractedJobs = createAsyncThunk("dataExtractedData/fetch", () =>
+  extractedDataApi.getExtractedJobs(),
+);
+
+export const promoteExtractedJob = createAsyncThunk("dataExtractedData/promote", async (id: string) => {
+  await extractedDataApi.promoteJob(id);
+  return id;
+});
 
 type ExtractedDataState = {
-  institutions: ExtractedInstitution[];
+  jobs: ExtractedJob[];
   status: "idle" | "loading" | "failed";
   error: string | null;
 };
 
-const initialState: ExtractedDataState = { institutions: [], status: "idle", error: null };
+const initialState: ExtractedDataState = { jobs: [], status: "idle", error: null };
 
 const extractedDataSlice = createSlice({
   name: "dataExtractedData",
@@ -18,17 +25,22 @@ const extractedDataSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchExtractedData.pending, (state) => {
+      .addCase(fetchExtractedJobs.pending, (state) => {
         state.status = "loading";
         state.error = null;
       })
-      .addCase(fetchExtractedData.fulfilled, (state, action) => {
+      .addCase(fetchExtractedJobs.fulfilled, (state, action) => {
         state.status = "idle";
-        state.institutions = action.payload;
+        state.jobs = action.payload;
       })
-      .addCase(fetchExtractedData.rejected, (state, action) => {
+      .addCase(fetchExtractedJobs.rejected, (state, action) => {
         state.status = "failed";
         state.error = action.error.message ?? "Failed to load extracted data.";
+      })
+      .addCase(promoteExtractedJob.fulfilled, (state, action) => {
+        state.jobs = state.jobs.map((j) =>
+          j.id === action.payload ? { ...j, status: "exported" } : j,
+        );
       });
   },
 });

@@ -11,6 +11,8 @@ export type ComboboxOption = {
   value: string;
   label: string;
   icon?: ReactNode;
+  /** Optional muted second line under the label. */
+  description?: string;
 };
 
 export function Combobox({
@@ -20,6 +22,7 @@ export function Combobox({
   placeholder = "Select...",
   searchPlaceholder = "Search...",
   emptyText = "No results found.",
+  optionsHeading,
   loading = false,
   loadingText = "Loading...",
   disabled = false,
@@ -35,6 +38,8 @@ export function Combobox({
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
+  /** Small heading shown above the option list (e.g. "Existing"). */
+  optionsHeading?: string;
   loading?: boolean;
   loadingText?: string;
   disabled?: boolean;
@@ -146,6 +151,9 @@ export function Combobox({
               <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
             ) : (
               <>
+                {optionsHeading && filtered.length > 0 && (
+                  <p className="px-2 py-1 text-xs font-medium text-muted-foreground">{optionsHeading}</p>
+                )}
                 {filtered.map((option, index) => (
                   <button
                     key={option.value}
@@ -159,7 +167,12 @@ export function Combobox({
                   >
                     <Check className={cn("h-4 w-4 shrink-0", value === option.value ? "opacity-100" : "opacity-0")} />
                     {option.icon}
-                    <span className="truncate">{option.label}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{option.label}</span>
+                      {option.description && (
+                        <span className="block truncate text-xs text-muted-foreground">{option.description}</span>
+                      )}
+                    </span>
                   </button>
                 ))}
                 {showCreateOption && (

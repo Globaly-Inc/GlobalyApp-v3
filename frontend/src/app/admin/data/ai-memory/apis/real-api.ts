@@ -1,9 +1,17 @@
-import { httpGet } from "@/lib/api/http";
-import type { SiteProfileSummary } from "./types";
+import { httpDelete, httpGet, httpPatch } from "@/lib/api/http";
+import type { Lesson } from "./types";
 
 export const aiMemoryRealApi = {
-  getSiteProfiles: async (): Promise<SiteProfileSummary[]> => {
-    const { profiles } = await httpGet<{ profiles: SiteProfileSummary[] }>("/admin/data-extraction/site-profiles");
-    return profiles;
+  getLessons: async (): Promise<Lesson[]> => {
+    const { lessons } = await httpGet<{ lessons: Lesson[] }>("/admin/data-extraction/lessons?limit=100");
+    return lessons;
+  },
+
+  toggleLesson: async (id: string, isActive: boolean): Promise<void> => {
+    await httpPatch(`/admin/data-extraction/lessons/${id}`, { is_active: isActive });
+  },
+
+  deleteLesson: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/lessons/${id}`);
   },
 };

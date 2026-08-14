@@ -8,9 +8,12 @@ import {
   CreateStudyOptionSchema,
   PatchStudyOptionSchema,
   CreateCourseFeeSchema,
+  PatchCourseFeeSchema,
   CreateIntakeSchema,
   CreateEligibilitySchema,
+  PatchEligibilitySchema,
   CreateStudyUnitSchema,
+  PatchStudyUnitSchema,
   CreateStagedAccreditationSchema,
   CreateAgentSchema,
   CreateCampusSchema,
@@ -51,6 +54,13 @@ export async function stagedRoutes(app: FastifyInstance) {
     return reply.send(await service.createCourseFee(input, adminId(req)));
   });
 
+  // CE1b: PATCH /course-fees/:id
+  app.patch("/course-fees/:id", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const input = PatchCourseFeeSchema.parse(req.body);
+    return reply.send(await service.patchCourseFee(id, input, adminId(req)));
+  });
+
   // CE2: DELETE /course-fees/:id
   app.delete("/course-fees/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
@@ -79,6 +89,13 @@ export async function stagedRoutes(app: FastifyInstance) {
     return reply.send(await service.createEligibility(input, adminId(req)));
   });
 
+  // CE5b: PATCH /eligibility-requirements/:id
+  app.patch("/eligibility-requirements/:id", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const input = PatchEligibilitySchema.parse(req.body);
+    return reply.send(await service.patchEligibility(id, input, adminId(req)));
+  });
+
   // CE6: DELETE /eligibility-requirements/:id
   app.delete("/eligibility-requirements/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
@@ -91,6 +108,13 @@ export async function stagedRoutes(app: FastifyInstance) {
   app.post("/study-units", async (req, reply) => {
     const input = CreateStudyUnitSchema.parse(req.body);
     return reply.send(await service.createStudyUnit(input, adminId(req)));
+  });
+
+  // CE7b: PATCH /study-units/:id
+  app.patch("/study-units/:id", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const input = PatchStudyUnitSchema.parse(req.body);
+    return reply.send(await service.patchStudyUnit(id, input, adminId(req)));
   });
 
   // CE8: DELETE /study-units/:id

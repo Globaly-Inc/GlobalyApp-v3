@@ -1,8 +1,3 @@
-import type { AdminListColumn } from "../../../components/admin-placeholder-view";
+import type { ExtractionStatus } from "../../all-extractions/apis/types";
 
-export const EXTRACTED_DATA_COLUMNS: AdminListColumn[] = [
-  { key: "institution", label: "Institution" },
-  { key: "status", label: "Status" },
-  { key: "courses", label: "Courses" },
-  { key: "verification", label: "Verification score" },
-];
+export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "done", "approved", "completed"];

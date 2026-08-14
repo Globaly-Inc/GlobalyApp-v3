@@ -1,4 +1,4 @@
-import type { Country } from "./types";
+import type { City, Country } from "./types";
 
 const COUNTRIES: Country[] = [
   { id: 1, name: "Australia", iso2: "AU", phoneCode: "+61" },
@@ -25,6 +25,20 @@ const COUNTRIES: Country[] = [
   { id: 22, name: "Vietnam", iso2: "VN", phoneCode: "+84" },
 ];
 
+const CITIES: Record<number, City[]> = {
+  1: [
+    { id: 101, name: "Sydney", stateName: "New South Wales" },
+    { id: 102, name: "Melbourne", stateName: "Victoria" },
+    { id: 103, name: "Brisbane", stateName: "Queensland" },
+  ],
+  3: [
+    { id: 301, name: "Edmonton", stateName: "Alberta" },
+    { id: 302, name: "Toronto", stateName: "Ontario" },
+    { id: 303, name: "Vancouver", stateName: "British Columbia" },
+  ],
+};
+
 export const geoMockApi = {
   getCountries: async (): Promise<Country[]> => COUNTRIES,
+  getCities: async (countryId: number): Promise<City[]> => CITIES[countryId] ?? [],
 };

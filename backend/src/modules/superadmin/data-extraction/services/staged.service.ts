@@ -43,6 +43,12 @@ export async function createCourseFee(data: Record<string, unknown>, adminId: nu
   return { id: row.id };
 }
 
+export async function patchCourseFee(id: string, data: Record<string, unknown>, adminId: number) {
+  await repo.courseFees.update(id, data);
+  await logAudit(adminId, "COURSE_FEE_PATCH", { entityType: "extraction_course_fees", entityId: id });
+  return { updated: true };
+}
+
 export async function deleteCourseFee(id: string, adminId: number) {
   await repo.courseFees.delete(id);
   await logAudit(adminId, "COURSE_FEE_DELETE", { entityType: "extraction_course_fees", entityId: id });
@@ -73,6 +79,12 @@ export async function createEligibility(data: Record<string, unknown>, adminId: 
   return { id: row.id };
 }
 
+export async function patchEligibility(id: string, data: Record<string, unknown>, adminId: number) {
+  await repo.eligibility.update(id, data);
+  await logAudit(adminId, "ELIGIBILITY_PATCH", { entityType: "extraction_eligibility_requirements", entityId: id });
+  return { updated: true };
+}
+
 export async function deleteEligibility(id: string, adminId: number) {
   await repo.eligibility.delete(id);
   await logAudit(adminId, "ELIGIBILITY_DELETE", { entityType: "extraction_eligibility_requirements", entityId: id });
@@ -85,6 +97,12 @@ export async function createStudyUnit(data: Record<string, unknown>, adminId: nu
   const row = await repo.studyUnits.insert(data);
   await logAudit(adminId, "STUDY_UNIT_CREATE", { entityType: "extraction_study_units", entityId: row.id });
   return { id: row.id };
+}
+
+export async function patchStudyUnit(id: string, data: Record<string, unknown>, adminId: number) {
+  await repo.studyUnits.update(id, data);
+  await logAudit(adminId, "STUDY_UNIT_PATCH", { entityType: "extraction_study_units", entityId: id });
+  return { updated: true };
 }
 
 export async function deleteStudyUnit(id: string, adminId: number) {
