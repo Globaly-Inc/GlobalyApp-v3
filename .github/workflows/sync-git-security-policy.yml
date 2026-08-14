@@ -6,8 +6,8 @@ on:
       - main
       - production
       - devops-git-policy
-    # paths:
-    #   - "devops/github-policies/git-security.json"
+    paths:
+      - "devops/github-policies/git-security.json"
   schedule:
     # Runs every 30 minutes, keeping the ruleset in sync even without a push.
     # GitHub only triggers scheduled workflows from the default branch.
