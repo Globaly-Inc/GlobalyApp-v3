@@ -15,6 +15,22 @@ export async function findBusinessByDbName(dbName: string): Promise<BusinessReco
   return masterKnex<BusinessRecord>("businesses").where({ schema_name: dbName }).whereNull("deleted_at").first();
 }
 
+
+export async function searchBusinesses(
+  search: string | undefined,
+  excludeId: string,
+  limit: number,
+): Promise<Pick<BusinessRecord, "id" | "business_name" | "logo_url">[]> {
+  const query = masterKnex<BusinessRecord>("businesses")
+    .select("id", "business_name", "logo_url")
+    .whereNull("deleted_at")
+    .whereNot("id", excludeId)
+    .orderBy("business_name")
+    .limit(limit);
+  if (search) query.whereILike("business_name", `%${search}%`);
+  return query;
+}
+
 export async function insertBusiness(data: {
   owner_id: number;
   subdomain: string;

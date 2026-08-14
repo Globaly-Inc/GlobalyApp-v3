@@ -1,10 +1,3 @@
-export type AuthUser = {
-  email: string;
-  type: "admin" | "platform_user" | "agent";
-  role: string | null;
-  user_category: string | null;
-};
-
 export type AuthMeBusiness = {
   id: number;
   org_id: string;
@@ -13,6 +6,15 @@ export type AuthMeBusiness = {
   logo_url: string | null;
   role: string;
   is_owner: boolean;
+};
+
+export type AuthUser = {
+  email: string;
+  type: "admin" | "platform_user" | "agent";
+  role: string | null;
+  user_category: string | null;
+  businesses: AuthMeBusiness[];
+  orgId: string | null;
 };
 
 export type AuthMeUser = {
@@ -58,4 +60,12 @@ export type AcceptInviteParams = {
 
 export type AcceptInviteResult = {
   message: string;
+};
+
+export type SwitchAccountParams = {
+  org_id: string;
+};
+
+export type SwitchAccountResult = {
+  access_token: string;
 };

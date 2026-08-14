@@ -1,4 +1,7 @@
-import type { AcceptInviteParams, AcceptInviteResult, AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "./types";
+import type {
+  AcceptInviteParams, AcceptInviteResult, AuthUser, SendOtpParams,
+  SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
+} from "./types";
 
 const MOCK_OTP = "123456";
 
@@ -25,7 +28,7 @@ export const authMockApi = {
     if (otp !== MOCK_OTP) {
       throw new Error(`Invalid or expired code. (mock mode: use ${MOCK_OTP})`);
     }
-    mockUser = { email, type: "platform_user", role: null, user_category: null };
+    mockUser = { email, type: "platform_user", role: null, user_category: null, businesses: [], orgId: null };
     return mockUser;
   },
 
@@ -41,5 +44,12 @@ export const authMockApi = {
     await delay(500);
     if (!token) throw new Error("Invitation not found or already used.");
     return { message: "Invitation accepted. Your account is being set up." };
+  },
+
+  switchAccount: async ({ org_id }: SwitchAccountParams): Promise<SwitchAccountResult> => {
+    console.log("[mock] POST /auth/switch-account", { org_id });
+    await delay(300);
+    if (mockUser) mockUser = { ...mockUser, orgId: org_id };
+    return { access_token: "mock-access-token" };
   },
 };

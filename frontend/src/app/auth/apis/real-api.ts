@@ -1,6 +1,9 @@
 import { httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { saveTokens } from "@/lib/session";
-import type { AcceptInviteParams, AcceptInviteResult, AuthMeUser, AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "./types";
+import { saveAccessToken, saveTokens } from "@/lib/session";
+import type {
+  AcceptInviteParams, AcceptInviteResult, AuthMeUser, AuthUser, SendOtpParams,
+  SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
+} from "./types";
 
 export const authRealApi = {
   sendOtp: ({ email }: SendOtpParams): Promise<void> =>
@@ -19,7 +22,7 @@ export const authRealApi = {
       user: { id: number; email: string; type: AuthUser["type"]; role: string | null };
     }>("/auth/verify-otp", { email: email.trim().toLowerCase(), otp: otp.trim() });
     saveTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
-    return { email, type: data.user.type, role: data.user.role, user_category: null };
+    return { email, type: data.user.type, role: data.user.role, user_category: null, businesses: [], orgId: null };
   },
 
   getMe: async (): Promise<AuthUser> => {
@@ -32,6 +35,14 @@ export const authRealApi = {
       type: data.user.type,
       role: data.user.admin_role ?? null,
       user_category,
+      businesses: data.user.businesses ?? [],
+      orgId: data.user.orgId ?? null,
     };
+  },
+
+  switchAccount: async ({ org_id }: SwitchAccountParams): Promise<SwitchAccountResult> => {
+    const data = await httpPost<{ access_token: string }>("/auth/switch-account", { org_id });
+    saveAccessToken(data.access_token);
+    return { access_token: data.access_token };
   },
 };

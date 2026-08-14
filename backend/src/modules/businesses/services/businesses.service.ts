@@ -6,6 +6,7 @@ import { schemaName } from "../../../core/db/knex.js";
 import { provisionBusinessSchema } from "../../../core/business/provisioner.js";
 import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../platform-users/repositories/platform-users.repository.js";
+import { issueScopedAccessToken } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import type { BusinessRegisterInput, BusinessProfilePatchInput } from "../schemas/businesses.schema.js";
 
@@ -74,10 +75,20 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
 
   logger.info("Business registered", { orgId: business.id, subdomain: input.subdomain, userId });
 
+  const access_token = issueScopedAccessToken({ id: userId, email: user.email }, business.schema_name, "owner");
+
   return {
     org: { id: business.id, org_id: business.schema_name, subdomain: business.subdomain, business_name: business.business_name },
-    message: "Business created. Use account switching to manage it.",
+    access_token,
+    message: "Business created.",
   };
+}
+
+/** Search other businesses by name for cross-business pickers (e.g. linking a partner). */
+export async function searchBusinesses(orgId: string, search: string | undefined, limit: number) {
+  const caller = await repo.findBusinessByDbName(orgId);
+  if (!caller) throw new NotFoundError("Business not found");
+  return repo.searchBusinesses(search, caller.id, limit);
 }
 
 /** Get full business record by schema_name (orgId from JWT). */

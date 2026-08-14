@@ -5,7 +5,7 @@
  * Covers:
  *  1. Personal account registration → OTP verify → onboarding
  *  2. Admin invite → accept → admin login
- *  3. Business registration → switch account → business profile
+ *  3. Business registration (returns a scoped access_token immediately) → business profile
  *  4. Logout
  */
 
@@ -225,7 +225,7 @@ await assert("Invited admin can login after OTP verify", async () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-console.log("\n═══ 3. Business Registration + Account Switching ═══\n");
+console.log("\n═══ 3. Business Registration ═══\n");
 
 await assert("Register a business", async () => {
   const { status, data } = await api("POST", "/businesses/register", {
@@ -235,7 +235,9 @@ await assert("Register a business", async () => {
   eq(status, 201, "status");
   eq(data.org.business_name, "Test Corp", "business_name");
   eq(typeof data.org.org_id, "string", "org_id");
+  eq(typeof data.access_token, "string", "scoped access_token returned immediately");
   businessOrgId = data.org.org_id;
+  businessToken = data.access_token;
 });
 
 await assert("GET /auth/me lists the new business", async () => {
@@ -244,15 +246,6 @@ await assert("GET /auth/me lists the new business", async () => {
   const biz = data.user.businesses?.find((b: any) => b.org_id === businessOrgId);
   eq(!!biz, true, "business found in list");
   eq(biz.role, "owner", "role is owner");
-});
-
-await assert("Switch to business account", async () => {
-  const { status, data } = await api("POST", "/auth/switch-account", {
-    org_id: businessOrgId,
-  }, personalToken);
-  eq(status, 200, "status");
-  eq(typeof data.access_token, "string", "scoped access_token");
-  businessToken = data.access_token;
 });
 
 await assert("GET /businesses/me works in business context", async () => {

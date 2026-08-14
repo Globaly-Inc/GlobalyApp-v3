@@ -14,7 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "../geo/apis";
-import { fetchMyProfile, updateMyProfile, updateSubCategory } from "./store/business-onboarding-slice";
+import { updateMyProfile, updateSubCategory } from "./store/business-onboarding-slice";
 import { BUSINESS_TYPES } from "./static/onboarding-content";
 import { slugify, validateBusinessDetails, validateBusinessField } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
@@ -26,10 +26,6 @@ export function OnboardingView() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { profile, status } = useAppSelector((state) => state.businessOnboarding);
-
-  useEffect(() => {
-    dispatch(fetchMyProfile());
-  }, [dispatch]);
 
   useEffect(() => {
     if (profile?.onboarding_completed) router.replace("/business");

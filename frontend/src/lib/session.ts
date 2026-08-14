@@ -10,6 +10,12 @@ export function saveTokens(tokens: { accessToken: string; refreshToken: string }
   localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
 }
 
+/** Updates only the access token — used after switching the active business org, which keeps the same refresh token/session. */
+export function saveAccessToken(accessToken: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+}
+
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(ACCESS_TOKEN_KEY);

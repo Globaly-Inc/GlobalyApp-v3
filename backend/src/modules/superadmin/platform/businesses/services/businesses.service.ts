@@ -69,6 +69,11 @@ export async function createBusiness(input: BusinessCreateInput) {
       role: "owner",
       is_owner: true,
     });
+    // Mark the owner as a business account holder — same as the self-service registration flow.
+    // Without this, /auth/me reports is_business_account: false for an owner who clearly has one.
+    await userRepo.updateUser(owner.id, { is_business_account: true });
+    
+    await userRepo.addAccountCategory(owner.id, { type: "business", role: business.business_type ?? "business" });
     // Only now is the business fully provisioned — findBusinessByDbName (used by the
     // invite/accept flow) requires account_status: 1, same as the self-service registration flow.
     await repo.updateBusiness(business.id, { account_status: 1 });

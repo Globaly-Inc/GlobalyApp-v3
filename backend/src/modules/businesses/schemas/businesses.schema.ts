@@ -43,5 +43,11 @@ export const BusinessProfilePatchSchema = z.object({
   onboarding_completed: z.boolean(),
 }).partial().strict();
 
+export const BusinessSearchQuerySchema = z.object({
+  search: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(50).default(10),
+});
+
 export type BusinessRegisterInput = z.infer<typeof BusinessRegisterSchema>;
 export type BusinessProfilePatchInput = z.infer<typeof BusinessProfilePatchSchema>;
+export type BusinessSearchQueryInput = z.infer<typeof BusinessSearchQuerySchema>;

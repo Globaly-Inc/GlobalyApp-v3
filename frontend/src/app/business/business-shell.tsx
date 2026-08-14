@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, User as UserIcon, LogOut, Loader2 } from "lucide-react";
+import { Building2, LogOut, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -15,31 +15,45 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
-import { fetchFullProfile } from "@/app/personal/store/profile-slice";
+import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { profile, status } = useAppSelector((state) => state.profile);
+  const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
 
-  const portalTarget =
-    profile?.user_category === "business"
-      ? { label: "Business Portal", icon: Building2, href: "/business/portal" }
-      : profile?.user_category === "personal"
-        ? { label: "Personal Portal", icon: UserIcon, href: "/personal/portal" }
-        : null;
+  const portalTarget = { label: "Business Portal", icon: Building2, href: "/business/portal" };
 
+  const fetchedRef = useRef(false);
   useEffect(() => {
-    if (!profile) dispatch(fetchFullProfile());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    dispatch(fetchMyProfile());
+  }, [dispatch]);
 
   const handleSignOut = () => {
     dispatch(logout());
     router.push("/auth/sign-in");
   };
 
-  if (status === "loading" && !profile) {
+  if (status === "failed" && !profile) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center px-4">
+        <p className="text-sm text-muted-foreground">
+          {error ?? "Failed to load your business profile."}
+        </p>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="text-sm font-medium text-primary underline underline-offset-4"
+        >
+          Sign out
+        </button>
+      </div>
+    );
+  }
+
+  if (!profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -47,7 +61,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     );
   }
 
-  const initial = profile?.first_name?.[0]?.toUpperCase() ?? "U";
+  const initial = profile?.business_name?.[0]?.toUpperCase() ?? "B";
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -69,7 +83,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
             }
           >
             <Avatar className="size-8">
-              {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+              {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
               <AvatarFallback>{initial}</AvatarFallback>
             </Avatar>
           </DropdownMenuTrigger>
@@ -77,14 +91,10 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
             <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/profile")}>
               <Building2 /> My Profile
             </DropdownMenuItem>
-            {portalTarget && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(portalTarget.href)}>
-                  <portalTarget.icon /> {portalTarget.label}
-                </DropdownMenuItem>
-              </>
-            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(portalTarget.href)}>
+              <portalTarget.icon /> {portalTarget.label}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
               <LogOut /> Sign Out
