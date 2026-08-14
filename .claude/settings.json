@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(devops/github-policies/**)",
+      "Grep(devops/github-policies/**)",
+      "Glob(devops/github-policies/**)",
+      "Bash(cat devops/github-policies/*)",
+      "Bash(cat ./devops/github-policies/*)",
+      "PowerShell(Get-Content devops/github-policies/*)",
+      "PowerShell(type devops/github-policies/*)",
+      "Read(.claude/settings.json)",
+      "Grep(.claude/settings.json)",
+      "Glob(.claude/settings.json)",
+      "Bash(cat .claude/settings.json)",
+      "Bash(cat ./.claude/settings.json)",
+      "PowerShell(Get-Content .claude/settings.json)",
+      "PowerShell(type .claude/settings.json)"
+    ]
+  }
+}
