@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - production
+      - devops-git-policy
     paths:
       - "devops/github-policies/git-security.json"
   schedule:
@@ -82,7 +83,8 @@ jobs:
           name=$(jq -r '.name' "$file")
           ########### Strip read-only/GitHub-managed fields before sending
           payload=$(jq 'del(.id, .source, .source_type)' "$file")
-          existing_id=$(gh api --paginate "repos/${REPO}/rulesets" --jq --arg n "$name" 'map(select(.name == $n)) | .[0].id // empty')
+          ########### gh api --jq only accepts a single filter arg, so pipe to real jq for --arg
+          existing_id=$(gh api --paginate "repos/${REPO}/rulesets" | jq -r --arg n "$name" 'map(select(.name == $n)) | .[0].id // empty')
 
           if [[ -n "$existing_id" ]]; then
             echo "== '$name' exists (id=$existing_id) -> updating =="
