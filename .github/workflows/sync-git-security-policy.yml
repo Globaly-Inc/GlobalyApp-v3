@@ -12,6 +12,15 @@ on:
     # Runs every 30 minutes, keeping the ruleset in sync even without a push.
     # GitHub only triggers scheduled workflows from the default branch.
     - cron: "*/30 * * * *"
+  repository_dispatch:
+    # Fired by an external webhook receiver listening for the "repository_ruleset"
+    # (or branch protection) webhook event, so out-of-band edits made via the GUI
+    # or the gh/API are resynced immediately instead of waiting for the next cron tick.
+    # GitHub Actions has no native workflow trigger for ruleset/branch-protection
+    # changes, so this requires a separate webhook -> `gh api repos/${REPO}/dispatches`
+    # relay to actually fire it.
+    types:
+      - policy-drift-detected
   workflow_dispatch:
     inputs:
       environment:
