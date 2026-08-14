@@ -1,0 +1,93 @@
+name: Git Security Policy Sync
+
+on:
+  push:
+    branches:
+      - main
+      - production
+    paths:
+      - "devops/github-policies/git-security.json"
+  schedule:
+    # Runs every 30 minutes, keeping the ruleset in sync even without a push.
+    # GitHub only triggers scheduled workflows from the default branch.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (only used for manual runs)"
+        type: choice
+        required: true
+        default: gitops
+        options:
+          - gitops
+
+concurrency:
+  group: sync-git-security-policy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GREEN_COLOR_MESSAGE: "\e[32m"
+  RESET_COLOR_MESSAGE: "\e[0m"
+
+jobs:
+  resolve-env:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve environment
+        id: resolve
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            env_name="${{ inputs.environment }}"
+          elif [[ "${{ github.ref_name }}" == "production" ]]; then
+            env_name="production"
+          else
+            env_name="gitops"
+          fi
+          echo "env_name=$env_name" >> "$GITHUB_OUTPUT"
+          echo -e "Selected environment: ${GREEN_COLOR_MESSAGE}${env_name}${RESET_COLOR_MESSAGE}"
+    outputs:
+      env_name: ${{ steps.resolve.outputs.env_name }}
+
+  sync-git-security-policy:
+    runs-on: ubuntu-latest
+    name: Sync git-security policy for => ${{ needs.resolve-env.outputs.env_name }}
+    needs: [resolve-env]
+    environment: ${{ needs.resolve-env.outputs.env_name }}
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Debug token identity and scope
+        env:
+          GH_TOKEN: ${{ secrets.WRITE_TOKEN_GITHUB }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api user --jq '.login' || { echo "::error::Identity check failed"; exit 1; }
+
+      - name: Sync git-security.json ruleset to this repository
+        env:
+          GH_TOKEN: ${{ secrets.WRITE_TOKEN_GITHUB }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          file="devops/github-policies/git-security.json"
+          [[ -f "$file" ]] || { echo "::error::File not found: $file"; exit 1; }
+
+          ########### Extract ruleset name to match against existing rulesets
+          name=$(jq -r '.name' "$file")
+          ########### Strip read-only/GitHub-managed fields before sending
+          payload=$(jq 'del(.id, .source, .source_type)' "$file")
+          existing_id=$(gh api --paginate "repos/${REPO}/rulesets" --jq --arg n "$name" 'map(select(.name == $n)) | .[0].id // empty')
+
+          if [[ -n "$existing_id" ]]; then
+            echo "== '$name' exists (id=$existing_id) -> updating =="
+            echo "$payload" | gh api -X PUT "repos/${REPO}/rulesets/$existing_id" --input -
+          else
+            echo "== '$name' does not exist -> creating =="
+            echo "$payload" | gh api -X POST "repos/${REPO}/rulesets" --input -
+          fi
