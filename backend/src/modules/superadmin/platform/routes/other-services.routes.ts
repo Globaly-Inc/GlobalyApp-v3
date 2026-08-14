@@ -1,8 +1,11 @@
-// Superadmin oversight of Earn → My Services. Read-only.
+// Superadmin oversight of Earn → My Services, exposed as "Other Services".
 //
-// No moderation actions this phase: pausing someone's listing or forcing a refund are real powers that need
-// their own audit trail and permission story. This answers "what is on the marketplace and what is being
-// bought", which is what the other Monitoring screens do.
+// Named other-services because "Services" is already taken in superadmin by the Service Categories screen
+// (Platform → Categories → Service Categories); two things called Services in one admin is a trap.
+//
+// Read-only. What a seller may offer is constrained by the category list an admin controls
+// (Platform → Categories → Service Categories), not by per-listing moderation: pausing someone's listing or
+// forcing a refund are real powers that need their own audit trail and permission story.
 //
 // Lives in the platform module, so it inherits its super_admin / data_admin guard.
 
@@ -26,8 +29,8 @@ const OrderQuery = z.object({
 
 const fullName = (alias: string) => `trim(concat(${alias}.first_name, ' ', coalesce(${alias}.last_name, '')))`;
 
-export async function adminServicesRoutes(app: FastifyInstance) {
-  app.get("/services", async (req, reply) => {
+export async function adminOtherServicesRoutes(app: FastifyInstance) {
+  app.get("/other-services", async (req, reply) => {
     const filters = ListingQuery.parse(req.query);
     const page = PaginationSchema.parse(req.query);
     const { limit, offset } = paginationToOffset(page);
@@ -60,6 +63,8 @@ export async function adminServicesRoutes(app: FastifyInstance) {
           "l.total_orders",
           "l.created_at",
           "l.deleted_at",
+          // An admin looking into a listing should be able to read what is actually being sold.
+          "l.description",
           "cat.name as category_name",
           "p.id as provider_id",
           "p.email as provider_email",
@@ -74,7 +79,7 @@ export async function adminServicesRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, Number(countRow?.count ?? 0), page));
   });
 
-  app.get("/services/orders", async (req, reply) => {
+  app.get("/other-services/orders", async (req, reply) => {
     const filters = OrderQuery.parse(req.query);
     const page = PaginationSchema.parse(req.query);
     const { limit, offset } = paginationToOffset(page);
@@ -114,7 +119,7 @@ export async function adminServicesRoutes(app: FastifyInstance) {
   });
 
   /** Headline counts for the screen's top strip, per currency so nothing is summed across them. */
-  app.get("/services/stats", async (_req, reply) => {
+  app.get("/other-services/stats", async (_req, reply) => {
     const [listings, orders] = await Promise.all([
       masterKnex("service_listings")
         .select(

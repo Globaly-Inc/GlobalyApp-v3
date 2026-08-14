@@ -10,7 +10,7 @@ import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
 import { formatDate, formatMoney } from "@/app/personal/earn/services/utils";
 import { STATUS_LABELS, STATUS_STYLES } from "@/app/personal/earn/services/const";
 import type { OrderStatus } from "@/app/personal/earn/services/apis";
-import { fetchServiceListings, fetchServiceOrders, fetchServicesStats } from "../store/admin-services-slice";
+import { fetchServiceListings, fetchServiceOrders, fetchServicesStats } from "../store/admin-other-services-slice";
 
 type Tab = "listings" | "orders";
 
@@ -20,10 +20,10 @@ type Tab = "listings" | "orders";
  * No moderation actions: pausing someone's listing or forcing a refund are real powers that need their own
  * audit trail and permission story. This answers "what is on the marketplace and what is being bought".
  */
-export function AdminServicesView() {
+export function AdminOtherServicesView() {
   const dispatch = useAppDispatch();
   const { stats, listings, orders, listingsStatus, ordersStatus, listingsTotal, ordersTotal } = useAppSelector(
-    (state) => state.monitoringServices,
+    (state) => state.monitoringOtherServices,
   );
   const [tab, setTab] = useState<Tab>("listings");
   const [search, setSearch] = useState("");
@@ -37,7 +37,7 @@ export function AdminServicesView() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">Services</h1>
+        <h1 className="text-2xl font-bold text-foreground">Other Services</h1>
         <p className="mt-1 text-muted-foreground">
           Peer-to-peer services individuals offer through Earn, and the orders placed against them.
         </p>
@@ -49,7 +49,7 @@ export function AdminServicesView() {
           label="Payment held"
           // One figure per currency, never summed — nothing in this feature converts between them.
           value={(stats?.orders ?? []).map((o) => formatMoney(o.held_minor, o.currency)).join("  ") || "—"}
-          hint="Paid, awaiting both confirmations"
+          hint="Paid by the buyer"
         />
         <Tile
           label="Completed"

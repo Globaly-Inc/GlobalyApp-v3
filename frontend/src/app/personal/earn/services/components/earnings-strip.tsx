@@ -40,20 +40,20 @@ export function EarningsStrip({
   // No orders in any currency yet — one zeroed AUD row reads better than an empty strip.
   const buckets = summary.totals.length
     ? summary.totals
-    : [{ currency: "AUD" as const, held_minor: 0, confirmed_minor: 0, orders_count: 0 }];
+    : [{ currency: "AUD" as const, held_minor: 0, refunded_minor: 0, orders_count: 0 }];
 
   return (
     <div className="space-y-2">
       <div className="grid gap-3 sm:grid-cols-3">
         <Tile
           label="Payment held"
-          hint="Paid, awaiting both confirmations"
+          hint="Paid by the buyer"
           values={buckets.map((b) => formatMoney(b.held_minor, b.currency))}
         />
         <Tile
-          label="Confirmed complete"
-          hint="Both parties confirmed"
-          values={buckets.map((b) => formatMoney(b.confirmed_minor, b.currency))}
+          label="Refunded"
+          hint="Returned to buyers"
+          values={buckets.map((b) => formatMoney(b.refunded_minor, b.currency))}
         />
         <Tile label="Orders received" values={[String(totalOrders)]} />
       </div>

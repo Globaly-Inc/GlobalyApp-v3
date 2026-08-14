@@ -3,6 +3,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
+import { BadRequestError } from "../../../../../shared/errors.js";
 
 const now = () => masterKnex.fn.now();
 
@@ -76,16 +77,23 @@ export async function updateBusinessCategory(id: number, data: Record<string, un
 }
 
 // ─── Service Categories ────────────────────────────────────────────────────
+//
+// Two taxonomies in one table, told apart by `scope` (see migration 20260813_002):
+//   business — what a business offers, picked as "default services" for a business category
+//   personal — what a person may sell through Earn → My Services, surfaced as "Other Service Categories"
+// They are never mixed in a response: a caller always says which one it wants.
 
-export async function listServiceCategories(limit: number, offset: number, search?: string) {
-  const q = masterKnex("service_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
+export type CategoryScope = "business" | "personal";
+
+export async function listServiceCategories(limit: number, offset: number, search: string | undefined, scope: CategoryScope) {
+  const q = masterKnex("service_categories").where({ scope }).whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
     .select("service_categories.*", schemaFieldsFor("service_categories"));
   if (search) q.whereILike("name", `%${search}%`);
   return q;
 }
 
-export async function countServiceCategories(search?: string) {
-  const q = masterKnex("service_categories").whereNull("deleted_at").count("* as count");
+export async function countServiceCategories(search: string | undefined, scope: CategoryScope) {
+  const q = masterKnex("service_categories").where({ scope }).whereNull("deleted_at").count("* as count");
   if (search) q.whereILike("name", `%${search}%`);
   const [row] = await q;
   return Number(row.count);
@@ -107,11 +115,25 @@ export async function getDefaultServices(businessCategoryId: number) {
   return masterKnex("business_category_default_services")
     .join("service_categories", "service_categories.id", "business_category_default_services.service_category_id")
     .where({ business_category_id: businessCategoryId })
+    // Business categories default to business services. A personal-scope row reaching here would mean
+    // offering a business "Airport Pickup" that a student listed for themselves.
+    .where("service_categories.scope", "business")
     .select("service_categories.*");
 }
 
 export async function replaceDefaultServices(businessCategoryId: number, serviceCategoryIds: number[]) {
   await masterKnex.transaction(async (trx) => {
+    // The scope filter belongs here, at the write, rather than only in the picker that feeds it: the FK
+    // alone would happily accept a personal-scope id posted directly.
+    if (serviceCategoryIds.length > 0) {
+      const allowed = await trx("service_categories")
+        .whereIn("id", serviceCategoryIds)
+        .where({ scope: "business" })
+        .pluck("id");
+      if (allowed.length !== serviceCategoryIds.length) {
+        throw new BadRequestError("Default services must be business service categories");
+      }
+    }
     await trx("business_category_default_services").where({ business_category_id: businessCategoryId }).delete();
     if (serviceCategoryIds.length > 0) {
       await trx("business_category_default_services").insert(

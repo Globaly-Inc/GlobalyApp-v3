@@ -2,18 +2,19 @@ import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/htt
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
+  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, ScopedListParams, SearchListParams,
 } from "./types";
 
 const BASE = "/admin/platform";
 
 const entityType = (kind: "business" | "service") => `${kind}_categories` as const;
 
-function toQuery(params: SearchListParams): string {
+function toQuery(params: ScopedListParams): string {
   const search = new URLSearchParams();
   if (params.page) search.set("page", String(params.page));
   if (params.limit) search.set("limit", String(params.limit));
   if (params.search) search.set("search", params.search);
+  if (params.scope) search.set("scope", params.scope);
   const qs = search.toString();
   return qs ? `?${qs}` : "";
 }
@@ -21,7 +22,8 @@ function toQuery(params: SearchListParams): string {
 export const categoriesRealApi = {
   getBusinessCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/business-categories${toQuery(params)}`),
-  getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
+  /** Defaults to business scope server-side, so a caller that wants the personal list must say so. */
+  getServiceCategories: (params: ScopedListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toQuery(params)}`),
   createCategory: (kind: "business" | "service", input: CategoryInput): Promise<Category> =>
     httpPost(`${BASE}/${kind}-categories`, input),

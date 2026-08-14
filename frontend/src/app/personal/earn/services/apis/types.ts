@@ -36,6 +36,8 @@ export interface Listing {
   category_id: number;
   category_slug: string;
   category_name: string;
+  /** Lucide icon name — drives the per-category cover when a listing has no image. */
+  category_icon: string | null;
   price_minor: number;
   currency: Currency;
   country_id: number | null;
@@ -77,35 +79,51 @@ export interface Order {
   /** Decided server-side from the order row — the client never infers which side it is on. */
   role: OrderRole;
   counterparty_name: string;
-  buyer_confirmed: boolean;
-  provider_confirmed: boolean;
-  awaiting_my_confirmation: boolean;
-  can_review: boolean;
+  /** Enough to label the thread without opening it. */
+  message_count: number;
   has_review: boolean;
   notes: string | null;
   payment_refund_id: string | null;
   created_at: string;
   paid_at: string | null;
-  completed_at: string | null;
   cancelled_at: string | null;
   refunded_at: string | null;
 }
 
 export interface Review {
   id: number;
-  order_id: number;
+  /** Null when the reviewer never bought — reviewing does not require a purchase. */
+  order_id: number | null;
   listing_id: number;
   rating: number;
   comment: string | null;
+  is_verified_purchase: boolean;
   created_at: string;
+}
+
+/** What the signed-in viewer may do on a listing's reviews, resolved server-side. */
+export interface MyReviewState {
+  can_review: boolean;
+  reason: "own_listing" | "already_reviewed" | null;
+  review: Review | null;
+}
+
+/** One message in an order thread. `is_mine` is resolved per reader, not by comparing ids client-side. */
+export interface OrderMessage {
+  id: number;
+  body: string;
+  created_at: string;
+  sender_id: number;
+  sender_name: string;
+  is_mine: boolean;
 }
 
 export interface CurrencyTotals {
   currency: Currency;
-  /** Value of paid-but-unconfirmed orders. Held, not paid out. */
+  /** Value of paid orders. Held, not paid out. */
   held_minor: number;
-  /** Value of orders both parties confirmed. Still not paid out. */
-  confirmed_minor: number;
+  /** Value returned to buyers. The only figure here that reflects money actually moving. */
+  refunded_minor: number;
   orders_count: number;
 }
 
@@ -130,6 +148,7 @@ export interface PublicService {
   category_id: number;
   category_slug: string;
   category_name: string;
+  category_icon: string | null;
   price_minor: number;
   currency: Currency;
   country_name: string | null;
@@ -152,6 +171,8 @@ export interface PublicReview {
   created_at: string;
   reviewer_name: string;
   reviewer_photo_url: string | null;
+  /** Reviews are open to anyone, so a reader needs to see which came from an actual buyer. */
+  is_verified_purchase: boolean;
 }
 
 export interface BrowseFilters {

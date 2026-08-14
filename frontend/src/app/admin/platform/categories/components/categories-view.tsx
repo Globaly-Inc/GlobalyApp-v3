@@ -9,13 +9,14 @@ import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
 import { categoriesApi } from "../apis";
-import { ADD_LABEL, CATEGORY_TABS } from "../const";
+import { ADD_LABEL, CATEGORY_TABS, ROUTE_SEGMENT, TAB_DESCRIPTION } from "../const";
 import {
   fetchAccreditations, fetchBusinessCategories, fetchCatalog, fetchFeeTypes, fetchIssuingOrganizations,
-  fetchLookup, fetchServiceCategories, removeAccreditation, removeFeeType, reviewAccreditation, reviewFeeType,
+  fetchLookup, fetchOtherServiceCategories, fetchServiceCategories, removeAccreditation, removeFeeType, reviewAccreditation, reviewFeeType,
   saveAccreditation, saveCategory, saveFeeType, saveLookup,
   toggleCategory, toggleLookup,
 } from "../store/categories-slice";
+import type { CategoryKind } from "../store/categories-slice";
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, FeeType, FeeTypeInput,
   Lookup, LookupInput, LookupKind, ModerationStatus,
@@ -74,9 +75,25 @@ export function CategoriesView() {
     return true;
   };
 
-  const categoryKind = tab === "business" ? "business" : "service";
-  const categoryList = tab === "business" ? catalog.businessCategories : catalog.serviceCategories;
+  const isCategoryTab = tab === "business" || tab === "service" || tab === "other_service";
+  const categoryKind: CategoryKind = isCategoryTab ? tab : "service";
+  const categoryList =
+    tab === "business"
+      ? catalog.businessCategories
+      : tab === "other_service"
+        ? catalog.otherServiceCategories
+        : catalog.serviceCategories;
   const categories = categoryList.data;
+
+  /**
+   * The personal list is not part of fetchCatalog — that thunk maps its results by index, and threading a
+   * ninth call through it is a worse trade than one fetch when the tab is opened. The list is small and the
+   * tab is rarely the first thing an admin lands on.
+   */
+  const handleTabChange = (next: CategoryTab) => {
+    setTab(next);
+    if (next === "other_service") dispatch(fetchOtherServiceCategories({}));
+  };
   const lookupTab = tab === "degree_levels" || tab === "areas_of_study" ? tab : null;
   const lookupList = lookupTab === "degree_levels" ? catalog.degreeLevels : catalog.areasOfStudy;
   const lookups = lookupList.data;
@@ -84,12 +101,13 @@ export function CategoriesView() {
   const handlePageChange = (page: number) => {
     if (tab === "business") dispatch(fetchBusinessCategories({ page }));
     else if (tab === "service") dispatch(fetchServiceCategories({ page }));
+    else if (tab === "other_service") dispatch(fetchOtherServiceCategories({ page }));
     else if (lookupTab) dispatch(fetchLookup({ kind: LOOKUP_KIND[lookupTab], page }));
     else if (tab === "fee_types") dispatch(fetchFeeTypes({ page }));
     else if (tab === "accreditations") dispatch(fetchAccreditations({ page }));
   };
 
-  const activePagination = tab === "business" || tab === "service"
+  const activePagination = isCategoryTab
     ? categoryList
     : lookupTab
       ? lookupList
@@ -98,7 +116,7 @@ export function CategoriesView() {
         : catalog.accreditations;
 
   const handleAdd = () => {
-    if (tab === "business" || tab === "service") setCategoryDialog({ open: true, editing: null });
+    if (isCategoryTab) setCategoryDialog({ open: true, editing: null });
     else if (lookupTab) setLookupDialog({ open: true, editing: null });
     else if (tab === "fee_types") setFeeTypeDialog({ open: true, editing: null });
     else if (tab === "accreditations") setAccreditationDialog({ open: true, editing: null });
@@ -160,14 +178,14 @@ export function CategoriesView() {
   } else {
     tabContent = (
       <>
-        {(tab === "business" || tab === "service") && (
+        {isCategoryTab && (
           <CategoryList
             categories={categories}
             kind={categoryKind}
             onToggle={(id, is_active) =>
               void run(dispatch(toggleCategory({ kind: categoryKind, id, is_active })), "Category updated")
             }
-            onEdit={(editing) => router.push(`/admin/platform/categories/${categoryKind}/${editing.id}`)}
+            onEdit={(editing) => router.push(`/admin/platform/categories/${ROUTE_SEGMENT[categoryKind]}/${editing.id}`)}
           />
         )}
 
@@ -221,7 +239,11 @@ export function CategoriesView() {
         )}
       </div>
 
-      <AdminSegmentedTabs options={CATEGORY_TABS} value={tab} onChange={setTab} />
+      <AdminSegmentedTabs options={CATEGORY_TABS} value={tab} onChange={handleTabChange} />
+
+      {TAB_DESCRIPTION[tab] && (
+        <p className="mt-3 max-w-3xl text-sm text-muted-foreground">{TAB_DESCRIPTION[tab]}</p>
+      )}
 
       {tabContent}
 
@@ -234,7 +256,7 @@ export function CategoriesView() {
         />
       )}
 
-      {(tab === "business" || tab === "service") && (
+      {isCategoryTab && (
         <CategoryDialog
           open={categoryDialog.open}
           onOpenChange={(open) => setCategoryDialog((s) => ({ ...s, open }))}

@@ -1,6 +1,14 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { servicesApi } from "../apis";
-import type { Listing, ListingInput, Order, Review, ServicesMeta, Summary } from "../apis/types";
+import type {
+  Listing,
+  ListingInput,
+  MyReviewState,
+  Order,
+  OrderMessage,
+  ServicesMeta,
+  Summary,
+} from "../apis/types";
 
 type Status = "idle" | "loading" | "failed";
 
@@ -37,10 +45,6 @@ export const fetchOrder = createAsyncThunk("myServices/fetchOrder", (orderId: nu
   servicesApi.getOrder(orderId),
 );
 
-export const confirmCompletion = createAsyncThunk("myServices/confirmCompletion", (orderId: number) =>
-  servicesApi.confirmCompletion(orderId),
-);
-
 export const disputeOrder = createAsyncThunk(
   "myServices/disputeOrder",
   ({ orderId, reason }: { orderId: number; reason: string }) => servicesApi.disputeOrder(orderId, reason),
@@ -54,14 +58,25 @@ export const refundOrder = createAsyncThunk("myServices/refundOrder", (orderId: 
   servicesApi.refundOrder(orderId),
 );
 
-export const fetchReview = createAsyncThunk("myServices/fetchReview", (orderId: number) =>
-  servicesApi.getReview(orderId),
+/** The order thread. Fetched when the order detail opens, appended to as messages are sent. */
+export const fetchMessages = createAsyncThunk("myServices/fetchMessages", (orderId: number) =>
+  servicesApi.getMessages(orderId),
+);
+
+export const sendMessage = createAsyncThunk(
+  "myServices/sendMessage",
+  ({ orderId, body }: { orderId: number; body: string }) => servicesApi.sendMessage(orderId, body),
+);
+
+/** Keyed on the listing: reviewing no longer requires having bought. */
+export const fetchMyReview = createAsyncThunk("myServices/fetchMyReview", (serviceId: number) =>
+  servicesApi.getMyReview(serviceId),
 );
 
 export const createReview = createAsyncThunk(
   "myServices/createReview",
-  ({ orderId, rating, comment }: { orderId: number; rating: number; comment?: string | null }) =>
-    servicesApi.createReview(orderId, { rating, comment }),
+  ({ serviceId, rating, comment }: { serviceId: number; rating: number; comment?: string | null }) =>
+    servicesApi.createReview(serviceId, { rating, comment }),
 );
 
 /** Verification is fired once per mount by the view; this thunk carries no retry logic of its own. */
@@ -80,7 +95,8 @@ interface MyServicesState {
   /** The listing being edited, and the order being viewed — each page's own subject. */
   listing: Listing | null;
   order: Order | null;
-  review: Review | null;
+  messages: OrderMessage[];
+  myReview: MyReviewState | null;
 
   /**
    * One status per region. The hub's three tabs and its earnings strip fetch independently, so a failure in
@@ -92,6 +108,8 @@ interface MyServicesState {
   receivedStatus: Status;
   listingStatus: Status;
   orderStatus: Status;
+  messagesStatus: Status;
+  myReviewStatus: Status;
 
   /** Write-in-flight flags, so buttons disable without a spinner replacing the page. */
   saving: boolean;
@@ -114,13 +132,16 @@ const initialState: MyServicesState = {
   received: [],
   listing: null,
   order: null,
-  review: null,
+  messages: [],
+  myReview: null,
   summaryStatus: "idle",
   listingsStatus: "idle",
   purchasesStatus: "idle",
   receivedStatus: "idle",
   listingStatus: "idle",
   orderStatus: "idle",
+  messagesStatus: "idle",
+  myReviewStatus: "idle",
   saving: false,
   acting: false,
   uploading: false,
@@ -152,7 +173,8 @@ const slice = createSlice({
     },
     clearOrder(state) {
       state.order = null;
-      state.review = null;
+      state.messages = [];
+      state.messagesStatus = "idle";
       state.orderStatus = "idle";
       state.orderError = null;
     },
@@ -242,10 +264,6 @@ const slice = createSlice({
         state.orderError = action.error.message ?? "Order not found.";
       })
 
-      .addCase(fetchReview.fulfilled, (state, action) => {
-        state.review = action.payload;
-      })
-
       // ── Writes ──
       .addCase(createListing.fulfilled, (state, action) => {
         // Newest first, matching the server's ordering, so the new listing is where the user expects it.
@@ -259,20 +277,39 @@ const slice = createSlice({
         state.listings = state.listings.filter((l) => l.id !== action.payload);
       })
 
-      .addCase(confirmCompletion.fulfilled, (state, action) => replaceOrder(state, action.payload))
       .addCase(disputeOrder.fulfilled, (state, action) => replaceOrder(state, action.payload))
       .addCase(cancelOrder.fulfilled, (state, action) => replaceOrder(state, action.payload))
       .addCase(refundOrder.fulfilled, (state, action) => replaceOrder(state, action.payload))
 
+      .addCase(fetchMessages.pending, (state) => {
+        state.messagesStatus = "loading";
+      })
+      .addCase(fetchMessages.fulfilled, (state, action) => {
+        state.messagesStatus = "idle";
+        state.messages = action.payload;
+      })
+      .addCase(fetchMessages.rejected, (state) => {
+        state.messagesStatus = "failed";
+      })
+      .addCase(sendMessage.fulfilled, (state, action) => {
+        // Appended rather than refetched: the thread is already on screen and the server echoes the row.
+        state.messages = [...state.messages, action.payload];
+        if (state.order) state.order = { ...state.order, message_count: state.messages.length };
+      })
+
+      .addCase(fetchMyReview.pending, (state) => {
+        state.myReviewStatus = "loading";
+      })
+      .addCase(fetchMyReview.fulfilled, (state, action) => {
+        state.myReviewStatus = "idle";
+        state.myReview = action.payload;
+      })
+      .addCase(fetchMyReview.rejected, (state) => {
+        state.myReviewStatus = "failed";
+      })
       .addCase(createReview.fulfilled, (state, action) => {
-        state.review = action.payload;
-        // The form is replaced by the submitted review, and the row stops offering it.
-        if (state.order?.id === action.payload.order_id) {
-          state.order = { ...state.order, can_review: false, has_review: true };
-        }
-        state.purchases = state.purchases.map((o) =>
-          o.id === action.payload.order_id ? { ...o, can_review: false, has_review: true } : o,
-        );
+        // The form is replaced by the submitted review.
+        state.myReview = { can_review: false, reason: "already_reviewed", review: action.payload };
       });
 
     // Write-in-flight flags, matched by action-type suffix rather than listed one by one.
@@ -294,16 +331,14 @@ const slice = createSlice({
       )
       .addMatcher(
         (action) =>
-          /^myServices\/(confirmCompletion|disputeOrder|cancelOrder|refundOrder)\/pending$/.test(action.type),
+          /^myServices\/(disputeOrder|cancelOrder|refundOrder)\/pending$/.test(action.type),
         (state) => {
           state.acting = true;
         },
       )
       .addMatcher(
         (action) =>
-          /^myServices\/(confirmCompletion|disputeOrder|cancelOrder|refundOrder)\/(fulfilled|rejected)$/.test(
-            action.type,
-          ),
+          /^myServices\/(disputeOrder|cancelOrder|refundOrder)\/(fulfilled|rejected)$/.test(action.type),
         (state) => {
           state.acting = false;
         },

@@ -23,6 +23,7 @@ export interface ListingDto {
   category_id: number;
   category_slug: string;
   category_name: string;
+  category_icon: string | null;
   price_minor: number;
   currency: string;
   country_id: number | null;
@@ -64,6 +65,8 @@ export async function toDto(row: repo.HydratedListingRow): Promise<ListingDto> {
     category_slug: row.category_slug,
     // Sent alongside the id so a card can render the label without a second lookup.
     category_name: row.category_name,
+    // Drives the per-category cover a listing falls back to when it has no image of its own.
+    category_icon: row.category_icon,
     price_minor: row.price_minor,
     currency: row.currency,
     country_id: row.country_id,
@@ -116,7 +119,10 @@ async function assertOwnedCover(userId: number, path: string) {
   }
 }
 
-/** The FK guarantees the category exists; this rejects a retired one with a sentence instead of a 500. */
+/**
+ * The FK guarantees the category exists; this rejects one a seller may not use with a sentence instead of a
+ * 500 — retired, or belonging to the business taxonomy that shares the table.
+ */
 async function assertCategory(categoryId: number) {
   if (!(await repo.findCategoryById(categoryId))) {
     throw new BadRequestError("That category is no longer available");

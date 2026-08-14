@@ -18,7 +18,8 @@ import { useValidatedForm } from "@/lib/use-validated-form";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { categoriesApi } from "../apis";
 import type { Category } from "../apis/types";
-import { fetchBusinessCategories, fetchServiceCategories } from "../store/categories-slice";
+import { fetchBusinessCategories, fetchOtherServiceCategories, fetchServiceCategories } from "../store/categories-slice";
+import type { CategoriesState, CategoryKind } from "../store/categories-slice";
 import { toSlug } from "../utils";
 import { RequiredMark } from "./required-mark";
 import { DefaultServicesPicker } from "./default-services-picker";
@@ -76,16 +77,41 @@ const fromCategory = (c: Category): FormState => ({
   isActive: c.is_active,
 });
 
+/**
+ * The three things that differ per taxonomy. Two of them ("service" and "other_service") share every
+ * endpoint and differ only by scope, so keeping them in tables beats threading conditionals through the
+ * component.
+ */
+const LIST_FOR = {
+  business: (c: CategoriesState) => c.businessCategories,
+  service: (c: CategoriesState) => c.serviceCategories,
+  other_service: (c: CategoriesState) => c.otherServiceCategories,
+} as const;
+
+const FETCH_FOR = {
+  business: fetchBusinessCategories,
+  service: fetchServiceCategories,
+  other_service: fetchOtherServiceCategories,
+} as const;
+
+const LABEL: Record<CategoryKind, string> = {
+  business: "business category",
+  service: "service category",
+  other_service: "other service category",
+};
+
+const SCOPE_FOR = { service: "business", other_service: "personal" } as const;
+
 export function CategoryEditorView({
   kind,
   categoryId,
-}: Readonly<{ kind: "business" | "service"; categoryId: number | null }>) {
+}: Readonly<{ kind: CategoryKind; categoryId: number | null }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const catalog = useAppSelector((state) => state.platformCategories);
-  const list = (kind === "business" ? catalog.businessCategories : catalog.serviceCategories).data;
+  const list = LIST_FOR[kind](catalog).data;
   const editing = categoryId !== null ? list.find((c) => c.id === categoryId) ?? null : null;
-  const label = kind === "business" ? "business category" : "service category";
+  const label = LABEL[kind];
 
   const [saving, setSaving] = useState(false);
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
@@ -97,7 +123,9 @@ export function CategoryEditorView({
     fetchedRef.current = true;
     // Categories are a small, curated taxonomy — fetch the max page size so this
     // editor can find the record being edited regardless of which page the list is on.
-    dispatch(kind === "business" ? fetchBusinessCategories({ limit: 100 }) : fetchServiceCategories({ limit: 100 }));
+    dispatch(FETCH_FOR[kind]({ limit: 100 }));
+    // The business editor also needs the business-scope service categories for its default-services picker
+    // — never the personal ones, which are a different taxonomy.
     if (kind === "business") dispatch(fetchServiceCategories({ limit: 100 }));
   }, [dispatch, kind]);
 
@@ -138,11 +166,17 @@ export function CategoryEditorView({
         is_active: data.isActive,
         sort_order: Number(data.sortOrder),
       };
+      // "other_service" is not its own endpoint — same /service-categories routes, different scope.
+      const endpointKind = kind === "other_service" ? "service" : kind;
       const row = categoryId
-        ? await categoriesApi.updateCategory(kind, categoryId, input)
-        : await categoriesApi.createCategory(kind, input);
+        ? await categoriesApi.updateCategory(endpointKind, categoryId, input)
+        : // Scope is fixed at creation: it decides which list the row belongs to for good.
+          await categoriesApi.createCategory(endpointKind, {
+            ...input,
+            ...(kind === "business" ? {} : { scope: SCOPE_FOR[kind] }),
+          });
       if (kind === "business") await categoriesApi.setDefaultServices(row.id, selectedServiceIds);
-      await dispatch(kind === "business" ? fetchBusinessCategories({ limit: 100 }) : fetchServiceCategories({ limit: 100 }));
+      await dispatch(FETCH_FOR[kind]({ limit: 100 }));
       toast.success(categoryId ? "Category updated" : "Category created");
       router.push("/admin/platform/categories");
     } catch (e) {
@@ -355,7 +389,8 @@ export function CategoryEditorView({
                 </p>
               </CardHeader>
               <CardContent>
-                <SchemaFieldsEditor kind={kind} categoryId={categoryId} />
+                {/* Personal categories live in service_categories, so their schema fields hang off it too. */}
+                <SchemaFieldsEditor kind={kind === "other_service" ? "service" : kind} categoryId={categoryId} />
               </CardContent>
             </Card>
           )}

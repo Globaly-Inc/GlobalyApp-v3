@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,28 +20,19 @@ import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { STATUS_EXPLANATIONS, STATUS_LABELS, STATUS_STYLES } from "../const";
 import { formatDate, formatMoney } from "../utils";
-import {
-  cancelOrder,
-  clearOrder,
-  confirmCompletion,
-  disputeOrder,
-  fetchOrder,
-  fetchReview,
-  refundOrder,
-} from "../store/my-services-slice";
-import { ReviewForm, SubmittedReview } from "./review-form";
+import { cancelOrder, clearOrder, disputeOrder, fetchOrder, refundOrder } from "../store/my-services-slice";
+import { OrderThread } from "./order-thread";
 import { SectionError } from "./section-error";
 
 export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
   const dispatch = useAppDispatch();
-  const { order, orderStatus, orderError, review, acting } = useAppSelector((state) => state.myServices);
+  const { order, orderStatus, orderError, acting } = useAppSelector((state) => state.myServices);
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [refundOpen, setRefundOpen] = useState(false);
 
   useEffect(() => {
     dispatch(fetchOrder(orderId));
-    dispatch(fetchReview(orderId));
     return () => {
       dispatch(clearOrder());
     };
@@ -69,7 +60,7 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
   const held = order.status === "paid";
 
   const act = async (
-    thunk: typeof confirmCompletion | typeof cancelOrder | typeof refundOrder,
+    thunk: typeof cancelOrder | typeof refundOrder,
     labels: { success: string; description?: string; failure: string },
   ) => {
     const result = await dispatch(thunk(orderId));
@@ -79,24 +70,6 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
     }
     toast.success(labels.success, { description: labels.description });
     return true;
-  };
-
-  const handleConfirm = async () => {
-    const result = await dispatch(confirmCompletion(orderId));
-    if (confirmCompletion.rejected.match(result)) {
-      toast.error("Couldn't confirm completion", { description: result.error.message ?? "Please try again." });
-      return;
-    }
-    // The message depends on whether this closed the order or is still waiting on the other side.
-    toast.success(
-      result.payload.status === "completed" ? "Order completed" : "Confirmation recorded",
-      {
-        description:
-          result.payload.status === "completed"
-            ? "Both parties have confirmed."
-            : `Waiting for the ${isBuyer ? "provider" : "buyer"} to confirm.`,
-      },
-    );
   };
 
   const handleDispute = async () => {
@@ -142,7 +115,6 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
             <Detail label="Amount">{formatMoney(order.amount_minor, order.currency)}</Detail>
             <Detail label="Created">{formatDate(order.created_at)}</Detail>
             {order.paid_at && <Detail label="Paid">{formatDate(order.paid_at)}</Detail>}
-            {order.completed_at && <Detail label="Completed">{formatDate(order.completed_at)}</Detail>}
             {order.refunded_at && <Detail label="Refunded">{formatDate(order.refunded_at)}</Detail>}
             {order.cancelled_at && <Detail label="Cancelled">{formatDate(order.cancelled_at)}</Detail>}
           </dl>
@@ -155,26 +127,16 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
           )}
 
           {held && (
-            <div className="space-y-2 rounded-md border border-border p-3">
-              <p className="text-sm font-medium text-foreground">Completion</p>
-              {/* Both rows, always, independently — so who is outstanding is never ambiguous. */}
-              <ConfirmRow label="Buyer" confirmed={order.buyer_confirmed} you={isBuyer} />
-              <ConfirmRow label="Provider" confirmed={order.provider_confirmed} you={!isBuyer} />
-              <p className="pt-1 text-xs text-muted-foreground">
-                This order closes when both parties confirm. The payment is held until then.
-              </p>
-            </div>
+            // Says exactly what is true: the money sits with the platform, and the refund path is the only
+            // way it moves. Nothing closes an order, so nothing here promises that it will.
+            <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              The payment is held by Globaly. If something goes wrong, report a problem and we&apos;ll look at
+              the order.
+            </p>
           )}
 
           {order.payment_refund_id && (
             <p className="text-xs text-muted-foreground">Refund reference: {order.payment_refund_id}</p>
-          )}
-
-          {/* Shown only to the party who still owes a confirmation — the server decides that flag. */}
-          {order.awaiting_my_confirmation && (
-            <Button className="w-full" onClick={handleConfirm} disabled={acting}>
-              {acting ? "Confirming…" : "Mark as Completed"}
-            </Button>
           )}
 
           {held && (
@@ -206,9 +168,8 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
         </CardContent>
       </Card>
 
-      {/* Buyer-only, completed-only, once. can_review comes from the server. */}
-      {order.can_review && <ReviewForm orderId={orderId} />}
-      {review && <SubmittedReview review={review} />}
+      {/* The post-purchase conversation, in place of the confirmation checklist that used to live here. */}
+      <OrderThread orderId={orderId} status={order.status} counterpartyName={order.counterparty_name} />
 
       <Dialog open={disputeOpen} onOpenChange={setDisputeOpen}>
         <DialogContent className="sm:max-w-md">
@@ -275,26 +236,6 @@ function Detail({ label, children }: Readonly<{ label: string; children: React.R
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="font-medium tabular-nums text-foreground">{children}</dd>
-    </div>
-  );
-}
-
-function ConfirmRow({
-  label,
-  confirmed,
-  you,
-}: Readonly<{ label: string; confirmed: boolean; you: boolean }>) {
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      {confirmed ? (
-        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-      ) : (
-        <Circle className="h-4 w-4 text-muted-foreground" />
-      )}
-      <span className={confirmed ? "text-foreground" : "text-muted-foreground"}>
-        {label}
-        {you ? " (you)" : ""} {confirmed ? "confirmed" : "pending"}
-      </span>
     </div>
   );
 }

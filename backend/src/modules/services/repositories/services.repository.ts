@@ -30,6 +30,8 @@ export interface ListingRow {
 export interface HydratedListingRow extends ListingRow {
   category_slug: string;
   category_name: string;
+  /** The category's lucide icon name. Drives the per-category cover when a listing has no image. */
+  category_icon: string | null;
   country_name: string | null;
   city_name: string | null;
   open_orders_count: number;
@@ -54,11 +56,12 @@ export interface OrderRow {
   payment_intent_id: string | null;
   payment_refund_id: string | null;
   paid_at: Date | null;
-  completed_at: Date | null;
   cancelled_at: Date | null;
   refunded_at: Date | null;
-  buyer_confirmed: boolean;
-  provider_confirmed: boolean;
+  // ponytail: `completed_at`, `buyer_confirmed` and `provider_confirmed` still exist on the table but are
+  // deliberately absent here. Dual confirmation was removed, so nothing writes them and nothing should read
+  // them; the columns stay so the historical orders that did complete keep their record. Drop them in a
+  // migration once no such rows matter.
   notes: string | null;
   created_at: Date;
   updated_at: Date;
@@ -76,6 +79,7 @@ export interface HydratedOrderRow extends OrderRow {
   buyer_name: string;
   provider_name: string;
   review_id: number | null;
+  message_count: number;
 }
 
 const listings = () => masterKnex<ListingRow>("service_listings");
@@ -94,6 +98,7 @@ function hydratedListingQuery(db: Knex | Knex.Transaction = masterKnex) {
       "l.*",
       "cat.slug as category_slug",
       "cat.name as category_name",
+      "cat.icon as category_icon",
       "co.name as country_name",
       "ci.name as city_name",
       // Counted in the same pass rather than per-card: the hub renders this as an "N orders open" chip and
@@ -163,19 +168,29 @@ export interface CategoryRow {
   icon: string | null;
 }
 
-/** Active categories only — retiring one in admin hides it from new listings without touching old ones. */
+/**
+ * What a person may offer.
+ *
+ * `scope: "personal"` is the whole of the "fixed categories" rule: a seller picks from this list and cannot
+ * add to it, and the list is administered at /admin/platform/categories. The other scope in this table is
+ * the business default-services taxonomy, which has nothing to do with Earn and must not appear in a
+ * seller's form. Active only, so retiring one in admin hides it from new listings without touching old ones.
+ */
+const PERSONAL_SCOPE = { scope: "personal", is_active: true } as const;
+
 export async function listCategories(): Promise<CategoryRow[]> {
   return masterKnex("service_categories")
     .select("id", "slug", "name", "description", "icon")
-    .where({ is_active: true })
+    .where(PERSONAL_SCOPE)
     .whereNull("deleted_at")
     .orderBy(["sort_order", "name"]);
 }
 
+/** Used to validate a submitted category_id, so the scope filter here is what refuses a business one. */
 export async function findCategoryById(id: number): Promise<CategoryRow | null> {
   const row = await masterKnex("service_categories")
     .select("id", "slug", "name", "description", "icon")
-    .where({ id, is_active: true })
+    .where({ id, ...PERSONAL_SCOPE })
     .whereNull("deleted_at")
     .first();
   return row ?? null;
@@ -235,6 +250,7 @@ export async function browseListings(
       "l.*",
       "cat.slug as category_slug",
       "cat.name as category_name",
+      "cat.icon as category_icon",
       "co.name as country_name",
       "ci.name as city_name",
       "p.photo_url as provider_photo_url",
@@ -263,6 +279,7 @@ export async function findPublicListing(id: number): Promise<PublicListingRow | 
       "l.*",
       "cat.slug as category_slug",
       "cat.name as category_name",
+      "cat.icon as category_icon",
       "co.name as country_name",
       "ci.name as city_name",
       "p.photo_url as provider_photo_url",
@@ -280,6 +297,8 @@ export interface PublicReviewRow {
   created_at: Date;
   reviewer_name: string;
   reviewer_photo_url: string | null;
+  /** The reviewer bought this service. The signal that survived removing the purchase gate. */
+  is_verified_purchase: boolean;
 }
 
 export async function listReviewsForListing(listingId: number, limit: number): Promise<PublicReviewRow[]> {
@@ -292,8 +311,11 @@ export async function listReviewsForListing(listingId: number, limit: number): P
       "r.comment",
       "r.created_at",
       "u.photo_url as reviewer_photo_url",
+      masterKnex.raw("(r.order_id IS NOT NULL) as is_verified_purchase"),
       masterKnex.raw(`${fullName("u")} as reviewer_name`),
     )
+    // Verified purchases first, so the reviews that cost something to write lead.
+    .orderBy("is_verified_purchase", "desc")
     .orderBy("r.created_at", "desc")
     .limit(limit) as unknown as Promise<PublicReviewRow[]>;
 }
@@ -313,6 +335,8 @@ function hydratedOrderQuery(db: Knex | Knex.Transaction = masterKnex) {
       db.raw(`${fullName("b")} as buyer_name`),
       db.raw(`${fullName("p")} as provider_name`),
       "r.id as review_id",
+      // Subquery rather than a join + group by: the review leftJoin above would multiply the message rows.
+      db.raw("(SELECT count(*)::int FROM service_order_messages m WHERE m.order_id = o.id) as message_count"),
     );
 }
 
@@ -387,7 +411,8 @@ export async function incrementListingOrders(listingId: number, trx: Knex.Transa
 
 export interface ReviewRow {
   id: number;
-  order_id: number;
+  /** Null when the reviewer never bought — reviews are open to any signed-in user. */
+  order_id: number | null;
   listing_id: number;
   reviewer_id: number;
   rating: number;
@@ -400,6 +425,37 @@ export async function findReviewByOrder(
   db: Knex | Knex.Transaction = masterKnex,
 ): Promise<ReviewRow | null> {
   const row = await db<ReviewRow>("service_reviews").where({ order_id: orderId }).first();
+  return row ?? null;
+}
+
+/** The one-per-person-per-listing guard, backed by a unique index so a race loses cleanly. */
+export async function findReviewByReviewer(
+  listingId: number,
+  reviewerId: number,
+  db: Knex | Knex.Transaction = masterKnex,
+): Promise<ReviewRow | null> {
+  const row = await db<ReviewRow>("service_reviews").where({ listing_id: listingId, reviewer_id: reviewerId }).first();
+  return row ?? null;
+}
+
+/**
+ * The reviewer's most recent settled order for this listing, if any.
+ *
+ * Attached to the review so it reads as a verified purchase. Anything that reached `paid` counts — the money
+ * changed hands, which is the claim being made. `refunded` counts too: they bought it and it went wrong,
+ * which is exactly the review a reader wants to see.
+ */
+export async function findSettledOrderForReviewer(
+  listingId: number,
+  buyerId: number,
+  db: Knex | Knex.Transaction = masterKnex,
+): Promise<{ id: number } | null> {
+  const row = await db("service_orders")
+    .select("id")
+    .where({ listing_id: listingId, buyer_id: buyerId })
+    .whereNotIn("status", ["pending_payment", "cancelled"])
+    .orderBy("id", "desc")
+    .first();
   return row ?? null;
 }
 
@@ -430,27 +486,63 @@ export async function recomputeListingRating(listingId: number, trx: Knex.Transa
   );
 }
 
+// ─── Order messages ────────────────────────────────────────────────────────
+
+export interface OrderMessageRow {
+  id: number;
+  order_id: number;
+  sender_id: number;
+  body: string;
+  created_at: Date;
+  sender_name: string;
+}
+
+const messageQuery = () =>
+  masterKnex("service_order_messages as m")
+    .join("platform_users as u", "u.id", "m.sender_id")
+    .select("m.id", "m.order_id", "m.sender_id", "m.body", "m.created_at", masterKnex.raw(`${fullName("u")} as sender_name`));
+
+/** Oldest first — a conversation reads top to bottom. */
+export async function listOrderMessages(orderId: number): Promise<OrderMessageRow[]> {
+  return messageQuery().where("m.order_id", orderId).orderBy("m.created_at", "asc") as unknown as Promise<
+    OrderMessageRow[]
+  >;
+}
+
+export async function insertOrderMessage(data: {
+  order_id: number;
+  sender_id: number;
+  body: string;
+}): Promise<OrderMessageRow> {
+  const [inserted] = await masterKnex("service_order_messages").insert(data).returning("id");
+  const row = await messageQuery().where("m.id", inserted.id).first();
+  return row as OrderMessageRow;
+}
+
 // ─── Summary ───────────────────────────────────────────────────────────────
 
 export interface CurrencyTotals {
   currency: Currency;
   held_minor: number;
-  confirmed_minor: number;
+  refunded_minor: number;
   orders_count: number;
 }
 
 /**
  * Seller-side order-value totals, grouped by currency and never converted between them.
  *
- * "held" is the value of paid-but-unconfirmed orders; "confirmed" is completed orders. Neither is money in
- * the seller's hands — there are no payouts in this phase.
+ * "held" is the value of paid orders. There is no "confirmed" bucket any more: dual confirmation was removed,
+ * so no order reaches `completed` and a column reading 0 forever would be a lie about the flow rather than a
+ * fact about the seller. `refunded` replaces it — the one thing that actually moves value back out.
+ *
+ * Neither figure is money in the seller's hands; there are no payouts in this phase.
  */
 export async function summariseProviderOrders(providerId: number): Promise<CurrencyTotals[]> {
   const rows = await masterKnex("service_orders")
     .select("currency")
     .select(
       masterKnex.raw("coalesce(sum(amount_minor) FILTER (WHERE status = 'paid'), 0)::int as held_minor"),
-      masterKnex.raw("coalesce(sum(amount_minor) FILTER (WHERE status = 'completed'), 0)::int as confirmed_minor"),
+      masterKnex.raw("coalesce(sum(amount_minor) FILTER (WHERE status = 'refunded'), 0)::int as refunded_minor"),
       masterKnex.raw("count(*)::int as orders_count"),
     )
     .where({ provider_id: providerId })

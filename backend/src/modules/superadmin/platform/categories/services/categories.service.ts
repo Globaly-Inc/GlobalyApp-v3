@@ -55,7 +55,7 @@ export const replaceDefaultServices = repo.replaceDefaultServices;
 export const listServiceCategories = repo.listServiceCategories;
 export const countServiceCategories = repo.countServiceCategories;
 
-export function createServiceCategory(data: CategoryInput) {
+export function createServiceCategory(data: CategoryInput & { scope: repo.CategoryScope }) {
   return repo.insertServiceCategory(data);
 }
 

@@ -61,7 +61,7 @@ export function CategoryDialog({
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  kind: "business" | "service";
+  kind: "business" | "service" | "other_service";
   editing: Category | null;
   nextSortOrder: number;
   onSave: (input: CategoryInput) => Promise<boolean>;
@@ -91,7 +91,8 @@ export function CategoryDialog({
     if (ok) onOpenChange(false);
   };
 
-  const label = kind === "business" ? "business category" : "service category";
+  const label =
+    kind === "business" ? "business category" : kind === "other_service" ? "other service category" : "service category";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   BadgeCheck,
   CalendarDays,
-  CheckCircle2,
+  MessageSquare,
   CreditCard,
-  Handshake,
   Loader2,
   MapPin,
   ShieldCheck,
@@ -27,6 +25,8 @@ import { useAuthState } from "@/app/auth/store/auth-slice";
 import { servicesApi } from "@/app/personal/earn/services/apis";
 import type { PublicReview, PublicService } from "@/app/personal/earn/services/apis";
 import { formatDate, formatMoney } from "@/app/personal/earn/services/utils";
+import { ReviewForm } from "@/app/personal/earn/services/components/review-form";
+import { CategoryCover } from "@/app/personal/earn/services/components/category-cover";
 
 export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>) {
   const router = useRouter();
@@ -165,17 +165,18 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
       <div className="container mx-auto px-3 py-8 sm:px-4">
         <div className="grid gap-8 lg:grid-cols-[1fr_360px] lg:items-start">
           <div className="space-y-8">
-            {/* The cover, or a titled band in its place. An omitted block left a hole in the layout. */}
-            <div className="relative aspect-[16/7] w-full overflow-hidden rounded-xl border border-border bg-muted">
-              {service.cover_url ? (
-                <Image src={service.cover_url} alt={service.title} fill className="object-cover" sizes="100vw" unoptimized />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/10 via-muted to-muted text-muted-foreground">
-                  <Handshake className="h-8 w-8" />
-                  <span className="text-sm font-medium">{service.category_name}</span>
-                </div>
-              )}
-            </div>
+            {/* The cover, or this category's stand-in. An omitted block left a hole in the layout. */}
+            <CategoryCover
+              coverUrl={service.cover_url}
+              categorySlug={service.category_slug}
+              categoryName={service.category_name}
+              categoryIcon={service.category_icon}
+              title={service.title}
+              showLabel
+              sizes="100vw"
+              className="aspect-[16/7] w-full rounded-xl border border-border"
+              iconClassName="size-12"
+            />
 
             <Section title="About this service">
               {service.description ? (
@@ -223,6 +224,13 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
                       <div className="flex flex-wrap items-center gap-2">
                         <Stars value={review.rating} />
                         <span className="text-sm font-medium text-foreground">{review.reviewer_name}</span>
+                        {/* Anyone may review, so the badge is what separates signal from noise. */}
+                        {review.is_verified_purchase && (
+                          <Badge variant="secondary" className="gap-1 text-[11px]">
+                            <BadgeCheck className="size-3" />
+                            Verified purchase
+                          </Badge>
+                        )}
                         <span className="text-xs text-muted-foreground">{formatDate(review.created_at)}</span>
                       </div>
                       {review.comment && <p className="mt-2 text-sm text-foreground">{review.comment}</p>}
@@ -230,11 +238,17 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
                   ))}
                 </div>
               ) : (
-                // Stated rather than omitted — and it explains *why* reviews are trustworthy here.
                 <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  No reviews yet. Only buyers who completed an order can leave one, so every review here comes
-                  from someone who actually used the service.
+                  No reviews yet. Reviews from people who bought this service are marked as a verified
+                  purchase.
                 </p>
+              )}
+
+              {/* Signed-in only: reviewing is attributed and limited to one per person per listing. */}
+              {user && (
+                <div className="mt-4">
+                  <ReviewForm serviceId={serviceId} />
+                </div>
               )}
             </Section>
           </div>
@@ -257,8 +271,8 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
                 <div className="flex gap-2 rounded-md bg-muted/60 p-3 text-xs text-muted-foreground">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <span>
-                    Your payment is held until both you and the provider confirm the service is complete. If
-                    something goes wrong, you can report a problem from the order.
+                    Your payment is held by Globaly rather than passed straight to the provider. If something
+                    goes wrong, you can report a problem from the order and we&apos;ll look at it.
                   </span>
                 </div>
               </CardContent>
@@ -274,13 +288,13 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
                     You pay the listed price up front.
                   </Step>
                   <Step icon={ShieldCheck} n={2} title="Payment is held">
-                    The provider is notified and gets on with it.
+                    Globaly holds the money rather than passing it straight on.
                   </Step>
-                  <Step icon={CheckCircle2} n={3} title="Both confirm">
-                    You and the provider each confirm the service happened.
+                  <Step icon={MessageSquare} n={3} title="Message the provider">
+                    Agree the details directly on your order — where to meet, what time.
                   </Step>
-                  <Step icon={BadgeCheck} n={4} title="Order completes">
-                    Only then does the order close — and you can leave a review.
+                  <Step icon={BadgeCheck} n={4} title="Leave a review">
+                    Tell other students how it went. Yours is marked as a verified purchase.
                   </Step>
                 </ol>
               </CardContent>

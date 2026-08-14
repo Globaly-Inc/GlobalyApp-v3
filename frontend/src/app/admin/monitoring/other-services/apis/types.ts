@@ -1,8 +1,10 @@
-// Wire types for the admin's read-only view of Earn → My Services.
+// Wire types for the admin's read-only view of Earn → My Services ("Other Services").
 
 export interface AdminServiceListing {
   id: number;
   title: string;
+  /** An admin looking into a listing should be able to read what is actually being sold. */
+  description: string | null;
   price_minor: number;
   currency: string;
   is_active: boolean;

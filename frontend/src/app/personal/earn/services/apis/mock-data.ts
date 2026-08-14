@@ -11,6 +11,8 @@ import type {
   ListingInput,
   Order,
   PublicReview,
+  MyReviewState,
+  OrderMessage,
   PublicService,
   Review,
   ServiceCategory,
@@ -40,6 +42,7 @@ const listing = (over: Partial<Listing> & { id: number; title: string }): Listin
   category_id: 7,
   category_slug: "other",
   category_name: "Other",
+  category_icon: "Package",
   price_minor: 5000,
   currency: "AUD",
   country_id: null,
@@ -66,16 +69,12 @@ const order = (over: Partial<Order> & { id: number; listing_title: string }): Or
   status: "paid",
   role: "provider",
   counterparty_name: "Priya Demo",
-  buyer_confirmed: false,
-  provider_confirmed: false,
-  awaiting_my_confirmation: false,
-  can_review: false,
+  message_count: 0,
   has_review: false,
   notes: null,
   payment_refund_id: null,
   created_at: "2026-08-05T09:00:00.000Z",
   paid_at: "2026-08-05T09:05:00.000Z",
-  completed_at: null,
   cancelled_at: null,
   refunded_at: null,
   ...over,
@@ -88,6 +87,7 @@ let listings: Listing[] = [
     category_id: 1,
     category_slug: "airport_pickup",
     category_name: "Airport Pickup",
+    category_icon: "Plane",
     price_minor: 5000,
     city_name: "Sydney",
     country_name: "Australia",
@@ -102,6 +102,7 @@ let listings: Listing[] = [
     category_id: 5,
     category_slug: "assignment_help",
     category_name: "Assignment Help",
+    category_icon: "FileText",
     price_minor: 3500,
     currency: "GBP",
     is_active: false,
@@ -109,26 +110,27 @@ let listings: Listing[] = [
 ];
 
 let purchases: Order[] = [
-  order({ id: 11, listing_title: "Rental Support — Inner West", role: "buyer", amount_minor: 12000, awaiting_my_confirmation: true }),
+  order({ id: 11, listing_title: "Rental Support — Inner West", role: "buyer", amount_minor: 12000, message_count: 2 }),
   order({
     id: 12,
     listing_title: "City Orientation — Melbourne CBD",
     role: "buyer",
     amount_minor: 2500,
-    status: "completed",
-    buyer_confirmed: true,
-    provider_confirmed: true,
-    completed_at: "2026-08-07T10:00:00.000Z",
-    can_review: true,
+    status: "refunded",
+    refunded_at: "2026-08-07T10:00:00.000Z",
+    payment_refund_id: "re_mock_123",
   }),
 ];
 
 let received: Order[] = [
-  order({ id: 21, listing_title: "Airport Pickup — Sydney", buyer_confirmed: true, awaiting_my_confirmation: true }),
+  order({ id: 21, listing_title: "Airport Pickup — Sydney", message_count: 1 }),
   order({ id: 22, listing_title: "Airport Pickup — Sydney", status: "pending_payment", paid_at: null }),
 ];
 
+/** Keyed by listing id now, not order id — a review belongs to the service, not to a purchase. */
 const reviews = new Map<number, Review>();
+/** Order id -> its thread. */
+const threads = new Map<number, OrderMessage[]>();
 let nextId = 100;
 
 const allOrders = () => [...purchases, ...received];
@@ -139,6 +141,7 @@ const toPublic = (l: Listing): PublicService => ({
   title: l.title,
   description: l.description,
   category_id: l.category_id,
+  category_icon: l.category_icon,
   category_slug: l.category_slug,
   category_name: l.category_name,
   price_minor: l.price_minor,
@@ -155,17 +158,12 @@ const toPublic = (l: Listing): PublicService => ({
   created_at: l.created_at,
 });
 
+/** Derived fields the server owns. Nothing closes an order any more, so status is left alone. */
 function recompute(o: Order): Order {
-  const both = o.buyer_confirmed && o.provider_confirmed;
-  const status = o.status === "paid" && both ? "completed" : o.status;
-  const mineConfirmed = o.role === "buyer" ? o.buyer_confirmed : o.provider_confirmed;
   return {
     ...o,
-    status,
-    completed_at: status === "completed" ? (o.completed_at ?? new Date().toISOString()) : o.completed_at,
-    awaiting_my_confirmation: status === "paid" && !mineConfirmed,
-    can_review: o.role === "buyer" && status === "completed" && !reviews.has(o.id),
-    has_review: reviews.has(o.id),
+    message_count: (threads.get(o.id) ?? []).length || o.message_count,
+    has_review: reviews.has(o.listing_id),
   };
 }
 
@@ -200,8 +198,8 @@ export const servicesMockApi = {
     await delay();
     return {
       totals: [
-        { currency: "AUD", held_minor: 10000, confirmed_minor: 2500, orders_count: 3 },
-        { currency: "GBP", held_minor: 0, confirmed_minor: 3500, orders_count: 1 },
+        { currency: "AUD", held_minor: 10000, refunded_minor: 2500, orders_count: 3 },
+        { currency: "GBP", held_minor: 0, refunded_minor: 3500, orders_count: 1 },
       ],
       listings_count: listings.length,
       purchases_count: purchases.length,
@@ -289,14 +287,6 @@ export const servicesMockApi = {
     return { success: true, order_id: 11, already_verified: false };
   },
 
-  confirmCompletion: async (orderId: number): Promise<Order> => {
-    console.log("[mock] confirmCompletion", orderId);
-    await delay();
-    return mutate(orderId, (o) =>
-      o.role === "buyer" ? { ...o, buyer_confirmed: true } : { ...o, provider_confirmed: true },
-    );
-  },
-
   disputeOrder: async (orderId: number, reason: string): Promise<Order> => {
     console.log("[mock] disputeOrder", orderId, reason);
     await delay();
@@ -320,25 +310,48 @@ export const servicesMockApi = {
     }));
   },
 
-  getReview: async (orderId: number): Promise<Review | null> => {
-    console.log("[mock] getReview", orderId);
+  getMessages: async (orderId: number): Promise<OrderMessage[]> => {
+    console.log("[mock] getMessages", orderId);
     await delay(150);
-    return reviews.get(orderId) ?? null;
+    return threads.get(orderId) ?? [];
   },
 
-  createReview: async (orderId: number, input: { rating: number; comment?: string | null }): Promise<Review> => {
-    console.log("[mock] createReview", orderId, input);
+  sendMessage: async (orderId: number, body: string): Promise<OrderMessage> => {
+    console.log("[mock] sendMessage", orderId, body);
+    await delay(200);
+    const message: OrderMessage = {
+      id: ++nextId,
+      body,
+      created_at: new Date().toISOString(),
+      sender_id: 1,
+      sender_name: "You",
+      is_mine: true,
+    };
+    threads.set(orderId, [...(threads.get(orderId) ?? []), message]);
+    mutate(orderId, (o) => o);
+    return message;
+  },
+
+  getMyReview: async (serviceId: number): Promise<MyReviewState> => {
+    console.log("[mock] getMyReview", serviceId);
+    await delay(150);
+    const mine = reviews.get(serviceId) ?? null;
+    return { can_review: mine === null, reason: mine ? "already_reviewed" : null, review: mine };
+  },
+
+  createReview: async (serviceId: number, input: { rating: number; comment?: string | null }): Promise<Review> => {
+    console.log("[mock] createReview", serviceId, input);
     await delay();
     const review: Review = {
       id: ++nextId,
-      order_id: orderId,
-      listing_id: 1,
+      order_id: null,
+      listing_id: serviceId,
       rating: input.rating,
       comment: input.comment ?? null,
+      is_verified_purchase: false,
       created_at: new Date().toISOString(),
     };
-    reviews.set(orderId, review);
-    mutate(orderId, (o) => o);
+    reviews.set(serviceId, review);
     return review;
   },
 
@@ -380,6 +393,7 @@ export const servicesMockApi = {
         created_at: r.created_at,
         reviewer_name: "Priya Demo",
         reviewer_photo_url: null,
+        is_verified_purchase: r.is_verified_purchase,
       }));
   },
 

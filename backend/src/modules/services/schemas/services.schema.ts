@@ -115,6 +115,11 @@ export const CreateReviewSchema = z
   })
   .strict();
 
+/** One message in an order thread. `.trim()` before `.min(1)`, so whitespace is not a message. */
+export const SendMessageSchema = z
+  .object({ body: z.string().trim().min(1, "Write a message first").max(4000) })
+  .strict();
+
 export type CreateListingInput = z.infer<typeof CreateListingSchema>;
 export type UpdateListingInput = z.infer<typeof UpdateListingSchema>;
 export type CreateReviewInput = z.infer<typeof CreateReviewSchema>;
