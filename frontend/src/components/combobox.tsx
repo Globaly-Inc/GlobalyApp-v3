@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Check, ChevronsUpDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +53,15 @@ export function Combobox({
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const selected = options.find((o) => o.value === value);
+
+  // autoFocus scrolls the page to wherever this input mounts (0,0 in the
+  // portal) before floating-ui finishes positioning the popup, jumping the
+  // whole page to the top. Focus manually once positioned, without scrolling.
+  useEffect(() => {
+    if (open) inputRef.current?.focus({ preventScroll: true });
+  }, [open]);
 
   const filtered = useMemo(
     () => options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())),
@@ -134,7 +142,7 @@ export function Combobox({
           <div className="relative border-b p-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
             <Input
-              autoFocus
+              ref={inputRef}
               placeholder={searchPlaceholder}
               value={query}
               onChange={(e) => {

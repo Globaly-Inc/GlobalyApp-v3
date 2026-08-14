@@ -1,5 +1,5 @@
 import type {
-  Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
+  Accreditation, AccreditationInput, Category, CategoryInput, CityOption, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
   ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
 } from "./types";
@@ -43,7 +43,15 @@ const businessCategories: Category[] = [
 ];
 
 const serviceCategories: Category[] = [
-  { id: 1, slug: "courses", name: "Courses", description: "Academic programs offered by institutions.", icon: "BookOpen", is_active: true, sort_order: 0, schema_fields: [] },
+  {
+    id: 1, slug: "courses", name: "Academic Courses", description: "Academic programs offered by institutions.",
+    icon: "BookOpen", is_active: true, sort_order: 0,
+    schema_fields: [
+      { id: 1, key: "degree_level", label: "Degree level", type: "select", options: ["Certificate", "Diploma", "Bachelor", "Master", "PhD"] },
+      { id: 2, key: "area_of_study", label: "Area of study", type: "select", options: ["Business", "Engineering", "Health Sciences", "IT & Computing", "Arts & Humanities"] },
+      { id: 3, key: "awarded_by", label: "Awarded by", type: "select", options: ["Oxford University", "University of Melbourne", "University of Toronto"] },
+    ],
+  },
   { id: 2, slug: "accommodation", name: "Accommodation", description: "Student housing and homestay.", icon: "Home", is_active: true, sort_order: 1, schema_fields: [] },
 ];
 
@@ -75,11 +83,17 @@ const accreditations: Accreditation[] = [
 ];
 
 const countries: CountryOption[] = [
-  { id: 1, name: "Australia", iso2: "AU" },
-  { id: 2, name: "United Kingdom", iso2: "GB" },
-  { id: 3, name: "Canada", iso2: "CA" },
-  { id: 4, name: "New Zealand", iso2: "NZ" },
+  { id: 1, name: "Australia", iso2: "AU", phoneCode: "+61" },
+  { id: 2, name: "United Kingdom", iso2: "GB", phoneCode: "+44" },
+  { id: 3, name: "Canada", iso2: "CA", phoneCode: "+1" },
+  { id: 4, name: "New Zealand", iso2: "NZ", phoneCode: "+64" },
+  { id: 5, name: "Nepal", iso2: "NP", phoneCode: "+977" },
 ];
+
+const citiesByCountry: Record<number, CityOption[]> = {
+  1: [{ id: 1, name: "Sydney", stateName: "NSW" }, { id: 2, name: "Melbourne", stateName: "VIC" }],
+  5: [{ id: 3, name: "Kathmandu", stateName: "Bagmati" }, { id: 4, name: "Lalitpur (Patan)", stateName: "Bagmati" }],
+};
 
 const defaultServicesByBusinessCategory: Record<number, number[]> = {
   1: [1, 2],
@@ -95,12 +109,12 @@ export const categoriesMockApi = {
   getBusinessCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
     console.log("[mock] getBusinessCategories", search, params);
     await delay(300);
-    return paginate(searchByName(businessCategories, search), params);
+    return paginate(searchByName(businessCategories, search), { limit: 10, ...params });
   },
   getServiceCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
     console.log("[mock] getServiceCategories", search, params);
     await delay(300);
-    return paginate(searchByName(serviceCategories, search), params);
+    return paginate(searchByName(serviceCategories, search), { limit: 10, ...params });
   },
   createCategory: async (kind: "business" | "service", input: CategoryInput): Promise<Category> => {
     console.log("[mock] createCategory", kind, input);
@@ -161,10 +175,10 @@ export const categoriesMockApi = {
     defaultServicesByBusinessCategory[businessCategoryId] = serviceCategoryIds;
   },
 
-  getLookups: async (kind: LookupKind, params: ListParams = {}): Promise<Paginated<Lookup>> => {
-    console.log("[mock] getLookups", kind, params);
+  getLookups: async (kind: LookupKind, { search, ...params }: SearchListParams = {}): Promise<Paginated<Lookup>> => {
+    console.log("[mock] getLookups", kind, search, params);
     await delay(300);
-    return paginate(lookupTable(kind), params);
+    return paginate(searchByName(lookupTable(kind), search), params);
   },
   createLookup: async (kind: LookupKind, input: LookupInput): Promise<Lookup> => {
     console.log("[mock] createLookup", kind, input);
@@ -207,10 +221,10 @@ export const categoriesMockApi = {
     removeRow(feeTypes, id);
   },
 
-  getAccreditations: async (params: ListParams = {}): Promise<Paginated<Accreditation>> => {
-    console.log("[mock] getAccreditations", params);
+  getAccreditations: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Accreditation>> => {
+    console.log("[mock] getAccreditations", search, params);
     await delay(300);
-    return paginate(accreditations, params);
+    return paginate(searchByName(accreditations, search), params);
   },
   createAccreditation: async (input: AccreditationInput): Promise<Accreditation> => {
     console.log("[mock] createAccreditation", input);
@@ -263,5 +277,11 @@ export const categoriesMockApi = {
     console.log("[mock] getCountries");
     await delay(300);
     return [...countries];
+  },
+
+  getCitiesByCountry: async (countryId: number): Promise<CityOption[]> => {
+    console.log("[mock] getCitiesByCountry", countryId);
+    await delay(300);
+    return citiesByCountry[countryId] ?? [];
   },
 };

@@ -1,6 +1,7 @@
 // Platform user repository — queries against globalyapp platform_users / platform_user_profiles / sub-resource tables.
 // Auth state (OTP, sessions) is in auth.repository.ts — NOT here.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 
 export interface AccountCategory {
@@ -57,9 +58,9 @@ export async function insert(data: {
   email: string;
   account_status: number;
   phone?: string;
-}) {
-  const [row] = await masterKnex<PlatformUserRow>("platform_users")
-    .insert({ ...data, created_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() })
+}, db: Knex = masterKnex) {
+  const [row] = await db<PlatformUserRow>("platform_users")
+    .insert({ ...data, created_at: db.fn.now(), updated_at: db.fn.now() })
     .returning("*");
   return row;
 }

@@ -10,6 +10,7 @@ import type { BusinessRecord } from "../types.js";
 
 export const tenantPlugin = fp(async (app) => {
   app.decorateRequest("db", null as unknown as Knex);
+  app.decorateRequest("business", null as unknown as BusinessRecord);
 
   app.addHook("onRequest", async (req, reply) => {
     if (!req.auth?.orgId) return;
@@ -24,5 +25,6 @@ export const tenantPlugin = fp(async (app) => {
     }
 
     req.db = await getKnex(business.id, schemaName(business.schema_name));
+    req.business = business;
   });
 });

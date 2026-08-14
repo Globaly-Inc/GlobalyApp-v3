@@ -5,15 +5,15 @@ import {
   AcceptInviteSchema,
   InviteAgentSchema,
   AgentParamsSchema,
+  AgentPatchSchema,
 } from "../schemas/agents.schema.js";
 import { PaginationSchema } from "../../../shared/pagination.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/agents.service.js";
 import * as repo from "../repositories/agents.repository.js";
+import * as activityService from "../../businesses/services/activity.service.js";
 
-export async function agentRoutes(app: FastifyInstance) {
-  // ── Public ──
-
+export async function agentPublicRoutes(app: FastifyInstance) {
   app.post("/invite/accept", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (req, reply) => {
@@ -23,9 +23,9 @@ export async function agentRoutes(app: FastifyInstance) {
     const result = await service.acceptInvitation(orgId, token);
     return reply.send(result);
   });
+}
 
-  // ── Business context required ──
-
+export async function agentBusinessRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: requireBusinessContext }, async (req, reply) => {
     const pagination = PaginationSchema.parse(req.query);
     const result = await service.listAgents(req.db, pagination);
@@ -51,6 +51,27 @@ export async function agentRoutes(app: FastifyInstance) {
       Number(req.auth.sub),
       req.auth.orgId!,
     );
+    await activityService.logActivity(req.db, Number(req.auth.sub), "MEMBER_INVITED", "member", undefined, { email: input.email });
     return reply.status(201).send(result);
   });
+
+  app.patch("/:id", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { id } = AgentParamsSchema.parse(req.params);
+    const patch = AgentPatchSchema.parse(req.body);
+    const result = await service.updateAgent(req.db, id, patch);
+    await activityService.logActivity(req.db, Number(req.auth.sub), "MEMBER_UPDATED", "member", String(id));
+    return reply.send(result);
+  });
+
+  app.delete("/:id", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { id } = AgentParamsSchema.parse(req.params);
+    await service.removeAgent(req.db, id);
+    await activityService.logActivity(req.db, Number(req.auth.sub), "MEMBER_REMOVED", "member", String(id));
+    return reply.status(204).send();
+  });
+}
+
+export async function agentRoutes(app: FastifyInstance) {
+  await app.register(agentPublicRoutes);
+  await app.register(agentBusinessRoutes);
 }

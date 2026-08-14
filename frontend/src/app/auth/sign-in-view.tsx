@@ -113,7 +113,7 @@ export function SignInView() {
       }
       if (me.type === "admin") {
         router.push("/admin/overview");
-      } else if (me.role === "business") {
+      } else if (me.user_category === "business") {
         router.push("/business/profile");
       } else {
         router.push("/personal/profile");

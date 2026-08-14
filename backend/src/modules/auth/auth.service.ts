@@ -92,6 +92,14 @@ function signAccessToken(user: {
   });
 }
 
+/**
+ * Mints a business-scoped access token outside the login flow — e.g. right after a logged-in
+ * user registers their own business, so they don't have to sign in again to get org context.
+ */
+export function issueScopedAccessToken(user: { id: number; email: string }, orgId: string, orgRole: string) {
+  return signAccessToken({ id: user.id, email: user.email, orgId, orgRole });
+}
+
 // ── email queue ──
 
 export async function queueEmail(options: { to: string; subject: string; html: string }) {
@@ -216,12 +224,6 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
 
   const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
 
-  const accessToken = signAccessToken({
-    id: user.id,
-    email: user.email,
-    adminRole: adminRecord?.role,
-  });
-
   // Create a new session (multi-device — doesn't kill other sessions)
   const { raw: rawRefresh, hashed: hashedRefresh } = encodeRefreshToken(user.id);
   const family = randomUUID();
@@ -237,8 +239,18 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     expires_at: sessionExpiry,
   });
 
-  // Include owned businesses so client can show account picker immediately
+  // Business accounts have exactly one business today (no multi-business picker), so scope the
+  // token to it right away instead of making the client round-trip through a separate switch call.
   const businesses = await platformUserRepo.listUserBusinesses(user.id);
+  const primaryBusiness = businesses[0];
+
+  const accessToken = signAccessToken({
+    id: user.id,
+    email: user.email,
+    adminRole: adminRecord?.role,
+    orgId: primaryBusiness?.org_id,
+    orgRole: primaryBusiness?.role,
+  });
 
   logger.info("User authenticated", { userId: user.id, isAdmin: !!adminRecord });
   return {
@@ -281,11 +293,15 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
 
     // Token valid — rotate
     const adminRecord = await adminRepo.findAdminByPlatformUserId(userId);
+    const businesses = await platformUserRepo.listUserBusinesses(userId);
+    const primaryBusiness = businesses[0];
 
     const accessToken = signAccessToken({
       id: userId,
       email: user.email,
       adminRole: adminRecord?.role,
+      orgId: primaryBusiness?.org_id,
+      orgRole: primaryBusiness?.role,
     });
 
     const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(userId);
@@ -319,11 +335,15 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
   throw new UnauthorizedError("Invalid refresh token");
 }
 
+/**
+ * Kept as a backend capability for future multi-business use (an agent belonging to more than
+ * one business, or an explicit account picker) even though today's frontend doesn't call it —
+ * business accounts are auto-scoped to their one business at login/registration time instead.
+ */
 export async function switchAccount(userId: number, orgId: string) {
   const user = await platformUserRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
-  // Look up business and verify user is an agent in it
   const business = await platformUserRepo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
 
@@ -336,12 +356,7 @@ export async function switchAccount(userId: number, orgId: string) {
 
   if (!agent) throw new UnauthorizedError("Not a member of this business");
 
-  const accessToken = signAccessToken({
-    id: user.id,
-    email: user.email,
-    orgId,
-    orgRole: agent.role,
-  });
+  const accessToken = issueScopedAccessToken({ id: user.id, email: user.email }, orgId, agent.role);
 
   logger.info("Account switched", { userId, orgId, role: agent.role });
   return { access_token: accessToken };

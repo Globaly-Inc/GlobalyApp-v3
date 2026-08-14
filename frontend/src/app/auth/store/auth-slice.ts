@@ -43,6 +43,12 @@ export const restoreSession = createAsyncThunk("auth/restoreSession", () => auth
 
 export const fetchMe = createAsyncThunk("auth/fetchMe", () => authApi.getMe());
 
+/** Switches the active JWT org to `orgId`, then refetches /auth/me so `state.auth.user.orgId` reflects it. */
+export const switchAccount = createAsyncThunk("auth/switchAccount", async (orgId: string, { dispatch }) => {
+  await authApi.switchAccount({ org_id: orgId });
+  return dispatch(fetchMe()).unwrap();
+});
+
 type AuthState = {
   user: AuthUser | null;
   status: "idle" | "sendingOtp" | "verifyingOtp" | "updatingRole" | "failed";

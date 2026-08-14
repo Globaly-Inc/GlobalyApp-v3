@@ -6,6 +6,7 @@ import * as storage from "../../../shared/storage/storageService.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as bizRepo from "../repositories/businesses.repository.js";
 import { NotFoundError } from "../../../shared/errors.js";
+import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 
 const FileIdParam = z.object({ id: z.coerce.number().int().positive() });
 const CategoryQuery = z.object({ category: z.string().optional() });
@@ -14,7 +15,7 @@ export async function businessFileRoutes(app: FastifyInstance) {
 
   // ── Upload file ──
   // POST /me/files?category=logo|cover|gallery|document
-  app.post("/me/files", async (req, reply) => {
+  app.post("/me/files", { preHandler: requireBusinessContext }, async (req, reply) => {
     const orgId = req.auth.orgId!;
     const userId = Number(req.auth.sub);
 
@@ -44,7 +45,7 @@ export async function businessFileRoutes(app: FastifyInstance) {
     // Update the corresponding URL column on the businesses table
     if (fileCategory === "logo" || fileCategory === "cover") {
       const col = fileCategory === "logo" ? "logo_url" : "cover_url";
-      await bizRepo.updateBusinessProfile(orgId, { [col]: storagePath });
+      await bizRepo.updateBusinessProfile(req.business!.id, { [col]: storagePath });
     }
 
     return reply.status(201).send({
@@ -58,14 +59,14 @@ export async function businessFileRoutes(app: FastifyInstance) {
   });
 
   // ── List files ──
-  app.get("/me/files", async (req, reply) => {
+  app.get("/me/files", { preHandler: requireBusinessContext }, async (req, reply) => {
     const { category } = CategoryQuery.parse(req.query);
     const files = await filesRepo.listFilesByEntity("business", req.auth.orgId!, category);
     return reply.send({ files });
   });
 
   // ── View (preview) ──
-  app.get("/me/files/:id/view", async (req, reply) => {
+  app.get("/me/files/:id/view", { preHandler: requireBusinessContext }, async (req, reply) => {
     const { id } = FileIdParam.parse(req.params);
     const file = await filesRepo.findFileById(id);
     if (!file || file.entity_id !== req.auth.orgId!) throw new NotFoundError("File not found");
@@ -75,7 +76,7 @@ export async function businessFileRoutes(app: FastifyInstance) {
   });
 
   // ── Download ──
-  app.get("/me/files/:id/download", async (req, reply) => {
+  app.get("/me/files/:id/download", { preHandler: requireBusinessContext }, async (req, reply) => {
     const { id } = FileIdParam.parse(req.params);
     const file = await filesRepo.findFileById(id);
     if (!file || file.entity_id !== req.auth.orgId!) throw new NotFoundError("File not found");
@@ -85,7 +86,7 @@ export async function businessFileRoutes(app: FastifyInstance) {
   });
 
   // ── Delete ──
-  app.delete("/me/files/:id", async (req, reply) => {
+  app.delete("/me/files/:id", { preHandler: requireBusinessContext }, async (req, reply) => {
     const { id } = FileIdParam.parse(req.params);
     const file = await filesRepo.findFileById(id);
     if (!file || file.entity_id !== req.auth.orgId!) throw new NotFoundError("File not found");
@@ -93,8 +94,8 @@ export async function businessFileRoutes(app: FastifyInstance) {
     await storage.deleteFile(file.storage_path);
     await filesRepo.deleteFileRecord(id);
 
-    if (file.category === "logo") await bizRepo.updateBusinessProfile(req.auth.orgId!, { logo_url: null });
-    if (file.category === "cover") await bizRepo.updateBusinessProfile(req.auth.orgId!, { cover_url: null });
+    if (file.category === "logo") await bizRepo.updateBusinessProfile(req.business!.id, { logo_url: null });
+    if (file.category === "cover") await bizRepo.updateBusinessProfile(req.business!.id, { cover_url: null });
 
     return reply.status(204).send();
   });

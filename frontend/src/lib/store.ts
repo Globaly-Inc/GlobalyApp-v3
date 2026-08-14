@@ -4,6 +4,7 @@ import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
 import { homeReducer } from "@/app/personal/portal/store/home-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
+import { businessProfileDetailReducer } from "@/app/business/profile/store/business-profile-detail-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
@@ -33,6 +34,7 @@ const appReducer = combineReducers({
     profile: profileReducer,
     home: homeReducer,
     businessOnboarding: businessOnboardingReducer,
+    businessProfileDetail: businessProfileDetailReducer,
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,

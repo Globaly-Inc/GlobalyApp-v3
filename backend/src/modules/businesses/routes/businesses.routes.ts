@@ -1,7 +1,7 @@
 // Business routes — registration (any authenticated user) + profile management (business context required).
 
 import type { FastifyInstance } from "fastify";
-import { BusinessRegisterSchema, BusinessProfilePatchSchema } from "../schemas/businesses.schema.js";
+import { BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema } from "../schemas/businesses.schema.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/businesses.service.js";
 
@@ -13,6 +13,13 @@ export async function businessRoutes(app: FastifyInstance) {
     const input = BusinessRegisterSchema.parse(req.body);
     const result = await service.registerBusiness(Number(req.auth.sub), input);
     return reply.status(201).send(result);
+  });
+
+  // Business context required: search other businesses (e.g. to link a partner)
+  app.get("/search", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { search, limit } = BusinessSearchQuerySchema.parse(req.query);
+    const result = await service.searchBusinesses(req.auth.orgId!, search, limit);
+    return reply.send(result);
   });
 
   // Business context required: Get business profile
