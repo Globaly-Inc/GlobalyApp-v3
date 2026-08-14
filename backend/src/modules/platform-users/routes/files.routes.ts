@@ -7,7 +7,7 @@ import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as userRepo from "../repositories/platform-users.repository.js";
 import { NotFoundError, ForbiddenError } from "../../../shared/errors.js";
 
-const FileIdParam = z.object({ id: z.string().uuid() });
+const FileIdParam = z.object({ id: z.coerce.number().int().positive() });
 const CategoryQuery = z.object({ category: z.string().optional() });
 
 export async function platformUserFileRoutes(app: FastifyInstance) {
@@ -28,7 +28,7 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
     const buffer = await file.toBuffer();
     storage.validateFile(file.mimetype, buffer.length);
 
-    const storagePath = storage.buildPath("platform-users", user.uuid, fileCategory, file.filename);
+    const storagePath = storage.buildPath("public", "platform-users", String(userId), fileCategory, file.filename);
     await storage.uploadFile(storagePath, buffer, file.mimetype);
 
     const record = await filesRepo.insertFile({

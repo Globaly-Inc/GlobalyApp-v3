@@ -3,7 +3,7 @@
 import { masterKnex } from "../../core/db/master-pool.js";
 
 export interface UploadedFileRow {
-  id: string;
+  id: number;
   uploaded_by: number;
   entity_type: string;
   entity_id: string;
@@ -21,7 +21,7 @@ export async function insertFile(data: Omit<UploadedFileRow, "id" | "created_at"
   return row;
 }
 
-export async function findFileById(id: string) {
+export async function findFileById(id: number) {
   return masterKnex<UploadedFileRow>("uploaded_files").where({ id }).whereNull("deleted_at").first();
 }
 
@@ -38,6 +38,6 @@ export async function listFilesByEntity(entityType: string, entityId: string, ca
   return q;
 }
 
-export async function deleteFileRecord(id: string) {
+export async function deleteFileRecord(id: number) {
   return masterKnex("uploaded_files").where({ id }).update({ deleted_at: masterKnex.fn.now() });
 }

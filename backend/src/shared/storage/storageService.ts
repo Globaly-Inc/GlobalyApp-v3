@@ -59,17 +59,14 @@ function generateFilename(originalName: string): string {
 }
 
 /**
- * Build the relative storage path.
+ * Build the relative storage path. Mirrors DB schema structure.
  *
  * Examples:
- *   buildPath("platform-users", userUuid, "profile", "photo.jpg")
- *   → "platform-users/abc-123/profile/1722945600123-a3f2.jpg"
+ *   buildPath("public", "platform-users", "1", "profile", "photo.jpg")
+ *   → "public/platform-users/1/profile/1722945600123-a3f2.jpg"
  *
- *   buildPath("businesses", bizUuid, "logo", "logo.png")
- *   → "businesses/abc-123/logo/1722945600123-b1c4.png"
- *
- *   buildPath("my_biz_db", "agents", agentUuid, "profile", "photo.jpg")
- *   → "my_biz_db/agents/abc-123/profile/1722945600123-d2e5.jpg"
+ *   buildPath("public", "businesses", orgId, "logo", "logo.png")
+ *   → "public/businesses/biz_acme_abc123/logo/1722945600123-b1c4.png"
  */
 export function buildPath(...segments: string[]): string {
   const originalName = segments.pop()!;
