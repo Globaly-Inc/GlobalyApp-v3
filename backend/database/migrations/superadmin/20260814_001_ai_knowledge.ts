@@ -15,9 +15,8 @@
 import type { Knex } from "knex";
 
 const S = "superadmin";
-// V2 embedded with OpenAI (1536). V3 uses Gemini text-embedding-004, which returns
-// 768 — the same width superadmin.extraction_memory.embedding already uses.
-const EMBEDDING_DIMS = 768;
+// V3 uses Gemini gemini-embedding-001 (3072 dims).
+const EMBEDDING_DIMS = 3072;
 
 export async function up(knex: Knex): Promise<void> {
   await knex.raw("CREATE EXTENSION IF NOT EXISTS vector");
@@ -202,7 +201,7 @@ export async function up(knex: Knex): Promise<void> {
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.raw(`DROP FUNCTION IF EXISTS ${S}.match_ai_knowledge_documents(vector, int, text, text)`);
+  await knex.raw(`DROP FUNCTION IF EXISTS ${S}.match_ai_knowledge_documents(vector(${EMBEDDING_DIMS}), int, text, text)`);
   for (const table of [
     "ai_knowledge_documents",
     "ai_knowledge_sources",

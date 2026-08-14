@@ -4,11 +4,11 @@
 import type { Knex } from "knex";
 
 export async function up(knex: Knex): Promise<void> {
-  // 768-dim for Gemini text-embedding-004
+  // 3072-dim for Gemini gemini-embedding-001
   await knex.raw(`CREATE EXTENSION IF NOT EXISTS vector`);
   await knex.raw(`
     ALTER TABLE superadmin.extraction_memory
-      ADD COLUMN IF NOT EXISTS embedding vector(768)
+      ADD COLUMN IF NOT EXISTS embedding vector(3072)
   `);
 
   await knex.raw(`

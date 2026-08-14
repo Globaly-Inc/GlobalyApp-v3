@@ -9,6 +9,7 @@
     "migrate:globalyapp": "node --import tsx node_modules/.bin/knex migrate:latest --knexfile knexfile.ts --env globalyapp",
     "migrate:superadmin": "node --import tsx node_modules/.bin/knex migrate:latest --knexfile knexfile.ts --env superadmin",
     "migrate:tenants": "node --import tsx src/workers/migration-runner.ts",
+    "import:v2": "node --import tsx scripts/import-v2.ts",
     "seed:globalyapp": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp",
     "seed:superadmin": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env superadmin",
     "job:auth": "node --import tsx src/modules/auth/jobs/email.worker.ts",
