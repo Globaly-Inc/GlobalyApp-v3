@@ -7,7 +7,7 @@ export const authRealApi = {
     httpPost("/auth/send-otp", { email: email.trim().toLowerCase() }),
 
   acceptInvite: ({ token }: AcceptInviteParams): Promise<AcceptInviteResult> =>
-    httpGet(`/admin/users/invite/accept?token=${encodeURIComponent(token)}`),
+    httpPost("/admin/users/invite/accept", { token }),
 
   updateRole: (params: UpdateRoleParams): Promise<void> =>
     httpPatch("/platform-users/me/category", { user_category: params.category }),

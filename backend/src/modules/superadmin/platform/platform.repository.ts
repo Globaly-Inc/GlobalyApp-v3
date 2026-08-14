@@ -1,45 +1,17 @@
-// Repository for platform management — businesses, users, countries, feature flags, site access.
+// Repository for platform management — users, countries, feature flags, site access.
 // Categories and catalog (business/service categories, lookups, fee types, accreditations)
-// live in ./categories/repositories/categories.repository.ts.
+// live in ./categories/repositories/categories.repository.ts. Business CRUD, members, and
+// activity live in ./businesses/repositories/businesses.repository.ts. Branches, services,
+// contacts, partners, and representations each live in their own ./business-*/repositories/ module.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../consts.js";
+import { findAdminByPlatformUserId } from "../admin-users/repositories/admin-users.repository.js";
 const now = () => masterKnex.fn.now();
 
-// ─── Business management ───────────────────────────────────────────────────
-
-export async function listBusinesses(limit: number, offset: number, search?: string, status?: string) {
-  const q = masterKnex("businesses")
-    .select("id", "business_name", "subdomain", "business_type", "email", "phone",
-      "status", "is_published", "country_id", "city", "logo_url", "account_status", "created_at")
-    .whereNull("deleted_at")
-    .orderBy("created_at", "desc")
-    .limit(limit).offset(offset);
-  if (search) q.where((b) => b.whereILike("business_name", `%${search}%`).orWhereILike("email", `%${search}%`).orWhereILike("subdomain", `%${search}%`));
-  if (status) q.where({ status });
-  return q;
-}
-
-export async function countBusinesses(search?: string, status?: string) {
-  const q = masterKnex("businesses").whereNull("deleted_at").count("* as count");
-  if (search) q.where((b) => b.whereILike("business_name", `%${search}%`).orWhereILike("email", `%${search}%`).orWhereILike("subdomain", `%${search}%`));
-  if (status) q.where({ status });
-  const [row] = await q;
-  return Number(row.count);
-}
-
-export async function findBusinessById(id: string) {
-  return masterKnex("businesses").where({ id }).whereNull("deleted_at").first();
-}
-
-export async function updateBusiness(id: string, data: Record<string, unknown>) {
-  const [row] = await masterKnex("businesses").where({ id }).update({ ...data, updated_at: now() }).returning("*");
-  return row;
-}
-
-export async function deleteBusiness(id: string) {
-  return masterKnex("businesses").where({ id }).update({ deleted_at: masterKnex.fn.now() });
-}
+// business-* sibling modules use this to verify a business exists before touching its sub-resources.
+export { findBusinessById } from "./businesses/repositories/businesses.repository.js";
 
 // ─── User management ───────────────────────────────────────────────────────
 
@@ -73,8 +45,17 @@ export async function updateUser(id: number, data: Record<string, unknown>) {
 
 // ─── Countries ─────────────────────────────────────────────────────────────
 
-export async function listCountriesAdmin() {
-  return masterKnex("countries")
+type CountryListFilters = { search?: string; filter?: "all" | "active" | "featured" };
+
+function applyCountryFilters<T extends Knex.QueryBuilder>(q: T, filters: CountryListFilters, column = "countries"): T {
+  if (filters.search) q.whereILike(`${column}.name`, `%${filters.search}%`);
+  if (filters.filter === "active") q.where(`${column}.is_active`, true);
+  if (filters.filter === "featured") q.where(`${column}.is_featured`, true);
+  return q;
+}
+
+export async function listCountriesAdmin(limit: number, offset: number, filters: CountryListFilters) {
+  const q = masterKnex("countries")
     .select("countries.*")
     .count("cities.id as city_count")
     .leftJoin("cities", function () {
@@ -82,11 +63,60 @@ export async function listCountriesAdmin() {
     })
     .whereNull("countries.deleted_at")
     .groupBy("countries.id")
-    .orderBy("countries.name");
+    .orderBy("countries.name")
+    .limit(limit)
+    .offset(offset);
+  return applyCountryFilters(q, filters);
+}
+
+export async function countCountriesAdmin(filters: CountryListFilters) {
+  const q = masterKnex("countries").whereNull("deleted_at");
+  applyCountryFilters(q, filters, "countries");
+  const [row] = await q.count("* as count");
+  return Number(row.count);
+}
+
+export async function countCountryStats() {
+  const [row] = await masterKnex("countries")
+    .whereNull("deleted_at")
+    .select(
+      masterKnex.raw("count(*) as total"),
+      masterKnex.raw("count(*) filter (where is_active) as active"),
+      masterKnex.raw("count(*) filter (where is_featured) as featured"),
+    );
+  return { total: Number(row.total), active: Number(row.active), featured: Number(row.featured) };
 }
 
 export async function findCountryById(id: number) {
   return masterKnex("countries").where({ id }).whereNull("deleted_at").first();
+}
+
+// Public, unauthenticated reads — see modules/geo/routes/public-geo.routes.ts.
+export async function listFeaturedCountries() {
+  return masterKnex("countries")
+    .select("id", "name", "slug", "flag_emoji")
+    .where({ is_active: true, is_featured: true })
+    .whereNull("deleted_at")
+    .orderBy("sort_order")
+    .orderBy("name");
+}
+
+export async function findPublicCountryBySlug(slug: string) {
+  return masterKnex("countries")
+    .where({ is_active: true })
+    .whereNull("deleted_at")
+    .where((b) => b.where("slug", slug).orWhereRaw("lower(name) = lower(?)", [slug]))
+    .first();
+}
+
+export async function listPublicCitiesForCountry(countryId: number, limit = 12) {
+  return masterKnex("cities")
+    .select("id", "country_id", "name", "slug", "thumbnail_image_url", "hero_image_url", "population_label", "is_featured")
+    .where({ country_id: countryId, status: "active" })
+    .whereNull("deleted_at")
+    .orderBy("sort_order")
+    .orderBy("name")
+    .limit(limit);
 }
 
 export async function insertCountry(data: Record<string, unknown>) {
@@ -159,12 +189,15 @@ export async function updateSiteAccess(data: Record<string, unknown>, updatedBy:
 
 // ─── Audit logging ─────────────────────────────────────────────────────────
 
-export async function logAdminAction(adminId: number, action: string, entityType: string, entityId?: string, details?: Record<string, unknown>) {
+export async function logAdminAction(platformUserId: number, action: string, entityType: string, entityId?: string, details?: Record<string, unknown>) {
+  const admin = await findAdminByPlatformUserId(platformUserId);
+  if (!admin) return;
   await masterKnex(`${S}.admin_audit_logs`).insert({
-    admin_id: adminId,
+    admin_id: admin.id,
     action,
     entity_type: entityType,
     entity_id: entityId ?? null, // uuid column — null if not applicable
     details: JSON.stringify(details ?? {}),
   });
 }
+

@@ -39,6 +39,8 @@ export const fetchIssuingOrganizations = createAsyncThunk("platformCategories/fe
   (await categoriesApi.getIssuingOrganizations({ limit: ORG_DROPDOWN_LIMIT })).data,
 );
 
+export const fetchCountries = createAsyncThunk("platformCategories/fetchCountries", () => categoriesApi.getCountries());
+
 export const fetchCatalog = createAsyncThunk("platformCategories/fetch", async () => {
   const results = await Promise.allSettled([
     categoriesApi.getBusinessCategories({ limit: PAGE_LIMIT }),
@@ -206,6 +208,9 @@ const categoriesSlice = createSlice({
       })
       .addCase(fetchServiceCategories.fulfilled, (state, action) => {
         state.serviceCategories = { data: action.payload.data, ...action.payload.meta };
+      })
+      .addCase(fetchCountries.fulfilled, (state, action) => {
+        state.countries = action.payload;
       })
       .addCase(fetchLookup.fulfilled, (state, action) => {
         const list = { data: action.payload.data, ...action.payload.meta };

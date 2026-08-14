@@ -14,6 +14,12 @@ export interface AgentRow {
   is_owner: boolean;
   account_status: number;
   added_by: number | null;
+  addedby_admin_id: number | null;
+  admin_point_of_contact: boolean;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
   meta: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
@@ -48,6 +54,12 @@ const AGENT_COLUMNS = [
   "agents.is_owner",
   "agents.account_status",
   "agents.added_by",
+  "agents.addedby_admin_id",
+  "agents.admin_point_of_contact",
+  "agents.first_name",
+  "agents.last_name",
+  "agents.email",
+  "agents.phone",
   "agents.meta",
   "agents.created_at",
   "agents.updated_at",
@@ -91,18 +103,60 @@ export async function findAgentById(db: Knex, id: number) {
     .first();
 }
 
+export async function findOwnerAgent(db: Knex) {
+  return withRole(db<AgentRow>("agents"))
+    .select(AGENT_COLUMNS as unknown as string[])
+    .where("agents.is_owner", true)
+    .whereNull("agents.deleted_at")
+    .first();
+}
+
+/** Count agents flagged as super admin's point of contact, optionally excluding one agent. */
+export async function countPointOfContactAgents(db: Knex, excludeId?: number): Promise<number> {
+  const query = db("agents").where({ admin_point_of_contact: true }).whereNull("deleted_at");
+  if (excludeId !== undefined) query.whereNot("id", excludeId);
+  const [{ count }] = await query.count("id as count");
+  return Number(count);
+}
+
 export async function insertAgent(db: Knex, data: {
   platform_user_id: number;
   role_id: number;
   is_owner: boolean;
   account_status: number;
-  added_by?: number;
+  added_by?: number | null;
+  addedby_admin_id?: number | null;
+  admin_point_of_contact?: boolean;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
 }) {
   const [row] = await db("agents")
     .insert({ ...data, created_at: db.fn.now(), updated_at: db.fn.now() })
     .returning("*");
   const role = await db<RoleRow>("roles").where({ id: row.role_id }).first();
   return { ...row, role: role!.name, role_display: role!.display_name };
+}
+
+export async function updateAgent(db: Knex, id: number, data: {
+  role_id?: number;
+  admin_point_of_contact?: boolean;
+  account_status?: number;
+  is_owner?: boolean;
+}) {
+  const [row] = await db("agents")
+    .where({ id })
+    .whereNull("deleted_at")
+    .update({ ...data, updated_at: db.fn.now() })
+    .returning("*");
+  if (!row) return undefined;
+  const role = await db<RoleRow>("roles").where({ id: row.role_id }).first();
+  return { ...row, role: role!.name, role_display: role!.display_name };
+}
+
+export async function softDeleteAgent(db: Knex, id: number) {
+  await db("agents").where({ id }).update({ deleted_at: db.fn.now() });
 }
 
 export async function listAgents(db: Knex, limit: number, offset: number) {

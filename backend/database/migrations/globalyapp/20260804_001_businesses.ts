@@ -52,12 +52,18 @@ export async function up(knex: Knex): Promise<void> {
     t.specificType("gallery_images", "text[]").nullable();
     t.specificType("video_urls", "text[]").nullable();
 
-    // Status & verification
-    t.text("status").notNullable().defaultTo("pending");
+    // Status & verification — unverified | claim_pending | verified | suspended | rejected
+    t.integer("profile_views").notNullable().defaultTo(0);
+    t.text("status").notNullable().defaultTo("unverified");
     t.timestamp("verified_at").nullable();
     t.boolean("is_published").defaultTo(false);
     t.boolean("onboarding_completed").defaultTo(false);
     t.boolean("agreed_to_t_and_c").notNullable().defaultTo(false);
+
+    // Enquiry settings
+    t.boolean("enquiry_enabled").notNullable().defaultTo(true);
+    t.integer("enquiry_coin_cost").notNullable().defaultTo(30);
+    t.integer("enquiry_max_distributions").notNullable().defaultTo(5);
 
     // Subscription
     t.text("subscription_id").nullable();

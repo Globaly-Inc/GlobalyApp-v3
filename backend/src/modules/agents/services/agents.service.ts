@@ -22,7 +22,7 @@ import { schemaName } from "../../../core/db/knex.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import * as repo from "../repositories/agents.repository.js";
 import * as platformUserRepo from "../../platform-users/repositories/platform-users.repository.js";
-import type { InviteAgentInput } from "../schemas/agents.schema.js";
+import type { AgentPatchInput, InviteAgentInput } from "../schemas/agents.schema.js";
 
 const logger = createChildLogger("agents-service");
 
@@ -68,11 +68,12 @@ export async function getAgent(db: Knex, id: number) {
 
 // ── Invitations ──
 
-export async function inviteAgent(
+async function createInvitation(
   db: Knex,
   input: InviteAgentInput,
-  inviterPlatformUserId: number,
   orgId: string,
+  invitedByAgentId: number,
+  addedbyAdminId: number | null = null,
 ) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Organization not found");
@@ -88,10 +89,6 @@ export async function inviteAgent(
   const pendingInvite = await repo.findPendingInvitationByEmail(db, input.email);
   if (pendingInvite) throw new ConflictError("Invitation already pending for this email");
 
-  // Find inviter's agent record for the invited_by FK
-  const inviterAgent = await repo.findAgentByPlatformUserId(db, inviterPlatformUserId);
-  if (!inviterAgent) throw new NotFoundError("Inviter agent record not found");
-
   const role = await repo.findRoleByName(db, input.role);
   if (!role) throw new NotFoundError(`Role "${input.role}" not found`);
 
@@ -105,9 +102,11 @@ export async function inviteAgent(
       last_name: input.last_name,
       phone: input.phone ?? null,
       role: input.role,
+      admin_point_of_contact: input.admin_point_of_contact ?? false,
+      addedby_admin_id: addedbyAdminId,
     },
     invite_token: token,
-    invited_by: inviterAgent.id,
+    invited_by: invitedByAgentId,
     status: "pending",
     expired_at: expiredAt,
   });
@@ -123,8 +122,25 @@ export async function inviteAgent(
     acceptUrl,
   }).catch((err) => logger.warn("Invitation email failed (invitation created)", { email: input.email, err: err.message }));
 
-  logger.info("Agent invitation sent", { email: input.email, invitedBy: inviterPlatformUserId, orgId });
+  logger.info("Agent invitation sent", { email: input.email, invitedByAgentId, addedbyAdminId, orgId });
   return invitation;
+}
+
+export async function inviteAgent(
+  db: Knex,
+  input: InviteAgentInput,
+  inviterPlatformUserId: number,
+  orgId: string,
+) {
+  const inviterAgent = await repo.findAgentByPlatformUserId(db, inviterPlatformUserId);
+  if (!inviterAgent) throw new NotFoundError("Inviter agent record not found");
+  return createInvitation(db, input, orgId, inviterAgent.id);
+}
+
+export async function inviteAgentAsAdmin(db: Knex, input: InviteAgentInput, orgId: string, adminId: number) {
+  const ownerAgent = await repo.findOwnerAgent(db);
+  if (!ownerAgent) throw new NotFoundError("Business owner agent not found");
+  return createInvitation(db, input, orgId, ownerAgent.id, adminId);
 }
 
 export async function acceptInvitation(orgId: string, token: string) {
@@ -164,6 +180,12 @@ export async function acceptInvitation(orgId: string, token: string) {
     is_owner: false,
     account_status: 1,
     added_by: invitation.invited_by,
+    addedby_admin_id: (details.addedby_admin_id as unknown as number | null) ?? null,
+    admin_point_of_contact: Boolean(details.admin_point_of_contact),
+    first_name: platformUser.first_name,
+    last_name: platformUser.last_name,
+    email: platformUser.email,
+    phone: platformUser.phone,
   });
 
   // Write to master DB index so getMe/verifyOtp can list this business
@@ -186,4 +208,55 @@ export async function acceptInvitation(orgId: string, token: string) {
     org_id: business.schema_name,
     agent: { id: agent.id, role: agent.role },
   };
+}
+
+// ── Update / remove ──
+
+/** A business can never end up with zero owners or zero super admin points of contact. */
+async function assertSingleOwnerAndPocInvariants(db: Knex, agent: repo.AgentRow, patch: AgentPatchInput) {
+  if (patch.is_owner === true && !agent.is_owner) {
+    const existingOwner = await repo.findOwnerAgent(db);
+    if (existingOwner && existingOwner.id !== agent.id) {
+      throw new ConflictError("This business already has an owner");
+    }
+  }
+
+  if (patch.admin_point_of_contact === false && agent.admin_point_of_contact) {
+    const remaining = await repo.countPointOfContactAgents(db, agent.id);
+    if (remaining === 0) throw new ConflictError("Business must have at least one point of contact for super admin");
+  }
+}
+
+export async function updateAgent(db: Knex, id: number, patch: AgentPatchInput) {
+  const agent = await repo.findAgentById(db, id);
+  if (!agent) throw new NotFoundError("Agent not found");
+
+  let role_id: number | undefined;
+  if (patch.role) {
+    const role = await repo.findRoleByName(db, patch.role);
+    if (!role) throw new NotFoundError(`Role "${patch.role}" not found`);
+    role_id = role.id;
+  }
+
+  await assertSingleOwnerAndPocInvariants(db, agent, patch);
+
+  const updated = await repo.updateAgent(db, id, {
+    ...(role_id !== undefined ? { role_id } : {}),
+    ...(patch.admin_point_of_contact !== undefined ? { admin_point_of_contact: patch.admin_point_of_contact } : {}),
+    ...(patch.account_status !== undefined ? { account_status: patch.account_status } : {}),
+    ...(patch.is_owner !== undefined ? { is_owner: patch.is_owner } : {}),
+  });
+  const [enriched] = await enrichAgents([updated]);
+  return enriched;
+}
+
+export async function removeAgent(db: Knex, id: number) {
+  const agent = await repo.findAgentById(db, id);
+  if (!agent) throw new NotFoundError("Agent not found");
+  if (agent.is_owner) throw new ConflictError("Cannot remove the business owner");
+  if (agent.admin_point_of_contact) {
+    const remaining = await repo.countPointOfContactAgents(db, id);
+    if (remaining === 0) throw new ConflictError("Cannot remove the sole point of contact for super admin");
+  }
+  await repo.softDeleteAgent(db, id);
 }

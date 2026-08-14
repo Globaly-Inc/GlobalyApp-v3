@@ -55,20 +55,41 @@ async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Respo
   return retried;
 }
 
-async function readError(res: Response): Promise<string> {
-  try {
-    const data = (await res.json()) as { error?: string; message?: string };
-    return data.error || data.message || "Please try again.";
-  } catch {
-    return "Please try again.";
+export class ApiError extends Error {
+  code?: string;
+  details?: unknown;
+  constructor(message: string, code?: string, details?: unknown) {
+    super(message);
+    this.code = code;
+    this.details = details;
   }
+}
+
+async function readError(res: Response): Promise<ApiError> {
+  try {
+    const data = (await res.json()) as { error?: string; message?: string; code?: string; details?: unknown };
+    return new ApiError(data.error || data.message || "Please try again.", data.code, data.details);
+  } catch {
+    return new ApiError("Please try again.");
+  }
+}
+
+/** Maps a caught API error's Zod validation `details` (if any) to { fieldName: message }. */
+export function fieldErrorsFrom(err: unknown): Record<string, string> {
+  const fields: Record<string, string> = {};
+  if (!(err instanceof ApiError) || !Array.isArray(err.details)) return fields;
+  for (const issue of err.details as Array<{ path?: unknown[]; message?: string }>) {
+    const field = issue.path?.[0];
+    if (typeof field === "string" && typeof issue.message === "string") fields[field] = issue.message;
+  }
+  return fields;
 }
 
 export async function httpGet<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await withRefreshRetry(() =>
     fetch(`${BASE_URL}${path}`, { ...init, headers: { ...authHeaders(), ...init?.headers } }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
   return res.json() as Promise<T>;
 }
 
@@ -86,7 +107,7 @@ async function httpWithBody<T>(
       body: JSON.stringify(body),
     }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
   return res.json() as Promise<T>;
 }
 
@@ -108,7 +129,7 @@ export async function httpPostForm<T>(path: string, form: FormData, init?: Reque
   const res = await withRefreshRetry(() =>
     fetch(`${BASE_URL}${path}`, { ...init, method: "POST", headers: { ...authHeaders(), ...init?.headers }, body: form }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
   return res.json() as Promise<T>;
 }
 
@@ -122,12 +143,12 @@ export async function httpPostNoContent(path: string, body?: unknown, init?: Req
       body: JSON.stringify(body ?? {}),
     }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
 }
 
 export async function httpDelete(path: string, init?: RequestInit): Promise<void> {
   const res = await withRefreshRetry(() =>
     fetch(`${BASE_URL}${path}`, { ...init, method: "DELETE", headers: { ...authHeaders(), ...init?.headers } }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
 }

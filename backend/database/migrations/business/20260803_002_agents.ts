@@ -11,6 +11,12 @@ export async function up(knex: Knex): Promise<void> {
     t.jsonb("meta").defaultTo("{}");
     t.timestamps(true, true);
     t.timestamp("deleted_at").nullable();
+    t.boolean("admin_point_of_contact").notNullable().defaultTo(false);
+    t.text("first_name").nullable();
+    t.text("last_name").nullable();
+    t.text("email").nullable();
+    t.text("phone").nullable();
+    t.integer("addedby_admin_id").nullable();
   });
 }
 
