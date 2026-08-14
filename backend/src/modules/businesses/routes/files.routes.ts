@@ -27,7 +27,7 @@ export async function businessFileRoutes(app: FastifyInstance) {
     const buffer = await file.toBuffer();
     storage.validateFile(file.mimetype, buffer.length);
 
-    const storagePath = storage.buildPath("businesses", orgId, fileCategory, file.filename);
+    const storagePath = storage.buildPath("public", "businesses", orgId, fileCategory, file.filename);
     await storage.uploadFile(storagePath, buffer, file.mimetype);
 
     const record = await filesRepo.insertFile({
