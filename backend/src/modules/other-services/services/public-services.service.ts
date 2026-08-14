@@ -7,6 +7,8 @@ import { NotFoundError } from "../../../shared/errors.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as repo from "../repositories/services.repository.js";
+import * as booking from "./booking.service.js";
+import type { BookingField } from "./booking.service.js";
 
 const logger = createChildLogger("services-public");
 
@@ -107,12 +109,15 @@ export async function browse(input: {
   };
 }
 
-export async function getOne(serviceId: number): Promise<PublicListingDto> {
+export async function getOne(serviceId: number): Promise<PublicListingDto & { booking_fields: BookingField[] }> {
   const row = await repo.findPublicListing(serviceId);
   // A paused or deleted listing is indistinguishable from one that never existed — a buyer has no business
   // learning that a seller took something down.
   if (!row) throw new NotFoundError("Service not found");
-  return toPublicDto(row);
+  // The questions this listing's category asks, so the booking dialog renders itself from one request rather
+  // than fetching the category separately after the page has already drawn.
+  const booking_fields = await booking.fieldsForCategory(row.category_id);
+  return { ...(await toPublicDto(row)), booking_fields };
 }
 
 export async function reviews(serviceId: number) {

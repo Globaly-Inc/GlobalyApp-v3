@@ -27,6 +27,8 @@ import type { PublicReview, PublicService } from "@/app/personal/earn/services/a
 import { formatDate, formatMoney } from "@/app/personal/earn/services/utils";
 import { ReviewForm } from "@/app/personal/earn/services/components/review-form";
 import { CategoryCover } from "@/app/personal/earn/services/components/category-cover";
+import { BookingDialog } from "@/app/personal/earn/services/components/booking-dialog";
+import type { BookingAnswerValue } from "@/app/personal/earn/services/apis";
 
 export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>) {
   const router = useRouter();
@@ -36,6 +38,7 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
   const [reviews, setReviews] = useState<PublicReview[]>([]);
   const [status, setStatus] = useState<"loading" | "idle" | "missing">("loading");
   const [buying, setBuying] = useState(false);
+  const [bookingOpen, setBookingOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,29 +56,36 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
   }, [serviceId]);
 
   /**
-   * Buy: create the order, then start checkout and leave for wherever payment happens.
+   * Booking is a request now, not a purchase, so this opens the form rather than going to checkout.
    *
-   * Signed out, we send them to sign in and come straight back here rather than losing the listing they were
-   * looking at. The order is created server-side from the listing id alone — no price crosses the wire.
+   * The provider's availability is the real constraint — an airport pickup at 6am is a commitment against one
+   * person's calendar — so taking the money first would mean refunding it whenever the answer is no.
    */
-  const handleBuy = async () => {
+  const handleBuy = () => {
     if (!service) return;
     if (!user) {
       router.push(`/auth/sign-in?redirect=${encodeURIComponent(`/service/${service.id}`)}`);
       return;
     }
+    setBookingOpen(true);
+  };
 
+  const submitBooking = async (answers: Record<string, BookingAnswerValue>, note: string | null) => {
+    if (!service) return;
     setBuying(true);
     try {
-      const order = await servicesApi.createOrder(service.id);
-      const { url } = await servicesApi.startCheckout(order.id);
-      // Leaves the app for the payment provider; the dev driver points straight at the return page.
-      window.location.href = url;
+      const order = await servicesApi.createOrder(service.id, { answers, note });
+      setBookingOpen(false);
+      toast.success("Request sent", {
+        description: "The provider will confirm before you pay. We'll email you either way.",
+      });
+      router.push(`/personal/earn/services/orders/${order.id}`);
     } catch (err) {
-      setBuying(false);
-      toast.error("Couldn't start checkout", {
+      toast.error("Couldn't send your request", {
         description: err instanceof Error ? err.message : "Please try again.",
       });
+    } finally {
+      setBuying(false);
     }
   };
 
@@ -264,15 +274,15 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
                 </div>
 
                 <Button className="h-11 w-full text-base" onClick={handleBuy} disabled={buying}>
-                  {buying ? "Starting checkout…" : user ? "Book this service" : "Sign in to book"}
+                  {user ? "Request this booking" : "Sign in to book"}
                 </Button>
 
                 {/* The buyer's protection, stated before they pay rather than after. */}
                 <div className="flex gap-2 rounded-md bg-muted/60 p-3 text-xs text-muted-foreground">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <span>
-                    Your payment is held by Globaly rather than passed straight to the provider. If something
-                    goes wrong, you can report a problem from the order and we&apos;ll look at it.
+                    The provider confirms your request before you pay anything. Once paid, the money is held by
+                    Globaly rather than passed straight on, and you can report a problem from the order.
                   </span>
                 </div>
               </CardContent>
@@ -284,11 +294,12 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
               <CardContent className="py-5">
                 <p className="mb-3 text-sm font-semibold text-foreground">How booking works</p>
                 <ol className="space-y-3">
-                  <Step icon={CreditCard} n={1} title="Book and pay">
-                    You pay the listed price up front.
+                  <Step icon={CreditCard} n={1} title="Send a request">
+                    Tell the provider what you need. Nothing is charged yet.
                   </Step>
-                  <Step icon={ShieldCheck} n={2} title="Payment is held">
-                    Globaly holds the money rather than passing it straight on.
+                  <Step icon={ShieldCheck} n={2} title="They accept, you pay">
+                    If it suits their schedule you&apos;ll be emailed to pay and confirm. If not, they tell you
+                    why.
                   </Step>
                   <Step icon={MessageSquare} n={3} title="Message the provider">
                     Agree the details directly on your order — where to meet, what time.
@@ -302,6 +313,18 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
           </div>
         </div>
       </div>
+
+      {/* Built from `service.booking_fields`, which the API returns with the listing — so a category that
+          asks nothing renders a plain confirm and one that asks four questions renders four. */}
+      <BookingDialog
+        open={bookingOpen}
+        onOpenChange={setBookingOpen}
+        serviceTitle={service.title}
+        priceLabel={formatMoney(service.price_minor, service.currency)}
+        fields={service.booking_fields}
+        submitting={buying}
+        onSubmit={submitBooking}
+      />
     </div>
   );
 }

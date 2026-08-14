@@ -12,6 +12,8 @@ import type {
   Order,
   PublicReview,
   MyReviewState,
+  BookingAnswerValue,
+  BookingDetails,
   OrderMessage,
   PublicService,
   Review,
@@ -131,6 +133,8 @@ let received: Order[] = [
 const reviews = new Map<number, Review>();
 /** Order id -> its thread. */
 const threads = new Map<number, OrderMessage[]>();
+/** Order id -> what the buyer answered. */
+const bookings = new Map<number, BookingDetails>();
 let nextId = 100;
 
 const allOrders = () => [...purchases, ...received];
@@ -142,6 +146,7 @@ const toPublic = (l: Listing): PublicService => ({
   description: l.description,
   category_id: l.category_id,
   category_icon: l.category_icon,
+  booking_fields: [],
   category_slug: l.category_slug,
   category_name: l.category_name,
   price_minor: l.price_minor,
@@ -403,21 +408,34 @@ export const servicesMockApi = {
     return MOCK_CATEGORIES;
   },
 
-  createOrder: async (listingId: number, notes?: string | null): Promise<Order> => {
-    console.log("[mock] createOrder", listingId, notes);
+  createOrder: async (
+    listingId: number,
+    input: { answers?: Record<string, BookingAnswerValue>; note?: string | null } = {},
+  ): Promise<Order> => {
+    console.log("[mock] createOrder", listingId, input);
     await delay();
     const listing = listings.find((l) => l.id === listingId);
     if (!listing) throw new Error("Service listing not found");
+    bookings.set(nextId + 1, {
+      answers: Object.entries(input.answers ?? {}).map(([key, value]) => ({
+        key,
+        label: key,
+        value: String(value),
+      })),
+      note: input.note ?? null,
+      decline_reason: null,
+    });
     const created = order({
       id: ++nextId,
       listing_id: listing.id,
       listing_title: listing.title,
       role: "buyer",
-      status: "pending_payment",
+      // A request, not a purchase — the seller has to accept before this is payable.
+      status: "requested",
       paid_at: null,
       amount_minor: listing.price_minor,
       currency: listing.currency,
-      notes: notes ?? null,
+      notes: null,
     });
     purchases = [created, ...purchases];
     return created;
@@ -439,4 +457,39 @@ export const servicesMockApi = {
       { id: 3, name: "Brisbane" },
     ];
   },
+
+  // ── The booking handshake ──
+
+  getBooking: async (orderId: number): Promise<BookingDetails> => {
+    console.log("[mock] getBooking", orderId);
+    await delay(150);
+    return bookings.get(orderId) ?? { answers: [], note: null, decline_reason: null };
+  },
+
+  acceptBooking: async (orderId: number): Promise<Order> => {
+    console.log("[mock] acceptBooking", orderId);
+    await delay();
+    return mutate(orderId, (o) => ({ ...o, status: "pending_payment" }));
+  },
+
+  declineBooking: async (orderId: number, reason: string): Promise<Order> => {
+    console.log("[mock] declineBooking", orderId, reason);
+    await delay();
+    const existing = bookings.get(orderId);
+    if (existing) bookings.set(orderId, { ...existing, decline_reason: reason });
+    return mutate(orderId, (o) => ({ ...o, status: "declined" }));
+  },
+
+  startWork: async (orderId: number): Promise<Order> => {
+    console.log("[mock] startWork", orderId);
+    await delay();
+    return mutate(orderId, (o) => ({ ...o, status: "in_progress" }));
+  },
+
+  finishWork: async (orderId: number): Promise<Order> => {
+    console.log("[mock] finishWork", orderId);
+    await delay();
+    return mutate(orderId, (o) => ({ ...o, status: "completed" }));
+  },
+
 };

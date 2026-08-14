@@ -13,16 +13,38 @@ export const ORDER_STATUSES = [
   "disputed",
   "refunded",
   "cancelled",
+  // Appended rather than inserted in lifecycle order: this array is only a membership set, and appending
+  // keeps the diff to added lines.
+  "requested",
+  "declined",
+  "in_progress",
 ] as const;
 
 export type Currency = (typeof CURRENCIES)[number];
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-/** Statuses that block deleting the parent listing — money is committed against them. */
-export const OPEN_ORDER_STATUSES: readonly OrderStatus[] = ["pending_payment", "paid", "disputed"];
+/**
+ * Statuses that block deleting the parent listing.
+ *
+ * `requested` is here because a buyer is waiting on an answer, and `in_progress` because the seller is
+ * mid-job — deleting the listing under either would strand someone even though no money has moved in the
+ * first case.
+ */
+export const OPEN_ORDER_STATUSES: readonly OrderStatus[] = [
+  "requested",
+  "pending_payment",
+  "paid",
+  "in_progress",
+  "disputed",
+];
 
 /** Statuses that accept no further action from either party. */
-export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = ["completed", "refunded", "cancelled"];
+export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
+  "completed",
+  "refunded",
+  "cancelled",
+  "declined",
+];
 
 // ─── Listings ──────────────────────────────────────────────────────────────
 
@@ -123,3 +145,39 @@ export const SendMessageSchema = z
 export type CreateListingInput = z.infer<typeof CreateListingSchema>;
 export type UpdateListingInput = z.infer<typeof UpdateListingSchema>;
 export type CreateReviewInput = z.infer<typeof CreateReviewSchema>;
+
+// ─── Booking requests ──────────────────────────────────────────────────────
+//
+// Appended rather than woven into the sections above, so this block reads as one change.
+
+/**
+ * A booking request. The buyer names a listing and answers whatever that listing's category asks for.
+ *
+ * `answers` is deliberately loose here — a record of scalars — because the questions are data, defined per
+ * category in `schema_fields`. Zod cannot know them at compile time, so the real validation happens in
+ * `booking.service.ts` against the field definitions. What this schema does enforce is the shape: no nested
+ * objects, no arrays of objects, nothing that could smuggle a payload into jsonb.
+ */
+export const BookingAnswerValueSchema = z.union([
+  z.string().max(2000),
+  z.number(),
+  z.boolean(),
+  z.array(z.string().max(200)).max(50),
+  z.null(),
+]);
+
+export const CreateBookingSchema = z
+  .object({
+    listing_id: z.number().int().positive(),
+    answers: z.record(z.string().max(100), BookingAnswerValueSchema).default({}),
+    note: z.string().trim().max(2000).nullable().optional(),
+  })
+  .strict();
+
+/** A decline must say why. Enforced here, in the service, and by a DB CHECK. */
+export const DeclineBookingSchema = z
+  .object({ reason: z.string().trim().min(1, "Tell the buyer why").max(2000) })
+  .strict();
+
+export type CreateBookingInput = z.infer<typeof CreateBookingSchema>;
+export type BookingAnswers = Record<string, z.infer<typeof BookingAnswerValueSchema>>;

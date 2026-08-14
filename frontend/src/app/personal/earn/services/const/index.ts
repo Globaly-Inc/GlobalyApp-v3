@@ -22,6 +22,10 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   disputed: "Disputed",
   refunded: "Refunded",
   cancelled: "Cancelled",
+  // Appended: the booking handshake.
+  requested: "Awaiting provider",
+  declined: "Declined",
+  in_progress: "In progress",
 };
 
 /** Badge styling per status. Kept as full class strings so Tailwind's scanner can see them. */
@@ -32,6 +36,9 @@ export const STATUS_STYLES: Record<OrderStatus, string> = {
   disputed: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300",
   refunded: "bg-muted text-muted-foreground",
   cancelled: "bg-muted text-muted-foreground/70",
+  requested: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+  declined: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300",
+  in_progress: "bg-indigo-100 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-300",
 };
 
 /** One-line explanation shown on the order detail, so a status never has to be guessed at. */
@@ -43,6 +50,9 @@ export const STATUS_EXPLANATIONS: Record<OrderStatus, string> = {
   disputed: "A problem was reported. Our team reviews disputed orders — no further action is available here.",
   refunded: "The payment was returned to the buyer.",
   cancelled: "This order ended before payment.",
+  requested: "Waiting for the provider to accept. You'll be able to pay once they do — nothing is charged yet.",
+  declined: "The provider couldn't take this booking. You have not been charged.",
+  in_progress: "The provider has started work on this.",
 };
 
 /** Statuses that accept no action from either party. */

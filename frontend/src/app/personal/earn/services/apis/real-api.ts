@@ -12,6 +12,8 @@ import type {
   OrderStatus,
   PublicReview,
   MyReviewState,
+  BookingAnswerValue,
+  BookingDetails,
   OrderMessage,
   PublicService,
   Review,
@@ -168,6 +170,9 @@ function normalizePublicService(raw: Partial<PublicService> | undefined | null):
     category_slug: s.category_slug ?? "other",
     category_name: s.category_name ?? "Other",
     category_icon: s.category_icon ?? null,
+    // Defaulted to empty: a listing whose category asks nothing is the common case, and the booking dialog
+    // renders a plain confirm in that event rather than throwing on a missing array.
+    booking_fields: toArray<PublicService["booking_fields"][number]>(s.booking_fields),
     price_minor: toMinor(s.price_minor),
     currency: oneOf<Currency>(s.currency, CURRENCIES, "AUD"),
     country_name: s.country_name ?? null,
@@ -239,8 +244,21 @@ export const servicesRealApi = {
 
   // ── Buying ──
 
-  createOrder: async (listingId: number, notes?: string | null): Promise<Order> =>
-    normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders`, { listing_id: listingId, notes: notes ?? null })),
+  /**
+   * Submit a booking request. Nothing is payable until the seller accepts, so this no longer leads straight
+   * into checkout the way the old create-then-pay call did.
+   */
+  createOrder: async (
+    listingId: number,
+    input: { answers?: Record<string, BookingAnswerValue>; note?: string | null } = {},
+  ): Promise<Order> =>
+    normalizeOrder(
+      await httpPost<Partial<Order>>(`${BASE}/orders`, {
+        listing_id: listingId,
+        answers: input.answers ?? {},
+        note: input.note ?? null,
+      }),
+    ),
 
   startCheckout: async (orderId: number): Promise<CheckoutSession> => {
     const raw = await httpPost<Partial<CheckoutSession>>(`${BASE}/orders/${orderId}/checkout`, {});
@@ -346,4 +364,31 @@ export const servicesRealApi = {
     const list = Array.isArray(raw) ? raw : toArray<City>(raw?.cities);
     return list.map((c) => ({ id: Number(c.id), name: c.name ?? "" })).filter((c) => !!c.id);
   },
+
+  // ── The booking handshake ──
+  //
+  // Appended as one block. Each returns the updated order, so the caller replaces its copy rather than
+  // guessing what the new status is.
+
+  getBooking: async (orderId: number): Promise<BookingDetails> => {
+    const raw = await httpGet<Partial<BookingDetails>>(`${BASE}/orders/${orderId}/booking`);
+    return {
+      answers: toArray<BookingDetails["answers"][number]>(raw?.answers),
+      note: raw?.note ?? null,
+      decline_reason: raw?.decline_reason ?? null,
+    };
+  },
+
+  acceptBooking: async (orderId: number): Promise<Order> =>
+    normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders/${orderId}/accept`, {})),
+
+  declineBooking: async (orderId: number, reason: string): Promise<Order> =>
+    normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders/${orderId}/decline`, { reason })),
+
+  startWork: async (orderId: number): Promise<Order> =>
+    normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders/${orderId}/start`, {})),
+
+  finishWork: async (orderId: number): Promise<Order> =>
+    normalizeOrder(await httpPost<Partial<Order>>(`${BASE}/orders/${orderId}/finish`, {})),
+
 };
