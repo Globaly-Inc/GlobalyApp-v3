@@ -49,6 +49,10 @@ function Button({
   return (
     <ButtonPrimitive
       data-slot="button"
+      // base-ui defaults nativeButton to true and warns when `render` swaps in
+      // anything else — and every `render` here is a non-button (next/link's <a>,
+      // a <span>). Spread last so a caller rendering a real <button> can override.
+      nativeButton={props.render === undefined}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

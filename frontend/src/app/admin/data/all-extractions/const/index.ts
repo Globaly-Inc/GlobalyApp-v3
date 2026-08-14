@@ -1,11 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Clock,
+  Globe,
   ListOrdered,
   Loader2,
   AlertCircle,
   CheckCircle2,
   ShieldCheck,
+  Sparkles,
   XCircle,
   Pause,
 } from "lucide-react";
@@ -41,6 +43,38 @@ export const FINISHED_STATUSES: ExtractionStatus[] = ["done", "completed", "appr
 
 export const SOURCE_TYPE_OPTIONS = [
   { value: "institution", label: "Institution Website" },
+];
+
+/** One list component, three pages — the mode picks the data and the wording. Ported from V2's ExtractionDashboard. */
+export type DashboardMode = "all" | "completed" | "ai-ongoing";
+
+// null = no status filter. NOTE: "done" and "completed" are synonyms produced by
+// different pipelines — both must be listed or jobs silently vanish from the UI.
+export const MODE_STATUS_FILTER: Record<DashboardMode, ExtractionStatus[] | null> = {
+  all: null,
+  completed: ["done", "completed", "approved", "verified", "exported", "pushed", "declined", "review"],
+  "ai-ongoing": ["pending", "mapping", "scraping", "extracting", "verifying", "review", "failed", "paused", "stalled"],
+};
+
+export const MODE_HEADINGS: Record<DashboardMode, { title: string; empty: string }> = {
+  all: { title: "All Extractions", empty: "No extractions yet" },
+  completed: { title: "Extracted Data — Ready to Publish", empty: "No completed extractions yet." },
+  "ai-ongoing": { title: "Ongoing AI Extractions", empty: "No AI extractions in progress." },
+};
+
+export const SOURCE_FILTER_OPTIONS = [
+  { value: "all", label: "All sources" },
+  { value: "ai", label: "AI Extraction" },
+  { value: "agentcis", label: "AgentCIS" },
+];
+
+/** Stages of the AI pipeline, in run order — keys match pipeline_progress. */
+export const PIPELINE_STAGES: { key: string; label: string; icon: LucideIcon }[] = [
+  { key: "mapping", label: "Site Mapping", icon: Globe },
+  { key: "intelligence", label: "Site Intelligence", icon: Sparkles },
+  { key: "scraping", label: "Course Discovery", icon: ListOrdered },
+  { key: "extracting", label: "Data Extraction", icon: Loader2 },
+  { key: "verifying", label: "Verification", icon: CheckCircle2 },
 ];
 
 // Queue item statuses, in the order the counter row shows them. "completed" is what

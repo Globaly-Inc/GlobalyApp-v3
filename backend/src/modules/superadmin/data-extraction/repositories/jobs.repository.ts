@@ -89,7 +89,11 @@ export async function listJobsFiltered(opts: {
   excludeSourceType?: string;
   limit: number;
 }) {
-  const query = masterKnex(T).select("*").orderBy("created_at", "desc").limit(opts.limit);
+  const query = masterKnex(T)
+    .select(`${T}.*`)
+    .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
+    .orderBy("created_at", "desc")
+    .limit(opts.limit);
   if (opts.statuses?.length) query.whereIn("status", opts.statuses);
   if (opts.sourceType) query.where("source_type", opts.sourceType);
   if (opts.excludeSourceType) query.whereNot("source_type", opts.excludeSourceType);
