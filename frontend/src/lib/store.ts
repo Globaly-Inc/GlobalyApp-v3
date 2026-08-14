@@ -12,9 +12,7 @@ import { categoriesReducer } from "@/app/admin/platform/categories/store/categor
 import { countriesReducer } from "@/app/admin/platform/countries/store/countries-slice"
 import { featureFlagsReducer } from "@/app/admin/platform/feature-flags/store/feature-flags-slice"
 import { allExtractionsReducer } from "@/app/admin/data/all-extractions/store/all-extractions-slice"
-import { extractedDataReducer } from "@/app/admin/data/extracted-data/store/extracted-data-slice"
 import { agentcisImportReducer } from "@/app/admin/data/agentcis-import/store/agentcis-import-slice"
-import { aiExtractionReducer } from "@/app/admin/data/ai-extraction/store/ai-extraction-slice"
 import { aiMemoryReducer } from "@/app/admin/data/ai-memory/store/ai-memory-slice"
 import { aiKnowledgeReducer } from "@/app/admin/data/ai-knowledge/store/ai-knowledge-slice"
 import { visasReducer } from "@/app/admin/data/visas/store/visas-slice"
@@ -42,9 +40,7 @@ const appReducer = combineReducers({
     platformCountries: countriesReducer,
     platformFeatureFlags: featureFlagsReducer,
     dataAllExtractions: allExtractionsReducer,
-    dataExtractedData: extractedDataReducer,
     dataAgentcisImport: agentcisImportReducer,
-    dataAiExtraction: aiExtractionReducer,
     dataAiMemory: aiMemoryReducer,
     dataAiKnowledge: aiKnowledgeReducer,
     dataVisas: visasReducer,

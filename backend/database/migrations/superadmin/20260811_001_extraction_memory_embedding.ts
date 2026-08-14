@@ -4,8 +4,8 @@
 import type { Knex } from "knex";
 
 export async function up(knex: Knex): Promise<void> {
-  // pgvector extension must already be enabled (CREATE EXTENSION vector)
   // 768-dim for Gemini text-embedding-004
+  await knex.raw(`CREATE EXTENSION IF NOT EXISTS vector`);
   await knex.raw(`
     ALTER TABLE superadmin.extraction_memory
       ADD COLUMN IF NOT EXISTS embedding vector(768)

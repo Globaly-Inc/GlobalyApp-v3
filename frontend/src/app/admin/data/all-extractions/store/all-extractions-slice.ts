@@ -1,8 +1,11 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { allExtractionsApi } from "../apis";
+import type { DashboardMode } from "../const";
 import type { CreateJobParams, ExtractionJob, JobFull } from "../apis/types";
 
-export const fetchAllExtractions = createAsyncThunk("dataAllExtractions/fetch", () => allExtractionsApi.getJobs());
+export const fetchAllExtractions = createAsyncThunk("dataAllExtractions/fetch", (mode: DashboardMode) =>
+  allExtractionsApi.getJobs(mode),
+);
 
 export const fetchJobDetail = createAsyncThunk("dataAllExtractions/fetchDetail", (id: string) => allExtractionsApi.getJob(id));
 

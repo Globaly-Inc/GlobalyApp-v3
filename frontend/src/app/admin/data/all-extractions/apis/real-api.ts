@@ -1,4 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
+import { MODE_STATUS_FILTER, type DashboardMode } from "../const";
 import type {
   Accreditation,
   AgentFull,
@@ -35,8 +36,14 @@ import type {
 } from "./types";
 
 export const allExtractionsRealApi = {
-  getJobs: async (): Promise<ExtractionJob[]> => {
-    const { jobs } = await httpGet<{ jobs: ExtractionJob[] }>("/admin/data-extraction/jobs");
+  // jobs-filtered (not /jobs) for every mode — it's the only list endpoint that
+  // attaches campus_count/agent_count, which the row shows.
+  getJobs: async (mode: DashboardMode): Promise<ExtractionJob[]> => {
+    const params = new URLSearchParams({ limit: "500" });
+    const statuses = MODE_STATUS_FILTER[mode];
+    if (statuses) params.set("statuses", statuses.join(","));
+    if (mode === "ai-ongoing") params.set("exclude_source_type", "agentcis");
+    const { jobs } = await httpGet<{ jobs: ExtractionJob[] }>(`/admin/data-extraction/jobs-filtered?${params}`);
     return jobs;
   },
 

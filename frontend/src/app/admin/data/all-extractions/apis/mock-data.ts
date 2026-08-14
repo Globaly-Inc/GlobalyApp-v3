@@ -29,6 +29,8 @@ import type {
   UpdateCourseParams,
 } from "./types";
 
+import { MODE_STATUS_FILTER, type DashboardMode } from "../const";
+
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -50,16 +52,17 @@ let mockJobs: ExtractionJob[] = [
   { id: "6", institution_name: "Apsley College", institution_url: "https://apsley.nsw.edu.au/", status: "done", total_pages_found: 12, courses_extracted: 10, verification_score: 9, verification_total: 10, pages_scraped: 12, pages_failed: 0, agent_count: 1, created_at: "2026-06-28T08:00:00Z", updated_at: "2026-06-28T08:00:00Z" },
   { id: "7", institution_name: "Concordia University", institution_url: "https://www.concordia.ca/", status: "done", total_pages_found: 260, courses_extracted: 224, verification_score: 210, verification_total: 224, pages_scraped: 260, pages_failed: 3, agent_count: 4, created_at: "2026-06-26T09:00:00Z", updated_at: "2026-06-26T09:00:00Z" },
   { id: "8", institution_name: "Sheridan College", institution_url: "https://sheridancollege.ca", status: "review", total_pages_found: 110, courses_extracted: 96, verification_score: 90, verification_total: 96, pages_scraped: 110, pages_failed: 1, agent_count: 2, created_at: "2026-06-24T09:00:00Z", updated_at: "2026-06-24T09:00:00Z" },
-  { id: "9", institution_name: "Auckland Institute of Studies", institution_url: "https://ais.ac.nz", status: "extracting", total_pages_found: 60, courses_extracted: 48, verification_score: 0, verification_total: 0, pages_scraped: 48, pages_failed: 0, agent_count: 0, created_at: "2026-08-07T02:00:00Z", updated_at: "2026-08-07T02:00:00Z" },
+  { id: "9", institution_name: "Auckland Institute of Studies", institution_url: "https://ais.ac.nz", status: "extracting", total_pages_found: 60, courses_extracted: 48, verification_score: 0, verification_total: 0, pages_scraped: 48, pages_failed: 0, agent_count: 0, campus_count: 2, created_at: "2026-08-07T02:00:00Z", updated_at: "2026-08-07T02:00:00Z", pipeline_progress: { mapping: { status: "done", total: 60, done: 60 }, intelligence: { status: "done", total: 1, done: 1 }, scraping: { status: "done", total: 60, done: 48 }, extracting: { status: "processing", total: 48, done: 32 } } },
   { id: "10", institution_name: "RMIT University", institution_url: "https://www.rmit.edu.au", status: "pending", total_pages_found: 200, courses_extracted: 3, verification_score: 0, verification_total: 0, pages_scraped: 3, pages_failed: 0, agent_count: 0, created_at: "2026-08-07T02:30:00Z", updated_at: "2026-08-07T02:30:00Z" },
   { id: "11", institution_name: "Torrens University", institution_url: "https://www.torrens.edu.au", status: "declined", total_pages_found: 140, courses_extracted: 0, verification_score: 0, verification_total: 0, pages_scraped: 140, pages_failed: 0, agent_count: 0, created_at: "2026-06-20T09:00:00Z", updated_at: "2026-06-20T09:00:00Z" },
 ];
 
 export const allExtractionsMockApi = {
-  getJobs: async (): Promise<ExtractionJob[]> => {
-    console.log("[mock] GET /admin/data-extraction/jobs");
+  getJobs: async (mode: DashboardMode): Promise<ExtractionJob[]> => {
+    console.log("[mock] GET /admin/data-extraction/jobs-filtered (mode: " + mode + ")");
     await delay(300);
-    return mockJobs;
+    const statuses = MODE_STATUS_FILTER[mode];
+    return statuses ? mockJobs.filter((j) => statuses.includes(j.status)) : mockJobs;
   },
 
   getJob: async (id: string): Promise<ExtractionJob> => {
