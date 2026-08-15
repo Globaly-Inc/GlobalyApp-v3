@@ -16,7 +16,7 @@ export const MemberInviteSchema = z.object({
   first_name: z.string().min(1).max(100),
   last_name: z.string().min(1).max(100),
   email: z.string().email(),
-  phone: z.string().max(50).optional(),
+  phone: z.string().max(50).nullable().optional(),
   role: z.string().min(1).default("member"),
   admin_point_of_contact: z.boolean().optional().default(false),
 });
