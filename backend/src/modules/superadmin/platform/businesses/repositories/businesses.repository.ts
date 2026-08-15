@@ -1,5 +1,6 @@
 // Repository for admin-managed business listings — CRUD, members, activity.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
 import { getKnex } from "../../../../../core/db/pool-manager.js";
 import { SUPERADMIN_SCHEMA as S } from "../../../consts.js";
@@ -109,8 +110,8 @@ export async function findBusinessDetail(id: number) {
   return row;
 }
 
-export async function insertBusiness(data: Record<string, unknown>) {
-  const [row] = await masterKnex("businesses").insert(data).returning("*");
+export async function insertBusiness(data: Record<string, unknown>, db: Knex = masterKnex) {
+  const [row] = await db("businesses").insert(data).returning("*");
   return row;
 }
 
