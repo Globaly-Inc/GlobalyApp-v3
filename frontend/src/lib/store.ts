@@ -11,6 +11,7 @@ import { businessesReducer } from "@/app/admin/platform/businesses/store/busines
 import { categoriesReducer } from "@/app/admin/platform/categories/store/categories-slice"
 import { countriesReducer } from "@/app/admin/platform/countries/store/countries-slice"
 import { featureFlagsReducer } from "@/app/admin/platform/feature-flags/store/feature-flags-slice"
+import { blogReducer } from "@/app/admin/marketing/blog/store/blog-slice"
 import { allExtractionsReducer } from "@/app/admin/data/all-extractions/store/all-extractions-slice"
 import { agentcisImportReducer } from "@/app/admin/data/agentcis-import/store/agentcis-import-slice"
 import { aiMemoryReducer } from "@/app/admin/data/ai-memory/store/ai-memory-slice"
@@ -39,6 +40,7 @@ const appReducer = combineReducers({
     platformCategories: categoriesReducer,
     platformCountries: countriesReducer,
     platformFeatureFlags: featureFlagsReducer,
+    marketingBlog: blogReducer,
     dataAllExtractions: allExtractionsReducer,
     dataAgentcisImport: agentcisImportReducer,
     dataAiMemory: aiMemoryReducer,

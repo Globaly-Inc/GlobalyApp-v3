@@ -15,9 +15,10 @@ export function AdminSegmentedTabs<T extends string>({
   options,
   value,
   onChange,
-}: Readonly<{ options: readonly SegmentOption<T>[]; value: T; onChange: (value: T) => void }>) {
+  className,
+}: Readonly<{ options: readonly SegmentOption<T>[]; value: T; onChange: (value: T) => void; className?: string }>) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1 mb-4 w-fit max-w-full">
+    <div className={cn("flex items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1 mb-4 w-fit max-w-full", className)}>
       {options.map((opt) => (
         <button
           key={opt.value}
