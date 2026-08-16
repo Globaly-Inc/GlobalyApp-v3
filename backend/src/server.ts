@@ -23,6 +23,8 @@ import businessesModule from "./modules/businesses/index.js";
 import agentsModule from "./modules/agents/index.js";
 import feedModule from "./modules/feed/index.js";
 import blogModule from "./modules/blog/index.js";
+import geoModule from "./modules/geo/index.js";
+import searchModule from "./modules/search/index.js";
 
 const logger = createChildLogger("server");
 
@@ -49,6 +51,8 @@ export async function buildServer() {
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
+  await app.register(geoModule);              // public geo reads (no auth)
+  await app.register(searchModule);          // public search reads (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

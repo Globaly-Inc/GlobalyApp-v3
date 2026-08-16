@@ -91,6 +91,34 @@ export async function findCountryById(id: number) {
   return masterKnex("countries").where({ id }).whereNull("deleted_at").first();
 }
 
+// Public, unauthenticated reads — see modules/geo/routes/public-geo.routes.ts.
+export async function listFeaturedCountries() {
+  return masterKnex("countries")
+    .select("id", "name", "slug", "flag_emoji")
+    .where({ is_active: true, is_featured: true })
+    .whereNull("deleted_at")
+    .orderBy("sort_order")
+    .orderBy("name");
+}
+
+export async function findPublicCountryBySlug(slug: string) {
+  return masterKnex("countries")
+    .where({ is_active: true })
+    .whereNull("deleted_at")
+    .where((b) => b.where("slug", slug).orWhereRaw("lower(name) = lower(?)", [slug]))
+    .first();
+}
+
+export async function listPublicCitiesForCountry(countryId: number, limit = 12) {
+  return masterKnex("cities")
+    .select("id", "country_id", "name", "slug", "thumbnail_image_url", "hero_image_url", "population_label", "is_featured")
+    .where({ country_id: countryId, status: "active" })
+    .whereNull("deleted_at")
+    .orderBy("sort_order")
+    .orderBy("name")
+    .limit(limit);
+}
+
 export async function insertCountry(data: Record<string, unknown>) {
   const [row] = await masterKnex("countries").insert(data).returning("*");
   return row;
