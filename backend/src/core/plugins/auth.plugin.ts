@@ -32,12 +32,6 @@ export const authPlugin = fp(async (app) => {
     const path = req.url.split("?")[0];
     if (publicPaths.has(path)) return;
 
-    // A route may declare itself public via `config: { public: true }`, which route files set for themselves.
-    // Generic on purpose: no feature is named here, and a route's publicness lives next to the route rather
-    // than in a path pattern maintained at a distance — the failure mode of a pattern is that it silently
-    // matches, or fails to match, a route nobody re-checked.
-    if ((req.routeOptions?.config as { public?: boolean } | undefined)?.public === true) return;
-
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) {
       return reply.status(401).send({ error: "Missing token" });

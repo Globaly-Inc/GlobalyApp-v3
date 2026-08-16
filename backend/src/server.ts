@@ -23,7 +23,7 @@ import businessesModule from "./modules/businesses/index.js";
 import agentsModule from "./modules/agents/index.js";
 import feedModule from "./modules/feed/index.js";
 import blogModule from "./modules/blog/index.js";
-import otherServicesModule from "./modules/other-services/index.js";
+import otherServicesModule, { publicServicesModule } from "./modules/other-services/index.js";
 
 const logger = createChildLogger("server");
 
@@ -51,6 +51,7 @@ export async function buildServer() {
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
+  await app.register(publicServicesModule);  // public marketplace browse (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));
