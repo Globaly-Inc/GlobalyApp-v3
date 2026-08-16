@@ -1,7 +1,9 @@
 services:
   postgres:
     container_name: globalyapp-postgres
-    image: postgres:17
+    # pgvector build of postgres 17 — superadmin migration 20260811_001 needs the
+    # `vector` type (CREATE EXTENSION vector) for extraction_memory embeddings.
+    image: pgvector/pgvector:pg17
     ports:
       - "5432:5432"
     environment:
@@ -241,6 +243,9 @@ services:
   dragonfly:
     container_name: globalyapp-dragonfly
     image: docker.dragonflydb.io/dragonflydb/dragonfly
+    # Defaults to one io thread per host core; on a 10-core Mac that needs 2.5g
+    # and it exits against the 3g limit below. Pin the thread count instead.
+    command: ["--proactor_threads=4"]
     ports:
       - "6379:6379"
     volumes:
