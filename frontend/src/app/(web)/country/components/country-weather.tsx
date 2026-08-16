@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import type { CountryDetail } from "../types";
 
 export function CountryWeather({ country }: Readonly<{ country: CountryDetail }>) {
@@ -14,7 +15,7 @@ export function CountryWeather({ country }: Readonly<{ country: CountryDetail }>
         {seasons.map((season, i) => (
           <Card key={i}>
             <CardContent className="pt-6 pb-4 text-center">
-              <p className="text-4xl">{season.icon ?? "🌤️"}</p>
+              <DynamicIcon name={season.icon} fallback="CloudSun" className="mx-auto h-10 w-10 text-primary" />
               <p className="mt-3 font-semibold">{season.label}</p>
               {season.temp_range && <p className="mt-1 text-sm font-medium text-primary">{season.temp_range}</p>}
               {season.description && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{season.description}</p>}
