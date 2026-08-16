@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CheckCircle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,8 @@ import { UnifiedSearchBar } from "./components/unified-search-bar";
 import { useTypingEffect } from "./hooks/use-typing-effect";
 import { useParallax } from "./hooks/use-scroll-animation";
 import { useIsMobile } from "./hooks/use-is-mobile";
-import { DESTINATIONS } from "./data/destinations";
+import type { Destination } from "./data/destinations";
+import { getFeaturedCountries } from "./data/countries-api";
 import { BLOG_POSTS } from "./data/blog-posts";
 import {
   TYPING_PHRASES,
@@ -27,6 +29,14 @@ export default function HomePage() {
   const { ref: parallax2Ref, transform: parallax2Transform } = useParallax(0.18);
   const { ref: parallax3Ref, transform: parallax3Transform } = useParallax(0.18);
   const isMobile = useIsMobile();
+  const [destinations, setDestinations] = useState<Destination[]>([]);
+
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    getFeaturedCountries().then(setDestinations).catch(() => {});
+  }, []);
 
   return (
     <>
@@ -74,7 +84,7 @@ export default function HomePage() {
             </h2>
           </Reveal>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {DESTINATIONS.map((dest, idx) => (
+            {destinations.map((dest, idx) => (
               <Reveal key={dest.id} delay={idx * 0.07}>
                 <Link
                   href={`/country/${dest.slug}`}

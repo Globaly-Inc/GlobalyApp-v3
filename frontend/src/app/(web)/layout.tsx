@@ -4,6 +4,7 @@ import { Navbar } from "./components/navbar";
 import { Footer } from "./components/footer";
 import { CookieConsent } from "./components/cookie-consent";
 import { BackToTop } from "./components/back-to-top";
+import { CompareTray } from "./search/components/compare-tray";
 
 const TITLE = "Globaly — World #1 AI Integrated Education Ecosystem";
 const OG_DESCRIPTION =
@@ -71,6 +72,7 @@ export default function WebLayout({ children }: Readonly<{ children: ReactNode }
       <Footer />
       <CookieConsent />
       <BackToTop />
+      <CompareTray />
     </div>
   );
 }
