@@ -57,19 +57,32 @@ async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Respo
 
 export class ApiError extends Error {
   code?: string;
-  constructor(message: string, code?: string) {
+  details?: unknown;
+  constructor(message: string, code?: string, details?: unknown) {
     super(message);
     this.code = code;
+    this.details = details;
   }
 }
 
 async function readError(res: Response): Promise<ApiError> {
   try {
-    const data = (await res.json()) as { error?: string; message?: string; code?: string };
-    return new ApiError(data.error || data.message || "Please try again.", data.code);
+    const data = (await res.json()) as { error?: string; message?: string; code?: string; details?: unknown };
+    return new ApiError(data.error || data.message || "Please try again.", data.code, data.details);
   } catch {
     return new ApiError("Please try again.");
   }
+}
+
+/** Maps a caught API error's Zod validation `details` (if any) to { fieldName: message }. */
+export function fieldErrorsFrom(err: unknown): Record<string, string> {
+  const fields: Record<string, string> = {};
+  if (!(err instanceof ApiError) || !Array.isArray(err.details)) return fields;
+  for (const issue of err.details as Array<{ path?: unknown[]; message?: string }>) {
+    const field = issue.path?.[0];
+    if (typeof field === "string" && typeof issue.message === "string") fields[field] = issue.message;
+  }
+  return fields;
 }
 
 export async function httpGet<T>(path: string, init?: RequestInit): Promise<T> {

@@ -4,6 +4,7 @@
 // activity live in ./businesses/repositories/businesses.repository.ts. Branches, services,
 // contacts, partners, and representations each live in their own ./business-*/repositories/ module.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../consts.js";
 import { findAdminByPlatformUserId } from "../admin-users/repositories/admin-users.repository.js";
@@ -44,8 +45,17 @@ export async function updateUser(id: number, data: Record<string, unknown>) {
 
 // ─── Countries ─────────────────────────────────────────────────────────────
 
-export async function listCountriesAdmin() {
-  return masterKnex("countries")
+type CountryListFilters = { search?: string; filter?: "all" | "active" | "featured" };
+
+function applyCountryFilters<T extends Knex.QueryBuilder>(q: T, filters: CountryListFilters, column = "countries"): T {
+  if (filters.search) q.whereILike(`${column}.name`, `%${filters.search}%`);
+  if (filters.filter === "active") q.where(`${column}.is_active`, true);
+  if (filters.filter === "featured") q.where(`${column}.is_featured`, true);
+  return q;
+}
+
+export async function listCountriesAdmin(limit: number, offset: number, filters: CountryListFilters) {
+  const q = masterKnex("countries")
     .select("countries.*")
     .count("cities.id as city_count")
     .leftJoin("cities", function () {
@@ -53,7 +63,28 @@ export async function listCountriesAdmin() {
     })
     .whereNull("countries.deleted_at")
     .groupBy("countries.id")
-    .orderBy("countries.name");
+    .orderBy("countries.name")
+    .limit(limit)
+    .offset(offset);
+  return applyCountryFilters(q, filters);
+}
+
+export async function countCountriesAdmin(filters: CountryListFilters) {
+  const q = masterKnex("countries").whereNull("deleted_at");
+  applyCountryFilters(q, filters, "countries");
+  const [row] = await q.count("* as count");
+  return Number(row.count);
+}
+
+export async function countCountryStats() {
+  const [row] = await masterKnex("countries")
+    .whereNull("deleted_at")
+    .select(
+      masterKnex.raw("count(*) as total"),
+      masterKnex.raw("count(*) filter (where is_active) as active"),
+      masterKnex.raw("count(*) filter (where is_featured) as featured"),
+    );
+  return { total: Number(row.total), active: Number(row.active), featured: Number(row.featured) };
 }
 
 export async function findCountryById(id: number) {
