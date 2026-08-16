@@ -4,10 +4,8 @@
 import type { Knex } from "knex";
 
 export async function up(knex: Knex): Promise<void> {
-  // 3072-dim = gemini-embedding-001 native width (best similarity quality).
-  // pgvector HNSW caps `vector` type at 2000 dims — index via halfvec cast instead.
-  // Storage stays full-precision vector(3072), index uses half-precision (plenty for cosine search).
-  await knex.raw(`CREATE EXTENSION IF NOT EXISTS vector`);
+  // Prerequisite: pgvector extension must be enabled manually by a superuser
+  // before running this migration. See backend/SETUP.md for instructions.
   await knex.raw(`
     ALTER TABLE superadmin.extraction_memory
       ADD COLUMN IF NOT EXISTS embedding vector(3072)

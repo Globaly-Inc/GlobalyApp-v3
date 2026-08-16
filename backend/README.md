@@ -120,6 +120,8 @@ sudo -u postgres psql
 ```sql
 CREATE USER master_user WITH PASSWORD 'password' CREATEDB;
 CREATE DATABASE globalyapp OWNER master_user;
+\c globalyapp
+CREATE EXTENSION IF NOT EXISTS vector;
 \q
 ```
 

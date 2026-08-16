@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **Node.js** v24+ (via [nvm](https://github.com/nvm-sh/nvm))
-- **PostgreSQL** 15+
+- **PostgreSQL** 15+ with **pgvector** ≥ 0.7 (required for 3072-dim embeddings)
 - **LavinMQ** — message queue for async jobs
 - **Mailtrap** account (free) — for dev email testing
 - **Yarn** — frontend package manager
@@ -92,6 +92,7 @@ CREATE USER master_user WITH PASSWORD 'password' CREATEDB;
 CREATE DATABASE globalyapp OWNER master_user;
 \c globalyapp
 CREATE SCHEMA superadmin AUTHORIZATION master_user;
+CREATE EXTENSION IF NOT EXISTS vector;
 GRANT ALL PRIVILEGES ON DATABASE globalyapp TO master_user;
 GRANT ALL PRIVILEGES ON SCHEMA superadmin TO master_user;
 GRANT ALL PRIVILEGES ON SCHEMA public TO master_user;
