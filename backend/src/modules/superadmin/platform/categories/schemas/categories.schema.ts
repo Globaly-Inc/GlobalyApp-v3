@@ -14,23 +14,7 @@ export const CategoryInputSchema = z.object({
   sort_order: z.number().int().optional(),
 });
 
-/**
- * Which taxonomy a service category belongs to — see migration 20260813_002.
- *
- * `business` is the default because that is what the table was created for; `personal` is the fixed list a
- * person may sell from through Earn → My Services, shown in admin as **Other Service Categories**. Only on
- * the service-category routes: business_categories has no such column.
- */
-export const CategoryScopeSchema = z.enum(["business", "personal"]);
-
-export const ServiceCategoryInputSchema = CategoryInputSchema.extend({
-  scope: CategoryScopeSchema.default("business"),
-});
-
-/** A list request always states which taxonomy it wants, so the two are never returned mixed. */
-export const CategoryScopeQuerySchema = z.object({ scope: CategoryScopeSchema.default("business") });
-
-export const SchemaFieldEntityTypeSchema = z.enum(["business_categories", "service_categories"]);
+export const SchemaFieldEntityTypeSchema = z.enum(["business_categories", "service_categories", "other_service_categories"]);
 
 const SchemaFieldBaseSchema = z.object({
   label: z.string().trim().min(1).max(200),

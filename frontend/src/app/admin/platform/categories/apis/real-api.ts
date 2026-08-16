@@ -2,19 +2,20 @@ import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/htt
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, ScopedListParams, SearchListParams,
+  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
 } from "./types";
 
 const BASE = "/admin/platform";
 
-const entityType = (kind: "business" | "service") => `${kind}_categories` as const;
+type CategoryEndpoint = "business" | "service" | "other-service";
 
-function toQuery(params: ScopedListParams): string {
+const entityType = (kind: CategoryEndpoint) => kind === "other-service" ? "other_service_categories" as const : `${kind === "service" ? "service" : "business"}_categories` as const;
+
+function toQuery(params: SearchListParams): string {
   const search = new URLSearchParams();
   if (params.page) search.set("page", String(params.page));
   if (params.limit) search.set("limit", String(params.limit));
   if (params.search) search.set("search", params.search);
-  if (params.scope) search.set("scope", params.scope);
   const qs = search.toString();
   return qs ? `?${qs}` : "";
 }
@@ -22,12 +23,13 @@ function toQuery(params: ScopedListParams): string {
 export const categoriesRealApi = {
   getBusinessCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/business-categories${toQuery(params)}`),
-  /** Defaults to business scope server-side, so a caller that wants the personal list must say so. */
-  getServiceCategories: (params: ScopedListParams = {}): Promise<Paginated<Category>> =>
+  getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toQuery(params)}`),
-  createCategory: (kind: "business" | "service", input: CategoryInput): Promise<Category> =>
+  getOtherServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
+    httpGet(`${BASE}/other-service-categories${toQuery(params)}`),
+  createCategory: (kind: CategoryEndpoint, input: CategoryInput): Promise<Category> =>
     httpPost(`${BASE}/${kind}-categories`, input),
-  updateCategory: (kind: "business" | "service", id: number, input: Partial<CategoryInput>): Promise<Category> =>
+  updateCategory: (kind: CategoryEndpoint, id: number, input: Partial<CategoryInput>): Promise<Category> =>
     httpPatch(`${BASE}/${kind}-categories/${id}`, input),
 
   getDefaultServices: async (businessCategoryId: number): Promise<Category[]> =>
@@ -36,9 +38,9 @@ export const categoriesRealApi = {
     await httpPut(`${BASE}/business-categories/${businessCategoryId}/default-services`, { service_category_ids: serviceCategoryIds });
   },
 
-  getSchemaFields: async (kind: "business" | "service", categoryId: number): Promise<SchemaField[]> =>
+  getSchemaFields: async (kind: CategoryEndpoint, categoryId: number): Promise<SchemaField[]> =>
     (await httpGet<{ schema_fields: SchemaField[] }>(`${BASE}/${entityType(kind)}/${categoryId}/schema-fields`)).schema_fields,
-  createSchemaField: (kind: "business" | "service", categoryId: number, input: SchemaFieldInput): Promise<SchemaField> =>
+  createSchemaField: (kind: CategoryEndpoint, categoryId: number, input: SchemaFieldInput): Promise<SchemaField> =>
     httpPost(`${BASE}/${entityType(kind)}/${categoryId}/schema-fields`, input),
   updateSchemaField: (id: number, input: Partial<SchemaFieldInput>): Promise<SchemaField> =>
     httpPatch(`${BASE}/schema-fields/${id}`, input),

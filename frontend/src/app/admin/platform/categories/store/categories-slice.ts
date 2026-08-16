@@ -22,7 +22,7 @@ export const fetchBusinessCategories = createAsyncThunk(
 );
 export const fetchServiceCategories = createAsyncThunk(
   "platformCategories/fetchServiceCategories",
-  (params: ListParams = {}) => categoriesApi.getServiceCategories({ limit: PAGE_LIMIT, ...params, scope: "business" }),
+  (params: ListParams = {}) => categoriesApi.getServiceCategories({ limit: PAGE_LIMIT, ...params }),
 );
 
 /**
@@ -33,7 +33,7 @@ export const fetchServiceCategories = createAsyncThunk(
  */
 export const fetchOtherServiceCategories = createAsyncThunk(
   "platformCategories/fetchOtherServiceCategories",
-  (params: ListParams = {}) => categoriesApi.getServiceCategories({ limit: PAGE_LIMIT, ...params, scope: "personal" }),
+  (params: ListParams = {}) => categoriesApi.getOtherServiceCategories({ limit: PAGE_LIMIT, ...params }),
 );
 export const fetchLookup = createAsyncThunk(
   "platformCategories/fetchLookup",
@@ -104,12 +104,7 @@ function mutation<Arg>(
   });
 }
 
-/**
- * "other_service" is not a third endpoint — the personal list is the same `/service-categories` routes with
- * a different scope, so the URL kind collapses back to "service" while the refetch and the create payload
- * keep the distinction.
- */
-const endpointKind = (kind: CategoryKind) => (kind === "other_service" ? "service" : kind);
+const apiKind = (kind: CategoryKind) => kind === "business" ? "business" as const : kind === "other_service" ? "other-service" as const : "service" as const;
 
 const refetchFor = (kind: CategoryKind, state: CategoriesState) => {
   if (kind === "business") return fetchBusinessCategories({ page: state.businessCategories.page });
@@ -119,7 +114,7 @@ const refetchFor = (kind: CategoryKind, state: CategoriesState) => {
 
 export const toggleCategory = mutation<{ kind: CategoryKind; id: number; is_active: boolean }>(
   "toggleCategory",
-  ({ kind, id, is_active }) => categoriesApi.updateCategory(endpointKind(kind), id, { is_active }),
+  ({ kind, id, is_active }) => categoriesApi.updateCategory(apiKind(kind), id, { is_active }),
   ({ kind }, state) => refetchFor(kind, state),
 );
 
@@ -127,14 +122,8 @@ export const saveCategory = mutation<{ kind: CategoryKind; id: number | null; in
   "saveCategory",
   ({ kind, id, input }) =>
     id
-      ? categoriesApi.updateCategory(endpointKind(kind), id, input)
-      : // Scope is settable only on create; the server ignores it on a patch.
-        categoriesApi.createCategory(endpointKind(kind), {
-          ...input,
-          ...(kind === "service" || kind === "other_service"
-            ? { scope: kind === "other_service" ? ("personal" as const) : ("business" as const) }
-            : {}),
-        }),
+      ? categoriesApi.updateCategory(apiKind(kind), id, input)
+      : categoriesApi.createCategory(apiKind(kind), input),
   ({ kind }, state) => refetchFor(kind, state),
 );
 

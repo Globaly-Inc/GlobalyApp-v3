@@ -1,30 +1,23 @@
 import type { Knex } from "knex";
 
-// Earn → My Services. Three tables: a seller's listing, an order against it, and the buyer's review.
+// Earn → My Services — a peer-to-peer marketplace.
 //
-// Named service_listings, not services: service_categories already exists and is a *business* category
-// taxonomy (business_category_default_services), an unrelated thing. A bare "services" table next to it
-// would read as its parent.
+// Four user-facing tables: a seller's listing, an order (booking request → payment → completion),
+// a post-order message thread, and the buyer's review.
+//
+// The category taxonomy (`other_service_categories`) is admin-managed reference data and lives in
+// 20260722_003_other_service_categories alongside the other category tables.
 //
 // Money is stored as an integer minor amount (price_minor / amount_minor) and never as numeric or float.
-// V2 used numeric and asked the seller to type cents into the form; the units are a storage decision the
-// UI never sees.
-
-const CATEGORIES = [
-  "airport_pickup",
-  "city_orientation",
-  "rental_support",
-  "employment_support",
-  "assignment_help",
-  "private_tutoring",
-  "other",
-];
 
 const CURRENCIES = ["AUD", "USD", "GBP", "EUR"];
 
 const ORDER_STATUSES = [
+  "requested",
+  "declined",
   "pending_payment",
   "paid",
+  "in_progress",
   "completed",
   "disputed",
   "refunded",
@@ -34,12 +27,13 @@ const ORDER_STATUSES = [
 const list = (values: string[]) => values.map((v) => `'${v}'`).join(", ");
 
 export async function up(knex: Knex): Promise<void> {
-  await knex.schema.createTable("service_listings", (t) => {
+  // ── Listings ──
+  await knex.schema.createTable("other_service_listings", (t) => {
     t.increments("id").primary();
     t.integer("provider_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("CASCADE");
     t.text("title").notNullable();
     t.text("description").nullable();
-    t.text("category").notNullable();
+    t.integer("other_category_id").unsigned().notNullable().references("id").inTable("other_service_categories").onDelete("RESTRICT");
     t.integer("price_minor").notNullable();          // minor units, e.g. 5000 = $50.00
     t.text("currency").notNullable().defaultTo("AUD");
     // Reuses the existing countries/cities tables. V2 stored both as free text, which is why its listings
@@ -54,86 +48,127 @@ export async function up(knex: Knex): Promise<void> {
     t.integer("total_orders").notNullable().defaultTo(0);
     t.timestamps(true, true);
     t.timestamp("deleted_at").nullable();
-    t.index(["provider_id", "deleted_at"], "service_listings_provider_idx");
-    t.index(["is_active", "deleted_at", "created_at"], "service_listings_public_idx");
+    t.index(["provider_id", "deleted_at"], "other_service_listings_provider_idx");
+    t.index(["is_active", "deleted_at", "created_at"], "other_service_listings_public_idx");
+    t.index(["other_category_id"], "other_service_listings_category_idx");
   });
 
   await knex.raw(`
-    ALTER TABLE service_listings
-      ADD CONSTRAINT service_listings_category_chk CHECK (category IN (${list(CATEGORIES)})),
-      ADD CONSTRAINT service_listings_currency_chk CHECK (currency IN (${list(CURRENCIES)})),
-      ADD CONSTRAINT service_listings_price_chk    CHECK (price_minor > 0),
-      ADD CONSTRAINT service_listings_rating_chk   CHECK (avg_rating >= 0 AND avg_rating <= 5)
+    ALTER TABLE other_service_listings
+      ADD CONSTRAINT other_service_listings_currency_chk CHECK (currency IN (${list(CURRENCIES)})),
+      ADD CONSTRAINT other_service_listings_price_chk    CHECK (price_minor > 0),
+      ADD CONSTRAINT other_service_listings_rating_chk   CHECK (avg_rating >= 0 AND avg_rating <= 5)
   `);
 
-  await knex.schema.createTable("service_orders", (t) => {
+  // ── Orders ──
+  await knex.schema.createTable("other_service_orders", (t) => {
     t.increments("id").primary();
     // RESTRICT, not CASCADE: an order is a financial record. Listings are soft-deleted and the delete route
     // refuses while orders are open, so this is the backstop for anything that bypasses it.
-    t.integer("listing_id").unsigned().notNullable().references("id").inTable("service_listings").onDelete("RESTRICT");
+    t.integer("listing_id").unsigned().notNullable().references("id").inTable("other_service_listings").onDelete("RESTRICT");
     t.integer("buyer_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("RESTRICT");
     // Snapshotted from the listing at order time so a later price edit or ownership change cannot
     // retroactively alter what someone owes or who is owed.
     t.integer("provider_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("RESTRICT");
     t.integer("amount_minor").notNullable();
     t.text("currency").notNullable();
-    t.text("status").notNullable().defaultTo("pending_payment");
+    t.text("status").notNullable().defaultTo("requested");
     t.text("payment_provider").nullable();           // stripe | dev
     t.text("payment_session_id").nullable();
     t.text("payment_intent_id").nullable();          // pi_… — what a refund is issued against
     t.text("payment_refund_id").nullable();          // re_… — a refund without this is unauditable
+    // Booking request fields — structured answers keyed by schema_fields `key`, plus free-text note.
+    t.jsonb("booking_answers").nullable();
+    t.text("booking_note").nullable();
+    t.text("decline_reason").nullable();             // why the seller said no
+    t.text("notes").nullable();
+    t.timestamp("requested_at", { useTz: true }).nullable();
+    t.timestamp("accepted_at", { useTz: true }).nullable();
+    t.timestamp("declined_at", { useTz: true }).nullable();
     t.timestamp("paid_at", { useTz: true }).nullable();
+    t.timestamp("started_at", { useTz: true }).nullable();
     t.timestamp("completed_at", { useTz: true }).nullable();
     t.timestamp("cancelled_at", { useTz: true }).nullable();
     t.timestamp("refunded_at", { useTz: true }).nullable();
     t.boolean("buyer_confirmed").notNullable().defaultTo(false);
     t.boolean("provider_confirmed").notNullable().defaultTo(false);
-    t.text("notes").nullable();
     t.timestamps(true, true);
-    t.index(["buyer_id", "created_at"], "service_orders_buyer_idx");
-    t.index(["provider_id", "created_at"], "service_orders_provider_idx");
-    t.index(["listing_id", "status"], "service_orders_listing_status_idx");
+    t.index(["buyer_id", "created_at"], "other_service_orders_buyer_idx");
+    t.index(["provider_id", "created_at"], "other_service_orders_provider_idx");
+    t.index(["listing_id", "status"], "other_service_orders_listing_status_idx");
   });
 
   await knex.raw(`
-    ALTER TABLE service_orders
-      ADD CONSTRAINT service_orders_status_chk   CHECK (status IN (${list(ORDER_STATUSES)})),
-      ADD CONSTRAINT service_orders_currency_chk CHECK (currency IN (${list(CURRENCIES)})),
-      ADD CONSTRAINT service_orders_amount_chk   CHECK (amount_minor > 0),
-      -- Self-purchase is impossible at the storage layer, not just in a handler.
-      ADD CONSTRAINT service_orders_parties_chk  CHECK (buyer_id <> provider_id)
+    ALTER TABLE other_service_orders
+      ADD CONSTRAINT other_service_orders_status_chk   CHECK (status IN (${list(ORDER_STATUSES)})),
+      ADD CONSTRAINT other_service_orders_currency_chk CHECK (currency IN (${list(CURRENCIES)})),
+      ADD CONSTRAINT other_service_orders_amount_chk   CHECK (amount_minor > 0),
+      ADD CONSTRAINT other_service_orders_parties_chk  CHECK (buyer_id <> provider_id),
+      ADD CONSTRAINT other_service_orders_decline_reason_chk CHECK (status <> 'declined' OR decline_reason IS NOT NULL)
   `);
 
-  // One payment session can only ever settle one order. Partial index because most rows have no session
-  // until checkout happens, and NULLs would all be distinct anyway — this states the intent.
+  // One payment session can only ever settle one order.
   await knex.raw(`
-    CREATE UNIQUE INDEX service_orders_session_uniq
-      ON service_orders (payment_session_id)
+    CREATE UNIQUE INDEX other_service_orders_session_uniq
+      ON other_service_orders (payment_session_id)
       WHERE payment_session_id IS NOT NULL
   `);
 
-  await knex.schema.createTable("service_reviews", (t) => {
+  // The seller's queue: "what is waiting on me".
+  await knex.raw(`
+    CREATE INDEX other_service_orders_requested_idx
+      ON other_service_orders (provider_id, created_at DESC) WHERE status = 'requested'
+  `);
+
+  // ── Order messages ──
+  await knex.schema.createTable("other_service_order_messages", (t) => {
     t.increments("id").primary();
-    // Unique: one review per order, enforced by the database rather than by a handler that can be raced.
-    t.integer("order_id").unsigned().notNullable().unique().references("id").inTable("service_orders").onDelete("CASCADE");
-    t.integer("listing_id").unsigned().notNullable().references("id").inTable("service_listings").onDelete("CASCADE");
+    t.integer("order_id").unsigned().notNullable().references("id").inTable("other_service_orders").onDelete("CASCADE");
+    t.integer("sender_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("CASCADE");
+    t.text("body").notNullable();
+    t.timestamp("created_at", { useTz: true }).notNullable().defaultTo(knex.fn.now());
+    t.index(["order_id", "created_at"], "other_service_order_messages_thread_idx");
+  });
+
+  await knex.raw(`
+    ALTER TABLE other_service_order_messages
+      ADD CONSTRAINT other_service_order_messages_body_chk CHECK (btrim(body) <> '')
+  `);
+
+  // ── Reviews ──
+  await knex.schema.createTable("other_service_reviews", (t) => {
+    t.increments("id").primary();
+    // Nullable: reviews are not gated on a purchase. A review with an order_id is a "verified purchase".
+    t.integer("order_id").unsigned().nullable().references("id").inTable("other_service_orders").onDelete("CASCADE");
+    t.integer("listing_id").unsigned().notNullable().references("id").inTable("other_service_listings").onDelete("CASCADE");
     t.integer("reviewer_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("CASCADE");
     t.integer("rating").notNullable();
     t.text("comment").nullable();
     t.timestamp("created_at", { useTz: true }).notNullable().defaultTo(knex.fn.now());
-    t.index(["listing_id"], "service_reviews_listing_idx");
+    t.index(["listing_id"], "other_service_reviews_listing_idx");
   });
 
-  // V2 had no such check — the 1–5 range lived only in a Zod schema, so anything written outside the API
-  // could store a 0 or a 97 and skew the listing's average.
   await knex.raw(`
-    ALTER TABLE service_reviews
-      ADD CONSTRAINT service_reviews_rating_chk CHECK (rating BETWEEN 1 AND 5)
+    ALTER TABLE other_service_reviews
+      ADD CONSTRAINT other_service_reviews_rating_chk CHECK (rating BETWEEN 1 AND 5)
+  `);
+
+  // One review per order (among reviews that have one).
+  await knex.raw(`
+    CREATE UNIQUE INDEX other_service_reviews_order_uniq
+      ON other_service_reviews (order_id) WHERE order_id IS NOT NULL
+  `);
+
+  // One voice per person per listing.
+  await knex.raw(`
+    CREATE UNIQUE INDEX other_service_reviews_listing_reviewer_uniq
+      ON other_service_reviews (listing_id, reviewer_id)
   `);
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.schema.dropTableIfExists("service_reviews");
-  await knex.schema.dropTableIfExists("service_orders");
-  await knex.schema.dropTableIfExists("service_listings");
+  await knex.schema.dropTableIfExists("other_service_reviews");
+  await knex.schema.dropTableIfExists("other_service_order_messages");
+  await knex.schema.dropTableIfExists("other_service_orders");
+  await knex.schema.dropTableIfExists("other_service_listings");
 }

@@ -37,7 +37,7 @@ export async function adminOtherServicesRoutes(app: FastifyInstance) {
 
     const base = () => {
       const q = masterKnex("other_service_listings as l")
-        .join("service_categories as cat", "cat.id", "l.category_id")
+        .join("other_service_categories as cat", "cat.id", "l.category_id")
         .join("platform_users as p", "p.id", "l.provider_id");
       if (filters.category_id) q.where("l.category_id", filters.category_id);
       if (filters.status === "active") q.where("l.is_active", true).whereNull("l.deleted_at");

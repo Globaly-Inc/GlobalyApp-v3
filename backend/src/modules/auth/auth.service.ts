@@ -172,7 +172,7 @@ export async function sendOtp(email: string) {
     html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
   }).catch((err) => logger.warn("OTP email failed", { email, err: err.message }));
 
-  logger.info("OTP sent", { userId: user.id });
+  logger.info("OTP sent", { userId: user.id, otp: otp });
   return { message: "OTP sent" };
 }
 
