@@ -100,7 +100,7 @@ const LABEL: Record<CategoryKind, string> = {
   other_service: "other service category",
 };
 
-const SCOPE_FOR = { service: "business", other_service: "personal" } as const;
+const API_KIND = { business: "business", service: "service", other_service: "other-service" } as const;
 
 export function CategoryEditorView({
   kind,
@@ -166,15 +166,10 @@ export function CategoryEditorView({
         is_active: data.isActive,
         sort_order: Number(data.sortOrder),
       };
-      // "other_service" is not its own endpoint — same /service-categories routes, different scope.
-      const endpointKind = kind === "other_service" ? "service" : kind;
+      const endpoint = API_KIND[kind];
       const row = categoryId
-        ? await categoriesApi.updateCategory(endpointKind, categoryId, input)
-        : // Scope is fixed at creation: it decides which list the row belongs to for good.
-          await categoriesApi.createCategory(endpointKind, {
-            ...input,
-            ...(kind === "business" ? {} : { scope: SCOPE_FOR[kind] }),
-          });
+        ? await categoriesApi.updateCategory(endpoint, categoryId, input)
+        : await categoriesApi.createCategory(endpoint, input);
       if (kind === "business") await categoriesApi.setDefaultServices(row.id, selectedServiceIds);
       await dispatch(FETCH_FOR[kind]({ limit: 100 }));
       toast.success(categoryId ? "Category updated" : "Category created");
@@ -389,8 +384,7 @@ export function CategoryEditorView({
                 </p>
               </CardHeader>
               <CardContent>
-                {/* Personal categories live in service_categories, so their schema fields hang off it too. */}
-                <SchemaFieldsEditor kind={kind === "other_service" ? "service" : kind} categoryId={categoryId} />
+                <SchemaFieldsEditor kind={API_KIND[kind]} categoryId={categoryId} />
               </CardContent>
             </Card>
           )}

@@ -103,7 +103,7 @@ const fullName = (alias: string) => `trim(concat(${alias}.first_name, ' ', coale
 
 function hydratedListingQuery(db: Knex | Knex.Transaction = masterKnex) {
   return db("other_service_listings as l")
-    .join("service_categories as cat", "cat.id", "l.category_id")
+    .join("other_service_categories as cat", "cat.id", "l.category_id")
     .leftJoin("countries as co", "co.id", "l.country_id")
     .leftJoin("cities as ci", "ci.id", "l.city_id")
     .select(
@@ -180,29 +180,18 @@ export interface CategoryRow {
   icon: string | null;
 }
 
-/**
- * What a person may offer.
- *
- * `scope: "personal"` is the whole of the "fixed categories" rule: a seller picks from this list and cannot
- * add to it, and the list is administered at /admin/platform/categories. The other scope in this table is
- * the business default-services taxonomy, which has nothing to do with Earn and must not appear in a
- * seller's form. Active only, so retiring one in admin hides it from new listings without touching old ones.
- */
-const PERSONAL_SCOPE = { scope: "personal", is_active: true } as const;
-
 export async function listCategories(): Promise<CategoryRow[]> {
-  return masterKnex("service_categories")
+  return masterKnex("other_service_categories")
     .select("id", "slug", "name", "description", "icon")
-    .where(PERSONAL_SCOPE)
+    .where({ is_active: true })
     .whereNull("deleted_at")
     .orderBy(["sort_order", "name"]);
 }
 
-/** Used to validate a submitted category_id, so the scope filter here is what refuses a business one. */
 export async function findCategoryById(id: number): Promise<CategoryRow | null> {
-  const row = await masterKnex("service_categories")
+  const row = await masterKnex("other_service_categories")
     .select("id", "slug", "name", "description", "icon")
-    .where({ id, ...PERSONAL_SCOPE })
+    .where({ id, is_active: true })
     .whereNull("deleted_at")
     .first();
   return row ?? null;
@@ -229,7 +218,7 @@ export interface BrowseFilters {
  */
 function publicListingQuery(filters: BrowseFilters) {
   const query = masterKnex("other_service_listings as l")
-    .join("service_categories as cat", "cat.id", "l.category_id")
+    .join("other_service_categories as cat", "cat.id", "l.category_id")
     .join("platform_users as p", "p.id", "l.provider_id")
     .leftJoin("countries as co", "co.id", "l.country_id")
     .leftJoin("cities as ci", "ci.id", "l.city_id")
@@ -604,15 +593,9 @@ export interface BookingFieldRow {
   options: (string | number)[] | null;
 }
 
-/**
- * The questions a category asks its buyers, in the order an admin arranged them.
- *
- * `entity_type` is "service_categories" because that is what the shared schema_fields table keys on — the
- * table was not renamed with the Earn tables, since it also serves business categories.
- */
 export async function listBookingFields(categoryId: number): Promise<BookingFieldRow[]> {
   return masterKnex("schema_fields")
     .select("id", "key", "label", "type", "is_required", "options")
-    .where({ entity_type: "service_categories", entity_id: categoryId })
+    .where({ entity_type: "other_service_categories", entity_id: categoryId })
     .orderBy("id") as unknown as Promise<BookingFieldRow[]>;
 }

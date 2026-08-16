@@ -4,8 +4,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../../../shared/pagination.js";
 import {
-  CategoryInputSchema, CategoryScopeQuerySchema, DefaultServicesInputSchema, IdParamSchema,
-  SchemaFieldEntityTypeSchema, SchemaFieldInputSchema, SchemaFieldUpdateSchema, ServiceCategoryInputSchema,
+  CategoryInputSchema, DefaultServicesInputSchema, IdParamSchema,
+  SchemaFieldEntityTypeSchema, SchemaFieldInputSchema, SchemaFieldUpdateSchema,
 } from "../schemas/categories.schema.js";
 import * as service from "../services/categories.service.js";
 
@@ -86,31 +86,53 @@ export async function categoryRoutes(app: FastifyInstance) {
     return reply.send({ updated: true });
   });
 
-  // ── Service Categories ──
+  // ── Service Categories (business default-services taxonomy) ──
 
   app.get("/service-categories", async (req, reply) => {
     const { search, ...pagination } = CategoryListQuery.parse(req.query);
-    const { scope } = CategoryScopeQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
-      service.listServiceCategories(limit, offset, search, scope),
-      service.countServiceCategories(search, scope),
+      service.listServiceCategories(limit, offset, search),
+      service.countServiceCategories(search),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
   app.post("/service-categories", async (req, reply) => {
-    const data = ServiceCategoryInputSchema.parse(req.body);
+    const data = CategoryInputSchema.parse(req.body);
     const row = await service.createServiceCategory(data);
     return reply.status(201).send(row);
   });
 
   app.patch("/service-categories/:id", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
-    // `scope` is omitted deliberately: moving a category between taxonomies would silently retarget every
-    // listing already filed under it. Retire it and create the other one instead.
     const data = CategoryInputSchema.partial().parse(req.body);
     const row = await service.updateServiceCategory(id, data);
+    return reply.send(row);
+  });
+
+  // ── Other Service Categories (Earn → My Services taxonomy) ──
+
+  app.get("/other-service-categories", async (req, reply) => {
+    const { search, ...pagination } = CategoryListQuery.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      service.listOtherServiceCategories(limit, offset, search),
+      service.countOtherServiceCategories(search),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.post("/other-service-categories", async (req, reply) => {
+    const data = CategoryInputSchema.parse(req.body);
+    const row = await service.createOtherServiceCategory(data);
+    return reply.status(201).send(row);
+  });
+
+  app.patch("/other-service-categories/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const data = CategoryInputSchema.partial().parse(req.body);
+    const row = await service.updateOtherServiceCategory(id, data);
     return reply.send(row);
   });
 }

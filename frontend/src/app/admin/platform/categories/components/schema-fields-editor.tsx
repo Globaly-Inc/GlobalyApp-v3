@@ -31,7 +31,7 @@ const emptyDraft: SchemaFieldInput = { label: "", key: "", type: "text", is_requ
 export function SchemaFieldsEditor({
   kind,
   categoryId,
-}: Readonly<{ kind: "business" | "service"; categoryId: number | null }>) {
+}: Readonly<{ kind: "business" | "service" | "other-service"; categoryId: number | null }>) {
   const [fields, setFields] = useState<SchemaField[]>([]);
   const [draft, setDraft] = useState<SchemaFieldInput | null>(null);
   const [newOption, setNewOption] = useState<Record<number, string>>({});
