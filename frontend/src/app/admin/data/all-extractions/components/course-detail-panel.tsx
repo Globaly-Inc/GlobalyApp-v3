@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  BookMarked, Building2, CalendarDays, ChevronsUpDown, Clock, DollarSign, ExternalLink, Link2,
+  BookMarked, Building2, CalendarDays, CheckCircle2, ChevronsUpDown, Clock, DollarSign, ExternalLink, Flag, Link2,
   Loader2, Pencil, Plus, ShieldCheck, Trash2, X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -246,9 +246,34 @@ export function CourseDetailPanel({
               </a>
             )}
           </div>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" title="Close" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {course.verification_status && course.verification_status !== "unverified" && (
+              <Badge variant="outline" className="text-[10px] capitalize">{humanize(course.verification_status)}</Badge>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs cursor-pointer"
+              disabled={busy || course.verification_status === "confirmed"}
+              onClick={() => run(() => allExtractionsApi.approveCourse(course.id), "Course approved")}
+            >
+              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+              Approve
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-destructive cursor-pointer"
+              disabled={busy || course.verification_status === "flagged"}
+              onClick={() => run(() => allExtractionsApi.rejectCourse(course.id), "Course flagged")}
+            >
+              <Flag className="h-3 w-3" />
+              Flag
+            </Button>
+            <Button variant="ghost" size="icon-sm" className="cursor-pointer" title="Close" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Each field writes its own column as soon as it changes — no separate save step. */}

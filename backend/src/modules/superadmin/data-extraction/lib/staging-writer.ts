@@ -190,32 +190,83 @@ export async function upsertCampus(jobId: string, campus: ExtractedCampus): Prom
 }
 
 /**
+ * Normalise a course name for dedup: lowercase, collapse whitespace, strip degree
+ * prefixes that the LLM sometimes includes inconsistently.
+ */
+export function normaliseCourseName(name: string): string {
+  return name.trim().toLowerCase()
+    .replace(/\s+/g, " ")
+    // "Bachelor of Science in Computer Science" and "Computer Science (Bachelor)" should NOT dedup —
+    // but "Bachelor of Computer Science" on two different pages should. Strip only trailing junk.
+    .replace(/[^a-z0-9]+$/g, "");
+}
+
+/**
  * Write a full course with all its child entities and junction assignments.
+ * Deduplicates by normalised name within the same job — if a course already exists,
+ * merges richer data into the existing row and attaches new child entities.
  * Returns the course ID.
  */
 export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string> {
-  // ── Insert course ──
-  const courseInsert: Record<string, unknown> = {
-    job_id: jobId,
-    name: course.name,
-    short_name: course.short_name ?? null,
-    degree_level: course.degree_level ?? null,
-    subject_area: course.subject_area ?? null,
-    duration_weeks: coerceInt(course.duration_weeks),
-    study_mode: course.study_mode ?? null,
-    description: course.description ?? null,
-    domestic_fee_total: course.domestic_fee_total ?? null,
-    domestic_currency: course.domestic_currency ?? null,
-    international_fee_total: course.international_fee_total ?? null,
-    international_currency: course.international_currency ?? null,
-    awarding_institution: course.awarding_institution ?? null,
-    source_url: course.source_url ?? null,
-    verification_status: "unverified",
-  };
-  if (course.career_paths?.length) courseInsert.career_paths = course.career_paths;
+  // ── Dedup: check if this course name already exists for this job ──
+  const normName = normaliseCourseName(course.name);
+  const existing = await masterKnex(`${S}.extraction_courses`)
+    .where({ job_id: jobId })
+    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
+    .first();
 
-  const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
-  const courseId = courseRow.id;
+  let courseId: string;
+
+  if (existing) {
+    courseId = existing.id;
+    // Merge: fill nulls on the existing row with data from this extraction
+    const updates: Record<string, unknown> = {};
+    const mergeFields: Array<keyof ExtractedCourse> = [
+      "short_name", "degree_level", "subject_area", "duration_weeks",
+      "study_mode", "description", "domestic_fee_total", "domestic_currency",
+      "international_fee_total", "international_currency", "awarding_institution",
+      "source_url",
+    ];
+    for (const field of mergeFields) {
+      const newVal = field === "duration_weeks" ? coerceInt(course[field]) : (course[field] ?? null);
+      if (newVal != null && newVal !== "" && (existing[field] == null || existing[field] === "")) {
+        updates[field] = newVal;
+      }
+    }
+    if (course.career_paths?.length && (!existing.career_paths || existing.career_paths.length === 0)) {
+      updates.career_paths = course.career_paths;
+    }
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = masterKnex.fn.now();
+      await masterKnex(`${S}.extraction_courses`).where({ id: courseId }).update(updates);
+      logger.info("Merged duplicate course", { jobId, courseId, name: course.name, fieldsUpdated: Object.keys(updates).length - 1 });
+    } else {
+      logger.info("Skipped duplicate course (no new data)", { jobId, courseId, name: course.name });
+    }
+  } else {
+    // ── Insert new course ──
+    const courseInsert: Record<string, unknown> = {
+      job_id: jobId,
+      name: course.name,
+      short_name: course.short_name ?? null,
+      degree_level: course.degree_level ?? null,
+      subject_area: course.subject_area ?? null,
+      duration_weeks: coerceInt(course.duration_weeks),
+      study_mode: course.study_mode ?? null,
+      description: course.description ?? null,
+      domestic_fee_total: course.domestic_fee_total ?? null,
+      domestic_currency: course.domestic_currency ?? null,
+      international_fee_total: course.international_fee_total ?? null,
+      international_currency: course.international_currency ?? null,
+      awarding_institution: course.awarding_institution ?? null,
+      source_url: course.source_url ?? null,
+      verification_status: "unverified",
+    };
+    if (course.career_paths?.length) courseInsert.career_paths = course.career_paths;
+
+    const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
+    courseId = courseRow.id;
+  }
 
   // ── Fees + assignments ──
   if (course.fees?.length) {

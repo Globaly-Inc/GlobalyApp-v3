@@ -77,12 +77,14 @@ export async function recallMemory(
         const vec = await embed(sourceExcerpt);
         if (vec.length > 0) {
           // ponytail: pgvector <=> operator = cosine distance, lower = more similar
+          // Cast to halfvec to hit the HNSW index (vector(3072) > HNSW max, halfvec(3072) is fine)
           const vecStr = `[${vec.join(",")}]`;
           const rows = await masterKnex.raw(`
-            SELECT source_excerpt, ai_output, (embedding <=> ?::vector) as distance
+            SELECT source_excerpt, ai_output,
+                   (embedding::halfvec(3072) <=> ?::halfvec(3072)) as distance
             FROM ${S}.extraction_memory
             WHERE domain = ? AND step = ? AND embedding IS NOT NULL
-            ORDER BY embedding <=> ?::vector
+            ORDER BY embedding::halfvec(3072) <=> ?::halfvec(3072)
             LIMIT 3
           `, [vecStr, domain, step, vecStr]);
 

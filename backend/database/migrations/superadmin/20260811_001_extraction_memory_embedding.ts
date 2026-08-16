@@ -4,7 +4,9 @@
 import type { Knex } from "knex";
 
 export async function up(knex: Knex): Promise<void> {
-  // 3072-dim for Gemini gemini-embedding-001
+  // 3072-dim = gemini-embedding-001 native width (best similarity quality).
+  // pgvector HNSW caps `vector` type at 2000 dims — index via halfvec cast instead.
+  // Storage stays full-precision vector(3072), index uses half-precision (plenty for cosine search).
   await knex.raw(`CREATE EXTENSION IF NOT EXISTS vector`);
   await knex.raw(`
     ALTER TABLE superadmin.extraction_memory
@@ -13,7 +15,8 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.raw(`
     CREATE INDEX IF NOT EXISTS idx_extraction_memory_embedding
-      ON superadmin.extraction_memory USING hnsw (embedding vector_cosine_ops)
+      ON superadmin.extraction_memory
+      USING hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)
   `);
 
   // Timestamp audit fixes — these tables were missing updated_at

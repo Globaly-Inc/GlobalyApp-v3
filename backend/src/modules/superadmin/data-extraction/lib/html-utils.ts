@@ -14,10 +14,14 @@ export function looksLikeCourseUrl(url: string): boolean {
     // yields zero course URLs.
     "/catalog", "/catalogue", "/bulletin", "/handbook", "/academics",
     "/majors", "/minors", "/curriculum", "/explorecourses",
+    // Compound paths: /academic-programs, /new-programs, /collaborative-programs
+    "-programs", "-courses",
+    "/admission", "/fee-structure",
   ];
   // A catalogue host counts on its own — explorecourses.stanford.edu/search is a
   // course search, but its path carries no signal.
-  const catalogueHost = /^(explorecourses|bulletin|catalog|catalogue|courses|programs|handbook|study)\./i;
+  // School/faculty subdomains (som.ku.edu.np, soe.ku.edu.np) are programme hosts too
+  const catalogueHost = /^(explorecourses|bulletin|catalog|catalogue|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
   try {
     if (catalogueHost.test(new URL(url).hostname)) return true;
   } catch { /* fall through to path signals */ }
@@ -111,8 +115,26 @@ export function filterUrls(urls: string[], base: string): string[] {
   return result;
 }
 
+/**
+ * Flatten every admin-supplied `*_urls` bucket in guided_urls into one URL list.
+ * Suffix-driven on purpose: a new category in the UI needs no change here, and a
+ * bucket silently dropping out is how a job goes from 97 courses to 4.
+ * A bare array (legacy shape) is returned as-is.
+ */
+export function collectGuidedUrls(guided: unknown): string[] {
+  if (Array.isArray(guided)) return guided.filter((u): u is string => typeof u === "string");
+  if (!guided || typeof guided !== "object") return [];
+  const out: string[] = [];
+  for (const [key, val] of Object.entries(guided as Record<string, unknown>)) {
+    if (!key.endsWith("_urls") || !Array.isArray(val)) continue;
+    for (const u of val) { if (typeof u === "string" && u.trim()) out.push(u); }
+  }
+  return out;
+}
+
 /** Truncate markdown to a max character length, breaking at line boundaries */
-export function truncateMarkdown(md: string, maxLength = 60_000): string {
+// ponytail: 120K chars — Gemini 2.5 Flash handles ~1M tokens, 60K was leaving data on the table
+export function truncateMarkdown(md: string, maxLength = 120_000): string {
   if (md.length <= maxLength) return md;
   const cut = md.lastIndexOf("\n", maxLength);
   return md.slice(0, cut > 0 ? cut : maxLength);

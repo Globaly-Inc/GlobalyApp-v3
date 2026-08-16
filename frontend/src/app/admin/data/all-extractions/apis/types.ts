@@ -61,6 +61,9 @@ export type CreateJobParams = {
   business_category_id?: number;
   service_category_id?: number;
   source_type?: string;
+  guided_urls?: Record<string, string[]>;
+  guidance_notes?: string;
+  sample_course_url?: string;
 };
 
 export type InstitutionOverview = {
@@ -252,7 +255,9 @@ export type EditableTable =
   | "extraction_study_units"
   | "extraction_accreditations";
 
-export type UpdateContextParams = { guided_urls?: Record<string, string> | null; guidance_notes?: string | null };
+// guided_urls values are URL arrays and resource objects, not strings — matches the
+// backend's `z.record(z.unknown())`.
+export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null; guidance_notes?: string | null };
 
 // ── Course-linked entity types ──────────────────────────────────
 

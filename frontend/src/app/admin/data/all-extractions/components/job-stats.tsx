@@ -6,7 +6,7 @@ import type { CourseRow, ExtractionJob } from "../apis/types";
 
 export function JobStats({ job, courses }: Readonly<{ job: ExtractionJob; courses: CourseRow[] }>) {
   const verified = courses.filter((c) => c.verification_status === "confirmed" || c.verification_status === "verified").length;
-  const mismatch = courses.filter((c) => c.verification_status === "mismatch").length;
+  const mismatch = courses.filter((c) => c.verification_status === "mismatch" || c.verification_status === "flagged").length;
   const pending = courses.filter((c) => !c.verification_status || c.verification_status === "pending").length;
   const total = courses.length || job.verification_total || 0;
   const checked = verified + mismatch;
@@ -33,7 +33,7 @@ export function JobStats({ job, courses }: Readonly<{ job: ExtractionJob; course
               {verified}
               <span className="text-base font-normal text-muted-foreground">/{total}</span>
             </p>
-            <p className="text-xs text-muted-foreground mt-0.5">Verified</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Courses Verified</p>
           </div>
           <Progress value={pct} className="h-1.5" />
           <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">

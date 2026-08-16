@@ -90,7 +90,7 @@ async function stageInstitution(inst: Record<string, unknown>): Promise<string |
     return null;
   }
 
-  const website = (inst.website as string) || null;
+  const website = (inst.website as string) || `https://agentcis.com/institution/${inst.id}`;
   const activeContact = pickActiveContact(inst);
 
   // 1. Create extraction_jobs row
@@ -604,6 +604,7 @@ await queueService.consume(EXTRACTION_QUEUES.AGENTCIS, async (msg) => {
       // Record a failed job so the admin sees it
       await masterKnex(`${S}.extraction_jobs`).insert({
         institution_name: `AgentCIS #${institutionId}`,
+        institution_url: `https://agentcis.com/institution/${institutionId}`,
         status: "failed",
         source_type: "agentcis",
         aggregator_name: "AgentCIS",
@@ -621,6 +622,7 @@ await queueService.consume(EXTRACTION_QUEUES.AGENTCIS, async (msg) => {
     logger.error("AgentCIS import failed", { institutionId, error: msg });
     await masterKnex(`${S}.extraction_jobs`).insert({
       institution_name: `AgentCIS #${institutionId}`,
+      institution_url: `https://agentcis.com/institution/${institutionId}`,
       status: "failed",
       source_type: "agentcis",
       aggregator_name: "AgentCIS",

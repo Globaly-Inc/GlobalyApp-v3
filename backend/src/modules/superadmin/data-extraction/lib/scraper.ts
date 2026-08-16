@@ -83,7 +83,8 @@ export function politeDelay(minMs: number, maxMs: number): Promise<void> {
 }
 
 const lastHostHit = new Map<string, number>();
-const MIN_HOST_GAP_MS = 1500;
+// ponytail: 800ms is polite enough for edu sites; set HOST_THROTTLE_MS=1500 if you get 429s
+const MIN_HOST_GAP_MS = Number(process.env.HOST_THROTTLE_MS) || 800;
 
 async function throttleForHost(url: string) {
   try {
@@ -315,7 +316,7 @@ export async function mapUrlsDetailed(
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { Authorization: `Bearer ${fcKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ url, limit: opts.limit ?? 5000, includeSubdomains: opts.includeSubdomains ?? false }),
+        body: JSON.stringify({ url, limit: opts.limit ?? 10000, includeSubdomains: opts.includeSubdomains ?? false }),
       });
       const data: any = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -332,7 +333,7 @@ export async function mapUrlsDetailed(
   return { success: false, links: [], error: "firecrawl network error" };
 }
 
-export async function fetchSitemapUrls(seedUrl: string, max = 5000): Promise<string[]> {
+export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<string[]> {
   let origin = "";
   try { origin = new URL(seedUrl).origin; } catch { return []; }
   const seen = new Set<string>();

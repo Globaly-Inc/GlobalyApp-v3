@@ -19,8 +19,8 @@ export async function up(knex: Knex): Promise<void> {
     t.uuid("job_id").nullable();
     t.text("status").notNullable().defaultTo("pending");
     t.uuid("promoted_service_id").nullable(); // FK target: public.business_services(id), add when table exists
-    t.text("country_code").nullable();
-    t.text("subclass_code").nullable();
+    t.text("country_code").notNullable();
+    t.text("subclass_code").notNullable();
     t.text("visa_stream").nullable();
     t.text("category").nullable();
     t.text("name").nullable();
@@ -49,6 +49,11 @@ export async function up(knex: Knex): Promise<void> {
   });
   await knex.raw(`CREATE INDEX extraction_visas_job_idx ON ${s}.extraction_visas (job_id)`);
   await knex.raw(`CREATE INDEX extraction_visas_status_idx ON ${s}.extraction_visas (status)`);
+  // Natural key — matches V2: one row per visa subclass + stream combo
+  await knex.raw(`
+    CREATE UNIQUE INDEX extraction_visas_natural_key
+      ON ${s}.extraction_visas (country_code, subclass_code, COALESCE(visa_stream, ''))
+  `);
 
   // -- extraction_mara_agents --
   // Note: job_id has no FK in V2 either — kept as plain uuid for parity
@@ -57,7 +62,7 @@ export async function up(knex: Knex): Promise<void> {
     t.uuid("job_id").nullable();
     t.text("status").notNullable().defaultTo("pending");
     t.integer("promoted_business_id").unsigned().nullable().references("id").inTable("public.businesses").onDelete("SET NULL");
-    t.text("marn").notNullable();
+    t.text("marn").notNullable().unique();
     t.text("agent_name").nullable();
     t.text("business_name").nullable();
     t.text("registration_status").nullable();

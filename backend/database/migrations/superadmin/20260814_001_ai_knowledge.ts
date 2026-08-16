@@ -15,7 +15,8 @@
 import type { Knex } from "knex";
 
 const S = "superadmin";
-// V3 uses Gemini gemini-embedding-001 (3072 dims).
+// V3 uses Gemini gemini-embedding-001 at native 3072 dims for best quality.
+// Requires pgvector 0.8+ for HNSW indexing at this dimension.
 const EMBEDDING_DIMS = 3072;
 
 export async function up(knex: Knex): Promise<void> {
@@ -163,11 +164,10 @@ export async function up(knex: Knex): Promise<void> {
   await knex.raw(`CREATE INDEX idx_akd_documents_hash ON ${S}.ai_knowledge_documents (content_hash)`);
 
   // ── 3. Retrieval ──
-  // ivfflat needs rows to build meaningful lists, so it is created empty here and
-  // should be REINDEXed once the corpus is populated.
+  // pgvector HNSW caps `vector` at 2000 dims — index via halfvec cast (half-precision is fine for cosine search)
   await knex.raw(
     `CREATE INDEX idx_akd_documents_embedding ON ${S}.ai_knowledge_documents
-     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`,
+     USING hnsw ((embedding::halfvec(${EMBEDDING_DIMS})) halfvec_cosine_ops)`,
   );
 
   await knex.raw(`
@@ -184,7 +184,7 @@ export async function up(knex: Knex): Promise<void> {
     LANGUAGE sql STABLE
     AS $$
       SELECT d.id, d.url, d.title, d.markdown,
-             1 - (d.embedding <=> query_embedding) AS similarity,
+             1 - (d.embedding::halfvec(${EMBEDDING_DIMS}) <=> query_embedding::halfvec(${EMBEDDING_DIMS})) AS similarity,
              c.label AS category_label,
              s.domain AS source_domain
       FROM ${S}.ai_knowledge_documents d
@@ -194,7 +194,7 @@ export async function up(knex: Knex): Promise<void> {
         AND d.embedding IS NOT NULL
         AND (filter_category_kind IS NULL OR c.kind = filter_category_kind)
         AND (filter_country_code IS NULL OR c.country_code IS NULL OR c.country_code = filter_country_code)
-      ORDER BY d.embedding <=> query_embedding
+      ORDER BY d.embedding::halfvec(${EMBEDDING_DIMS}) <=> query_embedding::halfvec(${EMBEDDING_DIMS})
       LIMIT match_count
     $$;
   `);

@@ -42,7 +42,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
 
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
   if (!job) { logger.warn("Job not found", { jobId }); return; }
-  if (["paused", "declined", "failed"].includes(job.status)) {
+  if (["paused", "declined", "failed", "review", "done", "exported"].includes(job.status)) {
     logger.info("Job not actionable", { jobId, status: job.status });
     return;
   }
@@ -100,6 +100,12 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
           totalChecks++;
           if (r.status === "match") matchCount++;
         }
+
+        // Stamp the course itself — the review UI reads this, not the per-field results table.
+        await masterKnex(`${S}.extraction_courses`).where({ id: course.id }).update({
+          verification_status: result.results.every((r) => r.status === "match") ? "verified" : "mismatch",
+          last_verified_at: masterKnex.fn.now(),
+        });
 
         verifiedCount++;
         await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
