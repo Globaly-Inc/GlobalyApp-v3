@@ -8,7 +8,30 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
+import { changedFields } from "../utils";
 import type { EditableTable } from "../apis/types";
+
+/**
+ * Saves an edit form through save-and-learn, sending only the fields that actually changed
+ * so the learning loop isn't told about untouched ones. No-ops when nothing changed.
+ * Throws on failure — call sites wrap it in their own toast/reload handling.
+ */
+export async function saveFormAndLearn(
+  table: EditableTable,
+  original: Record<string, unknown> & { id: string },
+  values: Record<string, unknown>,
+  jobId: string,
+): Promise<void> {
+  const patch = changedFields(original, values);
+  if (Object.keys(patch).length === 0) return;
+  await allExtractionsApi.saveAndLearn({
+    table,
+    id: original.id,
+    patch,
+    job_id: jobId,
+    source_url: typeof original.source_url === "string" ? original.source_url : undefined,
+  });
+}
 
 /**
  * Saves a single column through save-and-learn, so a reviewer's correction also

@@ -1,5 +1,31 @@
 import type { TimestampedRow } from "../apis/types";
 
+/**
+ * The subset of `values` that differs from `original`.
+ *
+ * Forms submit every field on save, but save-and-learn counts each key in the patch as an
+ * admin correction — a full-form patch would manufacture AI Memory lessons about fields
+ * nobody touched. Compared as JSON so arrays and objects don't read as changed every time.
+ */
+export function changedFields(
+  original: Record<string, unknown> | null | undefined,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const [key, next] of Object.entries(values)) {
+    if (JSON.stringify(norm(original?.[key])) !== JSON.stringify(norm(next))) patch[key] = next;
+  }
+  return patch;
+}
+
+// Postgres hands back decimal columns as strings ("1500.00") while the forms submit numbers,
+// so a raw compare would mark every fee's total_amount as corrected on every save.
+function norm(v: unknown): unknown {
+  if (v === undefined || v === "") return null;
+  if (typeof v === "string" && !Number.isNaN(Number(v))) return Number(v);
+  return v;
+}
+
 export function fmtTime(iso: string | null | undefined): string {
   if (!iso) return "Never";
   const d = new Date(iso);

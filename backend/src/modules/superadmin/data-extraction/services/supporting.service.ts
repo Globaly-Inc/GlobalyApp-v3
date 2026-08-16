@@ -72,6 +72,7 @@ const TABLE_TO_STEP: Record<string, string> = {
   extraction_eligibility_requirements: "eligibility",
   extraction_study_units: "study_units",
   extraction_accreditations: "accreditations",
+  extraction_study_options: "study_options",
 };
 
 export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {

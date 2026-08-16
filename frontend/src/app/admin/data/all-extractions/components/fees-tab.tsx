@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
-import { EditableField, useFieldSaver } from "./editable-field";
+import { EditableField, saveFormAndLearn, useFieldSaver } from "./editable-field";
 import { FeeForm } from "./fee-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
@@ -195,9 +195,9 @@ export function FeesTab({
       setAdding(false);
     }, "Fee added");
 
-  const handleUpdate = (id: string, values: CourseFeeParams) =>
+  const handleUpdate = (fee: CourseFee, values: CourseFeeParams) =>
     run(async () => {
-      await allExtractionsApi.updateCourseFee(id, values);
+      await saveFormAndLearn("extraction_course_fees", fee, values, jobId);
       setEditingId(null);
     }, "Fee updated");
 
@@ -284,7 +284,7 @@ export function FeesTab({
               fee={fee}
               saving={saving}
               onCancel={() => setEditingId(null)}
-              onSave={(values) => handleUpdate(fee.id, values)}
+              onSave={(values) => handleUpdate(fee, values)}
             />
           ) : (
             <FeeCard

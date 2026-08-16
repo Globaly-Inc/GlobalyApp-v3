@@ -253,7 +253,8 @@ export type EditableTable =
   | "extraction_course_fees"
   | "extraction_eligibility_requirements"
   | "extraction_study_units"
-  | "extraction_accreditations";
+  | "extraction_accreditations"
+  | "extraction_study_options";
 
 // guided_urls values are URL arrays and resource objects, not strings — matches the
 // backend's `z.record(z.unknown())`.

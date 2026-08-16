@@ -38,6 +38,7 @@ const SAVE_AND_LEARN_TABLES = [
   "extraction_eligibility_requirements",
   "extraction_study_units",
   "extraction_accreditations",
+  "extraction_study_options",
 ] as const;
 
 export const SaveAndLearnSchema = z.object({

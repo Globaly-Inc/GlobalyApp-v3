@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { allExtractionsApi } from "../apis";
+import { saveFormAndLearn } from "./editable-field";
 import { latestTimestamp } from "../utils";
 import { EligibilityForm } from "./eligibility-form";
 import { StepActionBar } from "./step-action-bar";
@@ -288,7 +289,7 @@ export function EligibilityTab({
               onCancel={() => setEditingId(null)}
               onSave={(values) =>
                 run(async () => {
-                  await allExtractionsApi.updateEligibilityRequirement(requirement.id, values);
+                  await saveFormAndLearn("extraction_eligibility_requirements", requirement, values, jobId);
                   setEditingId(null);
                 }, "Requirement updated")
               }

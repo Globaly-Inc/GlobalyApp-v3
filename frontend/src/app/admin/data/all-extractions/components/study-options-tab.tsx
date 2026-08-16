@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { allExtractionsApi } from "../apis";
+import { saveFormAndLearn } from "./editable-field";
 import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
@@ -276,7 +277,7 @@ export function StudyOptionsTab({
               onCancel={() => setEditingId(null)}
               onSave={(values) =>
                 run(async () => {
-                  await allExtractionsApi.updateStudyOption(option.id, values);
+                  await saveFormAndLearn("extraction_study_options", option, values, jobId);
                   setEditingId(null);
                 }, "Study option updated")
               }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,10 +17,54 @@ import { GUIDED_URL_CATEGORIES, SOURCE_TYPE_OPTIONS } from "../const";
 
 const STEPS = ["Categories", "Source", "Review"];
 
-// ponytail: one textarea per bucket, one URL per line — beats V2's repeating
-// "+ Add URL" inputs for the actual job, which is pasting a handful of links.
-const splitUrls = (raw: string) =>
-  raw.split("\n").map((u) => u.trim()).filter(Boolean);
+const cleanUrls = (urls: string[] | undefined) => (urls ?? []).map((u) => u.trim()).filter(Boolean);
+
+/** A growable list of URL inputs for one guided-URL bucket. */
+function UrlList({
+  id,
+  values,
+  onChange,
+}: Readonly<{ id: string; values: string[]; onChange: (next: string[]) => void }>) {
+  // Always render at least one input so an empty bucket still has somewhere to type.
+  const rows = values.length > 0 ? values : [""];
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {rows.map((url, index) => (
+        // Index key on purpose: rows are positional and two blank rows are indistinguishable.
+        <div key={index} className="flex items-center gap-1.5">
+          <Input
+            id={index === 0 ? id : undefined}
+            type="url"
+            placeholder="https://university.edu/…"
+            value={url}
+            onChange={(e) => onChange(rows.map((r, i) => (i === index ? e.target.value : r)))}
+          />
+          {rows.length > 1 && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 cursor-pointer"
+              title="Remove URL"
+              onClick={() => onChange(rows.filter((_, i) => i !== index))}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      ))}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 w-fit gap-1 px-1.5 text-xs cursor-pointer"
+        onClick={() => onChange([...rows, ""])}
+      >
+        <Plus className="h-3 w-3" />
+        Add URL
+      </Button>
+    </div>
+  );
+}
 
 /** One line of the review step. Blank optional values show as "Not set" rather than vanishing. */
 function SummaryRow({ label, value }: Readonly<{ label: string; value: string | string[] }>) {
@@ -57,7 +102,7 @@ export function NewExtractionDialog({
   const [sourceType, setSourceType] = useState("institution");
   const [institutionUrl, setInstitutionUrl] = useState("");
   const [sampleCourseUrl, setSampleCourseUrl] = useState("");
-  const [guidedText, setGuidedText] = useState<Record<string, string>>({});
+  const [guidedUrls, setGuidedUrls] = useState<Record<string, string[]>>({});
   const [guidanceNotes, setGuidanceNotes] = useState("");
   const [creating, setCreating] = useState(false);
   const [businessOptions, setBusinessOptions] = useState<Category[]>([]);
@@ -110,10 +155,17 @@ export function NewExtractionDialog({
       setSourceType("institution");
       setInstitutionUrl("");
       setSampleCourseUrl("");
-      setGuidedText({});
+      setGuidedUrls({});
       setGuidanceNotes("");
     }
     onOpenChange(next);
+  };
+
+  // A stray backdrop click or Escape would wipe a half-filled three-step form, so the only
+  // ways out are Cancel and the corner ×. Outside presses are blocked by disablePointerDismissal.
+  const handleOpenChangeWithReason = (next: boolean, details: { reason?: string }) => {
+    if (!next && details.reason === "escape-key") return;
+    handleOpenChange(next);
   };
 
   const stepOneValid = Boolean(businessCategory && serviceCategory && sourceType);
@@ -123,7 +175,7 @@ export function NewExtractionDialog({
 
     const guided_urls: Record<string, string[]> = {};
     for (const { key } of GUIDED_URL_CATEGORIES) {
-      const urls = splitUrls(guidedText[key] ?? "");
+      const urls = cleanUrls(guidedUrls[key]);
       if (urls.length) guided_urls[key] = urls;
     }
 
@@ -149,7 +201,7 @@ export function NewExtractionDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChangeWithReason} disablePointerDismissal>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>New Extraction</DialogTitle>
@@ -234,7 +286,7 @@ export function NewExtractionDialog({
 
             <p className="text-xs text-muted-foreground">
               Everything below is optional — leave it blank and the AI discovers pages itself. Pointing it at
-              the right pages gives markedly better results. One URL per line.
+              the right pages gives markedly better results. Add as many URLs per section as you need.
             </p>
 
             <div className="flex flex-col gap-2">
@@ -252,12 +304,10 @@ export function NewExtractionDialog({
             {GUIDED_URL_CATEGORIES.map(({ key, label, ...rest }) => (
               <div key={key} className="flex flex-col gap-2">
                 <Label htmlFor={key}>{label} page URLs</Label>
-                <Textarea
+                <UrlList
                   id={key}
-                  rows={2}
-                  placeholder="https://university.edu/…"
-                  value={guidedText[key] ?? ""}
-                  onChange={(e) => setGuidedText((prev) => ({ ...prev, [key]: e.target.value }))}
+                  values={guidedUrls[key] ?? []}
+                  onChange={(next) => setGuidedUrls((prev) => ({ ...prev, [key]: next }))}
                 />
                 {"hint" in rest && <p className="text-xs text-muted-foreground">{rest.hint}</p>}
               </div>
@@ -286,7 +336,7 @@ export function NewExtractionDialog({
             <SummaryRow label="Sample course page URL" value={sampleCourseUrl.trim()} />
 
             {GUIDED_URL_CATEGORIES.map(({ key, label }) => (
-              <SummaryRow key={key} label={`${label} page URLs`} value={splitUrls(guidedText[key] ?? "")} />
+              <SummaryRow key={key} label={`${label} page URLs`} value={cleanUrls(guidedUrls[key])} />
             ))}
 
             <SummaryRow label="Guidance for the AI" value={guidanceNotes.trim()} />
