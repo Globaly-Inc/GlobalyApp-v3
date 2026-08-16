@@ -1,14 +1,14 @@
 import { httpGet, httpPatch } from "@/lib/api/http";
 import type { AdminUser } from "./types";
 
-type AdminMeWire = Omit<AdminUser, "name" | "uuid" | "is_email_verified"> & {
+export type AdminMeWire = Omit<AdminUser, "name" | "uuid" | "is_email_verified"> & {
   first_name: string;
   last_name: string;
   uuid?: string;
   is_email_verified?: boolean;
 };
 
-function toAdminUser(wire: AdminMeWire): AdminUser {
+export function toAdminUser(wire: AdminMeWire): AdminUser {
   return {
     ...wire,
     uuid: wire.uuid ?? "",

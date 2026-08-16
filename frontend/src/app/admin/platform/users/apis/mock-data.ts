@@ -1,45 +1,93 @@
-import { mockMe } from "../../../apis/mock-data";
-import type { AdminUser, InviteAdminParams, ListAdminsParams, PaginatedAdmins } from "./types";
+import type {
+  AdminInvitation, AdminUser, InviteAdminParams, ListParams, PaginatedAdminUsers, PaginatedInvitations,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-let mockAdmins: AdminUser[] = [mockMe];
+const FIRST_NAMES = ["Alicia", "Gini", "Marcus", "Priya", "Noah", "Farah", "Diego", "Yuki", "Sam", "Leila", "Owen", "Mei"];
+const LAST_NAMES = ["Nguyen", "Patel", "Garcia", "Kim", "Okafor", "Smith", "Rossi", "Tanaka", "Brown", "Haddad"];
+const ROLES: AdminUser["role"][] = ["super_admin", "admin", "data_admin", "moderator"];
+
+const mockAdminUsers: AdminUser[] = Array.from({ length: 14 }, (_, i) => {
+  const first = FIRST_NAMES[i % FIRST_NAMES.length] ?? "User";
+  const last = LAST_NAMES[i % LAST_NAMES.length] ?? "Account";
+  return {
+    id: i + 1,
+    uuid: crypto.randomUUID(),
+    name: `${first} ${last}`,
+    email: `${first.toLowerCase()}.${last.toLowerCase()}@example.com`,
+    role: ROLES[i % ROLES.length] ?? "admin",
+    photo_url: null,
+    account_status: i % 7 === 0 ? 0 : 1,
+    is_email_verified: i % 5 !== 0,
+  };
+});
+
+let mockInvitations: AdminInvitation[] = [
+  {
+    id: crypto.randomUUID(), email: "new.admin@example.com", first_name: "Jordan", last_name: "Lee",
+    role: "admin", status: "pending", invited_by: 1,
+    created_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+    expired_at: new Date(Date.now() + 1 * 86_400_000).toISOString(),
+  },
+  {
+    id: crypto.randomUUID(), email: "data.reviewer@example.com", first_name: "Casey", last_name: "Nguyen",
+    role: "data_admin", status: "pending", invited_by: 1,
+    created_at: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+    expired_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+  },
+  {
+    id: crypto.randomUUID(), email: "moderator@example.com", first_name: "Riley", last_name: "Kim",
+    role: "moderator", status: "accepted", invited_by: 1,
+    created_at: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+    expired_at: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+  },
+];
+
+function matches(search: string | undefined, ...fields: string[]): boolean {
+  if (!search) return true;
+  const q = search.toLowerCase();
+  return fields.some((f) => f.toLowerCase().includes(q));
+}
+
+function paginate<T>(rows: T[], params: ListParams): { data: T[]; meta: PaginatedAdminUsers["meta"] } {
+  const limit = params.limit ?? 10;
+  const page = params.page ?? 1;
+  const start = (page - 1) * limit;
+  return {
+    data: rows.slice(start, start + limit),
+    meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)) },
+  };
+}
 
 export const usersMockApi = {
-  listAdmins: async (params: ListAdminsParams = {}): Promise<PaginatedAdmins> => {
+  listUsers: async (params: ListParams = {}): Promise<PaginatedAdminUsers> => {
     console.log("[mock] GET /admin/users", params);
     await delay(300);
-    return { data: mockAdmins, meta: { page: 1, limit: 20, total: mockAdmins.length, totalPages: 1 } };
+    const filtered = mockAdminUsers.filter((u) => matches(params.search, u.name, u.email));
+    return paginate(filtered, params);
+  },
+
+  listInvitations: async (params: ListParams = {}): Promise<PaginatedInvitations> => {
+    console.log("[mock] GET /admin/users/invitations", params);
+    await delay(300);
+    const filtered = mockInvitations.filter((i) => matches(params.search, i.first_name, i.last_name, i.email));
+    return paginate(filtered, params);
   },
 
   inviteAdmin: async (params: InviteAdminParams): Promise<void> => {
     console.log("[mock] POST /admin/users/invite", params);
     await delay(300);
-    mockAdmins = [
-      ...mockAdmins,
+    mockInvitations = [
       {
-        id: mockAdmins.length + 1,
-        uuid: crypto.randomUUID(),
-        name: `${params.first_name} ${params.last_name}`,
-        email: params.email,
-        role: params.role,
-        photo_url: null,
-        account_status: 0,
-        is_email_verified: false,
+        id: crypto.randomUUID(), email: params.email, first_name: params.first_name, last_name: params.last_name,
+        role: params.role, status: "pending", invited_by: 1,
+        created_at: new Date().toISOString(),
+        expired_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
       },
+      ...mockInvitations,
     ];
-  },
-
-  updateAdmin: async (
-    id: number,
-    patch: Partial<Pick<AdminUser, "name" | "role" | "account_status" | "photo_url">>,
-  ): Promise<AdminUser> => {
-    console.log("[mock] PATCH /admin/users/" + id, patch);
-    await delay(300);
-    const updated = { ...mockAdmins.find((a) => a.id === id), ...patch } as AdminUser;
-    mockAdmins = mockAdmins.map((a) => (a.id === id ? updated : a));
-    return updated;
   },
 };

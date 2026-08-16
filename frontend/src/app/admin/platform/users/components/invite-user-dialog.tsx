@@ -10,7 +10,7 @@ import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAppDispatch } from "@/lib/hooks";
 import { ADMIN_ROLES, ROLE_DISPLAY } from "../../../consts";
-import { fetchAdmins, inviteAdmin } from "../store/users-slice";
+import { fetchInvitations, inviteAdmin } from "../store/users-slice";
 import type { AdminRole } from "../apis/types";
 
 const firstNameSchema = z.string().trim().min(1, "First name is required");
@@ -67,7 +67,7 @@ export function InviteUserDialog({
       return;
     }
     toast.success("Invitation sent");
-    dispatch(fetchAdmins({}));
+    dispatch(fetchInvitations({}));
     onOpenChange(false);
   };
 
