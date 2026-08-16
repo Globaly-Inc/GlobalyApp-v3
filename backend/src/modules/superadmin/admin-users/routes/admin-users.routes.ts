@@ -1,6 +1,7 @@
 // Admin-users routes — public invitation accept + admin-only CRUD & invitations.
 
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
   AcceptInviteSchema,
   InviteAdminSchema,
@@ -10,6 +11,8 @@ import {
 import { PaginationSchema } from "../../../../shared/pagination.js";
 import { requireAdmin } from "../../../../core/plugins/auth.plugin.js";
 import * as service from "../services/admin-users.service.js";
+
+const ListQuery = PaginationSchema.extend({ search: z.string().optional() });
 
 export async function adminUsersRoutes(app: FastifyInstance) {
   // ── Public ──
@@ -28,8 +31,14 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   });
 
   app.get("/users", { preHandler: requireAdmin }, async (req, reply) => {
-    const pagination = PaginationSchema.parse(req.query);
-    const result = await service.listAdmins(pagination);
+    const { search, ...pagination } = ListQuery.parse(req.query);
+    const result = await service.listAdmins(pagination, search);
+    return reply.send(result);
+  });
+
+  app.get("/users/invitations", { preHandler: requireAdmin }, async (req, reply) => {
+    const { search, ...pagination } = ListQuery.parse(req.query);
+    const result = await service.listInvitations(pagination, search);
     return reply.send(result);
   });
 

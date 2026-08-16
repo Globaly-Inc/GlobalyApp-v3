@@ -29,11 +29,11 @@ const logger = createChildLogger("admin-users-service");
 
 // ── CRUD ──
 
-export async function listAdmins(pagination: PaginationInput) {
+export async function listAdmins(pagination: PaginationInput, search?: string) {
   const { limit, offset } = paginationToOffset(pagination);
   const [rows, total] = await Promise.all([
-    repo.listAdmins(limit, offset),
-    repo.countAdmins(),
+    repo.listAdmins(limit, offset, search),
+    repo.countAdmins(search),
   ]);
   return buildPaginatedResponse(rows, total, pagination);
 }
@@ -58,6 +58,15 @@ export async function updateAdmin(id: number, data: UpdateAdminInput) {
 }
 
 // ── Invitations ──
+
+export async function listInvitations(pagination: PaginationInput, search?: string) {
+  const { limit, offset } = paginationToOffset(pagination);
+  const [rows, total] = await Promise.all([
+    repo.listInvitations(limit, offset, search),
+    repo.countInvitations(search),
+  ]);
+  return buildPaginatedResponse(rows, total, pagination);
+}
 
 export function roleDisplayName(role: string): string {
   return ROLE_DISPLAY[role] ?? role;

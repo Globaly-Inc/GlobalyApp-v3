@@ -1,72 +1,85 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { UserPlus } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useEffect, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { ROLE_DISPLAY } from "../../../consts";
-import { fetchAdmins } from "../store/users-slice";
-import { InviteUserDialog } from "./invite-user-dialog";
+import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { fetchInvitations, fetchUsers } from "../store/users-slice";
+import { UsersTab } from "./users-tab";
+import { InvitationsTab } from "./invitations-tab";
+
+const TABS = [
+  { value: "users" as const, label: "Users" },
+  { value: "invitations" as const, label: "Admin Invitations" },
+];
 
 export function UsersView() {
   const dispatch = useAppDispatch();
-  const { me } = useAppSelector((state) => state.admin);
-  const { admins, status } = useAppSelector((state) => state.adminUsers);
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const { users, usersStatus, invitations, invitationsStatus } = useAppSelector((state) => state.adminUsers);
 
+  const [tab, setTab] = useState<"users" | "invitations">("users");
+  const [usersSearch, setUsersSearch] = useState("");
+  const [debouncedUsersSearch, setDebouncedUsersSearch] = useState("");
+  const [invitationsSearch, setInvitationsSearch] = useState("");
+  const [debouncedInvitationsSearch, setDebouncedInvitationsSearch] = useState("");
+  const usersSearchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const invitationsSearchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleUsersSearchChange = (value: string) => {
+    setUsersSearch(value);
+    clearTimeout(usersSearchTimer.current);
+    usersSearchTimer.current = setTimeout(() => setDebouncedUsersSearch(value), 300);
+  };
+
+  const handleInvitationsSearchChange = (value: string) => {
+    setInvitationsSearch(value);
+    clearTimeout(invitationsSearchTimer.current);
+    invitationsSearchTimer.current = setTimeout(() => setDebouncedInvitationsSearch(value), 300);
+  };
+
+  const lastUsersFetchKey = useRef<string | null>(null);
   useEffect(() => {
-    dispatch(fetchAdmins({}));
-  }, [dispatch]);
+    if (tab !== "users") return;
+    const key = JSON.stringify({ search: debouncedUsersSearch });
+    if (lastUsersFetchKey.current === key) return;
+    lastUsersFetchKey.current = key;
+    dispatch(fetchUsers({ search: debouncedUsersSearch || undefined }));
+  }, [dispatch, tab, debouncedUsersSearch]);
 
-  const canInvite = me?.role === "super_admin";
+  const lastInvitationsFetchKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (tab !== "invitations") return;
+    const key = JSON.stringify({ search: debouncedInvitationsSearch });
+    if (lastInvitationsFetchKey.current === key) return;
+    lastInvitationsFetchKey.current = key;
+    dispatch(fetchInvitations({ search: debouncedInvitationsSearch || undefined }));
+  }, [dispatch, tab, debouncedInvitationsSearch]);
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Users</h1>
-          <p className="text-muted-foreground mt-1">Manage who has admin access to Globaly.</p>
-        </div>
-        {canInvite && (
-          <Button onClick={() => setInviteOpen(true)} className="h-10 gap-1.5 cursor-pointer">
-            <UserPlus className="h-4 w-4" /> Invite Admin
-          </Button>
-        )}
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold text-foreground">Users</h1>
+        <p className="text-muted-foreground mt-1">Manage admin accounts and pending admin invitations.</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{admins.length} admin{admins.length === 1 ? "" : "s"}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {status === "loading" && admins.length === 0 && (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          )}
-          {admins.map((admin) => (
-            <div key={admin.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <Avatar className="size-8">
-                  {admin.photo_url && <AvatarImage src={admin.photo_url} alt={admin.name} />}
-                  <AvatarFallback>{admin.name?.[0]?.toUpperCase() ?? "A"}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{admin.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{admin.email}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {admin.account_status === 0 && <Badge variant="outline">Pending</Badge>}
-                <Badge variant="secondary">{ROLE_DISPLAY[admin.role]}</Badge>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <AdminSegmentedTabs options={TABS} value={tab} onChange={setTab} />
 
-      <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
+      {tab === "users" ? (
+        <UsersTab
+          users={users}
+          search={usersSearch}
+          onSearchChange={handleUsersSearchChange}
+          loading={usersStatus === "loading"}
+          onPageChange={(page) => dispatch(fetchUsers({ search: debouncedUsersSearch || undefined, page }))}
+        />
+      ) : (
+        <InvitationsTab
+          invitations={invitations}
+          search={invitationsSearch}
+          onSearchChange={handleInvitationsSearchChange}
+          loading={invitationsStatus === "loading"}
+          onPageChange={(page) => dispatch(fetchInvitations({ search: debouncedInvitationsSearch || undefined, page }))}
+        />
+      )}
     </div>
   );
 }

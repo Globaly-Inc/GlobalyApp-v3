@@ -79,17 +79,29 @@ export async function findAdminByEmail(email: string) {
     .first();
 }
 
-export async function listAdmins(limit: number, offset: number) {
-  return withUser(masterKnex<AdminUserRow>("superadmin.admin_users"))
+function adminListQuery(search?: string) {
+  const q = withUser(masterKnex("superadmin.admin_users")).whereNull("superadmin.admin_users.deleted_at");
+  if (search) {
+    q.where((b: any) =>
+      b
+        .whereILike("platform_users.first_name", `%${search}%`)
+        .orWhereILike("platform_users.last_name", `%${search}%`)
+        .orWhereILike("platform_users.email", `%${search}%`),
+    );
+  }
+  return q;
+}
+
+export async function listAdmins(limit: number, offset: number, search?: string) {
+  return adminListQuery(search)
     .select(ADMIN_WITH_USER_COLUMNS as unknown as string[])
-    .whereNull("superadmin.admin_users.deleted_at")
     .orderBy("superadmin.admin_users.id", "asc")
     .limit(limit)
     .offset(offset);
 }
 
-export async function countAdmins(): Promise<number> {
-  const [{ count }] = await masterKnex("superadmin.admin_users").whereNull("deleted_at").count("id as count");
+export async function countAdmins(search?: string): Promise<number> {
+  const [{ count }] = await adminListQuery(search).count("superadmin.admin_users.id as count");
   return Number(count);
 }
 
@@ -141,4 +153,27 @@ export async function markInvitationAccepted(id: string) {
   await masterKnex("superadmin.admin_invitations")
     .where({ id })
     .update({ status: "accepted" });
+}
+
+function invitationListQuery(search?: string) {
+  const q = masterKnex("superadmin.admin_invitations").whereNull("deleted_at");
+  if (search) {
+    q.where((b) =>
+      b.whereILike("first_name", `%${search}%`).orWhereILike("last_name", `%${search}%`).orWhereILike("email", `%${search}%`),
+    );
+  }
+  return q;
+}
+
+export async function listInvitations(limit: number, offset: number, search?: string) {
+  return invitationListQuery(search)
+    .select("id", "email", "first_name", "last_name", "role", "status", "invited_by", "created_at", "expired_at")
+    .orderBy("created_at", "desc")
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function countInvitations(search?: string): Promise<number> {
+  const [{ count }] = await invitationListQuery(search).count("id as count");
+  return Number(count);
 }
