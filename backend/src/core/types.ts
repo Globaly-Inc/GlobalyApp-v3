@@ -66,5 +66,4 @@ declare module "fastify" {
     auth: AuthClaims;
     db: Knex;          // per-business DB (set for business context routes)
   }
-
 }

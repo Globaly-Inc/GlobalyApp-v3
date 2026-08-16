@@ -9,24 +9,17 @@ import type { Knex } from "knex";
 // 20260722_003_other_service_categories alongside the other category tables.
 //
 // Money is stored as an integer minor amount (price_minor / amount_minor) and never as numeric or float.
-
-const CURRENCIES = ["AUD", "USD", "GBP", "EUR"];
-
-const ORDER_STATUSES = [
-  "requested",
-  "declined",
-  "pending_payment",
-  "paid",
-  "in_progress",
-  "completed",
-  "disputed",
-  "refunded",
-  "cancelled",
-];
-
-const list = (values: string[]) => values.map((v) => `'${v}'`).join(", ");
+// Currency is derived from the listing's country (countries.currency), not stored on the listing itself.
+// Orders snapshot the currency at creation time so a country edit cannot retroactively change what was charged.
 
 export async function up(knex: Knex): Promise<void> {
+  await knex.raw(`
+    CREATE TYPE other_service_order_status AS ENUM (
+      'requested', 'declined', 'pending_payment', 'paid',
+      'in_progress', 'completed', 'disputed', 'refunded', 'cancelled'
+    )
+  `);
+
   // ── Listings ──
   await knex.schema.createTable("other_service_listings", (t) => {
     t.increments("id").primary();
@@ -35,10 +28,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("description").nullable();
     t.integer("other_category_id").unsigned().notNullable().references("id").inTable("other_service_categories").onDelete("RESTRICT");
     t.integer("price_minor").notNullable();          // minor units, e.g. 5000 = $50.00
-    t.text("currency").notNullable().defaultTo("AUD");
-    // Reuses the existing countries/cities tables. V2 stored both as free text, which is why its listings
-    // could not be filtered by location reliably.
-    t.integer("country_id").unsigned().nullable().references("id").inTable("countries").onDelete("SET NULL");
+    t.integer("country_id").unsigned().notNullable().references("id").inTable("countries").onDelete("RESTRICT");
     t.integer("city_id").unsigned().nullable().references("id").inTable("cities").onDelete("SET NULL");
     // A storage path, not a URL — signed view URLs are minted per read and expire.
     t.text("cover_storage_path").nullable();
@@ -55,9 +45,8 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.raw(`
     ALTER TABLE other_service_listings
-      ADD CONSTRAINT other_service_listings_currency_chk CHECK (currency IN (${list(CURRENCIES)})),
-      ADD CONSTRAINT other_service_listings_price_chk    CHECK (price_minor > 0),
-      ADD CONSTRAINT other_service_listings_rating_chk   CHECK (avg_rating >= 0 AND avg_rating <= 5)
+      ADD CONSTRAINT other_service_listings_price_chk  CHECK (price_minor >= 0),
+      ADD CONSTRAINT other_service_listings_rating_chk CHECK (avg_rating >= 0 AND avg_rating <= 5)
   `);
 
   // ── Orders ──
@@ -71,8 +60,8 @@ export async function up(knex: Knex): Promise<void> {
     // retroactively alter what someone owes or who is owed.
     t.integer("provider_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("RESTRICT");
     t.integer("amount_minor").notNullable();
-    t.text("currency").notNullable();
-    t.text("status").notNullable().defaultTo("requested");
+    t.text("currency").notNullable();                // snapshotted from countries.currency at order time
+    t.specificType("status", "other_service_order_status").notNullable().defaultTo("requested");
     t.text("payment_provider").nullable();           // stripe | dev
     t.text("payment_session_id").nullable();
     t.text("payment_intent_id").nullable();          // pi_… — what a refund is issued against
@@ -100,8 +89,6 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.raw(`
     ALTER TABLE other_service_orders
-      ADD CONSTRAINT other_service_orders_status_chk   CHECK (status IN (${list(ORDER_STATUSES)})),
-      ADD CONSTRAINT other_service_orders_currency_chk CHECK (currency IN (${list(CURRENCIES)})),
       ADD CONSTRAINT other_service_orders_amount_chk   CHECK (amount_minor > 0),
       ADD CONSTRAINT other_service_orders_parties_chk  CHECK (buyer_id <> provider_id),
       ADD CONSTRAINT other_service_orders_decline_reason_chk CHECK (status <> 'declined' OR decline_reason IS NOT NULL)
@@ -171,4 +158,5 @@ export async function down(knex: Knex): Promise<void> {
   await knex.schema.dropTableIfExists("other_service_order_messages");
   await knex.schema.dropTableIfExists("other_service_orders");
   await knex.schema.dropTableIfExists("other_service_listings");
+  await knex.raw("DROP TYPE IF EXISTS other_service_order_status");
 }
