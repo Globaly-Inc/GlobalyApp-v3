@@ -1063,6 +1063,11 @@
   resolved "https://registry.yarnpkg.com/@tiptap/extension-underline/-/extension-underline-3.30.1.tgz#e4733594550e7f724aa8e6fb8574ecb59a63242d"
   integrity sha512-Xro/EzEgWW+46ztrw5f4epDWQvcGpD+HUykzigj30bpIS8Vv4XDXFt+89dAcyDC7zRUMQULlWZV0UCyRLFEKBw==
 
+"@tiptap/extension-youtube@^3.27.1":
+  version "3.30.1"
+  resolved "https://registry.yarnpkg.com/@tiptap/extension-youtube/-/extension-youtube-3.30.1.tgz#646ee81d0da41f6acf81edb30e34a99f354f726e"
+  integrity sha512-DUbp0ukM6ZNBBaEaH9PqFO1Lx6SWNWV/c0KN4fMlV8BSCloJEGx4OqFUQ80RNBpQcL/r08AaFFVvWqdTj/JLlA==
+
 "@tiptap/extensions@3.30.1":
   version "3.30.1"
   resolved "https://registry.yarnpkg.com/@tiptap/extensions/-/extensions-3.30.1.tgz#f649dadab76d06f4ad3ab5913525f9ae94e7af87"
@@ -1178,6 +1183,11 @@
   integrity sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw==
   dependencies:
     csstype "^3.2.2"
+
+"@types/trusted-types@^2.0.7":
+  version "2.0.7"
+  resolved "https://registry.yarnpkg.com/@types/trusted-types/-/trusted-types-2.0.7.tgz#baccb07a970b91707df3a3e8ba6896c57ead2d11"
+  integrity sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==
 
 "@types/use-sync-external-store@^0.0.6":
   version "0.0.6"
@@ -2011,6 +2021,13 @@ doctrine@^2.1.0:
   integrity sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==
   dependencies:
     esutils "^2.0.2"
+
+dompurify@^3.4.13:
+  version "3.4.13"
+  resolved "https://registry.yarnpkg.com/dompurify/-/dompurify-3.4.13.tgz#fc28949d59f92d62e28a3a764bcbeee35897a1be"
+  integrity sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==
+  optionalDependencies:
+    "@types/trusted-types" "^2.0.7"
 
 dot-prop@^6.0.1:
   version "6.0.1"
