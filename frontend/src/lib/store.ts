@@ -17,16 +17,8 @@ import { blogReducer } from "@/app/admin/marketing/blog/store/blog-slice"
 import { allExtractionsReducer } from "@/app/admin/data/all-extractions/store/all-extractions-slice"
 import { agentcisImportReducer } from "@/app/admin/data/agentcis-import/store/agentcis-import-slice"
 import { aiMemoryReducer } from "@/app/admin/data/ai-memory/store/ai-memory-slice"
-import { aiKnowledgeReducer } from "@/app/admin/data/ai-knowledge/store/ai-knowledge-slice"
 import { visasReducer } from "@/app/admin/data/visas/store/visas-slice"
 import { maraAgentsReducer } from "@/app/admin/data/mara-agents/store/mara-agents-slice"
-import { enquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
-import { moderationReducer } from "@/app/admin/monitoring/moderation/store/moderation-slice"
-import { scholarshipsReducer } from "@/app/admin/monitoring/scholarships/store/scholarships-slice"
-import { jobsReducer } from "@/app/admin/monitoring/jobs/store/jobs-slice"
-import { eventsReducer } from "@/app/admin/monitoring/events/store/events-slice"
-import { trainingReducer } from "@/app/admin/monitoring/training/store/training-slice"
-import { ambassadorProgramsReducer } from "@/app/admin/monitoring/ambassador-programs/store/ambassador-programs-slice"
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
@@ -50,16 +42,8 @@ const appReducer = combineReducers({
     dataAllExtractions: allExtractionsReducer,
     dataAgentcisImport: agentcisImportReducer,
     dataAiMemory: aiMemoryReducer,
-    dataAiKnowledge: aiKnowledgeReducer,
     dataVisas: visasReducer,
     dataMaraAgents: maraAgentsReducer,
-    monitoringEnquiries: enquiriesReducer,
-    monitoringModeration: moderationReducer,
-    monitoringScholarships: scholarshipsReducer,
-    monitoringJobs: jobsReducer,
-    monitoringEvents: eventsReducer,
-    monitoringTraining: trainingReducer,
-    monitoringAmbassadorPrograms: ambassadorProgramsReducer,
     monitoringLogs: logsReducer,
     monitoringOtherServices: adminOtherServicesReducer,
     aiChat: aiChatReducer,
