@@ -1,6 +1,8 @@
 import type { Knex } from "knex";
-import countries from "./data/world-countries.json";
-import cities from "./data/world-cities.json";
+// Node 25 requires import attributes for JSON. vitest transforms these away, so
+// the omission only surfaced when the seeder ran under plain node --import tsx.
+import countries from "./data/world-countries.json" with { type: "json" };
+import cities from "./data/world-cities.json" with { type: "json" };
 
 const CITY_BATCH_SIZE = 300;
 
