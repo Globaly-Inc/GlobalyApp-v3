@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Building2, CheckCircle, EyeOff, Globe, Loader2, Mail, Pencil, Users, XCircle,
+  ArrowLeft, CheckCircle, EyeOff, Globe, Loader2, Mail, Pencil, XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { STATUS_COLORS, STATUS_LABELS } from "../const";
 import type { BusinessPatch, BusinessStatus } from "../apis/types";
 import { ActivityTab } from "./tabs/activity-tab";
 import { BranchesTab } from "./tabs/branches-tab";
+import { BusinessHeaderCard } from "./business-detail/business-header-card";
 import { BusinessHeaderDialog } from "./business-detail/business-header-dialog";
 import { BusinessOverviewDialog } from "./business-detail/business-overview-dialog";
 import { ContactsTab } from "./tabs/contacts-tab";
@@ -139,8 +140,6 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
     }
   };
 
-  const initial = business.business_name.charAt(0).toUpperCase();
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -174,42 +173,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="flex items-start gap-4">
-          <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-lg font-semibold text-muted-foreground">
-            {business.logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={business.logo_url} alt="" className="h-full w-full object-contain p-1.5" />
-            ) : (
-              initial
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg font-bold text-foreground">{business.business_name}</h1>
-              {business.category_name && (
-                <Badge variant="secondary" className="gap-1">
-                  <Building2 className="h-3 w-3" /> {business.category_name}
-                </Badge>
-              )}
-            </div>
-            {location && <p className="mt-1 text-sm text-muted-foreground">{location}</p>}
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              {business.email && (
-                <span className="flex items-center gap-1.5">
-                  <Mail className="h-3.5 w-3.5" /> {business.email}
-                </span>
-              )}
-              <span className="flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5" /> {business.branch_count} members
-              </span>
-            </div>
-          </div>
-          <Button variant="ghost" size="icon-sm" onClick={() => setHeaderOpen(true)} aria-label="Edit business">
-            <Pencil className="h-4 w-4" />
-          </Button>
-        </CardContent>
-      </Card>
+      <BusinessHeaderCard business={business} location={location} onSave={handleSave} onEdit={() => setHeaderOpen(true)} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-1">

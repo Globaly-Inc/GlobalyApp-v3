@@ -4,6 +4,7 @@
 import fp from "fastify-plugin";
 import { AppError } from "../../shared/errors.js";
 import { createChildLogger } from "../../shared/logger.js";
+import { config } from "../../config.js";
 
 const logger = createChildLogger("error-handler");
 
@@ -31,6 +32,14 @@ export const errorHandlerPlugin = fp(async (app) => {
       return reply.status(400).send({
         error: "Validation failed",
         details: err.validation,
+      });
+    }
+
+    // @fastify/multipart — upload exceeded the configured fileSize limit
+    if (err.code === "FST_REQ_FILE_TOO_LARGE") {
+      return reply.status(413).send({
+        error: `File exceeds the maximum size of ${config.GCS_MAX_FILE_SIZE_MB}MB`,
+        code: "FILE_TOO_LARGE",
       });
     }
 

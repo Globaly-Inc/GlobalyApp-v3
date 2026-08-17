@@ -30,6 +30,7 @@ export function Combobox({
   onQueryChange,
   id,
   className,
+  contentClassName,
   "aria-invalid": ariaInvalid,
 }: Readonly<{
   options: ComboboxOption[];
@@ -47,6 +48,7 @@ export function Combobox({
   onQueryChange?: (query: string) => void;
   id?: string;
   className?: string;
+  contentClassName?: string;
   "aria-invalid"?: boolean;
 }>) {
   const [open, setOpen] = useState(false);
@@ -138,7 +140,11 @@ export function Combobox({
         }
       />
       {open && (
-        <PopoverContent anchor={triggerRef} className="w-(--anchor-width) p-0" align="start">
+        <PopoverContent
+          anchor={triggerRef}
+          className={cn(contentClassName ? cn("min-w-(--anchor-width)", contentClassName) : "w-(--anchor-width)", "p-0")}
+          align="start"
+        >
           <div className="relative border-b p-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
             <Input

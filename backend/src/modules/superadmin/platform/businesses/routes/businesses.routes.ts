@@ -2,6 +2,8 @@
 
 import type { FastifyInstance } from "fastify";
 import { paginationToOffset, buildPaginatedResponse } from "../../../../../shared/pagination.js";
+import { AppError, NotFoundError } from "../../../../../shared/errors.js";
+import * as storage from "../../../../../shared/storage/storageService.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as service from "../services/businesses.service.js";
 import {
@@ -11,6 +13,21 @@ import {
 } from "../schemas/businesses.schema.js";
 
 export async function adminBusinessRoutes(app: FastifyInstance) {
+  // POST /businesses/image — logo/cover upload. Returns the relative storage path, not a public
+  app.post("/businesses/image", async (req, reply) => {
+    const file = await req.file();
+    if (!file) throw new NotFoundError("No file uploaded");
+    const buffer = await file.toBuffer();
+    storage.validateFile(file.mimetype, buffer.length, new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]));
+    const storagePath = storage.buildPath("businesses", file.filename);
+    try {
+      await storage.uploadFile(storagePath, buffer, file.mimetype);
+    } catch {
+      throw new AppError("Image upload failed — storage isn't configured correctly on this server.", 503, "STORAGE_UNAVAILABLE");
+    }
+    return reply.status(201).send({ path: storagePath });
+  });
+
   // POST /businesses — admin creates an unclaimed business listing
   app.post("/businesses", async (req, reply) => {
     const { allowed_service_category_ids, ...data } = req.body as Record<string, unknown>;

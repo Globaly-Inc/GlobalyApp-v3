@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from "@/lib/api/http";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation,
@@ -69,6 +69,11 @@ export const businessesRealApi = {
     return data;
   },
   createBusiness: (input: BusinessCreateInput): Promise<BusinessDetail> => httpPost(BASE, input),
+  uploadImage: (file: File): Promise<{ path: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm(`${BASE}/image`, form);
+  },
   getBusinessDetail: (id: number): Promise<BusinessDetail> => httpGet(`${BASE}/${id}`),
   updateBusiness: (id: number, patch: BusinessPatch): Promise<BusinessDetail> => httpPatch(`${BASE}/${id}`, patch),
   updateStatus: (id: number, status: BusinessStatus): Promise<{ status: string }> =>

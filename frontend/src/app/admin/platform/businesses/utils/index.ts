@@ -1,3 +1,5 @@
+import { isValidPhoneNumber, type CountryCode } from "libphonenumber-js";
+
 export function toSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
@@ -16,6 +18,11 @@ export function isValidUrl(value: string): boolean {
 
 export function buildPhone(phoneCode: string, phoneNumber: string): string {
   return [phoneCode, phoneNumber].filter(Boolean).join(" ");
+}
+
+export function isValidPhoneForCountry(phoneNumber: string, iso2: string | undefined): boolean {
+  if (!iso2) return false;
+  return isValidPhoneNumber(phoneNumber, iso2.toUpperCase() as CountryCode);
 }
 
 export function filterBusinessesBySourceAndOwnership<T extends { is_unclaimed: boolean }>(

@@ -5,13 +5,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldError } from "@/components/field-error";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
+import { AddressAutocomplete } from "./address-autocomplete";
+import type { PlaceDetails } from "../../apis/types";
 
 export function LocationCard({
   countryOptions,
   countryId,
   onCountryChange,
+  countryIso2,
   address,
   onAddressChange,
+  onPlaceResolved,
   city,
   onCityChange,
   state,
@@ -25,8 +29,10 @@ export function LocationCard({
   countryOptions: ComboboxOption[];
   countryId: number | null | undefined;
   onCountryChange: (id: number | null) => void;
+  countryIso2?: string | null;
   address: string;
   onAddressChange: (value: string) => void;
+  onPlaceResolved: (details: PlaceDetails) => void;
   city: string;
   onCityChange: (value: string) => void;
   state: string;
@@ -48,11 +54,12 @@ export function LocationCard({
             value={countryId ? String(countryId) : ""}
             onChange={(v) => onCountryChange(v ? Number(v) : null)}
             placeholder="Select country"
+            contentClassName="w-72"
           />
         </div>
         <div className="flex flex-col gap-2">
           <Label>Address</Label>
-          <Input className="h-10" value={address} onChange={(e) => onAddressChange(e.target.value)} placeholder="Street address" />
+          <AddressAutocomplete value={address} onChange={onAddressChange} onResolved={onPlaceResolved} countryIso2={countryIso2} />
         </div>
         <div className="flex flex-col gap-2">
           <Label>City</Label>

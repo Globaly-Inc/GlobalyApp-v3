@@ -81,7 +81,7 @@ export const categoriesRealApi = {
     httpPost(`${BASE}/issuing-organizations`, { name }),
 
   getCountries: async (): Promise<CountryOption[]> =>
-    (await httpGet<{ countries: CountryDto[] }>(`${BASE}/countries`)).countries.map((c) => ({
+    (await httpGet<{ countries: CountryDto[] }>("/platform-users/countries")).countries.map((c) => ({
       id: c.id, name: c.name, iso2: c.iso2, phoneCode: c.phone_code,
     })),
 

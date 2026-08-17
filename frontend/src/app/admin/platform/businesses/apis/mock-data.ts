@@ -164,6 +164,11 @@ export const businessesMockApi = {
     const i = mockBusinesses.findIndex((x) => x.id === id);
     if (i >= 0) mockBusinesses.splice(i, 1);
   },
+  uploadImage: async (file: File): Promise<{ path: string }> => {
+    console.log("[mock] POST /admin/platform/businesses/image", file.name);
+    await delay(300);
+    return { path: URL.createObjectURL(file) };
+  },
   createBusiness: async (input: BusinessCreateInput): Promise<BusinessDetail> => {
     console.log("[mock] POST /admin/platform/businesses", input);
     await delay(300);
