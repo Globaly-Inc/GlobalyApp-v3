@@ -10,6 +10,9 @@ export default defineConfig({
           name: "unit",
           environment: "node",
           include: ["tests/unit/**/*.test.ts"],
+          // src/config.ts zod-parses at module scope, so anything importing a
+          // module that reaches it needs the env present even with no DB.
+          env: testEnv(),
         },
       },
       {
@@ -32,14 +35,23 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "lcov"],
       reportsDirectory: "coverage",
-      // Scoped to the code this suite owns. Widen as later waves add tests.
+      // Scoped to the code this suite owns. Every wave widens this — code with
+      // tests that is not listed here never registers in CI coverage.
       include: [
+        // Wave A
         "src/shared/pagination.ts",
         "src/shared/errors.ts",
         "src/modules/auth/auth.service.ts",
         "src/modules/auth/auth.repository.ts",
         "src/modules/auth/auth.routes.ts",
         "src/modules/auth/consts.ts",
+        // C1 — tenant services catalog
+        "src/modules/businesses/routes/service*.ts",
+        "src/modules/superadmin/platform/business-services/**/*.ts",
+        // C3 — billing
+        "src/modules/billing/**/*.ts",
+        // C4 — admin observability
+        "src/modules/superadmin/audit-logs/**/*.ts",
       ],
       thresholds: {
         lines: 80,

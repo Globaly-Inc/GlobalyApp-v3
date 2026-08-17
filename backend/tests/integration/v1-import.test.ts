@@ -160,6 +160,17 @@ describeDb("V1 -> V3 importers", () => {
     v3 = new pg.Client({ connectionString: v3Url });
     await v3.connect();
 
+    // These tests need Zimbabwe absent from V3 so the importer has something to
+    // insert. Establish that explicitly rather than inheriting it from whatever
+    // the seeder happens to load — it used to seed 24 countries and no longer
+    // does, which silently turned "ZW is missing" into "ZW is present with 15
+    // cities". Cities go first: they FK to countries, so deleting the country
+    // alone fails.
+    await v3.query(
+      `DELETE FROM public.cities WHERE country_id IN (SELECT id FROM public.countries WHERE iso2 = 'ZW')`,
+    );
+    await v3.query(`DELETE FROM public.countries WHERE iso2 = 'ZW'`);
+
     // A user migrated before the full country set existed: the FK is NULL even
     // though V1 has a country for it. That is the bug the backfill repairs.
     await v3.query(`DELETE FROM public.platform_users WHERE uuid = $1`, [U.user]);
