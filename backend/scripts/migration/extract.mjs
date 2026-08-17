@@ -564,12 +564,16 @@ async function main() {
     // applied from the committed file when the source is the edge function.
     if (src) {
       const { sql, unstagedParents } = await introspectDdl(src, plan);
-      writeFileSync(ddlPath, sql);
-      report.ddl = { path: ddlPath, regenerated: true, unstagedParents };
+      // A --tables subset describes a subset of V1, so it must not be allowed to
+      // overwrite the committed full-schema DDL that cutover day depends on.
+      const persist = !flags.tables || flags.ddl;
+      if (persist) writeFileSync(ddlPath, sql);
+      await target.query(sql);
+      report.ddl = { path: persist ? ddlPath : "(in memory: --tables subset)", regenerated: true, unstagedParents };
     } else {
       report.ddl = { path: ddlPath, regenerated: false };
+      await target.query(readFileSync(ddlPath, "utf8"));
     }
-    await target.query(readFileSync(ddlPath, "utf8"));
     await loadInto(target, plan, source, report);
   } finally {
     await src?.end().catch(() => {});

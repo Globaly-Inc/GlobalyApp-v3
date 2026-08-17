@@ -398,18 +398,22 @@ async function fetchSide(client, cte, sql) {
 }
 
 /**
- * Rows this mapping's source table already accounted for in the skip report.
+ * The identity keys this mapping's source table already accounted for in the
+ * skip report. KEYS, not a count: "three rows were skipped" and "these three
+ * rows were skipped" are different claims, and only the second one can prove a
+ * missing row was a decision rather than a bug.
+ *
  * Returns null when the report table does not exist yet - Stage 2 has not run,
  * which is a different thing from "nothing was skipped".
  */
-async function skipReportCount(target, sourceTable) {
+async function skipReportKeys(target, sourceTable) {
   const { rows: exists } = await target.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [REPORT_TABLE]);
   if (!exists[0].present) return null;
   const { rows } = await target.query(
-    `SELECT count(*)::int AS n FROM ${REPORT_TABLE} WHERE source_table = $1`,
+    `SELECT DISTINCT source_key FROM ${REPORT_TABLE} WHERE source_table = $1`,
     [sourceTable],
   );
-  return rows[0].n;
+  return new Set(rows.map((r) => String(r.source_key)));
 }
 
 // -- Checks 1 + 2, per mapping -----------------------------------------------
@@ -468,35 +472,40 @@ async function verifyMapping(mapping, clients, ctes, flags) {
   const allowance = policy === "allow" ? mapping.extraTargetRows.max : 0;
   const extraAllowed = policy === "allow" && extra.length <= allowance;
 
-  // The arithmetic: source == target + reason-coded skips. Only meaningful over
-  // the whole population, so it is skipped (and said so) when sampling.
-  const reported = await skipReportCount(clients.target, sourceTableName(mapping));
+  // The arithmetic: source == target + reason-coded skips, key by key. A missing
+  // row is acceptable ONLY when the report names that exact key; a report row for
+  // some other key does not excuse it. Only meaningful over the whole population,
+  // so it is skipped (and said so) when sampling.
+  const reportedKeys = await skipReportKeys(clients.target, sourceTableName(mapping));
+  const unexplainedMissing = reportedKeys ? missing.filter((k) => !reportedKeys.has(k)) : missing;
   let reconciliation = null;
   if (!sample) {
-    const accounted = src.rows.length - missing.length + (reported ?? 0);
+    const explained = missing.length - unexplainedMissing.length;
     reconciliation = {
-      pass: accounted >= sourceTotal,
+      pass: unexplainedMissing.length === 0,
       sourceRows: sourceTotal,
       migrated: src.rows.length - missing.length,
-      reported,
-      unaccounted: Math.max(0, sourceTotal - accounted),
-      reportTablePresent: reported !== null,
+      explainedSkips: explained,
+      unaccounted: unexplainedMissing.length,
+      unaccountedKeys: unexplainedMissing.slice(0, flags.maxDiffs),
+      reportTablePresent: reportedKeys !== null,
     };
   }
 
   result.checks.count = {
     pass:
-      missing.length === 0 &&
+      unexplainedMissing.length === 0 &&
       (extra.length === 0 || extraAllowed) &&
       src.duplicates.length === 0 &&
-      tgt.duplicates.length === 0 &&
-      (reconciliation ? reconciliation.pass : true),
+      tgt.duplicates.length === 0,
     sourceRows: src.rows.length,
     sourceTotal,
     targetRows: tgt.rows.length,
     matched: src.rows.length - missing.length,
     missing: missing.slice(0, flags.maxDiffs),
     missingTotal: missing.length,
+    unexplainedMissing: unexplainedMissing.slice(0, flags.maxDiffs),
+    unexplainedMissingTotal: unexplainedMissing.length,
     extra: extra.slice(0, flags.maxDiffs),
     extraTotal: extra.length,
     extraAllowance: policy === "allow" ? { max: allowance, reason: mapping.extraTargetRows.reason } : null,
@@ -741,13 +750,17 @@ function printReport(report) {
     if (c.reconciliation) {
       const r = c.reconciliation;
       line(
-        `        reconciliation: ${r.sourceRows} staged = ${r.migrated} migrated + ${r.reported ?? "?"} reported` +
-          (r.unaccounted ? `  -> ${r.unaccounted} UNACCOUNTED` : "") +
+        `        reconciliation: ${r.sourceRows} staged = ${r.migrated} migrated + ${r.explainedSkips} explained skip(s)` +
+          (r.unaccounted ? `  -> ${r.unaccounted} UNACCOUNTED: ${r.unaccountedKeys.join(", ")}` : "") +
           (r.reportTablePresent ? "" : `  (${REPORT_TABLE} does not exist yet)`),
       );
     }
     if (c.missingTotal) {
-      line(`        missing in target (${c.missingTotal}): ${c.missing.join(", ")}${c.missingTotal > c.missing.length ? ", ..." : ""}`);
+      const explained = c.missingTotal - c.unexplainedMissingTotal;
+      line(
+        `        missing in target (${c.missingTotal}${explained ? `, ${explained} explained by ${REPORT_TABLE}` : ""}): ` +
+          `${c.missing.join(", ")}${c.missingTotal > c.missing.length ? ", ..." : ""}`,
+      );
     }
     if (c.extraTotal) {
       const verdict = c.extraAllowance && c.extraTotal <= c.extraAllowance.max ? `allowed, max ${c.extraAllowance.max}` : "NOT ALLOWED";
