@@ -37,9 +37,15 @@ const envSchema = z.object({
   CHARGEBEE_SITE: z.string().optional(),
   CHARGEBEE_API_KEY: z.string().optional(),
 
-  // Payments (Earn → My Services). Unset outside production selects the dev driver, so the order lifecycle
-  // is exercisable locally without a Stripe account. See modules/other-services/payments.
+  // Stripe. Two consumers with deliberately different unset behaviour:
+  //   - modules/other-services/payments: unset outside production selects the dev driver, so the
+  //     order lifecycle stays exercisable locally without a Stripe account.
+  //   - modules/billing: fails closed with 503 (services/stripe.client.ts); never fakes success,
+  //     because credits and subscriptions must not appear to settle when they cannot.
+  // TODO(plan §15 decision 6): confirm one Stripe account/key set for both before the C3→E2 rehearsal.
   STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   // Where the browser reaches the frontend. Checkout must return the buyer to a real origin, and the API's
   // own APP_URL is a different host.
   WEB_APP_URL: z.string().default("http://localhost:3001"),

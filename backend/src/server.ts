@@ -27,6 +27,7 @@ import otherServicesModule, { publicServicesModule } from "./modules/other-servi
 import geoModule from "./modules/geo/index.js";
 import searchModule from "./modules/search/index.js";
 import aiCounsellorModule from "./modules/ai-counsellor/index.js";
+import billingModule from "./modules/billing/index.js";
 
 const logger = createChildLogger("server");
 
@@ -58,6 +59,7 @@ export async function buildServer() {
   await app.register(geoModule);              // public geo reads (no auth)
   await app.register(searchModule);          // public search reads (no auth)
   await app.register(aiCounsellorModule);    // public AI counsellor (no auth)
+  await app.register(billingModule);         // credits, subscriptions, Stripe webhook (own auth scope)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

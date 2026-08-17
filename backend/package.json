@@ -33,7 +33,8 @@
     "import:v1-extraction": "node database/scripts/import-v1-extraction.mjs",
     "verify:migration": "node database/scripts/verify-migration.mjs",
     "test:migration": "vitest run --project integration tests/integration/verify-migration.test.ts",
-    "migrate:v1-extraction-refs": "node database/scripts/backfill-extraction-reference-ids.mjs"
+    "migrate:v1-extraction-refs": "node database/scripts/backfill-extraction-reference-ids.mjs",
+    "migrate:v1-billing": "node --import tsx database/scripts/import-v1-billing.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
