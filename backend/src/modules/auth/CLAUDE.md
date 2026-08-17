@@ -24,7 +24,8 @@ POST /send-otp       → generates 6-digit OTP (10 min expiry), per-email brute-
 POST /verify-otp     → validates OTP, activates account (status=1), creates session, returns tokens
 POST /refresh        → rotates both tokens per-session, IP/device logged
 POST /logout         → pass refresh_token to logout single device, omit to logout all (204)
-POST /switch-account → issues scoped access_token for a specific business (requires auth)
+POST /switch-account → issues a scoped access_token for a specific business (requires auth) — kept for
+                        future multi-business use; today's frontend doesn't call it, see below
 GET  /me             → returns user profile + list of business memberships
 ```
 
@@ -91,22 +92,20 @@ Entries are append-only and deduplicated (same type+role pair is not added twice
 // Base token (after login — admin user)
 { sub: platformUserId, type: "admin", email, role: "super_admin" | "admin" | "data_admin" | "moderator" }
 
-// Scoped token (after account switch to a business)
+// Scoped token (business account, once they have a business)
 { sub: platformUserId, type: "platform_user", email, orgId: schema_name, orgRole: "owner" | "admin" | "manager" | "counsellor" | "member" }
 ```
 
 - `sub` is ALWAYS the `platform_users.id`
 - `type` is determined by checking `superadmin.admin_users` at login time — NOT from a stored flag
-- `orgId` + `orgRole` are only present after `POST /switch-account`
+- `orgId` + `orgRole` are set at `POST /verify-otp` time from the user's (single) business membership — the frontend doesn't need `/switch-account` for this
 
-## Account Switching
+## Business Context on Refresh
 
-1. User logs in → gets base JWT (no orgId)
-2. `GET /me` returns `businesses: [{ org_id, business_name, role, ... }]`
-3. `POST /switch-account { org_id }` → new access_token with `orgId` + `orgRole`
-4. Refresh token stays the same (session-level, not account-level)
-5. Tenant plugin resolves `req.db` from `orgId` in JWT
-6. Old access token remains valid until expiry (same user, different portal — not a security concern)
+1. User logs in → `verify-otp` looks up business memberships and, if any, signs the access token with `orgId`+`orgRole` right away
+2. `GET /me` returns `businesses: [{ org_id, business_name, role, ... }]` (for display — not needed to establish context)
+3. Tenant plugin resolves `req.db` from `orgId` in JWT
+4. On `POST /refresh`, business memberships are looked up again and `orgId`/`orgRole` are re-signed onto the new access token — no separate switch-account round trip needed
 
 ## Sessions (Multi-Device)
 

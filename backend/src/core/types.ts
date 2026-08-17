@@ -65,5 +65,6 @@ declare module "fastify" {
   interface FastifyRequest {
     auth: AuthClaims;
     db: Knex;          // per-business DB (set for business context routes)
+    business?: BusinessRecord;     // resolved business row (set alongside db)
   }
 }

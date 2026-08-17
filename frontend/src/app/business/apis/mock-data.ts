@@ -5,10 +5,17 @@ function delay(ms: number) {
 }
 
 let mockProfile: BusinessProfile = {
+  id: 1,
+  schema_name: "mock-org-id",
   business_name: "Mock Agency",
   subdomain: "mock-agency",
   business_type: null,
+  email: null,
   phone: null,
+  logo_url: null,
+  cover_url: null,
+  website: null,
+  description: null,
   country_id: null,
   state: null,
   city: null,

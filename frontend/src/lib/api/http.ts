@@ -61,7 +61,6 @@ export class ApiError extends Error {
   constructor(message: string, code?: string, details?: unknown) {
     super(message);
     this.code = code;
-    this.details = details;
   }
 }
 

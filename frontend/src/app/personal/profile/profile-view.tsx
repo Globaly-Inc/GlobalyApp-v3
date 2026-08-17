@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { User, Mail, GraduationCap, Briefcase, Languages, CheckCircle2, Circle, Loader2, Camera, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { geoApi, type Country } from "../../geo/apis";
 import {
   fetchFullProfile,
@@ -52,9 +54,18 @@ function formatDate(value: string | null) {
 }
 
 export function ProfileView() {
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const { profile, qualifications, languageTests, workExperiences, status } = useAppSelector((state) => state.profile);
   const [countries, setCountries] = useState<Country[]>([]);
+
+  const { user: authUser, initializing } = useAuthState();
+  const isBusiness = authUser?.user_category === "business";
+
+  useEffect(() => {
+    if (initializing) return;
+    if (isBusiness) router.replace("/business/profile");
+  }, [initializing, isBusiness, router]);
 
   const [personalOpen, setPersonalOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -77,7 +88,7 @@ export function ProfileView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!profile) {
+  if (!profile || initializing || isBusiness) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
