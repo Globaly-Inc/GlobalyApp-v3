@@ -1,9 +1,12 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/http";
 import type {
-  Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
+  Accreditation, AccreditationInput, Category, CategoryInput, CityOption, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
   ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
 } from "./types";
+
+type CountryDto = { id: number; name: string; iso2: string; phone_code: string | null };
+type CityDto = { id: number; name: string; state_name: string | null };
 
 const BASE = "/admin/platform";
 
@@ -22,12 +25,12 @@ function toQuery(params: SearchListParams): string {
 
 export const categoriesRealApi = {
   getBusinessCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
-    httpGet(`${BASE}/business-categories${toQuery(params)}`),
+    httpGet(`${BASE}/business-categories${toQuery({ limit: 10, ...params })}`),
   getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toQuery(params)}`),
   getOtherServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
-    httpGet(`${BASE}/other-service-categories${toQuery(params)}`),
-  createCategory: (kind: CategoryEndpoint, input: CategoryInput): Promise<Category> =>
+    httpGet(`${BASE}/service-categories${toQuery({ limit: 10, ...params })}`),
+  createCategory: (kind: "business" | "service" | "other-service", input: CategoryInput): Promise<Category> =>
     httpPost(`${BASE}/${kind}-categories`, input),
   updateCategory: (kind: CategoryEndpoint, id: number, input: Partial<CategoryInput>): Promise<Category> =>
     httpPatch(`${BASE}/${kind}-categories/${id}`, input),
@@ -46,7 +49,7 @@ export const categoriesRealApi = {
     httpPatch(`${BASE}/schema-fields/${id}`, input),
   deleteSchemaField: (id: number): Promise<void> => httpDelete(`${BASE}/schema-fields/${id}`),
 
-  getLookups: (kind: LookupKind, params: ListParams = {}): Promise<Paginated<Lookup>> =>
+  getLookups: (kind: LookupKind, params: SearchListParams = {}): Promise<Paginated<Lookup>> =>
     httpGet(`${BASE}/${kind}${toQuery(params)}`),
   createLookup: (kind: LookupKind, input: LookupInput): Promise<Lookup> =>
     httpPost(`${BASE}/${kind}`, input),
@@ -62,7 +65,7 @@ export const categoriesRealApi = {
     httpPost(`${BASE}/fee-types/${id}/review`, { decision }),
   deleteFeeType: (id: number): Promise<void> => httpDelete(`${BASE}/fee-types/${id}`),
 
-  getAccreditations: (params: ListParams = {}): Promise<Paginated<Accreditation>> =>
+  getAccreditations: (params: SearchListParams = {}): Promise<Paginated<Accreditation>> =>
     httpGet(`${BASE}/accreditations${toQuery(params)}`),
   createAccreditation: (input: AccreditationInput): Promise<Accreditation> =>
     httpPost(`${BASE}/accreditations`, input),
@@ -78,5 +81,12 @@ export const categoriesRealApi = {
     httpPost(`${BASE}/issuing-organizations`, { name }),
 
   getCountries: async (): Promise<CountryOption[]> =>
-    (await httpGet<{ countries: CountryOption[] }>(`${BASE}/countries`)).countries,
+    (await httpGet<{ countries: CountryDto[] }>(`${BASE}/countries`)).countries.map((c) => ({
+      id: c.id, name: c.name, iso2: c.iso2, phoneCode: c.phone_code,
+    })),
+
+  getCitiesByCountry: async (countryId: number): Promise<CityOption[]> =>
+    (await httpGet<{ cities: CityDto[] }>(`${BASE}/countries/${countryId}/cities`)).cities.map((c) => ({
+      id: c.id, name: c.name, stateName: c.state_name,
+    })),
 };

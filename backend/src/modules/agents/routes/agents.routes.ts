@@ -5,6 +5,7 @@ import {
   AcceptInviteSchema,
   InviteAgentSchema,
   AgentParamsSchema,
+  AgentPatchSchema,
 } from "../schemas/agents.schema.js";
 import { PaginationSchema } from "../../../shared/pagination.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
@@ -52,5 +53,18 @@ export async function agentRoutes(app: FastifyInstance) {
       req.auth.orgId!,
     );
     return reply.status(201).send(result);
+  });
+
+  app.patch("/:id", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { id } = AgentParamsSchema.parse(req.params);
+    const patch = AgentPatchSchema.parse(req.body);
+    const result = await service.updateAgent(req.db, id, patch);
+    return reply.send(result);
+  });
+
+  app.delete("/:id", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { id } = AgentParamsSchema.parse(req.params);
+    await service.removeAgent(req.db, id);
+    return reply.status(204).send();
   });
 }

@@ -3,4 +3,4 @@ import { businessesMockApi } from "./mock-data";
 import { businessesRealApi } from "./real-api";
 
 export const businessesApi = createApi({ mock: businessesMockApi, real: businessesRealApi });
-export type { BusinessSummary } from "./types";
+export type * from "./types";
