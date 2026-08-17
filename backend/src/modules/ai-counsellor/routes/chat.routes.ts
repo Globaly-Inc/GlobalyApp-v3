@@ -11,14 +11,21 @@ import * as chatService from "../services/chat.service.js";
 import * as sessionService from "../services/session.service.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
-import { NotFoundError, ForbiddenError } from "../../../shared/errors.js";
+import * as creditService from "../services/credit.service.js";
+import { NotFoundError, ForbiddenError, PaymentRequiredError } from "../../../shared/errors.js";
 
 export async function chatRoutes(app: FastifyInstance) {
   // POST /messages — SSE streaming chat
   app.post("/messages", async (req, reply) => {
+    const userId = Number(req.auth.sub);
     const input = SendMessageSchema.parse(req.body ?? {});
+
+    // Phase 2: credit gate
+    const hasCredits = await creditService.checkBalance(userId);
+    if (!hasCredits) throw new PaymentRequiredError();
+
     await chatService.handleMessage({
-      userId: Number(req.auth.sub),
+      userId,
       sessionId: input.session_id,
       content: input.content,
       attachments: input.attachments,

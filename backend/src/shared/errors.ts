@@ -40,3 +40,9 @@ export class BadRequestError extends AppError {
     super(message, 400, "BAD_REQUEST");
   }
 }
+
+export class PaymentRequiredError extends AppError {
+  constructor(message = "Insufficient credits") {
+    super(message, 402, "PAYMENT_REQUIRED");
+  }
+}

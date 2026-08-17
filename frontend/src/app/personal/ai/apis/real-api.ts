@@ -2,6 +2,7 @@ import { httpGet, httpPatch } from "@/lib/api/http";
 import { getAccessToken, isTokenExpired } from "@/lib/session";
 import type {
   ChatSession,
+  CreditBalance,
   FeedbackInput,
   Message,
   MessagesResponse,
@@ -30,6 +31,9 @@ export const aiRealApi = {
   setFeedback: async (messageId: number, feedback: "up" | "down" | null): Promise<void> => {
     await httpPatch<unknown>(`/ai/messages/${messageId}/feedback`, { feedback } satisfies FeedbackInput);
   },
+
+  getCreditBalance: async (): Promise<CreditBalance> =>
+    httpGet<CreditBalance>("/ai/credits/balance"),
 
   /**
    * SSE streaming for sendMessage. Uses raw fetch + ReadableStream because httpPost

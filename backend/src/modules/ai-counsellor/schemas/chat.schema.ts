@@ -34,3 +34,23 @@ export type MessageIdParam = z.infer<typeof MessageIdParamSchema>;
 export type UpdateSessionInput = z.infer<typeof UpdateSessionSchema>;
 export type FeedbackInput = z.infer<typeof FeedbackSchema>;
 export type ListSessionsQuery = z.infer<typeof ListSessionsQuerySchema>;
+
+export const CreditGrantSchema = z.object({
+  user_id: z.coerce.number().int().positive(),
+  amount: z.coerce.number().int().positive(),
+  balance_type: z.enum(["free", "subscription", "purchased"]),
+  reason: z.enum(["signup_grant", "admin_grant", "subscription_grant", "purchase"]),
+});
+
+export const GuestMessageSchema = z.object({
+  content: z.string().trim().min(1).max(5000),
+  fingerprint: z.string().min(1),
+});
+
+export const GuestMigrateSchema = z.object({
+  fingerprint_hash: z.string().min(1),
+});
+
+export type CreditGrantInput = z.infer<typeof CreditGrantSchema>;
+export type GuestMessageInput = z.infer<typeof GuestMessageSchema>;
+export type GuestMigrateInput = z.infer<typeof GuestMigrateSchema>;

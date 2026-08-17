@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { aiApi } from "../apis";
-import type { ChatSession, CourseCard, Message, SSEEvent } from "../apis/types";
+import type { ChatSession, CourseCard, CreditBalance, Message, SSEEvent } from "../apis/types";
 import type { AppDispatch } from "@/lib/store";
 
 /* ── thunks ── */
@@ -68,6 +68,10 @@ export const sendMessage = createAsyncThunk<
   return finalMessageId;
 });
 
+export const fetchCreditBalance = createAsyncThunk("aiChat/fetchCreditBalance", () =>
+  aiApi.getCreditBalance(),
+);
+
 /* ── state ── */
 
 type RegionStatus = "idle" | "loading" | "failed";
@@ -79,6 +83,9 @@ type AiChatState = {
   sessionListStatus: RegionStatus;
   messagesStatus: RegionStatus;
   sendStatus: RegionStatus;
+  credits: CreditBalance | null;
+  creditsStatus: RegionStatus;
+  compareTray: CourseCard[];
   streamingContent: string;
   streamingCards: CourseCard[];
   streamingChips: string[];
@@ -93,6 +100,9 @@ const initialState: AiChatState = {
   sessionListStatus: "idle",
   messagesStatus: "idle",
   sendStatus: "idle",
+  credits: null,
+  creditsStatus: "idle",
+  compareTray: [],
   streamingContent: "",
   streamingCards: [],
   streamingChips: [],
@@ -130,6 +140,17 @@ const aiChatSlice = createSlice({
       state.streamingCards = [];
       state.streamingChips = [];
       state.traceSteps = [];
+    },
+    addToCompare(state, action: PayloadAction<CourseCard>) {
+      if (state.compareTray.length < 4 && !state.compareTray.some(c => c.course_name === action.payload.course_name && c.institution_name === action.payload.institution_name)) {
+        state.compareTray.push(action.payload);
+      }
+    },
+    removeFromCompare(state, action: PayloadAction<number>) {
+      state.compareTray.splice(action.payload, 1);
+    },
+    clearCompare(state) {
+      state.compareTray = [];
     },
     addOptimisticUserMessage(state, action: PayloadAction<{ sessionId: number; content: string }>) {
       const { sessionId, content } = action.payload;
@@ -228,6 +249,18 @@ const aiChatSlice = createSlice({
         }
       })
 
+      // fetchCreditBalance
+      .addCase(fetchCreditBalance.pending, (state) => {
+        state.creditsStatus = "loading";
+      })
+      .addCase(fetchCreditBalance.fulfilled, (state, action) => {
+        state.creditsStatus = "idle";
+        state.credits = action.payload;
+      })
+      .addCase(fetchCreditBalance.rejected, (state) => {
+        state.creditsStatus = "failed";
+      })
+
       // setFeedback
       .addCase(setFeedback.fulfilled, (state, action) => {
         const { messageId, feedback } = action.payload;
@@ -251,6 +284,9 @@ export const {
   sessionCreated,
   clearStreamingState,
   addOptimisticUserMessage,
+  addToCompare,
+  removeFromCompare,
+  clearCompare,
 } = aiChatSlice.actions;
 
 export const aiChatReducer = aiChatSlice.reducer;
