@@ -1,5 +1,5 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { AiChatView } from "./components/ai-chat-view";
 
 export default function AiCounsellorPage() {
-  return <ComingSoon title="AI Counsellor" />;
+  return <AiChatView />;
 }
