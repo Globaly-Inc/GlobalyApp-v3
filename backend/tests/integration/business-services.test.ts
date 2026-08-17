@@ -38,6 +38,7 @@ describeDb("business services", () => {
   let categoryId: number | null = null;
   let degreeLevelId: number | null = null;
   let accreditationId = 0;
+  let schemaFieldId = 0;
 
   beforeAll(async () => {
     const jwt = (await import("jsonwebtoken")).default;
@@ -121,6 +122,16 @@ describeDb("business services", () => {
       .insert({ name: `CRICOS ${suffix}`, is_global: true, status: "approved" })
       .returning(["id"]);
     accreditationId = acc.id;
+    const [field] = await masterKnex("schema_fields")
+      .insert({
+        entity_id: categoryId,
+        entity_type: "service_categories",
+        label: "Delivery",
+        key: `delivery_${suffix}`,
+        type: "text",
+      })
+      .returning(["id"]);
+    schemaFieldId = field.id;
 
     const sign = (claims: Record<string, unknown>) =>
       jwt.sign({ email: "services@vitest.local", ...claims }, config.JWT_SECRET);
@@ -643,6 +654,46 @@ describeDb("business services", () => {
     });
   });
 
+  // ── dynamic per-category field values ─────────────────────────────────────
+
+  describe("field values", () => {
+    it("upserts and reads back a service's category-specific fields", async () => {
+      const svc = await createService(tokenA);
+
+      expect((await get(`${BASE}/${svc.id}/field-values`, tokenA)).json()).toHaveLength(0);
+
+      const put = await app.inject({
+        method: "PUT",
+        url: `${BASE}/${svc.id}/field-values`,
+        headers: auth(tokenA),
+        payload: { values: [{ schema_field_id: schemaFieldId, value: "online" }] },
+      });
+      expect(put.statusCode, put.body).toBe(200);
+      expect(put.json()).toEqual([{ schema_field_id: schemaFieldId, value: "online" }]);
+
+      // Upsert, not insert: the same field twice keeps one row with the new value.
+      await app.inject({
+        method: "PUT",
+        url: `${BASE}/${svc.id}/field-values`,
+        headers: auth(tokenA),
+        payload: { values: [{ schema_field_id: schemaFieldId, value: "on campus" }] },
+      });
+      expect((await get(`${BASE}/${svc.id}/field-values`, tokenA)).json()).toEqual([
+        { schema_field_id: schemaFieldId, value: "on campus" },
+      ]);
+
+      // Another tenant cannot read or write them.
+      expect((await get(`${BASE}/${svc.id}/field-values`, tokenB)).statusCode).toBe(404);
+      const hijack = await app.inject({
+        method: "PUT",
+        url: `${BASE}/${svc.id}/field-values`,
+        headers: auth(tokenB),
+        payload: { values: [{ schema_field_id: schemaFieldId, value: "hijacked" }] },
+      });
+      expect(hijack.statusCode).toBe(404);
+    });
+  });
+
   // ── superadmin oversight ──────────────────────────────────────────────────
 
   describe("admin oversight", () => {
@@ -663,6 +714,32 @@ describeDb("business services", () => {
 
       const search = await adminGet(`${ADMIN_BASE}/${businessAId}/services/search?search=Oversight&limit=10`);
       expect(search.json().data.some((s: { id: string }) => s.id === svc.id)).toBe(true);
+    });
+
+    it("creates, updates, sets field values, and soft deletes into the tenant schema", async () => {
+      const inject = (method: string, url: string, payload?: unknown) =>
+        adminApp.inject({ method, url, headers: auth(adminToken), payload: payload as object });
+
+      const base = `${ADMIN_BASE}/${businessAId}/services`;
+      const created = await inject("POST", base, { name: `Admin made ${Date.now()}`, service_category_id: categoryId });
+      expect(created.statusCode, created.body).toBe(201);
+      const id = created.json().id;
+
+      const patched = await inject("PATCH", `${base}/${id}`, { description: "reviewed by admin" });
+      expect(patched.statusCode, patched.body).toBe(200);
+      expect(patched.json().description).toBe("reviewed by admin");
+
+      const fields = await inject("PUT", `${base}/${id}/field-values`, {
+        values: [{ schema_field_id: schemaFieldId, value: "admin set" }],
+      });
+      expect(fields.statusCode, fields.body).toBe(200);
+      expect((await adminGet(`${base}/${id}/field-values`)).json()).toEqual([
+        { schema_field_id: schemaFieldId, value: "admin set" },
+      ]);
+
+      expect((await inject("DELETE", `${base}/${id}`)).statusCode).toBe(204);
+      // The tenant sees the same soft delete.
+      expect((await get(`${BASE}/${id}`, tokenA)).statusCode).toBe(404);
     });
 
     it("404s an unknown business and an unknown service", async () => {
