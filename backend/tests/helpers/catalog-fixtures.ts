@@ -276,6 +276,73 @@ export async function stageAccreditation(
   return assignment.id;
 }
 
+/**
+ * Idempotent lookup/insert of a business_categories row. Only `education_agency`
+ * ships in the migration set, so any suite that needs `institutions` or
+ * `migration_agents` has to put them there itself.
+ */
+export async function ensureBusinessCategory(db: Knex, slug: string, name: string): Promise<number> {
+  const [row] = await db("business_categories")
+    .insert({ slug, name })
+    .onConflict("slug")
+    .merge({ name })
+    .returning("id");
+  return row.id as number;
+}
+
+/**
+ * A claimed business with a provisioned tenant schema — the other half of the
+ * polymorphic org model. `businesses.owner_id` is NOT NULL, so this creates a
+ * throwaway platform user to own it.
+ */
+export async function createBusinessTenant(
+  db: Knex,
+  createSchemaKnex: (schema: string, pool?: Knex.PoolConfig) => Knex,
+  opts: {
+    name: string;
+    categoryId?: number;
+    website?: string;
+    countryId?: number;
+    city?: string;
+    isPublished?: boolean;
+  },
+): Promise<Tenant> {
+  const [{ uuid }] = (await db.raw("select gen_random_uuid() as uuid")).rows;
+  const [owner] = await db("platform_users")
+    .insert({ first_name: "Fixture", last_name: "Owner", email: `owner.${uuid}@vitest.local` })
+    .returning("id");
+
+  const [org] = await db("businesses")
+    .insert({
+      owner_id: owner.id,
+      subdomain: `fx-${String(uuid).slice(0, 12)}`,
+      schema_name: uuid,
+      business_name: opts.name,
+      business_category_id: opts.categoryId ?? null,
+      website: opts.website ?? null,
+      country_id: opts.countryId ?? null,
+      city: opts.city ?? null,
+      is_published: opts.isPublished ?? true,
+      status: "verified",
+    })
+    .returning("id");
+
+  await db.raw(`CREATE SCHEMA "${uuid}"`);
+  const tenantDb = createSchemaKnex(uuid, { min: 0, max: 2 });
+  await tenantDb.migrate.latest({ directory: "./database/migrations/business", schemaName: uuid });
+
+  return { schema: uuid, orgId: org.id, db: tenantDb };
+}
+
+export async function dropBusinessTenant(db: Knex, tenant: Tenant | undefined): Promise<void> {
+  if (!tenant) return;
+  await tenant.db.destroy().catch(() => {});
+  const owner = await db("businesses").where({ id: tenant.orgId }).first("owner_id");
+  await db("businesses").where({ id: tenant.orgId }).del().catch(() => {});
+  if (owner) await db("platform_users").where({ id: owner.owner_id }).del().catch(() => {});
+  await db.raw(`DROP SCHEMA IF EXISTS "${tenant.schema}" CASCADE`);
+}
+
 export async function deleteJob(db: Knex, jobId: string | undefined): Promise<void> {
   if (!jobId) return;
   // extraction_* children all cascade from the job.
