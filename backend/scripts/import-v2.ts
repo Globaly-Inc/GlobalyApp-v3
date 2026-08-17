@@ -91,6 +91,48 @@ const NEVER_COPY = new Set(["embedding"]);
 
 const INT_TYPES = new Set(["integer", "bigint", "smallint"]);
 
+/**
+ * Columns that hold a foreign key to a table whose PK changed from uuid (V2) to
+ * serial integer (V3). Instead of substituting --admin-id these need a real
+ * uuid→int lookup via slug. Built once in main() from both databases.
+ */
+const CATEGORY_COLUMNS = new Set(["business_category_id", "service_category_id"]);
+type CategoryMaps = {
+  business_category_id: Map<string, number>; // V2 uuid → V3 int
+  service_category_id: Map<string, number>;
+};
+
+async function buildCategoryMaps(src: Knex, sourceSchema: string): Promise<CategoryMaps> {
+  const maps: CategoryMaps = {
+    business_category_id: new Map(),
+    service_category_id: new Map(),
+  };
+
+  // V2: uuid→slug
+  for (const [col, table] of [
+    ["business_category_id", "business_categories"],
+    ["service_category_id", "service_categories"],
+  ] as const) {
+    const v2Rows: { id: string; slug: string }[] = await src
+      .withSchema(sourceSchema)
+      .from(table)
+      .select("id", "slug")
+      .catch(() => []); // table might not exist in source
+    // V3: slug→int (lives in globalyapp/public, not superadmin)
+    const v3Rows: { id: number; slug: string }[] = await masterKnex(table)
+      .select("id", "slug")
+      .catch(() => []);
+
+    const slugToInt = new Map(v3Rows.map((r) => [r.slug, r.id]));
+    for (const row of v2Rows) {
+      const v3Id = slugToInt.get(row.slug);
+      if (v3Id != null) maps[col].set(row.id, v3Id);
+    }
+    console.log(`  ${col}: ${maps[col].size} uuid→int mappings (${v2Rows.length} V2 rows, ${v3Rows.length} V3 rows)`);
+  }
+  return maps;
+}
+
 interface Args {
   source: string;
   dryRun: boolean;
@@ -147,6 +189,8 @@ interface Plan {
   sourceSchema: string;
   copy: ColumnInfo[];
   ownerColumns: string[];
+  /** uuid→integer FK columns that need the slug-based category lookup instead of admin-id. */
+  categoryColumns: string[];
   /** Columns needing JSON.stringify before insert (text→jsonb or jsonb re-serialization). */
   jsonWrapColumns: string[];
   droppedFromSource: string[];
@@ -166,6 +210,7 @@ async function planFor(src: Knex, table: string, preferredSchema: string): Promi
   const dstByName = new Map(dstCols.map((c) => [c.name, c]));
   const copy: ColumnInfo[] = [];
   const ownerColumns: string[] = [];
+  const categoryColumns: string[] = [];
   const jsonWrapColumns: string[] = [];
   const droppedFromSource: string[] = [];
 
@@ -173,8 +218,11 @@ async function planFor(src: Knex, table: string, preferredSchema: string): Promi
     if (NEVER_COPY.has(col.name)) { droppedFromSource.push(`${col.name} (vector dims differ)`); continue; }
     const dst = dstByName.get(col.name);
     if (!dst) { droppedFromSource.push(col.name); continue; }
-    // V2 uuid -> V3 integer means an auth.users reference: substitute the admin id.
-    if (col.type === "uuid" && INT_TYPES.has(dst.type)) ownerColumns.push(col.name);
+    if (col.type === "uuid" && INT_TYPES.has(dst.type)) {
+      // Category FKs need slug-based lookup; all other uuid→int columns are owner refs.
+      if (CATEGORY_COLUMNS.has(col.name)) categoryColumns.push(col.name);
+      else ownerColumns.push(col.name);
+    }
     // jsonb columns need explicit JSON.stringify: text→jsonb wraps plain text,
     // and jsonb→jsonb needs re-serialization since knex doesn't auto-serialize objects for inserts.
     if (dst.type === "jsonb") jsonWrapColumns.push(col.name);
@@ -186,13 +234,14 @@ async function planFor(src: Knex, table: string, preferredSchema: string): Promi
     sourceSchema,
     copy,
     ownerColumns,
+    categoryColumns,
     jsonWrapColumns,
     droppedFromSource,
     hasId: dstByName.has("id") && srcCols.some((c) => c.name === "id"),
   };
 }
 
-async function importTable(src: Knex, plan: Plan, args: Args): Promise<{ read: number; written: number }> {
+async function importTable(src: Knex, plan: Plan, args: Args, catMaps: CategoryMaps): Promise<{ read: number; written: number }> {
   const names = plan.copy.map((c) => c.name);
   const rows: Record<string, unknown>[] = await src
     .withSchema(plan.sourceSchema)
@@ -206,6 +255,11 @@ async function importTable(src: Knex, plan: Plan, args: Args): Promise<{ read: n
     const chunk = rows.slice(i, i + args.batch).map((row) => {
       const out = { ...row };
       for (const col of plan.ownerColumns) out[col] = out[col] == null ? null : args.adminId;
+      for (const col of plan.categoryColumns) {
+        const uuid = out[col] as string | null;
+        const map = catMaps[col as keyof CategoryMaps];
+        out[col] = uuid == null ? null : (map.get(uuid) ?? null);
+      }
       for (const col of plan.jsonWrapColumns) out[col] = out[col] == null ? null : JSON.stringify(out[col]);
       return out;
     });
@@ -233,6 +287,9 @@ async function main() {
 
   console.log(`\nV2 → V3 import${args.dryRun ? "  [DRY RUN — nothing will be written]" : ""}`);
   console.log(`  owner uuids → admin id ${args.adminId}`);
+
+  const catMaps = await buildCategoryMaps(src, args.sourceSchema);
+
   console.log(`  ${tables.length} tables\n`);
   console.log(`  ${"table".padEnd(46)}${"rows".padStart(8)}${"written".padStart(9)}  notes`);
   console.log(`  ${"-".repeat(46)}${"-".padStart(8, "-")}${"-".padStart(9, "-")}  ${"-".repeat(20)}`);
@@ -247,11 +304,12 @@ async function main() {
     if (!plan) { missing.push(table); console.log(`  ${table.padEnd(46)}${"—".padStart(8)}${"—".padStart(9)}  not in source`); continue; }
 
     try {
-      const { read, written } = await importTable(src, plan, args);
+      const { read, written } = await importTable(src, plan, args, catMaps);
       totalRead += read;
       totalWritten += written;
       const notes: string[] = [];
       if (plan.ownerColumns.length) notes.push(`owner→${args.adminId}: ${plan.ownerColumns.join(",")}`);
+      if (plan.categoryColumns.length) notes.push(`cat→slug: ${plan.categoryColumns.join(",")}`);
       if (plan.droppedFromSource.length) notes.push(`dropped: ${plan.droppedFromSource.join(", ")}`);
       console.log(`  ${table.padEnd(46)}${String(read).padStart(8)}${String(written).padStart(9)}  ${notes.join(" | ")}`);
       if (plan.droppedFromSource.length) warnings.push(`${table}: dropped ${plan.droppedFromSource.join(", ")}`);

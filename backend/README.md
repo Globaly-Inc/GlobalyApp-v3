@@ -403,6 +403,114 @@ curl -X POST http://localhost:3000/api/v3/auth/send-otp \
 
 ---
 
+## Importing V2 data
+
+The `import:v2` script migrates extraction pipeline and AI knowledge data from a V2 Cloud SQL dump into V3. It's rerunnable — rows use their V2 uuid as primary key with `ON CONFLICT DO UPDATE`, so re-importing reconciles instead of duplicating.
+
+### What gets imported
+
+| Group | Tables |
+|-------|--------|
+| **jobs** | `extraction_jobs`, `extraction_institution_overview` |
+| **staged** | `extraction_campuses`, `extraction_agents`, `extraction_agent_locations`, `extraction_courses`, `extraction_course_fees`, `extraction_intakes`, `extraction_eligibility_requirements`, `extraction_english_requirements`, `extraction_study_options`, `extraction_study_units`, `extraction_accreditations`, `extraction_additional_info` |
+| **junctions** | `extraction_course_campuses`, `extraction_course_fee_assignments`, `extraction_course_intake_assignments`, `extraction_course_eligibility_assignments`, `extraction_course_study_option_assignments`, `extraction_course_study_unit_assignments`, `extraction_course_accreditation_assignments` |
+| **ops** | `extraction_queue`, `extraction_job_events`, `extraction_verification_results`, `extraction_site_intelligence`, `extraction_site_profiles`, `extraction_lessons`, `extraction_memory`, `extraction_visas`, `extraction_mara_agents`, `agent_extraction_runs`, `agent_extraction_schedule` |
+| **knowledge** | `ai_knowledge_visa`, `ai_knowledge_faqs`, `ai_knowledge_country_guides`, `ai_knowledge_categories`, `ai_knowledge_sources`, `ai_knowledge_documents`, `data_verification_queue` |
+
+### Steps
+
+#### 1. Create a temporary database and restore the V2 dump
+
+```bash
+sudo -u postgres psql -c "CREATE DATABASE globaly_v2_import OWNER master_user;"
+```
+
+Restore the Cloud SQL export:
+
+```bash
+psql -U master_user -d globaly_v2_import -f ~/Downloads/"Cloud_SQL_Export_2026-08-14 (21_16_19).sql"
+```
+
+> **Note:** The dump uses `\restrict` and may show warnings about extensions (`vector`, `pg_trgm`, etc.) — these are safe to ignore. The import script only reads data rows, not schema objects.
+
+If the restore fails on the `\restrict` line, strip it first:
+
+```bash
+sed '1,/^\\restrict/d' ~/Downloads/"Cloud_SQL_Export_2026-08-14 (21_16_19).sql" \
+  | psql -U master_user -d globaly_v2_import
+```
+
+#### 2. Make sure V3 migrations are up to date
+
+```bash
+npm run migrate:globalyapp
+npm run migrate:superadmin
+```
+
+#### 3. Dry run (recommended)
+
+```bash
+npm run import:v2 -- --source "postgres://master_user:password@localhost:5432/globaly_v2_import" --dry-run
+```
+
+This prints a table of what would be imported without writing anything. Review the row counts and dropped-column warnings.
+
+#### 4. Run the import
+
+```bash
+npm run import:v2 -- --source "postgres://master_user:password@localhost:5432/globaly_v2_import"
+```
+
+Or set `V2_DATABASE_URL` in `.env` and run without `--source`:
+
+```bash
+# In .env
+V2_DATABASE_URL=postgres://master_user:password@localhost:5432/globaly_v2_import
+```
+
+```bash
+npm run import:v2
+```
+
+#### 5. Import specific groups (optional)
+
+```bash
+# Only knowledge tables
+npm run import:v2 -- --source "..." --only knowledge
+
+# Only specific tables
+npm run import:v2 -- --source "..." --tables extraction_courses,extraction_course_fees
+
+# Multiple groups
+npm run import:v2 -- --source "..." --only jobs,staged,junctions
+```
+
+#### 6. Clean up the temporary database
+
+```bash
+sudo -u postgres psql -c "DROP DATABASE globaly_v2_import;"
+```
+
+### Flags reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--source` | `V2_DATABASE_URL` env | Connection string for the restored V2 dump |
+| `--dry-run` | off | Report what would move, write nothing |
+| `--only` | all | Comma-separated group names: `jobs`, `staged`, `junctions`, `ops`, `knowledge` |
+| `--tables` | all | Comma-separated specific table names |
+| `--batch` | `500` | Rows per insert batch |
+| `--admin-id` | `1` | V3 owner id substituted for V2 auth.users uuids |
+| `--source-schema` | `public` | Schema the dump restored into |
+
+### What the script does automatically
+
+- **Owner remapping:** V2 stores owner references as `uuid` (Supabase auth.users). V3 uses integer user IDs. The script detects these columns by type comparison and substitutes `--admin-id`.
+- **Embedding columns:** V2 used OpenAI embeddings (1536 dims), V3 uses Gemini (3072 dims). Embedding columns are left `NULL` — re-embed in V3 after import.
+- **JSONB serialization:** Columns that are `jsonb` in V3 are automatically `JSON.stringify`'d before insert.
+
+---
+
 ## NPM scripts
 
 | Script | What it does |
@@ -414,6 +522,7 @@ curl -X POST http://localhost:3000/api/v3/auth/send-otp \
 | `npm run migrate:superadmin` | Run superadmin schema migrations (admin_users, admin_invitations) |
 | `npm run migrate:tenants` | Run business migrations on all existing business databases |
 | `npm run seed:superadmin` | Seed the first super admin user |
+| `npm run import:v2` | Import V2 extraction + AI knowledge data (see [Importing V2 data](#importing-v2-data)) |
 | `npm run job:auth` | Start the auth worker (sends emails + processes invitation acceptances) |
 
 ---
