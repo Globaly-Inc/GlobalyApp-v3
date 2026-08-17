@@ -17,26 +17,21 @@ export function HowItWorks() {
           </p>
         </Reveal>
 
-        <div className="space-y-16">
+        <div className="space-y-12 max-w-2xl mx-auto">
           {HOW_IT_WORKS.map((step) => (
             <Reveal key={step.step} direction="left" delay={0.1}>
-              <div className="flex flex-col md:flex-row md:items-center gap-8 md:gap-12 text-left">
-                <div className="flex-1 space-y-4">
-                  <div className="flex items-center gap-2 text-primary font-bold text-xl">
-                    <span className="bg-primary/10 w-8 h-8 rounded-full flex items-center justify-center text-sm">{step.step}</span>
-                    <span className="uppercase tracking-widest text-xs">Step {step.step}</span>
-                  </div>
-                  <h3 className="text-2xl font-bold text-foreground leading-tight">{step.title}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed max-w-md">{step.desc}</p>
-                  {step.link && (
-                    <Button variant="link" className="p-0 h-auto text-primary font-semibold hover:underline justify-start" render={<Link href={step.link.href} />}>
-                      {step.link.label} <ArrowRight className="ml-1 h-3 w-3" />
-                    </Button>
-                  )}
+              <div className="space-y-4 text-left">
+                <div className="flex items-center gap-2 text-primary font-bold text-xl">
+                  <span className="bg-primary/10 w-8 h-8 rounded-full flex items-center justify-center text-sm">{step.step}</span>
+                  <span className="uppercase tracking-widest text-xs">Step {step.step}</span>
                 </div>
-                <div className="flex-1 w-full">
-                  <div className="bg-muted/30 rounded-2xl p-4 md:p-6 flex items-center justify-center shadow-inner">{step.visual}</div>
-                </div>
+                <h3 className="text-2xl font-bold text-foreground leading-tight">{step.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed max-w-md">{step.desc}</p>
+                {step.link && (
+                  <Button variant="link" className="p-0 h-auto text-primary font-semibold hover:underline justify-start" render={<Link href={step.link.href} />}>
+                    {step.link.label} <ArrowRight className="ml-1 h-3 w-3" />
+                  </Button>
+                )}
               </div>
             </Reveal>
           ))}

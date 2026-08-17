@@ -1,8 +1,3 @@
-import type { ReactNode } from "react";
-import { SearchResultsMockup } from "../components/mockups/search-results-mockup";
-import { ProfileBuilderMockup } from "../components/mockups/profile-builder-mockup";
-import { EligibilityCheckerMockup } from "../components/mockups/eligibility-checker-mockup";
-import { VerifiedProfessionalsMockup } from "../components/mockups/verified-professionals-mockup";
 
 // Ported verbatim from V2's ForStudentsPage.tsx — no live data source for either array there either.
 export const COUNTRY_FALLBACKS: Record<string, { institutions: string; tuition: string; living: string; code: string }> = {
@@ -81,7 +76,6 @@ export type HowItWorksStep = {
   title: string;
   desc: string;
   link: { label: string; href: string } | null;
-  visual: ReactNode;
 };
 
 // V2's step 3 links to "/search?tab=agents"; v3's real tab key is "education-agencies" (see search/types.ts).
@@ -91,27 +85,23 @@ export const HOW_IT_WORKS: HowItWorksStep[] = [
     title: "Find Courses and University",
     desc: "Discover top programs and institutions that align with your career goals from over 175,000 options worldwide.",
     link: { label: "Explore Course and University", href: "/search" },
-    visual: <SearchResultsMockup />,
   },
   {
     step: 2,
     title: "Check Your Eligibility",
     desc: "Ensure the perfect match for programs that suit your qualifications, budget, and interests.",
     link: null,
-    visual: <EligibilityCheckerMockup />,
   },
   {
     step: 3,
     title: "Connect with Verified Professionals",
     desc: "Access expert guidance from certified and trust-scored professionals and institutions to ensure a smooth application process.",
     link: { label: "Explore Professionals", href: "/search?tab=education-agencies" },
-    visual: <VerifiedProfessionalsMockup />,
   },
   {
     step: 4,
     title: "Get Enrolled",
     desc: "Seamlessly complete your enrollment and embark on your global education journey with confidence.",
     link: { label: "Get Started", href: "/auth/sign-up" },
-    visual: <ProfileBuilderMockup />,
   },
 ];

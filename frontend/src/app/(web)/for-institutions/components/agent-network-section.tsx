@@ -1,14 +1,13 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "../../components/reveal";
-import { PartnershipConnectMockup } from "../../components/mockups/partnership-connect-mockup";
 import { AGENT_NETWORK_ITEMS } from "../static/for-institutions-content";
 
 export function AgentNetworkSection() {
   return (
     <section className="py-16 bg-muted/30">
       <div className="container mx-auto px-4">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <div className="max-w-2xl mx-auto">
           <Reveal direction="left">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">
               Build Your <span className="highlight-text active">Agent Network.</span> Get
@@ -44,9 +43,6 @@ export function AgentNetworkSection() {
                 Explore Agents
               </Button>
             </div>
-          </Reveal>
-          <Reveal direction="right">
-            <PartnershipConnectMockup />
           </Reveal>
         </div>
       </div>
