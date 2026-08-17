@@ -119,6 +119,25 @@ export async function listPublicCitiesForCountry(countryId: number, limit = 12) 
     .limit(limit);
 }
 
+export async function findPublicCityBySlug(citySlug: string, countrySlug?: string) {
+  const query = masterKnex("cities as ci")
+    .join("countries as co", "co.id", "ci.country_id")
+    .where("ci.status", "active")
+    .whereNull("ci.deleted_at")
+    .where((b) => b.where("ci.slug", citySlug).orWhereRaw("lower(ci.name) = lower(?)", [citySlug]));
+  if (countrySlug) {
+    query.where((b) => b.where("co.slug", countrySlug).orWhereRaw("lower(co.name) = lower(?)", [countrySlug]));
+  }
+  return query
+    .select(
+      "ci.id", "ci.name", "ci.slug", "ci.hero_image_url", "ci.thumbnail_image_url", "ci.about",
+      "ci.population_label", "ci.area_label", "ci.weather_label", "ci.timezone", "ci.highlights",
+      "ci.is_featured", "ci.meta_title", "ci.meta_description",
+      "co.id as country_id", "co.name as country_name", "co.slug as country_slug", "co.flag_emoji as country_flag_emoji",
+    )
+    .first();
+}
+
 export async function insertCountry(data: Record<string, unknown>) {
   const [row] = await masterKnex("countries").insert(data).returning("*");
   return row;

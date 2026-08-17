@@ -129,7 +129,7 @@ export const countriesMockApi = {
     if (!country) throw new Error("Country not found");
     return country;
   },
-  createCountry: async (input: CountryInput): Promise<Country> => {
+  createCountry: async (input: CountryInput, _pendingFiles?: Map<string, File>): Promise<Country> => {
     console.log("[mock] createCountry", input);
     await delay(300);
     const country: Country = { ...input, id: ++nextCountryId, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
@@ -137,7 +137,7 @@ export const countriesMockApi = {
     citiesByCountry[country.id] = [];
     return country;
   },
-  updateCountry: async (id: number, input: Partial<CountryInput>): Promise<Country> => {
+  updateCountry: async (id: number, input: Partial<CountryInput>, _pendingFiles?: Map<string, File>): Promise<Country> => {
     console.log("[mock] updateCountry", id, input);
     await delay(300);
     const index = countries.findIndex((c) => c.id === id);
@@ -154,25 +154,19 @@ export const countriesMockApi = {
     if (index !== -1) countries.splice(index, 1);
     delete citiesByCountry[id];
   },
-  uploadCountryImage: async (file: File): Promise<{ url: string }> => {
-    console.log("[mock] uploadCountryImage", file.name);
-    await delay(500);
-    return { url: URL.createObjectURL(file) };
-  },
-
   getCitiesByCountry: async (countryId: number): Promise<City[]> => {
     console.log("[mock] getCitiesByCountry", countryId);
     await delay(200);
     return citiesByCountry[countryId] ?? [];
   },
-  createCity: async (countryId: number, input: CityInput): Promise<City> => {
+  createCity: async (countryId: number, input: CityInput, _pendingFiles?: Map<string, File>): Promise<City> => {
     console.log("[mock] createCity", countryId, input);
     await delay(300);
     const city: City = { ...input, id: ++nextCityId, country_id: countryId };
     citiesByCountry[countryId] = [...(citiesByCountry[countryId] ?? []), city];
     return city;
   },
-  updateCity: async (id: number, input: Partial<CityInput>): Promise<City> => {
+  updateCity: async (id: number, input: Partial<CityInput>, _pendingFiles?: Map<string, File>): Promise<City> => {
     console.log("[mock] updateCity", id, input);
     await delay(300);
     for (const list of Object.values(citiesByCountry)) {
@@ -192,10 +186,5 @@ export const countriesMockApi = {
     for (const [countryId, list] of Object.entries(citiesByCountry)) {
       citiesByCountry[Number(countryId)] = list.filter((c) => c.id !== id);
     }
-  },
-  uploadCityImage: async (file: File): Promise<{ url: string }> => {
-    console.log("[mock] uploadCityImage", file.name);
-    await delay(500);
-    return { url: URL.createObjectURL(file) };
   },
 };

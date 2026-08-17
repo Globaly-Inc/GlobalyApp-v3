@@ -40,6 +40,10 @@ export function CountryEditorView({ countryId }: Readonly<{ countryId: number | 
   const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const pendingFilesRef = useRef<Map<string, File>>(new Map());
+  const registerPendingFile = (file: File, previewUrl: string) => {
+    pendingFilesRef.current.set(previewUrl, file);
+  };
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -65,25 +69,36 @@ export function CountryEditorView({ countryId }: Readonly<{ countryId: number | 
     return Object.keys(next).length === 0;
   };
 
+  const buildInput = (): CountryInput =>
+    ({
+      ...country,
+      avg_tuition_min: country.avg_tuition_min != null ? Number(country.avg_tuition_min) : null,
+      avg_tuition_max: country.avg_tuition_max != null ? Number(country.avg_tuition_max) : null,
+    }) as CountryInput;
+
+  const submitCountry = (input: CountryInput) =>
+    countryId
+      ? countriesApi.updateCountry(countryId, input, pendingFilesRef.current)
+      : countriesApi.createCountry(input, pendingFilesRef.current);
+
+  const handleSaveError = (err: unknown) => {
+    if (err instanceof ApiError && err.code === "CONFLICT") {
+      setErrors((e) => ({ ...e, slug: err.message }));
+      toast.error("Slug already in use", { description: "Pick a different slug." });
+      return;
+    }
+    toast.error("Something went wrong", { description: err instanceof Error ? err.message : "Please try again." });
+  };
+
   const handleSave = async () => {
     if (!validate()) return;
     setSaving(true);
     try {
-      const input = country as CountryInput;
-      if (countryId) {
-        await countriesApi.updateCountry(countryId, input);
-      } else {
-        await countriesApi.createCountry(input);
-      }
+      await submitCountry(buildInput());
       toast.success(countryId ? "Country updated" : "Country created");
       router.push("/admin/platform/countries");
     } catch (err) {
-      if (err instanceof ApiError && err.code === "CONFLICT") {
-        setErrors((e) => ({ ...e, slug: err.message }));
-        toast.error("Slug already in use", { description: "Pick a different slug." });
-      } else {
-        toast.error("Something went wrong", { description: err instanceof Error ? err.message : "Please try again." });
-      }
+      handleSaveError(err);
     } finally {
       setSaving(false);
     }
@@ -123,13 +138,13 @@ export function CountryEditorView({ countryId }: Readonly<{ countryId: number | 
       <AdminSegmentedTabs options={countryId ? COUNTRY_EDITOR_TABS_EDIT : COUNTRY_EDITOR_TABS_NEW} value={tab} onChange={setTab} />
 
       {tab === "basic" && <CountryBasicPanel {...panelProps} />}
-      {tab === "images" && <CountryImagesPanel {...panelProps} />}
+      {tab === "images" && <CountryImagesPanel {...panelProps} onPendingFile={registerPendingFile} />}
       {tab === "details" && <CountryDetailsPanel {...panelProps} />}
       {tab === "education" && <CountryEducationPanel {...panelProps} />}
       {tab === "visa" && <CountryVisaPanel {...panelProps} />}
       {tab === "weather" && <CountryWeatherPanel {...panelProps} />}
       {tab === "seo" && <CountrySeoPanel {...panelProps} />}
-      {tab === "cities" && countryId && <CountryCitiesTab countryId={countryId} />}
+      {tab === "cities" && countryId !== null && <CountryCitiesTab countryId={countryId} />}
     </div>
   );
 }

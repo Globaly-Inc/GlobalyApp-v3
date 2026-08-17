@@ -4,10 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImageDropzone } from "@/components/image-dropzone";
-import { countriesApi } from "../apis";
 import type { CountryPanelProps } from "../types";
 
-export function CountryImagesPanel({ country, onChange }: CountryPanelProps) {
+export function CountryImagesPanel({
+  country,
+  onChange,
+  onPendingFile,
+}: CountryPanelProps & { onPendingFile: (file: File, previewUrl: string) => void }) {
   const gallery = country.gallery_images ?? [];
 
   return (
@@ -18,7 +21,7 @@ export function CountryImagesPanel({ country, onChange }: CountryPanelProps) {
           <ImageDropzone
             value={country.hero_image_url}
             onChange={(url) => onChange({ hero_image_url: url })}
-            onUpload={countriesApi.uploadCountryImage}
+            onDeferredPick={onPendingFile}
           />
         </div>
 
@@ -27,7 +30,7 @@ export function CountryImagesPanel({ country, onChange }: CountryPanelProps) {
           <ImageDropzone
             value={country.thumbnail_image_url}
             onChange={(url) => onChange({ thumbnail_image_url: url })}
-            onUpload={countriesApi.uploadCountryImage}
+            onDeferredPick={onPendingFile}
           />
         </div>
 
@@ -39,13 +42,13 @@ export function CountryImagesPanel({ country, onChange }: CountryPanelProps) {
                 key={url}
                 value={url}
                 onChange={(next) => onChange({ gallery_images: next ? gallery.map((u, idx) => (idx === i ? next : u)) : gallery.filter((_, idx) => idx !== i) })}
-                onUpload={countriesApi.uploadCountryImage}
+                onDeferredPick={onPendingFile}
               />
             ))}
             <ImageDropzone
               value={null}
               onChange={(url) => url && onChange({ gallery_images: [...gallery, url] })}
-              onUpload={countriesApi.uploadCountryImage}
+              onDeferredPick={onPendingFile}
             />
           </div>
         </div>

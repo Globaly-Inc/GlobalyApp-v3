@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { ImageDropzone } from "@/components/image-dropzone";
 import { FieldError } from "@/components/field-error";
-import { countriesApi } from "../apis";
 import { generateSlug } from "../utils";
 import type { City, CityInput } from "../apis/types";
 
@@ -28,27 +27,54 @@ const empty = (): CityInput => ({
   is_featured: false, sort_order: 0, status: "active", meta_title: null, meta_description: null,
 });
 
+const REQUIRED_TEXT_FIELDS: { key: keyof CityInput; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "slug", label: "Slug" },
+  { key: "state_name", label: "State/Region" },
+  { key: "timezone", label: "Timezone" },
+  { key: "population_label", label: "Population label" },
+  { key: "area_label", label: "Area label" },
+  { key: "weather_label", label: "Weather label" },
+  { key: "about", label: "About" },
+  { key: "hero_image_url", label: "Hero image" },
+  { key: "thumbnail_image_url", label: "Thumbnail image" },
+  { key: "meta_title", label: "Meta title" },
+  { key: "meta_description", label: "Meta description" },
+];
+
+function validateCity(city: CityInput): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const { key, label } of REQUIRED_TEXT_FIELDS) {
+    const value = city[key];
+    if (typeof value !== "string" || !value.trim()) errors[key] = `${label} is required`;
+  }
+  if (city.highlights.length === 0) errors.highlights = "At least one highlight is required";
+  return errors;
+}
+
 function CityFormBody({
   initial,
   onSave,
   onClose,
-}: Readonly<{ initial: City | null; onSave: (input: CityInput) => Promise<void>; onClose: () => void }>) {
+}: Readonly<{ initial: City | null; onSave: (input: CityInput, pendingFiles: Map<string, File>) => Promise<void>; onClose: () => void }>) {
   const [city, setCity] = useState<CityInput>(() => initial ?? empty());
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const pendingFilesRef = useRef<Map<string, File>>(new Map());
+  const registerPendingFile = (file: File, previewUrl: string) => {
+    pendingFilesRef.current.set(previewUrl, file);
+  };
 
   const update = (updates: Partial<CityInput>) => setCity((c) => ({ ...c, ...updates }));
 
   const handleSave = async () => {
-    const nextErrors: Record<string, string> = {};
-    if (!city.name.trim()) nextErrors.name = "Name is required";
-    if (!city.slug.trim()) nextErrors.slug = "Slug is required";
+    const nextErrors = validateCity(city);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
     setSaving(true);
     try {
-      await onSave(city);
+      await onSave(city, pendingFilesRef.current);
       onClose();
     } catch (err) {
       toast.error("Couldn't save city", { description: err instanceof Error ? err.message : "Please try again." });
@@ -83,58 +109,112 @@ function CityFormBody({
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="city-state">State/Region</Label>
-          <Input className="h-10" id="city-state" value={city.state_name ?? ""} onChange={(e) => update({ state_name: e.target.value || null })} />
+          <Label htmlFor="city-state">State/Region *</Label>
+          <Input
+            className="h-10"
+            id="city-state"
+            value={city.state_name ?? ""}
+            onChange={(e) => update({ state_name: e.target.value || null })}
+            aria-invalid={!!errors.state_name}
+          />
+          <FieldError message={errors.state_name} />
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="city-timezone">Timezone</Label>
-          <Input className="h-10" id="city-timezone" value={city.timezone ?? ""} onChange={(e) => update({ timezone: e.target.value || null })} />
+          <Label htmlFor="city-timezone">Timezone *</Label>
+          <Input
+            className="h-10"
+            id="city-timezone"
+            value={city.timezone ?? ""}
+            onChange={(e) => update({ timezone: e.target.value || null })}
+            aria-invalid={!!errors.timezone}
+          />
+          <FieldError message={errors.timezone} />
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="city-population">Population label</Label>
-          <Input className="h-10" id="city-population" value={city.population_label ?? ""} onChange={(e) => update({ population_label: e.target.value || null })} />
+          <Label htmlFor="city-population">Population label *</Label>
+          <Input
+            className="h-10"
+            id="city-population"
+            value={city.population_label ?? ""}
+            onChange={(e) => update({ population_label: e.target.value || null })}
+            aria-invalid={!!errors.population_label}
+          />
+          <FieldError message={errors.population_label} />
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="city-area">Area label</Label>
-          <Input className="h-10" id="city-area" value={city.area_label ?? ""} onChange={(e) => update({ area_label: e.target.value || null })} />
+          <Label htmlFor="city-area">Area label *</Label>
+          <Input
+            className="h-10"
+            id="city-area"
+            value={city.area_label ?? ""}
+            onChange={(e) => update({ area_label: e.target.value || null })}
+            aria-invalid={!!errors.area_label}
+          />
+          <FieldError message={errors.area_label} />
         </div>
 
         <div className="flex flex-col gap-2 sm:col-span-2">
-          <Label htmlFor="city-weather">Weather label</Label>
-          <Input className="h-10" id="city-weather" value={city.weather_label ?? ""} onChange={(e) => update({ weather_label: e.target.value || null })} />
+          <Label htmlFor="city-weather">Weather label *</Label>
+          <Input
+            className="h-10"
+            id="city-weather"
+            value={city.weather_label ?? ""}
+            onChange={(e) => update({ weather_label: e.target.value || null })}
+            aria-invalid={!!errors.weather_label}
+          />
+          <FieldError message={errors.weather_label} />
         </div>
 
         <div className="flex flex-col gap-2 sm:col-span-2">
-          <Label htmlFor="city-highlights">Highlights (comma-separated)</Label>
+          <Label htmlFor="city-highlights">Highlights (comma-separated) *</Label>
           <Input
             className="h-10"
             id="city-highlights"
             value={city.highlights.join(", ")}
             onChange={(e) => update({ highlights: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
+            aria-invalid={!!errors.highlights}
           />
+          <FieldError message={errors.highlights} />
         </div>
 
         <div className="flex flex-col gap-2 sm:col-span-2">
-          <Label htmlFor="city-about">About</Label>
-          <Textarea className="min-h-20" id="city-about" rows={3} value={city.about ?? ""} onChange={(e) => update({ about: e.target.value || null })} />
+          <Label htmlFor="city-about">About *</Label>
+          <Textarea
+            className="min-h-20"
+            id="city-about"
+            rows={3}
+            value={city.about ?? ""}
+            onChange={(e) => update({ about: e.target.value || null })}
+            aria-invalid={!!errors.about}
+          />
+          <FieldError message={errors.about} />
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label>Hero image</Label>
-          <ImageDropzone value={city.hero_image_url} onChange={(url) => update({ hero_image_url: url })} onUpload={countriesApi.uploadCityImage} />
+          <Label>Hero image *</Label>
+          <ImageDropzone value={city.hero_image_url} onChange={(url) => update({ hero_image_url: url })} onDeferredPick={registerPendingFile} />
+          <FieldError message={errors.hero_image_url} />
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label>Thumbnail image</Label>
-          <ImageDropzone value={city.thumbnail_image_url} onChange={(url) => update({ thumbnail_image_url: url })} onUpload={countriesApi.uploadCityImage} />
+          <Label>Thumbnail image *</Label>
+          <ImageDropzone value={city.thumbnail_image_url} onChange={(url) => update({ thumbnail_image_url: url })} onDeferredPick={registerPendingFile} />
+          <FieldError message={errors.thumbnail_image_url} />
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="city-meta-title">Meta title</Label>
-          <Input className="h-10" id="city-meta-title" value={city.meta_title ?? ""} onChange={(e) => update({ meta_title: e.target.value || null })} />
+          <Label htmlFor="city-meta-title">Meta title *</Label>
+          <Input
+            className="h-10"
+            id="city-meta-title"
+            value={city.meta_title ?? ""}
+            onChange={(e) => update({ meta_title: e.target.value || null })}
+            aria-invalid={!!errors.meta_title}
+          />
+          <FieldError message={errors.meta_title} />
         </div>
 
         <div className="flex flex-col gap-2">
@@ -149,14 +229,16 @@ function CityFormBody({
         </div>
 
         <div className="flex flex-col gap-2 sm:col-span-2">
-          <Label htmlFor="city-meta-description">Meta description</Label>
+          <Label htmlFor="city-meta-description">Meta description *</Label>
           <Textarea
             className="min-h-20"
             id="city-meta-description"
             rows={3}
             value={city.meta_description ?? ""}
             onChange={(e) => update({ meta_description: e.target.value || null })}
+            aria-invalid={!!errors.meta_description}
           />
+          <FieldError message={errors.meta_description} />
         </div>
 
         <div className="flex flex-col gap-2">
@@ -191,10 +273,15 @@ export function CityFormDialog({
   onOpenChange,
   initial,
   onSave,
-}: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void; initial: City | null; onSave: (input: CityInput) => Promise<void> }>) {
+}: Readonly<{
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initial: City | null;
+  onSave: (input: CityInput, pendingFiles: Map<string, File>) => Promise<void>;
+}>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
         {open && <CityFormBody key={initial?.id ?? "new"} initial={initial} onSave={onSave} onClose={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
