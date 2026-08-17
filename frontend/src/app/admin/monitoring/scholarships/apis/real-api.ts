@@ -1,6 +1,9 @@
 import { httpGet } from "@/lib/api/http";
-import type { Scholarship } from "./types";
+import type { Paginated, Scholarship } from "./types";
+
+const BASE = "/admin/monitoring/scholarships";
 
 export const scholarshipsRealApi = {
-  getScholarships: (): Promise<Scholarship[]> => httpGet("/admin/scholarships"),
+  getScholarships: async (): Promise<Scholarship[]> =>
+    (await httpGet<Paginated<Scholarship>>(`${BASE}?limit=100`)).data,
 };

@@ -1,8 +1,10 @@
 import type { AdminListColumn } from "../../../components/admin-placeholder-view";
 
 export const SCHOLARSHIP_COLUMNS: AdminListColumn[] = [
-  { key: "name", label: "Scholarship" },
+  { key: "title", label: "Scholarship" },
+  { key: "provider_name", label: "Provider" },
+  { key: "country", label: "Country" },
   { key: "deadline", label: "Deadline" },
-  { key: "featured", label: "Featured" },
-  { key: "status", label: "Status" },
+  { key: "is_published", label: "Published" },
+  { key: "is_featured", label: "Featured" },
 ];

@@ -5,6 +5,7 @@ import * as repo from "../../superadmin/platform/platform.repository.js";
 import { withCityImagePreviews, withImagePreviews } from "../../superadmin/platform/routes/countries.routes.js";
 
 const SlugParam = z.object({ slug: z.string().min(1) });
+const CitySlugParams = z.object({ countrySlug: z.string().min(1), citySlug: z.string().min(1) });
 
 export async function publicGeoRoutes(app: FastifyInstance) {
   app.get("/countries/featured", async (_req, reply) => {
@@ -35,5 +36,12 @@ export async function publicGeoRoutes(app: FastifyInstance) {
       ...previewedCity,
       country: { id: country_id, name: country_name, slug: country_slug, flag_emoji: country_flag_emoji },
     });
+  });
+
+  app.get("/countries/:countrySlug/cities/:citySlug", async (req, reply) => {
+    const { countrySlug, citySlug } = CitySlugParams.parse(req.params);
+    const city = await repo.findPublicCityBySlug(countrySlug, citySlug);
+    if (!city) throw new NotFoundError("City not found");
+    return reply.send(city);
   });
 }

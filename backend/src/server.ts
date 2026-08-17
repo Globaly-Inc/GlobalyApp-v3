@@ -27,6 +27,7 @@ import otherServicesModule, { publicServicesModule } from "./modules/other-servi
 import geoModule from "./modules/geo/index.js";
 import searchModule from "./modules/search/index.js";
 import aiCounsellorModule from "./modules/ai-counsellor/index.js";
+import scholarshipsPublicModule from "./modules/scholarships/index.js";
 
 const logger = createChildLogger("server");
 
@@ -66,6 +67,7 @@ export async function buildServer() {
   await app.register(agentsModule);         // agent invitations + management (per-business DB)
   await app.register(feedModule);            // cross-portal social feed
   await app.register(aiCounsellorModule);     // AI counsellor — chat, RAG, credits, sessions
+  await app.register(scholarshipsPublicModule); // public scholarships reads (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));
