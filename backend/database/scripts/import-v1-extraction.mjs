@@ -158,13 +158,16 @@ async function buildTransforms({ v1, v3, v3Schema, v1Schema, report }) {
   const feeTypes = makeReferenceResolver({
     label: "extraction_course_fees.fee_type_id",
     v1Names: await v1NameByUuid(v1, "fee_types"),
-    v3Ids: await v3IdByName(v3, V3_SCHEMA, "fee_types"),
+    // Reference vocabularies live in public, like the two resolvers above. The
+    // superadmin copies were an abandoned placeholder; reading them here is what
+    // left 718 fee_type_id NULL.
+    v3Ids: await v3IdByName(v3, "public", "fee_types"),
     report,
   });
   const degreeLevels = makeReferenceResolver({
     label: "extraction_eligibility_requirements.degree_level_id",
     v1Names: await v1NameByUuid(v1, "degree_levels"),
-    v3Ids: await v3IdByName(v3, V3_SCHEMA, "degree_levels"),
+    v3Ids: await v3IdByName(v3, "public", "degree_levels"),
     report,
   });
 

@@ -80,6 +80,10 @@ async function createFixtureSchema() {
     ALTER TABLE ${FIXTURE_SCHEMA}.extraction_courses
       ALTER COLUMN domestic_fee_installments      TYPE text USING NULL,
       ALTER COLUMN international_fee_installments TYPE text USING NULL;
+    ALTER TABLE ${FIXTURE_SCHEMA}.extraction_course_fees
+      ALTER COLUMN fee_type_id TYPE uuid USING NULL;
+    ALTER TABLE ${FIXTURE_SCHEMA}.extraction_eligibility_requirements
+      ALTER COLUMN degree_level_id TYPE uuid USING NULL;
   `);
   // V1 reference tables the loader resolves category / fee / degree FKs against.
   await db.query(`
