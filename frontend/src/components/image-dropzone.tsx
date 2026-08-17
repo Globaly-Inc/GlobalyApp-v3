@@ -9,18 +9,28 @@ export function ImageDropzone({
   value,
   onChange,
   onUpload,
+  onDeferredPick,
   className,
 }: Readonly<{
   value: string | null | undefined;
   onChange: (url: string | null) => void;
-  onUpload: (file: File) => Promise<{ url: string }>;
+  onUpload?: (file: File) => Promise<{ url: string }>;
+  onDeferredPick?: (file: File, previewUrl: string) => void;
   className?: string;
 }>) {
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const upload = async (file: File) => {
+  const pick = async (file: File) => {
+    if (onDeferredPick) {
+      if (value?.startsWith("blob:")) URL.revokeObjectURL(value);
+      const previewUrl = URL.createObjectURL(file);
+      onDeferredPick(file, previewUrl);
+      onChange(previewUrl);
+      return;
+    }
+    if (!onUpload) return;
     setUploading(true);
     try {
       const { url } = await onUpload(file);
@@ -34,7 +44,7 @@ export function ImageDropzone({
 
   const handleFileInput = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) upload(file);
+    if (file) pick(file);
     e.target.value = "";
   };
 
@@ -42,7 +52,7 @@ export function ImageDropzone({
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) upload(file);
+    if (file) pick(file);
   };
 
   if (value) {

@@ -197,10 +197,11 @@ export function isConfigured(): boolean {
  * strip the bucket prefix so those keep resolving instead of erroring.
  */
 export function toStoragePath(raw: string): string {
+  const withoutQuery = raw.split("?")[0];
   const marker = "storage.googleapis.com/";
-  const idx = raw.indexOf(marker);
-  if (idx === -1) return raw;
-  return raw.slice(idx + marker.length).split("/").slice(1).join("/");
+  const idx = withoutQuery.indexOf(marker);
+  if (idx === -1) return withoutQuery;
+  return withoutQuery.slice(idx + marker.length).split("/").slice(1).join("/");
 }
 
 /** Resolve a stored path (or null) to a signed, viewable URL — the shared "preview this image" call. */

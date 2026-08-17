@@ -24,10 +24,10 @@ export function CountryCitiesTab({ countryId }: Readonly<{ countryId: number }>)
     countriesApi.getCitiesByCountry(countryId).then(setCities).finally(() => setLoading(false));
   }, [countryId]);
 
-  const handleSave = async (input: CityInput) => {
+  const handleSave = async (input: CityInput, pendingFiles: Map<string, File>) => {
     const saved = editing
-      ? await countriesApi.updateCity(editing.id, input)
-      : await countriesApi.createCity(countryId, input);
+      ? await countriesApi.updateCity(editing.id, input, pendingFiles)
+      : await countriesApi.createCity(countryId, input, pendingFiles);
     setCities((prev) => (editing ? prev.map((c) => (c.id === saved.id ? saved : c)) : [...prev, saved]));
     toast.success(editing ? "City updated" : "City added");
   };

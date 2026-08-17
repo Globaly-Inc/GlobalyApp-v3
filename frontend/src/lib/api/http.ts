@@ -122,14 +122,22 @@ export function httpPut<T>(path: string, body: unknown, init?: RequestInit): Pro
   return httpWithBody<T>("PUT", path, body, init);
   }
 /**
- * Multipart POST. No Content-Type header on purpose — the browser must set it with the boundary.
+ * Multipart POST/PATCH. No Content-Type header on purpose — the browser must set it with the boundary.
  */
-export async function httpPostForm<T>(path: string, form: FormData, init?: RequestInit): Promise<T> {
+async function httpFormWithBody<T>(method: "POST" | "PATCH", path: string, form: FormData, init?: RequestInit): Promise<T> {
   const res = await withRefreshRetry(() =>
-    fetch(`${BASE_URL}${path}`, { ...init, method: "POST", headers: { ...authHeaders(), ...init?.headers }, body: form }),
+    fetch(`${BASE_URL}${path}`, { ...init, method, headers: { ...authHeaders(), ...init?.headers }, body: form }),
   );
   if (!res.ok) throw await readError(res);
   return res.json() as Promise<T>;
+}
+
+export function httpPostForm<T>(path: string, form: FormData, init?: RequestInit): Promise<T> {
+  return httpFormWithBody<T>("POST", path, form, init);
+}
+
+export function httpPatchForm<T>(path: string, form: FormData, init?: RequestInit): Promise<T> {
+  return httpFormWithBody<T>("PATCH", path, form, init);
 }
 
 /** POST that expects an empty body (204). Calling httpPost for these would throw on res.json(). */
