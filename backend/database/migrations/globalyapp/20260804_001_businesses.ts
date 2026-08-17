@@ -79,6 +79,11 @@ export async function up(knex: Knex): Promise<void> {
 
     t.decimal("latitude", 10, 7).nullable();
     t.decimal("longitude", 10, 7).nullable();
+
+    // unclaimed | claim_pending | claimed
+    t.text("claim_status").notNullable().defaultTo("unclaimed");
+    t.text("claim_token").nullable();
+    t.timestamp("claim_token_expires_at").nullable();
   });
 }
 

@@ -28,7 +28,7 @@ function toBranchQuery(params: BranchListParams): string {
   return qs ? `?${qs}` : "";
 }
 
-function toRelationQuery(params: RelationListParams): string {
+function toPageLimitQuery(params: { page?: number; limit?: number }): string {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
@@ -55,14 +55,6 @@ function toMemberQuery(params: MemberListParams): string {
   return qs ? `?${qs}` : "";
 }
 
-function toActivityQuery(params: ActivityListParams): string {
-  const q = new URLSearchParams();
-  if (params.page) q.set("page", String(params.page));
-  if (params.limit) q.set("limit", String(params.limit));
-  const qs = q.toString();
-  return qs ? `?${qs}` : "";
-}
-
 export const businessesRealApi = {
   getBusinesses: async (params: BusinessListParams = {}): Promise<Business[]> => {
     const { data } = await httpGet<{ data: Business[] }>(`${BASE}${toQuery(params)}`);
@@ -78,6 +70,8 @@ export const businessesRealApi = {
   updateBusiness: (id: number, patch: BusinessPatch): Promise<BusinessDetail> => httpPatch(`${BASE}/${id}`, patch),
   updateStatus: (id: number, status: BusinessStatus): Promise<{ status: string }> =>
     httpPatch(`${BASE}/${id}/status`, { status }),
+  sendClaimRequest: (id: number): Promise<{ claim_status: string }> => httpPost(`${BASE}/${id}/claim-request`, {}),
+  sendBulkClaimRequests: (ids: number[]): Promise<{ queued: number }> => httpPost(`${BASE}/claim-requests/bulk`, { ids }),
   updatePublished: (id: number, is_published: boolean): Promise<{ is_published: boolean }> =>
     httpPatch(`${BASE}/${id}/published`, { is_published }),
   deleteBusiness: (id: number): Promise<void> => httpDelete(`${BASE}/${id}`),
@@ -122,7 +116,7 @@ export const businessesRealApi = {
   removeMember: (id: number, memberId: number): Promise<void> => httpDelete(`${BASE}/${id}/members/${memberId}`),
 
   getRelations: async (id: number, params: RelationListParams = {}): Promise<RelationListResult> => {
-    const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/${id}/relations${toRelationQuery(params)}`);
+    const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/${id}/relations${toPageLimitQuery(params)}`);
     return { data, total: meta.total };
   },
   createRelation: (id: number, input: RelationInput): Promise<BusinessRelation> => httpPost(`${BASE}/${id}/relations`, input),
@@ -131,7 +125,7 @@ export const businessesRealApi = {
   deleteRelation: (id: number, relationId: string): Promise<void> => httpDelete(`${BASE}/${id}/relations/${relationId}`),
 
   getActivity: async (id: number, params: ActivityListParams = {}): Promise<ActivityListResult> => {
-    const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${BASE}/${id}/activity${toActivityQuery(params)}`);
+    const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${BASE}/${id}/activity${toPageLimitQuery(params)}`);
     return { data, total: meta.total };
   },
 };

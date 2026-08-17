@@ -1,11 +1,19 @@
 // Business routes — registration (any authenticated user) + profile management (business context required).
 
 import type { FastifyInstance } from "fastify";
-import { BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema } from "../schemas/businesses.schema.js";
+import { BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema, ClaimAcceptSchema } from "../schemas/businesses.schema.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/businesses.service.js";
 
 export async function businessRoutes(app: FastifyInstance) {
+  app.post("/claim/accept", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const { token } = ClaimAcceptSchema.parse(req.body);
+    const result = await service.acceptClaim(token);
+    return reply.send(result);
+  });
+
   // Auth-required: Register business (any platform user can create a business)
   app.post("/register", {
     config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },

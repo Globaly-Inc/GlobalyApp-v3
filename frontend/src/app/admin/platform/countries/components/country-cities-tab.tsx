@@ -57,7 +57,10 @@ export function CountryCitiesTab({ countryId }: Readonly<{ countryId: number }>)
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {cities.length} {cities.length === 1 ? "city" : "cities"}
+        </p>
         <Button className="gap-1.5" onClick={() => setEditing(null)}>
           <Plus className="h-4 w-4" /> Add City
         </Button>

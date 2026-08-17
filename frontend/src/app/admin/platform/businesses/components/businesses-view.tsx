@@ -12,6 +12,8 @@ import { fetchBusinessCategories } from "@/app/admin/platform/categories/store/c
 import {
   deleteBusinessThunk,
   fetchBusinesses,
+  sendBulkClaimRequests,
+  sendClaimRequest,
   updateBusinessPublished,
   updateBusinessStatus,
 } from "../store/businesses-slice";
@@ -20,6 +22,7 @@ import type { Business } from "../apis/types";
 import { BusinessCard } from "./shared/business-card";
 import { DeleteBusinessDialog } from "./shared/delete-business-dialog";
 import { BulkDeleteDialog } from "./shared/bulk-delete-dialog";
+import { ClaimRequestDialog, type ClaimRequestTarget } from "./shared/claim-request-dialog";
 import { BusinessFiltersBar } from "./shared/business-filters-bar";
 import { BusinessSelectionBar } from "./shared/business-selection-bar";
 
@@ -38,6 +41,8 @@ export function BusinessesView() {
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [publishBusyId, setPublishBusyId] = useState<number | null>(null);
+  const [claimRequestBusy, setClaimRequestBusy] = useState(false);
+  const [claimRequestTarget, setClaimRequestTarget] = useState<ClaimRequestTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Business | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -119,6 +124,27 @@ export function BusinessesView() {
         dispatch(fetchBusinesses(buildBusinessesParams()));
       })
       .catch((e: Error) => toast.error("Couldn't update status", { description: e.message }));
+
+  const runSendClaimRequest = async () => {
+    if (!claimRequestTarget) return;
+    setClaimRequestBusy(true);
+    try {
+      if (claimRequestTarget.kind === "single") {
+        await dispatch(sendClaimRequest(claimRequestTarget.business.id)).unwrap();
+        toast.success("Claim request sent to the business owner");
+      } else {
+        const ids = Array.from(selected);
+        await dispatch(sendBulkClaimRequests(ids)).unwrap();
+        toast.success(`Queued claim requests for ${ids.length} businesses`);
+        clearSelection();
+      }
+      setClaimRequestTarget(null);
+    } catch (e) {
+      toast.error("Couldn't send claim request", { description: (e as Error).message });
+    } finally {
+      setClaimRequestBusy(false);
+    }
+  };
 
   const runTogglePublish = async (id: number, next: boolean) => {
     setPublishBusyId(id);
@@ -204,7 +230,9 @@ export function BusinessesView() {
             onSuspend={() => runSuspend(b.id)}
             onTogglePublish={() => runTogglePublish(b.id, !b.is_published)}
             onDelete={() => setDeleteTarget(b)}
+            onSendClaimRequest={() => setClaimRequestTarget({ kind: "single", business: b })}
             publishBusy={publishBusyId === b.id}
+            claimRequestBusy={claimRequestBusy && claimRequestTarget?.kind === "single" && claimRequestTarget.business.id === b.id}
           />
         ))}
       </div>
@@ -273,6 +301,7 @@ export function BusinessesView() {
           onVerify={() => bulkUpdateStatus("verified")}
           onSuspend={() => bulkUpdateStatus("suspended")}
           onDeleteClick={() => setBulkDeleteOpen(true)}
+          onSendClaimRequestsClick={() => setClaimRequestTarget({ kind: "bulk", count: selected.size })}
         />
       )}
         </>
@@ -290,6 +319,12 @@ export function BusinessesView() {
         onOpenChange={setBulkDeleteOpen}
         onConfirm={bulkDelete}
         deleting={bulkBusy}
+      />
+      <ClaimRequestDialog
+        target={claimRequestTarget}
+        onOpenChange={(open) => !open && setClaimRequestTarget(null)}
+        onConfirm={runSendClaimRequest}
+        sending={claimRequestBusy}
       />
     </div>
   );

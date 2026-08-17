@@ -83,7 +83,7 @@ const mockBusinesses: BusinessDetail[] = [
   {
     id: 1, business_name: "Prime Education Group", subdomain: "primeedu", business_type: "education_agent",
     business_category_id: 1, category_name: "Education Agent", email: "hello@primeedu.com", phone: "+61 2 9000 1000",
-    status: "verified", is_published: true, country_id: 1, country_name: "Australia", city: "Sydney",
+    status: "verified", claim_status: "claimed", is_published: true, country_id: 1, country_name: "Australia", city: "Sydney",
     logo_url: null, account_status: 1, created_at: "2026-06-01T09:00:00Z",
     owner_first_name: "Alicia", owner_last_name: "Tan", owner_email: "alicia@primeedu.com",
     is_unclaimed: false, profile_views: 128, branch_count: 2, service_count: 5,
@@ -97,7 +97,7 @@ const mockBusinesses: BusinessDetail[] = [
   {
     id: 2, business_name: "Everest Migration Consultants", subdomain: "everest-migration", business_type: "immigration_department",
     business_category_id: 2, category_name: "Immigration Department", email: "info@everestmigration.com", phone: null,
-    status: "unverified", is_published: false, country_id: 2, country_name: "New Zealand", city: "Auckland",
+    status: "unverified", claim_status: "claimed", is_published: false, country_id: 2, country_name: "New Zealand", city: "Auckland",
     logo_url: null, account_status: 1, created_at: "2026-07-15T09:00:00Z",
     owner_first_name: "Ravi", owner_last_name: "Shah", owner_email: "ravi@everestmigration.com",
     is_unclaimed: false, profile_views: 12, branch_count: 0, service_count: 0,
@@ -110,7 +110,7 @@ const mockBusinesses: BusinessDetail[] = [
   {
     id: 3, business_name: "Global Study Institute", subdomain: "gsi", business_type: "institution",
     business_category_id: 3, category_name: "Institution", email: "admissions@gsi.edu", phone: "+1 604 555 0110",
-    status: "claim_pending", is_published: false, country_id: 3, country_name: "Canada", city: "Vancouver",
+    status: "unverified", claim_status: "unclaimed", is_published: false, country_id: 3, country_name: "Canada", city: "Vancouver",
     logo_url: null, account_status: 1, created_at: "2026-05-20T09:00:00Z",
     owner_first_name: null, owner_last_name: null, owner_email: null,
     is_unclaimed: true, profile_views: 0, branch_count: 0, service_count: 0,
@@ -151,6 +151,22 @@ export const businessesMockApi = {
     if (b) b.status = status;
     return { status };
   },
+  sendClaimRequest: async (id: number): Promise<{ claim_status: string }> => {
+    console.log("[mock] POST /admin/platform/businesses/:id/claim-request", id);
+    await delay(200);
+    const b = mockBusinesses.find((x) => x.id === id);
+    if (b) b.claim_status = "claim_pending";
+    return { claim_status: "claim_pending" };
+  },
+  sendBulkClaimRequests: async (ids: number[]): Promise<{ queued: number }> => {
+    console.log("[mock] POST /admin/platform/businesses/claim-requests/bulk", ids);
+    await delay(300);
+    for (const id of ids) {
+      const b = mockBusinesses.find((x) => x.id === id);
+      if (b) b.claim_status = "claim_pending";
+    }
+    return { queued: ids.length };
+  },
   updatePublished: async (id: number, is_published: boolean): Promise<{ is_published: boolean }> => {
     console.log("[mock] PATCH /admin/platform/businesses/:id/published", id, is_published);
     await delay(200);
@@ -177,7 +193,7 @@ export const businessesMockApi = {
     const business: BusinessDetail = {
       id, business_name: input.business_name, subdomain: input.subdomain, business_type: null,
       business_category_id: input.business_category_id, category_name: null,
-      email: input.email ?? null, phone: input.phone ?? null, status: "unverified", is_published: false,
+      email: input.email ?? null, phone: input.phone ?? null, status: "unverified", claim_status: "unclaimed", is_published: false,
       country_id: input.country_id ?? null, country_name: null, city: input.city ?? null,
       logo_url: input.logo_url ?? null, account_status: 1, created_at: now,
       owner_first_name: input.first_name ?? input.business_name, owner_last_name: input.last_name ?? null, owner_email: input.email ?? null,

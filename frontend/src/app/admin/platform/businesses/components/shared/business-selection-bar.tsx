@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, Loader2, Trash2, XCircle } from "lucide-react";
+import { CheckCircle, Loader2, Mail, Trash2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function BusinessSelectionBar({
@@ -10,6 +10,7 @@ export function BusinessSelectionBar({
   onVerify,
   onSuspend,
   onDeleteClick,
+  onSendClaimRequestsClick,
 }: Readonly<{
   count: number;
   bulkBusy: boolean;
@@ -17,6 +18,7 @@ export function BusinessSelectionBar({
   onVerify: () => void;
   onSuspend: () => void;
   onDeleteClick: () => void;
+  onSendClaimRequestsClick: () => void;
 }>) {
   return (
     <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-background px-4 py-2 shadow-xl">
@@ -32,6 +34,10 @@ export function BusinessSelectionBar({
       <Button size="sm" variant="outline" className="h-8 cursor-pointer gap-1" disabled={bulkBusy} onClick={onSuspend}>
         {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
         Suspend
+      </Button>
+      <Button size="sm" variant="outline" className="h-8 cursor-pointer gap-1" disabled={bulkBusy} onClick={onSendClaimRequestsClick}>
+        {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+        Send claim requests
       </Button>
       <Button size="sm" variant="destructive" className="h-8 cursor-pointer gap-1" disabled={bulkBusy} onClick={onDeleteClick}>
         <Trash2 className="h-3 w-3" />
