@@ -1,4 +1,9 @@
-// Billing accounts — wallets, ledger, subscriptions, AI credit periods, webhook log.
+// Billing accounts — subscriptions, AI credit periods, webhook log.
+//
+// The wallet and its ledger are NOT here: `credit_wallets` and
+// `credit_transactions` are created once, in 20260816_004 / 20260816_005, and are
+// shared by this module and the AI-counsellor. This migration used to create a
+// second, competing pair; they were folded into those two files instead.
 //
 // ── Why these live in the MASTER schema and not in each tenant schema ──
 //
@@ -24,102 +29,9 @@
 
 import type { Knex } from "knex";
 
-// V1 credit_transactions_transaction_type_check, carried over verbatim.
-const TRANSACTION_TYPES = [
-  "subscription_grant",
-  "purchase",
-  "enquiry_unlock",
-  "ad_spend",
-  "ai_deduct",
-  "referral_reward",
-  "profile_bonus",
-  "refund",
-  "manual_adjustment",
-] as const;
-
 const SUBSCRIPTION_STATUSES = ["trialing", "active", "past_due", "canceled", "expired"] as const;
 
 export async function up(knex: Knex): Promise<void> {
-  // ── credit_wallets (V1: 55 — 35 business, 20 personal) ──
-  await knex.schema.createTable("credit_wallets", (t) => {
-    t.increments("id").primary();
-    t.uuid("v1_id").nullable().unique();
-
-    t.text("owner_type").notNullable().checkIn(["user", "business"], "credit_wallets_owner_type_check");
-    t.integer("platform_user_id").unsigned().nullable()
-      .references("id").inTable("platform_users").onDelete("CASCADE");
-    t.integer("business_id").unsigned().nullable()
-      .references("id").inTable("businesses").onDelete("CASCADE");
-
-    t.integer("balance").notNullable().defaultTo(0);
-    t.integer("subscription_balance").notNullable().defaultTo(0);
-    t.integer("purchased_balance").notNullable().defaultTo(0);
-    t.integer("lifetime_earned").notNullable().defaultTo(0);
-    t.integer("lifetime_spent").notNullable().defaultTo(0);
-
-    t.timestamps(true, true);
-    t.timestamp("deleted_at").nullable();
-
-    // Exactly one owner, matching owner_type.
-    t.check(
-      "(owner_type = 'business' AND business_id IS NOT NULL AND platform_user_id IS NULL)" +
-        " OR (owner_type = 'user' AND platform_user_id IS NOT NULL AND business_id IS NULL)",
-      [],
-      "credit_wallets_owner_check",
-    );
-    t.check("balance = subscription_balance + purchased_balance", [], "credit_wallets_balance_split_check");
-    // The invariant the concurrency test asserts. Application code guards with a
-    // conditional UPDATE; this is the backstop that makes a negative balance
-    // unrepresentable no matter which path writes the row.
-    t.check(
-      "balance >= 0 AND subscription_balance >= 0 AND purchased_balance >= 0" +
-        " AND lifetime_earned >= 0 AND lifetime_spent >= 0",
-      [],
-      "credit_wallets_non_negative_check",
-    );
-  });
-
-  await knex.raw(
-    `CREATE UNIQUE INDEX credit_wallets_business_unique ON credit_wallets (business_id)
-       WHERE business_id IS NOT NULL AND deleted_at IS NULL`,
-  );
-  await knex.raw(
-    `CREATE UNIQUE INDEX credit_wallets_user_unique ON credit_wallets (platform_user_id)
-       WHERE platform_user_id IS NOT NULL AND deleted_at IS NULL`,
-  );
-
-  // ── credit_transactions (V1: 162) ──
-  await knex.schema.createTable("credit_transactions", (t) => {
-    t.increments("id").primary();
-    t.uuid("v1_id").nullable().unique();
-
-    t.integer("wallet_id").unsigned().notNullable()
-      .references("id").inTable("credit_wallets").onDelete("CASCADE");
-    t.text("transaction_type").notNullable()
-      .checkIn([...TRANSACTION_TYPES], "credit_transactions_transaction_type_check");
-
-    // Signed: positive credits the wallet, negative debits it.
-    t.integer("amount").notNullable();
-    t.integer("balance_after").notNullable();
-    t.integer("subscription_amount").nullable();
-    t.integer("purchased_amount").nullable();
-
-    t.text("description").nullable();
-    t.text("reference_type").nullable();
-    t.text("reference_id").nullable();
-    t.integer("performed_by").unsigned().nullable()
-      .references("id").inTable("platform_users").onDelete("SET NULL");
-
-    // Settle-exactly-once key. Every externally triggered write (Stripe webhook,
-    // checkout verify) carries one; internal spends leave it null.
-    t.text("idempotency_key").nullable().unique();
-
-    t.timestamps(true, true);
-    t.timestamp("deleted_at").nullable();
-    t.check("balance_after >= 0", [], "credit_transactions_balance_after_check");
-    t.index(["wallet_id", "created_at"], "credit_transactions_wallet_created_idx");
-  });
-
   // ── business_subscriptions (V1: 33, one per business) ──
   await knex.schema.createTable("business_subscriptions", (t) => {
     t.increments("id").primary();
@@ -201,6 +113,4 @@ export async function down(knex: Knex): Promise<void> {
   await knex.schema.dropTableIfExists("billing_events");
   await knex.schema.dropTableIfExists("business_ai_credits");
   await knex.schema.dropTableIfExists("business_subscriptions");
-  await knex.schema.dropTableIfExists("credit_transactions");
-  await knex.schema.dropTableIfExists("credit_wallets");
 }

@@ -60,10 +60,17 @@ export async function deductCredit(userId: number, messageId: number): Promise<v
       return;
     }
 
-    await creditsRepo.updateBalance(wallet.id, balanceType, -1, trx);
+    const updated = await creditsRepo.updateBalance(wallet.id, balanceType, -1, trx);
     await creditsRepo.recordTransaction(
       wallet.id,
-      { amount: -1, balanceType, reason: "message", referenceType: "ai_message", referenceId: messageId },
+      {
+        amount: -1,
+        balanceType,
+        reason: "message",
+        balanceAfter: creditsRepo.spendableTotal(updated),
+        referenceType: "ai_message",
+        referenceId: messageId,
+      },
       trx,
     );
   });
@@ -78,7 +85,11 @@ export async function grantCredits(
 ): Promise<void> {
   const wallet = await ensureWallet(userId);
   await masterKnex.transaction(async (trx) => {
-    await creditsRepo.updateBalance(wallet.id, balanceType, amount, trx);
-    await creditsRepo.recordTransaction(wallet.id, { amount, balanceType, reason }, trx);
+    const updated = await creditsRepo.updateBalance(wallet.id, balanceType, amount, trx);
+    await creditsRepo.recordTransaction(
+      wallet.id,
+      { amount, balanceType, reason, balanceAfter: creditsRepo.spendableTotal(updated) },
+      trx,
+    );
   });
 }
