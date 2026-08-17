@@ -2,12 +2,14 @@
 //
 // A verifier nobody has seen fail is worthless: it would report GREEN on a
 // broken cutover. So this suite builds deliberately-broken fixtures and asserts
-// that each of the four checks fires on its own kind of damage —
+// that each of the six checks fires on its own kind of damage —
 //
-//   1. count     a row missing in the target
-//   2. content   a mutated column value
-//   3. fk        a child row whose parent was deleted
-//   4. sequence  a sequence reset below max(pk)
+//   1. count      a row missing in the target, and unexplained by the skip report
+//   2. content    a mutated column value (whole table, and via the 10k sample)
+//   3. fk         a child row whose parent was deleted
+//   4. sequence   a sequence reset below max(pk)
+//   5. junction   a junction whose own numbers are perfect over a failed parent
+//   6. report     a mig.unresolved row whose reason is not in the closed enum
 //
 // …plus the two rules that make a green trustworthy: a clean run exits 0, and a
 // source column that the manifest neither maps nor declares dropped is an ERROR,
@@ -112,6 +114,16 @@ interface Report {
   }[];
   fk: { pass: boolean; violationsTotal: number; violations: any[] };
   sequences: { pass: boolean; behindTotal: number; behind: any[] };
+  junctions: { pass: boolean; junctionsGuarded: number; violationsTotal: number; violations: any[] };
+  reportExplained: {
+    pass: boolean;
+    reportTablePresent: boolean;
+    rows: number;
+    byReason: Record<string, number>;
+    unknown: any[];
+    unknownTotal: number;
+  };
+  completeness: { pass: boolean; dispositioned: number; counts: Record<string, number>; pendingTotal: number } | null;
 }
 
 const describeDb = describe.skipIf(!dbAvailable);
@@ -159,6 +171,14 @@ describeDb("migration parity gate", () => {
     // Rebuild from scratch every test so one case's damage cannot leak into the next.
     await client.query(`DROP SCHEMA IF EXISTS ${SRC} CASCADE; DROP SCHEMA IF EXISTS ${TGT} CASCADE`);
     await client.query(`CREATE SCHEMA ${SRC}; CREATE SCHEMA ${TGT}`);
+    // Check 6 reads mig.unresolved globally, so a leftover fixture row would make
+    // the NEXT test red for the previous test's reason.
+    await client.query(`
+      DO $$ BEGIN
+        IF to_regclass('mig.unresolved') IS NOT NULL THEN
+          DELETE FROM mig.unresolved WHERE source_table LIKE 'vfx%';
+        END IF;
+      END $$`);
 
     await client.query(`
       CREATE TABLE ${SRC}.orders (
@@ -419,5 +439,208 @@ describeDb("migration parity gate", () => {
       env: { ...process.env, V1_DATABASE_URL: "", V3_DATABASE_URL: "" },
     });
     expect(stdout).toContain("self-check: ok");
+  });
+
+  // ── Check 1 (reconciliation): a skip is acceptable only when it is explained ─
+  //
+  // This is the arithmetic half of "coverage is arithmetic, not memory": source
+  // rows == migrated rows + reason-coded skips, KEY BY KEY. A report row for some
+  // other key does not excuse this one.
+
+  async function seedReport(rows: { key: string; reason: string }[]) {
+    await client.query(`CREATE SCHEMA IF NOT EXISTS mig`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS mig.unresolved (
+        id bigserial PRIMARY KEY,
+        run_id text NOT NULL,
+        wave text NOT NULL,
+        source_table text NOT NULL,
+        source_key text NOT NULL,
+        target_table text,
+        column_name text,
+        reason_code text NOT NULL,
+        detail text,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`);
+    await client.query(`DELETE FROM mig.unresolved WHERE source_table LIKE 'vfx%'`);
+    for (const r of rows) {
+      await client.query(
+        `INSERT INTO mig.unresolved (run_id, wave, source_table, source_key, reason_code)
+         VALUES ('vfx', 'VFX', $1, $2, $3)`,
+        [`${SRC}.orders`, r.key, r.reason],
+      );
+    }
+  }
+
+  /** Fixture manifest that also declares the closed reason enum check 6 reads. */
+  function reportingManifest(overrides: Record<string, unknown> = {}) {
+    return {
+      meta: { reasonCodes: { unresolved_user: "no platform_users row", invalid_source_data: "fails a V3 validity rule" } },
+      ...fixtureManifest(overrides),
+    };
+  }
+
+  it("check 1 (reconciliation): an UNEXPLAINED missing row is red", async () => {
+    await seedReport([]);
+    await client.query(`DELETE FROM ${TGT}.orders WHERE v1_id = $1`, [ORDERS[3].uuid]);
+
+    const { code, report } = await runVerifier(reportingManifest());
+
+    expect(code).toBe(1);
+    expect(orders(report).count).toMatchObject({ pass: false, unexplainedMissingTotal: 1 });
+    expect(orders(report).count.reconciliation).toMatchObject({
+      pass: false,
+      sourceRows: 4,
+      migrated: 3,
+      explainedSkips: 0,
+      unaccounted: 1,
+      unaccountedKeys: [ORDERS[3].uuid],
+    });
+  });
+
+  it("check 1 (reconciliation): the SAME missing row is green once the report explains it", async () => {
+    await client.query(`DELETE FROM ${TGT}.orders WHERE v1_id = $1`, [ORDERS[3].uuid]);
+    await seedReport([{ key: ORDERS[3].uuid, reason: "unresolved_user" }]);
+
+    const { code, report } = await runVerifier(reportingManifest());
+
+    expect(code).toBe(0);
+    expect(orders(report).count).toMatchObject({ pass: true, missingTotal: 1, unexplainedMissingTotal: 0 });
+    expect(orders(report).count.reconciliation).toMatchObject({ pass: true, migrated: 3, explainedSkips: 1, unaccounted: 0 });
+  });
+
+  it("check 1 (reconciliation): a report row for a DIFFERENT key does not excuse this one", async () => {
+    await client.query(`DELETE FROM ${TGT}.orders WHERE v1_id = $1`, [ORDERS[3].uuid]);
+    await seedReport([{ key: ORDERS[0].uuid, reason: "unresolved_user" }]);
+
+    const { code, report } = await runVerifier(reportingManifest());
+
+    expect(code).toBe(1);
+    expect(orders(report).count.unexplainedMissing).toEqual([ORDERS[3].uuid]);
+  });
+
+  // ── Check 5: the junction guard (defect D8) ───────────────────────────────
+
+  /** parent `orders` + a junction whose own numbers are perfect. */
+  function junctionManifest(parentOverrides: Record<string, unknown> = {}) {
+    const parent = { ...fixtureManifest(parentOverrides).mappings[0] };
+    const junction = {
+      ...selfParityManifest().mappings[0],
+      name: "orders_junction",
+      junction: { parents: ["orders", "orders_self"] },
+    };
+    const secondParent = { ...selfParityManifest().mappings[0], name: "orders_self" };
+    return { structural: { schemas: [TGT] }, mappings: [parent, secondParent, junction] };
+  }
+
+  it("check 5 (junction): green when both declared parents reconcile", async () => {
+    await seedReport([]);
+    const { code, report } = await runVerifier(junctionManifest());
+
+    expect(code).toBe(0);
+    expect(report.junctions).toMatchObject({ pass: true, junctionsGuarded: 1, violationsTotal: 0 });
+  });
+
+  it("check 5 (junction): a junction with perfect numbers is RED when a parent fails", async () => {
+    await seedReport([]);
+    // Damage the PARENT only. The junction compares the target against itself, so
+    // its own count and content stay clean — which is exactly the D8 failure mode:
+    // invisible locally, fatal globally.
+    await client.query(`UPDATE ${TGT}.orders SET code = 'CORRUPT' WHERE v1_id = $1`, [ORDERS[1].uuid]);
+
+    const { code, report } = await runVerifier(junctionManifest());
+
+    expect(code).toBe(1);
+    const junction = report.mappings.find((m) => m.name === "orders_junction")!;
+    expect(junction.checks.count.pass).toBe(true);
+    expect(junction.checks.content.pass).toBe(true);
+    expect(report.junctions).toMatchObject({ pass: false, junctionsGuarded: 1, violationsTotal: 1 });
+    expect(report.junctions.violations[0]).toMatchObject({
+      junction: "orders_junction",
+      parent: "orders",
+      reason: "parent mapping did not reconcile",
+    });
+  });
+
+  it("check 5 (junction): a junction that does not declare two parents is a manifest error", async () => {
+    const manifest = junctionManifest();
+    (manifest.mappings[2] as { junction: { parents: string[] } }).junction = { parents: ["orders"] };
+
+    const { code, stdout } = await runVerifier(manifest);
+
+    expect(code).toBe(2);
+    expect(stdout).toContain("exactly two parent mappings");
+  });
+
+  // ── Check 6: every report row must be explained ───────────────────────────
+
+  it("check 6 (report): an unknown reason code is a RED gate", async () => {
+    await seedReport([{ key: ORDERS[3].uuid, reason: "because_reasons" }]);
+    await client.query(`DELETE FROM ${TGT}.orders WHERE v1_id = $1`, [ORDERS[3].uuid]);
+
+    const { code, report } = await runVerifier(reportingManifest());
+
+    expect(code).toBe(1);
+    // Check 1 is satisfied — the key IS in the report. Check 6 is what bites.
+    expect(orders(report).count.pass).toBe(true);
+    expect(report.reportExplained).toMatchObject({ pass: false, reportTablePresent: true, unknownTotal: 1 });
+    expect(report.reportExplained.unknown[0]).toMatchObject({ reasonCode: "because_reasons", rows: 1 });
+  });
+
+  it("check 6 (report): a blank reason is treated as unknown, not as no reason at all", async () => {
+    await seedReport([]);
+    await client.query(
+      `INSERT INTO mig.unresolved (run_id, wave, source_table, source_key, reason_code)
+       VALUES ('vfx', 'VFX', $1, $2, '   ')`,
+      [`${SRC}.orders`, ORDERS[0].uuid],
+    );
+
+    const { code, report } = await runVerifier(reportingManifest());
+
+    expect(code).toBe(1);
+    expect(report.reportExplained.unknown[0]).toMatchObject({ reasonCode: "(blank)" });
+  });
+
+  it("check 6 (report): known reason codes keep the gate green", async () => {
+    await client.query(`DELETE FROM ${TGT}.orders WHERE v1_id = $1`, [ORDERS[3].uuid]);
+    await seedReport([{ key: ORDERS[3].uuid, reason: "invalid_source_data" }]);
+
+    const { code, report } = await runVerifier(reportingManifest());
+
+    expect(code).toBe(0);
+    expect(report.reportExplained).toMatchObject({ pass: true, rows: 1, unknownTotal: 0 });
+    expect(report.reportExplained.byReason).toMatchObject({ invalid_source_data: 1 });
+  });
+
+  // ── Check 2: deterministic sampling above the threshold ───────────────────
+
+  it("check 2 (content): samples deterministically above the threshold, and still catches drift", async () => {
+    await seedReport([]);
+    // 400 extra rows, then force sampling by dropping the threshold to 50.
+    await client.query(`
+      INSERT INTO ${SRC}.orders (id, code, amount)
+      SELECT gen_random_uuid(), 'BULK' || g, g FROM generate_series(1, 400) g`);
+    await client.query(`
+      INSERT INTO ${TGT}.orders (v1_id, code, total)
+      SELECT s.id, s.code, s.amount FROM ${SRC}.orders s
+       WHERE NOT EXISTS (SELECT 1 FROM ${TGT}.orders t WHERE t.v1_id = s.id)`);
+
+    const clean = await runVerifier(reportingManifest(), ["--sample-above=50"]);
+    expect(clean.code).toBe(0);
+    expect(clean.report.mappings[0].checks.content.sampled).toMatchObject({ of: 404 });
+    expect(clean.report.mappings[0].checks.content.comparedRows).toBeLessThan(404);
+    expect(clean.report.mappings[0].checks.content.comparedRows).toBeGreaterThan(0);
+
+    // The same run twice picks the same rows — a sample, not a coin flip.
+    const again = await runVerifier(reportingManifest(), ["--sample-above=50"]);
+    expect(again.report.mappings[0].checks.content.comparedRows).toBe(
+      clean.report.mappings[0].checks.content.comparedRows,
+    );
+
+    // Corrupt every sampled row's column and the gate must go red.
+    await client.query(`UPDATE ${TGT}.orders SET code = code || '-X'`);
+    const dirty = await runVerifier(reportingManifest(), ["--sample-above=50"]);
+    expect(dirty.code).toBe(1);
+    expect(dirty.report.mappings[0].checks.content.differingRows).toBeGreaterThan(0);
   });
 });
