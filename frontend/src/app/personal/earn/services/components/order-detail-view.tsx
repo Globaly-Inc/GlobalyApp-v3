@@ -101,12 +101,8 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
 
       <Card>
         <CardHeader className="flex-row items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0">
             <CardTitle className="truncate">{order.listing_title}</CardTitle>
-            {/* Role is decided server-side and stated, so neither party has to work out which side they are on. */}
-            <p className="text-sm text-muted-foreground">
-              You are the <strong className="text-foreground">{order.role}</strong> · {order.counterparty_name}
-            </p>
           </div>
           <Badge variant="secondary" className={cn("shrink-0", STATUS_STYLES[order.status])}>
             {STATUS_LABELS[order.status]}
