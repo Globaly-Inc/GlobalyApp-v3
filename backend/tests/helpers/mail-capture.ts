@@ -14,10 +14,29 @@
 
 export interface PublishedEmail {
   queue: string;
-  message: { to: string; subject: string; html: string };
+  message: { to: string; subject: string; html: string; text?: string };
 }
 
-const OTP_PATTERN = /<strong>(\d{6})<\/strong>/;
+const SIX_DIGITS = /\b(\d{6})\b/;
+
+/**
+ * Pull the 6-digit code out of an OTP email.
+ *
+ * The HTML renders each digit in its own <span> for letter-spacing, so the code
+ * never appears as one contiguous run there — and the body also contains
+ * <strong>10 minutes</strong>, so matching markup is doubly unreliable. The
+ * plain-text part and the subject both carry the code verbatim, so prefer those
+ * and fall back to tag-stripped HTML (stripped without a separator, which
+ * rejoins the per-digit spans).
+ */
+function extractOtp(message: PublishedEmail["message"]): string | null {
+  for (const source of [message.text ?? "", message.subject ?? ""]) {
+    const hit = SIX_DIGITS.exec(source);
+    if (hit) return hit[1];
+  }
+  const stripped = (message.html ?? "").replace(/<[^>]*>/g, "");
+  return /(\d{6})/.exec(stripped)?.[1] ?? null;
+}
 
 /**
  * Wait for an OTP email addressed to `email` and return the 6-digit code from it.
@@ -39,8 +58,8 @@ export async function waitForOtp(
       seen.add(entry);
       if (entry.queue !== "emails") continue;
       if (entry.message?.to !== email) continue;
-      const match = OTP_PATTERN.exec(entry.message.html ?? "");
-      if (match) return match[1];
+      const otp = extractOtp(entry.message);
+      if (otp) return otp;
     }
     if (performance.now() > deadline) {
       throw new Error(
