@@ -361,7 +361,7 @@
     {
       "name": "areas_of_study",
       "description": "V1 public.areas_of_study -> V3 public.areas_of_study. Reference data: uuid PK -> serial, joined on the natural key `slug` (no V1 uuid is preserved, and nothing that migrates references it).",
-      "source": { "table": "public.areas_of_study", "alias": "a", "joins": [], "filter": null },
+      "source": { "table": "v1_staging.areas_of_study", "alias": "a", "joins": [], "filter": null },
       "target": { "table": "public.areas_of_study", "alias": "t", "filter": "t.deleted_at IS NULL" },
       "identity": { "label": "slug (natural key)", "source": "a.slug", "target": "t.slug" },
       "extraTargetRows": { "policy": "fail" },
@@ -380,7 +380,7 @@
     {
       "name": "business_categories",
       "description": "V1 public.business_categories -> V3 public.business_categories. Reference data, joined on `slug`.",
-      "source": { "table": "public.business_categories", "alias": "bc", "joins": [], "filter": null },
+      "source": { "table": "v1_staging.business_categories", "alias": "bc", "joins": [], "filter": null },
       "target": { "table": "public.business_categories", "alias": "t", "filter": "t.deleted_at IS NULL" },
       "identity": { "label": "slug (natural key)", "source": "bc.slug", "target": "t.slug" },
       "extraTargetRows": { "policy": "fail" },
@@ -402,7 +402,7 @@
     {
       "name": "accreditations",
       "description": "V1 public.accreditations -> V3 public.accreditations. Two transforms worth watching: free-text issuing_organization -> issuing_organizations FK, and the scope_countries text[] -> the accreditation_scope_countries join table.",
-      "source": { "table": "public.accreditations", "alias": "ac", "joins": [], "filter": null },
+      "source": { "table": "v1_staging.accreditations", "alias": "ac", "joins": [], "filter": null },
       "target": { "table": "public.accreditations", "alias": "t", "filter": "t.deleted_at IS NULL" },
       "identity": { "label": "name (natural key; unique in both, 30/30)", "source": "ac.name", "target": "t.name" },
       "extraTargetRows": { "policy": "fail" },
@@ -428,10 +428,10 @@
       "name": "platform_users",
       "description": "V1 auth.users -> V3 public.platform_users. uuid PK preserved verbatim in platform_users.uuid.",
       "source": {
-        "table": "auth.users",
+        "table": "v1_staging.auth_users",
         "alias": "u",
         "joins": [
-          "LEFT JOIN public.profiles p ON p.user_id = u.id",
+          "LEFT JOIN v1_staging.profiles p ON p.user_id = u.id",
           "LEFT JOIN LATERAL (SELECT regexp_split_to_array(btrim(coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', '')), '\\s+') AS toks) nm ON true"
         ],
         "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND trim(u.email::text) <> ''"
@@ -503,9 +503,9 @@
       "name": "platform_user_profiles",
       "description": "V1 public.profiles -> V3 public.platform_user_profiles. Free-text country becomes a country_id FK; the row hangs off the serial platform_users.id instead of a uuid.",
       "source": {
-        "table": "public.profiles",
+        "table": "v1_staging.profiles",
         "alias": "p",
-        "joins": ["JOIN auth.users u ON u.id = p.user_id"],
+        "joins": ["JOIN v1_staging.auth_users u ON u.id = p.user_id"],
         "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND trim(u.email::text) <> ''"
       },
       "target": {
@@ -588,9 +588,9 @@
       "name": "admin_users",
       "description": "V1 public.user_roles -> V3 superadmin.admin_users. Admin portal access; role names are mapped, never silently downgraded.",
       "source": {
-        "table": "public.user_roles",
+        "table": "v1_staging.user_roles",
         "alias": "r",
-        "joins": ["JOIN auth.users u ON u.id = r.user_id"],
+        "joins": ["JOIN v1_staging.auth_users u ON u.id = r.user_id"],
         "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND trim(u.email::text) <> '' AND r.role::text IN ('super_admin','data_admin')"
       },
       "target": {
@@ -624,10 +624,10 @@
       "name": "businesses",
       "description": "V1 public.businesses -> V3 public.businesses. Only the 16 with an accepted, linked owner migrate (V3 businesses.owner_id is NOT NULL). V1 uuid preserved in meta->>'v1_business_id'; free-text country becomes country_id.",
       "source": {
-        "table": "public.businesses",
+        "table": "v1_staging.businesses",
         "alias": "b",
         "joins": [],
-        "filter": "EXISTS (SELECT 1 FROM public.business_members bm JOIN auth.users bu ON bu.id = bm.user_id WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL AND bu.deleted_at IS NULL)"
+        "filter": "EXISTS (SELECT 1 FROM v1_staging.business_members bm JOIN v1_staging.auth_users bu ON bu.id = bm.user_id WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL AND bu.deleted_at IS NULL)"
       },
       "target": {
         "table": "public.businesses",
@@ -660,9 +660,9 @@
         { "name": "status", "from": "status", "source": "coalesce(b.status::text, 'pending')", "target": "t.status" },
         { "name": "verified_at", "from": "verified_at", "source": "b.verified_at", "target": "t.verified_at" },
         { "name": "account_status", "from": "is_suspended", "source": "CASE WHEN b.is_suspended IS TRUE THEN 0 ELSE 1 END", "target": "t.account_status", "note": "boolean -> int, per toAccountStatus()" },
-        { "name": "owner_uuid", "from": null, "source": "(SELECT bm.user_id::text FROM public.business_members bm WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL ORDER BY bm.joined_at NULLS LAST LIMIT 1)", "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.owner_id)", "note": "the owner relationship itself — proves owner_id resolved to the right person" },
+        { "name": "owner_uuid", "from": null, "source": "(SELECT bm.user_id::text FROM v1_staging.business_members bm WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL ORDER BY bm.joined_at NULLS LAST LIMIT 1)", "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.owner_id)", "note": "the owner relationship itself — proves owner_id resolved to the right person" },
         { "name": "is_published", "from": "is_published", "source": "(b.is_published IS TRUE)", "target": "(t.is_published IS TRUE)", "note": "V1 already carried an explicit publish flag, set per business by its owner. Copied verbatim — deriving it from status/is_claimed would publish (or hide) listings the operator never chose to." },
-        { "name": "business_category_id", "from": "business_category_id", "source": "(SELECT gbc.id FROM public.business_categories vbc JOIN globaly_business_categories gbc ON gbc.key = lower(btrim(vbc.slug)) WHERE vbc.id = b.business_category_id)", "target": "t.business_category_id", "note": "uuid -> serial, bridged by the category slug (the natural key the business_categories mapping is verified on)" },
+        { "name": "business_category_id", "from": "business_category_id", "source": "(SELECT gbc.id FROM v1_staging.business_categories vbc JOIN globaly_business_categories gbc ON gbc.key = lower(btrim(vbc.slug)) WHERE vbc.id = b.business_category_id)", "target": "t.business_category_id", "note": "uuid -> serial, bridged by the category slug (the natural key the business_categories mapping is verified on)" },
         { "name": "gallery_images", "from": "gallery_images", "source": "b.gallery_images", "target": "t.gallery_images", "note": "text[] on both sides" },
         { "name": "video_urls", "from": "video_urls", "source": "b.video_urls", "target": "t.video_urls", "note": "text[] on both sides" },
         { "name": "business_registration_number", "from": "registration_code", "source": "b.registration_code", "target": "t.business_registration_number", "note": "renamed registration_code -> business_registration_number" },
@@ -714,13 +714,13 @@
         "$note": "Gate 2 check 5 (defect D8): both parents must reconcile before this junction is trusted. ON CONFLICT DO NOTHING on a junction turns a parent-ordering bug into a silent orphan, so the guard is a gate, not a comment."
       },
       "source": {
-        "table": "public.business_members",
+        "table": "v1_staging.business_members",
         "alias": "m",
         "joins": [
-          "JOIN auth.users mu ON mu.id = m.user_id",
-          "JOIN public.businesses mb ON mb.id = m.business_id"
+          "JOIN v1_staging.auth_users mu ON mu.id = m.user_id",
+          "JOIN v1_staging.businesses mb ON mb.id = m.business_id"
         ],
-        "filter": "m.user_id IS NOT NULL AND m.invite_status = 'accepted' AND mu.deleted_at IS NULL AND m.role::text IN ('owner','admin','staff','member','manager','counsellor') AND EXISTS (SELECT 1 FROM public.business_members bm2 JOIN auth.users bu2 ON bu2.id = bm2.user_id WHERE bm2.business_id = mb.id AND bm2.role::text = 'owner' AND bm2.invite_status = 'accepted' AND bu2.deleted_at IS NULL)"
+        "filter": "m.user_id IS NOT NULL AND m.invite_status = 'accepted' AND mu.deleted_at IS NULL AND m.role::text IN ('owner','admin','staff','member','manager','counsellor') AND EXISTS (SELECT 1 FROM v1_staging.business_members bm2 JOIN v1_staging.auth_users bu2 ON bu2.id = bm2.user_id WHERE bm2.business_id = mb.id AND bm2.role::text = 'owner' AND bm2.invite_status = 'accepted' AND bu2.deleted_at IS NULL)"
       },
       "target": {
         "table": "public.user_business_index",
@@ -766,13 +766,13 @@
         "$note": "Gate 2 check 5 (defect D8): an agent row needs both a migrated user and a provisioned tenant schema."
       },
       "source": {
-        "table": "public.business_members",
+        "table": "v1_staging.business_members",
         "alias": "m",
         "joins": [
-          "JOIN auth.users mu ON mu.id = m.user_id",
-          "JOIN public.businesses mb ON mb.id = m.business_id"
+          "JOIN v1_staging.auth_users mu ON mu.id = m.user_id",
+          "JOIN v1_staging.businesses mb ON mb.id = m.business_id"
         ],
-        "filter": "m.user_id IS NOT NULL AND m.invite_status = 'accepted' AND mu.deleted_at IS NULL AND m.role::text IN ('owner','admin','staff','member','manager','counsellor') AND EXISTS (SELECT 1 FROM public.business_members bm2 JOIN auth.users bu2 ON bu2.id = bm2.user_id WHERE bm2.business_id = mb.id AND bm2.role::text = 'owner' AND bm2.invite_status = 'accepted' AND bu2.deleted_at IS NULL)"
+        "filter": "m.user_id IS NOT NULL AND m.invite_status = 'accepted' AND mu.deleted_at IS NULL AND m.role::text IN ('owner','admin','staff','member','manager','counsellor') AND EXISTS (SELECT 1 FROM v1_staging.business_members bm2 JOIN v1_staging.auth_users bu2 ON bu2.id = bm2.user_id WHERE bm2.business_id = mb.id AND bm2.role::text = 'owner' AND bm2.invite_status = 'accepted' AND bu2.deleted_at IS NULL)"
       },
       "target": {
         "table": "\"{{schema}}\".agents",
