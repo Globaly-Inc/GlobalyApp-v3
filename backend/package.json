@@ -34,7 +34,12 @@
     "verify:migration": "node database/scripts/verify-migration.mjs",
     "test:migration": "vitest run --project integration tests/integration/verify-migration.test.ts",
     "migrate:v1-extraction-refs": "node database/scripts/backfill-extraction-reference-ids.mjs",
-    "migrate:v1-billing": "node --import tsx database/scripts/import-v1-billing.ts"
+    "migrate:v1-billing": "node --import tsx database/scripts/import-v1-billing.ts",
+    "migrate:v1-extract": "node scripts/migration/extract.mjs",
+    "migrate:v1-extract-ddl": "node scripts/migration/extract.mjs --emit-ddl",
+    "verify:staging": "node scripts/migration/verify-staging.mjs",
+    "migrate:ensure-mig": "node --import tsx scripts/migration/lib.ts --ensure-mig",
+    "check:migration": "node scripts/migration/extract.mjs --self-check && node scripts/migration/verify-staging.mjs --self-check && node --import tsx scripts/migration/lib.ts --self-check && node database/scripts/verify-migration.mjs --self-check"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
