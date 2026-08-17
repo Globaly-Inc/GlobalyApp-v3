@@ -1,0 +1,120 @@
+name: Quality
+
+# Typecheck / lint / test / build gate.
+# Runs directly on PRs and pushes, and is called as a reusable workflow by the
+# build-push-* workflows so no image is built unless this passes.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - 'main'
+      - 'production'
+      - 'staging'
+      - 'develop'
+  workflow_call:
+    inputs:
+      target:
+        description: "Which app to check: backend | frontend | all"
+        type: string
+        required: false
+        default: 'all'
+
+# github.workflow resolves to the CALLER's name when called via workflow_call,
+# so a gate run never cancels (or is cancelled by) the standalone run.
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend quality
+    # `inputs.target` is null for push/pull_request triggers.
+    if: ${{ inputs.target == null || inputs.target == 'all' || inputs.target == 'backend' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: globalyapp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d globalyapp_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # src/config.ts validates these at import time — tests fail without them.
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: globalyapp_test
+      JWT_SECRET: ci-test-secret
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/globalyapp_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: backend
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Test
+        working-directory: backend
+        run: npm test
+
+  frontend:
+    name: Frontend quality
+    if: ${{ inputs.target == null || inputs.target == 'all' || inputs.target == 'frontend' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+
+      - name: Lint
+        working-directory: frontend
+        run: yarn lint
+
+      - name: Build
+        working-directory: frontend
+        run: yarn build

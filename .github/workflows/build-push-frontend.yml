@@ -50,10 +50,18 @@ jobs:
     outputs:
       env_name: ${{ env.env_name }}
 
+  quality:
+    name: Quality gate
+    uses: ./.github/workflows/quality.yml
+    permissions:
+      contents: read
+    with:
+      target: frontend
+
   ci-build:
     runs-on: ubuntu-latest
     name: Install,Build for => ${{ needs.resolve-env.outputs.env_name }}
-    needs: [resolve-env]
+    needs: [resolve-env, quality]
     environment: ${{ needs.resolve-env.outputs.env_name }}
     timeout-minutes: 25
     permissions:
