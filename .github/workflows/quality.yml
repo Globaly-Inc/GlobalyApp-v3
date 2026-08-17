@@ -84,6 +84,20 @@ jobs:
         working-directory: backend
         run: npm run lint
 
+      # The V1 -> V3 migration parity gate decides whether a production cutover is
+      # safe, so it gets its own steps: a red here is attributable even when some
+      # other suite is red. Nothing here touches a live V1 database (there is none
+      # in CI) — the self-check is offline manifest validation, and the fixture
+      # tests build deliberately-broken data in the Postgres service above and
+      # assert each of the four checks fires.
+      - name: Migration manifest self-check
+        working-directory: backend
+        run: node database/scripts/verify-migration.mjs --self-check
+
+      - name: Migration parity gate (fixtures)
+        working-directory: backend
+        run: npx vitest run --project integration tests/integration/verify-migration.test.ts
+
       - name: Test
         working-directory: backend
         run: npm test

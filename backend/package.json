@@ -25,7 +25,14 @@
     "test:integration": "vitest run --project integration",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src tests"
+    "lint": "eslint src tests",
+    "migrate:v1-geo": "node database/scripts/import-v1-geo.mjs",
+    "migrate:v1-country-fks": "node database/scripts/backfill-country-fks.mjs",
+    "migrate:v1-reference": "node database/scripts/import-v1-reference.mjs",
+    "migrate:v1-student-subprofiles": "node database/scripts/import-v1-student-subprofiles.mjs",
+    "import:v1-extraction": "node database/scripts/import-v1-extraction.mjs",
+    "verify:migration": "node database/scripts/verify-migration.mjs",
+    "test:migration": "vitest run --project integration tests/integration/verify-migration.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
