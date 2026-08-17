@@ -26,8 +26,8 @@ import blogModule from "./modules/blog/index.js";
 import otherServicesModule, { publicServicesModule } from "./modules/other-services/index.js";
 import geoModule from "./modules/geo/index.js";
 import searchModule from "./modules/search/index.js";
-import aiCounsellorModule from "./modules/ai-counsellor/index.js";
 import scholarshipsPublicModule from "./modules/scholarships/index.js";
+import aiCounsellorModule, { publicAiCounsellorModule } from "./modules/ai-counsellor/index.js";
 
 const logger = createChildLogger("server");
 
@@ -52,14 +52,15 @@ export async function buildServer() {
     await protectedApp.register(agentsModule);       // agent invitations + management (per-business DB)
     await protectedApp.register(feedModule);          // cross-portal social feed
     await protectedApp.register(otherServicesModule);      // service listings, orders, reviews
+    await protectedApp.register(aiCounsellorModule);   // AI counsellor — chat, credits, sessions, embed configs
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
   await app.register(publicServicesModule);  // public marketplace browse (no auth)
   await app.register(geoModule);              // public geo reads (no auth)
   await app.register(searchModule);          // public search reads (no auth)
-  await app.register(aiCounsellorModule);    // public AI counsellor (no auth)
   await app.register(scholarshipsPublicModule); // public scholarships reads (no auth)
+  await app.register(publicAiCounsellorModule); // guest + embed-widget AI chat (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

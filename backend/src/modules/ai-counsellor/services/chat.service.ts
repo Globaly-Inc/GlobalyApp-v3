@@ -9,6 +9,8 @@ import * as messagesRepo from "../repositories/messages.repository.js";
 import * as knowledgeRepo from "../repositories/knowledge.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as creditService from "./credit.service.js";
+import * as embedRepo from "../repositories/embed.repository.js";
+import type { EmbedContext } from "./embed.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("chat-service");
@@ -20,6 +22,8 @@ export async function handleMessage(opts: {
   sessionId?: number;
   content: string;
   attachments?: string[];
+  /** Embed mode (x-embed-key): scope RAG + prompt, bill the business's monthly quota. */
+  embed?: EmbedContext;
   reply: FastifyReply;
 }): Promise<void> {
   const startMs = Date.now();
@@ -30,7 +34,7 @@ export async function handleMessage(opts: {
   try {
     // 2. Session
     const isNew = !opts.sessionId;
-    const session = await sessionService.getOrCreateSession(opts.userId, opts.sessionId);
+    const session = await sessionService.getOrCreateSession(opts.userId, opts.sessionId, opts.embed?.config.id);
 
     writeEvent(opts.reply, "session", { id: session.id, isNew });
 
@@ -49,6 +53,7 @@ export async function handleMessage(opts: {
     const ragOutput = await rag.searchAll({
       query: opts.content,
       userId: opts.userId,
+      jobIds: opts.embed?.jobIds,
       onTrace: (step) => writeEvent(opts.reply, "trace", { step }),
     });
 
@@ -62,6 +67,7 @@ export async function handleMessage(opts: {
       profile: profileContext,
       ragContext: ragOutput.contextText,
       isFirstMessage: isNew && session.message_count === 0,
+      embedConfig: opts.embed?.config,
     });
 
     // 8. Conversation history
@@ -115,10 +121,17 @@ export async function handleMessage(opts: {
     // 13. Increment message count
     await sessionsRepo.incrementMessageCount(session.id);
 
-    // 14. Credit deduction (Phase 2) — after successful response, never on failure
-    creditService.deductCredit(opts.userId, aiMessage.id).catch((err) => {
-      logger.warn("Credit deduction failed", { userId: opts.userId, err: String(err) });
-    });
+    // 14. Credit deduction — after successful response, never on failure.
+    // Embed mode bills the business's monthly quota, not the user's wallet.
+    if (opts.embed) {
+      embedRepo.incrementMonthlyUsage(opts.embed.config.id).catch((err) => {
+        logger.warn("Embed usage increment failed", { configId: opts.embed?.config.id, err: String(err) });
+      });
+    } else {
+      creditService.deductCredit(opts.userId, aiMessage.id).catch((err) => {
+        logger.warn("Credit deduction failed", { userId: opts.userId, err: String(err) });
+      });
+    }
 
     // 15. Usage + done
     writeEvent(opts.reply, "usage", result.usage);

@@ -240,12 +240,23 @@ export interface ProfileContext {
 const SA = "superadmin"; // schema prefix
 const DEFAULT_LIMIT = 10;
 
+/** extraction_jobs whose institution_url is on the given domain (embed-mode scope). */
+export async function jobIdsByInstitutionDomain(domain: string): Promise<string[]> {
+  const rows = await masterKnex(`${SA}.extraction_jobs`)
+    .whereILike("institution_url", `%${domain}%`)
+    .select("id");
+  return rows.map((r: { id: string }) => r.id);
+}
+
 export async function searchCourses(opts: {
   query: string;
   country?: string;
   degreeLevel?: string;
   limit?: number;
+  /** Restrict to these extraction_jobs ids (embed mode). Empty array = no results. */
+  jobIds?: string[];
 }): Promise<CourseResult[]> {
+  if (opts.jobIds?.length === 0) return [];
   const like = `%${opts.query}%`;
   const limit = opts.limit ?? DEFAULT_LIMIT;
 
@@ -265,6 +276,7 @@ export async function searchCourses(opts: {
     .modify((q) => {
       if (opts.country) q.whereILike("i.country", `%${opts.country}%`);
       if (opts.degreeLevel) q.whereILike("c.degree_level", `%${opts.degreeLevel}%`);
+      if (opts.jobIds) q.whereIn("c.job_id", opts.jobIds);
     })
     .limit(limit);
 

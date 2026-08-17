@@ -137,25 +137,26 @@ Monetisation layer and anonymous lead capture. Depends on Phase 1 being complete
 
 ---
 
-## Phase 3: Embed Mode
+## Phase 3: Embed Mode — ✅ DONE 2026-08-17
 
-Business-scoped AI widget for partner websites.
+Business-scoped AI widget for partner websites. Implemented in the `ai-counsellor`
+module (the plan's `ai-chat` name predates the module). Deviations flagged inline.
 
 ### Backend
 
-- [ ] **`repositories/embed.repository.ts`** -- CRUD on `ai_embed_configs`. Functions: `create(businessId, { displayName?, logoUrl?, brandColor?, customInstructions?, monthlyLimit? })`, `findByEmbedKey(embedKey)`, `findByBusinessId(businessId)`, `deactivate(id, businessId)`, `incrementMonthlyUsage(id)`, `resetMonthlyUsage(id)`.
-- [ ] **`routes/embed.routes.ts`** -- Route handlers (all require business context via `requireBusinessContext` middleware):
-  - `POST /embed/configs` -- Create embed config. Body validated with Zod.
-  - `GET /embed/configs` -- List configs for the business.
-  - `DELETE /embed/configs/:id` -- Sets `is_active = false`. Verify the config belongs to the requesting business.
-- [ ] **Update `rag.service.ts`** -- When `embedConfigId` is provided, scope course queries: join `extraction_courses` to `extraction_jobs` and filter by `institution_url ILIKE '%{business_domain}%'` or by a `business_id` mapping (depending on how business-course association works). All other knowledge sources (visas, FAQs, country guides) remain unscoped.
-- [ ] **Update `prompt.service.ts`** -- When embed config is present, prepend to system prompt: `"You are the AI counsellor for {display_name}. Only recommend courses and services offered by {display_name}. If the user asks about courses from other institutions, politely explain that you can only help with {display_name}'s offerings."`. Append sanitised `custom_instructions`. Sanitisation: reject if text contains patterns like `ignore previous`, `forget your instructions`, `you are now`, `system:`.
-- [ ] **Update `chat.routes.ts` `POST /messages`** -- Check for `x-embed-key` header. If present, resolve to `ai_embed_configs` row via `embed.repository.findByEmbedKey()`. Verify `is_active = true`. Check monthly credit limit. Pass `embedConfigId` to `chat.service.handleMessage()`.
+- [x] **`repositories/embed.repository.ts`** -- CRUD on `ai_embed_configs`: `create`, `findByEmbedKey`, `findByBusinessId`, `deactivate`, `incrementMonthlyUsage`, `resetMonthlyUsage`, plus `businessWebsite` (RAG scoping key).
+- [x] **`routes/embed.routes.ts`** -- `POST/GET /embed/configs`, `DELETE /embed/configs/:id` behind `requireBusinessContext`; plus public `GET /embed/resolve?key=` (branding subset only) for the widget page.
+- [x] **`services/embed.service.ts`** *(added)* -- shared by both chat flows: `resolveActiveConfig` (active + lazy monthly reset + limit check → 404/403/429), `buildEmbedContext` (business website domain → `extraction_jobs` ids; no match = empty scope, never competitor leakage), `sanitizeCustomInstructions`.
+- [x] **`rag.service.ts`** -- `jobIds` option scopes course search; visas stay unscoped; institution/agent/MARA sources are skipped entirely in embed mode (competitor data must not surface under a business's brand).
+- [x] **`prompt.service.ts`** -- embed identity + only-recommend-{display_name} scoping + sanitised custom instructions (injection patterns rejected).
+- [x] **`chat.routes.ts` `POST /messages`** -- `x-embed-key` header resolves the config; embed messages bill the business's monthly quota instead of the user's wallet; sessions stamped with `embed_config_id`.
+- [x] **`guest.routes.ts` `POST /guest/messages`** -- optional `embed_key` in body (anonymous widget visitors); embed visitors are gated by the business quota, not the one-reply fingerprint wall.
+- [x] **`server.ts` fix** *(bug found during phase 3)* -- a merge had registered every module twice (boot crash) and left all AI routes unauthenticated; now split like other-services: authed routes in the protected scope, `publicAiCounsellorModule` (guest messages + embed resolve) public.
 
 ### Frontend
 
-- [ ] **Embed widget page/component (public route)** -- `/embed/:key` public page that loads the chat widget. Fetches embed config via `GET /embed/configs?key=<key>` (public endpoint, returns only `display_name`, `logo_url`, `brand_color`). Renders a full-page chat (no sidebar, no session history) with business branding. Provides a copyable `<script>` tag snippet for the business admin.
-- [ ] **Business settings UI for embed config management** -- Settings page under the business portal. List existing embed configs. Create new config form (display name, logo upload, brand colour picker, custom instructions textarea, monthly credit limit). Show/copy embed key and script tag. Deactivate button with confirmation.
+- [x] **`/embed/[key]` public page** -- full-page branded chat (no sidebar/history), feature module at `frontend/src/app/embed/[key]/`, plain-fetch SSE client (no auth session), reuses `ChatInput`/`ChatMessage`/`ThinkingIndicator`. Branding via public `GET /embed/resolve`.
+- [x] **Business AI-widget page** -- `frontend/src/app/business/ai-widget/` (linked from the business menu): config list with monthly usage, create dialog (display name, logo **URL** -- file upload rides Phase 4's attachment endpoint, brand colour, custom instructions, monthly limit), copyable `<iframe>` embed snippet, deactivate with confirm.
 
 ---
 

@@ -6,14 +6,14 @@ import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("session-service");
 
-export async function getOrCreateSession(userId: number, sessionId?: number): Promise<SessionRow> {
+export async function getOrCreateSession(userId: number, sessionId?: number, embedConfigId?: number): Promise<SessionRow> {
   if (sessionId) {
     const session = await sessionsRepo.findById(sessionId);
     if (!session) throw new NotFoundError("Session not found");
     if (session.platform_user_id !== userId) throw new ForbiddenError("Not your session");
     return session;
   }
-  return sessionsRepo.create(userId);
+  return sessionsRepo.create(userId, embedConfigId);
 }
 
 export async function listSessions(userId: number, includeArchived: boolean): Promise<SessionRow[]> {

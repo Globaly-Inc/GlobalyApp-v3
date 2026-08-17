@@ -45,6 +45,23 @@ export const CreditGrantSchema = z.object({
 export const GuestMessageSchema = z.object({
   content: z.string().trim().min(1).max(5000),
   fingerprint: z.string().min(1),
+  embed_key: z.string().uuid().optional(),
+});
+
+export const EmbedConfigCreateSchema = z.object({
+  display_name: z.string().trim().min(1).max(120).optional(),
+  logo_url: z.string().url().max(500).optional(),
+  brand_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  custom_instructions: z.string().trim().max(2000).optional(),
+  monthly_credit_limit: z.coerce.number().int().min(1).max(100000).optional(),
+});
+
+export const EmbedConfigIdParamSchema = z.object({
+  id: z.coerce.number().int().positive(),
+});
+
+export const EmbedKeyQuerySchema = z.object({
+  key: z.string().uuid(),
 });
 
 export const GuestMigrateSchema = z.object({

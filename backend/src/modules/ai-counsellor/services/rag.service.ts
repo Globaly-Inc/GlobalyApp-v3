@@ -28,8 +28,13 @@ export interface RagOutput {
 export async function searchAll(opts: {
   query: string;
   userId: number;
+  /** Embed mode: restrict courses to these extraction_jobs ids and skip
+   * institution/agent sources (competitor data must not surface under a
+   * business's brand). Visas stay unscoped — shared platform knowledge. */
+  jobIds?: string[];
   onTrace?: (step: string) => void;
 }): Promise<RagOutput> {
+  const embedScoped = opts.jobIds != null;
   const keywords = extractKeywords(opts.query);
   const searchQuery = keywords.join(" ");
   const trace = (step: string) => {
@@ -46,20 +51,21 @@ export async function searchAll(opts: {
   trace(`Keywords: ${keywords.join(", ")}`);
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
+  const none = Promise.resolve([]);
   const [courses, visas, institutions, agents, maraAgents] = await Promise.all([
-    knowledge.searchCourses({ query: searchQuery, limit: 8 })
+    knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
       .then(r => { trace(`Courses: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Course search failed", { err: String(err) }); trace("Course search failed"); return []; }),
     knowledge.searchVisas({ query: searchQuery, limit: 5 })
       .then(r => { trace(`Visas: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Visa search failed", { err: String(err) }); trace("Visa search failed"); return []; }),
-    knowledge.searchInstitutions({ query: searchQuery, limit: 5 })
+    embedScoped ? none : knowledge.searchInstitutions({ query: searchQuery, limit: 5 })
       .then(r => { trace(`Institutions: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Institution search failed", { err: String(err) }); trace("Institution search failed"); return []; }),
-    knowledge.searchAgents({ query: searchQuery, limit: 5 })
+    embedScoped ? none : knowledge.searchAgents({ query: searchQuery, limit: 5 })
       .then(r => { trace(`Agents: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Agent search failed", { err: String(err) }); trace("Agent search failed"); return []; }),
-    knowledge.searchMaraAgents({ query: searchQuery, limit: 5 })
+    embedScoped ? none : knowledge.searchMaraAgents({ query: searchQuery, limit: 5 })
       .then(r => { trace(`MARA agents: ${r.length} found`); return r; })
       .catch(err => { logger.warn("MARA search failed", { err: String(err) }); trace("MARA search failed"); return []; }),
   ]);

@@ -12,6 +12,7 @@ import * as sessionService from "../services/session.service.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as creditService from "../services/credit.service.js";
+import * as embedService from "../services/embed.service.js";
 import { NotFoundError, ForbiddenError, PaymentRequiredError } from "../../../shared/errors.js";
 
 export async function chatRoutes(app: FastifyInstance) {
@@ -20,15 +21,24 @@ export async function chatRoutes(app: FastifyInstance) {
     const userId = Number(req.auth.sub);
     const input = SendMessageSchema.parse(req.body ?? {});
 
-    // Phase 2: credit gate
-    const hasCredits = await creditService.checkBalance(userId);
-    if (!hasCredits) throw new PaymentRequiredError();
+    // Phase 3: embed mode — scope to the business, bill its monthly quota
+    const embedKey = req.headers["x-embed-key"] as string | undefined;
+    const embed = embedKey
+      ? await embedService.buildEmbedContext(await embedService.resolveActiveConfig(embedKey))
+      : undefined;
+
+    // Phase 2: credit gate (user wallet) — embed messages are business-paid
+    if (!embed) {
+      const hasCredits = await creditService.checkBalance(userId);
+      if (!hasCredits) throw new PaymentRequiredError();
+    }
 
     await chatService.handleMessage({
       userId,
       sessionId: input.session_id,
       content: input.content,
       attachments: input.attachments,
+      embed,
       reply,
     });
     // ponytail: SSE response written directly to reply.raw by chatService — do not call reply.send()
