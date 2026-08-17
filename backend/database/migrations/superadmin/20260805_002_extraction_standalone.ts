@@ -6,9 +6,6 @@ import type { Knex } from "knex";
 export async function up(knex: Knex): Promise<void> {
   const s = "superadmin";
 
-  // pgvector — needed by extraction_memory.embedding and AI knowledge tables
-  await knex.raw("CREATE EXTENSION IF NOT EXISTS vector");
-
   // -- extraction_jobs --
   await knex.schema.withSchema(s).createTable("extraction_jobs", (t) => {
     t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));
