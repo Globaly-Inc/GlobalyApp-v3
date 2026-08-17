@@ -19,8 +19,8 @@ export async function up(knex: Knex): Promise<void> {
     t.uuid("job_id").nullable();
     t.text("status").notNullable().defaultTo("pending");
     t.uuid("promoted_service_id").nullable(); // FK target: public.business_services(id), add when table exists
-    t.text("country_code").notNullable();
-    t.text("subclass_code").notNullable();
+    t.text("country_code").nullable();
+    t.text("subclass_code").nullable();
     t.text("visa_stream").nullable();
     t.text("category").nullable();
     t.text("name").nullable();
