@@ -301,7 +301,7 @@ async function connect(url, label) {
   try {
     await client.connect();
   } catch (err) {
-    throw new Error(`${label}: cannot connect — ${err.message}`);
+    throw new Error(`${label}: cannot connect — ${err.message}`, { cause: err });
   }
   await client.query("SET default_transaction_read_only = on");
   return client;

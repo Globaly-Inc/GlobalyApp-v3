@@ -454,10 +454,9 @@ async function verifyMapping(mapping, clients, ctes, flags) {
     targetSampleClause,
   );
 
-  let schemas = null;
   if (mapping.target.schemaExpand) {
     const { rows } = await clients.target.query(mapping.target.schemaExpand);
-    schemas = rows.map((r) => r.schema ?? Object.values(r)[0]);
+    const schemas = rows.map((r) => r.schema ?? Object.values(r)[0]);
     targetSql = expandSchemas(targetSql, schemas);
     result.tenantSchemas = schemas.length;
   }
@@ -924,7 +923,7 @@ async function connect(url, label) {
   try {
     await client.connect();
   } catch (err) {
-    throw new Error(`${label}: cannot connect - ${err.message}`);
+    throw new Error(`${label}: cannot connect - ${err.message}`, { cause: err });
   }
   // Read-only at the transaction level: this script physically cannot write.
   await client.query("SET default_transaction_read_only = on");

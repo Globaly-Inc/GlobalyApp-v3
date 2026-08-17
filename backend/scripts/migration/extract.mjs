@@ -255,9 +255,12 @@ async function introspectDdl(source, plan) {
         unstagedParents.push(`${schema}.${name}.${fk.conname} -> ${fk.parent_schema}.${fk.parent_name}`);
         continue;
       }
+      // DROP-then-ADD, because ADD CONSTRAINT has no IF NOT EXISTS and this file
+      // is applied on every extract. Re-running must be a no-op, not an error.
+      const table = `${quoteIdent(STAGING_SCHEMA)}.${quoteIdent(entry.staging)}`;
       fkStatements.push(
-        `ALTER TABLE ${quoteIdent(STAGING_SCHEMA)}.${quoteIdent(entry.staging)} ` +
-          `ADD CONSTRAINT ${quoteIdent(fk.conname)} ${rewritten} NOT VALID;`,
+        `ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${quoteIdent(fk.conname)};`,
+        `ALTER TABLE ${table} ADD CONSTRAINT ${quoteIdent(fk.conname)} ${rewritten} NOT VALID;`,
       );
     }
   }
@@ -461,7 +464,7 @@ async function connect(url, label, readOnly) {
   try {
     await client.connect();
   } catch (err) {
-    throw new Error(`${label}: cannot connect — ${err.message}`);
+    throw new Error(`${label}: cannot connect — ${err.message}`, { cause: err });
   }
   if (readOnly) await client.query("SET default_transaction_read_only = on");
   return client;
@@ -525,7 +528,7 @@ async function main() {
       const { sql, unstagedParents, fkCount } = await introspectDdl(src, plan);
       const out = flags.ddl ? path.resolve(flags.ddl) : DDL_PATH;
       writeFileSync(out, sql);
-      console.log(`wrote ${out}: ${plan.length} tables, ${fkCount} foreign keys`);
+      console.log(`wrote ${out}: ${plan.length} tables, ${fkCount / 2} foreign keys`);
       for (const u of unstagedParents) console.log(`  FK not reproduced (parent not staged): ${u}`);
       return 0;
     } finally {

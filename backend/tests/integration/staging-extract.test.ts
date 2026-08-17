@@ -35,9 +35,12 @@ const BACKEND_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const EXTRACT = path.join(BACKEND_ROOT, "scripts/migration/extract.mjs");
 const GATE1 = path.join(BACKEND_ROOT, "scripts/migration/verify-staging.mjs");
 
-// `countries` is in the 199-table census, so --tables=countries exercises the
-// real plan rather than a special path invented for the test.
+// Both are in the 199-table census, so --tables exercises the real plan rather
+// than a special path invented for the test. `cities` earns its place by having
+// a foreign key: the extract has to reproduce one, and re-running has to be able
+// to re-apply it (ADD CONSTRAINT has no IF NOT EXISTS).
 const TABLE = "countries";
+const TABLES = "countries,cities";
 
 interface Gate1Report {
   pass: boolean;
@@ -69,13 +72,13 @@ describeDb("Stage 1 extract + Gate 1 staging parity", () => {
   }
 
   const extract = (extra: string[] = []) =>
-    run(EXTRACT, [`--source-url=${url}`, `--target-url=${url}`, `--tables=${TABLE}`, ...extra]);
+    run(EXTRACT, [`--source-url=${url}`, `--target-url=${url}`, `--tables=${TABLES}`, ...extra]);
 
   async function gate1(extra: string[] = []): Promise<{ code: number; report: Gate1Report; stdout: string }> {
     const { code, stdout } = await run(GATE1, [
       `--source-url=${url}`,
       `--target-url=${url}`,
-      `--tables=${TABLE}`,
+      `--tables=${TABLES}`,
       "--json",
       ...extra,
     ]);
@@ -147,13 +150,33 @@ describeDb("Stage 1 extract + Gate 1 staging parity", () => {
     expect(rows[0].n).toBe(1);
   });
 
-  it("is idempotent: a second extract truncates and reloads to the same state", async () => {
-    const before = await client.query(`SELECT count(*)::int AS n FROM v1_staging.${TABLE}`);
-    const { code } = await extract(["--apply"]);
-    const after = await client.query(`SELECT count(*)::int AS n FROM v1_staging.${TABLE}`);
+  it("reproduces V1's foreign keys, which is what makes Gate 1's orphan scan real", async () => {
+    const { rows } = await client.query(
+      `SELECT count(*)::int AS n FROM pg_constraint c
+         JOIN pg_namespace n ON n.oid = c.connamespace
+        WHERE n.nspname = 'v1_staging' AND c.contype = 'f'`,
+    );
+    expect(rows[0].n).toBeGreaterThan(0);
+  });
 
-    expect(code).toBe(0);
+  it("is idempotent: a second extract truncates, reloads and re-applies the constraints", async () => {
+    const before = await client.query(`SELECT count(*)::int AS n FROM v1_staging.${TABLE}`);
+    const beforeFks = await client.query(
+      `SELECT count(*)::int AS n FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+        WHERE n.nspname = 'v1_staging' AND c.contype = 'f'`,
+    );
+    // ADD CONSTRAINT has no IF NOT EXISTS, so a naive DDL file makes the SECOND
+    // run explode. Re-running must be a no-op.
+    const { code, stdout } = await extract(["--apply"]);
+    const after = await client.query(`SELECT count(*)::int AS n FROM v1_staging.${TABLE}`);
+    const afterFks = await client.query(
+      `SELECT count(*)::int AS n FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+        WHERE n.nspname = 'v1_staging' AND c.contype = 'f'`,
+    );
+
+    expect(code, stdout).toBe(0);
     expect(after.rows[0].n).toBe(before.rows[0].n);
+    expect(afterFks.rows[0].n).toBe(beforeFks.rows[0].n);
     expect((await gate1()).code).toBe(0);
   });
 
