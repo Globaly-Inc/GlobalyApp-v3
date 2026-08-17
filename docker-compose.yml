@@ -76,8 +76,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     ports:
@@ -97,8 +95,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     volumes:
@@ -117,8 +113,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     volumes:
@@ -137,8 +131,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     volumes:
@@ -157,8 +149,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     volumes:
@@ -177,8 +167,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     volumes:
@@ -197,8 +185,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     volumes:
@@ -217,8 +203,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     volumes:
@@ -240,23 +224,6 @@ services:
         limits:
           memory: 512m
 
-  dragonfly:
-    container_name: globalyapp-dragonfly
-    image: docker.dragonflydb.io/dragonflydb/dragonfly
-    # Defaults to one io thread per host core; on a 10-core Mac that needs 2.5g
-    # and it exits against the 3g limit below. Pin the thread count instead.
-    command: ["--proactor_threads=4"]
-    ports:
-      - "6379:6379"
-    volumes:
-      - dragonfly-data:/data
-    networks:
-      - globalyapp
-    deploy:
-      resources:
-        limits:
-          memory: 3g
-
   mailpit:
     container_name: globalyapp-mailpit
     image: axllent/mailpit
@@ -273,6 +240,3 @@ services:
 networks:
   globalyapp:
     name: globalyapp
-
-volumes:
-  dragonfly-data:

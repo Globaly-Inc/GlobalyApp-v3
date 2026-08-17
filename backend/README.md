@@ -645,6 +645,5 @@ All async work goes through **LavinMQ** (AMQP). One worker process (`npm run job
     │   └── queue/                       # LavinMQ publish/consume
     │
     └── workers/
-        ├── migration-runner.ts          # Apply business migrations to all business DBs
-        └── outbox-drainer.ts
+        └── migration-runner.ts          # Apply business migrations to all business DBs
 ```

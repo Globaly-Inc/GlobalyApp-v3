@@ -111,7 +111,7 @@ help:
 	@echo "Available targets:"
 	@echo "  build                       Build all images (parallel)"
 	@echo "  build-no-cache              Build all images without cache"
-	@echo "  up                          Start core services (postgres, backend, auth-worker, frontend-dev, lavinmq, dragonfly, mailpit)"
+	@echo "  up                          Start core services (postgres, backend, auth-worker, frontend-dev, lavinmq, mailpit)"
 	@echo "  up-workers                  Start core services + all extraction workers (all profiles)"
 	@echo "  up-extraction               Start only the extraction-worker (profile: globalyapp-extraction)"
 	@echo "  up-extraction-pages         Start only the extraction-pages-worker (profile: globalyapp-extraction-pages)"

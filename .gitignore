@@ -1,4 +1,10 @@
 .gstack/
+
+# Secrets — matches .env at any depth (root, backend/, frontend/)
 .env
-!.docker/storage/.gitkeep
+
+# Live Postgres data directory — never commit database state.
+# Uses /* not / so the .gitkeep negation below can still re-include (git can't
+# re-include anything under an excluded directory).
 .docker/storage/*
+!.docker/storage/.gitkeep
