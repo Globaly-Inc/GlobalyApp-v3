@@ -52,3 +52,13 @@ export type SSEEvent =
 export type SessionListResponse = { sessions: ChatSession[] };
 export type MessagesResponse = { messages: Message[] };
 export type FeedbackInput = { feedback: "up" | "down" | null };
+
+export type CreditBalance = {
+  free: number;
+  subscription: number;
+  purchased: number;
+  total: number;
+};
+
+/** Extended SSE event for guest mode */
+export type GuestSSEEvent = SSEEvent | { type: "guest-meta"; replies_remaining: number; fingerprint_hash: string };

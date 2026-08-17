@@ -8,6 +8,7 @@ import * as sessionService from "./session.service.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
 import * as knowledgeRepo from "../repositories/knowledge.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
+import * as creditService from "./credit.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("chat-service");
@@ -98,7 +99,7 @@ export async function handleMessage(opts: {
 
     // 12. Persist assistant message
     const latencyMs = Date.now() - startMs;
-    await messagesRepo.create({
+    const aiMessage = await messagesRepo.create({
       session_id: session.id,
       role: "assistant",
       content: cleanText,
@@ -114,11 +115,16 @@ export async function handleMessage(opts: {
     // 13. Increment message count
     await sessionsRepo.incrementMessageCount(session.id);
 
-    // 14. Usage + done
+    // 14. Credit deduction (Phase 2) — after successful response, never on failure
+    creditService.deductCredit(opts.userId, aiMessage.id).catch((err) => {
+      logger.warn("Credit deduction failed", { userId: opts.userId, err: String(err) });
+    });
+
+    // 15. Usage + done
     writeEvent(opts.reply, "usage", result.usage);
     writeDone(opts.reply);
 
-    // 15. Auto-title (fire-and-forget)
+    // 16. Auto-title (fire-and-forget)
     if (isNew) {
       sessionService.autoTitle(session.id, opts.content, cleanText).catch(() => {});
     }

@@ -4,6 +4,8 @@ import { ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAppDispatch } from "@/lib/hooks";
+import { addToCompare } from "../store/ai-chat-slice";
 import type { CourseCard as CourseCardType } from "../apis/types";
 
 type CourseCardProps = {
@@ -16,6 +18,8 @@ function formatFee(amount: number | null, currency: string): string {
 }
 
 export function CourseCard({ card }: CourseCardProps) {
+  const dispatch = useAppDispatch();
+
   return (
     <Card size="sm" className="max-w-sm">
       <CardContent className="flex flex-col gap-2">
@@ -39,11 +43,16 @@ export function CourseCard({ card }: CourseCardProps) {
             {card.study_modes.join(" · ")}
           </p>
         )}
-        {card.source_url && (
-          <Button variant="link" size="sm" className="w-fit p-0" render={<a href={card.source_url} target="_blank" rel="noopener noreferrer" />}>
-            View Details <ExternalLink />
+        <div className="flex gap-2">
+          {card.source_url && (
+            <Button variant="link" size="sm" className="w-fit p-0" render={<a href={card.source_url} target="_blank" rel="noopener noreferrer" />}>
+              View Details <ExternalLink />
+            </Button>
+          )}
+          <Button variant="outline" size="sm" className="w-fit" onClick={() => dispatch(addToCompare(card))}>
+            Compare
           </Button>
-        )}
+        </div>
       </CardContent>
     </Card>
   );

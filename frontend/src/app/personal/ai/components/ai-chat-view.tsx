@@ -16,6 +16,8 @@ import { ChatSidebar } from "./chat-sidebar";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { SuggestedStarters } from "./suggested-starters";
+import { CreditBanner } from "./credit-banner";
+import { CompareTray } from "./compare-tray";
 
 export function AiChatView() {
   const dispatch = useAppDispatch();
@@ -80,6 +82,8 @@ export function AiChatView() {
           <span className="text-sm font-medium">AI Counsellor</span>
         </div>
 
+        <CreditBanner />
+
         {/* Messages or starters */}
         {hasMessages || sendStatus === "loading" ? (
           <ChatMessages onChipClick={handleSuggestion} />
@@ -89,6 +93,7 @@ export function AiChatView() {
           </div>
         )}
 
+        <CompareTray />
         <ChatInput
           value={draft}
           onChange={setDraft}

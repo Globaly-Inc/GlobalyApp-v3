@@ -1,4 +1,4 @@
-import type { ChatSession, CourseCard, Message, SendMessageInput, SSEEvent } from "./types";
+import type { ChatSession, CourseCard, CreditBalance, Message, SendMessageInput, SSEEvent } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -105,6 +105,12 @@ export const aiMockApi = {
   setFeedback: async (messageId: number, feedback: "up" | "down" | null): Promise<void> => {
     console.log("[mock] PATCH /ai/messages/:id/feedback", messageId, feedback);
     await delay(100);
+  },
+
+  getCreditBalance: async (): Promise<CreditBalance> => {
+    console.log("[mock] GET /ai/credits/balance");
+    await delay(200);
+    return { free: 7, subscription: 0, purchased: 0, total: 7 };
   },
 
   sendMessage: async (

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
@@ -303,6 +304,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           </div>
         </SheetContent>
       </Sheet>
+      <AiLauncher />
     </div>
   );
 }
