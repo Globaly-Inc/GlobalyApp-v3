@@ -35,7 +35,8 @@ src/app/<route>/<feature>/
 Rules:
 - Every one of `apis/`, `store/`, `const/`, `types/`, `utils/`, `components/` is a **folder**, even if it holds a single `index.ts` — don't collapse them into bare files (`consts.ts`, `types.ts`) at the feature root.
 - Register the slice's reducer in `src/lib/store.ts` under a distinct state key matching the feature name.
-- Default to mock data (`NEXT_PUBLIC_MOCK_DATA`) even when the real backend endpoint doesn't exist yet — `real-api.ts` still assumes the eventual contract.
+- Mocks are opt-in: they only run when `NEXT_PUBLIC_MOCK_DATA=true`, and a red "MOCK DATA" badge is shown while they are. The real API is the default everywhere else, so write `real-api.ts` against the actual Fastify route (verify it in `backend/src/modules/**/*.routes.ts`).
+- If the endpoint genuinely doesn't exist yet, `real-api.ts` still assumes the eventual contract — but add it to `scripts/api-contract-allowlist.json` with the wave that builds it, or `yarn check:api-contract` fails.
 - Don't add a folder with nothing real to put in it yet — e.g. skip `utils/` if the feature genuinely has no helper logic.
 
 # Component reuse

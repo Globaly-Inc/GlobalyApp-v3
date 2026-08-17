@@ -190,10 +190,12 @@ cp .env.example .env
 
 | Variable | What it is | Default |
 |----------|-----------|---------|
-| `NEXT_PUBLIC_MOCK_DATA` | Use mock APIs (no backend needed) | `true` |
+| `NEXT_PUBLIC_MOCK_DATA` | Use mock APIs (no backend needed) | `false` |
 | `NEXT_PUBLIC_API_URL` | Backend URL | `http://localhost:3000/` |
 
-Set `NEXT_PUBLIC_MOCK_DATA=false` when running against the real backend.
+Mock data is **opt-in**: only the exact string `NEXT_PUBLIC_MOCK_DATA=true` enables it, and the UI
+shows a "MOCK DATA" badge while it is on. Anything else — including an unset variable — talks to
+the real backend, so a misconfigured deploy fails loudly instead of silently shipping fake data.
 
 ### 5.2 Start the frontend
 

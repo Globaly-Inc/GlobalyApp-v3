@@ -19,8 +19,9 @@ type PlatformUserMeResponse = {
   phone: string | null;
   photo_url: string | null;
   user_category: string | null;
-  user_sub_category: string | null;
   profile: {
+    // The sub-category ("student" | "education_provider" | "parents" | "explorer").
+    individual_category: string | null;
     nationality_id: number | null;
     country_of_residence_id: number | null;
     city_of_residence: string | null;
@@ -57,7 +58,7 @@ function toStudentProfile(raw: PlatformUserMeResponse): StudentProfile {
     phone: raw.phone,
     photo_url: raw.photo_url,
     user_category: raw.user_category,
-    user_sub_category: raw.user_sub_category,
+    user_sub_category: profile?.individual_category ?? null,
     nationality_id: profile?.nationality_id ?? null,
     country_of_residence_id: profile?.country_of_residence_id ?? null,
     city_of_residence: profile?.city_of_residence ?? null,
@@ -101,8 +102,12 @@ export const personalRealApi = {
   updateMyProfile: async (patch: StudentProfilePatch): Promise<StudentProfile> =>
     toStudentProfile(await httpPatch("/platform-users/me", patchBody(patch))),
 
-  updateSubCategory: (params: UpdateSubCategoryParams): Promise<void> =>
-    httpPatch("/platform-users/me/sub-category", params),
+  // There is no /platform-users/me/sub-category endpoint — the backend's /me/category sets
+  // user_category ("personal" | "business"), a different field. The sub-category lives on the
+  // profile as `individual_category`, patched through PATCH /platform-users/me.
+  updateSubCategory: async (params: UpdateSubCategoryParams): Promise<void> => {
+    await httpPatch("/platform-users/me", { individual_category: params.user_sub_category });
+  },
 
   getFullProfile: async (): Promise<FullProfile> => {
     const raw = await fetchMe();

@@ -28,13 +28,13 @@ export function FeatureFlagsView() {
         </CardHeader>
         <CardContent className="space-y-3">
           {flags.map((flag) => (
-            <div key={flag.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+            <div key={flag.key} className="flex items-center gap-3 rounded-lg border border-border p-3">
               <Checkbox
-                id={flag.id}
+                id={flag.key}
                 checked={flag.enabled}
-                onCheckedChange={(checked) => dispatch(toggleFlag({ id: flag.id, enabled: checked === true }))}
+                onCheckedChange={(checked) => dispatch(toggleFlag({ key: flag.key, enabled: checked === true }))}
               />
-              <Label htmlFor={flag.id} className="text-sm font-medium text-foreground">
+              <Label htmlFor={flag.key} className="text-sm font-medium text-foreground">
                 {flag.label}
               </Label>
             </div>

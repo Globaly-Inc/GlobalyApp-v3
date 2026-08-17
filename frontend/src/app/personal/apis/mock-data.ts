@@ -65,7 +65,7 @@ export const personalMockApi = {
   },
 
   updateSubCategory: async (params: UpdateSubCategoryParams): Promise<void> => {
-    console.log("[mock] PATCH /platform-users/me/sub-category", params);
+    console.log("[mock] PATCH /platform-users/me (individual_category)", params);
     await delay(300);
   },
 

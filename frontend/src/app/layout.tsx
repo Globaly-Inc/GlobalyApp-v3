@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Fraunces } from "next/font/google";
 import { cookies } from "next/headers";
 import { siteConfig } from "@/config/site";
+import { MockDataBanner } from "@/components/mock-data-banner";
 import { ThemeSettingsSync } from "@/components/theme-settings-sync";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
@@ -80,6 +81,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <ThemeSettingsSync />
         <StoreProvider>{children}</StoreProvider>
+        <MockDataBanner />
         <Toaster />
       </body>
     </html>

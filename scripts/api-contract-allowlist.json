@@ -1,0 +1,14 @@
+{
+  "_comment": "Frontend calls whose backend endpoint is scheduled but not yet built. Every entry must name the wave that builds it. Delete entries as waves land — check:api-contract reports stale ones.",
+  "allowed": [
+    { "method": "GET", "path": "/admin/jobs", "wave": "C4", "note": "admin monitoring — jobs" },
+    { "method": "GET", "path": "/admin/enquiries", "wave": "C4", "note": "admin monitoring — enquiries" },
+    { "method": "GET", "path": "/admin/events", "wave": "C4", "note": "admin monitoring — events" },
+    { "method": "GET", "path": "/admin/moderation", "wave": "C4", "note": "admin monitoring — moderation queue" },
+    { "method": "GET", "path": "/admin/scholarships", "wave": "C4", "note": "admin monitoring — scholarships" },
+    { "method": "GET", "path": "/admin/training", "wave": "C4", "note": "admin monitoring — training" },
+    { "method": "GET", "path": "/admin/ambassador-programs", "wave": "C4", "note": "admin monitoring — ambassador programs" },
+    { "method": "GET", "path": "/admin/audit-logs", "wave": "C4", "note": "admin monitoring — audit log viewer" },
+    { "method": "GET", "path": "/admin/ai-knowledge", "wave": "C4", "note": "admin data — AI knowledge base" }
+  ]
+}

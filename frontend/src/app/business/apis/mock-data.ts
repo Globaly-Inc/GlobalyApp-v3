@@ -26,7 +26,7 @@ let mockProfile: BusinessProfile = {
 
 export const businessMockApi = {
   updateSubCategory: async (params: UpdateSubCategoryParams): Promise<void> => {
-    console.log("[mock] POST /user/update", params);
+    console.log("[mock] PATCH /businesses/me (business_type)", params);
     await delay(300);
   },
 

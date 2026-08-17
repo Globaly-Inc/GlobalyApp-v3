@@ -6,7 +6,7 @@ export const fetchFlags = createAsyncThunk("platformFeatureFlags/fetch", () => f
 
 export const toggleFlag = createAsyncThunk(
   "platformFeatureFlags/toggle",
-  (args: { id: string; enabled: boolean }) => featureFlagsApi.toggleFlag(args.id, args.enabled),
+  (args: { key: string; enabled: boolean }) => featureFlagsApi.toggleFlag(args.key, args.enabled),
 );
 
 type FeatureFlagsState = {
@@ -36,7 +36,7 @@ const featureFlagsSlice = createSlice({
         state.error = action.error.message ?? "Failed to load feature flags.";
       })
       .addCase(toggleFlag.fulfilled, (state, action) => {
-        state.flags = state.flags.map((f) => (f.id === action.payload.id ? action.payload : f));
+        state.flags = state.flags.map((f) => (f.key === action.payload.key ? action.payload : f));
       });
   },
 });
