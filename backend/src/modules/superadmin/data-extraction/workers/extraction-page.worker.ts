@@ -15,11 +15,38 @@ import { scrapeMarkdown } from "../lib/scraper.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import { courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM } from "../lib/extraction-prompts.js";
-import { writeCourse, upsertCampus, normaliseCampusName, writeJobEvent, type ExtractedCourse, type ExtractedCampus } from "../lib/staging-writer.js";
+import { writeCourse, upsertCampus, normaliseCampusName, insertQueueItem, writeJobEvent, type ExtractedCourse, type ExtractedCampus } from "../lib/staging-writer.js";
+import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
+import { domainOf } from "../lib/html-utils.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("extraction-page-worker");
+
+/** Detect paginated sibling pages from links (DataTables, ?page=N, /page/N). */
+function detectPaginationUrls(baseUrl: string, links: string[], markdown: string): string[] {
+  let baseObj: URL | null = null;
+  try { baseObj = new URL(baseUrl); } catch { return []; }
+  const pageNums = new Set<number>();
+  for (const l of links) {
+    const m = l.match(/[?&]page=(\d+)|\/page\/(\d+)/i);
+    if (m) { const n = parseInt(m[1] || m[2], 10); if (n >= 1 && n <= 1000) pageNums.add(n); }
+  }
+  // DataTables "Showing 1 to 10 of 486 entries"
+  const dtMatch = markdown.match(/Showing\s+\d+\s+to\s+(\d+)\s+of\s+(\d+)\s+entries/i);
+  if (dtMatch) {
+    const perPage = parseInt(dtMatch[1], 10);
+    const total = parseInt(dtMatch[2], 10);
+    if (perPage > 0 && total > perPage) {
+      for (let i = 2; i <= Math.ceil(total / perPage); i++) pageNums.add(i);
+    }
+  }
+  if (!baseObj || pageNums.size === 0) return [];
+  return Array.from(pageNums)
+    .filter(n => n !== 1)
+    .sort((a, b) => a - b)
+    .map(n => { const u = new URL(baseObj!.toString()); u.searchParams.set("page", String(n)); return u.toString(); });
+}
 
 // ponytail: ported from V2's classifyFailure + routeFailure
 type FailureClass = "anti_bot" | "not_a_course" | "ai_5xx" | "parse_error" | "other";
@@ -63,7 +90,11 @@ async function deduplicateCampuses(jobId: string) {
   }
 }
 
-/** Check if all queue items are done (completed or failed) and trigger verification if so. */
+/**
+ * Check if all queue items are done and trigger verification if so.
+ * "Done" = no items in a state that could still produce work (pending, processing).
+ * Items in paused/ignored/stopped are treated as terminal — admin chose to skip them.
+ */
 async function checkAllPagesDone(jobId: string) {
   const remaining = await masterKnex(`${S}.extraction_queue`)
     .where({ job_id: jobId })
@@ -72,28 +103,38 @@ async function checkAllPagesDone(jobId: string) {
     .first();
 
   if (Number(remaining?.count) === 0) {
+    // Guard: only transition once — avoid duplicate verification dispatches from parallel workers
+    const updated = await masterKnex(`${S}.extraction_jobs`)
+      .where({ id: jobId, status: "processing" })
+      .update({
+        status: "extracting",
+        pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "processing" }),
+        updated_at: masterKnex.fn.now(),
+      });
+
+    if (updated === 0) {
+      // Another worker already transitioned this job — skip
+      return;
+    }
+
     logger.info("All pages processed, dispatching verification", { jobId });
     await deduplicateCampuses(jobId);
     await writeJobEvent(jobId, "extraction_complete", {
       phase: "data_extraction", message: "All pages extracted, starting verification",
-    });
-    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
-      pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "processing" }),
-      updated_at: masterKnex.fn.now(),
     });
     await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
   }
 }
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
-  let jobId: string, queueItemId: string, url: string;
+  let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined;
   try {
-    ({ jobId, queueItemId, url } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
   }
-  logger.info("Processing page", { jobId, queueItemId, url });
+  logger.info("Processing page", { jobId, queueItemId, url, forceFirecrawl: !!forceFirecrawl });
 
   // Check job is still active + load site intelligence hints
   const [job, siteIntel] = await Promise.all([
@@ -143,25 +184,84 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
   try {
     // ── Scrape page to markdown ──
-    const page = await scrapeMarkdown(url, { onlyMainContent: true });
+    const page = await scrapeMarkdown(url, { onlyMainContent: true, withLinks: true, forceFirecrawl: !!forceFirecrawl });
 
     if (page.blocked || page.markdown.length < 50) {
+      const reason = page.blocked ? "blocked" : "minimal_content";
       logger.warn("Page blocked or empty", { url, scraper: page.scraper, error: page.error });
-      await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
-        status: "completed",
-        extracted_data: JSON.stringify({ skipped: true, reason: page.blocked ? "blocked" : "minimal_content", scraper: page.scraper }),
-        updated_at: masterKnex.fn.now(),
-      });
+
+      // Route through retry logic instead of silently completing
+      const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
+      const retries = item?.retry_count ?? 0;
+      const meta = { ...(item?.processing_meta ?? {}), last_error: reason, last_failure_class: "anti_bot" as const };
+
+      if (retries < 2 && !forceFirecrawl) {
+        // Retry with Firecrawl (JS rendering) — the page likely needs a real browser
+        meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
+        await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+          status: "pending", failure_class: "anti_bot", retry_count: retries + 1,
+          processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
+        });
+        await queueService.publish(EXTRACTION_QUEUES.PAGES, {
+          jobId, queueItemId, url, forceFirecrawl: true,
+        });
+        logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1 });
+      } else {
+        // Exhausted retries — mark failed so it's visible in the admin queue panel
+        await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+          status: "failed", error: `Page ${reason} after ${retries} retries (${page.scraper})`,
+          failure_class: "anti_bot", retry_count: retries,
+          processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
+        });
+        await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
+        await writeJobEvent(jobId, "page_error", {
+          level: "warn", phase: "data_extraction",
+          message: `Page unreachable after retries: ${url}`,
+          data: { url, reason, retries, scraper: page.scraper },
+        });
+      }
+      await checkAllPagesDone(jobId);
       return;
     }
 
     const markdown = truncateMarkdown(page.markdown);
 
-    // ── LLM extraction ──
+    // ── Detect if this is a category listing page → queue detail pages instead ──
+    // ponytail: check for pagination patterns and category listings before full extraction
+    const paginationUrls = detectPaginationUrls(url, page.links, page.markdown);
+    if (paginationUrls.length > 0) {
+      // Queue paginated siblings we haven't seen yet
+      const existingUrls = await masterKnex(`${S}.extraction_queue`)
+        .where({ job_id: jobId }).select("url");
+      const existingSet = new Set(existingUrls.map((r: { url: string }) => r.url));
+      let queued = 0;
+      for (const pUrl of paginationUrls) {
+        if (!existingSet.has(pUrl)) {
+          const newId = await insertQueueItem(jobId, pUrl);
+          await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: newId, url: pUrl });
+          queued++;
+        }
+      }
+      if (queued > 0) {
+        logger.info("Queued pagination siblings", { url, queued });
+        await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+          total_pages_found: masterKnex.raw("total_pages_found + ?", [queued]),
+          pages_total: masterKnex.raw("pages_total + ?", [queued]),
+        });
+      }
+    }
+
+    // ── LLM extraction with memory-augmented prompt ──
+    const domain = domainOf(url);
+    const recalled = await recallMemory(domain, "course_extraction", markdown.slice(0, 500));
+    const addendum = buildSystemAddendum(recalled);
+    const system = addendum ? `${COURSE_EXTRACTION_SYSTEM}\n\n${addendum}` : COURSE_EXTRACTION_SYSTEM;
+
+    // ponytail: 65536 tokens — listing pages with 50+ courses need room
     const extracted = await extractJson<ExtractionResult>({
-      system: COURSE_EXTRACTION_SYSTEM,
+      system,
       prompt: courseExtractionPrompt(url, markdown, job.guidance_notes, siteIntel),
-      maxTokens: 16384,
+      maxTokens: 65536,
     });
 
     // ── Write campuses first (courses reference them) ──
@@ -214,6 +314,16 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       message: `Extracted ${coursesWritten} courses from ${url}`,
       data: { url, courses: coursesWritten, campuses: campusIdMap.size, scraper: page.scraper },
     });
+
+    // ponytail: feed the learning loop — non-blocking, best-effort
+    if (coursesWritten > 0) {
+      rememberMemory({
+        job_id: jobId, domain, step: "course_extraction",
+        entity_type: "course", source_url: url,
+        source_excerpt: markdown.slice(0, 500),
+        ai_output: extracted,
+      }).catch(() => {}); // fire-and-forget
+    }
 
     logger.info("Page processed", { jobId, url, coursesWritten, scraper: page.scraper });
 

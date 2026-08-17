@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { allExtractionsApi } from "../apis";
+import { saveFormAndLearn } from "./editable-field";
 import { UNIT_TYPE_OPTIONS } from "../const";
 import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
@@ -402,7 +403,7 @@ export function StudyUnitsTab({
               onCancel={() => setEditingId(null)}
               onSave={(values) =>
                 run(async () => {
-                  await allExtractionsApi.updateStudyUnit(unit.id, values);
+                  await saveFormAndLearn("extraction_study_units", unit, values, jobId);
                   setEditingId(null);
                 }, "Study unit updated")
               }

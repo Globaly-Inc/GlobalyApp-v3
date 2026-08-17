@@ -848,7 +848,20 @@ async function handleCourseDataStep(
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${COURSE_DATA_SYSTEM}\n\n${addendum}` : COURSE_DATA_SYSTEM;
 
-  const pageText = truncateMarkdown(markdown, 24000);
+  // Admin-supplied pages for this data type (fees_urls, intakes_urls, …) get appended to
+  // the course page — a shared fee table often lives off the course page entirely.
+  // ponytail: first 3 only, to bound scrape cost; raise if sites split data wider than that.
+  let combined = markdown;
+  const guidedForType = parseGuidedUrls(job)[`${dataType}_urls`];
+  if (Array.isArray(guidedForType)) {
+    for (const extra of guidedForType.slice(0, 3)) {
+      if (typeof extra !== "string") continue;
+      const extraMd = await scrapeUrl(extra);
+      if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
+    }
+  }
+
+  const pageText = truncateMarkdown(combined, 24000);
   const extracted = await extractJson<Record<string, unknown>>({
     system,
     prompt: courseDataPrompt(sourceUrl, pageText, dataType, job.guidance_notes),

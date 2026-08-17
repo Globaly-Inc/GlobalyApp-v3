@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, ExternalLink, Loader2, Plus, Search } from "lucide-react";
+import { BookOpen, CheckCircle2, ExternalLink, Flag, Loader2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
+import { VERIFICATION_DOT } from "../const";
 import { latestTimestamp } from "../utils";
 import { CourseDetailPanel } from "./course-detail-panel";
 import { CourseForm } from "./course-form";
@@ -34,6 +36,7 @@ export function CoursesTab({
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -79,6 +82,23 @@ export function CoursesTab({
   const query = search.trim().toLowerCase();
   const visible = query ? courses.filter((c) => c.name.toLowerCase().includes(query)) : courses;
   const selected = courses.find((c) => c.id === selectedId) ?? null;
+  const allSelected = visible.length > 0 && selectedIds.length === visible.length;
+
+  const bulkVerify = async (approve: boolean) => {
+    setSaving(true);
+    try {
+      const call = approve ? allExtractionsApi.approveCourse : allExtractionsApi.rejectCourse;
+      await Promise.all(selectedIds.map((id) => call(id)));
+      toast.success(`${selectedIds.length} course${selectedIds.length === 1 ? "" : "s"} ${approve ? "approved" : "flagged"}`);
+      setSelectedIds([]);
+      await load();
+      onReload();
+    } catch (e) {
+      toast.error("Action failed", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div>
@@ -137,25 +157,73 @@ export function CoursesTab({
               </Button>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              {courses.length} course{courses.length === 1 ? "" : "s"}
-              {query && ` · ${visible.length} matching`}
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={() => setSelectedIds(allSelected ? [] : visible.map((c) => c.id))}
+                  disabled={visible.length === 0}
+                />
+                {courses.length} course{courses.length === 1 ? "" : "s"}
+                {query && ` · ${visible.length} matching`}
+              </label>
+
+              {selectedIds.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs cursor-pointer"
+                    disabled={saving}
+                    onClick={() => bulkVerify(true)}
+                  >
+                    <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                    Approve {selectedIds.length}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs text-destructive cursor-pointer"
+                    disabled={saving}
+                    onClick={() => bulkVerify(false)}
+                  >
+                    <Flag className="h-3 w-3" />
+                    Flag {selectedIds.length}
+                  </Button>
+                </div>
+              )}
+            </div>
 
             <div className={cn("space-y-2 overflow-y-auto pr-1", selected ? "max-h-[70vh]" : "max-h-[calc(100vh-22rem)]")}>
               {visible.map((course) => (
-                <button
+                <div
                   key={course.id}
-                  type="button"
-                  onClick={() => setSelectedId(course.id)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-left text-sm transition-colors cursor-pointer hover:bg-accent",
+                    "flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-accent",
                     selectedId === course.id && "border-primary ring-1 ring-primary",
                   )}
                 >
-                  <span className="truncate">{course.name}</span>
-                  {course.source_url && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                </button>
+                  <Checkbox
+                    checked={selectedIds.includes(course.id)}
+                    onCheckedChange={() =>
+                      setSelectedIds((ids) => (ids.includes(course.id) ? ids.filter((i) => i !== course.id) : [...ids, course.id]))
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(course.id)}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-sm cursor-pointer"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        title={course.verification_status ?? "unverified"}
+                        className={cn("h-1.5 w-1.5 shrink-0 rounded-full", VERIFICATION_DOT[course.verification_status ?? "unverified"] ?? "bg-muted-foreground/30")}
+                      />
+                      <span className="truncate">{course.name}</span>
+                    </span>
+                    {course.source_url && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                  </button>
+                </div>
               ))}
               {visible.length === 0 && (
                 <Card className="border-dashed">
@@ -177,7 +245,8 @@ export function CoursesTab({
               campuses={campuses}
               jobId={jobId}
               onClose={() => setSelectedId(null)}
-              onChanged={load}
+              // onReload too — the header's "Courses Verified" card reads the job-level course list.
+              onChanged={() => { load(); onReload(); }}
             />
           )}
         </div>

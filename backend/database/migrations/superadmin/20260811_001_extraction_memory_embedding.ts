@@ -4,16 +4,17 @@
 import type { Knex } from "knex";
 
 export async function up(knex: Knex): Promise<void> {
-  // 768-dim for Gemini text-embedding-004
-  await knex.raw(`CREATE EXTENSION IF NOT EXISTS vector`);
+  // Prerequisite: pgvector extension must be enabled manually by a superuser
+  // before running this migration. See backend/SETUP.md for instructions.
   await knex.raw(`
     ALTER TABLE superadmin.extraction_memory
-      ADD COLUMN IF NOT EXISTS embedding vector(768)
+      ADD COLUMN IF NOT EXISTS embedding vector(3072)
   `);
 
   await knex.raw(`
     CREATE INDEX IF NOT EXISTS idx_extraction_memory_embedding
-      ON superadmin.extraction_memory USING hnsw (embedding vector_cosine_ops)
+      ON superadmin.extraction_memory
+      USING hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)
   `);
 
   // Timestamp audit fixes — these tables were missing updated_at

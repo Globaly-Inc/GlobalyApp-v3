@@ -3,6 +3,7 @@
 
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { siteOf } from "./html-utils.js";
 
 const logger = createChildLogger("scraper");
 
@@ -82,7 +83,8 @@ export function politeDelay(minMs: number, maxMs: number): Promise<void> {
 }
 
 const lastHostHit = new Map<string, number>();
-const MIN_HOST_GAP_MS = 1500;
+// ponytail: 800ms is polite enough for edu sites; set HOST_THROTTLE_MS=1500 if you get 429s
+const MIN_HOST_GAP_MS = Number(process.env.HOST_THROTTLE_MS) || 800;
 
 async function throttleForHost(url: string) {
   try {
@@ -314,7 +316,7 @@ export async function mapUrlsDetailed(
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { Authorization: `Bearer ${fcKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ url, limit: opts.limit ?? 5000, includeSubdomains: opts.includeSubdomains ?? false }),
+        body: JSON.stringify({ url, limit: opts.limit ?? 10000, includeSubdomains: opts.includeSubdomains ?? false }),
       });
       const data: any = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -331,7 +333,7 @@ export async function mapUrlsDetailed(
   return { success: false, links: [], error: "firecrawl network error" };
 }
 
-export async function fetchSitemapUrls(seedUrl: string, max = 5000): Promise<string[]> {
+export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<string[]> {
   let origin = "";
   try { origin = new URL(seedUrl).origin; } catch { return []; }
   const seen = new Set<string>();
@@ -390,16 +392,68 @@ export async function fetchSitemapUrls(seedUrl: string, max = 5000): Promise<str
   return [...seen];
 }
 
+/**
+ * Hosts universities publish their course catalogue on. A big institution's www
+ * sitemap is usually a marketing brochure — stanford.edu lists 27 pages and not one
+ * course — while the catalogue lives on its own host with its own sitemap
+ * (catalog.mit.edu has 437). Probing these costs one cheap HEAD-ish fetch each.
+ */
+const CATALOGUE_SUBDOMAINS = [
+  "explorecourses", "bulletin", "catalog", "catalogue",
+  "courses", "programs", "handbook", "study", "studies",
+];
+
+/** Sitemaps from any catalogue subdomain that resolves. */
+async function fetchCatalogueSitemaps(seedUrl: string, limit: number): Promise<string[]> {
+  let site: string;
+  try {
+    // Registrable domain, so a seed of web.mit.edu still probes catalog.mit.edu.
+    site = siteOf(seedUrl);
+  } catch {
+    return [];
+  }
+
+  const found = await Promise.all(
+    CATALOGUE_SUBDOMAINS.map(async (sub) => {
+      const root = `https://${sub}.${site}`;
+      try {
+        const urls = await fetchSitemapUrls(root, limit);
+        if (urls.length) return urls;
+      } catch { /* fall through to the reachability probe */ }
+
+      // Stanford's explorecourses and bulletin answer on / but 404 on sitemap.xml.
+      // Returning the root still hands the crawler a real entry point instead of
+      // nothing at all.
+      try {
+        const res = await fetch(root, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(10_000) });
+        return res.ok ? [res.url || root] : [];
+      } catch {
+        return [];
+      }
+    }),
+  );
+  return found.flat();
+}
+
 export async function discoverUrlsForCrawl(seedUrl: string, opts: MapOptions = {}): Promise<DiscoveryResult> {
+  const limit = opts.limit ?? 5000;
+  // Course catalogues live on subdomains far more often than not, and both the map
+  // call and the URL filter used to exclude them.
+  const mapOpts: MapOptions = { includeSubdomains: true, ...opts };
+
   // 1. Firecrawl map
-  const map = await mapUrlsDetailed(seedUrl, opts);
+  const map = await mapUrlsDetailed(seedUrl, mapOpts);
   if (map.success && map.links.length > 1) {
     return { urls: map.links, method: "map" };
   }
-  // 2. sitemap.xml
-  const sitemap = await fetchSitemapUrls(seedUrl, opts.limit ?? 5000);
-  if (sitemap.length > 1) {
-    return { urls: sitemap, method: "sitemap", error: map.error };
+  // 2. sitemap.xml — the seed's, plus any catalogue subdomain that has one
+  const [sitemap, catalogue] = await Promise.all([
+    fetchSitemapUrls(seedUrl, limit),
+    fetchCatalogueSitemaps(seedUrl, limit),
+  ]);
+  const merged = [...new Set([...sitemap, ...catalogue])];
+  if (merged.length > 1) {
+    return { urls: merged, method: "sitemap", error: map.error };
   }
   // 3. Scrape seed page for links
   const res = await scrapeMarkdown(seedUrl, { withLinks: true, onlyMainContent: false });

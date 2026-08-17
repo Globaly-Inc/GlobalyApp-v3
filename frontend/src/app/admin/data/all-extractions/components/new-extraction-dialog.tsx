@@ -1,19 +1,87 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
 import { useAppDispatch } from "@/lib/hooks";
 import { categoriesApi, type Category } from "@/app/admin/platform/categories/apis";
 import { createJob } from "../store/all-extractions-slice";
-import { SOURCE_TYPE_OPTIONS } from "../const";
+import { GUIDED_URL_CATEGORIES, SOURCE_TYPE_OPTIONS } from "../const";
 
-const STEPS = ["Categories", "Source"];
+const STEPS = ["Categories", "Source", "Review"];
+
+const cleanUrls = (urls: string[] | undefined) => (urls ?? []).map((u) => u.trim()).filter(Boolean);
+
+/** A growable list of URL inputs for one guided-URL bucket. */
+function UrlList({
+  id,
+  values,
+  onChange,
+}: Readonly<{ id: string; values: string[]; onChange: (next: string[]) => void }>) {
+  // Always render at least one input so an empty bucket still has somewhere to type.
+  const rows = values.length > 0 ? values : [""];
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {rows.map((url, index) => (
+        // Index key on purpose: rows are positional and two blank rows are indistinguishable.
+        <div key={index} className="flex items-center gap-1.5">
+          <Input
+            id={index === 0 ? id : undefined}
+            type="url"
+            placeholder="https://university.edu/…"
+            value={url}
+            onChange={(e) => onChange(rows.map((r, i) => (i === index ? e.target.value : r)))}
+          />
+          {rows.length > 1 && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 cursor-pointer"
+              title="Remove URL"
+              onClick={() => onChange(rows.filter((_, i) => i !== index))}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      ))}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 w-fit gap-1 px-1.5 text-xs cursor-pointer"
+        onClick={() => onChange([...rows, ""])}
+      >
+        <Plus className="h-3 w-3" />
+        Add URL
+      </Button>
+    </div>
+  );
+}
+
+/** One line of the review step. Blank optional values show as "Not set" rather than vanishing. */
+function SummaryRow({ label, value }: Readonly<{ label: string; value: string | string[] }>) {
+  const list = Array.isArray(value) ? value : [value].filter(Boolean);
+  return (
+    <div className="flex flex-col gap-0.5 border-b border-border pb-2 last:border-0">
+      <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
+      {list.length === 0 ? (
+        <span className="text-muted-foreground/70">Not set</span>
+      ) : (
+        list.map((item, i) => (
+          <span key={`${item}-${i}`} className="break-all">{item}</span>
+        ))
+      )}
+    </div>
+  );
+}
 const SEARCH_DEBOUNCE_MS = 300;
 
 const toOptions = (categories: Category[]) =>
@@ -27,8 +95,15 @@ export function NewExtractionDialog({
   const [step, setStep] = useState(0);
   const [businessCategory, setBusinessCategory] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
+  // Kept alongside the ids so the review step still has a name after a search
+  // has swapped out the option list the selection came from.
+  const [businessLabel, setBusinessLabel] = useState("");
+  const [serviceLabel, setServiceLabel] = useState("");
   const [sourceType, setSourceType] = useState("institution");
   const [institutionUrl, setInstitutionUrl] = useState("");
+  const [sampleCourseUrl, setSampleCourseUrl] = useState("");
+  const [guidedUrls, setGuidedUrls] = useState<Record<string, string[]>>({});
+  const [guidanceNotes, setGuidanceNotes] = useState("");
   const [creating, setCreating] = useState(false);
   const [businessOptions, setBusinessOptions] = useState<Category[]>([]);
   const [serviceOptions, setServiceOptions] = useState<Category[]>([]);
@@ -75,16 +150,35 @@ export function NewExtractionDialog({
       setStep(0);
       setBusinessCategory("");
       setServiceCategory("");
+      setBusinessLabel("");
+      setServiceLabel("");
       setSourceType("institution");
       setInstitutionUrl("");
+      setSampleCourseUrl("");
+      setGuidedUrls({});
+      setGuidanceNotes("");
     }
     onOpenChange(next);
+  };
+
+  // A stray backdrop click or Escape would wipe a half-filled three-step form, so the only
+  // ways out are Cancel and the corner ×. Outside presses are blocked by disablePointerDismissal.
+  const handleOpenChangeWithReason = (next: boolean, details: { reason?: string }) => {
+    if (!next && details.reason === "escape-key") return;
+    handleOpenChange(next);
   };
 
   const stepOneValid = Boolean(businessCategory && serviceCategory && sourceType);
 
   const handleSubmit = async () => {
     if (!institutionUrl.trim()) return;
+
+    const guided_urls: Record<string, string[]> = {};
+    for (const { key } of GUIDED_URL_CATEGORIES) {
+      const urls = cleanUrls(guidedUrls[key]);
+      if (urls.length) guided_urls[key] = urls;
+    }
+
     setCreating(true);
     const result = await dispatch(
       createJob({
@@ -92,6 +186,9 @@ export function NewExtractionDialog({
         business_category_id: Number(businessCategory),
         service_category_id: Number(serviceCategory),
         source_type: sourceType,
+        ...(Object.keys(guided_urls).length && { guided_urls }),
+        ...(guidanceNotes.trim() && { guidance_notes: guidanceNotes.trim() }),
+        ...(sampleCourseUrl.trim() && { sample_course_url: sampleCourseUrl.trim() }),
       })
     );
     setCreating(false);
@@ -104,8 +201,8 @@ export function NewExtractionDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={handleOpenChangeWithReason} disablePointerDismissal>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>New Extraction</DialogTitle>
         </DialogHeader>
@@ -137,7 +234,10 @@ export function NewExtractionDialog({
                 id="business-category"
                 options={toOptions(businessOptions)}
                 value={businessCategory}
-                onChange={setBusinessCategory}
+                onChange={(v) => {
+                  setBusinessCategory(v);
+                  setBusinessLabel(businessOptions.find((c) => String(c.id) === v)?.name ?? "");
+                }}
                 onQueryChange={handleBusinessSearch}
                 loading={loadingCategories}
                 placeholder="Select business category"
@@ -150,7 +250,10 @@ export function NewExtractionDialog({
                 id="service-category"
                 options={toOptions(serviceOptions)}
                 value={serviceCategory}
-                onChange={setServiceCategory}
+                onChange={(v) => {
+                  setServiceCategory(v);
+                  setServiceLabel(serviceOptions.find((c) => String(c.id) === v)?.name ?? "");
+                }}
                 onQueryChange={handleServiceSearch}
                 loading={loadingCategories}
                 placeholder="Select service category"
@@ -168,16 +271,75 @@ export function NewExtractionDialog({
               />
             </div>
           </div>
+        ) : step === 1 ? (
+          <div className="flex max-h-[65vh] flex-col gap-4 overflow-y-auto pr-1">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="institution-url">Institution website URL</Label>
+              <Input
+                id="institution-url"
+                type="url"
+                placeholder="https://university.edu"
+                value={institutionUrl}
+                onChange={(e) => setInstitutionUrl(e.target.value)}
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Everything below is optional — leave it blank and the AI discovers pages itself. Pointing it at
+              the right pages gives markedly better results. Add as many URLs per section as you need.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="sample-course-url">Sample course page URL</Label>
+              <Input
+                id="sample-course-url"
+                type="url"
+                placeholder="https://university.edu/courses/bachelor-of-science"
+                value={sampleCourseUrl}
+                onChange={(e) => setSampleCourseUrl(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">One individual course page, so the AI learns the URL pattern.</p>
+            </div>
+
+            {GUIDED_URL_CATEGORIES.map(({ key, label, ...rest }) => (
+              <div key={key} className="flex flex-col gap-2">
+                <Label htmlFor={key}>{label} page URLs</Label>
+                <UrlList
+                  id={key}
+                  values={guidedUrls[key] ?? []}
+                  onChange={(next) => setGuidedUrls((prev) => ({ ...prev, [key]: next }))}
+                />
+                {"hint" in rest && <p className="text-xs text-muted-foreground">{rest.hint}</p>}
+              </div>
+            ))}
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="guidance-notes">Additional guidance for the AI</Label>
+              <Textarea
+                id="guidance-notes"
+                rows={3}
+                placeholder="e.g. Fees are shown per semester — multiply by 2 for annual. CRICOS codes appear in the sidebar."
+                value={guidanceNotes}
+                onChange={(e) => setGuidanceNotes(e.target.value)}
+              />
+            </div>
+          </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="institution-url">Institution website URL</Label>
-            <Input
-              id="institution-url"
-              type="url"
-              placeholder="https://university.edu"
-              value={institutionUrl}
-              onChange={(e) => setInstitutionUrl(e.target.value)}
+          <div className="flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1 text-sm">
+            <SummaryRow label="Business category" value={businessLabel} />
+            <SummaryRow label="Service category" value={serviceLabel} />
+            <SummaryRow
+              label="Source type"
+              value={SOURCE_TYPE_OPTIONS.find((o) => o.value === sourceType)?.label ?? sourceType}
             />
+            <SummaryRow label="Institution website URL" value={institutionUrl.trim()} />
+            <SummaryRow label="Sample course page URL" value={sampleCourseUrl.trim()} />
+
+            {GUIDED_URL_CATEGORIES.map(({ key, label }) => (
+              <SummaryRow key={key} label={`${label} page URLs`} value={cleanUrls(guidedUrls[key])} />
+            ))}
+
+            <SummaryRow label="Guidance for the AI" value={guidanceNotes.trim()} />
           </div>
         )}
 
@@ -185,12 +347,20 @@ export function NewExtractionDialog({
           <Button
             className="h-10 w-1/4 cursor-pointer"
             variant="outline"
-            onClick={() => (step === 0 ? onOpenChange(false) : setStep(0))}
+            onClick={() => (step === 0 ? onOpenChange(false) : setStep(step - 1))}
           >
             {step === 0 ? "Cancel" : "Back"}
           </Button>
           {step === 0 ? (
             <Button className="h-10 w-3/4 cursor-pointer" onClick={() => setStep(1)} disabled={!stepOneValid}>
+              Next
+            </Button>
+          ) : step === 1 ? (
+            <Button
+              className="h-10 w-3/4 cursor-pointer"
+              onClick={() => setStep(2)}
+              disabled={!institutionUrl.trim()}
+            >
               Next
             </Button>
           ) : (

@@ -41,6 +41,31 @@ export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "
 export const PAUSABLE_STATUSES: ExtractionStatus[] = ["scraping", "extracting"];
 export const FINISHED_STATUSES: ExtractionStatus[] = ["done", "completed", "approved", "verified", "exported", "pushed"];
 
+// Every guided-URL bucket the backend actually reads. Keys must stay `*_urls` — the job
+// worker seeds the crawl from every key with that suffix, and the per-course data steps
+// look up `<data_type>_urls`. Adding a category here is enough to make it work end to end.
+export const GUIDED_URL_CATEGORIES = [
+  { key: "course_list_urls", label: "Course List / Catalogue", hint: "Where the AI can find the full list of courses" },
+  { key: "contact_urls", label: "Contact / About" },
+  { key: "branches_urls", label: "Branches / Campuses" },
+  { key: "agents_urls", label: "Agent Directory" },
+  { key: "fees_urls", label: "Fees" },
+  { key: "intakes_urls", label: "Intakes / Academic Calendar" },
+  { key: "eligibility_urls", label: "Entry Requirements" },
+  { key: "units_urls", label: "Study Units / Curriculum" },
+  { key: "accreditations_urls", label: "Accreditations" },
+] as const;
+
+// Per-course verification_status → list dot colour. "verified"/"mismatch" come from the
+// verify worker, "confirmed"/"flagged" from a human, "manual" from a hand-added course.
+export const VERIFICATION_DOT: Record<string, string> = {
+  verified: "bg-emerald-500",
+  confirmed: "bg-emerald-500",
+  mismatch: "bg-destructive",
+  flagged: "bg-destructive",
+  manual: "bg-blue-400",
+};
+
 export const SOURCE_TYPE_OPTIONS = [
   { value: "institution", label: "Institution Website" },
 ];

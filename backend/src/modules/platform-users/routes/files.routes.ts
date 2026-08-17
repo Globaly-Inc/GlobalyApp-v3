@@ -28,7 +28,7 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
     const buffer = await file.toBuffer();
     storage.validateFile(file.mimetype, buffer.length);
 
-    const storagePath = storage.buildPath("public", "platform-users", String(userId), fileCategory, file.filename);
+    const storagePath = storage.buildPath("public/platform-users", String(userId), fileCategory, file.filename);
     await storage.uploadFile(storagePath, buffer, file.mimetype);
 
     const record = await filesRepo.insertFile({

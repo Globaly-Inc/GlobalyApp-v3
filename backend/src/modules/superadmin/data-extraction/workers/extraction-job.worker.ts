@@ -10,7 +10,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown, discoverUrlsForCrawl } from "../lib/scraper.js";
-import { looksLikeCourseUrl, filterUrls, truncateMarkdown, domainOf } from "../lib/html-utils.js";
+import { looksLikeCourseUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls } from "../lib/html-utils.js";
 import { extractJson, isConfigured } from "../lib/llm-client.js";
 import { siteAnalysisPrompt, urlDiscoveryPrompt, SITE_ANALYSIS_SYSTEM } from "../lib/extraction-prompts.js";
 import {
@@ -113,7 +113,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
 
     // ── Phase 2: Discover course page URLs ──
     // Use the full cascade: Firecrawl map → sitemap.xml → page links → seed only
-    const discovery = await discoverUrlsForCrawl(job.institution_url, { limit: 2000 });
+    const discovery = await discoverUrlsForCrawl(job.institution_url, { limit: 10000 });
     const origin = new URL(job.institution_url).origin;
     let allUrls = filterUrls(discovery.urls, origin);
 
@@ -147,23 +147,9 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     let courseUrls = allUrls.filter(looksLikeCourseUrl);
 
     // Add guided URLs from admin
-    let guidedUrls: string[] = [];
-    if (job.guided_urls) {
-      const parsed = typeof job.guided_urls === "string" ? JSON.parse(job.guided_urls) : job.guided_urls;
-      if (Array.isArray(parsed)) {
-        guidedUrls = parsed;
-      } else if (parsed && typeof parsed === "object") {
-        // Extract URL arrays from structured guided_urls object
-        // e.g. { course_list_urls: [...], contact_urls: [...], branches_urls: [...] }
-        const urlKeys = ["course_list_urls", "contact_urls", "branches_urls", "agents_urls"];
-        for (const key of urlKeys) {
-          const val = (parsed as Record<string, unknown>)[key];
-          if (Array.isArray(val)) {
-            for (const u of val) { if (typeof u === "string") guidedUrls.push(u); }
-          }
-        }
-      }
-    }
+    const guidedUrls = collectGuidedUrls(
+      typeof job.guided_urls === "string" ? JSON.parse(job.guided_urls) : job.guided_urls,
+    );
     courseUrls = [...new Set([...courseUrls, ...guidedUrls])];
 
     // ponytail: check stop_requested before LLM-heavy URL classification
@@ -177,23 +163,38 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     // ponytail: bump maxTokens — response is a URL list that easily exceeds 16K default
     const patterns = analysis.course_page_patterns ?? [];
 
-    if (courseUrls.length > 200) {
-      const urlResult = await extractJson<UrlDiscoveryResult>({
-        system: SITE_ANALYSIS_SYSTEM,
-        prompt: urlDiscoveryPrompt(courseUrls.slice(0, 500), patterns),
-        maxTokens: 65536,
-      });
-      courseUrls = [...new Set([...(urlResult.course_urls ?? []), ...guidedUrls])];
+    if (courseUrls.length > 500) {
+      // ponytail: chunk URLs into batches of 800 for LLM filtering so we don't lose pages
+      const LLM_BATCH = 800;
+      const classified: string[] = [...guidedUrls];
+      for (let i = 0; i < courseUrls.length; i += LLM_BATCH) {
+        const batch = courseUrls.slice(i, i + LLM_BATCH);
+        const urlResult = await extractJson<UrlDiscoveryResult>({
+          system: SITE_ANALYSIS_SYSTEM,
+          prompt: urlDiscoveryPrompt(batch, patterns),
+          maxTokens: 65536,
+        });
+        if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
+        // Heartbeat between batches
+        await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
+      }
+      courseUrls = [...new Set(classified)];
     }
 
     // If heuristic found nothing, send all non-asset URLs to LLM for classification
     if (courseUrls.length === 0 && allUrls.length > 0) {
-      const urlResult = await extractJson<UrlDiscoveryResult>({
-        system: SITE_ANALYSIS_SYSTEM,
-        prompt: urlDiscoveryPrompt(allUrls.slice(0, 500), patterns),
-        maxTokens: 65536,
-      });
-      courseUrls = urlResult.course_urls ?? [];
+      const LLM_BATCH = 800;
+      const classified: string[] = [];
+      for (let i = 0; i < allUrls.length && i < 3200; i += LLM_BATCH) {
+        const batch = allUrls.slice(i, i + LLM_BATCH);
+        const urlResult = await extractJson<UrlDiscoveryResult>({
+          system: SITE_ANALYSIS_SYSTEM,
+          prompt: urlDiscoveryPrompt(batch, patterns),
+          maxTokens: 65536,
+        });
+        if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
+      }
+      courseUrls = [...new Set(classified)];
     }
 
     // Fallback: homepage itself

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **Node.js** v24+ (via nvm)
-- **PostgreSQL** 15+
+- **PostgreSQL** 15+ with **pgvector** ≥ 0.7 (required for 3072-dim embeddings)
 - **LavinMQ** — message queue for async jobs
 - **Mailtrap** account (free) — for dev email testing
 
@@ -55,12 +55,13 @@ CREATE USER master_user WITH PASSWORD 'password' CREATEDB;
 
 > **Note:** In production, use a strong password and restrict privileges accordingly.
 
-### Create the database and schema
+### Create the database, schema, and extensions
 
 ```sql
 CREATE DATABASE globalyapp OWNER master_user;
 \c globalyapp
 CREATE SCHEMA superadmin AUTHORIZATION master_user;
+CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
 Grant the necessary permissions:

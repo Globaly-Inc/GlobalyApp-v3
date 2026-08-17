@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useAppDispatch } from "@/lib/hooks";
 import { ACTIVE_STATUSES } from "../const";
 import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
+import { useConfirmDelete } from "./use-confirm-delete";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
@@ -17,6 +18,7 @@ export function JobHeader({ job }: Readonly<{ job: ExtractionJob }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const [busy, setBusy] = useState<"stop" | "reset" | "decline" | "publish" | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirmDelete();
 
   const run = async (
     action: "stop" | "reset" | "decline" | "publish",
@@ -74,7 +76,14 @@ export function JobHeader({ job }: Readonly<{ job: ExtractionJob }>) {
             variant="outline"
             className="gap-1.5 cursor-pointer"
             disabled={busy !== null}
-            onClick={() => run("reset", resetPipeline(job.id), "Pipeline reset")}
+            onClick={async () => {
+              const ok = await confirm(
+                "Reset Pipeline?",
+                "This will delete all queued URLs and reset progress counters. Extracted courses, campuses, and other data will be kept. The job will return to pending status.",
+              );
+              if (!ok) return;
+              run("reset", resetPipeline(job.id), "Pipeline reset");
+            }}
           >
             {busy === "reset" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
             {busy === "reset" ? "Resetting…" : "Reset Pipeline"}
@@ -105,6 +114,7 @@ export function JobHeader({ job }: Readonly<{ job: ExtractionJob }>) {
           </>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }

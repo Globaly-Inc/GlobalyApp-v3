@@ -3,7 +3,7 @@
 import { z } from "zod";
 
 export const AgentcisSearchSchema = z.object({
-  query: z.string().min(1).max(200),
+  query: z.string().max(200),
 });
 
 export const AgentcisImportSchema = z.object({

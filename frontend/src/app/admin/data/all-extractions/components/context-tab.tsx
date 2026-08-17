@@ -12,16 +12,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { allExtractionsApi } from "../apis";
+import { GUIDED_URL_CATEGORIES } from "../const";
 import type { ExtractionJob } from "../apis/types";
 
 // ── Types ────────────────────────────────────────────────────────
 interface GuidedUrls {
-  course_list_urls?: string[];
-  contact_urls?: string[];
-  branches_urls?: string[];
-  agents_urls?: string[];
   extract_fields?: string[];
   resources?: Resource[];
+  // One `<category>_urls: string[]` key per GUIDED_URL_CATEGORIES entry.
+  [urlCategory: string]: string[] | Resource[] | undefined;
 }
 
 interface Resource {
@@ -68,12 +67,7 @@ function SourceLink({ href }: Readonly<{ href: string }>) {
   );
 }
 
-const URL_CATEGORIES = [
-  { key: "course_list_urls", label: "Course List" },
-  { key: "contact_urls", label: "Contact" },
-  { key: "branches_urls", label: "Branches" },
-  { key: "agents_urls", label: "Agents" },
-] as const;
+const URL_CATEGORIES = GUIDED_URL_CATEGORIES;
 
 const DATA_TYPE_OPTIONS = [
   "Fee Information", "Intake Dates", "Eligibility", "Course Details",
@@ -101,7 +95,7 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
   async function saveGuidedUrls(updated: GuidedUrls) {
     setSaving(true);
     try {
-      await allExtractionsApi.updateContext(jobId, { guided_urls: updated as Record<string, string> });
+      await allExtractionsApi.updateContext(jobId, { guided_urls: updated });
       toast.success("Saved");
       onReload();
     } catch (e: unknown) {

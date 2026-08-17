@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  BookMarked, Building2, CalendarDays, ChevronsUpDown, Clock, DollarSign, ExternalLink, Link2,
+  BookMarked, Building2, CalendarDays, CheckCircle2, ChevronsUpDown, Clock, DollarSign, ExternalLink, Flag, Link2,
   Loader2, Pencil, Plus, ShieldCheck, Trash2, X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { allExtractionsApi } from "../apis";
+import { saveFormAndLearn } from "./editable-field";
 import { StudyOptionForm } from "./study-option-form";
 import type {
   CampusFull, CourseAssignment, CourseFull, CourseLinks, JunctionSlug, StudyOption,
@@ -203,8 +204,20 @@ export function CourseDetailPanel({
     }
   };
 
+  // save-and-learn, not a plain PATCH: a reviewer correcting the same field twice on a
+  // domain is what creates an AI Memory lesson. Courses are where most corrections happen,
+  // so a plain PATCH here left the learning loop effectively switched off.
   const patchCourse = (patch: Record<string, unknown>) =>
-    run(() => allExtractionsApi.updateCourse(course.id, patch), "Course updated");
+    run(
+      () => allExtractionsApi.saveAndLearn({
+        table: "extraction_courses",
+        id: course.id,
+        patch,
+        job_id: jobId,
+        source_url: course.source_url ?? undefined,
+      }),
+      "Course updated",
+    );
 
   const link = (junction: JunctionSlug, entityId: string) =>
     run(() => allExtractionsApi.assignJunction(junction, { job_id: jobId, course_id: course.id, entity_id: entityId }), "Linked");
@@ -246,9 +259,34 @@ export function CourseDetailPanel({
               </a>
             )}
           </div>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" title="Close" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {course.verification_status && course.verification_status !== "unverified" && (
+              <Badge variant="outline" className="text-[10px] capitalize">{humanize(course.verification_status)}</Badge>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs cursor-pointer"
+              disabled={busy || course.verification_status === "confirmed"}
+              onClick={() => run(() => allExtractionsApi.approveCourse(course.id), "Course approved")}
+            >
+              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+              Approve
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-destructive cursor-pointer"
+              disabled={busy || course.verification_status === "flagged"}
+              onClick={() => run(() => allExtractionsApi.rejectCourse(course.id), "Course flagged")}
+            >
+              <Flag className="h-3 w-3" />
+              Flag
+            </Button>
+            <Button variant="ghost" size="icon-sm" className="cursor-pointer" title="Close" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Each field writes its own column as soon as it changes — no separate save step. */}
@@ -441,7 +479,10 @@ export function CourseDetailPanel({
                 onCancel={() => setEditingOptionId(null)}
                 onSave={async (values) => {
                   setEditingOptionId(null);
-                  await run(() => allExtractionsApi.updateStudyOption(option.id, values), "Study option updated");
+                  await run(
+                    () => saveFormAndLearn("extraction_study_options", option, values, jobId),
+                    "Study option updated",
+                  );
                 }}
               />
             ) : (
