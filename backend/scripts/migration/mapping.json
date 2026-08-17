@@ -1,0 +1,800 @@
+{
+  "$comment": [
+    "mapping.json — the spine of the V1 -> V3 data migration (Part 3 §2/§4).",
+    "",
+    "Read by:",
+    "  backend/scripts/migration/extract.mjs           Stage 1 — what to pull into v1_staging",
+    "  backend/scripts/migration/lib.ts                Stage 2 — the transform runner",
+    "  backend/database/scripts/verify-migration.mjs   Gate 2 — the six parity checks",
+    "",
+    "TWO LAYERS, deliberately separate:",
+    "",
+    "  `tables`   the DISPOSITION LEDGER. Every one of the 199 tables in v1-tables.json is",
+    "             dispositioned exactly once as `transform` | `drop` | `blocked`. There is no",
+    "             default: an undispositioned table is an error, not a pass. This is what makes",
+    "             coverage arithmetic (source rows = target rows + reason-coded skips) possible.",
+    "             Coverage is arithmetic, not memory.",
+    "",
+    "  `mappings` the VERIFICATION DETAIL for tables already dispositioned `transform` AND already",
+    "             loaded. A `transform` table with no mapping entry is honest — it says the wave has",
+    "             not run yet. A mapping entry whose table is not dispositioned `transform` is a",
+    "             contradiction and --self-check rejects it.",
+    "",
+    "Disposition vocabulary:",
+    "  transform  V1 rows become V3 rows. `targets` names the V3 table(s); `wave` names when.",
+    "  drop       V1 rows are deliberately NOT carried. Needs `reasonCode` (closed enum) + `reason`.",
+    "  blocked    would transform, but the V3 target does not exist yet. Needs `dependency`.",
+    "             Per Part 3 §4 W7: a blocked mapping flips to `transform` the moment its target",
+    "             schema merges. `blocked` is never a resting state for a shipped feature.",
+    "",
+    "`question` on a blocked entry means the disposition could not be derived from the master",
+    "document plus the data. It is an open question for the owner, not a guess. Grep for it."
+  ],
+
+  "meta": {
+    "authority": "ai-outputs/plans/2026-08-17-v3-migration-program-master-document.pdf (Part 3 — Data Migration Annex)",
+    "census": "backend/scripts/migration/v1-tables.json — 199 tables, live V1 /tables @2026-07-16",
+    "v3Evidence": "backend/database/migrations/{globalyapp,superadmin,business}/ on staging-mvp @2026-08-17 (§1.2.1: the repo, not the dev DB, is the authority)",
+    "rowsAsOf": "2026-07-16 local restore (postgres:5455/globaly). Informational only — every gate counts live from v1_staging. The snapshot has drifted from live V1; that is expected until the cutover re-extract.",
+    "stagingSchema": "v1_staging",
+    "reportSchema": "mig",
+
+    "reasonCodes": {
+      "$comment": "CLOSED ENUM. Gate 2 check 6: every row in mig.unresolved and every `drop` carries one of these. An unknown reason is a red gate, because 'unexplained' is how silent data loss looks in a report.",
+      "ci_junk": "CI / smoke-test output. Never was product data.",
+      "rebuild_in_v3": "Feature is deliberately rebuilt in V3; the V1 rows are not carried (owner decision).",
+      "v1_infrastructure": "V1 platform plumbing that V3 replaces with its own native mechanism.",
+      "secret_material": "Credentials, tokens or key audit. Must never be copied into V3.",
+      "ephemeral": "Short-lived state with no meaning after the cutover window.",
+      "v3_table_live": "The V3 table exists and is already written by V3 code; loading V1 rows would corrupt live state.",
+      "unresolved_user": "No platform_users row for this V1 user reference.",
+      "unresolved_business": "No businesses row for this V1 business reference.",
+      "unresolved_institution": "No institutions row for this V1 institution reference.",
+      "unresolved_country": "Country string did not resolve to a countries row.",
+      "unresolved_city": "City did not resolve to a cities row for its country.",
+      "unresolved_category": "Category reference did not resolve.",
+      "unresolved_parent": "A declared parent row is missing, so the child cannot be attached.",
+      "duplicate_natural_key": "Two source rows collapse onto one natural key; the later one is reported, not overwritten silently.",
+      "invalid_source_data": "Source row fails a validity rule the V3 schema enforces."
+    },
+
+    "waves": {
+      "W1": "identity reconcile & geo",
+      "W2": "reference data",
+      "W3": "student sub-profiles",
+      "W4": "extraction corpus",
+      "W5": "content & config",
+      "W6": "storage rehost",
+      "W7": "tenant-scoped data",
+      "B2": "build wave B2 — institutions claimable model",
+      "C1": "build wave C1 — tenant services family",
+      "C2": "build wave C2 — public catalog, search, ranking",
+      "C3": "build wave C3 — billing, wallets, subscriptions",
+      "D1": "build wave D1 — enquiries",
+      "D2": "build wave D2 — messaging (rebuild, no migration)",
+      "D3": "build wave D3 — events, tickets, notifications",
+      "D4": "build wave D4 — feed comments, public profiles",
+      "E1": "build wave E1 — RAG / knowledge base",
+      "E2": "build wave E2 — AI counsellor",
+      "E3": "build wave E3 — scribe",
+      "E4": "build wave E4 — LMS / training",
+      "G": "build wave G — full-parity tail",
+      "G1": "build wave G — visa / MARA promote targets"
+    }
+  },
+
+  "tables": {
+    "accreditations":                              { "disposition": "transform", "wave": "W2", "rows": 30,    "targets": ["public.accreditations", "public.accreditation_scope_countries"], "mapping": "accreditations", "note": "free-text issuing_organization -> FK; scope_countries text[] -> join table" },
+    "ad_campaigns":                                { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "Wave G ads module — no V3 table. §3.8: Ads (campaigns, impressions, leads) is MOCK-ONLY at admin/marketing/ads." },
+    "ad_creatives":                                { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "Wave G ads module — no V3 table (§3.8)." },
+    "ad_dismissed":                                { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "Wave G ads module — no V3 table (§3.8)." },
+    "ad_impressions":                              { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "Wave G ads module — no V3 table (§3.8)." },
+    "ad_leads":                                    { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "Wave G ads module — no V3 table (§3.8)." },
+    "ad_placements":                               { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "Wave G ads module — no V3 table (§3.8)." },
+    "ad_reports":                                  { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "Wave G ads module — no V3 table (§3.8)." },
+    "admin_logs":                                  { "disposition": "transform", "wave": "W5", "rows": 129,   "targets": ["superadmin.admin_audit_logs"], "note": "rename (§4 mapping table)" },
+    "agent_extraction_runs":                       { "disposition": "transform", "wave": "W4", "rows": 11,    "targets": ["superadmin.agent_extraction_runs"] },
+    "agent_extraction_schedule":                   { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.agent_extraction_schedule"] },
+    "agent_mara_details":                          { "disposition": "blocked",   "wave": "G1", "rows": 0,     "dependency": "§6 wave G / §3.4 gap table: agent_mara_details (1:1 business_id) exists in V1 but has no V3 migration. Visa/MARA promote target." },
+    "ai_content_jobs":                             { "disposition": "blocked",   "wave": "E",  "rows": 0,     "dependency": "No V3 table and no row in the §3 feature inventory.", "question": "V1's AI content-job queue (ai_content_jobs) is not named anywhere in the master document. Is it in scope for wave E (AI), or is it dead V1 plumbing to drop? 0 rows either way." },
+    "ai_counselor_messages":                       { "disposition": "transform", "wave": "E2", "rows": 301,   "targets": ["public.ai_counselor_messages"], "note": "table shipped by globalyapp/20260816_003_ai_counselor_messages.ts (§6 wave E: counsellor sessions/messages land in public, not superadmin)" },
+    "ai_counselor_profiles":                       { "disposition": "blocked",   "wave": "E2", "rows": 4,     "dependency": "No public.ai_counselor_profiles migration on staging-mvp. AI-counsellor phase 2 is still in flight on dev-feat-ai-counsellor-p2 (§14)." },
+    "ai_counselor_sessions":                       { "disposition": "transform", "wave": "E2", "rows": 75,    "targets": ["public.ai_counselor_sessions"], "note": "globalyapp/20260816_002_ai_counselor_sessions.ts" },
+    "ai_credit_ledger":                            { "disposition": "blocked",   "wave": "C3", "rows": 0,     "dependency": "AI metering ledger. §6 wave E lists ai_usage_events (metering) as still to build; public.credit_transactions is the billing ledger, not the AI-token ledger." },
+    "ai_documents":                                { "disposition": "blocked",   "wave": "E1", "rows": 0,     "dependency": "No V3 table. superadmin.ai_knowledge_documents is the RAG corpus (a different thing: crawled sources, not user documents)." },
+    "ai_embed_configs":                            { "disposition": "transform", "wave": "G",  "rows": 0,     "targets": ["public.ai_embed_configs"], "note": "§3.8: table merged in globalyapp/20260816_001_ai_embed_configs.ts; the widget endpoints/embed script are still missing but the table is the migration target" },
+    "ai_guest_chat_sessions":                      { "disposition": "transform", "wave": "E2", "rows": 4,     "targets": ["public.ai_guest_chat_sessions"], "note": "globalyapp/20260816_006_ai_guest_chat_sessions.ts" },
+    "ai_knowledge_categories":                     { "disposition": "transform", "wave": "W4", "rows": 9,     "targets": ["superadmin.ai_knowledge_categories"], "note": "superadmin/20260814_001_ai_knowledge.ts (PR #42)" },
+    "ai_knowledge_country_guides":                 { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.ai_knowledge_country_guides"] },
+    "ai_knowledge_documents":                      { "disposition": "transform", "wave": "W4", "rows": 207,   "targets": ["superadmin.ai_knowledge_documents"], "note": "embeddings are NEVER copied — re-embedded by the crawl worker (§1.5); V3 is Gemini text-embedding-004 @768 dims, V1/V2 are not convertible" },
+    "ai_knowledge_faqs":                           { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.ai_knowledge_faqs"] },
+    "ai_knowledge_sources":                        { "disposition": "transform", "wave": "W4", "rows": 58,    "targets": ["superadmin.ai_knowledge_sources"] },
+    "ai_knowledge_visa":                           { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.ai_knowledge_visa"] },
+    "ai_learning_queue":                           { "disposition": "blocked",   "wave": "E1", "rows": 0,     "dependency": "No V3 table. superadmin.data_verification_queue covers verification, not the V1 learning queue." },
+    "ai_message_attachments":                      { "disposition": "blocked",   "wave": "E2", "rows": 2,     "dependency": "No V3 table. Child of ai_counselor_messages; lands with AI-counsellor phase 2 (dev-feat-ai-counsellor-p2)." },
+    "ai_user_memory":                              { "disposition": "blocked",   "wave": "E2", "rows": 0,     "dependency": "No V3 table. superadmin.extraction_memory is the agent's extraction memory, a different concept from per-user counsellor memory." },
+    "ambassador_application_notes":                { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY (admin/monitoring/ambassador-programs); no V3 tables." },
+    "ambassador_applications":                     { "disposition": "blocked",   "wave": "G",  "rows": 1,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "ambassador_earnings":                         { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "ambassador_inquiries":                        { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "ambassador_messages":                         { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "ambassador_payouts":                          { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "ambassador_programs":                         { "disposition": "blocked",   "wave": "G",  "rows": 7,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "ambassador_reviews":                          { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "ambassador_threads":                          { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "ambassadors":                                 { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Ambassador ops — MOCK-ONLY; no V3 tables." },
+    "application_charges":                         { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Applications + charges — MOCK-ONLY (admin/revenue/application-charges); no V3 tables." },
+    "applications":                                { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Applications + charges — MOCK-ONLY; no V3 tables." },
+    "areas_of_study":                              { "disposition": "transform", "wave": "W2", "rows": 19,    "targets": ["public.areas_of_study"], "mapping": "areas_of_study" },
+    "audit_events":                                { "disposition": "transform", "wave": "W5", "rows": 3,     "targets": ["public.audit_logs"], "note": "rename (§4 mapping table)" },
+    "blog_keywords":                               { "disposition": "transform", "wave": "W5", "rows": 36,    "targets": ["superadmin.blog_keywords"] },
+    "blog_posts":                                  { "disposition": "transform", "wave": "W5", "rows": 9,     "targets": ["superadmin.blog_posts"] },
+    "branches":                                    { "disposition": "transform", "wave": "W7", "rows": 7,     "targets": ["{tenant}.business_branches"], "note": "V1 `branches` is the PHYSICAL branch/campus (name, country, city, address) -> the tenant business_branches table (business/20260811_001_business_branches.ts). Not to be confused with V1 `business_branches`, which is the cross-tenant parent/child graph and stays in public." },
+    "business_ai_credits":                         { "disposition": "transform", "wave": "C3", "rows": 4,     "targets": ["public.business_ai_credits"], "note": "globalyapp/20260817_002_billing_accounts.ts" },
+    "business_ai_member_caps":                     { "disposition": "blocked",   "wave": "C3", "rows": 1,     "dependency": "No V3 table. Per-member AI spend caps; lands with the AI metering work §6 wave E lists as remaining." },
+    "business_ai_member_usage":                    { "disposition": "blocked",   "wave": "C3", "rows": 0,     "dependency": "No V3 table. Per-member AI usage counters; see business_ai_member_caps." },
+    "business_ai_messages":                        { "disposition": "blocked",   "wave": "E2", "rows": 0,     "dependency": "No V3 table. Business-side AI counsellor; §3.7 lists 'business counsellor' as still in flight on dev-feat-ai-counsellor-p2." },
+    "business_ai_sessions":                        { "disposition": "blocked",   "wave": "E2", "rows": 0,     "dependency": "No V3 table. Business-side AI counsellor; see business_ai_messages." },
+    "business_allowed_categories":                 { "disposition": "transform", "wave": "W7", "rows": 34,    "targets": ["public.business_allowed_categories"], "note": "MASTER, never tenant — cross-tenant FKs cannot live in one tenant's schema (§1.2). globalyapp/20260816_003_cross_tenant_tables.ts" },
+    "business_branches":                           { "disposition": "transform", "wave": "W7", "rows": 27,    "targets": ["public.business_branches"], "note": "the cross-tenant parent/child business graph. MASTER, never tenant (§1.2, §14 'branch-placement deviation'). globalyapp/20260816_003_cross_tenant_tables.ts" },
+    "business_categories":                         { "disposition": "transform", "wave": "W2", "rows": 6,     "targets": ["public.business_categories", "public.fee_types"], "mapping": "business_categories", "note": "SPLIT (§4): the category row itself plus the fee types embedded in its schema_fields jsonb" },
+    "business_category_default_services":          { "disposition": "transform", "wave": "W2", "rows": 2,     "targets": ["public.business_category_default_services"] },
+    "business_claim_requests":                     { "disposition": "blocked",   "wave": "B2", "rows": 2,     "dependency": "§6 wave B2 lists claim_requests as a table still to create. globalyapp/20260816_001_institutions_claimable.ts only ALTERs institutions (nullable owner + claim_status); there is no public.claim_requests migration on staging-mvp yet." },
+    "business_contacts":                           { "disposition": "blocked",   "wave": "C1", "rows": 0,     "dependency": "No V3 table. Business profile contact list; §3.2 Business profile is DONE but carries no contacts child table." },
+    "business_documents":                          { "disposition": "blocked",   "wave": "W6", "rows": 0,     "dependency": "No V3 table. Business document registry; public.uploaded_files is the generic object registry, not a per-business document list." },
+    "business_join_requests":                      { "disposition": "blocked",   "wave": "C1", "rows": 0,     "dependency": "No V3 table. V3 models team growth as {tenant}.agent_invitations (invite-out), not join-requests (request-in)." },
+    "business_locations":                          { "disposition": "blocked",   "wave": "C1", "rows": 0,     "dependency": "No V3 table. Distinct from `branches`; unused in V1 (0 rows).", "question": "V1 has three location-ish tables — branches (7 rows, physical campuses), business_locations (0 rows) and business_contacts (0 rows). Is business_locations dead V1 schema to drop, or does it need a V3 home?" },
+    "business_members":                            { "disposition": "transform", "wave": "W1", "rows": 20,    "targets": ["{tenant}.agents", "public.user_business_index"], "note": "§3.2: team/agents/invitations/roles DONE. One V1 row becomes a tenant agent plus its master index entry." },
+    "business_services":                           { "disposition": "transform", "wave": "W7", "rows": 402,   "targets": ["{tenant}.business_services"], "note": "C1 landed on staging-mvp (business/20260816_001_business_services.ts). Per Part 3 §4 W7 a blocked mapping flips to transform the moment its target schema merges — this one has." },
+    "business_subscriptions":                      { "disposition": "transform", "wave": "C3", "rows": 33,    "targets": ["public.business_subscriptions"], "note": "globalyapp/20260817_002_billing_accounts.ts" },
+    "business_webhook_settings":                   { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "No V3 table and no §3 feature row for business webhooks." },
+    "businesses":                                  { "disposition": "transform", "wave": "W1", "rows": 55,    "targets": ["public.businesses"], "mapping": "businesses", "note": "V1 uuid stamped into businesses.meta->>'v1_business_id'; each row also provisions a tenant schema (§5 resolver mig.map_businesses)" },
+    "chat_conversations":                          { "disposition": "drop",      "wave": "D2", "rows": 1,     "reasonCode": "rebuild_in_v3", "reason": "Messaging is rebuilt in D2 and explicitly NOT migrated. §4 names messages/chat_messages; chat_conversations is the same family (conversation header for those messages) and cannot be carried without them. §3.5: 'Messaging — MOCK-ONLY, [R][V2] rebuild, no migration (PDF decision kept)'.", "source": "Part 2 §3.5 + §4 mapping table" },
+    "chat_message_status":                         { "disposition": "drop",      "wave": "D2", "rows": 1,     "reasonCode": "rebuild_in_v3", "reason": "Per-recipient read state for chat_messages, which are dropped. Rebuilt in D2.", "source": "Part 2 §3.5 + §4 mapping table" },
+    "chat_messages":                               { "disposition": "drop",      "wave": "D2", "rows": 2,     "reasonCode": "rebuild_in_v3", "reason": "Named explicitly in the §4 mapping table as drop (rebuild D2; defect D3).", "source": "Part 2 §4 mapping table" },
+    "chat_participants":                           { "disposition": "drop",      "wave": "D2", "rows": 2,     "reasonCode": "rebuild_in_v3", "reason": "Membership of the chat conversations being dropped. Rebuilt in D2.", "source": "Part 2 §3.5 + §4 mapping table" },
+    "chat_ratings":                                { "disposition": "drop",      "wave": "D2", "rows": 0,     "reasonCode": "rebuild_in_v3", "reason": "Ratings attached to the chat conversations being dropped. Rebuilt in D2.", "source": "Part 2 §3.5 + §4 mapping table" },
+    "cities":                                      { "disposition": "transform", "wave": "W1", "rows": 2078,  "targets": ["public.cities"], "note": "§4 W1: 332 -> 2,078; the V3 table already exists and is fuller than V1. Resolver key is (country_id, name)." },
+    "conversations":                               { "disposition": "drop",      "wave": "D2", "rows": 1,     "reasonCode": "rebuild_in_v3", "reason": "The second V1 messaging model (paired with `messages`, which §4 drops explicitly). Rebuilt in D2.", "source": "Part 2 §3.5 + §4 mapping table" },
+    "core_field_settings":                         { "disposition": "transform", "wave": "W2", "rows": 42,    "targets": ["public.schema_fields"], "note": "rename + reshape (§4 mapping table)" },
+    "countries":                                   { "disposition": "transform", "wave": "W1", "rows": 198,   "targets": ["public.countries"], "note": "§4 W1: 24 -> 198. Fixes the silent-wrong country_ids already in the dev DB (§8 risk 1). ISO-2 is the resolver key." },
+    "coupons":                                     { "disposition": "transform", "wave": "C3", "rows": 1,     "targets": ["public.coupons"], "note": "globalyapp/20260817_001_billing_catalogue.ts" },
+    "credit_transactions":                         { "disposition": "transform", "wave": "C3", "rows": 162,   "targets": ["public.credit_transactions"], "note": "reconciliation-log §5 decision D: one polymorphic table carrying V1's shape (subscription_amount, purchased_amount, reference_type, reference_id, performed_by)" },
+    "credit_wallets":                              { "disposition": "transform", "wave": "C3", "rows": 55,    "targets": ["public.credit_wallets"], "note": "20 user-owned + 35 business-owned; V3 keeps V1's polymorphic owner_type/business_id shape plus free_balance as a V3 addition (reconciliation-log §5)" },
+    "data_verification_queue":                     { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.data_verification_queue"], "note": "superadmin/20260814_001_ai_knowledge.ts" },
+    "degree_levels":                               { "disposition": "transform", "wave": "W2", "rows": 9,     "targets": ["public.degree_levels"] },
+    "doc_update_logs":                             { "disposition": "blocked",   "wave": "E",  "rows": 2,     "dependency": "No V3 table. Child of the V1 document-generation feature; §3.8 SOP generator is MISSING and its V2 path is UNVERIFIED (§14)." },
+    "eligibility_checks":                          { "disposition": "blocked",   "wave": "D",  "rows": 3,     "dependency": "§3.5 Eligibility checker — MISSING in V3, [R] rebuild, wave D. No V3 table." },
+    "enquiries":                                   { "disposition": "blocked",   "wave": "D1", "rows": 1,     "dependency": "§3.5 Enquiries — MOCK-ONLY (admin/monitoring/enquiries); the D1 enquiries module has no migration yet." },
+    "enquiry_distributions":                       { "disposition": "blocked",   "wave": "D1", "rows": 3,     "dependency": "§3.5 Enquiries — MOCK-ONLY; no V3 table (distribution of an enquiry to businesses)." },
+    "enquiry_email_queue":                         { "disposition": "blocked",   "wave": "D1", "rows": 3,     "dependency": "§3.5 Enquiries — MOCK-ONLY; no V3 table.", "question": "enquiry_email_queue is an outbound send queue, not durable business data. Once D1 lands, should these 3 rows migrate at all, or be dropped as ephemeral like otp_codes?" },
+    "event_co_hosts":                              { "disposition": "blocked",   "wave": "D3", "rows": 0,     "dependency": "§3.5 Events + ticketing — MOCK-ONLY (admin/monitoring/events); no V3 tables." },
+    "event_registrations":                         { "disposition": "blocked",   "wave": "D3", "rows": 4,     "dependency": "§3.5 Events + ticketing — MOCK-ONLY; no V3 tables." },
+    "event_tickets":                               { "disposition": "blocked",   "wave": "D3", "rows": 6,     "dependency": "§3.5 Events + ticketing — MOCK-ONLY; no V3 tables." },
+    "event_updates":                               { "disposition": "blocked",   "wave": "D3", "rows": 2,     "dependency": "§3.5 Events + ticketing — MOCK-ONLY; no V3 tables." },
+    "events":                                      { "disposition": "blocked",   "wave": "D3", "rows": 8,     "dependency": "§3.5 Events + ticketing — MOCK-ONLY; no V3 tables." },
+    "extraction_accreditations":                   { "disposition": "transform", "wave": "W4", "rows": 59,    "targets": ["superadmin.extraction_accreditations"] },
+    "extraction_additional_info":                  { "disposition": "transform", "wave": "W4", "rows": 128,   "targets": ["superadmin.extraction_additional_info"] },
+    "extraction_agent_locations":                  { "disposition": "transform", "wave": "W4", "rows": 1000,  "targets": ["superadmin.extraction_agent_locations"], "parents": ["extraction_agents"] },
+    "extraction_agents":                           { "disposition": "transform", "wave": "W4", "rows": 2995,  "targets": ["superadmin.extraction_agents"] },
+    "extraction_campuses":                         { "disposition": "transform", "wave": "W4", "rows": 429,   "targets": ["superadmin.extraction_campuses"] },
+    "extraction_course_accreditation_assignments": { "disposition": "transform", "wave": "W4", "rows": 26,    "targets": ["superadmin.extraction_course_accreditation_assignments"], "junction": true, "parents": ["extraction_courses", "extraction_accreditations"] },
+    "extraction_course_campuses":                  { "disposition": "transform", "wave": "W4", "rows": 22287, "targets": ["superadmin.extraction_course_campuses"], "junction": true, "parents": ["extraction_courses", "extraction_campuses"] },
+    "extraction_course_eligibility_assignments":   { "disposition": "transform", "wave": "W4", "rows": 16940, "targets": ["superadmin.extraction_course_eligibility_assignments"], "junction": true, "parents": ["extraction_courses", "extraction_eligibility_requirements"] },
+    "extraction_course_fee_assignments":           { "disposition": "transform", "wave": "W4", "rows": 15744, "targets": ["superadmin.extraction_course_fee_assignments"], "junction": true, "parents": ["extraction_courses", "extraction_course_fees"] },
+    "extraction_course_fees":                      { "disposition": "transform", "wave": "W4", "rows": 8541,  "targets": ["superadmin.extraction_course_fees"] },
+    "extraction_course_intake_assignments":        { "disposition": "transform", "wave": "W4", "rows": 1278,  "targets": ["superadmin.extraction_course_intake_assignments"], "junction": true, "parents": ["extraction_courses", "extraction_intakes"] },
+    "extraction_course_study_option_assignments":  { "disposition": "transform", "wave": "W4", "rows": 1011,  "targets": ["superadmin.extraction_course_study_option_assignments"], "junction": true, "parents": ["extraction_courses", "extraction_study_options"] },
+    "extraction_course_study_unit_assignments":    { "disposition": "transform", "wave": "W4", "rows": 659,   "targets": ["superadmin.extraction_course_study_unit_assignments"], "junction": true, "parents": ["extraction_courses", "extraction_study_units"] },
+    "extraction_courses":                          { "disposition": "transform", "wave": "W4", "rows": 17037, "targets": ["superadmin.extraction_courses"], "parents": ["extraction_jobs"] },
+    "extraction_eligibility_requirements":         { "disposition": "transform", "wave": "W4", "rows": 8114,  "targets": ["superadmin.extraction_eligibility_requirements"] },
+    "extraction_english_requirements":             { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.extraction_english_requirements"] },
+    "extraction_institution_overview":             { "disposition": "transform", "wave": "W4", "rows": 130,   "targets": ["superadmin.extraction_institution_overview"], "parents": ["extraction_jobs"] },
+    "extraction_intakes":                          { "disposition": "transform", "wave": "W4", "rows": 64,    "targets": ["superadmin.extraction_intakes"] },
+    "extraction_job_events":                       { "disposition": "drop",      "wave": "W4", "rows": 1229,  "reasonCode": "v3_table_live", "reason": "SKIP THE V1 ROWS, KEEP THE V3 TABLE. superadmin.extraction_job_events is live in V3 — the extraction workers write it and GET /jobs/:id/events reads it for the job-detail timeline. Dropping the table would ship broken code; loading V1's 1,229 rows would interleave a dead job history into a live timeline.", "source": "Part 2 §15 decision 4 (CHANGED vs PDF) + §4 mapping table" },
+    "extraction_jobs":                             { "disposition": "transform", "wave": "W4", "rows": 130,   "targets": ["superadmin.extraction_jobs"] },
+    "extraction_lessons":                          { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.extraction_lessons"] },
+    "extraction_mara_agents":                      { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.extraction_mara_agents"] },
+    "extraction_memory":                           { "disposition": "transform", "wave": "W4", "rows": 10,    "targets": ["superadmin.extraction_memory"], "note": "embedding column NEVER copied — re-embedded in V3 (§1.5). V3 is Gemini text-embedding-004 @768 dims, deliberately not widened to 1536 (reconciliation-log §6)." },
+    "extraction_queue":                            { "disposition": "transform", "wave": "W4", "rows": 177,   "targets": ["superadmin.extraction_queue"] },
+    "extraction_site_intelligence":                { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.extraction_site_intelligence"] },
+    "extraction_site_profiles":                    { "disposition": "transform", "wave": "W4", "rows": 9,     "targets": ["superadmin.extraction_site_profiles"] },
+    "extraction_study_options":                    { "disposition": "transform", "wave": "W4", "rows": 564,   "targets": ["superadmin.extraction_study_options"] },
+    "extraction_study_units":                      { "disposition": "transform", "wave": "W4", "rows": 596,   "targets": ["superadmin.extraction_study_units"] },
+    "extraction_verification_results":             { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.extraction_verification_results"] },
+    "extraction_visas":                            { "disposition": "transform", "wave": "W4", "rows": 0,     "targets": ["superadmin.extraction_visas"] },
+    "favorites":                                   { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Favorites / saved filters — MISSING in V3; no table." },
+    "feature_flags":                               { "disposition": "transform", "wave": "W5", "rows": 13,    "targets": ["superadmin.feature_flags"] },
+    "fee_types":                                   { "disposition": "transform", "wave": "W2", "rows": 11,    "targets": ["public.fee_types"], "note": "canonical home is public, not superadmin.reference_tables (decision #3)" },
+    "feed_acknowledgements":                       { "disposition": "blocked",   "wave": "D4", "rows": 0,     "dependency": "No V3 table. The feed itself is DONE (globalyapp/20260811_009_feed.ts: feed_posts, feed_reactions, feed_media) but acknowledgements are not modelled. §3.5 Feed comments — MISSING (D4/W5)." },
+    "feed_comment_reactions":                      { "disposition": "blocked",   "wave": "D4", "rows": 0,     "dependency": "No V3 table — depends on feed_comments, which §3.5 lists as MISSING (D4/W5)." },
+    "feed_comments":                               { "disposition": "blocked",   "wave": "D4", "rows": 1,     "dependency": "§3.5 Feed comments — MISSING (the feed itself is DONE). §6 wave D creates them." },
+    "feed_posts":                                  { "disposition": "transform", "wave": "W5", "rows": 5,     "targets": ["public.feed_posts"], "note": "globalyapp/20260811_009_feed.ts + 20260811_015_feed_media.ts" },
+    "feed_reactions":                              { "disposition": "transform", "wave": "W5", "rows": 0,     "targets": ["public.feed_reactions"], "junction": true, "parents": ["feed_posts", "profiles"] },
+    "generated_docs":                              { "disposition": "blocked",   "wave": "E",  "rows": 2,     "dependency": "No V3 table. §3.8 SOP generator — MISSING; its V2 design path is UNVERIFIED and must be located before wave E scoping (§14)." },
+    "issuing_organizations":                       { "disposition": "transform", "wave": "W2", "rows": 31,    "targets": ["public.issuing_organizations"] },
+    "job_applications":                            { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Jobs board — PARTIAL: public.student_jobs + search shipped, but 'posting/applications/AI-assist remain'. No applications table." },
+    "jobs":                                        { "disposition": "transform", "wave": "G",  "rows": 0,     "targets": ["public.student_jobs"], "note": "§3.8 pairs V1's jobs board (job-ai-assist, job-match-score) with V3's student_jobs table (globalyapp/20260816_002_student_jobs.ts). Column-compatible: title/description/job_type/location/pay/closing. 0 rows in the 2026-07-16 restore." },
+    "lead_exports":                                { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "No V3 table. Export receipts for the ads/leads feature, which §3.8 lists as MOCK-ONLY." },
+    "lms_assignment_submissions":                  { "disposition": "blocked",   "wave": "E4", "rows": 1,     "dependency": "§3.7 LMS / training — MOCK-ONLY (personal/learning); no V3 tables. §6 wave E lists lms_*/training_* as still to build." },
+    "login_attempts":                              { "disposition": "drop",      "wave": "W1", "rows": 220,   "reasonCode": "v1_infrastructure", "reason": "V1 Supabase-auth rate-limit telemetry. V3 auth is OTP -> JWT + refresh with its own session tables (public.auth_sessions, public.auth_otp_challenges) and its own audit trail (public.audit_logs); V1 attempt rows have no V3 home and no post-cutover meaning.", "source": "§1.1 auth stack + §6 (no target table)" },
+    "messages":                                    { "disposition": "drop",      "wave": "D2", "rows": 2,     "reasonCode": "rebuild_in_v3", "reason": "Named explicitly in the §4 mapping table as drop (rebuild D2; defect D3). §3.5: messaging is rebuilt, 'no migration (PDF decision kept)'.", "source": "Part 2 §4 mapping table" },
+    "migration_api_key_audit":                     { "disposition": "drop",      "wave": "W1", "rows": 1858,  "reasonCode": "secret_material", "reason": "Access audit for V1's own migration backdoor (the gmig_ Bearer key). It is migration plumbing, not product data, and it is deleted with the export function on cutover day (§5 runbook step 9).", "source": "Part 3 §5 runbook step 9" },
+    "migration_api_keys":                          { "disposition": "drop",      "wave": "W1", "rows": 1,     "reasonCode": "secret_material", "reason": "The V1 migration-export key material itself. Must never be copied into V3 under any circumstances; the key is revoked and the function deleted on cutover day (§5 runbook step 9).", "source": "Part 3 §5 runbook step 9" },
+    "notifications":                               { "disposition": "blocked",   "wave": "D3", "rows": 16,    "dependency": "§3.5 Notifications — MOCK-ONLY (personal/notifications); §6 wave D creates the notifications table. No V3 table yet." },
+    "otp_codes":                                   { "disposition": "drop",      "wave": "W1", "rows": 110,   "reasonCode": "ephemeral", "reason": "Live one-time passcodes with minute-scale expiry. V3 issues its own challenges into public.auth_otp_challenges; copying V1 codes across a cutover would be a security defect, not a migration.", "source": "§1.1 auth stack (OTP -> JWT, V3-native)" },
+    "profiles":                                    { "disposition": "transform", "wave": "W1", "rows": 22,    "targets": ["public.platform_users", "public.platform_user_profiles"], "mapping": "platform_users", "note": "joined with the auth.users extra source (see extraSources). Upserts on email so it CONVERGES the 24 pre-migrated users instead of duplicating them (§4 W1.2)." },
+    "ranking_scores":                              { "disposition": "blocked",   "wave": "C2", "rows": 0,     "dependency": "No V3 table. Search/catalog ranking; §3.3 public catalog + search + facets is PARTIAL (C2)." },
+    "referral_rewards":                            { "disposition": "blocked",   "wave": "D",  "rows": 0,     "dependency": "§3.5 Referrals — MOCK-ONLY (admin/revenue/subscriptions/referrals); no V3 table." },
+    "representations":                             { "disposition": "transform", "wave": "W7", "rows": 10,    "targets": ["public.representations"], "note": "cross-tenant graph — MASTER, never tenant (§1.2). globalyapp/20260816_003_cross_tenant_tables.ts" },
+    "saved_filters":                               { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Favorites / saved filters — MISSING in V3; no table." },
+    "saved_jobs":                                  { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "No V3 table. §3.8 Jobs board is PARTIAL — 'posting/applications/AI-assist remain'." },
+    "scholarship_eligibility_criteria":            { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Scholarships — MOCK-ONLY (admin/monitoring/scholarships); no V3 tables." },
+    "scholarship_saves":                           { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Scholarships — MOCK-ONLY; no V3 tables." },
+    "scholarship_service_links":                   { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Scholarships — MOCK-ONLY; no V3 tables." },
+    "scholarships":                                { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "§3.8 Scholarships — MOCK-ONLY; no V3 tables." },
+    "scrape_smoke_results":                        { "disposition": "drop",      "wave": "W4", "rows": 32120, "reasonCode": "ci_junk", "reason": "32,120 rows of scraper smoke-test output. Never was product data; §3.4 lists scrape_smoke_results / scrape-health as a deliberate divergence, not a gap. Drop the table entirely.", "source": "Part 2 §15 decision 4 + Part 3 §7 decision 4" },
+    "scribe_coaching_snapshots":                   { "disposition": "blocked",   "wave": "E3", "rows": 25,    "dependency": "§3.7 Scribe (transcription/coaching) — MISSING in V3; V1 is the reference implementation. §6 wave E creates scribe_*." },
+    "scribe_consent_log":                          { "disposition": "blocked",   "wave": "E3", "rows": 13,    "dependency": "§3.7/§6 wave E: 'scribe_* (incl. consent log)'. §3.7 marks the consent log as [M] consent log VERBATIM (legal) — it must migrate byte-faithfully once the table exists. No V3 table yet." },
+    "scribe_reviews":                              { "disposition": "blocked",   "wave": "E3", "rows": 0,     "dependency": "§3.7 Scribe — MISSING in V3; §6 wave E creates scribe_*." },
+    "scribe_sessions":                             { "disposition": "blocked",   "wave": "E3", "rows": 13,    "dependency": "§3.7 Scribe — MISSING in V3; §6 wave E creates scribe_*." },
+    "scribe_transcripts":                          { "disposition": "blocked",   "wave": "E3", "rows": 700,   "dependency": "§3.7 Scribe — MISSING in V3 (700 transcripts, the 3rd largest V1 table). §6 wave E creates scribe_*." },
+    "search_category_settings":                    { "disposition": "blocked",   "wave": "C2", "rows": 5,     "dependency": "No V3 table. Facet/search configuration; §3.3 public catalog + search + facets is PARTIAL (C2)." },
+    "service_accreditation_assignments":           { "disposition": "transform", "wave": "W7", "rows": 6,     "targets": ["{tenant}.service_accreditation_assignments"], "junction": true, "parents": ["business_services", "accreditations"] },
+    "service_branch_sharing":                      { "disposition": "transform", "wave": "W7", "rows": 169,   "targets": ["public.service_branch_sharing"], "note": "cross-tenant — MASTER, never tenant (§1.2). globalyapp/20260816_003_cross_tenant_tables.ts", "junction": true, "parents": ["business_services", "businesses"] },
+    "service_categories":                          { "disposition": "transform", "wave": "W2", "rows": 11,    "targets": ["public.service_categories"], "note": "globalyapp/20260722_003_other_service_categories.ts" },
+    "service_eligibility_assignments":             { "disposition": "transform", "wave": "W7", "rows": 7,     "targets": ["{tenant}.service_eligibility_assignments"], "junction": true, "parents": ["business_services", "service_eligibility_requirements"] },
+    "service_eligibility_requirements":            { "disposition": "transform", "wave": "W7", "rows": 342,   "targets": ["{tenant}.service_eligibility_requirements"] },
+    "service_fee_assignments":                     { "disposition": "transform", "wave": "W7", "rows": 5,     "targets": ["{tenant}.service_fee_assignments"], "junction": true, "parents": ["business_services", "service_fees"] },
+    "service_fee_installments":                    { "disposition": "transform", "wave": "W7", "rows": 48,    "targets": ["{tenant}.service_fee_installments"], "parents": ["service_fee_structures"] },
+    "service_fee_items":                           { "disposition": "blocked",   "wave": "C1", "rows": 0,     "dependency": "No {tenant}.service_fee_items table. business/20260816_002_service_children.ts creates service_fees, service_fee_structures and service_fee_installments but not the per-installment line items.", "question": "V1 service_fee_items (installment_id, fee_type, amount, sort_order) has no V3 counterpart. Did C1 deliberately fold line items into service_fee_installments, or is the table missing? 0 rows, so nothing is lost today — but the shape decision needs recording before W7." },
+    "service_fee_structures":                      { "disposition": "transform", "wave": "W7", "rows": 48,    "targets": ["{tenant}.service_fee_structures"], "parents": ["business_services"] },
+    "service_fees":                                { "disposition": "transform", "wave": "W7", "rows": 356,   "targets": ["{tenant}.service_fees"] },
+    "service_intakes":                             { "disposition": "transform", "wave": "W7", "rows": 120,   "targets": ["{tenant}.service_intakes"] },
+    "service_orders":                              { "disposition": "blocked",   "wave": "C3", "rows": 0,     "dependency": "No V3 table. V1's create-service-payment / verify-service-payment / complete-service-order flow; §3.8 lists the student-services marketplace as DONE for browsing but 'booking-request flow on unmerged dev-feat-personal-my-services — land in staging-mvp first'." },
+    "service_reviews":                             { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "No V3 table and no §3 feature row for service reviews." },
+    "service_study_option_assignments":            { "disposition": "transform", "wave": "W7", "rows": 28,    "targets": ["{tenant}.service_study_option_assignments"], "junction": true, "parents": ["business_services", "service_study_options"] },
+    "service_study_option_branches":               { "disposition": "transform", "wave": "W7", "rows": 19,    "targets": ["public.service_study_option_branches"], "note": "cross-tenant — MASTER, never tenant (§1.2). globalyapp/20260816_003_cross_tenant_tables.ts", "junction": true, "parents": ["service_study_options", "branches"] },
+    "service_study_options":                       { "disposition": "transform", "wave": "W7", "rows": 18,    "targets": ["{tenant}.service_study_options"] },
+    "service_study_unit_assignments":              { "disposition": "transform", "wave": "W7", "rows": 21,    "targets": ["{tenant}.service_study_unit_assignments"], "junction": true, "parents": ["business_services", "service_study_units"] },
+    "service_study_units":                         { "disposition": "transform", "wave": "W7", "rows": 17,    "targets": ["{tenant}.service_study_units"] },
+    "site_access_settings":                        { "disposition": "transform", "wave": "W5", "rows": 1,     "targets": ["superadmin.site_access_settings"] },
+    "student_academic_tests":                      { "disposition": "transform", "wave": "W3", "rows": 9,     "targets": ["public.platform_user_language_tests"], "note": "MERGE + DISCRIMINATOR (§15 decision 2, shipped as globalyapp/20260816_002_language_test_category.ts): SAT/GRE/GMAT rows land in the language-tests table carrying category='academic'." },
+    "student_documents":                           { "disposition": "blocked",   "wave": "W6", "rows": 0,     "dependency": "No V3 table. public.uploaded_files is the generic GCS object registry, not a per-student document list with type/status." },
+    "student_language_tests":                      { "disposition": "transform", "wave": "W3", "rows": 8,     "targets": ["public.platform_user_language_tests"], "note": "category='language' — the other half of the §15 decision-2 discriminator" },
+    "student_qualifications":                      { "disposition": "transform", "wave": "W3", "rows": 11,    "targets": ["public.platform_user_qualifications"] },
+    "student_services":                            { "disposition": "blocked",   "wave": "D",  "rows": 0,     "dependency": "No V3 table. A student's booked services; §3.8 marks the booking-request flow as still on the unmerged dev-feat-personal-my-services branch, which §14 says must land before G3." },
+    "student_work_experiences":                    { "disposition": "transform", "wave": "W3", "rows": 9,     "targets": ["public.platform_user_work_experiences"] },
+    "subscription_plan_features":                  { "disposition": "transform", "wave": "C3", "rows": 0,     "targets": ["public.subscription_plan_features"], "parents": ["subscription_plans"] },
+    "subscription_plans":                          { "disposition": "transform", "wave": "C3", "rows": 5,     "targets": ["public.subscription_plans"], "note": "globalyapp/20260817_001_billing_catalogue.ts" },
+    "test_provider_logos":                         { "disposition": "blocked",   "wave": "W3", "rows": 10,    "dependency": "No V3 table. Reference rows (test_type, category, logo_url) backing the language/academic test pickers.", "question": "Where do the 10 test-provider logos land? Options: a small public reference table, a column on a tests reference table, or W6 rehosts the 10 images into uploaded_files and the UI hardcodes the mapping. The logo_url values are supabase.co URLs, so they are also part of the 19-URL §8 risk." },
+    "training_assessment_attempts":                { "disposition": "blocked",   "wave": "E4", "rows": 0,     "dependency": "§3.7 LMS / training — MOCK-ONLY; §6 wave E lists lms_*/training_* as still to build." },
+    "training_assessments":                        { "disposition": "blocked",   "wave": "E4", "rows": 1,     "dependency": "§3.7 LMS / training — MOCK-ONLY; no V3 tables." },
+    "training_assignments":                        { "disposition": "blocked",   "wave": "E4", "rows": 18,    "dependency": "§3.7 LMS / training — MOCK-ONLY; no V3 tables." },
+    "training_certificates":                       { "disposition": "blocked",   "wave": "E4", "rows": 0,     "dependency": "§3.8 Training certificates / gamification — MISSING; no V3 tables." },
+    "training_chapters":                           { "disposition": "blocked",   "wave": "E4", "rows": 341,   "dependency": "§3.7 LMS / training — MOCK-ONLY (36 programs, 341 chapters in V1); no V3 tables." },
+    "training_gamification":                       { "disposition": "blocked",   "wave": "E4", "rows": 0,     "dependency": "§3.8 Training certificates / gamification — MISSING; no V3 tables." },
+    "training_programs":                           { "disposition": "blocked",   "wave": "E4", "rows": 36,    "dependency": "§3.7 LMS / training — MOCK-ONLY; no V3 tables." },
+    "training_progress":                           { "disposition": "blocked",   "wave": "E4", "rows": 42,    "dependency": "§3.7 LMS / training — MOCK-ONLY; no V3 tables." },
+    "user_column_preferences":                     { "disposition": "blocked",   "wave": "G",  "rows": 4,     "dependency": "No V3 table. Per-user table-column layout preference.", "question": "user_column_preferences (4 rows) and user_default_filters (0 rows) are UI-state tables with no V3 home and no §3 feature row. Carry them in wave G, or drop as UI preference that regenerates on first use?" },
+    "user_default_filters":                        { "disposition": "blocked",   "wave": "G",  "rows": 0,     "dependency": "No V3 table. Per-user saved default filters; see the user_column_preferences question." },
+    "user_roles":                                  { "disposition": "transform", "wave": "W1", "rows": 8,     "targets": ["superadmin.admin_users"], "note": "V1 user_roles is the PLATFORM role grant (role enum: super_admin, data_admin, moderator, ...) keyed on auth.users.id — it becomes a superadmin.admin_users row, not a tenant role. Tenant roles/permissions come from business_members + the roles seeder (§1.2)." },
+    "verification_documents":                      { "disposition": "blocked",   "wave": "B2", "rows": 0,     "dependency": "No V3 table. Proof documents for claim/verification; blocked with business_claim_requests on the §6 B2 claim_requests table." },
+    "visa_service_details":                        { "disposition": "blocked",   "wave": "G1", "rows": 0,     "dependency": "§6 wave G / §3.4 gap table: visa_service_details (1:1 service_id) exists in V1 but has no V3 migration. Visa/MARA promote target." },
+    "wallet_transactions":                         { "disposition": "blocked",   "wave": "C3", "rows": 0,     "dependency": "No V3 table. §6 wave C3 places 'wallets, transactions per tenant' — that tenant migration does not exist. Distinct from public.credit_transactions, which is the credits ledger." },
+    "wallets":                                     { "disposition": "blocked",   "wave": "C3", "rows": 1,     "dependency": "No V3 table. V1 `wallets` is the per-business cash wallet (business_id, balance); §6 wave C3 places wallets per tenant. Distinct from public.credit_wallets, which is the polymorphic credits wallet (reconciliation-log §5)." }
+  },
+
+  "extraSources": {
+    "$comment": [
+      "Sources outside the 199-table public census that Stage 1 must still stage, because the",
+      "master document's own §4 mapping table depends on them. Kept OUT of `tables` so the",
+      "199-table coverage arithmetic stays exact.",
+      "",
+      "Live-V1 reachability: the migration-export edge function exposes /auth/users?page=&limit=",
+      "alongside /tables and /export (Part 3 §1), so this is a config change at cutover, not a rewrite."
+    ],
+    "auth.users": {
+      "disposition": "transform",
+      "wave": "W1",
+      "stagingTable": "auth_users",
+      "targets": ["public.platform_users"],
+      "note": "§4 mapping table row 1: 'profiles / auth users -> platform_users + auth tables'. The identity resolver mig.map_users keys on email (§5), which lives here, not in profiles."
+    }
+  },
+
+  "structural": {
+    "$comment": "Scope of the FK-orphan and sequence-health scans on the target DB. Empty/absent = every non-system schema, which is what a real cutover check wants (public + superadmin + all tenant schemas).",
+    "schemas": []
+  },
+
+  "lookups": {
+    "$comment": "Value transforms that need a table from the OTHER database. The verifier runs `query` against `from`, materialises the rows as a VALUES CTE named after the key, and prepends it to every query on `injectInto`. This is how a free-text V1 country is compared against a V3 country_id without either side guessing.",
+    "globaly_countries": {
+      "from": "target",
+      "injectInto": "source",
+      "columns": [
+        { "name": "key", "type": "text" },
+        { "name": "id", "type": "int" }
+      ],
+      "query": "SELECT DISTINCT ON (key) key, id FROM (SELECT lower(btrim(name)) AS key, id, 1 AS pri FROM public.countries WHERE name IS NOT NULL UNION ALL SELECT lower(btrim(iso2)), id, 2 FROM public.countries WHERE iso2 IS NOT NULL UNION ALL SELECT lower(btrim(iso3)), id, 3 FROM public.countries WHERE iso3 IS NOT NULL) s WHERE key <> '' ORDER BY key, id, pri",
+      "$note": "Mirrors buildCountryResolver() in recon-v2-users.mjs exactly: name/iso2/iso3 all resolve, lowercased + trimmed, first writer wins (earlier country row, then name > iso2 > iso3)."
+    },
+    "globaly_issuing_orgs": {
+      "from": "target",
+      "injectInto": "source",
+      "columns": [
+        { "name": "key", "type": "text" },
+        { "name": "id", "type": "int" }
+      ],
+      "query": "SELECT DISTINCT ON (key) lower(btrim(name)) AS key, id FROM public.issuing_organizations WHERE name IS NOT NULL AND btrim(name) <> '' ORDER BY key, id"
+    },
+    "globaly_business_categories": {
+      "from": "target",
+      "injectInto": "source",
+      "columns": [
+        { "name": "key", "type": "text" },
+        { "name": "id", "type": "int" }
+      ],
+      "query": "SELECT DISTINCT ON (key) lower(btrim(slug)) AS key, id FROM public.business_categories WHERE deleted_at IS NULL AND slug IS NOT NULL AND btrim(slug) <> '' ORDER BY key, id",
+      "$note": "Mirrors the uuid -> serial remap import-v1-businesses.ts does: V1 business_category_id uuid -> V1 business_categories.slug -> V3 business_categories.id."
+    }
+  },
+
+  "mappings": [
+    {
+      "name": "areas_of_study",
+      "description": "V1 public.areas_of_study -> V3 public.areas_of_study. Reference data: uuid PK -> serial, joined on the natural key `slug` (no V1 uuid is preserved, and nothing that migrates references it).",
+      "source": { "table": "public.areas_of_study", "alias": "a", "joins": [], "filter": null },
+      "target": { "table": "public.areas_of_study", "alias": "t", "filter": "t.deleted_at IS NULL" },
+      "identity": { "label": "slug (natural key)", "source": "a.slug", "target": "t.slug" },
+      "extraTargetRows": { "policy": "fail" },
+      "columns": [
+        { "name": "name", "from": "name", "source": "a.name", "target": "t.name" },
+        { "name": "sort_order", "from": "sort_order", "source": "a.sort_order", "target": "t.sort_order" },
+        { "name": "is_active", "from": "is_active", "source": "a.is_active", "target": "t.is_active" }
+      ],
+      "dropped": [
+        { "column": "id", "reason": "V1 uuid PK -> V3 serial. Not preserved anywhere: nothing that migrates holds an areas_of_study uuid, and `slug` is the stable natural key used as the identity here." },
+        { "column": "slug", "reason": "Not copied as a value — it IS the identity key, matched exactly on both sides." },
+        { "column": "created_at", "reason": "V3 stamps its own created_at at load time; reference-data creation dates carry no meaning." }
+      ]
+    },
+
+    {
+      "name": "business_categories",
+      "description": "V1 public.business_categories -> V3 public.business_categories. Reference data, joined on `slug`.",
+      "source": { "table": "public.business_categories", "alias": "bc", "joins": [], "filter": null },
+      "target": { "table": "public.business_categories", "alias": "t", "filter": "t.deleted_at IS NULL" },
+      "identity": { "label": "slug (natural key)", "source": "bc.slug", "target": "t.slug" },
+      "extraTargetRows": { "policy": "fail" },
+      "columns": [
+        { "name": "name", "from": "name", "source": "bc.name", "target": "t.name" },
+        { "name": "description", "from": "description", "source": "bc.description", "target": "t.description" },
+        { "name": "icon", "from": "icon", "source": "bc.icon", "target": "t.icon" },
+        { "name": "is_active", "from": "is_active", "source": "bc.is_active", "target": "t.is_active" },
+        { "name": "sort_order", "from": "sort_order", "source": "bc.sort_order", "target": "t.sort_order" }
+      ],
+      "dropped": [
+        { "column": "id", "reason": "V1 uuid PK -> V3 serial; `slug` is the identity. businesses.business_category_id is remapped through this same slug bridge (see the businesses mapping), so the uuid itself is never stored in V3." },
+        { "column": "slug", "reason": "Not copied as a value — it IS the identity key." },
+        { "column": "schema_fields", "reason": "V1 embedded the category's dynamic form as jsonb. V3 normalises it into public.schema_fields / schema_field_values. Not compared here — needs its own mapping entry once that loader lands." },
+        { "column": "created_at", "reason": "V3 stamps its own created_at at load time." }
+      ]
+    },
+
+    {
+      "name": "accreditations",
+      "description": "V1 public.accreditations -> V3 public.accreditations. Two transforms worth watching: free-text issuing_organization -> issuing_organizations FK, and the scope_countries text[] -> the accreditation_scope_countries join table.",
+      "source": { "table": "public.accreditations", "alias": "ac", "joins": [], "filter": null },
+      "target": { "table": "public.accreditations", "alias": "t", "filter": "t.deleted_at IS NULL" },
+      "identity": { "label": "name (natural key; unique in both, 30/30)", "source": "ac.name", "target": "t.name" },
+      "extraTargetRows": { "policy": "fail" },
+      "columns": [
+        { "name": "issuing_organization_id", "from": "issuing_organization", "source": "(SELECT o.id FROM globaly_issuing_orgs o WHERE o.key = lower(btrim(ac.issuing_organization)))", "target": "t.issuing_organization_id", "note": "text -> FK" },
+        { "name": "website", "from": "website", "source": "ac.website", "target": "t.website" },
+        { "name": "description", "from": "description", "source": "ac.description", "target": "t.description" },
+        { "name": "is_global", "from": "is_global", "source": "ac.is_global", "target": "t.is_global" },
+        { "name": "status", "from": "status", "source": "ac.status", "target": "t.status" },
+        { "name": "sort_order", "from": "sort_order", "source": "ac.sort_order", "target": "t.sort_order" },
+        { "name": "owning_business_uuid", "from": "business_id", "source": "ac.business_id::text", "target": "(SELECT b.meta->>'v1_business_id' FROM public.businesses b WHERE b.id = t.business_id)", "note": "uuid -> serial FK, compared by resolving the V3 id back to the V1 uuid it was migrated from" },
+        { "name": "scope_country_ids", "from": "scope_countries", "source": "(SELECT array_agg(gc.id ORDER BY gc.id) FROM unnest(ac.scope_countries) AS sc(v) JOIN globaly_countries gc ON gc.key = lower(btrim(sc.v)))", "target": "(SELECT array_agg(asc2.country_id ORDER BY asc2.country_id) FROM public.accreditation_scope_countries asc2 WHERE asc2.accreditation_id = t.id)", "note": "text[] of country names -> rows in the accreditation_scope_countries join table" }
+      ],
+      "dropped": [
+        { "column": "id", "reason": "V1 uuid PK -> V3 serial; `name` is the identity. accreditation_scope_countries references the new serial id, which is verified through the scope_country_ids comparison above." },
+        { "column": "name", "reason": "Not copied as a value — it IS the identity key." },
+        { "column": "created_at", "reason": "V3 stamps its own created_at at load time." },
+        { "column": "updated_at", "reason": "V3 stamps its own updated_at at load time." }
+      ]
+    },
+
+    {
+      "name": "platform_users",
+      "description": "V1 auth.users -> V3 public.platform_users. uuid PK preserved verbatim in platform_users.uuid.",
+      "source": {
+        "table": "auth.users",
+        "alias": "u",
+        "joins": [
+          "LEFT JOIN public.profiles p ON p.user_id = u.id",
+          "LEFT JOIN LATERAL (SELECT regexp_split_to_array(btrim(coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', '')), '\\s+') AS toks) nm ON true"
+        ],
+        "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND trim(u.email::text) <> ''"
+      },
+      "target": {
+        "table": "public.platform_users",
+        "alias": "t",
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "V1 auth.users.id",
+        "source": "u.id::text",
+        "target": "t.uuid::text"
+      },
+      "extraTargetRows": {
+        "policy": "allow",
+        "max": 2,
+        "reason": "V3-native accounts with no V1 source: the seeded platform admin (id 1) and accounts created directly in V3. Capped at 2 — a third unexplained extra fails the gate."
+      },
+      "columns": [
+        { "name": "first_name", "from": null, "source": "CASE WHEN btrim(coalesce(p.first_name,'')) <> '' AND btrim(coalesce(p.last_name,'')) <> '' THEN btrim(p.first_name) WHEN coalesce(array_length(nm.toks,1),0) >= 2 THEN nm.toks[1] END", "target": "t.first_name", "note": "splitName(): profile first+last wins; else the first token of raw_user_meta_data full_name/name. A user with neither is skipped by the importer — which shows up here as a missing row, not a silent drop." },
+        { "name": "last_name", "from": null, "source": "CASE WHEN btrim(coalesce(p.first_name,'')) <> '' AND btrim(coalesce(p.last_name,'')) <> '' THEN btrim(p.last_name) WHEN coalesce(array_length(nm.toks,1),0) >= 2 THEN array_to_string(nm.toks[2:], ' ') END", "target": "t.last_name" },
+        { "name": "is_personal_account", "from": null, "source": "(coalesce(p.portal_type,'student') <> 'business')", "target": "t.is_personal_account", "note": "deriveAccountShape(portal_type)" },
+        { "name": "is_business_account", "from": null, "source": "(coalesce(p.portal_type,'student') = 'business')", "target": "t.is_business_account" },
+        { "name": "account_categories", "from": null, "source": "CASE WHEN coalesce(p.portal_type,'student') = 'business' THEN '[{\"type\":\"business\",\"role\":\"education_agent\"}]'::jsonb ELSE '[{\"type\":\"personal\",\"role\":\"student\"}]'::jsonb END", "target": "t.account_categories" },
+        { "name": "email", "from": "email", "source": "lower(trim(u.email::text))", "target": "lower(trim(t.email))" },
+        { "name": "is_email_verified", "from": "email_confirmed_at", "source": "(u.email_confirmed_at IS NOT NULL)", "target": "t.is_email_verified" },
+        { "name": "phone", "from": null, "source": "nullif(p.phone, '')", "target": "nullif(t.phone, '')", "note": "phone comes from profiles, not auth.users; auth.users.phone is dropped below" },
+        { "name": "photo_url", "from": null, "source": "p.avatar_url", "target": "t.photo_url", "note": "renamed avatar_url -> photo_url; sourced from profiles" }
+      ],
+      "dropped": [
+        { "column": "instance_id", "reason": "Supabase GoTrue internal; V3 is not multi-instance." },
+        { "column": "id", "reason": "Not copied as a value — it IS the identity key (target platform_users.uuid)." },
+        { "column": "aud", "reason": "GoTrue JWT audience; V3 issues its own tokens." },
+        { "column": "role", "reason": "GoTrue postgres role ('authenticated'), not an app role. App roles migrate via user_roles -> superadmin.admin_users." },
+        { "column": "encrypted_password", "reason": "V3 is passwordless (email OTP). Deliberately NOT migrated — migrating hashes would import a credential surface V3 does not use." },
+        { "column": "invited_at", "reason": "GoTrue invite flow; V3 has its own invitation tables." },
+        { "column": "confirmation_token", "reason": "Transient GoTrue token." },
+        { "column": "confirmation_sent_at", "reason": "Transient GoTrue token metadata." },
+        { "column": "recovery_token", "reason": "Transient GoTrue token; V3 is passwordless so there is no recovery flow." },
+        { "column": "recovery_sent_at", "reason": "Transient GoTrue token metadata." },
+        { "column": "email_change_token_new", "reason": "Transient GoTrue email-change flow." },
+        { "column": "email_change", "reason": "Transient GoTrue email-change flow." },
+        { "column": "email_change_sent_at", "reason": "Transient GoTrue email-change flow." },
+        { "column": "last_sign_in_at", "reason": "Session telemetry; V3 records its own from auth_sessions." },
+        { "column": "raw_app_meta_data", "reason": "GoTrue provider metadata; V3 does not carry Supabase OAuth provider state." },
+        { "column": "raw_user_meta_data", "reason": "Read at import time only, as a fallback name source (full_name/name) when profiles has no first/last name. Not stored verbatim in V3." },
+        { "column": "is_super_admin", "reason": "GoTrue flag, always null in V1. Admin access migrates via user_roles -> superadmin.admin_users." },
+        { "column": "created_at", "reason": "V3 stamps its own created_at at import; V1 signup time is not carried. Known, accepted loss." },
+        { "column": "updated_at", "reason": "V3 stamps its own updated_at at import." },
+        { "column": "phone", "reason": "auth.users.phone is GoTrue SMS auth (unused in V1). The user-facing phone comes from profiles.phone." },
+        { "column": "phone_confirmed_at", "reason": "GoTrue SMS auth, unused." },
+        { "column": "phone_change", "reason": "GoTrue SMS auth, unused." },
+        { "column": "phone_change_token", "reason": "GoTrue SMS auth, unused." },
+        { "column": "phone_change_sent_at", "reason": "GoTrue SMS auth, unused." },
+        { "column": "confirmed_at", "reason": "Generated column (= least(email_confirmed_at, phone_confirmed_at)); email verification is carried via is_email_verified." },
+        { "column": "email_change_token_current", "reason": "Transient GoTrue email-change flow." },
+        { "column": "email_change_confirm_status", "reason": "Transient GoTrue email-change flow." },
+        { "column": "banned_until", "reason": "GoTrue ban; always null in V1. V3 suspension lives in account_status." },
+        { "column": "reauthentication_token", "reason": "Transient GoTrue token." },
+        { "column": "reauthentication_sent_at", "reason": "Transient GoTrue token metadata." },
+        { "column": "is_sso_user", "reason": "V1 had no SSO tenants." },
+        { "column": "deleted_at", "reason": "Used as a source FILTER (soft-deleted users are not migrated), not copied." },
+        { "column": "is_anonymous", "reason": "GoTrue anonymous sessions; V1 never issued any." }
+      ]
+    },
+
+    {
+      "name": "platform_user_profiles",
+      "description": "V1 public.profiles -> V3 public.platform_user_profiles. Free-text country becomes a country_id FK; the row hangs off the serial platform_users.id instead of a uuid.",
+      "source": {
+        "table": "public.profiles",
+        "alias": "p",
+        "joins": ["JOIN auth.users u ON u.id = p.user_id"],
+        "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND trim(u.email::text) <> ''"
+      },
+      "target": {
+        "table": "public.platform_user_profiles",
+        "alias": "t",
+        "joins": ["JOIN public.platform_users pu ON pu.id = t.user_id"],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "V1 profiles.user_id (= auth.users.id)",
+        "source": "p.user_id::text",
+        "target": "pu.uuid::text"
+      },
+      "extraTargetRows": {
+        "policy": "allow",
+        "max": 2,
+        "reason": "Profiles auto-created for the V3-native platform_users allowed above."
+      },
+      "columns": [
+        { "name": "nationality_id", "from": "nationality", "source": "(SELECT c.id FROM globaly_countries c WHERE c.key = lower(btrim(p.nationality)))", "target": "t.nationality_id", "note": "text -> FK. globaly_countries is injected by the verifier as a CTE mirroring the V3 countries table (name/iso2/iso3, lowercased+trimmed) — the same resolution buildCountryResolver() does at import time." },
+        { "name": "country_of_residence_id", "from": "country_of_residence", "source": "(SELECT c.id FROM globaly_countries c WHERE c.key = lower(btrim(p.country_of_residence)))", "target": "t.country_of_residence_id" },
+        { "name": "personal_address_country_id", "from": "personal_address_country", "source": "(SELECT c.id FROM globaly_countries c WHERE c.key = lower(btrim(p.personal_address_country)))", "target": "t.personal_address_country_id" },
+        { "name": "date_of_birth", "from": "date_of_birth", "source": "p.date_of_birth::text", "target": "t.date_of_birth::text" },
+        { "name": "gender", "from": "gender", "source": "p.gender", "target": "t.gender" },
+        { "name": "highest_degree_level", "from": "highest_degree_level", "source": "p.highest_degree_level::text", "target": "t.highest_degree_level" },
+        { "name": "institution_attended", "from": "institution_attended", "source": "p.institution_attended", "target": "t.institution_attended" },
+        { "name": "gpa", "from": "gpa", "source": "p.gpa::float8", "target": "t.gpa::float8" },
+        { "name": "graduation_year", "from": "graduation_year", "source": "p.graduation_year", "target": "t.graduation_year" },
+        { "name": "english_test_type", "from": "english_test_type", "source": "p.english_test_type", "target": "t.english_test_type" },
+        { "name": "english_test_score", "from": "english_test_score", "source": "p.english_test_score::float8", "target": "t.english_test_score::float8" },
+        { "name": "english_test_date", "from": "english_test_date", "source": "p.english_test_date::text", "target": "t.english_test_date::text" },
+        { "name": "budget_min", "from": "budget_min", "source": "p.budget_min", "target": "t.budget_min" },
+        { "name": "budget_max", "from": "budget_max", "source": "p.budget_max", "target": "t.budget_max" },
+        { "name": "completion_percentage", "from": "completion_percentage", "source": "coalesce(p.completion_percentage, 0)", "target": "t.completion_percentage" },
+        { "name": "onboarding_completed", "from": "onboarding_completed", "source": "(p.onboarding_completed IS TRUE)", "target": "t.onboarding_completed" },
+        { "name": "personal_address_street", "from": "personal_address_street", "source": "p.personal_address_street", "target": "t.personal_address_street" },
+        { "name": "personal_address_city", "from": "personal_address_city", "source": "p.personal_address_city", "target": "t.personal_address_city" },
+        { "name": "personal_address_state", "from": "personal_address_state", "source": "p.personal_address_state", "target": "t.personal_address_state" },
+        { "name": "personal_address_postcode", "from": "personal_address_postcode", "source": "p.personal_address_postcode", "target": "t.personal_address_postcode" },
+        { "name": "budget_currency", "from": "budget_currency", "source": "CASE WHEN btrim(coalesce(p.budget_currency,'')) = '' THEN NULL WHEN upper(btrim(split_part(btrim(p.budget_currency), '-', 1))) ~ '^[A-Z]{3}$' THEN upper(btrim(split_part(btrim(p.budget_currency), '-', 1))) ELSE btrim(p.budget_currency) END", "target": "t.budget_currency", "note": "toCurrencyCode(): V1 stores the label 'AUD - Australian Dollar'; V3 stores the ISO-4217 prefix. A value that is not a 3-letter code is kept verbatim, never dropped." },
+        { "name": "preferred_destinations", "from": "preferred_destinations", "source": "(SELECT coalesce(jsonb_agg(gc.id ORDER BY d.ord), '[]'::jsonb) FROM unnest(coalesce(p.preferred_destinations, '{}'::text[])) WITH ORDINALITY AS d(v, ord) JOIN globaly_countries gc ON gc.key = lower(btrim(d.v)))", "target": "t.preferred_destinations", "note": "V1 text[] of country NAMES -> V3 jsonb array of country IDs, in source order. Names that do not resolve are reported by the importer, not silently kept as text." },
+        { "name": "fields_of_study", "from": "preferred_fields", "source": "(SELECT coalesce(jsonb_agg(jsonb_build_object('name', f.v) ORDER BY f.ord), '[]'::jsonb) FROM unnest(coalesce(p.preferred_fields, '{}'::text[])) WITH ORDINALITY AS f(v, ord))", "target": "t.fields_of_study", "note": "renamed preferred_fields -> fields_of_study; text[] -> jsonb [{name}] (the shape platform-users.schema.ts declares)" },
+        { "name": "preferred_degree_levels", "from": "preferred_degree_levels", "source": "p.preferred_degree_levels", "target": "t.preferred_degree_levels", "note": "text[] on both sides" },
+        { "name": "expected_start_date", "from": "expected_start_date", "source": "p.expected_start_date", "target": "t.expected_start_date", "note": "free-text 'MM-YYYY' on both sides; deliberately not reinterpreted as a date" },
+        { "name": "include_living_expenses", "from": "include_living_expenses", "source": "(p.include_living_expenses IS TRUE)", "target": "t.include_living_expenses" },
+        { "name": "individual_category", "from": "individual_category", "source": "CASE nullif(btrim(coalesce(p.individual_category,'')),'') WHEN 'student' THEN 'student' WHEN 'exploring' THEN 'explorer' WHEN 'education_professional' THEN 'education_provider' END", "target": "t.individual_category", "note": "INDIVIDUAL_CATEGORY_MAP: V1 label -> V3 PERSONAL_SUB_CATEGORIES (consts.ts). Unlisted values are reported by the importer and stored NULL, never coerced." },
+        { "name": "linkedin_url", "from": "linkedin_url", "source": "p.linkedin_url", "target": "t.linkedin_url" },
+        { "name": "website_url", "from": "website_url", "source": "p.website_url", "target": "t.website_url" },
+        { "name": "latitude", "from": "personal_address_lat", "source": "p.personal_address_lat::numeric(10,7)::text", "target": "t.latitude::text", "note": "renamed personal_address_lat -> latitude; double precision -> numeric(10,7), compared as text so both sides round identically" },
+        { "name": "longitude", "from": "personal_address_lng", "source": "p.personal_address_lng::numeric(10,7)::text", "target": "t.longitude::text", "note": "renamed personal_address_lng -> longitude" }
+      ],
+      "dropped": [
+        { "column": "id", "reason": "V1 profile uuid PK; V3 profiles are keyed by serial id and joined via user_id. The V1 profile uuid is not referenced by anything that migrates." },
+        { "column": "user_id", "reason": "Not copied as a value — it IS the identity key (resolved to platform_users.id in V3)." },
+        { "column": "first_name", "reason": "Migrated onto platform_users, not the profile (V3 splits identity from profile). Covered by the platform_users mapping's name check." },
+        { "column": "last_name", "reason": "Migrated onto platform_users. See first_name." },
+        { "column": "email", "reason": "Migrated onto platform_users (auth.users.email is authoritative; profiles.email was a denormalised copy)." },
+        { "column": "phone", "reason": "Migrated onto platform_users.phone — verified there." },
+        { "column": "avatar_url", "reason": "Migrated onto platform_users.photo_url — verified there." },
+        { "column": "portal_type", "reason": "Read at import time to derive platform_users.is_personal_account / is_business_account / account_categories. Not stored verbatim." },
+        { "column": "is_suspended", "reason": "Profile-level suspension folded into platform_users.account_status." },
+        { "column": "created_at", "reason": "V3 stamps its own timestamps at import." },
+        { "column": "updated_at", "reason": "V3 stamps its own timestamps at import." },
+        { "column": "preferred_language", "reason": "No V3 column. i18n is not in the V3 scope." },
+        { "column": "facebook_url", "reason": "No V3 column on platform_user_profiles — V3 keeps only linkedin_url and website_url for individuals." },
+        { "column": "instagram_url", "reason": "No V3 column. See facebook_url." },
+        { "column": "twitter_url", "reason": "No V3 column. See facebook_url." },
+        { "column": "personal_address_place_id", "reason": "No V3 column — V3 does not store Google Place IDs for individuals." },
+        { "column": "personal_address_google_maps_url", "reason": "No V3 column. Derivable from lat/lng if ever needed." },
+        { "column": "profile_slug", "reason": "No V3 column — V3 has no public individual profile pages." },
+        { "column": "public_visibility", "reason": "No V3 column — depends on public individual profile pages, which V3 does not have." },
+        { "column": "phone_country_code", "reason": "No V3 column — V3 stores the phone as a single E.164-ish string." },
+        { "column": "cover_url", "reason": "No V3 column — individual profile covers were dropped from the V3 design." },
+        { "column": "cover_position", "reason": "No V3 column. See cover_url." },
+        { "column": "referral_code", "reason": "No V3 column — the ambassador/referral programme is not in the V3 scope." }
+      ]
+    },
+
+    {
+      "name": "admin_users",
+      "description": "V1 public.user_roles -> V3 superadmin.admin_users. Admin portal access; role names are mapped, never silently downgraded.",
+      "source": {
+        "table": "public.user_roles",
+        "alias": "r",
+        "joins": ["JOIN auth.users u ON u.id = r.user_id"],
+        "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND trim(u.email::text) <> '' AND r.role::text IN ('super_admin','data_admin')"
+      },
+      "target": {
+        "table": "superadmin.admin_users",
+        "alias": "t",
+        "joins": ["JOIN public.platform_users pu ON pu.id = t.platform_user_id"],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "V1 user_roles.user_id (= auth.users.id)",
+        "source": "r.user_id::text",
+        "target": "pu.uuid::text"
+      },
+      "extraTargetRows": {
+        "policy": "allow",
+        "max": 1,
+        "reason": "The seeded V3-native platform super admin (admin@globalyhub.com), which has no V1 user_roles row."
+      },
+      "columns": [
+        { "name": "role", "from": "role", "source": "r.role::text", "target": "t.role" },
+        { "name": "is_active", "from": null, "source": "true", "target": "t.is_active", "note": "V1 had no per-role active flag; every migrated admin is active by decision." }
+      ],
+      "dropped": [
+        { "column": "id", "reason": "V1 uuid PK; V3 admin_users is keyed by serial id and is unique on platform_user_id. The V1 uuid is not referenced by anything that migrates." },
+        { "column": "user_id", "reason": "Not copied as a value — it IS the identity key (resolved to platform_users.id)." },
+        { "column": "created_at", "reason": "V3 stamps its own created_at at import." }
+      ]
+    },
+
+    {
+      "name": "businesses",
+      "description": "V1 public.businesses -> V3 public.businesses. Only the 16 with an accepted, linked owner migrate (V3 businesses.owner_id is NOT NULL). V1 uuid preserved in meta->>'v1_business_id'; free-text country becomes country_id.",
+      "source": {
+        "table": "public.businesses",
+        "alias": "b",
+        "joins": [],
+        "filter": "EXISTS (SELECT 1 FROM public.business_members bm JOIN auth.users bu ON bu.id = bm.user_id WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL AND bu.deleted_at IS NULL)"
+      },
+      "target": {
+        "table": "public.businesses",
+        "alias": "t",
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "V1 businesses.id",
+        "source": "b.id::text",
+        "target": "t.meta->>'v1_business_id'"
+      },
+      "extraTargetRows": { "policy": "fail" },
+      "columns": [
+        { "name": "business_name", "from": "name", "source": "b.name", "target": "t.business_name", "note": "renamed name -> business_name" },
+        { "name": "business_type", "from": "business_type", "source": "b.business_type::text", "target": "t.business_type" },
+        { "name": "description", "from": "description", "source": "b.description", "target": "t.description" },
+        { "name": "logo_url", "from": "logo_url", "source": "b.logo_url", "target": "t.logo_url" },
+        { "name": "cover_url", "from": "cover_url", "source": "b.cover_url", "target": "t.cover_url" },
+        { "name": "website", "from": "website", "source": "b.website", "target": "t.website" },
+        { "name": "email", "from": "email", "source": "b.email", "target": "t.email" },
+        { "name": "phone", "from": "phone", "source": "b.phone", "target": "t.phone" },
+        { "name": "country_id", "from": "country", "source": "(SELECT c.id FROM globaly_countries c WHERE c.key = lower(btrim(b.country)))", "target": "t.country_id", "note": "text -> FK" },
+        { "name": "state", "from": "state", "source": "b.state", "target": "t.state" },
+        { "name": "city", "from": "city", "source": "b.city", "target": "t.city" },
+        { "name": "address", "from": "address", "source": "b.address", "target": "t.address" },
+        { "name": "linkedin_url", "from": "linkedin_url", "source": "b.linkedin_url", "target": "t.linkedin_url" },
+        { "name": "facebook_url", "from": "facebook_url", "source": "b.facebook_url", "target": "t.facebook_url" },
+        { "name": "twitter_url", "from": "twitter_url", "source": "b.twitter_url", "target": "t.twitter_url" },
+        { "name": "instagram_url", "from": "instagram_url", "source": "b.instagram_url", "target": "t.instagram_url" },
+        { "name": "status", "from": "status", "source": "coalesce(b.status::text, 'pending')", "target": "t.status" },
+        { "name": "verified_at", "from": "verified_at", "source": "b.verified_at", "target": "t.verified_at" },
+        { "name": "account_status", "from": "is_suspended", "source": "CASE WHEN b.is_suspended IS TRUE THEN 0 ELSE 1 END", "target": "t.account_status", "note": "boolean -> int, per toAccountStatus()" },
+        { "name": "owner_uuid", "from": null, "source": "(SELECT bm.user_id::text FROM public.business_members bm WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL ORDER BY bm.joined_at NULLS LAST LIMIT 1)", "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.owner_id)", "note": "the owner relationship itself — proves owner_id resolved to the right person" },
+        { "name": "is_published", "from": "is_published", "source": "(b.is_published IS TRUE)", "target": "(t.is_published IS TRUE)", "note": "V1 already carried an explicit publish flag, set per business by its owner. Copied verbatim — deriving it from status/is_claimed would publish (or hide) listings the operator never chose to." },
+        { "name": "business_category_id", "from": "business_category_id", "source": "(SELECT gbc.id FROM public.business_categories vbc JOIN globaly_business_categories gbc ON gbc.key = lower(btrim(vbc.slug)) WHERE vbc.id = b.business_category_id)", "target": "t.business_category_id", "note": "uuid -> serial, bridged by the category slug (the natural key the business_categories mapping is verified on)" },
+        { "name": "gallery_images", "from": "gallery_images", "source": "b.gallery_images", "target": "t.gallery_images", "note": "text[] on both sides" },
+        { "name": "video_urls", "from": "video_urls", "source": "b.video_urls", "target": "t.video_urls", "note": "text[] on both sides" },
+        { "name": "business_registration_number", "from": "registration_code", "source": "b.registration_code", "target": "t.business_registration_number", "note": "renamed registration_code -> business_registration_number" },
+        { "name": "registration_licenses", "from": "registration_licenses", "source": "b.registration_licenses", "target": "t.registration_licenses", "note": "jsonb on both sides, copied verbatim" },
+        { "name": "postcode", "from": "postcode", "source": "b.postcode", "target": "t.postcode" },
+        { "name": "youtube_url", "from": "youtube_url", "source": "b.youtube_url", "target": "t.youtube_url" },
+        { "name": "whatsapp_url", "from": "whatsapp_url", "source": "b.whatsapp_url", "target": "t.whatsapp_url" },
+        { "name": "currency", "from": "default_currency", "source": "CASE WHEN btrim(coalesce(b.default_currency,'')) = '' THEN NULL WHEN upper(btrim(split_part(btrim(b.default_currency), '-', 1))) ~ '^[A-Z]{3}$' THEN upper(btrim(split_part(btrim(b.default_currency), '-', 1))) ELSE btrim(b.default_currency) END", "target": "t.currency", "note": "toCurrencyCode(): V1 label 'AUD - Australian Dollar' -> V3 ISO-4217 code. Lands on businesses.currency, not payment_currency (which is the Stripe billing currency, a V3-only concept with no V1 source)." }
+      ],
+      "dropped": [
+        { "column": "id", "reason": "Not copied as a value — it IS the identity key, preserved in V3 meta->>'v1_business_id'." },
+        { "column": "slug", "reason": "Transformed into subdomain by toSubdomain() (DNS-label safe). Verified indirectly: the subdomain is UNIQUE and the row matched on v1_business_id." },
+        { "column": "is_claimed", "reason": "V1 directory-claim concept; every migrated business has a real accepted owner, so it is implicitly claimed." },
+        { "column": "claim_requested_by", "reason": "V1 directory-claim workflow; not in the V3 scope." },
+        { "column": "total_services", "reason": "Denormalised counter; V3 recomputes from live data." },
+        { "column": "total_students", "reason": "Denormalised counter; V3 recomputes." },
+        { "column": "total_agents", "reason": "Denormalised counter; V3 recomputes from the tenant agents table." },
+        { "column": "profile_views", "reason": "Analytics counter; not carried into V3." },
+        { "column": "created_at", "reason": "V3 stamps its own created_at at import." },
+        { "column": "updated_at", "reason": "V3 stamps its own updated_at at import." },
+        { "column": "enquiry_enabled", "reason": "V1 coin-based enquiry marketplace; not in the V3 scope." },
+        { "column": "enquiry_coin_cost", "reason": "V1 coin marketplace. See enquiry_enabled." },
+        { "column": "enquiry_max_distributions", "reason": "V1 coin marketplace. See enquiry_enabled." },
+        { "column": "latitude", "reason": "No V3 businesses column — V3 stores the address textually only." },
+        { "column": "longitude", "reason": "No V3 businesses column. See latitude." },
+        { "column": "provider_code", "reason": "No V3 column — CRICOS/provider codes move to the institutions/extraction tables." },
+        { "column": "cover_position", "reason": "No V3 column — cover cropping was dropped from the V3 design." },
+        { "column": "tiktok_url", "reason": "No V3 column." },
+        { "column": "threads_url", "reason": "No V3 column." },
+        { "column": "messenger_url", "reason": "No V3 column." },
+        { "column": "telegram_url", "reason": "No V3 column." },
+        { "column": "line_url", "reason": "No V3 column." },
+        { "column": "viber_url", "reason": "No V3 column." },
+        { "column": "gallery_urls", "reason": "V1 jsonb gallery (superseded by gallery_images in V1 itself). Not migrated; see gallery_images." },
+        { "column": "embedding", "reason": "pgvector search embedding; V3 regenerates embeddings from its own content." },
+        { "column": "show_team_public", "reason": "No V3 column — public team pages are not in the V3 scope." },
+        { "column": "public_visibility", "reason": "No V3 column. See show_team_public." },
+        { "column": "created_by", "reason": "V1 provenance of the directory listing; V3 tracks ownership via owner_id, which is verified above." },
+        { "column": "created_via", "reason": "V1 provenance metadata (directory import vs signup); not carried." },
+        { "column": "source_reference", "reason": "V1 provenance metadata; not carried." }
+      ]
+    },
+
+    {
+      "name": "user_business_index",
+      "description": "V1 public.business_members -> V3 public.user_business_index (the flat membership index). Only accepted memberships with a linked, migrated user and a migrated business.",
+      "junction": {
+        "parents": ["platform_users", "businesses"],
+        "$note": "Gate 2 check 5 (defect D8): both parents must reconcile before this junction is trusted. ON CONFLICT DO NOTHING on a junction turns a parent-ordering bug into a silent orphan, so the guard is a gate, not a comment."
+      },
+      "source": {
+        "table": "public.business_members",
+        "alias": "m",
+        "joins": [
+          "JOIN auth.users mu ON mu.id = m.user_id",
+          "JOIN public.businesses mb ON mb.id = m.business_id"
+        ],
+        "filter": "m.user_id IS NOT NULL AND m.invite_status = 'accepted' AND mu.deleted_at IS NULL AND m.role::text IN ('owner','admin','staff','member','manager','counsellor') AND EXISTS (SELECT 1 FROM public.business_members bm2 JOIN auth.users bu2 ON bu2.id = bm2.user_id WHERE bm2.business_id = mb.id AND bm2.role::text = 'owner' AND bm2.invite_status = 'accepted' AND bu2.deleted_at IS NULL)"
+      },
+      "target": {
+        "table": "public.user_business_index",
+        "alias": "t",
+        "joins": [
+          "JOIN public.platform_users pu ON pu.id = t.platform_user_id",
+          "JOIN public.businesses tb ON tb.id = t.business_id"
+        ],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "V1 (business_id, user_id)",
+        "source": "m.business_id::text || '|' || m.user_id::text",
+        "target": "(tb.meta->>'v1_business_id') || '|' || pu.uuid::text"
+      },
+      "extraTargetRows": { "policy": "fail" },
+      "columns": [
+        { "name": "role", "from": "role", "source": "CASE m.role::text WHEN 'staff' THEN 'member' ELSE m.role::text END", "target": "t.role", "note": "ROLE_MAP: staff -> member; owner/admin/manager/counsellor/member pass through" },
+        { "name": "is_owner", "from": null, "source": "(m.role::text = 'owner')", "target": "t.is_owner" }
+      ],
+      "dropped": [
+        { "column": "id", "reason": "V1 uuid PK; V3 uses a serial id with a UNIQUE (platform_user_id, business_id) natural key, which is the identity used here." },
+        { "column": "business_id", "reason": "Part of the identity key (resolved to businesses.id via meta->>'v1_business_id')." },
+        { "column": "user_id", "reason": "Part of the identity key (resolved to platform_users.id via uuid)." },
+        { "column": "invited_by", "reason": "No V3 column on user_business_index; the inviter is migrated onto the tenant agents row (agents.added_by) and compared there." },
+        { "column": "invite_email", "reason": "Only meaningful for pending invites, which are not migrated (filter: invite_status='accepted')." },
+        { "column": "joined_at", "reason": "No V3 column — user_business_index has created_at only, stamped at import." },
+        { "column": "created_at", "reason": "V3 stamps its own created_at at import." },
+        { "column": "invite_status", "reason": "Used as a source FILTER (only 'accepted' migrates), not copied." },
+        { "column": "invite_token", "reason": "Transient invite credential; pending invites are not migrated." },
+        { "column": "invite_expires_at", "reason": "Transient invite metadata; pending invites are not migrated." },
+        { "column": "last_active_at", "reason": "Session telemetry; V3 recomputes from its own sessions." },
+        { "column": "position", "reason": "user_business_index has no column for a job title (and no meta jsonb). Carried instead on the per-tenant agents row as meta->>'position' — see the tenant_agents mapping, where it is compared. Not a loss, just a different home." },
+        { "column": "is_public", "reason": "No V3 column — public team pages are not in the V3 scope (see businesses.show_team_public)." }
+      ]
+    },
+
+    {
+      "name": "tenant_agents",
+      "description": "V1 public.business_members -> the per-tenant `agents` table inside each business's own schema. Same source rows as user_business_index, different target shape: one table per tenant schema, UNION'd by the verifier.",
+      "junction": {
+        "parents": ["platform_users", "businesses"],
+        "$note": "Gate 2 check 5 (defect D8): an agent row needs both a migrated user and a provisioned tenant schema."
+      },
+      "source": {
+        "table": "public.business_members",
+        "alias": "m",
+        "joins": [
+          "JOIN auth.users mu ON mu.id = m.user_id",
+          "JOIN public.businesses mb ON mb.id = m.business_id"
+        ],
+        "filter": "m.user_id IS NOT NULL AND m.invite_status = 'accepted' AND mu.deleted_at IS NULL AND m.role::text IN ('owner','admin','staff','member','manager','counsellor') AND EXISTS (SELECT 1 FROM public.business_members bm2 JOIN auth.users bu2 ON bu2.id = bm2.user_id WHERE bm2.business_id = mb.id AND bm2.role::text = 'owner' AND bm2.invite_status = 'accepted' AND bu2.deleted_at IS NULL)"
+      },
+      "target": {
+        "table": "\"{{schema}}\".agents",
+        "alias": "t",
+        "schemaExpand": "SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL ORDER BY id",
+        "joins": [
+          "JOIN public.platform_users pu ON pu.id = t.platform_user_id",
+          "JOIN public.businesses tb ON tb.schema_name::text = '{{schema}}'",
+          "JOIN \"{{schema}}\".roles tr ON tr.id = t.role_id"
+        ],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "V1 (business_id, user_id)",
+        "source": "m.business_id::text || '|' || m.user_id::text",
+        "target": "(tb.meta->>'v1_business_id') || '|' || pu.uuid::text"
+      },
+      "extraTargetRows": { "policy": "fail" },
+      "columns": [
+        { "name": "role", "from": "role", "source": "CASE m.role::text WHEN 'staff' THEN 'member' ELSE m.role::text END", "target": "tr.name", "note": "role name -> tenant roles.id FK, resolved back to the name for comparison" },
+        { "name": "is_owner", "from": null, "source": "(m.role::text = 'owner')", "target": "t.is_owner" },
+        { "name": "account_status", "from": null, "source": "1", "target": "t.account_status", "note": "every migrated agent is created active by decision" },
+        { "name": "position", "from": "position", "source": "nullif(btrim(m.position), '')", "target": "t.meta->>'position'", "note": "V1 free-text job title. No dedicated V3 column, so it rides on agents.meta->>'position' rather than being dropped." },
+        { "name": "invited_by_uuid", "from": "invited_by", "source": "m.invited_by::text", "target": "(SELECT pu2.uuid::text FROM \"{{schema}}\".agents a2 JOIN public.platform_users pu2 ON pu2.id = a2.platform_user_id WHERE a2.id = t.added_by)", "note": "V1 auth.users uuid -> this schema's agents.id (a self-FK), resolved back to the inviter's uuid for comparison. An inviter who is not an agent of the same business is reported by the importer and left NULL." }
+      ],
+      "dropped": [
+        { "column": "id", "reason": "V1 uuid PK; the tenant agents table uses a serial id, unique on platform_user_id within the schema." },
+        { "column": "business_id", "reason": "Part of the identity key — and it selects WHICH tenant schema the row lives in." },
+        { "column": "user_id", "reason": "Part of the identity key (resolved to platform_users.id)." },
+        { "column": "invite_email", "reason": "Only meaningful for pending invites, which are not migrated." },
+        { "column": "joined_at", "reason": "V3 stamps the tenant agent's created_at at import; the V1 join date is not carried. Declared loss." },
+        { "column": "created_at", "reason": "V3 stamps its own created_at at import." },
+        { "column": "invite_status", "reason": "Used as a source FILTER, not copied." },
+        { "column": "invite_token", "reason": "Transient invite credential; pending invites are not migrated." },
+        { "column": "invite_expires_at", "reason": "Transient invite metadata." },
+        { "column": "last_active_at", "reason": "Session telemetry; V3 recomputes." },
+        { "column": "is_public", "reason": "No V3 column — public team pages are not in the V3 scope." }
+      ]
+    }
+  ]
+}
