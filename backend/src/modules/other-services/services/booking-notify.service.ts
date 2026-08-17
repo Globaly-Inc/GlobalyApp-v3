@@ -7,6 +7,7 @@
 // With no MAIL_HOST configured, mailerService logs `[DEV]` and returns, so this is a no-op locally.
 
 import { queueEmail } from "../../auth/auth.service.js";
+import { emailLayout } from "../../../shared/mail/templates.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { config } from "../../../config.js";
 
@@ -14,13 +15,14 @@ const logger = createChildLogger("services-booking-notify");
 
 const APP = () => config.APP_URL?.replace(/\/$/, "") ?? "";
 
-/** Shared chrome so the three mails look like one family without a template engine. */
+/** Shared chrome so the three mails look like one family — and like every other mail we send. */
 function wrap(heading: string, lines: string[], cta?: { label: string; href: string }) {
-  const body = lines.map((l) => `<p style="margin:0 0 12px">${l}</p>`).join("");
-  const button = cta
-    ? `<p style="margin:20px 0"><a href="${cta.href}" style="background:#7f1d1d;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${cta.label}</a></p>`
-    : "";
-  return `<div style="font-family:system-ui,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${heading}</h2>${body}${button}</div>`;
+  return emailLayout({
+    heading,
+    // Lines are trusted markup: callers pass <strong>/<ul> deliberately.
+    body: lines.map((l) => `<p style="margin:0 0 12px;text-align:left">${l}</p>`).join(""),
+    ...(cta ? { cta } : {}),
+  });
 }
 
 const money = (minor: number, currency: string) => `${currency} ${(minor / 100).toFixed(2)}`;

@@ -9,6 +9,7 @@ import { createChildLogger } from "../../shared/logger.js";
 import { NotFoundError, UnauthorizedError } from "../../shared/errors.js";
 import { queueService } from "../../shared/queue/queueService.js";
 import { mailerService } from "../../shared/mail/mailerService.js";
+import { emailLayout, otpEmail, esc } from "../../shared/mail/templates.js";
 
 import * as platformUserRepo from "../platform-users/repositories/platform-users.repository.js";
 import * as adminRepo from "../superadmin/admin-users/repositories/admin-users.repository.js";
@@ -102,7 +103,7 @@ export function issueScopedAccessToken(user: { id: number; email: string }, orgI
 
 // ── email queue ──
 
-export async function queueEmail(options: { to: string; subject: string; html: string }) {
+export async function queueEmail(options: { to: string; subject: string; html: string; text?: string }) {
   try {
     await queueService.publish("emails", options);
   } catch {
@@ -121,7 +122,14 @@ export async function queueInvitationEmail(options: {
   await queueEmail({
     to: options.to,
     subject: "You have been invited to GlobalyHub",
-    html: `<p>Hi ${options.name},</p><p>You have been invited as <strong>${options.role}</strong>.</p><p><a href="${options.acceptUrl}">Accept Invitation</a></p><p>This link expires in 72 hours.</p>`,
+    html: emailLayout({
+      heading: "You have been invited to GlobalyHub",
+      body: `<p style="margin:0 0 12px">Hi ${esc(options.name)},</p>
+             <p style="margin:0">You have been invited to join as <strong>${esc(options.role)}</strong>.</p>`,
+      cta: { label: "Accept invitation", href: options.acceptUrl },
+      footnote: "This link expires in 72 hours.",
+    }),
+    text: `Hi ${options.name}, you have been invited to join GlobalyHub as ${options.role}. Accept: ${options.acceptUrl} (expires in 72 hours).`,
   });
 }
 
@@ -133,8 +141,13 @@ export async function registerUser(firstName: string, lastName: string, email: s
     // Anti-enumeration: return identical response, send "someone tried to register" email
     queueEmail({
       to: email,
-      subject: "Registration Attempt",
-      html: `<p>Someone tried to register an account with your email. If this was you, log in instead.</p>`,
+      subject: "Registration attempt on your Globaly account",
+      html: emailLayout({
+        heading: "Someone tried to sign up with your email",
+        body: `<p style="margin:0">An account already exists for this address. If that was you, sign in instead — no new account was created.</p>`,
+        cta: { label: "Sign in", href: `${config.WEB_APP_URL.replace(/\/$/, "")}/auth/sign-in` },
+        footnote: "If this wasn't you, no action is needed.",
+      }),
     }).catch((err) => logger.warn("Registration notice email failed", { email, err: err.message }));
     return { message: "Check your email for next steps." };
   }
@@ -150,11 +163,9 @@ export async function registerUser(firstName: string, lastName: string, email: s
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
 
-  queueEmail({
-    to: email,
-    subject: "Your Login OTP",
-    html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
-  }).catch((err) => logger.warn("OTP email failed (registration succeeded)", { email, err: err.message }));
+  queueEmail({ to: email, ...otpEmail(otp) }).catch((err) =>
+    logger.warn("OTP email failed (registration succeeded)", { email, err: err.message }),
+  );
 
   logger.info("User registered", { userId: user.id });
   return { message: "Check your email for next steps." };
@@ -174,11 +185,9 @@ export async function sendOtp(email: string) {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
 
-  queueEmail({
-    to: user.email,
-    subject: "Your Login OTP",
-    html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
-  }).catch((err) => logger.warn("OTP email failed", { email, err: err.message }));
+  queueEmail({ to: user.email, ...otpEmail(otp) }).catch((err) =>
+    logger.warn("OTP email failed", { email, err: err.message }),
+  );
 
   logger.info("OTP sent", { userId: user.id, otp: otp });
   return { message: "OTP sent" };

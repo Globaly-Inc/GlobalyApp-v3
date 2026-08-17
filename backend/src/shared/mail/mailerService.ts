@@ -39,7 +39,10 @@ class MailerService {
         from: this.config.defaultFrom,
         to: options.to,
         subject: options.subject,
-        ...(options.html ? { html: options.html } : { text: options.text ?? "" }),
+        // Send both parts when we have them: a multipart mail scores better with spam filters than
+        // an HTML-only one, and text-only clients get something readable instead of raw markup.
+        ...(options.html ? { html: options.html } : {}),
+        ...(options.text || !options.html ? { text: options.text ?? "" } : {}),
       });
 
       logger.info(`Email sent to: ${options.to}`, { messageId: info.messageId });
