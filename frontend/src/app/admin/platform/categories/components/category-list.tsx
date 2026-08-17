@@ -15,7 +15,7 @@ export function CategoryList({
   onEdit,
 }: Readonly<{
   categories: Category[];
-  kind: "business" | "service";
+  kind: "business" | "service" | "other_service";
   onToggle: (id: number, isActive: boolean) => void;
   onEdit: (category: Category) => void;
 }>) {

@@ -21,6 +21,7 @@ const envSchema = z.object({
   SESSION_EXPIRY_DAYS: z.coerce.number().default(30),
 
   // Server
+  NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().default(3000),
   APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
@@ -35,6 +36,13 @@ const envSchema = z.object({
   POSTMARK_SERVER_TOKEN: z.string().optional(),
   CHARGEBEE_SITE: z.string().optional(),
   CHARGEBEE_API_KEY: z.string().optional(),
+
+  // Payments (Earn → My Services). Unset outside production selects the dev driver, so the order lifecycle
+  // is exercisable locally without a Stripe account. See modules/other-services/payments.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  // Where the browser reaches the frontend. Checkout must return the buyer to a real origin, and the API's
+  // own APP_URL is a different host.
+  WEB_APP_URL: z.string().default("http://localhost:3001"),
 
   // AI / LLM
   GEMINI_API_KEY: z.string().optional(),

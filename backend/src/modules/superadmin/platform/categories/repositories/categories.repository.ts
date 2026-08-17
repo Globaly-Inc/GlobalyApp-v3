@@ -8,7 +8,7 @@ const now = () => masterKnex.fn.now();
 
 // ─── Schema Fields (polymorphic: business_categories | service_categories) ─
 
-export type SchemaFieldEntityType = "business_categories" | "service_categories";
+export type SchemaFieldEntityType = "business_categories" | "service_categories" | "other_service_categories";
 
 const schemaFieldsFor = (entityType: SchemaFieldEntityType) => masterKnex.raw(
   `COALESCE((
@@ -75,7 +75,7 @@ export async function updateBusinessCategory(id: number, data: Record<string, un
   return row;
 }
 
-// ─── Service Categories ────────────────────────────────────────────────────
+// ─── Service Categories (business default-services taxonomy) ──────────────
 
 export async function listServiceCategories(limit: number, offset: number, search?: string) {
   const q = masterKnex("service_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
@@ -119,6 +119,32 @@ export async function replaceDefaultServices(businessCategoryId: number, service
       );
     }
   });
+}
+
+// ─── Other Service Categories (Earn → My Services taxonomy) ───────────────
+
+export async function listOtherServiceCategories(limit: number, offset: number, search?: string) {
+  const q = masterKnex("other_service_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
+    .select("other_service_categories.*", schemaFieldsFor("other_service_categories"));
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
+}
+
+export async function countOtherServiceCategories(search?: string) {
+  const q = masterKnex("other_service_categories").whereNull("deleted_at").count("* as count");
+  if (search) q.whereILike("name", `%${search}%`);
+  const [row] = await q;
+  return Number(row.count);
+}
+
+export async function insertOtherServiceCategory(data: Record<string, unknown>) {
+  const [row] = await masterKnex("other_service_categories").insert(data).returning("*");
+  return row;
+}
+
+export async function updateOtherServiceCategory(id: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("other_service_categories").where({ id }).update({ ...data, updated_at: now() }).returning("*");
+  return row;
 }
 
 // ─── Lookups (degree_levels, areas_of_study) ───────────────────────────────

@@ -55,12 +55,44 @@ async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Respo
   return retried;
 }
 
-async function readError(res: Response): Promise<string> {
+/** Zod issue shape as sent by the backend's error-handler ({ error, details: ZodIssue[] }). */
+export type ApiFieldIssue = { path: (string | number)[]; message: string };
+
+/**
+ * Thrown on any non-2xx response. `.message` stays a plain string so every existing
+ * `catch (e) { e instanceof Error ? e.message : ... }` call site keeps working unchanged.
+ * `.code` (e.g. "CONFLICT") and `.details` (Zod issues on 400s) are there for callers that
+ * want to map a failure back onto individual form fields instead of a single toast.
+ */
+export class ApiError extends Error {
+  code?: string;
+  details?: ApiFieldIssue[];
+
+  constructor(message: string, code?: string, details?: ApiFieldIssue[]) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
+/** Flattens `ApiError.details` into `{ fieldName: message }` for a `useValidatedForm`-style errors object. */
+export function fieldErrorsFrom(err: unknown): Record<string, string> {
+  if (!(err instanceof ApiError) || !err.details) return {};
+  const errors: Record<string, string> = {};
+  for (const issue of err.details) {
+    const key = String(issue.path[0]);
+    if (!errors[key]) errors[key] = issue.message;
+  }
+  return errors;
+}
+
+async function readError(res: Response): Promise<ApiError> {
   try {
-    const data = (await res.json()) as { error?: string; message?: string };
-    return data.error || data.message || "Please try again.";
+    const data = (await res.json()) as { error?: string; message?: string; code?: string; details?: ApiFieldIssue[] };
+    return new ApiError(data.error || data.message || "Please try again.", data.code, data.details);
   } catch {
-    return "Please try again.";
+    return new ApiError("Please try again.");
   }
 }
 
@@ -68,7 +100,7 @@ export async function httpGet<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await withRefreshRetry(() =>
     fetch(`${BASE_URL}${path}`, { ...init, headers: { ...authHeaders(), ...init?.headers } }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
   return res.json() as Promise<T>;
 }
 
@@ -86,7 +118,7 @@ async function httpWithBody<T>(
       body: JSON.stringify(body),
     }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
   return res.json() as Promise<T>;
 }
 
@@ -108,7 +140,7 @@ export async function httpPostForm<T>(path: string, form: FormData, init?: Reque
   const res = await withRefreshRetry(() =>
     fetch(`${BASE_URL}${path}`, { ...init, method: "POST", headers: { ...authHeaders(), ...init?.headers }, body: form }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
   return res.json() as Promise<T>;
 }
 
@@ -122,12 +154,12 @@ export async function httpPostNoContent(path: string, body?: unknown, init?: Req
       body: JSON.stringify(body ?? {}),
     }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
 }
 
 export async function httpDelete(path: string, init?: RequestInit): Promise<void> {
   const res = await withRefreshRetry(() =>
     fetch(`${BASE_URL}${path}`, { ...init, method: "DELETE", headers: { ...authHeaders(), ...init?.headers } }),
   );
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw await readError(res);
 }

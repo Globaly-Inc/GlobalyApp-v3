@@ -22,6 +22,8 @@ import platformUsersModule from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
 import agentsModule from "./modules/agents/index.js";
 import feedModule from "./modules/feed/index.js";
+import blogModule from "./modules/blog/index.js";
+import otherServicesModule, { publicServicesModule } from "./modules/other-services/index.js";
 
 const logger = createChildLogger("server");
 
@@ -34,16 +36,22 @@ export async function buildServer() {
   await app.register(multipart, { limits: { fileSize: config.GCS_MAX_FILE_SIZE_MB * 1024 * 1024 } });
   await app.register(errorHandlerPlugin);
   await app.register(requestContextPlugin);
-  await app.register(authPlugin);
-  await app.register(tenantPlugin);
 
-  // --- Modules ---
-  await app.register(authModule);           // unified OTP login for all user types
-  await app.register(superadminModule);     // admin users + data extraction
-  await app.register(platformUsersModule);   // platform user profiles + sub-resources
-  await app.register(businessesModule);     // business registration + profiles
-  await app.register(agentsModule);         // agent invitations + management (per-business DB)
-  await app.register(feedModule);            // cross-portal social feed
+  await app.register(async (protectedApp) => {
+    await protectedApp.register(authPlugin);
+    await protectedApp.register(tenantPlugin);
+
+    await protectedApp.register(authModule);         // unified OTP login for all user types
+    await protectedApp.register(superadminModule);   // admin users + data extraction
+    await protectedApp.register(platformUsersModule); // platform user profiles + sub-resources
+    await protectedApp.register(businessesModule);   // business registration + profiles
+    await protectedApp.register(agentsModule);       // agent invitations + management (per-business DB)
+    await protectedApp.register(feedModule);          // cross-portal social feed
+    await protectedApp.register(otherServicesModule);      // service listings, orders, reviews
+  });
+
+  await app.register(blogModule);            // public blog reads (no auth)
+  await app.register(publicServicesModule);  // public marketplace browse (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

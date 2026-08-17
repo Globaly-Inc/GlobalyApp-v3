@@ -8,6 +8,9 @@ import type {
 
 type ListState<T> = { data: T[] } & PaginationMeta;
 
+/** Which category list a mutation belongs to. "other_service" is the personal-portal taxonomy. */
+export type CategoryKind = "business" | "service" | "other_service";
+
 const PAGE_LIMIT = 10;
 const ORG_DROPDOWN_LIMIT = 10;
 
@@ -20,6 +23,17 @@ export const fetchBusinessCategories = createAsyncThunk(
 export const fetchServiceCategories = createAsyncThunk(
   "platformCategories/fetchServiceCategories",
   (params: ListParams = {}) => categoriesApi.getServiceCategories({ limit: PAGE_LIMIT, ...params }),
+);
+
+/**
+ * The personal-portal list, in its own state slot rather than sharing serviceCategories.
+ *
+ * The business category editor reads serviceCategories to offer default services; if the two shared a slot,
+ * whichever screen loaded last would decide what that picker showed.
+ */
+export const fetchOtherServiceCategories = createAsyncThunk(
+  "platformCategories/fetchOtherServiceCategories",
+  (params: ListParams = {}) => categoriesApi.getOtherServiceCategories({ limit: PAGE_LIMIT, ...params }),
 );
 export const fetchLookup = createAsyncThunk(
   "platformCategories/fetchLookup",
@@ -90,22 +104,27 @@ function mutation<Arg>(
   });
 }
 
-export const toggleCategory = mutation<{ kind: "business" | "service"; id: number; is_active: boolean }>(
+const apiKind = (kind: CategoryKind) => kind === "business" ? "business" as const : kind === "other_service" ? "other-service" as const : "service" as const;
+
+const refetchFor = (kind: CategoryKind, state: CategoriesState) => {
+  if (kind === "business") return fetchBusinessCategories({ page: state.businessCategories.page });
+  if (kind === "other_service") return fetchOtherServiceCategories({ page: state.otherServiceCategories.page });
+  return fetchServiceCategories({ page: state.serviceCategories.page });
+};
+
+export const toggleCategory = mutation<{ kind: CategoryKind; id: number; is_active: boolean }>(
   "toggleCategory",
-  ({ kind, id, is_active }) => categoriesApi.updateCategory(kind, id, { is_active }),
-  ({ kind }, state) =>
-    kind === "business"
-      ? fetchBusinessCategories({ page: state.businessCategories.page })
-      : fetchServiceCategories({ page: state.serviceCategories.page }),
+  ({ kind, id, is_active }) => categoriesApi.updateCategory(apiKind(kind), id, { is_active }),
+  ({ kind }, state) => refetchFor(kind, state),
 );
 
-export const saveCategory = mutation<{ kind: "business" | "service"; id: number | null; input: CategoryInput }>(
+export const saveCategory = mutation<{ kind: CategoryKind; id: number | null; input: CategoryInput }>(
   "saveCategory",
-  ({ kind, id, input }) => (id ? categoriesApi.updateCategory(kind, id, input) : categoriesApi.createCategory(kind, input)),
-  ({ kind }, state) =>
-    kind === "business"
-      ? fetchBusinessCategories({ page: state.businessCategories.page })
-      : fetchServiceCategories({ page: state.serviceCategories.page }),
+  ({ kind, id, input }) =>
+    id
+      ? categoriesApi.updateCategory(apiKind(kind), id, input)
+      : categoriesApi.createCategory(apiKind(kind), input),
+  ({ kind }, state) => refetchFor(kind, state),
 );
 
 export const saveLookup = mutation<{ kind: LookupKind; id: number | null; input: LookupInput }>(
@@ -162,9 +181,10 @@ export const removeAccreditation = mutation<number>(
   (_arg, state) => fetchAccreditations({ page: state.accreditations.page }),
 );
 
-type CategoriesState = {
+export type CategoriesState = {
   businessCategories: ListState<Category>;
   serviceCategories: ListState<Category>;
+  otherServiceCategories: ListState<Category>;
   degreeLevels: ListState<Lookup>;
   areasOfStudy: ListState<Lookup>;
   feeTypes: ListState<FeeType>;
@@ -176,7 +196,7 @@ type CategoriesState = {
 };
 
 const initialState: CategoriesState = {
-  businessCategories: emptyList(), serviceCategories: emptyList(),
+  businessCategories: emptyList(), serviceCategories: emptyList(), otherServiceCategories: emptyList(),
   degreeLevels: emptyList(), areasOfStudy: emptyList(),
   feeTypes: emptyList(), accreditations: emptyList(),
   issuingOrganizations: [], countries: [],
@@ -206,6 +226,9 @@ const categoriesSlice = createSlice({
       })
       .addCase(fetchServiceCategories.fulfilled, (state, action) => {
         state.serviceCategories = { data: action.payload.data, ...action.payload.meta };
+      })
+      .addCase(fetchOtherServiceCategories.fulfilled, (state, action) => {
+        state.otherServiceCategories = { data: action.payload.data, ...action.payload.meta };
       })
       .addCase(fetchLookup.fulfilled, (state, action) => {
         const list = { data: action.payload.data, ...action.payload.meta };

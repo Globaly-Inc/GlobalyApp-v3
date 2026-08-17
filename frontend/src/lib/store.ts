@@ -3,6 +3,7 @@ import { signupReducer } from "@/app/signup/store/signup-slice"
 import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
 import { homeReducer } from "@/app/personal/portal/store/home-slice"
+import { myServicesReducer } from "@/app/personal/earn/services/store/my-services-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
@@ -11,6 +12,7 @@ import { businessesReducer } from "@/app/admin/platform/businesses/store/busines
 import { categoriesReducer } from "@/app/admin/platform/categories/store/categories-slice"
 import { countriesReducer } from "@/app/admin/platform/countries/store/countries-slice"
 import { featureFlagsReducer } from "@/app/admin/platform/feature-flags/store/feature-flags-slice"
+import { blogReducer } from "@/app/admin/marketing/blog/store/blog-slice"
 import { allExtractionsReducer } from "@/app/admin/data/all-extractions/store/all-extractions-slice"
 import { agentcisImportReducer } from "@/app/admin/data/agentcis-import/store/agentcis-import-slice"
 import { aiMemoryReducer } from "@/app/admin/data/ai-memory/store/ai-memory-slice"
@@ -25,12 +27,14 @@ import { eventsReducer } from "@/app/admin/monitoring/events/store/events-slice"
 import { trainingReducer } from "@/app/admin/monitoring/training/store/training-slice"
 import { ambassadorProgramsReducer } from "@/app/admin/monitoring/ambassador-programs/store/ambassador-programs-slice"
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
+import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
     auth: authReducer,
     profile: profileReducer,
     home: homeReducer,
+    myServices: myServicesReducer,
     businessOnboarding: businessOnboardingReducer,
     admin: adminReducer,
     overview: overviewReducer,
@@ -39,6 +43,7 @@ const appReducer = combineReducers({
     platformCategories: categoriesReducer,
     platformCountries: countriesReducer,
     platformFeatureFlags: featureFlagsReducer,
+    marketingBlog: blogReducer,
     dataAllExtractions: allExtractionsReducer,
     dataAgentcisImport: agentcisImportReducer,
     dataAiMemory: aiMemoryReducer,
@@ -53,6 +58,7 @@ const appReducer = combineReducers({
     monitoringTraining: trainingReducer,
     monitoringAmbassadorPrograms: ambassadorProgramsReducer,
     monitoringLogs: logsReducer,
+    monitoringOtherServices: adminOtherServicesReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

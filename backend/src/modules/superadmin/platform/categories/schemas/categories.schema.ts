@@ -14,7 +14,7 @@ export const CategoryInputSchema = z.object({
   sort_order: z.number().int().optional(),
 });
 
-export const SchemaFieldEntityTypeSchema = z.enum(["business_categories", "service_categories"]);
+export const SchemaFieldEntityTypeSchema = z.enum(["business_categories", "service_categories", "other_service_categories"]);
 
 const SchemaFieldBaseSchema = z.object({
   label: z.string().trim().min(1).max(200),

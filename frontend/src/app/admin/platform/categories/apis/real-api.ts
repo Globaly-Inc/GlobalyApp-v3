@@ -7,7 +7,9 @@ import type {
 
 const BASE = "/admin/platform";
 
-const entityType = (kind: "business" | "service") => `${kind}_categories` as const;
+type CategoryEndpoint = "business" | "service" | "other-service";
+
+const entityType = (kind: CategoryEndpoint) => kind === "other-service" ? "other_service_categories" as const : `${kind === "service" ? "service" : "business"}_categories` as const;
 
 function toQuery(params: SearchListParams): string {
   const search = new URLSearchParams();
@@ -23,9 +25,11 @@ export const categoriesRealApi = {
     httpGet(`${BASE}/business-categories${toQuery(params)}`),
   getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toQuery(params)}`),
-  createCategory: (kind: "business" | "service", input: CategoryInput): Promise<Category> =>
+  getOtherServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
+    httpGet(`${BASE}/other-service-categories${toQuery(params)}`),
+  createCategory: (kind: CategoryEndpoint, input: CategoryInput): Promise<Category> =>
     httpPost(`${BASE}/${kind}-categories`, input),
-  updateCategory: (kind: "business" | "service", id: number, input: Partial<CategoryInput>): Promise<Category> =>
+  updateCategory: (kind: CategoryEndpoint, id: number, input: Partial<CategoryInput>): Promise<Category> =>
     httpPatch(`${BASE}/${kind}-categories/${id}`, input),
 
   getDefaultServices: async (businessCategoryId: number): Promise<Category[]> =>
@@ -34,9 +38,9 @@ export const categoriesRealApi = {
     await httpPut(`${BASE}/business-categories/${businessCategoryId}/default-services`, { service_category_ids: serviceCategoryIds });
   },
 
-  getSchemaFields: async (kind: "business" | "service", categoryId: number): Promise<SchemaField[]> =>
+  getSchemaFields: async (kind: CategoryEndpoint, categoryId: number): Promise<SchemaField[]> =>
     (await httpGet<{ schema_fields: SchemaField[] }>(`${BASE}/${entityType(kind)}/${categoryId}/schema-fields`)).schema_fields,
-  createSchemaField: (kind: "business" | "service", categoryId: number, input: SchemaFieldInput): Promise<SchemaField> =>
+  createSchemaField: (kind: CategoryEndpoint, categoryId: number, input: SchemaFieldInput): Promise<SchemaField> =>
     httpPost(`${BASE}/${entityType(kind)}/${categoryId}/schema-fields`, input),
   updateSchemaField: (id: number, input: Partial<SchemaFieldInput>): Promise<SchemaField> =>
     httpPatch(`${BASE}/schema-fields/${id}`, input),

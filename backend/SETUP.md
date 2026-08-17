@@ -229,6 +229,9 @@ backend/
 └── knexfile.ts                # Knex config (globalyapp + superadmin envs)
 ```
 
+## Rolling back the DB
+cd /home/user/Documents/Priansu/Globalyhub/GlobalyApp-v3/backend && node --import tsx -e "import knex from 'knex'; import config from './knexfile.ts'; const db = knex(config.globalyapp); await db.raw('DROP SCHEMA IF EXISTS public CASCADE'); await db.raw('DROP SCHEMA IF EXISTS superadmin CASCADE'); await db.raw('CREATE SCHEMA public'); await db.raw('CREATE SCHEMA superadmin'); await db.destroy(); console.log('done');" && node --import tsx node_modules/.bin/knex migrate:latest --knexfile knexfile.ts --env globalyapp && node --import tsx node_modules/.bin/knex migrate:latest --knexfile knexfile.ts --env superadmin && npm run seed:globalyapp
+
 ## Key conventions
 
 - **Multi-tenant**: Each business gets its own database, created dynamically

@@ -3,9 +3,10 @@
 
 import { NotFoundError } from "../../../../../shared/errors.js";
 import * as repo from "../repositories/categories.repository.js";
-import type { LookupTable, SchemaFieldEntityType } from "../repositories/categories.repository.js";
+import type { LookupTable } from "../repositories/categories.repository.js";
 import type {
   AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput, SchemaFieldInput,
+  SchemaFieldEntityType,
 } from "../schemas/categories.schema.js";
 
 export function listSchemaFields(entityType: SchemaFieldEntityType, entityId: number) {
@@ -50,7 +51,7 @@ export function updateBusinessCategory(id: number, data: Partial<CategoryInput>)
 export const getDefaultServices = repo.getDefaultServices;
 export const replaceDefaultServices = repo.replaceDefaultServices;
 
-// ── Service Categories ──
+// ── Service Categories (business default-services taxonomy) ──
 
 export const listServiceCategories = repo.listServiceCategories;
 export const countServiceCategories = repo.countServiceCategories;
@@ -61,6 +62,19 @@ export function createServiceCategory(data: CategoryInput) {
 
 export function updateServiceCategory(id: number, data: Partial<CategoryInput>) {
   return repo.updateServiceCategory(id, data);
+}
+
+// ── Other Service Categories (Earn → My Services) ──
+
+export const listOtherServiceCategories = repo.listOtherServiceCategories;
+export const countOtherServiceCategories = repo.countOtherServiceCategories;
+
+export function createOtherServiceCategory(data: CategoryInput) {
+  return repo.insertOtherServiceCategory(data);
+}
+
+export function updateOtherServiceCategory(id: number, data: Partial<CategoryInput>) {
+  return repo.updateOtherServiceCategory(id, data);
 }
 
 // ── Lookups (degree_levels, areas_of_study) ──

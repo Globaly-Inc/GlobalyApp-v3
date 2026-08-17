@@ -20,7 +20,7 @@ export type SchemaField = {
 
 export type SchemaFieldInput = Omit<SchemaField, "id">;
 
-export type SchemaFieldEntityType = "business_categories" | "service_categories";
+export type SchemaFieldEntityType = "business_categories" | "service_categories" | "other_service_categories";
 
 export type Category = {
   id: number;

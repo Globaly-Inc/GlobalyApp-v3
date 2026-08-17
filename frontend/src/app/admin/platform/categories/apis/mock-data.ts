@@ -47,6 +47,11 @@ const serviceCategories: Category[] = [
   { id: 2, slug: "accommodation", name: "Accommodation", description: "Student housing and homestay.", icon: "Home", is_active: true, sort_order: 1, schema_fields: [] },
 ];
 
+const otherServiceCategories: Category[] = [
+  { id: 11, slug: "airport-pickup", name: "Airport Pickup", description: "Meeting arrivals and driving on.", icon: "Plane", is_active: true, sort_order: 1, schema_fields: [] },
+  { id: 12, slug: "assignment-help", name: "Assignment Help", description: "Tutoring and assignment review.", icon: "BookOpen", is_active: true, sort_order: 5, schema_fields: [] },
+];
+
 const degreeLevels: Lookup[] = [
   { id: 1, name: "Foundation", slug: "foundation", sort_order: 0, is_active: true },
   { id: 2, name: "Bachelor", slug: "bachelor", sort_order: 1, is_active: true },
@@ -87,9 +92,11 @@ const defaultServicesByBusinessCategory: Record<number, number[]> = {
 
 const schemaFieldsByCategory: Record<string, SchemaField[]> = {};
 
+type CategoryEndpoint = "business" | "service" | "other-service";
+
 const lookupTable = (kind: LookupKind) => (kind === "degree-levels" ? degreeLevels : areasOfStudy);
-const categoryTable = (kind: "business" | "service") => (kind === "business" ? businessCategories : serviceCategories);
-const schemaFieldsKey = (kind: "business" | "service", categoryId: number) => `${kind}:${categoryId}`;
+const categoryTable = (kind: CategoryEndpoint) => kind === "business" ? businessCategories : kind === "other-service" ? otherServiceCategories : serviceCategories;
+const schemaFieldsKey = (kind: CategoryEndpoint, categoryId: number) => `${kind}:${categoryId}`;
 
 export const categoriesMockApi = {
   getBusinessCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
@@ -102,25 +109,30 @@ export const categoriesMockApi = {
     await delay(300);
     return paginate(searchByName(serviceCategories, search), params);
   },
-  createCategory: async (kind: "business" | "service", input: CategoryInput): Promise<Category> => {
+  getOtherServiceCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
+    console.log("[mock] getOtherServiceCategories", search, params);
+    await delay(300);
+    return paginate(searchByName(otherServiceCategories, search), params);
+  },
+  createCategory: async (kind: CategoryEndpoint, input: CategoryInput): Promise<Category> => {
     console.log("[mock] createCategory", kind, input);
     await delay(300);
     const row: Category = { ...input, id: newId(), schema_fields: [] };
     categoryTable(kind).push(row);
     return row;
   },
-  updateCategory: async (kind: "business" | "service", id: number, input: Partial<CategoryInput>): Promise<Category> => {
+  updateCategory: async (kind: CategoryEndpoint, id: number, input: Partial<CategoryInput>): Promise<Category> => {
     console.log("[mock] updateCategory", kind, id, input);
     await delay(300);
     return patchRow(categoryTable(kind), id, input);
   },
 
-  getSchemaFields: async (kind: "business" | "service", categoryId: number): Promise<SchemaField[]> => {
+  getSchemaFields: async (kind: CategoryEndpoint, categoryId: number): Promise<SchemaField[]> => {
     console.log("[mock] getSchemaFields", kind, categoryId);
     await delay(300);
     return schemaFieldsByCategory[schemaFieldsKey(kind, categoryId)] ?? [];
   },
-  createSchemaField: async (kind: "business" | "service", categoryId: number, input: SchemaFieldInput): Promise<SchemaField> => {
+  createSchemaField: async (kind: CategoryEndpoint, categoryId: number, input: SchemaFieldInput): Promise<SchemaField> => {
     console.log("[mock] createSchemaField", kind, categoryId, input);
     await delay(300);
     const row: SchemaField = { ...input, id: newId() };
