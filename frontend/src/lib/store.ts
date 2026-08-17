@@ -29,6 +29,7 @@ import { trainingReducer } from "@/app/admin/monitoring/training/store/training-
 import { ambassadorProgramsReducer } from "@/app/admin/monitoring/ambassador-programs/store/ambassador-programs-slice"
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
+import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
@@ -61,6 +62,7 @@ const appReducer = combineReducers({
     monitoringAmbassadorPrograms: ambassadorProgramsReducer,
     monitoringLogs: logsReducer,
     monitoringOtherServices: adminOtherServicesReducer,
+    aiChat: aiChatReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

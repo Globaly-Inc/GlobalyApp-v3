@@ -1,0 +1,136 @@
+import type { FastifyReply } from "fastify";
+import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
+import { streamChat } from "../lib/gemini-stream.js";
+import { parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
+import { buildSystemPrompt } from "./prompt.service.js";
+import * as rag from "./rag.service.js";
+import * as sessionService from "./session.service.js";
+import * as messagesRepo from "../repositories/messages.repository.js";
+import * as knowledgeRepo from "../repositories/knowledge.repository.js";
+import * as sessionsRepo from "../repositories/sessions.repository.js";
+import { createChildLogger } from "../../../shared/logger.js";
+
+const logger = createChildLogger("chat-service");
+
+const HISTORY_LIMIT = 20;
+
+export async function handleMessage(opts: {
+  userId: number;
+  sessionId?: number;
+  content: string;
+  attachments?: string[];
+  reply: FastifyReply;
+}): Promise<void> {
+  const startMs = Date.now();
+
+  // 1. SSE headers
+  initSSE(opts.reply);
+
+  try {
+    // 2. Session
+    const isNew = !opts.sessionId;
+    const session = await sessionService.getOrCreateSession(opts.userId, opts.sessionId);
+
+    writeEvent(opts.reply, "session", { id: session.id, isNew });
+
+    // 3. Persist user message
+    await messagesRepo.create({
+      session_id: session.id,
+      role: "user",
+      content: opts.content,
+      attachments: opts.attachments,
+    });
+
+    // 4. Profile context
+    const profileContext = await knowledgeRepo.getProfileContext(opts.userId);
+
+    // 5. RAG search
+    const ragOutput = await rag.searchAll({
+      query: opts.content,
+      userId: opts.userId,
+      onTrace: (step) => writeEvent(opts.reply, "trace", { step }),
+    });
+
+    // 6. Sources
+    if (ragOutput.sources.length) {
+      writeEvent(opts.reply, "sources", ragOutput.sources);
+    }
+
+    // 7. System prompt
+    const system = buildSystemPrompt({
+      profile: profileContext,
+      ragContext: ragOutput.contextText,
+      isFirstMessage: isNew && session.message_count === 0,
+    });
+
+    // 8. Conversation history
+    const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
+    // Exclude the user message we just persisted (it's the last one) — it goes as userMessage to streamChat
+    const historyMessages = prevMessages.slice(0, -1);
+    const history = historyMessages.map(m => ({
+      role: (m.role === "user" ? "user" : "model") as "user" | "model",
+      parts: [{ text: m.content }],
+    }));
+
+    // 9. Stream
+    if (opts.reply.raw.destroyed) {
+      logger.info("Client disconnected before streaming", { sessionId: session.id });
+      return;
+    }
+
+    const result = await streamChat({
+      system,
+      history,
+      userMessage: opts.content,
+      onChunk: (chunk) => {
+        writeData(opts.reply, { choices: [{ delta: { content: chunk } }] });
+      },
+    });
+
+    // 10. Parse structured blocks
+    const cards = parseCards(result.fullText);
+    const chips = parseChips(result.fullText);
+    const cleanText = stripBlocks(result.fullText);
+
+    // 11. Emit cards + chips
+    if (cards.length) writeEvent(opts.reply, "cards", cards);
+    if (chips.length) writeEvent(opts.reply, "chips", chips);
+
+    // 12. Persist assistant message
+    const latencyMs = Date.now() - startMs;
+    await messagesRepo.create({
+      session_id: session.id,
+      role: "assistant",
+      content: cleanText,
+      sources: ragOutput.sources,
+      cards,
+      chips,
+      prompt_tokens: result.usage.promptTokens,
+      completion_tokens: result.usage.completionTokens,
+      total_tokens: result.usage.totalTokens,
+      latency_ms: latencyMs,
+    });
+
+    // 13. Increment message count
+    await sessionsRepo.incrementMessageCount(session.id);
+
+    // 14. Usage + done
+    writeEvent(opts.reply, "usage", result.usage);
+    writeDone(opts.reply);
+
+    // 15. Auto-title (fire-and-forget)
+    if (isNew) {
+      sessionService.autoTitle(session.id, opts.content, cleanText).catch(() => {});
+    }
+  } catch (err) {
+    logger.error("Chat stream error", { err: err instanceof Error ? err.message : String(err) });
+
+    // Write a friendly error to the stream so the client doesn't hang
+    if (!opts.reply.raw.destroyed) {
+      writeData(opts.reply, {
+        choices: [{ delta: { content: "I'm sorry, something went wrong on my end. Please try again in a moment." } }],
+      });
+      writeDone(opts.reply);
+    }
+  }
+}
