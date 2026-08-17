@@ -248,6 +248,8 @@ export type BusinessCreateInput = {
   city?: string | null;
   address?: string | null;
   postcode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   logo_url?: string | null;
   cover_url?: string | null;
   linkedin_url?: string | null;
@@ -255,6 +257,17 @@ export type BusinessCreateInput = {
   instagram_url?: string | null;
   twitter_url?: string | null;
   allowed_service_category_ids?: number[];
+};
+
+export type PlaceSuggestion = { placeId: string; description: string };
+
+export type PlaceDetails = {
+  address: string;
+  latitude: number;
+  longitude: number;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
 };
 
 export type BusinessPatch = Partial<{

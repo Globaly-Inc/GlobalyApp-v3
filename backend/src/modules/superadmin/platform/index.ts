@@ -7,6 +7,7 @@ import { ALLOWED_ROLES } from "../consts.js";
 import { adminUserRoutes } from "./routes/users.routes.js";
 import { adminCountryRoutes } from "./routes/countries.routes.js";
 import { adminFeatureFlagRoutes } from "./routes/feature-flags.routes.js";
+import { adminPlacesRoutes } from "./routes/places.routes.js";
 import categoriesModule from "./categories/index.js";
 import { adminOtherServicesRoutes } from "./routes/other-services.routes.js";
 import businessesModule from "./businesses/index.js";
@@ -26,6 +27,7 @@ export default async function platformModule(app: FastifyInstance) {
   app.register(adminUserRoutes);
   app.register(adminCountryRoutes);
   app.register(adminFeatureFlagRoutes);
+  app.register(adminPlacesRoutes);
   app.register(categoriesModule);
   app.register(adminOtherServicesRoutes); // read-only oversight of Earn → My Services
   app.register(businessesModule);

@@ -191,3 +191,20 @@ export async function deleteFile(storagePath: string): Promise<void> {
 export function isConfigured(): boolean {
   return !!config.GCS_BUCKET_NAME;
 }
+
+/**
+ * Legacy rows (pre signed-URL rollout) may hold a full public URL instead of a relative path —
+ * strip the bucket prefix so those keep resolving instead of erroring.
+ */
+export function toStoragePath(raw: string): string {
+  const marker = "storage.googleapis.com/";
+  const idx = raw.indexOf(marker);
+  if (idx === -1) return raw;
+  return raw.slice(idx + marker.length).split("/").slice(1).join("/");
+}
+
+/** Resolve a stored path (or null) to a signed, viewable URL — the shared "preview this image" call. */
+export function resolvePreviewUrl(path: string | null | undefined): Promise<string | null> {
+  if (!path) return Promise.resolve(null);
+  return getSignedViewUrl(toStoragePath(path));
+}

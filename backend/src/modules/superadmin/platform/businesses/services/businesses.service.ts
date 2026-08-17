@@ -1,6 +1,7 @@
 // Businesses service — admin-managed listing CRUD, owner provisioning, members, activity.
 
 import { NotFoundError, ConflictError } from "../../../../../shared/errors.js";
+import * as storage from "../../../../../shared/storage/storageService.js";
 import { provisionBusinessSchema } from "../../../../../core/business/provisioner.js";
 import { getKnex } from "../../../../../core/db/pool-manager.js";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
@@ -13,6 +14,14 @@ import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput,
   MemberInviteInput, MemberPatchInput,
 } from "../schemas/businesses.schema.js";
+
+async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(biz: T): Promise<T> {
+  const [logo_url, cover_url] = await Promise.all([
+    storage.resolvePreviewUrl(biz.logo_url),
+    storage.resolvePreviewUrl(biz.cover_url),
+  ]);
+  return { ...biz, logo_url, cover_url };
+}
 
 async function requireBusiness(id: number) {
   const biz = await repo.findBusinessById(id);
@@ -88,22 +97,24 @@ export async function createBusiness(input: BusinessCreateInput) {
 export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
 ) {
-  const [rows, total] = await Promise.all([
+  const [rawRows, total] = await Promise.all([
     repo.listBusinesses(limit, offset, search, status, category, categorySlug),
     repo.countBusinesses(search, status, category, categorySlug),
   ]);
+  const rows = await Promise.all(rawRows.map(withImagePreviews));
   return { rows, total };
 }
 
 export async function getBusinessDetail(id: number) {
   const biz = await repo.findBusinessDetail(id);
   if (!biz) throw new NotFoundError("Business not found");
-  return biz;
+  return withImagePreviews(biz);
 }
 
 export async function updateBusiness(id: number, data: BusinessPatchInput) {
   await requireBusiness(id);
-  return repo.updateBusiness(id, data);
+  const updated = await repo.updateBusiness(id, data);
+  return withImagePreviews(updated);
 }
 
 export async function updateStatus(id: number, status: BusinessStatus) {

@@ -76,6 +76,9 @@ export async function up(knex: Knex): Promise<void> {
     t.jsonb("meta").defaultTo("{}");
     t.timestamps(true, true);
     t.timestamp("deleted_at").nullable();
+
+    t.decimal("latitude", 10, 7).nullable();
+    t.decimal("longitude", 10, 7).nullable();
   });
 }
 

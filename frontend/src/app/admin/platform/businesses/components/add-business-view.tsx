@@ -9,10 +9,11 @@ import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchBusinessCategories, fetchCountries, fetchServiceCategories } from "@/app/admin/platform/categories/store/categories-slice";
 import { ApiError } from "@/lib/api/http";
+import { businessesApi } from "../apis";
 import { createBusiness } from "../store/businesses-slice";
 import type { BusinessCreateInput } from "../apis/types";
 import { URL_FIELDS } from "../const";
-import { buildPhone, isValidEmail, isValidUrl, sanitizeSlug, toSlug } from "../utils";
+import { buildPhone, isValidEmail, isValidPhoneForCountry, isValidUrl, sanitizeSlug, toSlug } from "../utils";
 import { CategoryPickerCard } from "./add-business/category-picker-card";
 import { BasicInfoCard } from "./add-business/basic-info-card";
 import { LocationCard } from "./add-business/location-card";
@@ -39,6 +40,26 @@ export function AddBusinessView() {
   const [phoneCountryId, setPhoneCountryId] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+
+  const pickLogoFile = (file: File) => {
+    setLogoFile(file);
+    setLogoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  };
+
+  const pickCoverFile = (file: File) => {
+    setCoverFile(file);
+    setCoverPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  };
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -75,8 +96,16 @@ export function AddBusinessView() {
     if (form.business_name.trim().length < 2) nextErrors.business_name = "Business name is required";
     if (!form.business_category_id) nextErrors.business_category_id = "Select a business category";
     if (!form.subdomain?.trim()) nextErrors.subdomain = "Slug is required";
+    if (!form.first_name?.trim()) nextErrors.first_name = "Owner first name is required";
+    if (!form.last_name?.trim()) nextErrors.last_name = "Owner last name is required";
     if (!form.email?.trim()) nextErrors.email = "Email is required";
     else if (!isValidEmail(form.email)) nextErrors.email = "Enter a valid email";
+    if (phoneNumber.trim()) {
+      if (!phoneCountryId) nextErrors.phone = "Select a country code";
+      else if (!isValidPhoneForCountry(phoneNumber, countries.find((c) => String(c.id) === phoneCountryId)?.iso2)) {
+        nextErrors.phone = "Enter a valid phone number for the selected country";
+      }
+    }
     for (const [key, label] of URL_FIELDS) {
       const value = form[key] as string | null | undefined;
       if (value && !isValidUrl(value)) nextErrors[key as string] = `Enter a valid ${label} URL`;
@@ -89,6 +118,19 @@ export function AddBusinessView() {
     if (!validate() || !form.business_category_id || !form.email) return;
     setSaving(true);
     try {
+      let logo_url: string | null;
+      let cover_url: string | null;
+      try {
+        [logo_url, cover_url] = await Promise.all([
+          logoFile ? businessesApi.uploadImage(logoFile).then((r) => r.path) : form.logo_url ?? null,
+          coverFile ? businessesApi.uploadImage(coverFile).then((r) => r.path) : form.cover_url ?? null,
+        ]);
+      } catch (e) {
+        const err = e as ApiError;
+        toast.error("Couldn't upload logo/cover image", { description: err.message });
+        return;
+      }
+
       const phoneCode = countries.find((c) => String(c.id) === phoneCountryId)?.phoneCode ?? "";
       const phone = buildPhone(phoneCode, phoneNumber);
       await dispatch(
@@ -100,6 +142,8 @@ export function AddBusinessView() {
           subdomain: form.subdomain || toSlug(form.business_name),
           allowed_service_category_ids: Array.from(allowedServiceIds),
           phone: phone || null,
+          logo_url,
+          cover_url,
         }),
       ).unwrap();
       toast.success("Business created");
@@ -128,8 +172,7 @@ export function AddBusinessView() {
         <div>
           <Button
             variant="ghost"
-            size="sm"
-            className="mb-1 h-7 cursor-pointer gap-1 px-1 text-muted-foreground"
+            className="mb-1 h-10 cursor-pointer gap-1 px-1 text-muted-foreground"
             onClick={() => router.push("/admin/platform/businesses")}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -170,8 +213,19 @@ export function AddBusinessView() {
         countryOptions={countryOptions}
         countryId={form.country_id}
         onCountryChange={(id) => set("country_id", id)}
+        countryIso2={countries.find((c) => c.id === form.country_id)?.iso2}
         address={form.address ?? ""}
         onAddressChange={(v) => set("address", v)}
+        onPlaceResolved={(details) => {
+          setForm((f) => ({
+            ...f,
+            latitude: details.latitude,
+            longitude: details.longitude,
+            city: details.city ?? f.city,
+            state: details.state ?? f.state,
+            postcode: details.postcode ?? f.postcode,
+          }));
+        }}
         city={form.city ?? ""}
         onCityChange={(v) => set("city", v)}
         state={form.state ?? ""}
@@ -186,16 +240,25 @@ export function AddBusinessView() {
       <ContactCard
         firstName={form.first_name ?? ""}
         onFirstNameChange={(v) => set("first_name", v)}
+        firstNameError={errors.first_name}
         lastName={form.last_name ?? ""}
         onLastNameChange={(v) => set("last_name", v)}
+        lastNameError={errors.last_name}
         email={form.email ?? ""}
         onEmailChange={(v) => set("email", v)}
         emailError={errors.email}
         phoneCountryId={phoneCountryId}
-        onPhoneCountryChange={setPhoneCountryId}
+        onPhoneCountryChange={(v) => {
+          setPhoneCountryId(v);
+          setErrors((e) => (e.phone ? { ...e, phone: undefined } : e));
+        }}
         phoneCountryOptions={phoneCountryOptions}
         phoneNumber={phoneNumber}
-        onPhoneNumberChange={setPhoneNumber}
+        onPhoneNumberChange={(v) => {
+          setPhoneNumber(v);
+          setErrors((e) => (e.phone ? { ...e, phone: undefined } : e));
+        }}
+        phoneError={errors.phone}
       />
 
       <SocialMediaCard
@@ -208,12 +271,11 @@ export function AddBusinessView() {
       />
 
       <MediaUrlsCard
-        logoUrl={form.logo_url ?? ""}
-        onLogoUrlChange={(v) => set("logo_url", v)}
-        logoUrlError={errors.logo_url}
-        coverUrl={form.cover_url ?? ""}
-        onCoverUrlChange={(v) => set("cover_url", v)}
-        coverUrlError={errors.cover_url}
+        logoPreview={logoPreview}
+        onLogoFile={pickLogoFile}
+        coverPreview={coverPreview}
+        onCoverFile={pickCoverFile}
+        logoFallback={form.business_name.charAt(0).toUpperCase() || "B"}
       />
 
       <ServiceCategoriesCard categories={serviceCategories} selectedIds={allowedServiceIds} onToggle={toggleServiceCategory} />

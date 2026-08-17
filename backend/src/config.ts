@@ -68,6 +68,9 @@ const envSchema = z.object({
 
   // Vault
   VAULT_KEK: z.string().optional(),
+
+  // Google Maps (Places Autocomplete + Details for address lookup)
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.parse(process.env);
