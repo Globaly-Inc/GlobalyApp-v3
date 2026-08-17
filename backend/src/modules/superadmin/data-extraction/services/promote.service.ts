@@ -10,7 +10,7 @@
 // so it commits with the write). Nothing half-promoted is ever visible.
 //
 // Idempotent. Every promoted row carries `extraction_source_id` (see
-// business/20260817_010_catalog_extraction_keys.ts) and is written with
+// business/20260817_001_catalog_extraction_keys.ts) and is written with
 // INSERT .. ON CONFLICT .. MERGE on that key; junctions dedupe on their
 // (service_id, target) unique. Promoting the same job twice updates in place and
 // leaves exactly one set of rows.

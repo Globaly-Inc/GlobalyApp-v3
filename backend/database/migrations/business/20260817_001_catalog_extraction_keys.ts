@@ -20,7 +20,7 @@
 //        and already has its own (service_id, target) unique.
 //
 // 2. The projection triggers.
-//    See globalyapp/20260817_010_catalog_services.ts for why the master-side
+//    See globalyapp/20260817_003_catalog_services.ts for why the master-side
 //    projection is trigger-maintained. business_services drives identity;
 //    service_fees and service_intakes drive the fee-range and intake facets, so
 //    all three refresh it. The other children are not filterable facets, so they

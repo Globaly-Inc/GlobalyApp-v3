@@ -1,7 +1,7 @@
 // Public catalog reads.
 //
 // Everything reads public.catalog_services — the master projection of every
-// tenant service (see globalyapp/20260817_010_catalog_services.ts for why a
+// tenant service (see globalyapp/20260817_003_catalog_services.ts for why a
 // projection and not a per-request fan-out across tenant schemas). The owning org
 // and the reference vocabularies are joined live from the same schema, so a
 // renamed degree level or a moved business never needs a reprojection.
