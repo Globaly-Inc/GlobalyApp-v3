@@ -103,11 +103,14 @@ const fullName = (alias: string) => `trim(concat(${alias}.first_name, ' ', coale
 
 function hydratedListingQuery(db: Knex | Knex.Transaction = masterKnex) {
   return db("other_service_listings as l")
-    .join("other_service_categories as cat", "cat.id", "l.category_id")
+    .join("other_service_categories as cat", "cat.id", "l.other_category_id")
     .leftJoin("countries as co", "co.id", "l.country_id")
     .leftJoin("cities as ci", "ci.id", "l.city_id")
     .select(
       "l.*",
+      "l.other_category_id as category_id",
+      // Not a column: the listing's currency is whatever its country uses. See 20260812_001_other_services.
+      "co.currency",
       "cat.slug as category_slug",
       "cat.name as category_name",
       "cat.icon as category_icon",
@@ -138,8 +141,20 @@ export async function findListingById(
   return (row as HydratedListingRow) ?? null;
 }
 
+/**
+ * The DTO shape is not the row shape: the column is `other_category_id`, and `currency` is derived from the
+ * listing's country rather than stored, so neither survives a straight insert.
+ */
+function toListingColumns(data: Partial<ListingRow>): Record<string, unknown> {
+  const row: Record<string, unknown> = { ...data };
+  delete row.category_id;
+  delete row.currency;
+  if (data.category_id !== undefined) row.other_category_id = data.category_id;
+  return row;
+}
+
 export async function insertListing(data: Partial<ListingRow>): Promise<ListingRow> {
-  const [row] = await listings().insert(data).returning("*");
+  const [row] = await listings().insert(toListingColumns(data)).returning("*");
   return row;
 }
 
@@ -147,7 +162,7 @@ export async function updateListing(id: number, data: Partial<ListingRow>): Prom
   const [row] = await listings()
     .where({ id })
     .whereNull("deleted_at")
-    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .update({ ...toListingColumns(data), updated_at: masterKnex.fn.now() })
     .returning("*");
   return row ?? null;
 }
@@ -218,17 +233,17 @@ export interface BrowseFilters {
  */
 function publicListingQuery(filters: BrowseFilters) {
   const query = masterKnex("other_service_listings as l")
-    .join("other_service_categories as cat", "cat.id", "l.category_id")
+    .join("other_service_categories as cat", "cat.id", "l.other_category_id")
     .join("platform_users as p", "p.id", "l.provider_id")
     .leftJoin("countries as co", "co.id", "l.country_id")
     .leftJoin("cities as ci", "ci.id", "l.city_id")
     .where("l.is_active", true)
     .whereNull("l.deleted_at");
 
-  if (filters.category_id) query.where("l.category_id", filters.category_id);
+  if (filters.category_id) query.where("l.other_category_id", filters.category_id);
   if (filters.country_id) query.where("l.country_id", filters.country_id);
   if (filters.city_id) query.where("l.city_id", filters.city_id);
-  if (filters.currency) query.where("l.currency", filters.currency);
+  if (filters.currency) query.where("co.currency", filters.currency);
   // Compared in minor units against the stored column, so no rounding happens anywhere in the filter.
   if (filters.min_price !== undefined) query.where("l.price_minor", ">=", filters.min_price);
   if (filters.max_price !== undefined) query.where("l.price_minor", "<=", filters.max_price);
@@ -249,6 +264,8 @@ export async function browseListings(
   return publicListingQuery(filters)
     .select(
       "l.*",
+      "l.other_category_id as category_id",
+      "co.currency",
       "cat.slug as category_slug",
       "cat.name as category_name",
       "cat.icon as category_icon",
@@ -278,6 +295,8 @@ export async function findPublicListing(id: number): Promise<PublicListingRow | 
     .andWhere("l.id", id)
     .select(
       "l.*",
+      "l.other_category_id as category_id",
+      "co.currency",
       "cat.slug as category_slug",
       "cat.name as category_name",
       "cat.icon as category_icon",
@@ -342,7 +361,7 @@ function hydratedOrderQuery(db: Knex | Knex.Transaction = masterKnex) {
       // Subquery rather than a join + group by: the review leftJoin above would multiply the message rows.
       db.raw("(SELECT count(*)::int FROM other_service_order_messages m WHERE m.order_id = o.id) as message_count"),
       // Needed to pair stored booking answers back to the questions their category asked.
-      "l.category_id as listing_category_id",
+      "l.other_category_id as listing_category_id",
     );
 }
 
