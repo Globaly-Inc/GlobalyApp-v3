@@ -26,6 +26,15 @@ const BACKEND_ROOT = path.resolve(HERE, "../..");
 // which V1 never issued. Anything unlisted is reported, never silently downgraded.
 const ADMIN_ROLE_MAP = { super_admin: "super_admin", data_admin: "data_admin" };
 
+// V1 profiles.individual_category -> V3 PERSONAL_SUB_CATEGORIES
+// (src/modules/platform-users/consts.ts). Anything unlisted is reported, never
+// silently coerced into a category the app does not know about.
+const INDIVIDUAL_CATEGORY_MAP = {
+  student: "student",
+  exploring: "explorer",
+  education_professional: "education_provider",
+};
+
 // ── Pure helpers (covered by --self-check) ──────────────────────────────────
 
 /** V1 portal_type -> V3 account flags + account_categories jsonb. */
@@ -45,6 +54,29 @@ export function toNumberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * V1 stores a display label ("AUD - Australian Dollar"); V3 stores the ISO-4217
+ * code its UI shows next to the budget. The code is the prefix, so this is a
+ * narrowing, not a guess — anything that is not a 3-letter code is kept verbatim
+ * rather than dropped.
+ */
+export function toCurrencyCode(value) {
+  const raw = (value ?? "").trim();
+  if (!raw) return null;
+  const code = raw.split("-")[0].trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : raw;
+}
+
+/** V1 individual_category -> V3 PERSONAL_SUB_CATEGORIES; null when unmapped. */
+export function mapIndividualCategory(value) {
+  return INDIVIDUAL_CATEGORY_MAP[(value ?? "").trim()] ?? null;
+}
+
+/** V1 preferred_fields text[] -> V3 fields_of_study jsonb [{ name }]. */
+export function toFieldsOfStudy(values) {
+  return (values ?? []).map((name) => ({ name }));
 }
 
 // ── DB plumbing ─────────────────────────────────────────────────────────────
@@ -91,6 +123,11 @@ async function loadSourceRows(v1, onlyEmail) {
             p.completion_percentage, p.onboarding_completed, p.portal_type,
             p.personal_address_street, p.personal_address_city,
             p.personal_address_state, p.personal_address_postcode,
+            p.budget_currency, p.preferred_destinations, p.preferred_fields,
+            p.preferred_degree_levels, p.expected_start_date,
+            p.include_living_expenses, p.individual_category,
+            p.linkedin_url, p.website_url,
+            p.personal_address_lat, p.personal_address_lng,
             r.role::text                            AS v1_role
        FROM auth.users u
        LEFT JOIN public.profiles   p ON p.user_id::text = u.id::text
@@ -159,6 +196,24 @@ async function importUser(v3, row, resolveCountry, report) {
     }
   }
 
+  // Study preferences. preferred_destinations is a jsonb array of V3 country ids,
+  // so free-text country names go through the same resolver as nationality.
+  const destinationIds = [];
+  for (const name of row.preferred_destinations ?? []) {
+    const id = resolveCountry(name);
+    if (id === null) {
+      report.unresolvedCountries.push({ email: row.email, field: "preferred_destinations", value: name });
+    } else {
+      destinationIds.push(id);
+    }
+  }
+
+  const rawCategory = (row.individual_category ?? "").trim() || null;
+  const individualCategory = rawCategory ? mapIndividualCategory(rawCategory) : null;
+  if (rawCategory && !individualCategory) {
+    report.unmappedCategories.push({ email: row.email, value: rawCategory });
+  }
+
   await v3.query(
     `INSERT INTO public.platform_user_profiles
        (user_id, nationality_id, country_of_residence_id, personal_address_country_id,
@@ -166,9 +221,24 @@ async function importUser(v3, row, resolveCountry, report) {
         graduation_year, english_test_type, english_test_score, english_test_date,
         budget_min, budget_max, completion_percentage, onboarding_completed,
         personal_address_street, personal_address_city, personal_address_state,
-        personal_address_postcode)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        personal_address_postcode, budget_currency, preferred_destinations,
+        fields_of_study, preferred_degree_levels, expected_start_date,
+        include_living_expenses, individual_category, linkedin_url, website_url,
+        latitude, longitude)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+             $22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
      ON CONFLICT (user_id) DO UPDATE SET
+       budget_currency = EXCLUDED.budget_currency,
+       preferred_destinations = EXCLUDED.preferred_destinations,
+       fields_of_study = EXCLUDED.fields_of_study,
+       preferred_degree_levels = EXCLUDED.preferred_degree_levels,
+       expected_start_date = EXCLUDED.expected_start_date,
+       include_living_expenses = EXCLUDED.include_living_expenses,
+       individual_category = EXCLUDED.individual_category,
+       linkedin_url = EXCLUDED.linkedin_url,
+       website_url = EXCLUDED.website_url,
+       latitude = EXCLUDED.latitude,
+       longitude = EXCLUDED.longitude,
        nationality_id = EXCLUDED.nationality_id,
        country_of_residence_id = EXCLUDED.country_of_residence_id,
        personal_address_country_id = EXCLUDED.personal_address_country_id,
@@ -209,6 +279,17 @@ async function importUser(v3, row, resolveCountry, report) {
       row.personal_address_city ?? null,
       row.personal_address_state ?? null,
       row.personal_address_postcode ?? null,
+      toCurrencyCode(row.budget_currency),
+      JSON.stringify(destinationIds),
+      JSON.stringify(toFieldsOfStudy(row.preferred_fields)),
+      row.preferred_degree_levels ?? null,
+      row.expected_start_date ?? null,
+      row.include_living_expenses === true,
+      individualCategory,
+      row.linkedin_url ?? null,
+      row.website_url ?? null,
+      toNumberOrNull(row.personal_address_lat),
+      toNumberOrNull(row.personal_address_lng),
     ],
   );
 
@@ -250,6 +331,22 @@ function selfCheck() {
   assert.equal(toNumberOrNull("not a number"), null);
   assert.equal(toNumberOrNull(0), 0);
 
+  assert.equal(toCurrencyCode("AUD - Australian Dollar"), "AUD");
+  assert.equal(toCurrencyCode("aud"), "AUD");
+  assert.equal(toCurrencyCode(""), null);
+  assert.equal(toCurrencyCode(null), null);
+  // Not a 3-letter code: kept verbatim rather than silently dropped.
+  assert.equal(toCurrencyCode("Australian Dollar"), "Australian Dollar");
+
+  assert.equal(mapIndividualCategory("exploring"), "explorer");
+  assert.equal(mapIndividualCategory("education_professional"), "education_provider");
+  assert.equal(mapIndividualCategory("student"), "student");
+  assert.equal(mapIndividualCategory("nonsense"), null);
+  assert.equal(mapIndividualCategory(null), null);
+
+  assert.deepEqual(toFieldsOfStudy(["Engineering", "Law"]), [{ name: "Engineering" }, { name: "Law" }]);
+  assert.deepEqual(toFieldsOfStudy(null), []);
+
   assert.equal(normalizeEmail(" A@B.com "), "a@b.com");
   assert.equal(splitName({ name: "Amit Ranjitkar" }).first, "Amit");
 
@@ -279,7 +376,7 @@ async function main() {
   let v1, v3;
   const report = {
     inserted: [], updated: [], skipped: [], admins: [],
-    unresolvedCountries: [], unmappedRoles: [],
+    unresolvedCountries: [], unmappedRoles: [], unmappedCategories: [],
   };
 
   try {
@@ -309,6 +406,10 @@ async function main() {
     if (report.unmappedRoles.length) {
       console.log(`UNMAPPED ROLES (no admin row written):`);
       for (const r of report.unmappedRoles) console.log(`   ${r.email}: ${r.role}`);
+    }
+    if (report.unmappedCategories.length) {
+      console.log(`UNMAPPED individual_category (stored as NULL):`);
+      for (const c of report.unmappedCategories) console.log(`   ${c.email}: ${c.value}`);
     }
     if (report.unresolvedCountries.length) {
       console.log(`unresolved countries (stored as NULL):`);

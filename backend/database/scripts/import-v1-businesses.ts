@@ -53,6 +53,16 @@ interface V1Business {
   status: string | null;
   verified_at: string | null;
   is_suspended: boolean | null;
+  is_published: boolean | null;
+  business_category_uuid: string | null;
+  gallery_images: string[] | null;
+  video_urls: string[] | null;
+  registration_code: string | null;
+  registration_licenses: unknown;
+  postcode: string | null;
+  youtube_url: string | null;
+  whatsapp_url: string | null;
+  default_currency: string | null;
   owner_uuid: string;
 }
 
@@ -61,6 +71,8 @@ interface V1Member {
   user_uuid: string | null;
   role: string;
   invite_status: string;
+  position: string | null;
+  invited_by_uuid: string | null;
 }
 
 // ── Pure helpers (covered by --self-check) ──────────────────────────────────
@@ -90,6 +102,21 @@ export function mapRole(v1Role: string): string | null {
   return ROLE_MAP[v1Role] ?? null;
 }
 
+/**
+ * V1 stores a display label ("AUD - Australian Dollar"); V3 businesses.currency
+ * holds the ISO-4217 code. The code is the label's prefix, so this narrows
+ * rather than guesses; anything that is not a 3-letter code is kept verbatim.
+ *
+ * ponytail: duplicated from import-v1-users.mjs — that module runs main() on
+ * import, so it cannot be imported as a library.
+ */
+export function toCurrencyCode(value: string | null): string | null {
+  const raw = (value ?? "").trim();
+  if (!raw) return null;
+  const code = raw.split("-")[0].trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : raw;
+}
+
 // ── Load ────────────────────────────────────────────────────────────────────
 
 async function fetchSource(v1: pg.Client) {
@@ -97,7 +124,11 @@ async function fetchSource(v1: pg.Client) {
     `SELECT b.id::text, b.name, b.slug, b.business_type, b.description, b.logo_url,
             b.cover_url, b.website, b.email, b.phone, b.country, b.state, b.city,
             b.address, b.linkedin_url, b.facebook_url, b.twitter_url, b.instagram_url,
-            b.status, b.verified_at, b.is_suspended,
+            b.status, b.verified_at, b.is_suspended, b.is_published,
+            b.business_category_id::text AS business_category_uuid,
+            b.gallery_images, b.video_urls, b.registration_code,
+            b.registration_licenses, b.postcode, b.youtube_url, b.whatsapp_url,
+            b.default_currency,
             owner.user_id::text AS owner_uuid
        FROM public.businesses b
        JOIN LATERAL (
@@ -114,9 +145,16 @@ async function fetchSource(v1: pg.Client) {
   );
 
   const members = await v1.query<V1Member>(
-    `SELECT business_id::text, user_id::text AS user_uuid, role::text, invite_status
+    `SELECT business_id::text, user_id::text AS user_uuid, role::text, invite_status,
+            nullif(btrim(position), '') AS position,
+            invited_by::text AS invited_by_uuid
        FROM public.business_members
       WHERE user_id IS NOT NULL AND invite_status = 'accepted'`,
+  );
+
+  // V1 category uuid -> slug, so it can be remapped onto the V3 serial id.
+  const categories = await v1.query<{ id: string; slug: string }>(
+    `SELECT id::text, lower(btrim(slug)) AS slug FROM public.business_categories WHERE slug IS NOT NULL`,
   );
 
   const unlinked = await v1.query(
@@ -126,7 +164,12 @@ async function fetchSource(v1: pg.Client) {
       WHERE user_id IS NULL OR invite_status <> 'accepted'`,
   );
 
-  return { businesses: businesses.rows, members: members.rows, unlinked: unlinked.rows };
+  return {
+    businesses: businesses.rows,
+    members: members.rows,
+    unlinked: unlinked.rows,
+    categories: categories.rows,
+  };
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -148,6 +191,13 @@ function selfCheck() {
   assert.equal(mapRole("staff"), "member");
   assert.equal(mapRole("owner"), "owner");
   assert.equal(mapRole("nonsense"), null);
+
+  assert.equal(toCurrencyCode("AUD - Australian Dollar"), "AUD");
+  assert.equal(toCurrencyCode("npr"), "NPR");
+  assert.equal(toCurrencyCode(""), null);
+  assert.equal(toCurrencyCode(null), null);
+  // Not a 3-letter code: kept verbatim rather than silently dropped.
+  assert.equal(toCurrencyCode("Australian Dollar"), "Australian Dollar");
 
   console.log("self-check: all assertions passed");
 }
@@ -178,10 +228,13 @@ async function main() {
     agents: 0,
     skippedMembers: [] as { business: string; reason: string }[],
     provisioned: [] as string[],
+    unresolvedCategories: [] as { business: string; value: string }[],
+    unresolvedInviters: [] as { business: string; value: string }[],
+    published: 0,
   };
 
   try {
-    const { businesses, members, unlinked } = await fetchSource(v1);
+    const { businesses, members, unlinked, categories } = await fetchSource(v1);
     console.log(`source: ${businesses.length} businesses with an accepted owner, ${members.length} accepted memberships`);
     console.log(apply ? "mode: APPLY (writing)\n" : "mode: DRY RUN (no writes, no schemas)\n");
 
@@ -191,6 +244,17 @@ async function main() {
     // uuid -> platform_users.id, from the user import that preceded this.
     const users = await masterKnex("platform_users").select("id", "uuid");
     const userIdByUuid = new Map<string, number>(users.map((u) => [u.uuid, u.id]));
+
+    // V1 category uuid -> V3 serial id, bridged by the natural key `slug`.
+    const v3Categories = await masterKnex("business_categories").whereNull("deleted_at").select("id", "slug");
+    const categoryIdBySlug = new Map<string, number>(
+      v3Categories.map((c) => [String(c.slug).trim().toLowerCase(), c.id]),
+    );
+    const categoryIdByUuid = new Map<string, number>();
+    for (const c of categories) {
+      const id = categoryIdBySlug.get(c.slug);
+      if (id !== undefined) categoryIdByUuid.set(c.id, id);
+    }
 
     const membersByBusiness = new Map<string, V1Member[]>();
     for (const m of members) {
@@ -206,6 +270,15 @@ async function main() {
       }
 
       const subdomain = toSubdomain(b.slug, b.name, b.id);
+
+      const categoryId = b.business_category_uuid
+        ? (categoryIdByUuid.get(b.business_category_uuid) ?? null)
+        : null;
+      if (b.business_category_uuid && categoryId === null) {
+        report.unresolvedCategories.push({ business: b.name, value: b.business_category_uuid });
+      }
+      if (b.is_published === true) report.published++;
+
       const values = {
         owner_id: ownerId,
         subdomain,
@@ -228,6 +301,18 @@ async function main() {
         status: b.status ?? "pending",
         verified_at: b.verified_at,
         account_status: toAccountStatus(b.is_suspended),
+        // V1 already had an explicit publish flag; carrying it verbatim is the
+        // only mapping that does not invent visibility the operator never set.
+        is_published: b.is_published === true,
+        business_category_id: categoryId,
+        business_registration_number: b.registration_code,
+        registration_licenses: b.registration_licenses === null ? null : JSON.stringify(b.registration_licenses),
+        postcode: b.postcode,
+        youtube_url: b.youtube_url,
+        whatsapp_url: b.whatsapp_url,
+        gallery_images: b.gallery_images,
+        video_urls: b.video_urls,
+        currency: toCurrencyCode(b.default_currency),
         meta: JSON.stringify({ v1_business_id: b.id }),
       };
 
@@ -240,10 +325,12 @@ async function main() {
       }
 
       // Idempotent on subdomain — the natural key a re-run would collide on.
+      // Every mapped column is merged, so a re-run after a mapping change repairs
+      // existing rows instead of leaving them on the old shape.
       const [row] = await masterKnex("businesses")
         .insert(values)
         .onConflict("subdomain")
-        .merge({ business_name: values.business_name, description: values.description, updated_at: masterKnex.fn.now() })
+        .merge({ ...values, updated_at: masterKnex.fn.now() })
         .returning(["id", "schema_name"]);
 
       report.businesses.push(`${b.name} -> ${subdomain}`);
@@ -257,6 +344,11 @@ async function main() {
       try {
         const roles = await tenant("roles").select("id", "name");
         const roleIdByName = new Map<string, number>(roles.map((r) => [r.name, r.id]));
+
+        // agents.added_by is a self-FK, so inviters can only be resolved once
+        // every agent row in this schema exists — collected here, applied below.
+        const agentIdByUserId = new Map<number, number>();
+        const pendingInvites: { agentUserId: number; inviterUuid: string }[] = [];
 
         for (const m of membersByBusiness.get(b.id) ?? []) {
           const memberUserId = userIdByUuid.get(m.user_uuid!);
@@ -276,16 +368,37 @@ async function main() {
             .merge({ role: roleName, is_owner: isOwner });
           report.memberships++;
 
-          await tenant("agents")
+          // V1 business_members.position is a free-text job title with no V3
+          // column; it rides on agents.meta rather than being dropped.
+          const meta = JSON.stringify(m.position ? { position: m.position } : {});
+          const [agentRow] = await tenant("agents")
             .insert({
               platform_user_id: memberUserId,
               role_id: roleIdByName.get(roleName)!,
               is_owner: isOwner,
               account_status: 1,
+              meta,
             })
             .onConflict("platform_user_id")
-            .merge({ role_id: roleIdByName.get(roleName)!, is_owner: isOwner, updated_at: masterKnex.fn.now() });
+            .merge({ role_id: roleIdByName.get(roleName)!, is_owner: isOwner, meta, updated_at: masterKnex.fn.now() })
+            .returning(["id"]);
+          agentIdByUserId.set(memberUserId, agentRow.id);
+          if (m.invited_by_uuid) pendingInvites.push({ agentUserId: memberUserId, inviterUuid: m.invited_by_uuid });
           report.agents++;
+        }
+
+        // Second pass: V1 invited_by (auth.users uuid) -> this schema's agents.id.
+        // agents.added_by is a self-FK, so the inviter must already have a row.
+        for (const inv of pendingInvites) {
+          const inviterUserId = userIdByUuid.get(inv.inviterUuid);
+          const inviterAgentId = inviterUserId ? agentIdByUserId.get(inviterUserId) : undefined;
+          if (!inviterAgentId) {
+            report.unresolvedInviters.push({ business: b.name, value: inv.inviterUuid });
+            continue;
+          }
+          await tenant("agents")
+            .where({ platform_user_id: inv.agentUserId })
+            .update({ added_by: inviterAgentId });
         }
       } finally {
         await tenant.destroy();
@@ -294,6 +407,7 @@ async function main() {
 
     console.log(`businesses:  ${report.businesses.length}`);
     for (const b of report.businesses) console.log(`   ${b}`);
+    console.log(`published:   ${report.published}`);
     console.log(`memberships: ${report.memberships}`);
     console.log(`agents:      ${report.agents}`);
     if (apply) console.log(`provisioned schemas: ${report.provisioned.length}`);
@@ -304,6 +418,14 @@ async function main() {
     if (report.skippedMembers.length) {
       console.log("skipped members:");
       for (const s of report.skippedMembers) console.log(`   ${s.business}: ${s.reason}`);
+    }
+    if (report.unresolvedCategories.length) {
+      console.log("UNRESOLVED business_category_id (stored as NULL):");
+      for (const c of report.unresolvedCategories) console.log(`   ${c.business}: ${c.value}`);
+    }
+    if (report.unresolvedInviters.length) {
+      console.log("UNRESOLVED invited_by (agents.added_by left NULL):");
+      for (const c of report.unresolvedInviters) console.log(`   ${c.business}: ${c.value}`);
     }
     console.log(`\nnot migrated (no accepted owner / no linked user): ${unlinked.length} membership rows,` +
       ` ${55 - businesses.length} unclaimed directory businesses`);

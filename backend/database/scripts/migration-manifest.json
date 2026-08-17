@@ -56,6 +56,16 @@
         { "name": "id", "type": "int" }
       ],
       "query": "SELECT DISTINCT ON (key) lower(btrim(name)) AS key, id FROM public.issuing_organizations WHERE name IS NOT NULL AND btrim(name) <> '' ORDER BY key, id"
+    },
+    "globaly_business_categories": {
+      "from": "target",
+      "injectInto": "source",
+      "columns": [
+        { "name": "key", "type": "text" },
+        { "name": "id", "type": "int" }
+      ],
+      "query": "SELECT DISTINCT ON (key) lower(btrim(slug)) AS key, id FROM public.business_categories WHERE deleted_at IS NULL AND slug IS NOT NULL AND btrim(slug) <> '' ORDER BY key, id",
+      "$note": "Mirrors the uuid -> serial remap import-v1-businesses.ts does: V1 business_category_id uuid -> V1 business_categories.slug -> V3 business_categories.id."
     }
   },
 
@@ -94,7 +104,7 @@
         { "name": "sort_order", "from": "sort_order", "source": "bc.sort_order", "target": "t.sort_order" }
       ],
       "dropped": [
-        { "column": "id", "reason": "V1 uuid PK -> V3 serial; `slug` is the identity. Note businesses.business_category_id is a declared gap in the businesses mapping precisely because this uuid -> serial remap was never wired." },
+        { "column": "id", "reason": "V1 uuid PK -> V3 serial; `slug` is the identity. businesses.business_category_id is remapped through this same slug bridge (see the businesses mapping), so the uuid itself is never stored in V3." },
         { "column": "slug", "reason": "Not copied as a value — it IS the identity key." },
         { "column": "schema_fields", "reason": "V1 embedded the category's dynamic form as jsonb. V3 normalises it into public.schema_fields / schema_field_values. Not compared here — needs its own mapping entry once that loader lands." },
         { "column": "created_at", "reason": "V3 stamps its own created_at at load time." }
@@ -246,7 +256,18 @@
         { "name": "personal_address_street", "from": "personal_address_street", "source": "p.personal_address_street", "target": "t.personal_address_street" },
         { "name": "personal_address_city", "from": "personal_address_city", "source": "p.personal_address_city", "target": "t.personal_address_city" },
         { "name": "personal_address_state", "from": "personal_address_state", "source": "p.personal_address_state", "target": "t.personal_address_state" },
-        { "name": "personal_address_postcode", "from": "personal_address_postcode", "source": "p.personal_address_postcode", "target": "t.personal_address_postcode" }
+        { "name": "personal_address_postcode", "from": "personal_address_postcode", "source": "p.personal_address_postcode", "target": "t.personal_address_postcode" },
+        { "name": "budget_currency", "from": "budget_currency", "source": "CASE WHEN btrim(coalesce(p.budget_currency,'')) = '' THEN NULL WHEN upper(btrim(split_part(btrim(p.budget_currency), '-', 1))) ~ '^[A-Z]{3}$' THEN upper(btrim(split_part(btrim(p.budget_currency), '-', 1))) ELSE btrim(p.budget_currency) END", "target": "t.budget_currency", "note": "toCurrencyCode(): V1 stores the label 'AUD - Australian Dollar'; V3 stores the ISO-4217 prefix. A value that is not a 3-letter code is kept verbatim, never dropped." },
+        { "name": "preferred_destinations", "from": "preferred_destinations", "source": "(SELECT coalesce(jsonb_agg(gc.id ORDER BY d.ord), '[]'::jsonb) FROM unnest(coalesce(p.preferred_destinations, '{}'::text[])) WITH ORDINALITY AS d(v, ord) JOIN globaly_countries gc ON gc.key = lower(btrim(d.v)))", "target": "t.preferred_destinations", "note": "V1 text[] of country NAMES -> V3 jsonb array of country IDs, in source order. Names that do not resolve are reported by the importer, not silently kept as text." },
+        { "name": "fields_of_study", "from": "preferred_fields", "source": "(SELECT coalesce(jsonb_agg(jsonb_build_object('name', f.v) ORDER BY f.ord), '[]'::jsonb) FROM unnest(coalesce(p.preferred_fields, '{}'::text[])) WITH ORDINALITY AS f(v, ord))", "target": "t.fields_of_study", "note": "renamed preferred_fields -> fields_of_study; text[] -> jsonb [{name}] (the shape platform-users.schema.ts declares)" },
+        { "name": "preferred_degree_levels", "from": "preferred_degree_levels", "source": "p.preferred_degree_levels", "target": "t.preferred_degree_levels", "note": "text[] on both sides" },
+        { "name": "expected_start_date", "from": "expected_start_date", "source": "p.expected_start_date", "target": "t.expected_start_date", "note": "free-text 'MM-YYYY' on both sides; deliberately not reinterpreted as a date" },
+        { "name": "include_living_expenses", "from": "include_living_expenses", "source": "(p.include_living_expenses IS TRUE)", "target": "t.include_living_expenses" },
+        { "name": "individual_category", "from": "individual_category", "source": "CASE nullif(btrim(coalesce(p.individual_category,'')),'') WHEN 'student' THEN 'student' WHEN 'exploring' THEN 'explorer' WHEN 'education_professional' THEN 'education_provider' END", "target": "t.individual_category", "note": "INDIVIDUAL_CATEGORY_MAP: V1 label -> V3 PERSONAL_SUB_CATEGORIES (consts.ts). Unlisted values are reported by the importer and stored NULL, never coerced." },
+        { "name": "linkedin_url", "from": "linkedin_url", "source": "p.linkedin_url", "target": "t.linkedin_url" },
+        { "name": "website_url", "from": "website_url", "source": "p.website_url", "target": "t.website_url" },
+        { "name": "latitude", "from": "personal_address_lat", "source": "p.personal_address_lat::numeric(10,7)::text", "target": "t.latitude::text", "note": "renamed personal_address_lat -> latitude; double precision -> numeric(10,7), compared as text so both sides round identically" },
+        { "name": "longitude", "from": "personal_address_lng", "source": "p.personal_address_lng::numeric(10,7)::text", "target": "t.longitude::text", "note": "renamed personal_address_lng -> longitude" }
       ],
       "dropped": [
         { "column": "id", "reason": "V1 profile uuid PK; V3 profiles are keyed by serial id and joined via user_id. The V1 profile uuid is not referenced by anything that migrates." },
@@ -256,25 +277,14 @@
         { "column": "email", "reason": "Migrated onto platform_users (auth.users.email is authoritative; profiles.email was a denormalised copy)." },
         { "column": "phone", "reason": "Migrated onto platform_users.phone — verified there." },
         { "column": "avatar_url", "reason": "Migrated onto platform_users.photo_url — verified there." },
-        { "column": "budget_currency", "reason": "NOT MIGRATED by import-v1-users.mjs even though platform_user_profiles.budget_currency exists. Declared gap — needs a backfill or a decision before cutover." },
-        { "column": "preferred_destinations", "reason": "NOT MIGRATED. V1 text[] -> V3 jsonb; the importer never populates it. Declared gap." },
-        { "column": "preferred_fields", "reason": "NOT MIGRATED. V1 text[] -> V3 fields_of_study jsonb; the importer never populates it. Declared gap." },
-        { "column": "preferred_degree_levels", "reason": "NOT MIGRATED. V3 column exists but the importer never populates it. Declared gap." },
-        { "column": "expected_start_date", "reason": "NOT MIGRATED. V3 column exists but the importer never populates it. Declared gap." },
-        { "column": "include_living_expenses", "reason": "NOT MIGRATED. V3 column exists (defaults false) but the importer never populates it. Declared gap." },
-        { "column": "individual_category", "reason": "NOT MIGRATED. V3 column exists but the importer never populates it. Declared gap." },
         { "column": "portal_type", "reason": "Read at import time to derive platform_users.is_personal_account / is_business_account / account_categories. Not stored verbatim." },
         { "column": "is_suspended", "reason": "Profile-level suspension folded into platform_users.account_status." },
         { "column": "created_at", "reason": "V3 stamps its own timestamps at import." },
         { "column": "updated_at", "reason": "V3 stamps its own timestamps at import." },
         { "column": "preferred_language", "reason": "No V3 column. i18n is not in the V3 scope." },
-        { "column": "linkedin_url", "reason": "NOT MIGRATED. platform_user_profiles.linkedin_url exists but the importer never populates it. Declared gap." },
         { "column": "facebook_url", "reason": "No V3 column on platform_user_profiles — V3 keeps only linkedin_url and website_url for individuals." },
         { "column": "instagram_url", "reason": "No V3 column. See facebook_url." },
         { "column": "twitter_url", "reason": "No V3 column. See facebook_url." },
-        { "column": "website_url", "reason": "NOT MIGRATED. platform_user_profiles.website_url exists but the importer never populates it. Declared gap." },
-        { "column": "personal_address_lat", "reason": "NOT MIGRATED. V3 latitude exists but the importer never populates it. Declared gap." },
-        { "column": "personal_address_lng", "reason": "NOT MIGRATED. V3 longitude exists but the importer never populates it. Declared gap." },
         { "column": "personal_address_place_id", "reason": "No V3 column — V3 does not store Google Place IDs for individuals." },
         { "column": "personal_address_google_maps_url", "reason": "No V3 column. Derivable from lat/lng if ever needed." },
         { "column": "profile_slug", "reason": "No V3 column — V3 has no public individual profile pages." },
@@ -362,7 +372,17 @@
         { "name": "status", "from": "status", "source": "coalesce(b.status::text, 'pending')", "target": "t.status" },
         { "name": "verified_at", "from": "verified_at", "source": "b.verified_at", "target": "t.verified_at" },
         { "name": "account_status", "from": "is_suspended", "source": "CASE WHEN b.is_suspended IS TRUE THEN 0 ELSE 1 END", "target": "t.account_status", "note": "boolean -> int, per toAccountStatus()" },
-        { "name": "owner_uuid", "from": null, "source": "(SELECT bm.user_id::text FROM public.business_members bm WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL ORDER BY bm.joined_at NULLS LAST LIMIT 1)", "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.owner_id)", "note": "the owner relationship itself — proves owner_id resolved to the right person" }
+        { "name": "owner_uuid", "from": null, "source": "(SELECT bm.user_id::text FROM public.business_members bm WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL ORDER BY bm.joined_at NULLS LAST LIMIT 1)", "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.owner_id)", "note": "the owner relationship itself — proves owner_id resolved to the right person" },
+        { "name": "is_published", "from": "is_published", "source": "(b.is_published IS TRUE)", "target": "(t.is_published IS TRUE)", "note": "V1 already carried an explicit publish flag, set per business by its owner. Copied verbatim — deriving it from status/is_claimed would publish (or hide) listings the operator never chose to." },
+        { "name": "business_category_id", "from": "business_category_id", "source": "(SELECT gbc.id FROM public.business_categories vbc JOIN globaly_business_categories gbc ON gbc.key = lower(btrim(vbc.slug)) WHERE vbc.id = b.business_category_id)", "target": "t.business_category_id", "note": "uuid -> serial, bridged by the category slug (the natural key the business_categories mapping is verified on)" },
+        { "name": "gallery_images", "from": "gallery_images", "source": "b.gallery_images", "target": "t.gallery_images", "note": "text[] on both sides" },
+        { "name": "video_urls", "from": "video_urls", "source": "b.video_urls", "target": "t.video_urls", "note": "text[] on both sides" },
+        { "name": "business_registration_number", "from": "registration_code", "source": "b.registration_code", "target": "t.business_registration_number", "note": "renamed registration_code -> business_registration_number" },
+        { "name": "registration_licenses", "from": "registration_licenses", "source": "b.registration_licenses", "target": "t.registration_licenses", "note": "jsonb on both sides, copied verbatim" },
+        { "name": "postcode", "from": "postcode", "source": "b.postcode", "target": "t.postcode" },
+        { "name": "youtube_url", "from": "youtube_url", "source": "b.youtube_url", "target": "t.youtube_url" },
+        { "name": "whatsapp_url", "from": "whatsapp_url", "source": "b.whatsapp_url", "target": "t.whatsapp_url" },
+        { "name": "currency", "from": "default_currency", "source": "CASE WHEN btrim(coalesce(b.default_currency,'')) = '' THEN NULL WHEN upper(btrim(split_part(btrim(b.default_currency), '-', 1))) ~ '^[A-Z]{3}$' THEN upper(btrim(split_part(btrim(b.default_currency), '-', 1))) ELSE btrim(b.default_currency) END", "target": "t.currency", "note": "toCurrencyCode(): V1 label 'AUD - Australian Dollar' -> V3 ISO-4217 code. Lands on businesses.currency, not payment_currency (which is the Stripe billing currency, a V3-only concept with no V1 source)." }
       ],
       "dropped": [
         { "column": "id", "reason": "Not copied as a value — it IS the identity key, preserved in V3 meta->>'v1_business_id'." },
@@ -380,16 +400,9 @@
         { "column": "enquiry_max_distributions", "reason": "V1 coin marketplace. See enquiry_enabled." },
         { "column": "latitude", "reason": "No V3 businesses column — V3 stores the address textually only." },
         { "column": "longitude", "reason": "No V3 businesses column. See latitude." },
-        { "column": "gallery_images", "reason": "NOT MIGRATED. V3 businesses.gallery_images exists but import-v1-businesses.ts never populates it. Declared gap — depends on the storage migration." },
-        { "column": "video_urls", "reason": "NOT MIGRATED. V3 businesses.video_urls exists but the importer never populates it. Declared gap." },
         { "column": "provider_code", "reason": "No V3 column — CRICOS/provider codes move to the institutions/extraction tables." },
-        { "column": "registration_code", "reason": "NOT MIGRATED. V3 business_registration_number exists but the importer never populates it. Declared gap." },
-        { "column": "business_category_id", "reason": "NOT MIGRATED. V3 business_category_id exists but the category tables are loaded by another agent; the uuid->serial remap is not wired. Declared gap." },
         { "column": "cover_position", "reason": "No V3 column — cover cropping was dropped from the V3 design." },
-        { "column": "postcode", "reason": "NOT MIGRATED. V3 businesses.postcode exists but the importer never populates it. Declared gap." },
-        { "column": "youtube_url", "reason": "NOT MIGRATED. V3 businesses.youtube_url exists but the importer never populates it. Declared gap." },
         { "column": "tiktok_url", "reason": "No V3 column." },
-        { "column": "whatsapp_url", "reason": "NOT MIGRATED. V3 businesses.whatsapp_url exists but the importer never populates it. Declared gap." },
         { "column": "threads_url", "reason": "No V3 column." },
         { "column": "messenger_url", "reason": "No V3 column." },
         { "column": "telegram_url", "reason": "No V3 column." },
@@ -397,14 +410,11 @@
         { "column": "viber_url", "reason": "No V3 column." },
         { "column": "gallery_urls", "reason": "V1 jsonb gallery (superseded by gallery_images in V1 itself). Not migrated; see gallery_images." },
         { "column": "embedding", "reason": "pgvector search embedding; V3 regenerates embeddings from its own content." },
-        { "column": "registration_licenses", "reason": "NOT MIGRATED. V3 businesses.registration_licenses exists but the importer never populates it. Declared gap." },
         { "column": "show_team_public", "reason": "No V3 column — public team pages are not in the V3 scope." },
         { "column": "public_visibility", "reason": "No V3 column. See show_team_public." },
         { "column": "created_by", "reason": "V1 provenance of the directory listing; V3 tracks ownership via owner_id, which is verified above." },
         { "column": "created_via", "reason": "V1 provenance metadata (directory import vs signup); not carried." },
-        { "column": "source_reference", "reason": "V1 provenance metadata; not carried." },
-        { "column": "is_published", "reason": "NOT MIGRATED. V3 businesses.is_published exists (defaults false) but the importer never populates it, so every migrated business is unpublished. Declared gap — likely a cutover blocker for the directory." },
-        { "column": "default_currency", "reason": "NOT MIGRATED. V3 has currency / payment_currency but the importer never populates them. Declared gap." }
+        { "column": "source_reference", "reason": "V1 provenance metadata; not carried." }
       ]
     },
 
@@ -443,7 +453,7 @@
         { "column": "id", "reason": "V1 uuid PK; V3 uses a serial id with a UNIQUE (platform_user_id, business_id) natural key, which is the identity used here." },
         { "column": "business_id", "reason": "Part of the identity key (resolved to businesses.id via meta->>'v1_business_id')." },
         { "column": "user_id", "reason": "Part of the identity key (resolved to platform_users.id via uuid)." },
-        { "column": "invited_by", "reason": "No V3 column on user_business_index; V3 tracks the inviter on the tenant agents/agent_invitations tables instead." },
+        { "column": "invited_by", "reason": "No V3 column on user_business_index; the inviter is migrated onto the tenant agents row (agents.added_by) and compared there." },
         { "column": "invite_email", "reason": "Only meaningful for pending invites, which are not migrated (filter: invite_status='accepted')." },
         { "column": "joined_at", "reason": "No V3 column — user_business_index has created_at only, stamped at import." },
         { "column": "created_at", "reason": "V3 stamps its own created_at at import." },
@@ -451,7 +461,7 @@
         { "column": "invite_token", "reason": "Transient invite credential; pending invites are not migrated." },
         { "column": "invite_expires_at", "reason": "Transient invite metadata; pending invites are not migrated." },
         { "column": "last_active_at", "reason": "Session telemetry; V3 recomputes from its own sessions." },
-        { "column": "position", "reason": "NOT MIGRATED. No V3 column on user_business_index or tenant agents. Declared loss — job titles are dropped." },
+        { "column": "position", "reason": "user_business_index has no column for a job title (and no meta jsonb). Carried instead on the per-tenant agents row as meta->>'position' — see the tenant_agents mapping, where it is compared. Not a loss, just a different home." },
         { "column": "is_public", "reason": "No V3 column — public team pages are not in the V3 scope (see businesses.show_team_public)." }
       ]
     },
@@ -488,13 +498,14 @@
       "columns": [
         { "name": "role", "from": "role", "source": "CASE m.role::text WHEN 'staff' THEN 'member' ELSE m.role::text END", "target": "tr.name", "note": "role name -> tenant roles.id FK, resolved back to the name for comparison" },
         { "name": "is_owner", "from": null, "source": "(m.role::text = 'owner')", "target": "t.is_owner" },
-        { "name": "account_status", "from": null, "source": "1", "target": "t.account_status", "note": "every migrated agent is created active by decision" }
+        { "name": "account_status", "from": null, "source": "1", "target": "t.account_status", "note": "every migrated agent is created active by decision" },
+        { "name": "position", "from": "position", "source": "nullif(btrim(m.position), '')", "target": "t.meta->>'position'", "note": "V1 free-text job title. No dedicated V3 column, so it rides on agents.meta->>'position' rather than being dropped." },
+        { "name": "invited_by_uuid", "from": "invited_by", "source": "m.invited_by::text", "target": "(SELECT pu2.uuid::text FROM \"{{schema}}\".agents a2 JOIN public.platform_users pu2 ON pu2.id = a2.platform_user_id WHERE a2.id = t.added_by)", "note": "V1 auth.users uuid -> this schema's agents.id (a self-FK), resolved back to the inviter's uuid for comparison. An inviter who is not an agent of the same business is reported by the importer and left NULL." }
       ],
       "dropped": [
         { "column": "id", "reason": "V1 uuid PK; the tenant agents table uses a serial id, unique on platform_user_id within the schema." },
         { "column": "business_id", "reason": "Part of the identity key — and it selects WHICH tenant schema the row lives in." },
         { "column": "user_id", "reason": "Part of the identity key (resolved to platform_users.id)." },
-        { "column": "invited_by", "reason": "NOT MIGRATED. tenant agents.added_by exists but the importer leaves it null. Declared gap." },
         { "column": "invite_email", "reason": "Only meaningful for pending invites, which are not migrated." },
         { "column": "joined_at", "reason": "V3 stamps the tenant agent's created_at at import; the V1 join date is not carried. Declared loss." },
         { "column": "created_at", "reason": "V3 stamps its own created_at at import." },
@@ -502,7 +513,6 @@
         { "column": "invite_token", "reason": "Transient invite credential; pending invites are not migrated." },
         { "column": "invite_expires_at", "reason": "Transient invite metadata." },
         { "column": "last_active_at", "reason": "Session telemetry; V3 recomputes." },
-        { "column": "position", "reason": "NOT MIGRATED. No V3 column. Declared loss — job titles are dropped." },
         { "column": "is_public", "reason": "No V3 column — public team pages are not in the V3 scope." }
       ]
     }
