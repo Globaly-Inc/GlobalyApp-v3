@@ -70,6 +70,59 @@ async function waitFor<T>(read: () => Promise<T>, timeoutMs = 3_000): Promise<T>
   }
 }
 
+/** Emits `failAfterChunks` chunks and then throws — a stream that dies mid-answer. */
+function makeDyingProvider(failAfterChunks: number): AiProvider {
+  return {
+    model: "gemini-3.5-flash",
+    async streamChat({ onChunk }) {
+      const chunkSize = 40;
+      let emitted = 0;
+      for (let i = 0; i < ANSWER.length; i += chunkSize) {
+        if (emitted >= failAfterChunks) throw new Error("provider stream died mid-answer");
+        onChunk(ANSWER.slice(i, i + chunkSize));
+        emitted += 1;
+      }
+      return { fullText: ANSWER, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+    },
+    async generateTitle() {
+      return "Embed chat";
+    },
+  };
+}
+
+/** Emits the card/chip blocks the parser strips out of the visible answer. */
+function makeRichProvider(): AiProvider {
+  // Fences and required keys per ai-counsellor/lib/card-parser.ts: the block is
+  // ```course-card``` and a card needs id + name + institution to be kept.
+  const full =
+    "Here are some options.\n" +
+    '```course-card\n{"id":"c1","name":"Diploma of IT","institution":"Sunrise"}\n```\n' +
+    '```chips\n["Tell me about fees"]\n```';
+  return {
+    model: "gemini-3.5-flash",
+    async streamChat({ onChunk }) {
+      onChunk(full);
+      return { fullText: full, usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 } };
+    },
+    async generateTitle() {
+      return "Rich";
+    },
+  };
+}
+
+/** Reports zero completion tokens: nothing reached the client, so the turn is free. */
+function makeEmptyProvider(): AiProvider {
+  return {
+    model: "gemini-3.5-flash",
+    async streamChat() {
+      return { fullText: "", usage: { promptTokens: 50, completionTokens: 0, totalTokens: 50 } };
+    },
+    async generateTitle() {
+      return "Empty";
+    },
+  };
+}
+
 describeDb("ai-embed widget", () => {
   let app: FastifyInstance;
   let masterKnex: Knex;
@@ -437,6 +490,79 @@ describeDb("ai-embed widget", () => {
         .where({ id: liveConfigId })
         .first();
       expect(Number(after.credits_used_this_month)).toBe(Number(before.credits_used_this_month));
+    });
+  });
+
+  // ── STREAM FAILURE + PARSED BLOCKS ─────────────────────────────────────────
+
+  describe("streaming edge cases", () => {
+    it("closes the stream with an apology when the provider dies mid-answer", async () => {
+      provider.setAiProvider(makeDyingProvider(2));
+      try {
+        const res = await sendMessage(liveKey, ALLOWED_ORIGIN);
+        // Headers were already sent, so this cannot become a 5xx — the honest
+        // outcome is a stream that ends cleanly rather than one that hangs.
+        expect(res.statusCode).toBe(200);
+        expect(res.payload).toContain("something went wrong");
+        expect(res.payload).toContain("[DONE]");
+      } finally {
+        provider.setAiProvider(makeProvider());
+      }
+    });
+
+    it("charges nothing for a turn the provider never delivered", async () => {
+      const before = await masterKnex("ai_embed_configs")
+        .select("credits_used_this_month")
+        .where({ id: liveConfigId })
+        .first();
+
+      provider.setAiProvider(makeEmptyProvider());
+      try {
+        const res = await sendMessage(liveKey, ALLOWED_ORIGIN);
+        expect(res.statusCode).toBe(200);
+      } finally {
+        provider.setAiProvider(makeProvider());
+      }
+
+      // creditsFor(50, 0) === 0 — a stream that produced no tokens is free.
+      const after = await waitFor(async () => {
+        const row = await masterKnex("ai_embed_configs")
+          .select("credits_used_this_month")
+          .where({ id: liveConfigId })
+          .first();
+        return row;
+      });
+      expect(Number(after.credits_used_this_month)).toBe(Number(before.credits_used_this_month));
+    });
+
+    it("emits cards and chips as their own SSE events, stripped from the text", async () => {
+      provider.setAiProvider(makeRichProvider());
+      try {
+        const res = await sendMessage(liveKey, ALLOWED_ORIGIN);
+        expect(res.statusCode).toBe(200);
+        expect(res.payload).toContain("event: cards");
+        expect(res.payload).toContain("event: chips");
+        expect(res.payload).toContain("event: usage");
+      } finally {
+        provider.setAiProvider(makeProvider());
+      }
+    });
+
+    it("works for a config with no custom instructions", async () => {
+      // The host-instructions block is conditional; a config without one must not
+      // produce a prompt with a dangling empty section.
+      const [row] = await masterKnex("ai_embed_configs")
+        .insert({
+          business_id: bizA,
+          display_name: "Plain Widget",
+          allowed_origins: [ALLOWED_ORIGIN],
+          is_active: true,
+        })
+        .returning(["embed_key"]);
+
+      const res = await sendMessage(row.embed_key as string, ALLOWED_ORIGIN);
+      expect(res.statusCode).toBe(200);
+      expect(res.payload).toContain("[DONE]");
     });
   });
 
