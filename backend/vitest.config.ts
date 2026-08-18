@@ -12,7 +12,14 @@ export default defineConfig({
           include: ["tests/unit/**/*.test.ts"],
           // src/config.ts zod-parses at module scope, so anything importing a
           // module that reaches it needs the env present even with no DB.
-          env: testEnv(),
+          // LLM_THROTTLE_MS: the extraction client sleeps 500ms between model calls
+          // to be polite to Gemini. With an injected fixture provider there is nobody
+          // to be polite to, and the default cost the unit project 22 seconds of
+          // sleeping. extraction-llm-parsing.test.ts re-imports the module with a
+          // non-zero gap to cover the throttle itself.
+          // ("1", not "0": the client reads the gap with `|| 500`, so a zero falls
+          // back to the default.)
+          env: { ...testEnv(), LLM_THROTTLE_MS: "1" },
         },
       },
       {
