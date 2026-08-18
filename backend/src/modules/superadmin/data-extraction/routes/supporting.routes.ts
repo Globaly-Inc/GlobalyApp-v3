@@ -10,9 +10,9 @@ import {
   LessonsQuerySchema,
   SaveAndLearnSchema,
 } from "../schemas/supporting.schema.js";
+import { resolveAdminId as adminId } from "../shared/admin-id.js";
 
 export async function supportingRoutes(app: FastifyInstance) {
-  const adminId = (req: any) => Number(req.auth.sub);
 
   // ── Site profiles ──
 
@@ -31,7 +31,7 @@ export async function supportingRoutes(app: FastifyInstance) {
   // E8: PUT /site-profiles
   app.put("/site-profiles", async (req, reply) => {
     const input = UpsertSiteProfileSchema.parse(req.body);
-    return reply.send(await service.upsertSiteProfile(input, adminId(req)));
+    return reply.send(await service.upsertSiteProfile(input, await adminId(req)));
   });
 
   // ── Lessons ──
@@ -54,13 +54,13 @@ export async function supportingRoutes(app: FastifyInstance) {
   app.patch("/lessons/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const { is_active } = PatchLessonSchema.parse(req.body);
-    return reply.send(await service.patchLesson(id, is_active, adminId(req)));
+    return reply.send(await service.patchLesson(id, is_active, await adminId(req)));
   });
 
   // E10: DELETE /lessons/:id
   app.delete("/lessons/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.deleteLesson(id, adminId(req)));
+    return reply.send(await service.deleteLesson(id, await adminId(req)));
   });
 
   // ── Save and learn ──
@@ -68,6 +68,6 @@ export async function supportingRoutes(app: FastifyInstance) {
   // SL1: POST /save-and-learn
   app.post("/save-and-learn", async (req, reply) => {
     const input = SaveAndLearnSchema.parse(req.body);
-    return reply.send(await service.saveAndLearn(input, adminId(req)));
+    return reply.send(await service.saveAndLearn(input, await adminId(req)));
   });
 }

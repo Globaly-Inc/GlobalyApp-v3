@@ -58,6 +58,21 @@ export default defineConfig({
         "src/modules/enquiries/**/*.ts",
         // D2 — messaging
         "src/modules/messaging/**/*.ts",
+        // E1 — knowledge base + RAG. Listed file-by-file on purpose: PR #42's
+        // rack.* and knowledge-crawl.worker arrived untested and a module-wide
+        // glob would report ~62% for code this wave did not write.
+        "src/modules/superadmin/ai-knowledge/lib/*.ts",
+        "src/modules/superadmin/ai-knowledge/repositories/chunk.repository.ts",
+        "src/modules/superadmin/ai-knowledge/repositories/retrieval.repository.ts",
+        "src/modules/superadmin/ai-knowledge/routes/content.routes.ts",
+        "src/modules/superadmin/ai-knowledge/routes/retrieval.routes.ts",
+        "src/modules/superadmin/ai-knowledge/services/content.service.ts",
+        "src/modules/superadmin/ai-knowledge/services/dispatch.service.ts",
+        "src/modules/superadmin/ai-knowledge/services/embedding.service.ts",
+        "src/modules/superadmin/ai-knowledge/services/retrieval.service.ts",
+        "src/modules/superadmin/ai-knowledge/shared/*.ts",
+        // E2 — AI counsellor
+        "src/modules/ai-counsellor/**/*.ts",
         // D4 — feed comments, public student profiles
         "src/modules/feed/**/*comment*.ts",
         "src/modules/platform-users/**/*public-profile*.ts",
@@ -65,6 +80,7 @@ export default defineConfig({
         "src/modules/events/**/*.ts",
         "src/modules/notifications/**/*.ts",
       ],
+      exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {
         lines: 80,
         functions: 80,

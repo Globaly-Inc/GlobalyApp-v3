@@ -4,9 +4,9 @@ import type { FastifyInstance } from "fastify";
 import * as service from "../services/review.service.js";
 import { UuidParamSchema } from "../schemas/jobs.schema.js";
 import { PatchAgentSchema, PatchCampusSchema } from "../schemas/review.schema.js";
+import { resolveAdminId as adminId } from "../shared/admin-id.js";
 
 export async function reviewRoutes(app: FastifyInstance) {
-  const adminId = (req: any) => Number(req.auth.sub);
 
   // ── Agents ──
 
@@ -26,19 +26,19 @@ export async function reviewRoutes(app: FastifyInstance) {
   app.patch("/agents/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const input = PatchAgentSchema.parse(req.body);
-    return reply.send(await service.patchAgent(id, input, adminId(req)));
+    return reply.send(await service.patchAgent(id, input, await adminId(req)));
   });
 
   // RA4: POST /agents/:id/approve
   app.post("/agents/:id/approve", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.approveAgent(id, adminId(req)));
+    return reply.send(await service.approveAgent(id, await adminId(req)));
   });
 
   // RA5: POST /agents/:id/reject
   app.post("/agents/:id/reject", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.rejectAgent(id, adminId(req)));
+    return reply.send(await service.rejectAgent(id, await adminId(req)));
   });
 
   // ── Campuses ──
@@ -53,7 +53,7 @@ export async function reviewRoutes(app: FastifyInstance) {
   app.patch("/campuses/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const input = PatchCampusSchema.parse(req.body);
-    return reply.send(await service.patchCampus(id, input, adminId(req)));
+    return reply.send(await service.patchCampus(id, input, await adminId(req)));
   });
 
   // RCa3: GET /jobs/:id/visas

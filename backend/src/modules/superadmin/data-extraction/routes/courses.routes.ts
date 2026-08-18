@@ -5,6 +5,7 @@ import * as service from "../services/courses.service.js";
 import { UuidParamSchema, JobIdParamSchema } from "../schemas/jobs.schema.js";
 import { CreateCourseSchema, PatchCourseSchema, CourseAccreditationLinkSchema } from "../schemas/courses.schema.js";
 import { z } from "zod";
+import { resolveAdminId as adminId } from "../shared/admin-id.js";
 
 const CourseAccredParamSchema = z.object({
   courseId: z.string().uuid(),
@@ -12,7 +13,6 @@ const CourseAccredParamSchema = z.object({
 });
 
 export async function coursesRoutes(app: FastifyInstance) {
-  const adminId = (req: any) => Number(req.auth.sub);
 
   // RC1: GET /jobs/:id/courses
   app.get("/jobs/:id/courses", async (req, reply) => {
@@ -30,26 +30,26 @@ export async function coursesRoutes(app: FastifyInstance) {
   app.post("/jobs/:jobId/courses", async (req, reply) => {
     const { jobId } = JobIdParamSchema.parse(req.params);
     const input = CreateCourseSchema.parse(req.body);
-    return reply.send(await service.createCourse(jobId, input, adminId(req)));
+    return reply.send(await service.createCourse(jobId, input, await adminId(req)));
   });
 
   // RC3: PATCH /courses/:id
   app.patch("/courses/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const input = PatchCourseSchema.parse(req.body);
-    return reply.send(await service.patchCourse(id, input, adminId(req)));
+    return reply.send(await service.patchCourse(id, input, await adminId(req)));
   });
 
   // RC4: POST /courses/:id/approve
   app.post("/courses/:id/approve", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.approveCourse(id, adminId(req)));
+    return reply.send(await service.approveCourse(id, await adminId(req)));
   });
 
   // RC5: POST /courses/:id/reject
   app.post("/courses/:id/reject", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.rejectCourse(id, adminId(req)));
+    return reply.send(await service.rejectCourse(id, await adminId(req)));
   });
 
   // E5: GET /courses/:courseId/accreditation-links
@@ -63,13 +63,13 @@ export async function coursesRoutes(app: FastifyInstance) {
     const { courseId } = z.object({ courseId: z.string().uuid() }).parse(req.params);
     const body = CourseAccreditationLinkSchema.parse(req.body);
     return reply.status(201).send(
-      await service.linkAccreditation(courseId, body.job_id, body.accreditation_id, adminId(req)),
+      await service.linkAccreditation(courseId, body.job_id, body.accreditation_id, await adminId(req)),
     );
   });
 
   // E7: DELETE /courses/:courseId/accreditation-links/:accreditationId
   app.delete("/courses/:courseId/accreditation-links/:accreditationId", async (req, reply) => {
     const { courseId, accreditationId } = CourseAccredParamSchema.parse(req.params);
-    return reply.send(await service.unlinkAccreditation(courseId, accreditationId, adminId(req)));
+    return reply.send(await service.unlinkAccreditation(courseId, accreditationId, await adminId(req)));
   });
 }

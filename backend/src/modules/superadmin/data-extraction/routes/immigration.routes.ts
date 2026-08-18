@@ -9,9 +9,9 @@ import {
   ExtractVisasSchema,
   ExtractMaraSchema,
 } from "../schemas/immigration.schema.js";
+import { resolveAdminId as adminId } from "../shared/admin-id.js";
 
 export async function immigrationRoutes(app: FastifyInstance) {
-  const adminId = (req: any) => Number(req.auth.sub);
 
   // I1: GET /visas
   app.get("/visas", async (req, reply) => {
@@ -28,26 +28,26 @@ export async function immigrationRoutes(app: FastifyInstance) {
   // I3: POST /visas/:id/discard
   app.post("/visas/:id/discard", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.discardVisa(id, adminId(req)));
+    return reply.send(await service.discardVisa(id, await adminId(req)));
   });
 
   // I4: POST /mara-agents/:id/discard
   app.post("/mara-agents/:id/discard", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.discardMara(id, adminId(req)));
+    return reply.send(await service.discardMara(id, await adminId(req)));
   });
 
   // I5: POST /visas/:id/promote
   app.post("/visas/:id/promote", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const { department_business_id } = PromoteVisaSchema.parse(req.body);
-    return reply.send(await service.promoteVisa(id, department_business_id, adminId(req)));
+    return reply.send(await service.promoteVisa(id, department_business_id, await adminId(req)));
   });
 
   // I6: POST /mara-agents/:id/promote
   app.post("/mara-agents/:id/promote", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.promoteMara(id, adminId(req)));
+    return reply.send(await service.promoteMara(id, await adminId(req)));
   });
 
   // I7: POST /visas/extract (503 stub)

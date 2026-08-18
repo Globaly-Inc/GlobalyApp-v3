@@ -20,6 +20,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { logAudit } from "../shared/audit.js";
 import { NotFoundError } from "../../../../shared/errors.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { resolveAdminId as adminId } from "../shared/admin-id.js";
 
 const ScheduleAgentsSchema = z.object({
   cadence: z.enum(["daily", "weekly", "monthly"]),
@@ -27,7 +28,6 @@ const ScheduleAgentsSchema = z.object({
 });
 
 export async function jobsRoutes(app: FastifyInstance) {
-  const adminId = (req: any) => Number(req.auth.sub);
 
   // ── Reads ──
 
@@ -75,7 +75,7 @@ export async function jobsRoutes(app: FastifyInstance) {
   // E3: POST /jobs
   app.post("/jobs", async (req, reply) => {
     const input = CreateJobSchema.parse(req.body);
-    const result = await service.createJob(input, adminId(req));
+    const result = await service.createJob(input, await adminId(req));
     return reply.status(201).send(result);
   });
 
@@ -84,53 +84,53 @@ export async function jobsRoutes(app: FastifyInstance) {
   // C11: POST /jobs/:id/pause
   app.post("/jobs/:id/pause", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.pauseJob(id, adminId(req)));
+    return reply.send(await service.pauseJob(id, await adminId(req)));
   });
 
   // C12: POST /jobs/:id/resume
   app.post("/jobs/:id/resume", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.resumeJob(id, adminId(req)));
+    return reply.send(await service.resumeJob(id, await adminId(req)));
   });
 
   // C10: POST /jobs/:id/decline
   app.post("/jobs/:id/decline", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.declineJob(id, adminId(req)));
+    return reply.send(await service.declineJob(id, await adminId(req)));
   });
 
   // E4: POST /jobs/:id/fail
   app.post("/jobs/:id/fail", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const input = FailJobSchema.parse(req.body);
-    return reply.send(await service.failJob(id, input, adminId(req)));
+    return reply.send(await service.failJob(id, input, await adminId(req)));
   });
 
   // C14: PATCH /jobs/:id/context
   app.patch("/jobs/:id/context", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const input = PatchJobContextSchema.parse(req.body);
-    return reply.send(await service.patchJobContext(id, input, adminId(req)));
+    return reply.send(await service.patchJobContext(id, input, await adminId(req)));
   });
 
   // C13: DELETE /jobs/:id
   app.delete("/jobs/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.deleteJob(id, adminId(req)));
+    return reply.send(await service.deleteJob(id, await adminId(req)));
   });
 
   // C16: POST /jobs/:id/merge-duplicates
   app.post("/jobs/:id/merge-duplicates", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const { dry_run } = MergeDuplicatesSchema.parse(req.body);
-    return reply.send(await service.mergeDuplicates(id, dry_run, adminId(req)));
+    return reply.send(await service.mergeDuplicates(id, dry_run, await adminId(req)));
   });
 
   // Phase 3: POST /jobs/:id/run-step — dispatch a single pipeline step
   app.post("/jobs/:id/run-step", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const input = RunStepSchema.parse(req.body);
-    return reply.send(await stepService.dispatchStep(id, input, adminId(req)));
+    return reply.send(await stepService.dispatchStep(id, input, await adminId(req)));
   });
 
   // C15: POST /jobs/:jobId/courses — handled in courses.routes.ts
@@ -153,7 +153,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         enabled: input.enabled,
         updated_at: masterKnex.fn.now(),
       });
-      await logAudit(adminId(req), "EXTRACTION_SCHEDULE_UPDATE", {
+      await logAudit(await adminId(req), "EXTRACTION_SCHEDULE_UPDATE", {
         entityType: "agent_extraction_schedule",
         entityId: existing.id,
         details: { job_id: id, ...input },
@@ -167,7 +167,7 @@ export async function jobsRoutes(app: FastifyInstance) {
       enabled: input.enabled,
     }).returning("id");
 
-    await logAudit(adminId(req), "EXTRACTION_SCHEDULE_CREATE", {
+    await logAudit(await adminId(req), "EXTRACTION_SCHEDULE_CREATE", {
       entityType: "agent_extraction_schedule",
       entityId: row.id,
       details: { job_id: id, ...input },
@@ -189,7 +189,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     const deleted = await masterKnex(`${S}.agent_extraction_schedule`).where({ job_id: id }).del();
     if (!deleted) throw new NotFoundError("No schedule found for this job");
 
-    await logAudit(adminId(req), "EXTRACTION_SCHEDULE_DELETE", {
+    await logAudit(await adminId(req), "EXTRACTION_SCHEDULE_DELETE", {
       entityType: "agent_extraction_schedule",
       details: { job_id: id },
     });
