@@ -286,6 +286,45 @@ describeDb("enquiries", () => {
       expect(Number(after[0].count)).toBe(Number(before[0].count));
     });
 
+    it("ranks the target org's active representatives ahead of the rest", async () => {
+      // `mid` is 35 km out and `near` is 5 km, so distance alone would order
+      // near-then-mid. An active representation contract flips that.
+      const [institution] = await masterKnex("institutions")
+        .insert({
+          platform_user_id: near.ownerId,
+          first_name: "Inst",
+          last_name: "Owner",
+          email: uniqueEmail("enq.inst"),
+          subdomain: `enq-inst-${suffix}`,
+          institution_name: `Enq Institution ${suffix}`,
+        })
+        .returning(["id"]);
+      await masterKnex("representations").insert({
+        agent_org_type: "business",
+        agent_org_id: mid.id,
+        institution_org_type: "institution",
+        institution_org_id: institution.id,
+        status: "active",
+      });
+
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token, {
+        target_org_type: "institution",
+        target_org_id: institution.id,
+      });
+      const ids = created.recipients.map((r: { business_id: number }) => r.business_id);
+      expect(ids).toContain(mid.id);
+      expect(ids).toContain(near.id);
+      expect(ids.indexOf(mid.id)).toBeLessThan(ids.indexOf(near.id));
+    });
+
+    it("ignores a named business that has opted out of enquiries", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token, { agent_business_id: disabled.id });
+      const ids = created.recipients.map((r: { business_id: number }) => r.business_id);
+      expect(ids).not.toContain(disabled.id);
+    });
+
     it("refuses a fourth enquiry from the same student inside 24 hours", async () => {
       const student = await makeStudent();
       for (let i = 0; i < 3; i += 1) await createEnquiry(student.token);
@@ -339,6 +378,39 @@ describeDb("enquiries", () => {
       expect(opened.student.email).toBe(studentRow.email);
       expect(opened.student.phone).toBe(studentRow.phone);
       expect(opened.student.last_name).toBe(studentRow.last_name);
+    });
+
+    it("filters the inbox by distribution status and by unlocked state", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+      await fundWallet(near.id, 500);
+
+      const pending = (await get("/api/v3/business/enquiries?status=pending&limit=100", near.token)).json();
+      expect(pending.data.map((r: { id: number }) => r.id)).toContain(dist.id);
+
+      await post(`/api/v3/business/enquiries/${dist.id}/unlock`, near.token);
+
+      const viewed = (await get("/api/v3/business/enquiries?status=viewed&limit=100", near.token)).json();
+      expect(viewed.data.map((r: { id: number }) => r.id)).toContain(dist.id);
+
+      const unlocked = (await get("/api/v3/business/enquiries?unlocked=true&limit=100", near.token)).json();
+      expect(unlocked.data.map((r: { id: number }) => r.id)).toContain(dist.id);
+      for (const row of unlocked.data) expect(row.unlocked).toBe(true);
+
+      const stillLocked = (await get("/api/v3/business/enquiries?unlocked=false&limit=100", near.token)).json();
+      expect(stillLocked.data.map((r: { id: number }) => r.id)).not.toContain(dist.id);
+    });
+
+    it("filters a student's own list by status", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const pending = (await get("/api/v3/enquiries?status=pending&limit=100", student.token)).json();
+      expect(pending.data.map((e: { id: number }) => e.id)).toContain(created.id);
+      expect(pending.data[0].distributed_to).toBeGreaterThan(0);
+
+      const closed = (await get("/api/v3/enquiries?status=closed", student.token)).json();
+      expect(closed.meta.total).toBe(0);
     });
 
     it("masks list rows the same way it masks a single row", async () => {
@@ -511,6 +583,31 @@ describeDb("enquiries", () => {
       expect(body.unlocks.total).toBeGreaterThan(0);
       expect(body.unlocks.credits_spent).toBeGreaterThan(0);
       expect(body.digest_queue).toHaveProperty("pending");
+    });
+
+    it("filters by status and by recipient business", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+
+      const byStatus = (
+        await get(`/api/v3/admin/monitoring/enquiries?student_id=${student.id}&status=pending`, adminToken)
+      ).json();
+      expect(byStatus.data.map((e: { id: number }) => e.id)).toContain(created.id);
+
+      const byOther = (
+        await get(`/api/v3/admin/monitoring/enquiries?student_id=${student.id}&status=closed`, adminToken)
+      ).json();
+      expect(byOther.meta.total).toBe(0);
+
+      const byBusiness = (
+        await get(`/api/v3/admin/monitoring/enquiries?business_id=${near.id}&limit=100`, adminToken)
+      ).json();
+      expect(byBusiness.data.map((e: { id: number }) => e.id)).toContain(created.id);
+
+      const byWrongBusiness = (
+        await get(`/api/v3/admin/monitoring/enquiries?business_id=${disabled.id}&limit=100`, adminToken)
+      ).json();
+      expect(byWrongBusiness.data.map((e: { id: number }) => e.id)).not.toContain(created.id);
     });
 
     it("refuses a non-admin", async () => {

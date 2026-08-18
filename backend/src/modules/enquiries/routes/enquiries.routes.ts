@@ -20,7 +20,7 @@ export async function enquiriesRoutes(app: FastifyInstance) {
   });
 
   app.get("/", async (req, reply) => {
-    const query = ListMyEnquiriesQuerySchema.parse(req.query ?? {});
+    const query = ListMyEnquiriesQuerySchema.parse(req.query);
     return reply.send(await service.listMyEnquiries(Number(req.auth.sub), query));
   });
 
