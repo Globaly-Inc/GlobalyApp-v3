@@ -134,9 +134,12 @@ export function findDeterministicIssues(
   }
   for (const group of byName.values()) {
     if (group.length < 2) continue;
-    const ordered = [...group].sort(
-      (a, b) => completeness(b) - completeness(a) || (a.id < b.id ? -1 : 1),
-    );
+    // Most complete wins; a tie keeps whichever was extracted first. Array.sort is
+    // stable in Node, and the caller loads courses ordered by created_at, so input
+    // order IS extraction order. Tie-breaking on uuid instead (the obvious thing)
+    // makes the survivor random per run — two equally complete duplicates would flag
+    // a different one of the pair every time the audit is re-run.
+    const ordered = [...group].sort((a, b) => completeness(b) - completeness(a));
     const [keep, ...dups] = ordered;
     for (const dup of dups) {
       issues.push({

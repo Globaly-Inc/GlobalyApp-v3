@@ -282,6 +282,24 @@ describe("findDeterministicIssues", () => {
     expect(duplicates[0].severity).toBe("high");
   });
 
+  // Two duplicates that are equally complete must not flag a different one of the pair
+  // on every run. Tie-breaking on uuid did exactly that, and it surfaced as three
+  // integration tests failing at random.
+  it("keeps the first-extracted of two equally complete duplicates, every time", () => {
+    const rows = [
+      course({ id: "aaa-first", name: "Bachelor of Nursing" }),
+      course({ id: "zzz-second", name: "Bachelor of Nursing 2027" }),
+    ];
+    for (let run = 0; run < 5; run++) {
+      const duplicates = findDeterministicIssues(rows).filter((i) => i.issue_type === "duplicate");
+      expect(duplicates.map((i) => i.course_id)).toEqual(["zzz-second"]);
+    }
+    // Reversing the input reverses the survivor — extraction order is the tiebreak,
+    // and the caller loads courses ordered by created_at.
+    const reversed = findDeterministicIssues([rows[1], rows[0]]).filter((i) => i.issue_type === "duplicate");
+    expect(reversed.map((i) => i.course_id)).toEqual(["aaa-first"]);
+  });
+
   it("flags a fee below the plausible floor as a medium fee_anomaly", () => {
     const issues = findDeterministicIssues([
       course({ id: "1", name: "Bachelor of Nursing", international_fee_total: 900 }),
