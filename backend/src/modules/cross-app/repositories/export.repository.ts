@@ -137,22 +137,23 @@ export async function listOrgsForCourses(courses: ExportCourseRow[]): Promise<Ex
   const out: ExportOrgRow[] = [];
 
   if (businessIds.length) {
+    // Every column is table-qualified: `countries` is joined in, and it has its own
+    // `id`/`name`, so bare names here are an ambiguous-column error at runtime.
     const rows = await masterKnex("businesses")
       .select(
-        "id",
-        "business_name as name",
-        "description",
-        "logo_url",
-        "website",
-        "city",
-        "state",
-        "status",
-        "verified_at",
-        "updated_at",
-        "country_id",
+        "businesses.id",
+        "businesses.business_name as name",
+        "businesses.description",
+        "businesses.logo_url",
+        "businesses.website",
+        "businesses.city",
+        "businesses.state",
+        "businesses.status",
+        "businesses.verified_at",
+        "businesses.updated_at",
+        "countries.name as country",
       )
       .leftJoin("countries", "countries.id", "businesses.country_id")
-      .select("countries.name as country")
       .whereIn("businesses.id", businessIds)
       .whereNull("businesses.deleted_at");
     for (const r of rows as Array<Record<string, unknown>>) {
