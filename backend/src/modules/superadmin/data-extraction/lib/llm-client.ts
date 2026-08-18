@@ -25,9 +25,11 @@ function isTransient(err: unknown): boolean {
   return /429|503|overloaded|high demand|rate limit/i.test(msg);
 }
 
-// ponytail: throttle between LLM calls — 500ms for paid keys, raise if on free tier
+// ponytail: throttle between LLM calls — 500ms for paid keys, raise if on free tier.
+// Read per call, not at module load, so a run can be slowed down (LLM_THROTTLE_MS=700
+// ≈ 85 RPM for a free-tier embedding key) without a rebuild, and so tests can zero it.
 let lastLlmCall = 0;
-const MIN_LLM_GAP_MS = Number(process.env.LLM_THROTTLE_MS) || 500;
+const minLlmGapMs = () => Number(process.env.LLM_THROTTLE_MS) || 500;
 
 // ponytail: parse "retryDelay":"52s" from Gemini 429 errors
 function parseRetryDelay(err: unknown): number | null {
@@ -40,7 +42,7 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const now = Date.now();
-      const wait = MIN_LLM_GAP_MS - (now - lastLlmCall);
+      const wait = minLlmGapMs() - (now - lastLlmCall);
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       lastLlmCall = Date.now();
       return await fn();
@@ -227,34 +229,49 @@ export const EMBEDDING_DIMS = 3072;
  * gemini-embedding-001 returns 3072 dimensions at native width and normalises there,
  * so no re-normalisation is strictly needed — but we do it anyway so inner-product
  * and L2 searches stay honest if the model ever drifts.
+ *
+ * Goes through withRetry() for the same reason generateContent() does, learned by
+ * measurement: publishing the 207-document knowledge corpus onto the embed queue at
+ * once made the consumer run documents concurrently, Gemini's per-minute limit
+ * rejected 184 of them with a 429, and queueService nacks with requeue=false — so
+ * those documents were dropped and only 39 of 8,075 chunks were embedded. withRetry
+ * both serialises every Gemini call in the process (one shared inter-call gap) and
+ * honours the `retryDelay` the 429 body carries. A wrong-width vector is *not*
+ * transient and is still rejected on the first attempt.
  */
 export async function embed(text: string): Promise<number[]> {
   // Called over REST: @google/generative-ai SDK lacks outputDimensionality support.
   const model = config.GEMINI_EMBEDDING_MODEL;
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${config.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: `models/${model}`,
-        content: { parts: [{ text }] },
-      }),
-    },
-  );
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Embedding failed (${res.status}): ${detail.slice(0, 200)}`);
-  }
+  return withRetry(async () => {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${config.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: `models/${model}`,
+          content: { parts: [{ text }] },
+        }),
+      },
+    );
 
-  const values: number[] = (await res.json())?.embedding?.values ?? [];
-  if (values.length !== EMBEDDING_DIMS) {
-    throw new Error(`Embedding returned ${values.length} dims, expected ${EMBEDDING_DIMS}`);
-  }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      // 500, not 200: Gemini puts its RetryInfo.retryDelay at the *end* of the error
+      // body, so a 200-char slice threw away the one hint worth having and left
+      // parseRetryDelay() guessing. Observed on the real 429s from this corpus run.
+      throw new Error(`Embedding failed (${res.status}): ${detail.slice(0, 500)}`);
+    }
 
-  const norm = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0));
-  return norm > 0 ? values.map((v) => v / norm) : values;
+    const values: number[] = (await res.json())?.embedding?.values ?? [];
+    if (values.length !== EMBEDDING_DIMS) {
+      throw new Error(`Embedding returned ${values.length} dims, expected ${EMBEDDING_DIMS}`);
+    }
+
+    const norm = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0));
+    return norm > 0 ? values.map((v) => v / norm) : values;
+  });
 }
 
 export function isConfigured(): boolean {

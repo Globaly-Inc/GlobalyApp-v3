@@ -40,20 +40,18 @@ export function currentEmbeddingModel(): string {
   return config.GEMINI_EMBEDDING_MODEL;
 }
 
-// ponytail: sequential calls, not Gemini's :batchEmbedContents. embed() already
-// owns the REST call, the dimension check and the normalisation, and there is no
-// key in this environment to make round trips the bottleneck. Swap in the batch
-// endpoint the day a real key makes the wall-clock hurt.
-const INTER_CALL_GAP_MS = Number(process.env.LLM_THROTTLE_MS) || 200;
-
+// ponytail: sequential calls, not Gemini's :batchEmbedContents. embed() already owns
+// the REST call, the dimension check, the normalisation, the LLM_THROTTLE_MS gap and
+// the 429 backoff. Swap in the batch endpoint the day the wall-clock hurts.
+//
+// There is deliberately no second throttle here. There used to be, and it compounded
+// with withRetry()'s: a gap per chunk *and* a gap per Gemini call is the same wait
+// counted twice, and only withRetry()'s is process-global — which is the one that
+// matters, because the embed worker runs several documents concurrently and a
+// per-batch sleep does nothing about calls made from a different message.
 async function embedSequentially(texts: string[]): Promise<number[][]> {
   const out: number[][] = [];
-  for (const [i, text] of texts.entries()) {
-    if (i > 0 && INTER_CALL_GAP_MS > 0) {
-      await new Promise((resolve) => setTimeout(resolve, INTER_CALL_GAP_MS));
-    }
-    out.push(await embed(text));
-  }
+  for (const text of texts) out.push(await embed(text));
   return out;
 }
 
