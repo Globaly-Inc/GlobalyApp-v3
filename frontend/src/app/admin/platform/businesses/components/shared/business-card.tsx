@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Briefcase, Building2, Calendar, CheckCircle, Copy, Eye, EyeOff, Globe, Link2, MapPin,
+  Briefcase, Building2, Calendar, CheckCircle, Copy, Eye, EyeOff, Globe, Link2, Mail, MapPin,
   Package, Trash2, User, XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,9 @@ export function BusinessCard({
   onSuspend,
   onTogglePublish,
   onDelete,
+  onSendClaimRequest,
   publishBusy,
+  claimRequestBusy,
 }: Readonly<{
   business: Business;
   selected: boolean;
@@ -38,7 +40,9 @@ export function BusinessCard({
   onSuspend: () => void;
   onTogglePublish: () => void;
   onDelete: () => void;
+  onSendClaimRequest: () => void;
   publishBusy: boolean;
+  claimRequestBusy: boolean;
 }>) {
   const router = useRouter();
   const formattedDate = new Date(b.created_at).toLocaleDateString("en-GB", {
@@ -180,9 +184,10 @@ export function BusinessCard({
             <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onView}>
               Edit
             </Button>
-            {b.status === "claim_pending" && (
-              <Button size="sm" variant="outline" className="h-8 cursor-pointer" disabled>
-                Awaiting claim
+            {b.claim_status !== "claimed" && b.owner_email && (
+              <Button size="sm" variant="outline" className="h-8 cursor-pointer" disabled={claimRequestBusy} onClick={onSendClaimRequest}>
+                <Mail className="mr-1 h-3.5 w-3.5" />
+                Send claim request
               </Button>
             )}
             {b.status !== "verified" && b.status !== "suspended" && (

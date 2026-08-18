@@ -21,6 +21,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.13",
+    "embla-carousel-autoplay": "^8.6.0",
+    "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
     "isomorphic-dompurify": "3.18.0",
     "libphonenumber-js": "^1.13.11",

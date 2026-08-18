@@ -1,12 +1,13 @@
 import { MapPin, Clock, DollarSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Reveal } from "../../components/reveal";
 import type { CountryDetail } from "../types";
 
 export function CountryAbout({ country }: Readonly<{ country: CountryDetail }>) {
   if (!country.about) return null;
 
   return (
-    <div className="max-w-3xl">
+    <Reveal className="max-w-3xl">
       <h2 className="mb-4 text-2xl font-bold">Why Study in {country.name}?</h2>
       <p className="text-lg leading-relaxed text-muted-foreground">{country.about}</p>
       {country.visa_type && (
@@ -26,6 +27,6 @@ export function CountryAbout({ country }: Readonly<{ country: CountryDetail }>) 
           )}
         </div>
       )}
-    </div>
+    </Reveal>
   );
 }

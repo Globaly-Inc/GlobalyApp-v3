@@ -2,6 +2,17 @@ import type { SocialName } from "../components/social-icon";
 
 export const MOBILE_BREAKPOINT = 768;
 
+export const PLATFORM_STATS = {
+  students: "2000+",
+  institutions: "3.6k+",
+  agents: "3,600+",
+  courses: "205k+",
+  countries: "100+",
+  cities: "60+",
+  trainingPrograms: "500+",
+  services: "50+",
+};
+
 export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
   "Get Started": [
     { label: "For Students", href: "/for-students" },
@@ -20,15 +31,15 @@ export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
   Search: [
     { label: "Courses", href: "/search?tab=courses" },
     { label: "Institutions", href: "/search?tab=institutions" },
-    { label: "Agents", href: "/search?tab=agents" },
-    { label: "Scholarships", href: "/search?tab=scholarships" },
-    { label: "Jobs", href: "/jobs" },
+    { label: "Agents", href: "/search?tab=education-agencies" },
+    { label: "Scholarships", href: "/scholarships" },
+    { label: "Jobs", href: "/search?tab=jobs" },
   ],
   Resources: [
     { label: "Blog", href: "/blog" },
     { label: "Visa Info", href: "/blog" },
     { label: "Study Guides", href: "/blog" },
-    { label: "Student Services", href: "/search/services" },
+    { label: "Student Services", href: "/services" },
   ],
   Contact: [
     { label: "support@globaly.app", href: "mailto:support@globaly.app" },

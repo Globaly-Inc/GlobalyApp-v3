@@ -260,6 +260,40 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
+  /* Ported from V2, which references this class on horizontal carousels but never defines it —
+     same dead-CSS pattern as animate-fade-in below. A real thin scrollbar reads better here than
+     a hidden one, since it signals "swipe me" on touch devices. */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 9999px;
+  }
+
+  /* Staggered entrance/exit for the public-page "mockup" illustrations — ported from V2's
+     public mockups, which reference these class names but never actually define them there. */
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out;
+  }
+  .animate-fade-out {
+    animation: fade-out 0.4s ease-out;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,6 +1,7 @@
 import { GraduationCap, DollarSign, Briefcase } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatNumber } from "@/lib/utils";
+import { Reveal } from "../../components/reveal";
 import type { CountryDetail } from "../types";
 
 export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>) {
@@ -8,11 +9,11 @@ export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>)
   if (!hasTuition && !country.cost_of_living_label && !country.work_rights_label) return null;
 
   return (
-    <div>
+    <Reveal>
       <h2 className="mb-4 text-2xl font-bold">Living &amp; Studying</h2>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {hasTuition && (
-          <Card>
+          <Card className="transition-shadow hover:shadow-md">
             <CardContent className="pt-6">
               <GraduationCap className="mb-3 h-8 w-8 text-primary" />
               <p className="text-lg font-semibold mt-1">
@@ -23,7 +24,7 @@ export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>)
           </Card>
         )}
         {country.cost_of_living_label && (
-          <Card>
+          <Card className="transition-shadow hover:shadow-md">
             <CardContent className="pt-6">
               <DollarSign className="mb-3 h-8 w-8 text-primary" />
               <p className="mt-1 font-semibold text-lg">{country.cost_of_living_label}</p>
@@ -32,7 +33,7 @@ export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>)
           </Card>
         )}
         {country.work_rights_label && (
-          <Card>
+          <Card className="transition-shadow hover:shadow-md">
             <CardContent className="pt-6">
               <Briefcase className="mb-3 h-8 w-8 text-primary" />
               <p className="mt-1 font-semibold text-lg">{country.work_rights_label}</p>
@@ -41,6 +42,6 @@ export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>)
           </Card>
         )}
       </div>
-    </div>
+    </Reveal>
   );
 }

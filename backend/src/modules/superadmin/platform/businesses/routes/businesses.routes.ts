@@ -7,7 +7,7 @@ import * as storage from "../../../../../shared/storage/storageService.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as service from "../services/businesses.service.js";
 import {
-  ActivityListQuerySchema, BusinessCreateSchema, BusinessPatchSchema, EnquirySettingsPatchSchema,
+  ActivityListQuerySchema, BulkClaimRequestSchema, BusinessCreateSchema, BusinessPatchSchema, EnquirySettingsPatchSchema,
   IdParamSchema, ListQuerySchema, MemberInviteSchema, MemberListQuerySchema, MemberParamsSchema, MemberPatchSchema,
   PublishedPatchSchema, StatusPatchSchema,
 } from "../schemas/businesses.schema.js";
@@ -70,6 +70,22 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     const { status } = StatusPatchSchema.parse(req.body);
     const result = await service.updateStatus(id, status);
     await platformRepo.logAdminAction(Number(req.auth.sub), `BUSINESS_STATUS_${status.toUpperCase()}`, "business", undefined, { business_id: id });
+    return reply.send(result);
+  });
+
+  // POST /businesses/claim-requests/bulk — queues claim-request emails for many businesses at once
+  app.post("/businesses/claim-requests/bulk", async (req, reply) => {
+    const { ids } = BulkClaimRequestSchema.parse(req.body);
+    const result = await service.queueBulkClaimRequests(ids);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_CLAIM_REQUEST_BULK_QUEUED", "business", undefined, { business_ids: ids });
+    return reply.status(202).send(result);
+  });
+
+  // POST /businesses/:id/claim-request — emails the owner a link to claim this pre-seeded business
+  app.post("/businesses/:id/claim-request", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const result = await service.sendClaimRequest(id);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_CLAIM_REQUEST_SENT", "business", undefined, { business_id: id });
     return reply.send(result);
   });
 

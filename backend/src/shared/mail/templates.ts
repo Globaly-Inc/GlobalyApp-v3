@@ -129,3 +129,29 @@ export function otpEmail(otp: string): { subject: string; html: string; text: st
     }),
   };
 }
+
+/** The "claim your pre-seeded business account" mail, sent by an admin from the businesses list. */
+export function claimBusinessEmail(options: {
+  ownerName: string;
+  businessName: string;
+  claimUrl: string;
+}): { subject: string; html: string; text: string } {
+  const ownerName = esc(options.ownerName);
+  const businessName = esc(options.businessName);
+
+  return {
+    subject: `Claim your ${options.businessName} account on GlobalyApp`,
+    text: `Hi ${options.ownerName}, an account for ${options.businessName} has been created for you on GlobalyApp. Claim it here: ${options.claimUrl} (expires in 72 hours).`,
+    html: emailLayout({
+      heading: "Claim your business account",
+      body: `<p style="margin:0 0 12px">Hi ${ownerName},</p>
+             <p style="margin:0 0 12px">An account for <strong>${businessName}</strong> has been created for you on
+             <strong>GlobalyApp</strong> — the platform connecting students with verified institutions, agents, and
+             education services worldwide.</p>
+             <p style="margin:0">If this is you, claim your account below to manage your listing, respond to student
+             enquiries, and get discovered by prospective students.</p>`,
+      cta: { label: "Claim your account", href: options.claimUrl },
+      footnote: "This link expires in 72 hours. If you weren't expecting this, you can safely ignore this email.",
+    }),
+  };
+}

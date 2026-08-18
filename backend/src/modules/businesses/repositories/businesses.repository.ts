@@ -65,3 +65,20 @@ export async function updateBusinessProfile(id: string, data: Record<string, unk
     .returning("*");
   return row;
 }
+
+export async function findByClaimToken(token: string): Promise<BusinessRecord | undefined> {
+  return masterKnex<BusinessRecord>("businesses").where({ claim_token: token }).whereNull("deleted_at").first();
+}
+
+export async function clearClaim(id: string | number): Promise<BusinessRecord> {
+  const [row] = await masterKnex<BusinessRecord>("businesses")
+    .where({ id: String(id) })
+    .update({
+      claim_token: null,
+      claim_token_expires_at: null,
+      claim_status: "claimed",
+      updated_at: masterKnex.fn.now(),
+    })
+    .returning("*");
+  return row;
+}

@@ -8,3 +8,8 @@ export type AcceptAgentInviteResult = {
   org_id: string;
   agent: { id: number; role: string };
 };
+
+export type AcceptBusinessClaimResult = {
+  email: string | null;
+  business_name: string;
+};

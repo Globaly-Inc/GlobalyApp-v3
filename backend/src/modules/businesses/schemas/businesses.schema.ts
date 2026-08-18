@@ -49,6 +49,11 @@ export const BusinessSearchQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(50).default(10),
 });
 
+export const ClaimAcceptSchema = z.object({
+  token: z.string().min(1),
+});
+
 export type BusinessRegisterInput = z.infer<typeof BusinessRegisterSchema>;
 export type BusinessProfilePatchInput = z.infer<typeof BusinessProfilePatchSchema>;
 export type BusinessSearchQueryInput = z.infer<typeof BusinessSearchQuerySchema>;
+export type ClaimAcceptInput = z.infer<typeof ClaimAcceptSchema>;

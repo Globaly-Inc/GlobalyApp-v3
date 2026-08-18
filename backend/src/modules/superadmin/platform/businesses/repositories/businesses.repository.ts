@@ -41,7 +41,7 @@ export async function listBusinesses(
   const q = applyBusinessFilters(businessListQuery(), search, status, category, categorySlug)
     .select(
       "b.id", "b.business_name", "b.subdomain", "b.business_type", "b.business_category_id",
-      "b.email", "b.phone", "b.status", "b.is_published", "b.country_id", "b.city",
+      "b.email", "b.phone", "b.status", "b.claim_status", "b.is_published", "b.country_id", "b.city",
       "b.logo_url", "b.account_status", "b.created_at",
       "b.owner_id", "b.schema_name", "b.profile_views",
       masterKnex.raw("b.owner_id IS NULL as is_unclaimed"),

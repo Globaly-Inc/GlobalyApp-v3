@@ -45,6 +45,9 @@ export interface BusinessRecord {
   video_urls: string[] | null;
   status: string;
   verified_at: Date | null;
+  claim_status: string;
+  claim_token: string | null;
+  claim_token_expires_at: Date | null;
   is_published: boolean;
   onboarding_completed: boolean;
   agreed_to_t_and_c: boolean;

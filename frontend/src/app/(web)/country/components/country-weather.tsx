@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { DynamicIcon } from "@/components/dynamic-icon";
+import { Reveal } from "../../components/reveal";
 import type { CountryDetail } from "../types";
 
 export function CountryWeather({ country }: Readonly<{ country: CountryDetail }>) {
@@ -9,11 +10,11 @@ export function CountryWeather({ country }: Readonly<{ country: CountryDetail }>
   if (seasons.length === 0) return null;
 
   return (
-    <div>
+    <Reveal>
       <h2 className="mb-4 text-2xl font-bold">Weather &amp; Climate</h2>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         {seasons.map((season, i) => (
-          <Card key={i}>
+          <Card key={i} className="transition-shadow hover:shadow-md">
             <CardContent className="pt-6 pb-4 text-center">
               <DynamicIcon name={season.icon} fallback="CloudSun" className="mx-auto h-10 w-10 text-primary" />
               <p className="mt-3 font-semibold">{season.label}</p>
@@ -23,6 +24,6 @@ export function CountryWeather({ country }: Readonly<{ country: CountryDetail }>
           </Card>
         ))}
       </div>
-    </div>
+    </Reveal>
   );
 }

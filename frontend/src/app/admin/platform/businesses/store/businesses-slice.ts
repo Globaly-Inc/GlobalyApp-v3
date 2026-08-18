@@ -38,6 +38,16 @@ export const updateBusinessStatus = createAsyncThunk(
   },
 );
 
+export const sendClaimRequest = createAsyncThunk("platformBusinesses/sendClaimRequest", async (id: number) => {
+  await businessesApi.sendClaimRequest(id);
+  return { id, claim_status: "claim_pending" as const };
+});
+
+export const sendBulkClaimRequests = createAsyncThunk("platformBusinesses/sendBulkClaimRequests", async (ids: number[]) => {
+  await businessesApi.sendBulkClaimRequests(ids);
+  return { ids, claim_status: "claim_pending" as const };
+});
+
 export const updateBusinessPublished = createAsyncThunk(
   "platformBusinesses/updatePublished",
   async ({ id, is_published }: { id: number; is_published: boolean }) => {
@@ -230,6 +240,18 @@ const businessesSlice = createSlice({
         const b = state.businesses.find((x) => x.id === action.payload.id);
         if (b) b.status = action.payload.status;
         if (state.detail?.id === action.payload.id) state.detail.status = action.payload.status;
+      })
+      .addCase(sendClaimRequest.fulfilled, (state, action) => {
+        const b = state.businesses.find((x) => x.id === action.payload.id);
+        if (b) b.claim_status = action.payload.claim_status;
+        if (state.detail?.id === action.payload.id) state.detail.claim_status = action.payload.claim_status;
+      })
+      .addCase(sendBulkClaimRequests.fulfilled, (state, action) => {
+        const ids = new Set(action.payload.ids);
+        state.businesses.forEach((b) => {
+          if (ids.has(b.id)) b.claim_status = action.payload.claim_status;
+        });
+        if (state.detail && ids.has(state.detail.id)) state.detail.claim_status = action.payload.claim_status;
       })
       .addCase(updateBusinessPublished.fulfilled, (state, action) => {
         const b = state.businesses.find((x) => x.id === action.payload.id);

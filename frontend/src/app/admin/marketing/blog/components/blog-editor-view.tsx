@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Save, Upload, X } from "lucide-react";
+import DOMPurify from "dompurify";
+import { ArrowLeft, Eye, Loader2, Pencil, Save, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ export function BlogEditorView({ postId }: Readonly<{ postId: number | null }>) 
   const [uploading, setUploading] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [preview, setPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const update = (updates: Partial<BlogPost>) => setPost((p) => ({ ...p, ...updates }));
@@ -171,6 +173,10 @@ export function BlogEditorView({ postId }: Readonly<{ postId: number | null }>) 
           <h1 className="text-2xl font-bold text-foreground">{postId ? "Edit post" : "New post"}</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setPreview((p) => !p)}>
+            {preview ? <Pencil className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {preview ? "Edit" : "Preview"}
+          </Button>
           <Button variant="outline" className="gap-2" onClick={() => handleSave(false)} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save draft
@@ -185,6 +191,26 @@ export function BlogEditorView({ postId }: Readonly<{ postId: number | null }>) 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
+            {preview ? (
+              <CardContent className="pt-6">
+                {post.cover_image_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={post.cover_image_url} alt="" className="mb-6 h-64 w-full rounded-lg object-cover" />
+                )}
+                <h1 className="mb-4 text-3xl font-bold text-foreground">{post.title || "Untitled"}</h1>
+                {post.excerpt && <p className="mb-6 text-lg text-muted-foreground">{post.excerpt}</p>}
+                <div
+                  className="prose prose-sm md:prose-base max-w-none text-foreground
+                    prose-headings:text-foreground prose-headings:font-bold
+                    prose-p:text-foreground prose-p:leading-relaxed
+                    prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+                    prose-blockquote:border-l-primary prose-blockquote:text-muted-foreground
+                    prose-strong:text-foreground prose-code:text-primary
+                    prose-img:rounded-lg prose-img:mx-auto"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content || "<p>No content yet.</p>") }}
+                />
+              </CardContent>
+            ) : (
             <CardContent className="space-y-4 pt-6">
               <div className="space-y-2">
                 <Label htmlFor="post-title">
@@ -237,6 +263,7 @@ export function BlogEditorView({ postId }: Readonly<{ postId: number | null }>) 
                 <BlogRichEditor value={post.content ?? ""} onChange={handleContentChange} />
               </div>
             </CardContent>
+            )}
           </Card>
         </div>
 
