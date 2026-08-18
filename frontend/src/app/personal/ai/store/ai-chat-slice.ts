@@ -18,6 +18,11 @@ export const updateSession = createAsyncThunk(
     aiApi.updateSession(sessionId, data),
 );
 
+export const deleteSession = createAsyncThunk("aiChat/deleteSession", async (sessionId: number) => {
+  await aiApi.deleteSession(sessionId);
+  return sessionId;
+});
+
 export const setFeedback = createAsyncThunk(
   "aiChat/setFeedback",
   async ({ messageId, feedback }: { messageId: number; feedback: "up" | "down" | null }) => {
@@ -36,6 +41,7 @@ export const sendMessage = createAsyncThunk<
   { dispatch: AppDispatch }
 >("aiChat/sendMessage", async ({ sessionId, content, files }, { dispatch, signal }) => {
   let finalMessageId = 0;
+  let createdNewSession = false;
 
   // Attachments upload first; their storage paths ride along with the message
   const attachments = files?.length
@@ -47,6 +53,7 @@ export const sendMessage = createAsyncThunk<
     (event: SSEEvent) => {
       switch (event.type) {
         case "session_created":
+          createdNewSession = true;
           dispatch(sessionCreated(event.session));
           // New chat: the view couldn't add the optimistic user message earlier
           // (no session id existed yet), so add it now or it never renders.
@@ -78,6 +85,12 @@ export const sendMessage = createAsyncThunk<
     signal,
   );
 
+  // The generated title lands server-side a moment after the stream ends
+  // (fire-and-forget Gemini call) — refresh the sidebar once to pick it up.
+  if (createdNewSession) {
+    setTimeout(() => dispatch(fetchSessions()), 3000);
+  }
+
   return finalMessageId;
 });
 
@@ -98,7 +111,6 @@ type AiChatState = {
   sendStatus: RegionStatus;
   credits: CreditBalance | null;
   creditsStatus: RegionStatus;
-  compareTray: CourseCard[];
   streamingContent: string;
   streamingCards: CourseCard[];
   streamingChips: string[];
@@ -115,7 +127,6 @@ const initialState: AiChatState = {
   sendStatus: "idle",
   credits: null,
   creditsStatus: "idle",
-  compareTray: [],
   streamingContent: "",
   streamingCards: [],
   streamingChips: [],
@@ -154,17 +165,7 @@ const aiChatSlice = createSlice({
       state.streamingChips = [];
       state.traceSteps = [];
     },
-    addToCompare(state, action: PayloadAction<CourseCard>) {
-      if (state.compareTray.length < 4 && !state.compareTray.some(c => c.course_name === action.payload.course_name && c.institution_name === action.payload.institution_name)) {
-        state.compareTray.push(action.payload);
-      }
-    },
-    removeFromCompare(state, action: PayloadAction<number>) {
-      state.compareTray.splice(action.payload, 1);
-    },
-    clearCompare(state) {
-      state.compareTray = [];
-    },
+    // compare moved to the shared useCompareTray store (search feature) — one list app-wide
     addOptimisticUserMessage(state, action: PayloadAction<{ sessionId: number; content: string; attachments?: string[] }>) {
       const { sessionId, content, attachments } = action.payload;
       const msg: Message = {
@@ -254,15 +255,19 @@ const aiChatSlice = createSlice({
         state.traceSteps = [];
       })
 
-      // updateSession
+      // updateSession — archived sessions stay in state; the sidebar's tabs filter them
       .addCase(updateSession.fulfilled, (state, action) => {
         const updated = action.payload;
-        if (updated.is_archived) {
-          state.sessions = state.sessions.filter((s) => s.id !== updated.id);
-          if (state.activeSessionId === updated.id) state.activeSessionId = null;
-        } else {
-          state.sessions = state.sessions.map((s) => (s.id === updated.id ? updated : s));
+        state.sessions = state.sessions.map((s) => (s.id === updated.id ? updated : s));
+        if (updated.is_archived && state.activeSessionId === updated.id) {
+          state.activeSessionId = null;
         }
+      })
+
+      // deleteSession
+      .addCase(deleteSession.fulfilled, (state, action) => {
+        state.sessions = state.sessions.filter((s) => s.id !== action.payload);
+        if (state.activeSessionId === action.payload) state.activeSessionId = null;
       })
 
       // fetchCreditBalance
@@ -300,9 +305,6 @@ export const {
   sessionCreated,
   clearStreamingState,
   addOptimisticUserMessage,
-  addToCompare,
-  removeFromCompare,
-  clearCompare,
 } = aiChatSlice.actions;
 
 export const aiChatReducer = aiChatSlice.reducer;

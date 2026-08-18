@@ -1,5 +1,7 @@
 export interface ParsedCard {
   id: string;
+  /** `{slugified-name}-{id-fragment}` for the internal /course/[slug] page. */
+  slug?: string;
   name: string;
   institution: string;
   degree_level?: string;

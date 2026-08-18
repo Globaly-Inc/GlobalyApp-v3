@@ -17,7 +17,7 @@ import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { SuggestedStarters } from "./suggested-starters";
 import { CreditBanner } from "./credit-banner";
-import { CompareTray } from "./compare-tray";
+import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 
 export function AiChatView() {
   const dispatch = useAppDispatch();

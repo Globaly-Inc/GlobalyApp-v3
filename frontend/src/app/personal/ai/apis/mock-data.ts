@@ -83,7 +83,14 @@ export const aiMockApi = {
   listSessions: async (): Promise<ChatSession[]> => {
     console.log("[mock] GET /ai/sessions");
     await delay(300);
-    return mockSessions.filter((s) => !s.is_archived);
+    return [...mockSessions];
+  },
+
+  deleteSession: async (sessionId: number): Promise<void> => {
+    console.log("[mock] PATCH /ai/sessions/:id { delete: true }", sessionId);
+    await delay(200);
+    const idx = mockSessions.findIndex((s) => s.id === sessionId);
+    if (idx !== -1) mockSessions.splice(idx, 1);
   },
 
   getMessages: async (sessionId: number): Promise<Message[]> => {

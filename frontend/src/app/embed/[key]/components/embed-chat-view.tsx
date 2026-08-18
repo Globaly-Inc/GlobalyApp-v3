@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ChatInput } from "@/app/personal/ai/components/chat-input";
 import { ChatMessage, StreamingMessage } from "@/app/personal/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/personal/ai/components/thinking-indicator";
+import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 import type { CourseCard, Message } from "@/app/personal/ai/apis/types";
 import { embedApi, type EmbedPublicConfig } from "../apis";
 
@@ -128,6 +129,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       <div className="border-t px-4 py-3">
         <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
       </div>
+      <CompareTray />
     </div>
   );
 }

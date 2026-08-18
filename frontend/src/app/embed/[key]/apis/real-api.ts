@@ -10,6 +10,8 @@ const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3/ai-chat`;
 /** Backend streams cards in prompt format; the shared renderer wants CourseCard. */
 function toCourseCard(w: WireCourseCard): CourseCard {
   return {
+    id: w.id ?? undefined,
+    slug: w.slug ?? null,
     course_name: w.name ?? "",
     institution_name: w.institution ?? "",
     degree_level: w.degree_level ?? "",
