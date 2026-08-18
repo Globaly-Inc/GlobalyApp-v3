@@ -17,7 +17,7 @@ export async function adminEnquiriesRoutes(app: FastifyInstance) {
   app.get("/stats", async (_req, reply) => reply.send(await service.statsForAdmin()));
 
   app.get("/", async (req, reply) => {
-    const query = AdminListQuerySchema.parse(req.query ?? {});
+    const query = AdminListQuerySchema.parse(req.query);
     return reply.send(await service.listForAdmin(query));
   });
 }

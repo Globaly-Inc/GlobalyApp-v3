@@ -27,7 +27,7 @@ export async function businessEnquiriesRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireBusinessContext);
 
   app.get("/", async (req, reply) => {
-    const query = ListInboxQuerySchema.parse(req.query ?? {});
+    const query = ListInboxQuerySchema.parse(req.query);
     return reply.send(await service.listInbox(businessId(req), query));
   });
 
