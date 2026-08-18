@@ -206,6 +206,26 @@ describeDb("events", () => {
     expect(columns).toEqual(expect.arrayContaining(["host_org_type", "host_org_id", "v1_id", "deleted_at"]));
   });
 
+  // Regression: the row type omitted six columns the create schema accepts and the
+  // table stores, so serializeEvent silently dropped them. A host who opened the edit
+  // form and saved without retyping them blanked their own data.
+  it("returns every field the create schema accepts, so an edit cannot blank them", async () => {
+    const written = {
+      venue_address: "12 Test Street",
+      online_platform: "Zoom",
+      timezone: "Australia/Sydney",
+      tags: ["intake", "webinar"],
+      contact_email: "host@example.test",
+      contact_phone: "+61 400 000 000",
+    };
+    const event = await createEvent(tokenA, written);
+    const read = await get(`/api/v3/business/events/${event.id}`, tokenA);
+    expect(read.statusCode).toBe(200);
+    for (const [field, value] of Object.entries(written)) {
+      expect({ field, value: read.json()[field] }).toEqual({ field, value });
+    }
+  });
+
   it("refuses to let any path oversell, at the database level", async () => {
     const event = await createEvent(tokenA);
     const ticket = await createTicket(tokenA, event.id, { quantity: 2 });

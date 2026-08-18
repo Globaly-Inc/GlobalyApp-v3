@@ -30,12 +30,18 @@ export interface EventRow {
   venue_name: string | null;
   venue_city: string | null;
   venue_country: string | null;
+  venue_address: string | null;
   online_url: string | null;
+  online_platform: string | null;
   starts_at: Date;
   ends_at: Date;
+  timezone: string | null;
   max_capacity: number | null;
   registration_deadline: Date | null;
   is_featured: boolean;
+  tags: string[] | null;
+  contact_email: string | null;
+  contact_phone: string | null;
   views_count: number;
   published_at: Date | null;
   cancelled_at: Date | null;
