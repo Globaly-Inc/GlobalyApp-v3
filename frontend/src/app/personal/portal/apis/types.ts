@@ -13,6 +13,8 @@ export type FeedPost = {
   media: PostMedia[];
   is_pinned: boolean;
   reactions_count: number;
+  /** Denormalised on the post, so a page of posts costs no extra query. */
+  comments_count: number;
   created_at: string;
   author_first_name: string | null;
   author_last_name: string | null;
@@ -34,6 +36,25 @@ export type ReactionGroup = {
 };
 
 export type FeedPage = { posts: FeedPost[]; next_cursor: string | null };
+
+export type FeedComment = {
+  id: number;
+  post_id: number;
+  author_platform_user_id: number;
+  /** Carried through from the API for V1 parity; the thread renders flat. */
+  parent_comment_id: number | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  author_first_name: string | null;
+  author_last_name: string | null;
+  author_photo_url: string | null;
+  /** Decided server-side — the client never infers authorship. */
+  is_mine: boolean;
+};
+
+/** Oldest-first keyset page: the cursor is opaque, and a new comment only ever lands on a later page. */
+export type FeedCommentPage = { comments: FeedComment[]; next_cursor: string | null };
 
 export type CreatePostInput = {
   content: string;

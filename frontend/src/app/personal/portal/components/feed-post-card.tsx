@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Globe, Loader2, Lock, MoreHorizontal, Pin, SmilePlus, Trash2, Users } from "lucide-react";
+import { Globe, Loader2, Lock, MessageSquare, MoreHorizontal, Pin, SmilePlus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useAppDispatch } from "@/lib/hooks";
-import { deleteFeedPost, removePostReaction, setPostReaction } from "../store/home-slice";
+import { deleteFeedPost, fetchComments, removePostReaction, setPostReaction } from "../store/home-slice";
+import { FeedComments } from "./feed-comments";
 import { POST_CLAMP_CHARS, POST_TYPE_STYLES, REACTION_CHOICES, VISIBILITY_LABELS } from "../const";
 import { initials, relativeTime } from "../utils";
 import type { FeedPostCardProps } from "../types";
@@ -38,6 +39,7 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const style = POST_TYPE_STYLES[post.post_type] ?? FALLBACK_STYLE;
@@ -70,6 +72,14 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
     setPickerOpen(false);
     if (post.my_reaction === emoji) dispatch(removePostReaction(post.id));
     else dispatch(setPostReaction({ id: post.id, emoji }));
+  };
+
+  // Fetched here, on the click, rather than in an effect: a timeline holds dozens of cards and
+  // most threads are never opened. Re-opening a thread refetches so a stale one is never shown.
+  const toggleComments = () => {
+    const next = !showComments;
+    setShowComments(next);
+    if (next) dispatch(fetchComments({ postId: post.id }));
   };
 
   return (
@@ -245,7 +255,21 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
               Like
             </Button>
           )}
+
+          {/* The count comes off the post itself — the timeline never queries per-post comment totals. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto cursor-pointer gap-1.5 text-muted-foreground"
+            aria-expanded={showComments}
+            onClick={toggleComments}
+          >
+            <MessageSquare className="h-4 w-4" />
+            {post.comments_count > 0 ? post.comments_count : "Comment"}
+          </Button>
         </div>
+
+        {showComments && <FeedComments postId={post.id} />}
       </CardContent>
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>

@@ -1,4 +1,13 @@
-import type { ComposeWithAiInput, CreatePostInput, FeedPage, FeedPost, PostMedia, ReactionGroup } from "./types";
+import type {
+  ComposeWithAiInput,
+  CreatePostInput,
+  FeedComment,
+  FeedCommentPage,
+  FeedPage,
+  FeedPost,
+  PostMedia,
+  ReactionGroup,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,6 +28,7 @@ let mockPosts: FeedPost[] = [
     ],
     is_pinned: false,
     reactions_count: 4,
+    comments_count: 1,
     created_at: new Date(Date.now() - 3600 * 1000).toISOString(),
     author_first_name: "Test",
     author_last_name: "Student",
@@ -49,6 +59,7 @@ let mockPosts: FeedPost[] = [
     ],
     is_pinned: true,
     reactions_count: 12,
+    comments_count: 0,
     created_at: new Date(Date.now() - 26 * 3600 * 1000).toISOString(),
     author_first_name: "Northbridge",
     author_last_name: "Admissions",
@@ -61,6 +72,29 @@ let mockPosts: FeedPost[] = [
 ];
 
 let nextPostId = 3;
+let nextCommentId = 2;
+
+let mockComments: FeedComment[] = [
+  {
+    id: 1,
+    post_id: 2,
+    author_platform_user_id: 2,
+    parent_comment_id: null,
+    content: "Good luck! Melbourne's admissions team is quick.",
+    created_at: new Date(Date.now() - 1800 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 1800 * 1000).toISOString(),
+    author_first_name: "Ana",
+    author_last_name: "Silva",
+    author_photo_url: null,
+    is_mine: false,
+  },
+];
+
+function bumpCommentCount(postId: number, delta: number) {
+  mockPosts = mockPosts.map((p) =>
+    p.id === postId ? { ...p, comments_count: Math.max(p.comments_count + delta, 0) } : p,
+  );
+}
 
 function dropMockReaction(groups: ReactionGroup[], previousEmoji: string | null): ReactionGroup[] {
   if (!previousEmoji) return groups.map((g) => ({ ...g, reactors: [...g.reactors] }));
@@ -95,6 +129,7 @@ export const homeMockApi = {
       reactions: [],
       is_pinned: false,
       reactions_count: 0,
+      comments_count: 0,
       created_at: new Date().toISOString(),
       author_first_name: "Test",
       author_last_name: "Student",
@@ -178,4 +213,50 @@ export const homeMockApi = {
     );
   },
 
+  // ── Comments ──
+  listComments: async (postId: number, cursor?: string | null): Promise<FeedCommentPage> => {
+    console.log("[mock] GET /feed/posts/:id/comments", postId, cursor);
+    await delay(200);
+    if (cursor) return { comments: [], next_cursor: null };
+    return { comments: mockComments.filter((c) => c.post_id === postId), next_cursor: null };
+  },
+
+  addComment: async (postId: number, content: string): Promise<FeedComment> => {
+    console.log("[mock] POST /feed/posts/:id/comments", postId, content);
+    await delay(200);
+    const now = new Date().toISOString();
+    const comment: FeedComment = {
+      id: nextCommentId++,
+      post_id: postId,
+      author_platform_user_id: 1,
+      parent_comment_id: null,
+      content,
+      created_at: now,
+      updated_at: now,
+      author_first_name: "Test",
+      author_last_name: "Student",
+      author_photo_url: null,
+      is_mine: true,
+    };
+    mockComments = [...mockComments, comment];
+    bumpCommentCount(postId, 1);
+    return comment;
+  },
+
+  editComment: async (id: number, content: string): Promise<FeedComment> => {
+    console.log("[mock] PATCH /feed/comments/:id", id, content);
+    await delay(200);
+    mockComments = mockComments.map((c) =>
+      c.id === id ? { ...c, content, updated_at: new Date().toISOString() } : c,
+    );
+    return mockComments.find((c) => c.id === id)!;
+  },
+
+  deleteComment: async (id: number): Promise<void> => {
+    console.log("[mock] DELETE /feed/comments/:id", id);
+    await delay(200);
+    const comment = mockComments.find((c) => c.id === id);
+    mockComments = mockComments.filter((c) => c.id !== id);
+    if (comment) bumpCommentCount(comment.post_id, -1);
+  },
 };
