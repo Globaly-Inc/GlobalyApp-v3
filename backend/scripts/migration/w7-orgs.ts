@@ -70,7 +70,8 @@ export const ORG_TYPE = (col: string): string => `(SELECT o.org_type FROM ${ORGS
 export const ORG_ID = (col: string): string => `(SELECT o.org_id FROM ${ORGS} o WHERE o.v1_business_id = ${col})`;
 
 /** The tenant schema that holds this org's services. NULL until it is provisioned. */
-export const ORG_SCHEMA = (col: string): string => `(SELECT o.schema_name FROM ${ORGS} o WHERE o.v1_business_id = ${col})`;
+export const ORG_SCHEMA = (col: string): string =>
+  `(SELECT o.schema_name FROM ${ORGS} o WHERE o.v1_business_id = ${col})`;
 
 /**
  * V1 business uuid -> public.businesses.id, and ONLY businesses.
@@ -144,11 +145,17 @@ export interface ProvisionResult {
  * tracked per schema. Runs outside the data transaction — see the header.
  */
 export async function ensureTenantSchemas(url: string): Promise<ProvisionResult> {
+  const { minted, ownersWithoutOrg, schemas } = await mintSchemaNames(url);
+  const provisioned = await provisionTenantSchemas(url, schemas);
+  return { minted, provisioned, ownersWithoutOrg };
+}
+
+/** The data half of ensureTenantSchemas: mint the missing schema_names, list them all. */
+async function mintSchemaNames(
+  url: string,
+): Promise<{ minted: ProvisionResult["minted"]; ownersWithoutOrg: string[]; schemas: string[] }> {
   const db = new pg.Client({ connectionString: url });
   await db.connect();
-  let minted: ProvisionResult["minted"] = [];
-  let ownersWithoutOrg: string[] = [];
-  let schemas: string[] = [];
   try {
     // A tenant owner with no V3 org at all is a W1 problem, not a W7 one: minting
     // a schema would not give the rows anywhere to hang. Surfaced, not patched.
@@ -157,8 +164,9 @@ export async function ensureTenantSchemas(url: string): Promise<ProvisionResult>
          FROM (${TENANT_OWNER_SQL}) t
         WHERE NOT EXISTS (SELECT 1 FROM ${ORGS} o WHERE o.v1_business_id = t.business_id)`,
     );
-    ownersWithoutOrg = orphans.map((r) => r.business_id);
+    const ownersWithoutOrg = orphans.map((r) => r.business_id);
 
+    const minted: ProvisionResult["minted"] = [];
     for (const table of ["businesses", "institutions"] as const) {
       const v1Col = table === "businesses" ? `(b.meta->>'v1_business_id')::uuid` : `b.v1_business_id`;
       const { rows } = await db.query<{ id: number; schema_name: string }>(
@@ -169,19 +177,20 @@ export async function ensureTenantSchemas(url: string): Promise<ProvisionResult>
             AND ${v1Col} IN (SELECT business_id FROM (${TENANT_OWNER_SQL}) t)
           RETURNING b.id, b.schema_name::text AS schema_name`,
       );
-      minted = [
-        ...minted,
-        ...rows.map((r) => ({ orgType: table === "businesses" ? "business" : "institution", orgId: Number(r.id), schema: r.schema_name })),
-      ];
+      minted.push(
+        ...rows.map((r) => ({
+          orgType: table === "businesses" ? "business" : "institution",
+          orgId: Number(r.id),
+          schema: r.schema_name,
+        })),
+      );
     }
 
-    schemas = (await tenantSchemas(db)).map((t) => t.schema);
+    const schemas = (await tenantSchemas(db)).map((t) => t.schema);
+    return { minted, ownersWithoutOrg, schemas };
   } finally {
     await db.end().catch(() => {});
   }
-
-  const provisioned = await provisionTenantSchemas(url, schemas);
-  return { minted, provisioned, ownersWithoutOrg };
 }
 
 /**
@@ -209,7 +218,10 @@ export function orgsSelfCheck(): void {
   // The whole point of this module: BOTH tables, or 363 services lose their owner.
   assert.ok(ORGS.includes("public.businesses"), "the union must reach businesses");
   assert.ok(ORGS.includes("public.institutions"), "the union must reach institutions — 14 of them own 363 services");
-  assert.ok(ORGS.includes("'business'::text") && ORGS.includes("'institution'::text"), "org_type is discriminated, not inferred");
+  assert.ok(
+    ORGS.includes("'business'::text") && ORGS.includes("'institution'::text"),
+    "org_type is discriminated, not inferred",
+  );
   for (const sql of [ORG_TYPE("x"), ORG_ID("x"), ORG_SCHEMA("x")]) {
     assert.ok(sql.includes("v1_business_id = x"), "every resolver keys on the V1 business uuid");
     assert.ok(!sql.includes("coalesce"), "an unresolved org is reported, never defaulted");
@@ -227,7 +239,10 @@ export function orgsSelfCheck(): void {
   for (const t of ["business_services", "service_study_options", "service_study_units", "branches"]) {
     assert.ok(TENANT_OWNER_SQL.includes(`${STAGING_SCHEMA}.${t}`), `${t} owners need a tenant schema`);
   }
-  assert.ok(!/UNION\s+ALL/i.test(TENANT_OWNER_SQL), "UNION (not ALL): one schema per owner, however many tables name it");
+  assert.ok(
+    !/UNION\s+ALL/i.test(TENANT_OWNER_SQL),
+    "UNION (not ALL): one schema per owner, however many tables name it",
+  );
 
   assert.equal(quoteIdent("3829ff2a-7ff9-0ffc-0d69-f66ac608cdba"), '"3829ff2a-7ff9-0ffc-0d69-f66ac608cdba"');
 
@@ -252,9 +267,13 @@ async function main(): Promise<number> {
   const result = await ensureTenantSchemas(url);
   console.log(`minted ${result.minted.length} schema_name(s):`);
   for (const m of result.minted) console.log(`  ${m.orgType} ${m.orgId} -> ${m.schema}`);
-  console.log(`provisioned ${result.provisioned.length} tenant schema(s) (idempotent DDL, outside any data transaction)`);
+  console.log(
+    `provisioned ${result.provisioned.length} tenant schema(s) (idempotent DDL, outside any data transaction)`,
+  );
   if (result.ownersWithoutOrg.length) {
-    console.error(`  ${result.ownersWithoutOrg.length} V1 owner(s) have no V3 org — W1 did not migrate them: ${result.ownersWithoutOrg.join(", ")}`);
+    console.error(
+      `  ${result.ownersWithoutOrg.length} V1 owner(s) have no V3 org — W1 did not migrate them: ${result.ownersWithoutOrg.join(", ")}`,
+    );
     return 1;
   }
   return 0;
