@@ -27,6 +27,7 @@ import { ambassadorProgramsReducer } from "@/app/admin/monitoring/ambassador-pro
 import { trainingReducer } from "@/app/admin/monitoring/training/store/training-slice"
 import { adminEventsReducer } from "@/app/admin/monitoring/events/store/admin-events-slice"
 import { adminJobsReducer } from "@/app/admin/monitoring/jobs/store/admin-jobs-slice"
+import { scholarshipsReducer } from "@/app/admin/monitoring/scholarships/store/scholarships-slice"
 import { notificationsReducer } from "@/app/personal/notifications/store/notifications-slice"
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
 import { aiKnowledgeReducer } from "@/app/admin/data/ai-knowledge/store/ai-knowledge-slice"
@@ -61,6 +62,7 @@ const appReducer = combineReducers({
     monitoringTraining: trainingReducer,
     monitoringEvents: adminEventsReducer,
     monitoringJobs: adminJobsReducer,
+    monitoringScholarships: scholarshipsReducer,
     notifications: notificationsReducer,
     aiChat: aiChatReducer,
     dataAiKnowledge: aiKnowledgeReducer,

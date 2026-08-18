@@ -40,8 +40,8 @@ export async function immigrationRoutes(app: FastifyInstance) {
   // I5: POST /visas/:id/promote
   app.post("/visas/:id/promote", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    const { department_business_id } = PromoteVisaSchema.parse(req.body);
-    return reply.send(await service.promoteVisa(id, department_business_id, await adminId(req)));
+    const { org_type, org_id } = PromoteVisaSchema.parse(req.body);
+    return reply.send(await service.promoteVisa(id, org_type, org_id, await adminId(req)));
   });
 
   // I6: POST /mara-agents/:id/promote
@@ -50,15 +50,14 @@ export async function immigrationRoutes(app: FastifyInstance) {
     return reply.send(await service.promoteMara(id, await adminId(req)));
   });
 
-  // I7: POST /visas/extract (503 stub)
-  app.post("/visas/extract", async (req, reply) => {
-    ExtractVisasSchema.parse(req.body); // validate even though it's a stub
-    service.extractVisasStub();
+  // I7: POST /visas/extract — fail-closed 503 (§3.8). Validation runs first so the
+  // request contract stays verified; only the provider call is missing.
+  app.post("/visas/extract", async (req) => {
+    service.extractVisas(ExtractVisasSchema.parse(req.body));
   });
 
-  // I8: POST /mara-agents/extract (503 stub)
-  app.post("/mara-agents/extract", async (req, reply) => {
-    ExtractMaraSchema.parse(req.body);
-    service.extractMaraStub();
+  // I8: POST /mara-agents/extract — same.
+  app.post("/mara-agents/extract", async (req) => {
+    service.extractMara(ExtractMaraSchema.parse(req.body));
   });
 }

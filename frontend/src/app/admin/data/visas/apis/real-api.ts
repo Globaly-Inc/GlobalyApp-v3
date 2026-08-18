@@ -12,11 +12,20 @@ export const visasRealApi = {
     await httpPost(`/admin/data-extraction/visas/${id}/discard`, {});
   },
 
-  promoteVisa: async (id: string, departmentBusinessId: string): Promise<void> => {
-    await httpPost(`/admin/data-extraction/visas/${id}/promote`, { department_business_id: departmentBusinessId });
+  // The target is an org id, and V3 org ids are serial integers — V1/V2 passed a
+  // uuid here. `department_business_id` keeps its name for the existing UI; the
+  // backend also accepts target_org_type/target_org_id for institution targets,
+  // which is what a scraped immigration department normally is.
+  promoteVisa: async (id: string, departmentOrgId: number): Promise<void> => {
+    await httpPost(`/admin/data-extraction/visas/${id}/promote`, {
+      target_org_type: "institution",
+      target_org_id: departmentOrgId,
+    });
   },
 
-  // ponytail: backend returns 503 for now, caller handles with toast
+  // 503 until the extractor is wired up (§3.8). The payload is the real contract
+  // now — it used to send { urls } to a schema that demanded { source_url }, so
+  // every launch 400'd and the fail-closed 503 was unreachable.
   launchExtraction: async (urls: string[]): Promise<void> => {
     await httpPost(`/admin/data-extraction/visas/extract`, { urls });
   },

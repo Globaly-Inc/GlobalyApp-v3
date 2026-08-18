@@ -86,6 +86,13 @@ export default defineConfig({
         "src/modules/training/**/*.ts",
         // Shared URL validation (the stored-XSS guard every schema routes through)
         "src/shared/url.ts",
+        // G1 — scholarships moderation, visa/MARA public directory + promote
+        "src/modules/visas/**/*.ts",
+        "src/modules/scholarships/**/*.ts",
+        "src/modules/superadmin/monitoring/**/*.ts",
+        "src/modules/superadmin/data-extraction/lib/immigration-mappers.ts",
+        "src/modules/superadmin/data-extraction/repositories/immigration.repository.ts",
+        "src/modules/superadmin/data-extraction/services/immigration.service.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {

@@ -14,8 +14,8 @@ export const discardVisa = createAsyncThunk("dataVisas/discard", async (id: stri
 
 export const promoteVisa = createAsyncThunk(
   "dataVisas/promote",
-  async ({ id, departmentBusinessId }: { id: string; departmentBusinessId: string }) => {
-    await visasApi.promoteVisa(id, departmentBusinessId);
+  async ({ id, departmentOrgId }: { id: string; departmentOrgId: number }) => {
+    await visasApi.promoteVisa(id, departmentOrgId);
     return id;
   },
 );

@@ -123,9 +123,9 @@ function VisaCard({ visa }: { visa: VisaExtraction }) {
   };
 
   const handlePromote = async () => {
-    if (!deptId.trim()) return;
+    if (!deptId.trim() || !Number.isInteger(Number(deptId.trim()))) return;
     setBusy(true);
-    const result = await dispatch(promoteVisa({ id: visa.id, departmentBusinessId: deptId.trim() }));
+    const result = await dispatch(promoteVisa({ id: visa.id, departmentOrgId: Number(deptId.trim()) }));
     setBusy(false);
     setPromoteOpen(false);
     if ("error" in result && result.error) {
