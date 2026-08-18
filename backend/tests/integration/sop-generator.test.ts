@@ -277,6 +277,106 @@ describeDb("sop generator", () => {
     });
   });
 
+  // ── edge cases the guards exist for ────────────────────────────────────────
+
+  describe("guards", () => {
+    it("opens a session with nothing but a snapshot, leaving every reference null", async () => {
+      const res = await req("POST", `${P}/sessions`, tokenA, {});
+      expect(res.statusCode).toBe(201);
+      const body = res.json() as Record<string, unknown>;
+      expect(body.country_id).toBeNull();
+      expect(body.target_org_type).toBeNull();
+      expect(body.target_org_id).toBeNull();
+      expect(body.course_service_id).toBeNull();
+      const row = await masterKnex("sop_intake_sessions").where({ id: body.id as number }).first();
+      expect(row.profile_snapshot).toEqual({});
+    });
+
+    it("refuses to draft before the questionnaire is complete", async () => {
+      const session = await newSession();
+      await req("PUT", `${P}/sessions/${session.id}/answers`, tokenA, {
+        answers: [{ question_key: "why_this_course", answer: "Only one of three." }],
+      });
+      providerModule.setSopAiProvider(makeProvider().provider);
+      const res = await generate(session.id);
+      expect(res.statusCode).toBe(400);
+      expect(await allDocsFor(session.id)).toHaveLength(0);
+    });
+
+    it("refuses a destination sop_config has no template for, rather than inventing one", async () => {
+      const created = await req("POST", `${P}/sessions`, tokenA, { profile_snapshot: {} });
+      const sessionId = (created.json() as { id: number }).id;
+      await answerAll(sessionId);
+      providerModule.setSopAiProvider(makeProvider().provider);
+      const res = await generate(sessionId);
+      expect(res.statusCode).toBe(409);
+      expect(await allDocsFor(sessionId)).toHaveLength(0);
+    });
+
+    it("stores a structured answer alongside a prose one", async () => {
+      const session = await newSession();
+      const res = await req("PUT", `${P}/sessions/${session.id}/answers`, tokenA, {
+        answers: [
+          { question_key: "test_scores", answer_json: { ielts: 7.5 } },
+          { question_key: "why_this_course", answer: "Applied forecasting." },
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { ready: boolean; answers: Array<Record<string, unknown>> };
+      expect(body.ready).toBe(false);
+      expect(body.answers.find((a) => a.question_key === "test_scores")!.answer_json).toEqual({
+        ielts: 7.5,
+      });
+    });
+
+    it("returns the session detail with its answers and current drafts", async () => {
+      const session = await newSession();
+      await answerAll(session.id);
+      providerModule.setSopAiProvider(makeProvider().provider);
+      await generate(session.id);
+
+      const res = await req("GET", `${P}/sessions/${session.id}`, tokenA);
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        status: string;
+        profile_snapshot: Record<string, unknown>;
+        answers: unknown[];
+        documents: Array<{ content: string }>;
+      };
+      expect(body.status).toBe("generated");
+      expect(body.profile_snapshot).toEqual({ headline: "BSc Statistics, 2 years analytics" });
+      expect(body.answers).toHaveLength(3);
+      expect(body.documents).toHaveLength(DOCS_PER_AU_SESSION);
+      expect(body.documents[0].content).toContain("Master of Data Science");
+    });
+
+    it("serves one version in full to its owner and to nobody else", async () => {
+      const session = await newSession();
+      await answerAll(session.id);
+      providerModule.setSopAiProvider(makeProvider().provider);
+      const gen = await generate(session.id);
+      const docId = (gen.json() as { documents: Array<{ id: number }> }).documents[0].id;
+
+      const mine = await req("GET", `${P}/documents/${docId}`, tokenA);
+      expect(mine.statusCode).toBe(200);
+      expect((mine.json() as { content: string }).content).toContain("Master of Data Science");
+
+      const theirs = await req("GET", `${P}/documents/${docId}`, tokenB);
+      expect(theirs.statusCode).toBe(404);
+    });
+
+    it("404s a restore of a version that was never written", async () => {
+      const session = await newSession();
+      await answerAll(session.id);
+      providerModule.setSopAiProvider(makeProvider().provider);
+      const gen = await generate(session.id);
+      const docId = (gen.json() as { documents: Array<{ id: number }> }).documents[0].id;
+
+      const res = await req("POST", `${P}/documents/${docId}/restore`, tokenA, { version: 99 });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
   // ── destination reference data ─────────────────────────────────────────────
 
   describe("config", () => {
@@ -310,6 +410,9 @@ describeDb("sop generator", () => {
       const session = await newSession();
       await answerAll(session.id);
       const before = await walletTotal(walletA);
+      // Earlier blocks settled turns for studentA, so every metering assertion in this
+      // suite is a DELTA. "Nothing charged" means no new usage event and no new debit.
+      const usageBefore = (await usageFor(studentA)).length;
 
       // No provider injected, and GEMINI_API_KEY is pinned empty by testEnv().
       expect(providerModule.isSopAiConfigured()).toBe(false);
@@ -333,7 +436,7 @@ describeDb("sop generator", () => {
 
       expect(await allDocsFor(session.id)).toHaveLength(0);
       expect(await walletTotal(walletA)).toBe(before);
-      expect(await usageFor(studentA)).toHaveLength(0);
+      expect(await usageFor(studentA)).toHaveLength(usageBefore);
     });
   });
 
@@ -362,6 +465,7 @@ describeDb("sop generator", () => {
       const session = await newSession();
       await answerAll(session.id);
       const before = await walletTotal(walletA);
+      const usageBefore = (await usageFor(studentA)).length;
       const { provider, calls } = makeProvider();
       providerModule.setSopAiProvider(provider);
 
@@ -386,10 +490,12 @@ describeDb("sop generator", () => {
 
       expect(await walletTotal(walletA)).toBe(before - EXPECTED_CREDITS);
 
+      // Exactly ONE new usage event for a turn that produced two documents: the SOP
+      // draft is one metered turn, not one per document.
       const usage = await usageFor(studentA);
-      expect(usage).toHaveLength(1);
-      expect(Number(usage[0].credits_charged)).toBe(EXPECTED_CREDITS);
-      expect(usage[0].outcome).toBe("complete");
+      expect(usage).toHaveLength(usageBefore + 1);
+      expect(Number(usage.at(-1)!.credits_charged)).toBe(EXPECTED_CREDITS);
+      expect(usage.at(-1)!.outcome).toBe("complete");
 
       const logs = await logsFor(session.id);
       expect(logs).toHaveLength(1);
