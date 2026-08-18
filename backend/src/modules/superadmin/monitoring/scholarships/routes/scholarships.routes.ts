@@ -3,13 +3,14 @@
 import type { FastifyInstance } from "fastify";
 import { buildPaginatedResponse, paginationToOffset } from "../../../../../shared/pagination.js";
 import * as repo from "../../../platform/platform.repository.js";
-import { IdParamSchema, ScholarshipInputSchema, ScholarshipListQuery } from "../schemas/scholarships.schema.js";
+import { IdParamSchema, ScholarshipInputSchema, ScholarshipListQuery, SubmitScholarshipSchema } from "../schemas/scholarships.schema.js";
 import * as service from "../services/scholarships.service.js";
+import * as moderation from "../services/moderation.service.js";
 
 export async function scholarshipRoutes(app: FastifyInstance) {
   app.get("/", async (req, reply) => {
-    const { search, is_published, country, ...pagination } = ScholarshipListQuery.parse(req.query);
-    const filters = { search, is_published, country };
+    const { search, q, is_published, review_status, country, ...pagination } = ScholarshipListQuery.parse(req.query);
+    const filters = { search: search ?? q, is_published, review_status, country };
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
       service.listAdmin(limit, offset, filters),
@@ -24,9 +25,11 @@ export async function scholarshipRoutes(app: FastifyInstance) {
     return reply.send(row);
   });
 
+  // An admin-created scholarship still enters moderation as `pending` — the
+  // lifecycle has one entry point, so "who created it" never decides visibility.
   app.post("/", async (req, reply) => {
-    const data = ScholarshipInputSchema.parse(req.body);
-    const row = await service.create(data);
+    const data = SubmitScholarshipSchema.parse(req.body);
+    const row = await moderation.submit(data, null);
     await repo.logAdminAction(Number(req.auth.sub), "SCHOLARSHIP_CREATED", "scholarship", undefined, { scholarship_id: row.id, title: row.title });
     return reply.status(201).send(row);
   });

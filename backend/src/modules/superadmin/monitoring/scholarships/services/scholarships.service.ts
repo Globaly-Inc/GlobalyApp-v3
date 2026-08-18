@@ -32,10 +32,28 @@ export async function remove(id: number) {
 export const listPublished = repo.listPublished;
 export const countPublished = repo.countPublished;
 
+/** V2's detail shape: the row plus its eligibility criteria. */
 export async function findPublishedBySlug(slug: string) {
   const row = await repo.findPublishedBySlug(slug);
   if (!row) throw new NotFoundError("Scholarship not found");
-  // Best-effort — a view-count miss should never break the detail page.
-  repo.incrementViewCount(row.id).catch(() => {});
-  return row;
+  return { ...row, criteria: await repo.listCriteria(row.id) };
+}
+
+export async function facets(q: string | undefined) {
+  const row = await repo.facets(q ?? "");
+  return {
+    countries: row.countries ?? [],
+    bases: row.bases ?? [],
+    degree_levels: row.degree_levels ?? [],
+    total: Number(row.total ?? 0),
+  };
+}
+
+/**
+ * A miss is not an error — the row may have been unpublished between the read and
+ * the beacon — so this always answers ok.
+ */
+export async function recordView(slug: string) {
+  await repo.incrementViewCountBySlug(slug);
+  return { ok: true as const };
 }

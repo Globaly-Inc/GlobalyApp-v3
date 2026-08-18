@@ -43,10 +43,40 @@ export const ScholarshipInputSchema = z.object({
 });
 
 export const ScholarshipListQuery = PaginationSchema.extend({
+  // `q` is an alias for `search`: the public list, V1's admin page and every other
+  // V3 admin list use `q`, and one param name per screen is a bug waiting to be
+  // filed. Both are accepted; the route collapses them.
   search: z.string().trim().min(1).optional(),
+  q: z.string().trim().min(1).optional(),
   is_published: z.coerce.boolean().optional(),
+  review_status: z.enum(["pending", "approved", "rejected"]).optional(),
   country: z.string().min(1).optional(),
 });
+
+// ── Moderation (Wave G1) ──
+
+export const ApproveSchema = z.object({ publish: z.boolean().default(true) });
+export const RejectSchema = z.object({ note: z.string().max(2000).optional() });
+export const PublishSchema = z.object({ is_published: z.boolean() });
+export const FeatureSchema = z.object({ is_featured: z.boolean() });
+
+/**
+ * Fields a submitter may set. slug is omitted because the database trigger
+ * generates it; is_published / is_featured because moderation owns them.
+ */
+export const SubmitScholarshipSchema = ScholarshipInputSchema.omit({
+  slug: true,
+  is_published: true,
+  is_featured: true,
+}).extend({
+  // Admin-only ownership assignment. The business routes ignore these and use the
+  // caller's own org.
+  owner_org_type: z.enum(["business", "institution"]).nullable().optional(),
+  owner_org_id: z.coerce.number().int().positive().nullable().optional(),
+  is_platform_scholarship: z.boolean().optional(),
+});
+
+export const FacetsQuerySchema = z.object({ q: z.string().trim().max(200).optional() });
 
 export const PublicScholarshipListQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),

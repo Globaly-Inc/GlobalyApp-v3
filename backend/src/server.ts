@@ -32,7 +32,7 @@ import messagingModule from "./modules/messaging/index.js";
 import eventsModule, { publicEventsModule } from "./modules/events/index.js";
 import notificationsModule from "./modules/notifications/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
-import scholarshipsPublicModule from "./modules/scholarships/index.js";
+import scholarshipsPublicModule, { businessScholarshipsModule } from "./modules/scholarships/index.js";
 import { publicVisasModule } from "./modules/visas/index.js";
 
 const logger = createChildLogger("server");
@@ -62,6 +62,7 @@ export async function buildServer() {
     await protectedApp.register(eventsModule);             // events, ticketing, registrations, admin monitoring
     await protectedApp.register(notificationsModule);      // per-user inbox, channel preferences, push tokens
     await protectedApp.register(enquiriesModule);          // student enquiries, distribution, credit unlock
+    await protectedApp.register(businessScholarshipsModule); // business-owned scholarship submission
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
