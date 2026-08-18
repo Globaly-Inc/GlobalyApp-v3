@@ -169,3 +169,20 @@ export type SourceParams = {
   max_pages?: number | null;
   active?: boolean;
 };
+
+/**
+ * How much of the corpus is actually retrievable. Chunks, not documents: chunks
+ * are the retrieval unit, and a document is only answerable once its chunks carry
+ * a vector from the current model.
+ */
+export type EmbeddingStatus = {
+  model: string;
+  /** False when no embedding provider is configured — chunking still runs. */
+  provider_configured: boolean;
+  documents_total: number;
+  documents_embedded: number;
+  documents_awaiting: number;
+  chunks_total: number;
+  chunks_embedded: number;
+  chunks_awaiting: number;
+};

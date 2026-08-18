@@ -1,7 +1,7 @@
 import type {
   CategoryParams, CountryGuide, Faq, FaqParams, GuideParams, KnowledgeCounts,
   QueueItem, RackCategory, RackCounts, RackDocument, RackDocumentDetail,
-  RackSource, SourceParams, VisaEntry, VisaParams,
+  RackSource, SourceParams, VisaEntry, VisaParams, EmbeddingStatus,
 } from "./types";
 
 const delay = (ms = 220) => new Promise((r) => setTimeout(r, ms));
@@ -150,6 +150,25 @@ export const aiKnowledgeMockApi = {
     await delay();
     return { categories: categories.length, sources: sources.length, documents: documents.length, embedded_documents: documents.filter((d) => d.is_embedded).length };
   },
+  getEmbeddingStatus: async (): Promise<EmbeddingStatus> => {
+    console.log("[mock] getEmbeddingStatus");
+    await delay();
+    const embedded = documents.filter((d) => d.is_embedded).length;
+    // ~39 chunks per document is what the real corpus averages (8075 / 207).
+    return {
+      model: "gemini-embedding-001", provider_configured: false,
+      documents_total: documents.length, documents_embedded: embedded,
+      documents_awaiting: documents.length - embedded,
+      chunks_total: documents.length * 39, chunks_embedded: embedded * 39,
+      chunks_awaiting: (documents.length - embedded) * 39,
+    };
+  },
+  reembed: async (documentId?: string) => {
+    console.log("[mock] reembed", documentId);
+    await delay();
+    return { dispatched: true, model: "gemini-embedding-001", documents_awaiting: documents.length };
+  },
+
   getCategories: async () => { console.log("[mock] getCategories"); await delay(); return categories; },
   createCategory: async (params: CategoryParams) => { console.log("[mock] createCategory"); await delay(); return { ...categories[0], ...params, id: uid() } as RackCategory; },
   updateCategory: async (id: string, params: CategoryParams) => { console.log("[mock] updateCategory", id); await delay(); return { ...categories[0], ...params, id } as RackCategory; },
