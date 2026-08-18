@@ -28,7 +28,10 @@ export function ServiceSharingPicker({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  // The page resets to 1 whenever the query changes — derived from the query key, not set in an effect.
+  const queryKey = `${businessId}|${search}`;
+  const [pager, setPager] = useState({ queryKey, page: 1 });
+  const page = pager.queryKey === queryKey ? pager.page : 1;
   const isAll = value === "all";
   const selectedIds = isAll ? [] : value;
 
@@ -44,14 +47,13 @@ export function ServiceSharingPicker({
   };
 
   useEffect(() => {
-    setPage(1);
     const timer = setTimeout(() => fetchPage(1, search), 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId, search]);
 
   const handlePageChange = (p: number) => {
-    setPage(p);
+    setPager({ queryKey, page: p });
     fetchPage(p, search);
   };
 

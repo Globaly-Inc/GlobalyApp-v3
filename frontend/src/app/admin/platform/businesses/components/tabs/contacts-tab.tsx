@@ -18,15 +18,17 @@ export function ContactsTab({ businessId }: Readonly<{ businessId: number }>) {
   const { items: contacts, status, total } = useAppSelector((state) => state.platformBusinesses.contacts);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
-  const [page, setPage] = useState(1);
+  // The page resets to 1 whenever the query changes — derived from the query key, not set in an effect.
+  const queryKey = String(businessId);
+  const [pager, setPager] = useState({ queryKey, page: 1 });
+  const page = pager.queryKey === queryKey ? pager.page : 1;
 
   useEffect(() => {
-    setPage(1);
     dispatch(fetchContacts({ id: businessId, params: { page: 1, limit: PAGE_SIZE } }));
   }, [dispatch, businessId]);
 
   const handlePageChange = (p: number) => {
-    setPage(p);
+    setPager({ queryKey, page: p });
     dispatch(fetchContacts({ id: businessId, params: { page: p, limit: PAGE_SIZE } }));
   };
 
