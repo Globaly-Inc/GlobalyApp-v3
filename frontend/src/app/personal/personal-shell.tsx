@@ -18,6 +18,7 @@ import {
   Building2,
   LogOut,
   Loader2,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -49,6 +50,7 @@ const NAV_ITEMS = [
   { label: "Explore", icon: Compass, href: "/personal/explore" },
   { label: "Earn", icon: Coins, href: "/personal/earn" },
   { label: "Learning", icon: GraduationCap, href: "/personal/learning" },
+  { label: "Enquiries", icon: Inbox, href: "/personal/enquiries" },
 ];
 
 export function PersonalShell({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Building2, LogOut, Loader2 } from "lucide-react";
+import { Bot, Building2, LogOut, Loader2, Check } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { ensureBusinessContext } from "@/lib/api/http";
+import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
+import { authApi } from "@/app/auth/apis";
+import type { AuthMeBusiness } from "@/app/auth/apis";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
 
@@ -21,6 +26,41 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
+
+  // Tenant-scoped endpoints 403 without an `orgId` claim, and login never issues
+  // one. Establish it here rather than in each page, so children can fetch
+  // freely — and hold them back until it resolves, or their mount-time fetch
+  // races the switch and 403s.
+  const [contextReady, setContextReady] = useState(false);
+  const [businesses, setBusinesses] = useState<AuthMeBusiness[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    ensureBusinessContext()
+      .catch(() => false)
+      .then(() => (active ? authApi.listMyBusinesses().catch(() => []) : []))
+      .then((list) => {
+        if (!active) return;
+        setBusinesses(list);
+        setActiveOrgId(getSelectedOrgId() ?? [...list].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
+      })
+      .finally(() => {
+        if (active) setContextReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // A full reload is the honest way to re-switch: every slice already holds data
+  // fetched under the previous business, and there is no cross-slice reset.
+  const handleSwitchBusiness = async (orgId: string) => {
+    if (orgId === activeOrgId) return;
+    saveSelectedOrgId(orgId);
+    await ensureBusinessContext(true);
+    window.location.reload();
+  };
 
   const portalTarget = { label: "Business Portal", icon: Building2, href: "/business/portal" };
 
@@ -53,7 +93,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     );
   }
 
-  if (!profile) {
+  if (!contextReady || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -88,6 +128,22 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
             </Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {businesses.length > 1 && (
+              <>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Acting as</DropdownMenuLabel>
+                {businesses.map((b) => (
+                  <DropdownMenuItem
+                    key={b.org_id}
+                    className="cursor-pointer"
+                    onClick={() => handleSwitchBusiness(b.org_id)}
+                  >
+                    {b.org_id === activeOrgId ? <Check /> : <span className="size-4" />}
+                    {b.business_name}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/profile")}>
               <Building2 /> My Profile
             </DropdownMenuItem>

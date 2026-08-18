@@ -14,6 +14,11 @@ const DEFAULT_PERMISSIONS = [
   { module: "agents", action: "read", display_name: "View Team Members", description: "View agent/team member list" },
   { module: "agents", action: "write", display_name: "Manage Team Members", description: "Invite and manage agents" },
   { module: "agents", action: "delete", display_name: "Remove Team Members", description: "Remove agents from business" },
+  { module: "enquiries", action: "view", display_name: "View Enquiries", description: "View incoming student enquiries" },
+  { module: "enquiries", action: "unlock", display_name: "Unlock Enquiries", description: "Unlock enquiry contact details (spends credits)" },
+  { module: "enquiries", action: "respond", display_name: "Respond to Enquiries", description: "Reply to students in enquiry conversations" },
+  { module: "enquiries", action: "assign", display_name: "Assign Enquiries", description: "Assign enquiries to team members" },
+  { module: "enquiries", action: "convert", display_name: "Convert Enquiries", description: "Mark enquiries as converted" },
 ];
 
 // module:action → which roles get it
@@ -23,6 +28,11 @@ const ROLE_PERMISSION_MAP: Record<string, string[]> = {
   "agents:read":    ["owner", "admin", "manager"],
   "agents:write":   ["owner", "admin"],
   "agents:delete":  ["owner", "admin"],
+  "enquiries:view":    ["owner", "admin", "manager", "counsellor", "member"],
+  "enquiries:unlock":  ["owner", "admin", "manager"],
+  "enquiries:respond": ["owner", "admin", "manager", "counsellor"],
+  "enquiries:assign":  ["owner", "admin", "manager"],
+  "enquiries:convert": ["owner", "admin", "manager", "counsellor"],
 };
 
 export async function seed(knex: Knex): Promise<void> {

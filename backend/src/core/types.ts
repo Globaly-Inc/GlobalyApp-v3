@@ -69,5 +69,6 @@ declare module "fastify" {
     auth: AuthClaims;
     db: Knex;          // per-business DB (set for business context routes)
     business?: BusinessRecord;     // resolved business row (set alongside db)
+    businessId: number; // numeric businesses.id for the resolved tenant (auth.orgId is its schema_name)
   }
 }
