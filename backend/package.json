@@ -40,6 +40,7 @@
     "migrate:v1-extract": "node scripts/migration/extract.mjs",
     "migrate:v1-extract-ddl": "node scripts/migration/extract.mjs --emit-ddl",
     "verify:staging": "node scripts/migration/verify-staging.mjs",
+    "verify:read-parity": "node scripts/migration/read-parity.mjs",
     "migrate:ensure-mig": "node --import tsx scripts/migration/lib.ts --ensure-mig",
     "check:migration": "node scripts/migration/extract.mjs --self-check && node scripts/migration/verify-staging.mjs --self-check && node --import tsx scripts/migration/lib.ts --self-check && node database/scripts/verify-migration.mjs --self-check && node --import tsx scripts/migration/w6-storage.ts --self-check && node scripts/migration/read-parity.mjs --self-check",
     "job:enquiry-digest": "node --import tsx src/workers/enquiry-digest.worker.ts",
