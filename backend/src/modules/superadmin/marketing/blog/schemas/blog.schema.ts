@@ -1,6 +1,7 @@
 // Validation schemas for the blog admin feature — posts + keywords.
 
 import { z } from "zod";
+import { webUrl } from "../../../../../shared/url.js";
 
 export const IdParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -15,14 +16,14 @@ export const PostInputSchema = z.object({
   country_focus: z.string().max(100).nullable().optional(),
   tags: z.array(z.string()).optional(),
   author_name: z.string().max(200).nullable().optional(),
-  author_avatar_url: z.string().url().nullable().optional(),
-  cover_image_url: z.string().url().nullable().optional(),
+  author_avatar_url: webUrl().nullable().optional(),
+  cover_image_url: webUrl().nullable().optional(),
   is_published: z.boolean().optional(),
   meta_title: z.string().max(60).nullable().optional(),
   meta_description: z.string().max(160).nullable().optional(),
   focus_keyword: z.string().max(200).nullable().optional(),
-  canonical_url: z.string().url().nullable().optional(),
-  og_image_url: z.string().url().nullable().optional(),
+  canonical_url: webUrl().nullable().optional(),
+  og_image_url: webUrl().nullable().optional(),
 });
 
 export const PostListQuery = z.object({

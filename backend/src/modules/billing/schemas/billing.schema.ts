@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { webUrl } from "../../../shared/url.js";
 import { PaginationSchema } from "../../../shared/pagination.js";
 import { BILLING_INTERVALS, SUBSCRIPTION_STATUSES, TRANSACTION_TYPES } from "../consts.js";
 
 // A checkout return URL is echoed straight into a redirect, so it is validated as
 // an absolute http(s) URL rather than accepted as free text.
-const AbsoluteUrl = z.string().url().refine(
+const AbsoluteUrl = webUrl().refine(
   (value) => /^https?:\/\//i.test(value),
   { message: "Must be an absolute http(s) URL" },
 );

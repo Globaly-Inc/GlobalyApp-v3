@@ -2,6 +2,7 @@
 // degree_levels/areas_of_study lookups, fee types, issuing organizations, accreditations.
 
 import { z } from "zod";
+import { webUrl } from "../../../../../shared/url.js";
 
 export const IdParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -61,14 +62,14 @@ export const FeeTypeInputSchema = z.object({
 
 export const IssuingOrgInputSchema = z.object({
   name: z.string().trim().min(1).max(200),
-  logo_url: z.string().url().nullable().optional(),
-  website: z.string().url().nullable().optional(),
+  logo_url: webUrl().nullable().optional(),
+  website: webUrl().nullable().optional(),
 });
 
 export const AccreditationInputSchema = z.object({
   name: z.string().trim().min(1).max(200),
   issuing_organization_id: z.number().int().positive().nullable().optional(),
-  website: z.string().url().nullable().optional(),
+  website: webUrl().nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
   sort_order: z.number().int().min(0).optional(),
   scope_country_ids: z.array(z.number().int().positive()).optional(),

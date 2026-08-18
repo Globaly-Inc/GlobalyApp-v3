@@ -2,6 +2,7 @@
 // touching a service.
 
 import { z } from "zod";
+import { webUrl } from "../../../shared/url.js";
 import { PaginationSchema } from "../../../shared/pagination.js";
 import {
   EVENT_CATEGORIES,
@@ -47,7 +48,7 @@ export const CreateEventSchema = z
     title: z.string().trim().min(3).max(300),
     description: z.string().max(20_000).nullish(),
     summary: z.string().max(1000).nullish(),
-    cover_image_url: z.string().url().max(2000).nullish(),
+    cover_image_url: webUrl({ max: 2000 }).nullish(),
     event_type: z.enum(EVENT_TYPES).default("in_person"),
     category: z.enum(EVENT_CATEGORIES).nullish(),
     status: z.enum(EVENT_STATUSES).default("draft"),
@@ -60,7 +61,7 @@ export const CreateEventSchema = z
     venue_country: z.string().max(100).nullish(),
     venue_latitude: z.number().min(-90).max(90).nullish(),
     venue_longitude: z.number().min(-180).max(180).nullish(),
-    online_url: z.string().url().max(2000).nullish(),
+    online_url: webUrl({ max: 2000 }).nullish(),
     online_platform: z.string().max(100).nullish(),
     starts_at: isoDate,
     ends_at: isoDate,

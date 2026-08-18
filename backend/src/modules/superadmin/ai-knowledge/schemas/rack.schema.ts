@@ -2,6 +2,7 @@
 // V2 enforced these vocabularies with CHECK constraints; V3 enforces them here.
 
 import { z } from "zod";
+import { webUrl } from "../../../../shared/url.js";
 
 export const CATEGORY_KINDS = [
   "visa", "gov_update", "institution_update", "scholarship", "test_provider", "other",
@@ -23,7 +24,7 @@ export const PatchCategorySchema = CreateCategorySchema.partial();
 
 export const CreateSourceSchema = z.object({
   category_id: z.string().uuid(),
-  url: z.string().url(),
+  url: webUrl(),
   title: z.string().nullish(),
   trust_tier: z.enum(TRUST_TIERS).default("other"),
   business_id: z.string().uuid().nullish(),

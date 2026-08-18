@@ -1,6 +1,7 @@
 // Validation schemas for platform user profile management and sub-resources.
 
 import { z } from "zod";
+import { webUrl } from "../../../shared/url.js";
 import { PERSONAL_SUB_CATEGORIES, GENDERS } from "../consts.js";
 import { BUSINESS_TYPES } from "../../businesses/consts.js";
 
@@ -37,8 +38,8 @@ export const ProfilePatchSchema = z.object({
   personal_address_state: z.string().nullable(),
   personal_address_street: z.string().nullable(),
   personal_address_postcode: z.string().nullable(),
-  linkedin_url: z.string().url().nullable(),
-  website_url: z.string().url().nullable(),
+  linkedin_url: webUrl().nullable(),
+  website_url: webUrl().nullable(),
   onboarding_completed: z.boolean(),
 }).partial().strict();
 

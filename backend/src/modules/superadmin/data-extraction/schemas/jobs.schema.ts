@@ -1,6 +1,7 @@
 // Zod schemas for extraction jobs endpoints.
 
 import { z } from "zod";
+import { webUrl } from "../../../../shared/url.js";
 
 export const JOB_STATUSES = [
   "pending", "processing", "stalled", "extracting", "paused",
@@ -10,14 +11,14 @@ export const JOB_STATUSES = [
 export const PROMOTABLE_JOB_STATUSES = ["approved", "verified", "review", "exported", "done"] as const;
 
 export const CreateJobSchema = z.object({
-  institution_url: z.string().url(),
+  institution_url: webUrl(),
   institution_name: z.string().optional(),
   source_type: z.string().optional(),
   business_category_id: z.coerce.number().int().positive().optional(),
   service_category_id: z.coerce.number().int().positive().optional(),
   guided_urls: z.record(z.unknown()).optional(),
   guidance_notes: z.string().optional(),
-  sample_course_url: z.string().url().optional(),
+  sample_course_url: webUrl().optional(),
   supporting_documents: z.array(z.unknown()).optional(),
   pipeline_progress: z.record(z.unknown()).optional(),
 });

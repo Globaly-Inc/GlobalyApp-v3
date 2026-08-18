@@ -1,6 +1,7 @@
 // Validation schemas for business registration and profile management.
 
 import { z } from "zod";
+import { webUrl } from "../../../shared/url.js";
 import { BUSINESS_TYPES } from "../consts.js";
 
 export const BusinessRegisterSchema = z.object({
@@ -14,7 +15,7 @@ export const BusinessRegisterSchema = z.object({
   city: z.string().max(100).optional(),
   address: z.string().max(500).optional(),
   postcode: z.string().max(20).optional(),
-  website: z.string().url().optional(),
+  website: webUrl().optional(),
   registration_licenses: z.record(z.unknown()).optional(),
 });
 
@@ -30,12 +31,12 @@ export const BusinessProfilePatchSchema = z.object({
   city: z.string().max(100).nullable(),
   address: z.string().max(500).nullable(),
   postcode: z.string().max(20).nullable(),
-  linkedin_url: z.string().url().nullable(),
-  facebook_url: z.string().url().nullable(),
-  instagram_url: z.string().url().nullable(),
-  twitter_url: z.string().url().nullable(),
-  youtube_url: z.string().url().nullable(),
-  whatsapp_url: z.string().url().nullable(),
+  linkedin_url: webUrl().nullable(),
+  facebook_url: webUrl().nullable(),
+  instagram_url: webUrl().nullable(),
+  twitter_url: webUrl().nullable(),
+  youtube_url: webUrl().nullable(),
+  whatsapp_url: webUrl().nullable(),
   gallery_images: z.array(z.string()).nullable(),
   video_urls: z.array(z.string()).nullable(),
   registration_licenses: z.record(z.unknown()).nullable(),
