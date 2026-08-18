@@ -75,8 +75,11 @@ export async function countsByType(
   userId: number,
   conn: Db = db(),
 ): Promise<Record<string, number>> {
-  const rows = await ownQuery(userId, conn).select("item_type").count({ count: "*" }).groupBy("item_type");
-  return Object.fromEntries(rows.map((r: any) => [r.item_type, Number(r.count)]));
+  const rows: Array<{ item_type: string; count: string }> = await ownQuery(userId, conn)
+    .select("item_type")
+    .count({ count: "*" })
+    .groupBy("item_type");
+  return Object.fromEntries(rows.map((r) => [r.item_type, Number(r.count)]));
 }
 
 /** Hard delete, scoped to the owner. Returns 0 when the row is not the caller's. */

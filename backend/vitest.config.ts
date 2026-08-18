@@ -93,6 +93,10 @@ export default defineConfig({
         "src/modules/superadmin/data-extraction/lib/immigration-mappers.ts",
         "src/modules/superadmin/data-extraction/repositories/immigration.repository.ts",
         "src/modules/superadmin/data-extraction/services/immigration.service.ts",
+        // G6 — favourites, saved filters, waitlist. (Push lives under the
+        // notifications glob above, already listed by D3.)
+        "src/modules/favorites/**/*.ts",
+        "src/modules/waitlist/**/*.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {

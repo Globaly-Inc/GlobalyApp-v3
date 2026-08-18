@@ -16,7 +16,13 @@ import {
 } from "../schemas/saved-filters.schema.js";
 
 function scopeOf(req: FastifyRequest): service.Scope {
-  return { userId: Number(req.auth.sub), businessId: req.business?.id ?? null };
+  // Number(): core/types.ts declares BusinessRecord.id as string, but businesses.id
+  // is `increments` and Postgres returns an integer. Coerced here rather than
+  // widening a shared type another wave owns.
+  return {
+    userId: Number(req.auth.sub),
+    businessId: req.business ? Number(req.business.id) : null,
+  };
 }
 
 export async function savedFilterRoutes(app: FastifyInstance) {

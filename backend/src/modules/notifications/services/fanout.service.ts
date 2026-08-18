@@ -16,6 +16,7 @@ import { createChildLogger } from "../../../shared/logger.js";
 import { queueService } from "../../../shared/queue/queueService.js";
 import { CHANNELS, DEFAULT_CHANNEL_ENABLED, type Channel } from "../consts.js";
 import * as repo from "../repositories/notifications.repository.js";
+import { getPushClient, isPushAvailable } from "./push.client.js";
 import { NotificationMessageSchema, type NotificationMessage } from "./notifications.service.js";
 
 const logger = createChildLogger("notification-fanout");
@@ -118,11 +119,27 @@ async function send(
     return { status: "sent", error: null };
   }
 
-  // push — fail closed, exactly like Stripe. No FCM credentials exist in this
-  // deployment, so the honest outcome is "skipped", never a pretend send.
+  // push — fail closed, exactly like Stripe.
+  //
+  // The device registry is read FIRST, and the notification + delivery rows are
+  // already committed by the caller, so a deployment with no FCM credentials still
+  // persists everything except the transport and records an honest reason. The
+  // provider is the last thing touched, and it is never faked: an unconfigured
+  // deployment yields "skipped" with the reason, never "sent".
   const tokens = await repo.pushTokensFor(userId);
   if (tokens.length === 0) return { status: "skipped", error: "No registered devices" };
-  return { status: "skipped", error: "Push provider is not configured on this deployment" };
+
+  if (!isPushAvailable()) {
+    return { status: "skipped", error: "Push provider is not configured on this deployment" };
+  }
+
+  const result = await getPushClient().send(tokens, { title: message.title, body: message.body });
+  // Prune tokens FCM rejected as dead, so the next fan-out is not still trying them.
+  for (const dead of result.invalidTokens) await repo.deletePushToken(userId, dead);
+  // "sent" only when the provider actually accepted a device.
+  return result.sent > 0
+    ? { status: "sent", error: null }
+    : { status: "skipped", error: "No device accepted the notification" };
 }
 
 function escapeHtml(value: string): string {

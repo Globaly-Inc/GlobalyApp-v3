@@ -62,6 +62,17 @@ export function setPushClient(client: PushClient | null): void {
   override = client;
 }
 
+/**
+ * Can a send actually be attempted right now? Credentials OR an injected client.
+ *
+ * Distinct from isPushConfigured() on purpose: the fan-out must not short-circuit
+ * on "no credentials" when a test has injected a client, or the seam would be
+ * unreachable from the one code path that matters.
+ */
+export function isPushAvailable(): boolean {
+  return override !== null || isPushConfigured();
+}
+
 function createLiveClient(): PushClient {
   // firebase-admin is not a dependency of this project, so there is nothing to
   // construct. When it is added this becomes:
