@@ -273,9 +273,16 @@ export async function findPlanByCode(code: string, trx?: Db): Promise<PlanRow | 
 }
 
 export async function findPlanByStripePrice(priceId: string, trx?: Db): Promise<PlanRow | undefined> {
+  // The either-price match MUST be a parenthesised group. Ungrouped, knex emits
+  // `monthly = ? or annual = ? and deleted_at is null`, and SQL binds AND tighter
+  // than OR — so the deleted_at filter applied only to the annual branch and a
+  // soft-deleted plan still resolved by its monthly price id. The webhook falls
+  // back to this lookup when a payload has no plan_code, so that handed out the
+  // withdrawn plan's monthly_credit_grant on every delivery (defect COV2-1).
   return db(trx)<PlanRow>("subscription_plans")
-    .where({ stripe_monthly_price_id: priceId })
-    .orWhere({ stripe_annual_price_id: priceId })
+    .where((q) =>
+      q.where({ stripe_monthly_price_id: priceId }).orWhere({ stripe_annual_price_id: priceId }),
+    )
     .whereNull("deleted_at")
     .first();
 }
