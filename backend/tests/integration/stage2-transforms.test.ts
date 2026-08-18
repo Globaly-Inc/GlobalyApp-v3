@@ -480,6 +480,12 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
     //
     // Enrichment is COALESCE-only and cannot fix this: both columns are NOT NULL
     // with defaults, so the seeded row never has a NULL for the COALESCE to fill.
+    //
+    // beforeEach truncates v1_staging, not public — so put AU back to the state the
+    // seeder leaves it in. Without this the assertion passes on a database an
+    // earlier run already promoted, which is a test that cannot fail.
+    await db.query(`UPDATE public.countries SET is_featured = false, sort_order = 0 WHERE iso2 = 'AU'`);
+
     await runTransform("w1-geo.ts", true);
 
     const { rows } = await db.query<{ iso2: string; is_featured: boolean; sort_order: number }>(
