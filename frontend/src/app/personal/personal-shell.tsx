@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useHydrated } from "@/lib/use-hydrated";
 import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
@@ -60,13 +61,8 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const dispatch = useAppDispatch();
   const { profile, status } = useAppSelector((state) => state.profile);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // Next's router cache can rehydrate a previously-rendered page's HTML (e.g. after a back/forward
-  // navigation) against a client Redux store that has since moved on — `status`/`profile` in that cached
-  // HTML can genuinely disagree with the live store, causing a real hydration mismatch. Gate on `mounted`
-  // so the very first client render always matches whatever HTML is being hydrated against, then swap to
-  // the live values once mounted.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // See use-hydrated.ts for why this is not a setState-in-effect flag.
+  const mounted = useHydrated();
 
   const portalTarget =
     mounted && profile?.user_category === "business"

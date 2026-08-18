@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useHydrated } from "@/lib/use-hydrated";
 import { ensureBusinessContext } from "@/lib/api/http";
 import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
 import { authApi } from "@/app/auth/apis";
@@ -37,12 +38,8 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const [contextReady, setContextReady] = useState(false);
   const [businesses, setBusinesses] = useState<AuthMeBusiness[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
-  // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
-  // that has since moved on (e.g. after a back/forward navigation) — `status`/`profile` in that cached
-  // HTML can genuinely disagree with the live store. Gate on `mounted` so the branch below matches
-  // whatever HTML is being hydrated against on the very first render.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // See use-hydrated.ts for why this is not a setState-in-effect flag.
+  const mounted = useHydrated();
 
   useEffect(() => {
     let active = true;

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { ShieldCheck, ChevronDown, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useHydrated } from "@/lib/use-hydrated";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,12 +30,8 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   const { me, status, error } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
   const isAdmin = authUser?.type === "admin";
-  // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
-  // that has since moved on (e.g. after a back/forward navigation) — `status`/`me` in that cached HTML
-  // can genuinely disagree with the live store. Gate on `mounted` so the branch below matches whatever
-  // HTML is being hydrated against on the very first render.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // See use-hydrated.ts for why this is not a setState-in-effect flag.
+  const mounted = useHydrated();
 
   useEffect(() => {
     if (!initializing && !isAdmin) {
