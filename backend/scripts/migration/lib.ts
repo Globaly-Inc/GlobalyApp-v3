@@ -703,6 +703,11 @@ export async function runTransform(
       console.log(`  reported ${report.unresolved.length} unresolved row(s) to ${MIG_SCHEMA}.unresolved:`);
       for (const [code, n] of [...byReason].sort()) console.log(`    ${code}: ${n}`);
     }
+    // Notes are how a wave says something out loud on EVERY run — the
+    // user-assigned Kosovo ISO-3, for one. Collected but never printed is the
+    // same as not said, so the ensure-mig bookkeeping is filtered out and the
+    // rest is shown.
+    for (const note of report.notes.filter((n) => !n.startsWith("ensured "))) console.log(`  note   ${note}`);
     if (failure) console.error(`  FAILED — ${(failure as Error).message ?? failure}`);
     if (!flags.apply) console.log(`  Nothing was written. Re-run with --apply to commit.`);
   }

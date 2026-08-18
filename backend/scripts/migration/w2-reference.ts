@@ -8,6 +8,8 @@
  * Load order is a dependency order, not a preference:
  *   degree_levels, areas_of_study, issuing_organizations, service_categories,
  *   business_categories            independent
+ *   schema_fields                  -> both category tables (entity_id is their serial)
+ *   test_provider_logos            independent
  *   fee_types                      -> mig.map_businesses (one V1 row is owned)
  *   business_category_default_services  -> both category tables (junction, D8)
  *   accreditations                 -> issuing_organizations
@@ -52,8 +54,119 @@ const ISSUING_ORG_ID = `(SELECT io.id FROM public.issuing_organizations io
 const BUSINESS_ID = (col: string): string =>
   `(SELECT mb.business_id FROM mig.map_businesses mb WHERE mb.v1_business_id = ${col})`;
 
+/**
+ * The jsonb keys public.schema_fields has a column for. Anything else in a V1
+ * field definition (today: `step`, on one number field) is reason-coded rather
+ * than folded into `options`, which V3 documents as the select/multi-select
+ * choice list and nothing else.
+ */
+const SCHEMA_FIELD_KEYS = ["key", "label", "type", "required", "filterable", "options"] as const;
+
+/**
+ * V1's field definitions live as a jsonb array on the category row, so the
+ * expansion is `jsonb_array_elements` WITH ORDINALITY: the ordinal is what makes
+ * "which of two same-key definitions wins" a decision rather than a race.
+ */
+const FIELDS_OF = (v1Table: string): string => `
+  SELECT s.slug,
+         f.v AS def,
+         f.v->>'key' AS field_key,
+         row_number() OVER (PARTITION BY s.slug, f.v->>'key' ORDER BY f.ord) AS rn
+    FROM v1_staging.${v1Table} s
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE WHEN jsonb_typeof(s.schema_fields) = 'array' THEN s.schema_fields ELSE '[]'::jsonb END
+    ) WITH ORDINALITY AS f(v, ord)
+   WHERE btrim(coalesce(f.v->>'key', '')) <> ''
+     AND btrim(coalesce(f.v->>'label', '')) <> ''
+     AND btrim(coalesce(f.v->>'type', '')) <> ''
+`;
+
+/**
+ * §15: `core_field_settings` is dropped (platform-global, no V3 entity to hang
+ * off), and the field definitions that DO fit V3's per-entity shape are the ones
+ * already attached to a category — business_categories.schema_fields and
+ * service_categories.schema_fields, both of which have a real entity id.
+ *
+ * Everything a definition carries that V3 has no column for is reported, not
+ * folded in: a `step` quietly stuffed into `options` is a select list with a
+ * number in it, and the first UI that renders it says so.
+ */
+async function loadSchemaFields(
+  ctx: TransformContext,
+  allowedCodes: ReadonlySet<string>,
+  entity: { v1Table: string; v3Table: string; entityType: string },
+): Promise<void> {
+  const fields = FIELDS_OF(entity.v1Table);
+  const source = `${entity.v1Table}.schema_fields`;
+
+  // A category whose slug did not reach V3 takes its fields with it. Impossible
+  // as long as the category load above ran — which is exactly why it is checked
+  // rather than assumed.
+  await reportUnresolvedQuery(ctx, allowedCodes, {
+    sourceTable: entity.v1Table,
+    targetTable: "public.schema_fields",
+    column: "entity_id",
+    reasonCode: "unresolved_category",
+    sql: `SELECT x.slug || '|' || x.field_key,
+                 'category "' || x.slug || '" has no public.${entity.v3Table} row, so its schema field has no entity_id'
+            FROM (${fields}) x
+           WHERE x.rn = 1
+             AND NOT EXISTS (SELECT 1 FROM public.${entity.v3Table} c WHERE c.slug = x.slug AND c.deleted_at IS NULL)`,
+  });
+
+  await reportUnresolvedQuery(ctx, allowedCodes, {
+    sourceTable: entity.v1Table,
+    targetTable: "public.schema_fields",
+    column: "key",
+    reasonCode: "duplicate_natural_key",
+    sql: `SELECT x.slug || '|' || x.field_key,
+                 'category "' || x.slug || '" defines the field key twice; the first definition in the array wins'
+            FROM (${fields}) x WHERE x.rn > 1`,
+  });
+
+  // schema_fields has a column for six jsonb keys. A seventh is a field V3
+  // cannot express — reported so a future schema change can find it, never
+  // dropped on the floor and never smuggled into `options`.
+  await reportUnresolvedQuery(ctx, allowedCodes, {
+    sourceTable: entity.v1Table,
+    targetTable: "public.schema_fields",
+    column: "schema_fields",
+    reasonCode: "no_v3_column",
+    sql: `SELECT x.slug || '|' || x.field_key || '#' || k.key,
+                 'public.schema_fields has no column for "' || k.key || '" (value ' || (x.def->k.key)::text || ')'
+            FROM (${fields}) x
+            CROSS JOIN LATERAL jsonb_object_keys(x.def) AS k(key)
+           WHERE x.rn = 1 AND k.key <> ALL ($1::text[])`,
+    params: [[...SCHEMA_FIELD_KEYS]],
+  });
+
+  await execWrite(
+    ctx,
+    `public.schema_fields (${entity.entityType})`,
+    `INSERT INTO public.schema_fields (entity_id, entity_type, is_default, label, key, type, is_required, filterable, options)
+     SELECT c.id, $1, false, x.def->>'label', x.field_key,
+            CASE WHEN x.def->>'type' = 'multi-select' THEN 'multi_select' ELSE x.def->>'type' END,
+            coalesce((x.def->>'required')::boolean, false),
+            coalesce((x.def->>'filterable')::boolean, false),
+            x.def->'options'
+       FROM (${fields}) x
+       JOIN public.${entity.v3Table} c ON c.slug = x.slug AND c.deleted_at IS NULL
+      WHERE x.rn = 1
+     ON CONFLICT (entity_id, entity_type, key) DO UPDATE SET
+       is_default = EXCLUDED.is_default, label = EXCLUDED.label, type = EXCLUDED.type,
+       is_required = EXCLUDED.is_required, filterable = EXCLUDED.filterable,
+       options = EXCLUDED.options, updated_at = now()`,
+    [entity.entityType],
+  );
+
+  ctx.report.notes.push(`${source} expanded into public.schema_fields as entity_type='${entity.entityType}'`);
+}
+
 export async function transformReference(ctx: TransformContext, allowedCodes: ReadonlySet<string>): Promise<void> {
-  await clearReport(ctx, ["fee_types", "accreditations", "business_category_default_services", "service_categories"]);
+  await clearReport(ctx, [
+    "fee_types", "accreditations", "business_category_default_services",
+    "service_categories", "business_categories", "test_provider_logos",
+  ]);
 
   // ── independent reference tables ───────────────────────────────────────────
   await assertTargetColumns(ctx.db, "public", "degree_levels", ["name", "slug", "sort_order", "is_active"]);
@@ -111,6 +224,68 @@ export async function transformReference(ctx: TransformContext, allowedCodes: Re
      ON CONFLICT (slug) DO UPDATE SET
        name = EXCLUDED.name, description = EXCLUDED.description, icon = EXCLUDED.icon,
        is_active = EXCLUDED.is_active, sort_order = EXCLUDED.sort_order, updated_at = now()`,
+  );
+
+  // ── schema_fields, from the jsonb already attached to the categories ───────
+  // Runs AFTER both category tables, because entity_id is the V3 category's
+  // serial and there is no other way to know it.
+  await assertTargetColumns(ctx.db, "public", "schema_fields", [
+    "entity_id", "entity_type", "is_default", "label", "key", "type", "is_required", "filterable", "options",
+  ]);
+  await loadSchemaFields(ctx, allowedCodes, {
+    v1Table: "business_categories",
+    v3Table: "business_categories",
+    entityType: "business_categories",
+  });
+  await loadSchemaFields(ctx, allowedCodes, {
+    v1Table: "service_categories",
+    v3Table: "service_categories",
+    entityType: "service_categories",
+  });
+
+  // ── test_provider_logos ────────────────────────────────────────────────────
+  // §15: the 10 reference rows behind the test pickers get their own small
+  // public table (20260817_200_test_provider_logos.ts). logo_url is carried
+  // VERBATIM — those are supabase.co objects, and W6's storage rehost is what
+  // rewrites them once each has an uploaded_files row.
+  await assertTargetColumns(ctx.db, "public", "test_provider_logos", [
+    "v1_id", "test_type", "category", "logo_url", "sort_order",
+  ]);
+
+  const LOGOS = `
+    SELECT l.id, btrim(l.test_type) AS test_type, l.category, l.logo_url, coalesce(l.sort_order, 0) AS sort_order,
+           row_number() OVER (PARTITION BY lower(btrim(l.test_type)) ORDER BY l.created_at, l.id) AS rn
+      FROM v1_staging.test_provider_logos l
+     WHERE btrim(coalesce(l.test_type, '')) <> ''`;
+
+  await reportUnresolvedQuery(ctx, allowedCodes, {
+    sourceTable: "test_provider_logos",
+    targetTable: "public.test_provider_logos",
+    column: "category",
+    reasonCode: "invalid_source_data",
+    sql: `SELECT g.test_type, 'category "' || coalesce(g.category, '(null)') || '" is not one of language | academic, which V3 CHECKs'
+            FROM (${LOGOS}) g WHERE g.rn = 1 AND coalesce(g.category, '') NOT IN ('language', 'academic')`,
+  });
+
+  await reportUnresolvedQuery(ctx, allowedCodes, {
+    sourceTable: "test_provider_logos",
+    targetTable: "public.test_provider_logos",
+    column: "test_type",
+    reasonCode: "duplicate_natural_key",
+    sql: `SELECT g.test_type, 'V1 lists this test type more than once; the oldest row wins'
+            FROM (${LOGOS}) g WHERE g.rn > 1`,
+  });
+
+  await execWrite(
+    ctx,
+    "public.test_provider_logos",
+    `INSERT INTO public.test_provider_logos (v1_id, test_type, category, logo_url, sort_order)
+     SELECT g.id, g.test_type, g.category, g.logo_url, g.sort_order
+       FROM (${LOGOS}) g
+      WHERE g.rn = 1 AND g.category IN ('language', 'academic')
+     ON CONFLICT (test_type) DO UPDATE SET
+       v1_id = EXCLUDED.v1_id, category = EXCLUDED.category, logo_url = EXCLUDED.logo_url,
+       sort_order = EXCLUDED.sort_order, updated_at = now()`,
   );
 
   // ── fee_types ──────────────────────────────────────────────────────────────
@@ -309,7 +484,15 @@ export function referenceSelfCheck(): void {
   // reported, not silently promoted to global.
   assert.ok(!BUSINESS_ID("x").includes("coalesce"), "an unresolved owner is NULL + a report, never a default");
 
-  console.log("w2-reference self-check: ok");
+  // schema_fields: the six keys V3 has a column for, and nothing else. Growing
+  // this list without growing the table is how `step` would end up in `options`.
+  assert.deepEqual([...SCHEMA_FIELD_KEYS].sort(), ["filterable", "key", "label", "options", "required", "type"]);
+  const fields = FIELDS_OF("service_categories");
+  assert.ok(fields.includes("WITH ORDINALITY"), "which of two same-key definitions wins must be a decision, not array order luck");
+  assert.ok(fields.includes("jsonb_typeof(s.schema_fields) = 'array'"), "a null or object jsonb must expand to nothing, not throw");
+  assert.ok(fields.includes("row_number()"), "a duplicate key must be reported, not silently upserted twice in one statement");
+
+  console.log(`w2-reference self-check: ok — ${SCHEMA_FIELD_KEYS.length} schema_field keys carried`);
 }
 
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
