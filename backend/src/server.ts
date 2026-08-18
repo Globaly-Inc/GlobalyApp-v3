@@ -37,6 +37,8 @@ import ambassadorsModule, { publicAmbassadorsModule } from "./modules/ambassador
 import trainingModule, { publicCertificatesModule } from "./modules/training/index.js";
 import scholarshipsPublicModule, { businessScholarshipsModule } from "./modules/scholarships/index.js";
 import { publicVisasModule } from "./modules/visas/index.js";
+import favoritesModule from "./modules/favorites/index.js";
+import { adminWaitlistModule, publicWaitlistModule } from "./modules/waitlist/index.js";
 
 const logger = createChildLogger("server");
 
@@ -69,6 +71,8 @@ export async function buildServer() {
     await protectedApp.register(ambassadorsModule);        // ambassador programs, engagement, earnings, payouts
     await protectedApp.register(trainingModule);           // training programs, certificates, gamification
     await protectedApp.register(businessScholarshipsModule); // business-owned scholarship submission
+    await protectedApp.register(favoritesModule);          // saved items + saved list-view filters
+    await protectedApp.register(adminWaitlistModule);      // the ONLY read of the pure-PII waitlist
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
@@ -83,6 +87,7 @@ export async function buildServer() {
   await app.register(publicCertificatesModule);    // public training-certificate verification (no auth)
   await app.register(scholarshipsPublicModule);    // public scholarships reads (no auth)
   await app.register(publicVisasModule);           // public visa + MARA agent directory (no auth)
+  await app.register(publicWaitlistModule);        // public waitlist sign-up, POST only (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));
