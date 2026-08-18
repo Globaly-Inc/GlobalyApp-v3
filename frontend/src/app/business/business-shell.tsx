@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, LogOut, Loader2 } from "lucide-react";
+import { Building2, CalendarDays, LogOut, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -90,6 +90,9 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
           <DropdownMenuContent align="end">
             <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/profile")}>
               <Building2 /> My Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/events")}>
+              <CalendarDays /> Events
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(portalTarget.href)}>
