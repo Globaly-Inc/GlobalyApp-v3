@@ -1,6 +1,8 @@
 // Installment breakdown calculator for course fees.
 // Ported from V2 process-extraction-queue parseInstallments + periodType logic.
 // Pure function, no external deps.
+// Covered by tests/unit/extraction-fee-matcher.test.ts, which replaced the inline
+// self-check this file used to carry and adds the cent-exactness invariant.
 
 export interface Installment {
   label: string;
@@ -130,74 +132,4 @@ function semesterStyleLabel(unit: string, perYear: number): LabelFn {
     const sub = (i % perYear) + 1;
     return `Year ${year} ${unit} ${sub}`;
   };
-}
-
-// ── self-check (ponytail rule) ──────────────────────────────────────────
-// Run with: npx tsx src/modules/superadmin/data-extraction/lib/installment-parser.ts
-
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/.*\//, ""))) {
-  const assert = (cond: boolean, msg: string) => {
-    if (!cond) throw new Error(`ASSERTION FAILED: ${msg}`);
-  };
-
-  // Zero amount → empty
-  assert(parseInstallments({ totalAmount: 0 }).length === 0, "zero → empty");
-
-  // No hints → single "Total"
-  const single = parseInstallments({ totalAmount: 10000 });
-  assert(single.length === 1 && single[0].label === "Total" && single[0].amount === 10000, "no hints → single Total");
-
-  // Per Semester, 1 year
-  const sem1yr = parseInstallments({ totalAmount: 10000, periodType: "Per Semester", durationWeeks: 52 });
-  assert(sem1yr.length === 2, "per semester 1yr → 2 installments");
-  assert(sem1yr[0].label === "Semester 1", "semester label");
-  assert(sem1yr[0].amount + sem1yr[1].amount === 10000, "amounts sum");
-
-  // Per Semester, 2 years
-  const sem2yr = parseInstallments({ totalAmount: 10001, periodType: "Per Semester", durationWeeks: 104 });
-  assert(sem2yr.length === 4, "per semester 2yr → 4");
-  assert(sem2yr[0].label === "Year 1 Semester 1", "multi-year label");
-  assert(sem2yr[3].label === "Year 2 Semester 2", "last multi-year label");
-  // Rounding: 10001/4 = 2500 base, remainder 1 goes to last
-  assert(sem2yr[3].amount === 2501, "rounding to last");
-  assert(sem2yr.reduce((s, x) => s + x.amount, 0) === 10001, "sum preserved");
-
-  // Per Trimester
-  const tri = parseInstallments({ totalAmount: 9000, periodType: "Per Trimester", durationWeeks: 52 });
-  assert(tri.length === 3, "trimester → 3");
-  assert(tri[0].label === "Trimester 1", "trimester label");
-
-  // Per Year, 3-year course
-  const yr3 = parseInstallments({ totalAmount: 30000, periodType: "Per Year", durationWeeks: 156 });
-  assert(yr3.length === 3 && yr3[0].label === "Year 1", "per year 3yr");
-
-  // Total, 2-year course → 4 semesters (104/26=4)
-  const tot2yr = parseInstallments({ totalAmount: 20000, periodType: "Total", durationWeeks: 104 });
-  assert(tot2yr.length === 4, "total 2yr → 4 semesters");
-
-  // Per Unit → 1
-  const unit = parseInstallments({ totalAmount: 500, periodType: "Per Unit" });
-  assert(unit.length === 1 && unit[0].label === "Total", "per unit → 1");
-
-  // Text override: "2 semesters per year"
-  const textSem = parseInstallments({ totalAmount: 8000, text: "2 semesters per year" });
-  assert(textSem.length === 2, "text 2 semesters → 2");
-
-  // Text "quarterly"
-  const q = parseInstallments({ totalAmount: 12000, text: "quarterly payments" });
-  assert(q.length === 4 && q[0].label === "Quarter 1", "quarterly");
-
-  // Text "3 trimesters"
-  const triText = parseInstallments({ totalAmount: 9000, text: "3 trimesters" });
-  assert(triText.length === 3 && triText[0].label === "Trimester 1", "text trimester");
-
-  // Fallback: duration > 52 weeks, no other hints
-  const fb = parseInstallments({ totalAmount: 20000, durationWeeks: 104 });
-  assert(fb.length === 4, "fallback 2yr → 4 semesters");
-
-  // Text takes priority over periodType
-  const override = parseInstallments({ totalAmount: 6000, periodType: "Per Year", text: "3 terms", durationWeeks: 52 });
-  assert(override.length === 3 && override[0].label === "Term 1", "text overrides periodType");
-
-  console.log("All installment-parser assertions passed.");
 }

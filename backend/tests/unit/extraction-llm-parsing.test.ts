@@ -291,6 +291,65 @@ describe("withRetry", () => {
   });
 });
 
+describe("the default Gemini provider", () => {
+  // Injected fixtures cover the parse chain; this covers the wiring underneath it —
+  // that with a key configured the client builds a request, reads the model's text
+  // back out and notices a MAX_TOKENS finish. Still offline: the SDK's fetch is
+  // stubbed, so no request leaves the process.
+  async function withStubbedGemini<T>(
+    payload: unknown,
+    run: () => Promise<T>,
+  ): Promise<{ result: T | Error; urls: string[] }> {
+    const originalFetch = globalThis.fetch;
+    const urls: string[] = [];
+    config.GEMINI_API_KEY = "acov-test-key";
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      return { result: await run(), urls };
+    } catch (e) {
+      return { result: e as Error, urls };
+    } finally {
+      globalThis.fetch = originalFetch;
+      config.GEMINI_API_KEY = "";
+    }
+  }
+
+  const reply = (text: string, finishReason = "STOP") => ({
+    candidates: [{ content: { parts: [{ text }], role: "model" }, finishReason, index: 0 }],
+  });
+
+  it("reaches the model and parses what it says", async () => {
+    const { result, urls } = await withStubbedGemini(
+      reply('{"courses":[{"name":"Master of Arts"}]}'),
+      () => extractJson<CoursesShape>({ system: "s", prompt: "p" }),
+    );
+    expect(result).not.toBeInstanceOf(Error);
+    expect((result as CoursesShape).courses).toHaveLength(1);
+    expect(urls[0]).toContain(config.GEMINI_MODEL);
+  });
+
+  it("still repairs a truncated answer that came from the real client path", async () => {
+    const { result } = await withStubbedGemini(
+      reply('{"courses":[{"name":"Master of Arts"},{"name":"Doct', "MAX_TOKENS"),
+      () => extractJson<CoursesShape>({ system: "s", prompt: "p" }),
+    );
+    expect((result as CoursesShape).courses).toEqual([{ name: "Master of Arts" }]);
+  });
+
+  it("returns plain text through complete()", async () => {
+    const { result } = await withStubbedGemini(reply("Sydney, Australia"), () =>
+      complete({ system: "s", prompt: "p", maxTokens: 64 }),
+    );
+    expect(result).toBe("Sydney, Australia");
+  });
+});
+
 describe("embed", () => {
   it("declares the width every embedding column in the schema is built for", () => {
     expect(EMBEDDING_DIMS).toBe(3072);

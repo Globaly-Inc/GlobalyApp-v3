@@ -210,6 +210,91 @@ describe("scrapeMarkdown — Crawl4AI first", () => {
   });
 });
 
+describe("scrapeMarkdown — provider responses that do not match the docs", () => {
+  beforeEach(() => {
+    config.CRAWL4AI_BASE_URL = "https://crawl4ai.internal";
+  });
+
+  it("accepts a full https base URL unchanged", async () => {
+    const calls = stubFetch([[/\/v1\/crawl/, () => json({ results: [{ markdown: REAL_PAGE }] })]]);
+    await scrapeMarkdown("https://g1.edu/courses");
+    expect(calls[0].url).toBe("https://crawl4ai.internal/v1/crawl");
+  });
+
+  it("sends no auth header when the instance needs none", async () => {
+    const calls = stubFetch([[/\/v1\/crawl/, () => json({ results: [{ markdown: REAL_PAGE }] })]]);
+    await scrapeMarkdown("https://g2.edu/courses");
+    expect(calls[0].headers["X-API-Key"]).toBeUndefined();
+    expect(calls[0].headers["Authorization"]).toBeUndefined();
+  });
+
+  it("reads a bare object as well as a results array", async () => {
+    stubFetch([[/\/v1\/crawl/, () => json({ fit_markdown: REAL_PAGE })]]);
+    const res = await scrapeMarkdown("https://g3.edu/courses");
+    expect(res.markdown).toBe(REAL_PAGE);
+  });
+
+  it("prefers raw_markdown when neither markdown nor fit_markdown is present", async () => {
+    stubFetch([[/\/v1\/crawl/, () => json({ results: [{ raw_markdown: REAL_PAGE }] })]]);
+    expect((await scrapeMarkdown("https://g4.edu/courses")).markdown).toBe(REAL_PAGE);
+  });
+
+  it("extracts links from the markdown itself, since Crawl4AI returns none", async () => {
+    const withLinks = `${REAL_PAGE}\n\n[Nursing](https://g5.edu/course/nursing) and https://g5.edu/fees`;
+    stubFetch([[/\/v1\/crawl/, () => json({ results: [{ markdown: withLinks }] })]]);
+    const res = await scrapeMarkdown("https://g5.edu/courses", { withLinks: true });
+    expect(res.links).toEqual(
+      expect.arrayContaining(["https://g5.edu/course/nursing", "https://g5.edu/fees"]),
+    );
+  });
+
+  it("reports a legacy /md body with no markdown field as an empty page", async () => {
+    stubFetch([
+      [/\/v1\/crawl/, () => new Response("nope", { status: 404 })],
+      [/\/md$/, () => json({ markdown: null })],
+    ]);
+    const res = await scrapeMarkdown("https://g6.edu/courses");
+    expect(res).toMatchObject({ markdown: "", blocked: true, error: "Empty page" });
+  });
+
+  it("reports the legacy endpoint's `error` field when there is no `detail`", async () => {
+    stubFetch([
+      [/\/v1\/crawl/, () => new Response("nope", { status: 404 })],
+      [/\/md$/, () => json({ error: "browser pool exhausted" }, 500)],
+    ]);
+    expect((await scrapeMarkdown("https://g7.edu/courses")).error).toBe("browser pool exhausted");
+  });
+
+  it("falls back to the status code when the failure body is not JSON at all", async () => {
+    stubFetch([
+      [/\/v1\/crawl/, () => new Response("nope", { status: 404 })],
+      [/\/md$/, () => new Response("<html>504</html>", { status: 504 })],
+    ]);
+    expect((await scrapeMarkdown("https://g8.edu/courses")).error).toBe("HTTP 504");
+  });
+
+  it("keeps Firecrawl's own error when Crawl4AI had none to report", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([
+      [/\/v1\/crawl/, () => json({ results: [{ markdown: "" }] })],
+      [/firecrawl/, () => json({ error: "site requires login" }, 403)],
+    ]);
+    const res = await scrapeMarkdown("https://g9.edu/courses");
+    expect(res).toMatchObject({ blocked: true, error: "site requires login" });
+  });
+
+  it("turns a Firecrawl network throw into an error, not a rejection", async () => {
+    config.CRAWL4AI_BASE_URL = undefined;
+    config.FIRECRAWL_API_KEY = "fc-key";
+    globalThis.fetch = (async () => {
+      throw new TypeError("fetch failed");
+    }) as typeof fetch;
+    const res = await scrapeMarkdown("https://g10.edu/courses");
+    expect(res).toMatchObject({ markdown: "", scraper: "firecrawl", blocked: true });
+    expect(res.error).toContain("fetch failed");
+  });
+});
+
 describe("scrapeMarkdown — Firecrawl only", () => {
   beforeEach(() => {
     config.FIRECRAWL_API_KEY = "fc-key";
@@ -268,6 +353,28 @@ describe("scrapeRenderedHtml", () => {
     expect(calls[0].body).toMatchObject({ formats: ["rawHtml"], onlyMainContent: false, waitFor: 8000 });
   });
 
+  it("reads the flat html field when rawHtml is absent", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([[/firecrawl/, () => json({ html: "<table>flat</table>" })]]);
+    expect((await scrapeRenderedHtml("https://c4.edu/table")).html).toBe("<table>flat</table>");
+  });
+
+  it("reports the provider's error and the status code it came with", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([[/firecrawl/, () => json({ error: "rendering timed out" }, 408)]]);
+    expect((await scrapeRenderedHtml("https://c5.edu/table")).error).toBe("rendering timed out");
+    stubFetch([[/firecrawl/, () => new Response("nope", { status: 500 })]]);
+    expect((await scrapeRenderedHtml("https://c6.edu/table")).error).toBe("HTTP 500");
+  });
+
+  it("turns a network throw into an error", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    globalThis.fetch = (async () => {
+      throw new Error("socket hang up");
+    }) as typeof fetch;
+    expect((await scrapeRenderedHtml("https://c7.edu/table")).error).toContain("socket hang up");
+  });
+
   it("returns empty html rather than a non-string when the provider sends junk", async () => {
     config.FIRECRAWL_API_KEY = "fc-key";
     stubFetch([[/firecrawl/, () => json({ data: { rawHtml: { nope: true } } })]]);
@@ -322,6 +429,31 @@ describe("mapUrlsDetailed", () => {
     }
   });
 
+  it("returns no links for a body that is not an object", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([[/v2\/map/, () => json("just a string")]]);
+    const res = await mapUrlsDetailed("https://d7.edu");
+    expect(res).toEqual({ success: true, links: [] });
+  });
+
+  it("returns no links when every shape is empty or unrecognised", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([[/v2\/map/, () => json({ links: [], data: { links: [] } })]]);
+    expect((await mapUrlsDetailed("https://d8.edu")).links).toEqual([]);
+  });
+
+  it("survives a throw on both endpoints and reports a network error", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    globalThis.fetch = (async () => {
+      throw new Error("EAI_AGAIN");
+    }) as typeof fetch;
+    expect(await mapUrlsDetailed("https://d9.edu")).toEqual({
+      success: false,
+      links: [],
+      error: "firecrawl network error",
+    });
+  });
+
   it("drops entries that are not absolute http URLs", async () => {
     config.FIRECRAWL_API_KEY = "fc-key";
     stubFetch([
@@ -358,6 +490,32 @@ describe("politeFetch", () => {
     const res = await politeFetch("https://e2.edu/sitemap.xml", {}, { maxRetries: 1 });
     expect(res.status).toBe(503);
     expect(hit).toBe(2);
+  });
+
+  it("backs off exponentially when the server names no Retry-After", async () => {
+    let hit = 0;
+    globalThis.fetch = (async () => {
+      hit++;
+      return hit === 1
+        ? new Response("slow down", { status: 429 })
+        : new Response("ok", { status: 200 });
+    }) as typeof fetch;
+    const started = Date.now();
+    const res = await politeFetch("https://e5.edu/sitemap.xml");
+    // 2000ms * 2^0 plus jitter — the point is that it waited, not the exact figure.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1900);
+    expect(res.status).toBe(200);
+  });
+
+  it("ignores a nonsense Retry-After and falls back to its own backoff", async () => {
+    let hit = 0;
+    globalThis.fetch = (async () => {
+      hit++;
+      return hit === 1
+        ? new Response("slow down", { status: 429, headers: { "retry-after": "later" } })
+        : new Response("ok", { status: 200 });
+    }) as typeof fetch;
+    expect((await politeFetch("https://e6.edu/sitemap.xml")).status).toBe(200);
   });
 
   it("does not retry a 404 — the page is simply not there", async () => {
@@ -433,6 +591,47 @@ describe("discoverUrlsForCrawl", () => {
     expect(res.error).toBe("insufficient credits");
   });
 
+  it("reads the sitemap named in robots.txt when the usual paths 404", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([
+      [/v2\/map|v1\/map/, () => json({ error: "no" }, 400)],
+      [/f7\.edu\/robots\.txt/, () => new Response("Sitemap: https://f7.edu/sm/all.xml\n")],
+      [
+        /f7\.edu\/sm\/all\.xml/,
+        () =>
+          new Response(
+            `<urlset><url><loc>https://f7.edu/a</loc></url><url><loc>https://f7.edu/b</loc></url></urlset>`,
+          ),
+      ],
+      [/.*/, () => new Response("nope", { status: 404 })],
+    ]);
+    const res = await discoverUrlsForCrawl("https://f7.edu");
+    expect(res.method).toBe("sitemap");
+    expect(res.urls).toEqual(["https://f7.edu/a", "https://f7.edu/b"]);
+  });
+
+  it("ignores a sitemap that is not XML at all", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([
+      [/v2\/map|v1\/map/, () => json({ error: "no" }, 400)],
+      [/f8\.edu\/sitemap\.xml/, () => new Response("<html>404 page, served with a 200</html>")],
+      [/firecrawl\.dev\/v1\/scrape/, () => json({ data: { markdown: THIN_PAGE, links: [] } })],
+      [/.*/, () => new Response("nope", { status: 404 })],
+    ]);
+    const res = await discoverUrlsForCrawl("https://f8.edu");
+    expect(res.method).toBe("seed-only");
+  });
+
+  it("returns the seed alone for a URL it cannot even parse", async () => {
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([
+      [/v2\/map|v1\/map/, () => json({ error: "no" }, 400)],
+      [/.*/, () => new Response("nope", { status: 404 })],
+    ]);
+    const res = await discoverUrlsForCrawl("not-a-url");
+    expect(res).toMatchObject({ urls: ["not-a-url"], method: "seed-only" });
+  });
+
   it("falls back to links scraped off the seed page", async () => {
     config.FIRECRAWL_API_KEY = "fc-key";
     stubFetch([
@@ -443,6 +642,29 @@ describe("discoverUrlsForCrawl", () => {
     const res = await discoverUrlsForCrawl("https://f4.edu");
     expect(res.method).toBe("page-links");
     expect(res.urls).toHaveLength(2);
+  });
+
+  it("finds the catalogue subdomain when the seed's own sitemap is a brochure", async () => {
+    // stanford.edu's www sitemap lists 27 pages and not one course; catalog.mit.edu
+    // has 437. So a catalogue subdomain with a sitemap is read, and one that answers
+    // on / but 404s its sitemap is still handed back as an entry point.
+    config.FIRECRAWL_API_KEY = "fc-key";
+    stubFetch([
+      [/v2\/map|v1\/map/, () => json({ error: "insufficient credits" }, 402)],
+      [
+        /catalog\.f6\.edu\/sitemap\.xml/,
+        () =>
+          new Response(
+            `<urlset><url><loc>https://catalog.f6.edu/course/nursing</loc></url><url><loc>https://catalog.f6.edu/course/law</loc></url></urlset>`,
+          ),
+      ],
+      [/^https:\/\/bulletin\.f6\.edu$/, () => new Response("<html>Bulletin</html>")],
+      [/.*/, () => new Response("nope", { status: 404 })],
+    ]);
+    const res = await discoverUrlsForCrawl("https://www.f6.edu");
+    expect(res.method).toBe("sitemap");
+    expect(res.urls).toContain("https://catalog.f6.edu/course/nursing");
+    expect(res.urls).toContain("https://bulletin.f6.edu");
   });
 
   it("carries the insufficient-credits flag out to the caller on the last resort", async () => {

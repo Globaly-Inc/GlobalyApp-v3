@@ -467,6 +467,119 @@ describeDb("extraction staging writer", () => {
     });
   });
 
+  // ── what the LLM leaves out ───────────────────────────────────────────────
+
+  describe("a sparse extraction", () => {
+    it("applies the documented default to every field the model omitted", async () => {
+      // The model returns partial children constantly. These defaults are the
+      // contract the review UI and promote both read, so they are asserted rather
+      // than assumed: an unlabelled fee is "both", not null, and "AUD", not empty.
+      const jobId = await newJob("sparse");
+      const courseId = await writer.writeCourse(
+        jobId,
+        {
+          name: "Multicultural Education Certificate",
+          fees: [{}],
+          intakes: [{}],
+          study_options: [{}],
+          eligibility: [{}],
+          english_requirements: [{}],
+        },
+        new Map(),
+      );
+
+      const [fee] = await db(`${S}.extraction_course_fees`).where({ job_id: jobId });
+      expect([fee.name, fee.student_type, fee.period_type, fee.currency, String(fee.total_amount)]).toEqual(
+        [null, "both", "Per Year", "AUD", "0"],
+      );
+
+      const [intake] = await db(`${S}.extraction_intakes`).where({ job_id: jobId });
+      expect([intake.intake_name, intake.start_date, intake.end_date, intake.intake_month]).toEqual([
+        null,
+        null,
+        null,
+        null,
+      ]);
+
+      const [option] = await db(`${S}.extraction_study_options`).where({ job_id: jobId });
+      expect([option.name, option.study_mode, option.study_load, option.duration_unit]).toEqual([
+        null,
+        "on_campus",
+        "full_time",
+        "months",
+      ]);
+
+      const [elig] = await db(`${S}.extraction_eligibility_requirements`).where({ job_id: jobId });
+      expect([elig.name, elig.applicable_to, elig.description, elig.min_score_percent]).toEqual([
+        null,
+        "both",
+        null,
+        null,
+      ]);
+
+      const [eng] = await db(`${S}.extraction_english_requirements`).where({ job_id: jobId });
+      expect([eng.test_type_name, eng.overall_score, eng.listening_score]).toEqual([null, null, null]);
+
+      // And every one of them is still linked, defaults or not.
+      expect(await linked("extraction_course_fee_assignments", courseId)).toBe(1);
+      expect(await linked("extraction_course_intake_assignments", courseId)).toBe(1);
+      expect(await linked("extraction_course_study_option_assignments", courseId)).toBe(1);
+      expect(await linked("extraction_course_eligibility_assignments", courseId)).toBe(1);
+    });
+
+    it("re-delivering a sparse course is still a no-op", async () => {
+      const jobId = await newJob("sparse-redelivery");
+      const sparse = { name: "Undergraduate Minor in Music Production", fees: [{}], intakes: [{}] };
+      const courseId = await writer.writeCourse(jobId, sparse, new Map());
+      await writer.writeCourse(jobId, sparse, new Map());
+      // All-null content is the hardest case for a content match, because SQL
+      // equality on NULL is never true — the query has to use IS NULL.
+      expect(await count("extraction_course_fees", { job_id: jobId })).toBe(1);
+      expect(await count("extraction_intakes", { job_id: jobId })).toBe(1);
+      expect(await linked("extraction_course_fee_assignments", courseId)).toBe(1);
+    });
+
+    it("coerces a numeric-string month and drops an unparseable duration", async () => {
+      const jobId = await newJob("coercions");
+      const courseId = await writer.writeCourse(
+        jobId,
+        {
+          name: "PhD in Operations Research",
+          duration_weeks: "not a number" as unknown as number,
+          intakes: [{ intake_name: "March", intake_month: "3", intake_year: "2028" }],
+          eligibility: [{ name: "GPA", min_score_percent: "" as unknown as number }],
+        },
+        new Map(),
+      );
+      const course = await db(`${S}.extraction_courses`).where({ id: courseId }).first();
+      expect(course.duration_weeks).toBeNull();
+      const [intake] = await db(`${S}.extraction_intakes`).where({ job_id: jobId });
+      expect([intake.intake_month, intake.intake_year]).toEqual([3, 2028]);
+      const [elig] = await db(`${S}.extraction_eligibility_requirements`).where({ job_id: jobId });
+      expect(elig.min_score_percent).toBeNull();
+    });
+
+    it("re-points a junction that never recorded a campus name", async () => {
+      // Rows written before campus_name existed fall back to the campus id → name map.
+      const jobId = await newJob("junction-no-name");
+      const campusId = await writer.upsertCampus(jobId, { name: "Sydney", city: "Sydney" });
+      const courseId = await writer.writeCourse(jobId, { name: "Bachelor of Arts" }, new Map());
+      await db(`${S}.extraction_course_campuses`).insert({
+        job_id: jobId,
+        course_id: courseId,
+        campus_id: campusId,
+        campus_name: null,
+      });
+
+      await writer.replaceCampuses(jobId, [{ name: "Sydney Campus", city: "Sydney" }]);
+
+      expect(await linked("extraction_course_campuses", courseId)).toBe(1);
+      const [junc] = await db(`${S}.extraction_course_campuses`).where({ job_id: jobId });
+      const [campus] = await db(`${S}.extraction_campuses`).where({ job_id: jobId });
+      expect(junc.campus_id).toBe(campus.id);
+    });
+  });
+
   // ── partial failure ───────────────────────────────────────────────────────
 
   describe("a child insert that fails", () => {

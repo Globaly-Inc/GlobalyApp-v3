@@ -124,6 +124,14 @@ export default defineConfig({
         "src/modules/superadmin/data-extraction/services/quality.service.ts",
         "src/modules/superadmin/data-extraction/services/schedule.service.ts",
         "src/modules/superadmin/data-extraction/routes/quality.routes.ts",
+        // A-COV — the five extraction areas G8 named as uncovered: the scraper, LLM
+        // parsing, the staging writer, the fee matcher and junction assignment.
+        // (Junction assignment has no file of its own; it lives in staging-writer.ts.)
+        "src/modules/superadmin/data-extraction/lib/scraper.ts",
+        "src/modules/superadmin/data-extraction/lib/llm-client.ts",
+        "src/modules/superadmin/data-extraction/lib/staging-writer.ts",
+        "src/modules/superadmin/data-extraction/lib/fee-matcher.ts",
+        "src/modules/superadmin/data-extraction/lib/installment-parser.ts",
         // G5 — ads (campaigns, impressions, leads) + applications & charges
         "src/modules/ads/**/*.ts",
         "src/modules/applications/**/*.ts",
