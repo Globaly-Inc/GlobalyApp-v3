@@ -16,6 +16,7 @@ import { config } from "../../src/config.js";
 import {
   EMBEDDING_DIMS,
   complete,
+  embed,
   extractJson,
   isConfigured,
   type LlmGenerate,
@@ -356,9 +357,6 @@ describe("embed", () => {
   });
 
   it("rejects a vector of the wrong width instead of storing a short one", async () => {
-    const { embed } = await import(
-      "../../src/modules/superadmin/data-extraction/lib/llm-client.js"
-    );
     const original = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ embedding: { values: new Array(768).fill(0.1) } }), {
@@ -371,24 +369,40 @@ describe("embed", () => {
     }
   });
 
-  it("surfaces the provider's status code when embedding fails", async () => {
-    const { embed } = await import(
-      "../../src/modules/superadmin/data-extraction/lib/llm-client.js"
-    );
+  it("surfaces a permanent embedding failure immediately", async () => {
     const original = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response("quota exceeded", { status: 429 })) as typeof fetch;
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response("API key not valid", { status: 403 });
+    }) as typeof fetch;
+    try {
+      await expect(embed("hello")).rejects.toThrow(/Embedding failed \(403\)/);
+      expect(calls).toBe(1);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("retries a 429 before giving up, honouring the delay in the body", async () => {
+    // embed() runs inside withRetry, so a 429 is four attempts, not one. The
+    // retryDelay Gemini puts at the end of its error body is why the client keeps
+    // 500 characters of it — and it is what keeps this test from taking 14 seconds.
+    const original = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response('{"error":{"details":[{"retryDelay":"0s"}]}}', { status: 429 });
+    }) as typeof fetch;
     try {
       await expect(embed("hello")).rejects.toThrow(/Embedding failed \(429\)/);
+      expect(calls).toBe(4);
     } finally {
       globalThis.fetch = original;
     }
   });
 
   it("returns a unit vector, so inner-product and L2 searches agree", async () => {
-    const { embed } = await import(
-      "../../src/modules/superadmin/data-extraction/lib/llm-client.js"
-    );
     const original = globalThis.fetch;
     const values = new Array(EMBEDDING_DIMS).fill(0).map((_, i) => (i === 0 ? 3 : i === 1 ? 4 : 0));
     globalThis.fetch = (async () =>
@@ -406,9 +420,6 @@ describe("embed", () => {
   });
 
   it("leaves an all-zero vector alone rather than dividing by zero", async () => {
-    const { embed } = await import(
-      "../../src/modules/superadmin/data-extraction/lib/llm-client.js"
-    );
     const original = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ embedding: { values: new Array(EMBEDDING_DIMS).fill(0) } }), {
