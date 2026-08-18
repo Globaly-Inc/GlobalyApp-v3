@@ -481,6 +481,26 @@ All under `/api/v3/admin/data-extraction/`. Requires `super_admin` or `data_admi
 | POST | /visas/extract | Extract visas (503 stub) |
 | POST | /mara-agents/extract | Extract MARA (503 stub) |
 
+### Service verticals (service-verticals.routes.ts)
+The eight V3-only verticals — `accommodation`, `insurance`, `banking`, `visa_services`,
+`test_preparation`, `career_services`, `translation`, `transport`. One route family
+parameterized by vertical: the eight staging tables share their whole review contract and
+differ only in the fields the registry in `lib/service-verticals.ts` records. `:vertical` is
+enum-validated against that registry, so a slug can never reach SQL as an identifier.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | /service-verticals | The eight verticals + per-status counts (drives the admin tab bar) |
+| GET | /service-verticals/:vertical | Staged rows, explicit column list per vertical |
+| POST | /service-verticals/:vertical/:id/discard | Discard a staged row |
+| POST | /service-verticals/:vertical/:id/promote | Promote into a tenant's `business_services` |
+
+Promote target: `business_services` in the target org's tenant schema, with the
+service category resolved from the vertical slug and the vertical's own fields written to
+`category_specific_data`. No per-vertical details table exists or is needed — unlike the
+visa vertical, these eight have no V1/V2 equivalent to mirror. Scraped contact details
+(`contact_name/email/phone/whatsapp`, `claims_email/phone`) stay in staging.
+
 ### Supporting (supporting.routes.ts)
 | Method | Path | Description |
 |---|---|---|
