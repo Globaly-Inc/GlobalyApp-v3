@@ -1,3 +1,4 @@
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 
 export interface GuestSessionRow {
@@ -22,6 +23,29 @@ export async function findByFingerprint(hash: string): Promise<GuestSessionRow |
     .first();
 }
 
+/** The most recent row for a fingerprint, migrated or not — used by /guest/migrate. */
+export async function findLatestByFingerprint(hash: string): Promise<GuestSessionRow | undefined> {
+  return masterKnex(TABLE)
+    .where({ fingerprint_hash: hash })
+    .orderBy("created_at", "desc")
+    .orderBy("id", "desc")
+    .first();
+}
+
+/**
+ * Take the row's migration slot under a row lock.
+ *
+ * The lock, not the read, is what makes migration one-shot: two concurrent
+ * migrations queue here, the first writes its session id, and the second re-reads
+ * the committed value and gets back the id already there instead of claiming again.
+ */
+export async function lockForMigration(
+  id: number,
+  trx: Knex.Transaction,
+): Promise<GuestSessionRow | undefined> {
+  return trx(TABLE).where({ id }).forUpdate().first();
+}
+
 export async function create(data: {
   fingerprint_hash: string;
   message_content?: string;
@@ -43,6 +67,10 @@ export async function create(data: {
   return row;
 }
 
-export async function markMigrated(id: number, sessionId: number): Promise<void> {
-  await masterKnex(TABLE).where({ id }).update({ migrated_to_session_id: sessionId });
+export async function markMigrated(
+  id: number,
+  sessionId: number,
+  trx?: Knex.Transaction,
+): Promise<void> {
+  await (trx ?? masterKnex)(TABLE).where({ id }).update({ migrated_to_session_id: sessionId });
 }

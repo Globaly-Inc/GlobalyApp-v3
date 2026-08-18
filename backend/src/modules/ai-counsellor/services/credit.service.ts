@@ -1,8 +1,19 @@
-import { masterKnex } from "../../../core/db/master-pool.js";
-import * as creditsRepo from "../repositories/credits.repository.js";
-import { createChildLogger } from "../../../shared/logger.js";
+// Wallet reads and the pre-flight spend gate for the counsellor.
+//
+// The spend itself lives in metering.service — a turn is charged once, at
+// settlement, for the tokens delivered. This file only answers "may this scope
+// start a turn at all", which is the question a 402 belongs to.
+//
+// Personal chats read the caller's user wallet; business chats read the business
+// wallet through the billing module. Neither path can see the other's balance,
+// because the scope decides which wallet is opened and the scope comes from the
+// JWT, never the body.
 
-const logger = createChildLogger("credit-service");
+import { masterKnex } from "../../../core/db/master-pool.js";
+import * as billingCredits from "../../billing/services/credits.service.js";
+import * as creditsRepo from "../repositories/credits.repository.js";
+import { PaymentRequiredError } from "../../../shared/errors.js";
+import type { ChatScope } from "./scope.js";
 
 const SIGNUP_FREE_CREDITS = 10;
 
@@ -13,67 +24,39 @@ export type CreditBalance = {
   total: number;
 };
 
-/** Lazy-create wallet with free credits on first access. */
+/** Lazy-create the user wallet with free credits on first access. */
 export async function ensureWallet(userId: number): Promise<creditsRepo.WalletRow> {
-  const existing = await creditsRepo.findByUserId(userId);
-  if (existing) return existing;
-  return creditsRepo.createWallet(userId, SIGNUP_FREE_CREDITS);
+  return creditsRepo.ensureUserWallet(userId, SIGNUP_FREE_CREDITS);
 }
 
-export async function getBalance(userId: number): Promise<CreditBalance> {
-  const wallet = await ensureWallet(userId);
+export async function getBalance(scope: ChatScope): Promise<CreditBalance> {
+  if (scope.ownerType === "business") {
+    // Business wallets have no `free` bucket — that one is an AI-chat signup grant.
+    const wallet = await billingCredits.getBalance(scope.businessId);
+    return {
+      free: 0,
+      subscription: wallet.subscription_balance,
+      purchased: wallet.purchased_balance,
+      total: wallet.balance,
+    };
+  }
+
+  const wallet = await ensureWallet(scope.userId);
   return {
     free: wallet.free_balance,
     subscription: wallet.subscription_balance,
     purchased: wallet.purchased_balance,
-    total: wallet.free_balance + wallet.subscription_balance + wallet.purchased_balance,
+    total: creditsRepo.spendableTotal(wallet),
   };
 }
 
-export async function checkBalance(userId: number): Promise<boolean> {
-  const balance = await getBalance(userId);
-  return balance.total > 0;
-}
-
 /**
- * Deduct 1 credit using waterfall: free -> subscription -> purchased.
- * Called AFTER successful AI response — no deduction on failure.
+ * The gate. Runs before the provider is reached, so a refusal costs nothing and
+ * writes no usage row.
  */
-export async function deductCredit(userId: number, messageId: number): Promise<void> {
-  await masterKnex.transaction(async (trx) => {
-    const wallet = await creditsRepo.getForUpdate(userId, trx);
-    if (!wallet) {
-      logger.warn("No wallet found for deduction", { userId, messageId });
-      return;
-    }
-
-    // Waterfall: free -> subscription -> purchased
-    let balanceType: "free" | "subscription" | "purchased";
-    if (wallet.free_balance > 0) {
-      balanceType = "free";
-    } else if (wallet.subscription_balance > 0) {
-      balanceType = "subscription";
-    } else if (wallet.purchased_balance > 0) {
-      balanceType = "purchased";
-    } else {
-      logger.warn("Wallet empty during deduction", { userId, messageId });
-      return;
-    }
-
-    const updated = await creditsRepo.updateBalance(wallet.id, balanceType, -1, trx);
-    await creditsRepo.recordTransaction(
-      wallet.id,
-      {
-        amount: -1,
-        balanceType,
-        reason: "message",
-        balanceAfter: creditsRepo.spendableTotal(updated),
-        referenceType: "ai_message",
-        referenceId: messageId,
-      },
-      trx,
-    );
-  });
+export async function assertSpendable(scope: ChatScope): Promise<void> {
+  const balance = await getBalance(scope);
+  if (balance.total <= 0) throw new PaymentRequiredError();
 }
 
 /** Admin-only: grant credits to a user. */

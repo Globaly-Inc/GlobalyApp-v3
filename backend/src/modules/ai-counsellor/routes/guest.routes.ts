@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { GuestMessageSchema, GuestMigrateSchema } from "../schemas/chat.schema.js";
 import * as guestService from "../services/guest.service.js";
 import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
-import { streamChat } from "../lib/gemini-stream.js";
+import { assertProviderConfigured, getAiProvider } from "../services/provider.js";
 import { buildSystemPrompt } from "../services/prompt.service.js";
 import * as rag from "../services/rag.service.js";
 import { parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
@@ -11,9 +11,10 @@ import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("guest-routes");
 
+/** Unauthenticated. Registered outside the module's auth scope, not inside it. */
 export async function guestRoutes(app: FastifyInstance) {
   // POST /guest/messages — no auth, fingerprint-gated, SSE stream
-  app.post("/guest/messages", { config: { requireAuth: false } }, async (req, reply) => {
+  app.post("/guest/messages", async (req, reply) => {
     const input = GuestMessageSchema.parse(req.body ?? {});
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip;
     const fingerprintHash = guestService.hashFingerprint(input.fingerprint, ip);
@@ -22,6 +23,10 @@ export async function guestRoutes(app: FastifyInstance) {
     if (!gate.allowed) {
       throw new ForbiddenError("Guest limit reached. Create a free account to continue chatting.");
     }
+
+    // Fail closed before a byte of stream is written — see services/provider.ts.
+    assertProviderConfigured();
+    const provider = getAiProvider();
 
     initSSE(reply);
 
@@ -46,7 +51,7 @@ export async function guestRoutes(app: FastifyInstance) {
         isFirstMessage: true,
       });
 
-      const result = await streamChat({
+      const result = await provider.streamChat({
         system,
         history: [],
         userMessage: input.content,
@@ -65,7 +70,8 @@ export async function guestRoutes(app: FastifyInstance) {
       writeEvent(reply, "usage", result.usage);
       writeDone(reply);
 
-      // Persist guest session (fire-and-forget)
+      // Guest turns are not metered: there is no wallet to debit and the one-reply
+      // fingerprint gate is what caps the cost. Metering starts at signup.
       guestService.createGuestSession({
         fingerprintHash,
         messageContent: input.content,
@@ -82,11 +88,15 @@ export async function guestRoutes(app: FastifyInstance) {
       }
     }
   });
+}
 
-  // POST /guest/migrate — auth required
+/** Authenticated. Registered inside the module's auth scope. */
+export async function guestMigrateRoutes(app: FastifyInstance) {
+  // POST /guest/migrate — adopt the caller's guest transcript. Idempotent: a second
+  // call returns the same session with migrated=false and writes nothing.
   app.post("/guest/migrate", async (req, reply) => {
     const input = GuestMigrateSchema.parse(req.body ?? {});
-    const sessionId = await guestService.migrateTranscript(input.fingerprint_hash, Number(req.auth.sub));
-    return reply.send({ session_id: sessionId });
+    const result = await guestService.migrateTranscript(input.fingerprint_hash, Number(req.auth.sub));
+    return reply.send(result);
   });
 }

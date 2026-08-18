@@ -1,3 +1,4 @@
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 
 export interface MessageRow {
@@ -31,8 +32,8 @@ export async function create(data: {
   completion_tokens?: number;
   total_tokens?: number;
   latency_ms?: number;
-}): Promise<MessageRow> {
-  const [row] = await masterKnex(TABLE)
+}, trx?: Knex.Transaction): Promise<MessageRow> {
+  const [row] = await (trx ?? masterKnex)(TABLE)
     .insert({
       session_id: data.session_id,
       role: data.role,
@@ -48,6 +49,10 @@ export async function create(data: {
     })
     .returning("*");
   return row;
+}
+
+export async function findById(id: number): Promise<MessageRow | undefined> {
+  return masterKnex(TABLE).where({ id }).first();
 }
 
 export async function findBySession(

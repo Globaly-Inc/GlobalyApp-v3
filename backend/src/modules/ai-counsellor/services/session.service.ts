@@ -1,33 +1,39 @@
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import type { SessionRow } from "../repositories/sessions.repository.js";
-import { generateTitle } from "../lib/gemini-stream.js";
+import { getAiProvider } from "./provider.js";
+import { ownsSession, type ChatScope } from "./scope.js";
 import { NotFoundError, ForbiddenError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("session-service");
 
-export async function getOrCreateSession(userId: number, sessionId?: number): Promise<SessionRow> {
-  if (sessionId) {
-    const session = await sessionsRepo.findById(sessionId);
-    if (!session) throw new NotFoundError("Session not found");
-    if (session.platform_user_id !== userId) throw new ForbiddenError("Not your session");
-    return session;
-  }
-  return sessionsRepo.create(userId);
+/** Load a session the scope is allowed to see, or fail the way the caller expects. */
+async function requireOwned(id: number, scope: ChatScope): Promise<SessionRow> {
+  const session = await sessionsRepo.findById(id);
+  if (!session) throw new NotFoundError("Session not found");
+  if (!ownsSession(scope, session)) throw new ForbiddenError("Not your session");
+  return session;
 }
 
-export async function listSessions(userId: number, includeArchived: boolean): Promise<SessionRow[]> {
-  return sessionsRepo.findByUser(userId, includeArchived);
+export async function getOrCreateSession(scope: ChatScope, sessionId?: number): Promise<SessionRow> {
+  if (sessionId) return requireOwned(sessionId, scope);
+  return sessionsRepo.create(scope);
+}
+
+export async function getSession(id: number, scope: ChatScope): Promise<SessionRow> {
+  return requireOwned(id, scope);
+}
+
+export async function listSessions(scope: ChatScope, includeArchived: boolean): Promise<SessionRow[]> {
+  return sessionsRepo.findByScope(scope, includeArchived);
 }
 
 export async function updateSession(
   id: number,
-  userId: number,
+  scope: ChatScope,
   patch: { title?: string; is_archived?: boolean; delete?: boolean },
 ): Promise<SessionRow> {
-  const session = await sessionsRepo.findById(id);
-  if (!session) throw new NotFoundError("Session not found");
-  if (session.platform_user_id !== userId) throw new ForbiddenError("Not your session");
+  const session = await requireOwned(id, scope);
 
   if (patch.delete) {
     await sessionsRepo.softDelete(id);
@@ -46,7 +52,9 @@ export async function updateSession(
 
 export async function autoTitle(sessionId: number, userMessage: string, aiResponse: string): Promise<void> {
   try {
-    const title = await generateTitle(`User: ${userMessage.slice(0, 200)}\nAssistant: ${aiResponse.slice(0, 200)}`);
+    const title = await getAiProvider().generateTitle(
+      `User: ${userMessage.slice(0, 200)}\nAssistant: ${aiResponse.slice(0, 200)}`,
+    );
     if (title) await sessionsRepo.update(sessionId, { title });
   } catch (err) {
     logger.warn("Auto-title failed", { sessionId, err: err instanceof Error ? err.message : String(err) });
