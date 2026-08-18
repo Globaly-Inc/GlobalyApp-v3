@@ -502,3 +502,87 @@ Rules:
 - Search the ENTIRE page content, not just headers — data may be in tables, sidebars, or accordion sections
 - For null extracted values, mark as "match" if the page also doesn't show this info`;
 }
+
+// ── Final-batch quality audit (judgement rules only) ───────────────────────
+// The duplicate / fee_anomaly / missing_required_fields rules V1 also puts in
+// this prompt are computed in lib/quality-rules.ts instead; see the header there.
+
+export const QUALITY_AUDIT_SYSTEM = `You are a strict data quality auditor for an education extraction pipeline.
+
+You judge only two things: whether a course name contradicts its stated degree level, and whether the "course" is a course at all.
+Do not report duplicates, fee problems, or missing fields — those are checked separately and reporting them here double-counts every flag.
+Only flag genuine issues. Return an empty issues array if everything looks correct.
+Return ONLY valid JSON.`;
+
+export function qualityAuditPrompt(
+  courses: readonly {
+    id: string;
+    name: string;
+    degree_level?: string | null;
+    description?: string | null;
+  }[],
+  institutionName: string,
+) {
+  const list = courses.map((c) => ({
+    id: c.id,
+    name: c.name,
+    degree_level: c.degree_level ?? null,
+    description: c.description ? c.description.slice(0, 200) : null,
+  }));
+
+  return `Review these ${list.length} courses extracted from "${institutionName}".
+
+RULES — flag issues matching these EXACT criteria and no others:
+
+1. CONTRADICTION: the course name clearly contradicts its degree_level — e.g. the name says "Certificate" but degree_level is "Master", or the name says "PhD" but degree_level is "Diploma".
+   A legitimate pathway name is NOT a contradiction: "Graduate Certificate leading to a Master of X" with degree_level "Graduate Certificate" is correct.
+   Use severity "high".
+
+2. NONSENSICAL_NAME: the name is clearly not a course — a blog title, a staff member, an event, or a navigation label ("News", "Contact Us", "Meet Our Team", "Top 5 reasons to study abroad").
+   Use severity "high".
+
+Do NOT flag a course for missing optional fields, for formatting, or for a name you merely find unusual.
+
+COURSES:
+${JSON.stringify(list, null, 2)}
+
+Return JSON:
+{
+  "issues": [
+    { "course_id": "the uuid from the list above", "issue_type": "contradiction|nonsensical_name", "severity": "high", "suggestion": "one sentence: what is wrong and what to do" }
+  ],
+  "summary": "one-line summary of the check"
+}`;
+}
+
+// ── Job context bundle (supporting documents → structured pre-fill) ────────
+
+export const CONTEXT_BUNDLE_SYSTEM = `You convert education provider context documents (PDFs, brochures, fee schedules, course handbooks) into a strict JSON bundle that mirrors the platform's data model.
+
+CRITICAL RULES:
+- Only include fields present verbatim in the documents. Never guess, never infer, never fill a gap.
+- For shared entities (fees, intakes, eligibility, units), list each ONCE and use applies_to_courses to say which courses it belongs to. Do NOT repeat the same fee against multiple courses.
+- Every name in applies_to_courses must match a course name in the courses array exactly.
+- Currencies are ISO codes (AUD, USD, GBP, EUR, INR, NZD, ...).
+- period is one of "year", "semester", "trimester", "term", "month", "total".
+- Omit a key entirely rather than emitting an empty string or a null placeholder.
+Return ONLY valid JSON.`;
+
+export function contextBundlePrompt(documentContext: string, guidanceNotes?: string | null) {
+  const guidance = guidanceNotes ? `\n\nOperator guidance for this job:\n${guidanceNotes}` : "";
+
+  return `Parse this document context into the bundle.${guidance}
+
+${documentContext}
+
+Return JSON with exactly this shape (omit any array the documents do not support):
+{
+  "institution": { "name": "", "legal_name": "", "website": "", "country": "", "city": "", "type": "", "description": "" },
+  "branches": [{ "name": "", "city": "", "country": "", "address": "" }],
+  "courses": [{ "name": "", "code": "", "degree_level": "", "duration": "", "study_mode": "", "source_url": "", "branch_name": "" }],
+  "fees": [{ "fee_type": "", "amount": 0, "currency": "", "period": "", "applies_to_courses": [""] }],
+  "intakes": [{ "month": "", "year": 2026, "mode": "", "applies_to_courses": [""] }],
+  "eligibility": [{ "requirement_type": "", "value": "", "condition": "", "applies_to_courses": [""] }],
+  "units": [{ "name": "", "code": "", "credits": 0, "applies_to_courses": [""] }]
+}`;
+}
