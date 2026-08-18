@@ -17,9 +17,10 @@ export default defineConfig({
           // to be polite to, and the default cost the unit project 22 seconds of
           // sleeping. extraction-llm-parsing.test.ts re-imports the module with a
           // non-zero gap to cover the throttle itself.
-          // ("1", not "0": the client reads the gap with `|| 500`, so a zero falls
-          // back to the default.)
-          env: { ...testEnv(), LLM_THROTTLE_MS: "1" },
+          // HOST_THROTTLE_MS: same for the scraper's per-host politeness gap, whose
+          // 800ms default is spent waiting on a stubbed fetch.
+          // ("1", not "0": both are read with `|| default`, so a zero falls back.)
+          env: { ...testEnv(), LLM_THROTTLE_MS: "1", HOST_THROTTLE_MS: "1" },
         },
       },
       {
