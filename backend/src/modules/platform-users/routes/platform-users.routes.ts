@@ -7,7 +7,9 @@ import {
   QualificationSchema, LanguageTestSchema, WorkExperienceSchema,
   IdParamSchema, CountryIdParamSchema,
 } from "../schemas/platform-users.schema.js";
+import { PublishProfileSchema } from "../schemas/public-profile.schema.js";
 import * as service from "../services/platform-users.service.js";
+import * as publicProfileService from "../services/public-profiles.service.js";
 
 export async function platformUserRoutes(app: FastifyInstance) {
   // ── Profile ──
@@ -21,6 +23,15 @@ export async function platformUserRoutes(app: FastifyInstance) {
     const data = ProfilePatchSchema.parse(req.body);
     const result = await service.updateProfile(Number(req.auth.sub), data);
     return reply.send(result);
+  });
+
+  // ── Public profile (Wave D4) ──
+  // Publishing is a deliberate act: until the student calls this, their profile has no slug and
+  // /api/v3/students/:slug cannot resolve them at all. `visibility` merges over what is already
+  // stored, so switching one section off does not silently reset the other seven.
+  app.put("/me/public-profile", async (req, reply) => {
+    const input = PublishProfileSchema.parse(req.body ?? {});
+    return reply.send(await publicProfileService.setPublishState(Number(req.auth.sub), input));
   });
 
   app.patch("/me/category", async (req, reply) => {

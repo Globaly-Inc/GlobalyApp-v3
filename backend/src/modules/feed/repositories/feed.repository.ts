@@ -2,6 +2,8 @@
 // Visibility is enforced HERE in the query, never in the client: V3 has no RLS, so the WHERE clause is the
 // only thing standing between a private post and another user.
 
+import type { Knex } from "knex";
+
 import { masterKnex } from "../../../core/db/master-pool.js";
 
 export interface FeedPostRow {
@@ -14,6 +16,7 @@ export interface FeedPostRow {
   media: { storage_path: string; type: "image" | "video"; mime_type: string }[];
   is_pinned: boolean;
   reactions_count: number;
+  comments_count: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -73,6 +76,7 @@ function hydratedPostQuery(viewerId: number) {
       "p.media",
       "p.is_pinned",
       "p.reactions_count",
+      "p.comments_count",
       "p.created_at",
       // Microsecond-faithful copy of created_at, used only to build cursors. Stripped before the response.
       masterKnex.raw("p.created_at::text as cursor_ts"),
@@ -87,6 +91,35 @@ function hydratedPostQuery(viewerId: number) {
     );
 }
 
+/**
+ * The one visibility predicate, shared by the timeline and by every single-post lookup.
+ *
+ *   everyone → all authenticated users
+ *   business → members of that business per user_business_index
+ *   private  → the author only
+ *
+ * It lives here as one function rather than inline in listPosts because every other entry
+ * point that resolves a post by id (reacting to it, commenting on it) has to apply exactly
+ * the same rule — a second, hand-copied WHERE clause is how one of them ends up laxer than
+ * the timeline and turns a private post into a probe oracle.
+ */
+function applyVisibility(qb: Knex.QueryBuilder, viewerId: number) {
+  qb.where((inner) => {
+    inner
+      .where("p.visibility", "everyone")
+      .orWhere((own) => own.where("p.visibility", "private").andWhere("p.author_platform_user_id", viewerId))
+      .orWhere((biz) =>
+        biz.where("p.visibility", "business").whereIn(
+          "p.business_id",
+          masterKnex("user_business_index")
+            .select("business_id")
+            .where({ platform_user_id: viewerId })
+            .whereNull("deleted_at"),
+        ),
+      );
+  });
+}
+
 /** A single post in the same shape the timeline returns. */
 export async function findPostForViewer(id: number, viewerId: number) {
   return hydratedPostQuery(viewerId).where("p.id", id).first() as Promise<
@@ -95,13 +128,21 @@ export async function findPostForViewer(id: number, viewerId: number) {
 }
 
 /**
+ * A live post this viewer is actually allowed to see. Anything the viewer cannot see is
+ * indistinguishable from a post that does not exist — callers turn `undefined` into 404, never
+ * 403, so the endpoint cannot be used to enumerate private posts.
+ */
+export async function findVisiblePost(id: number, viewerId: number) {
+  return masterKnex("feed_posts as p")
+    .where("p.id", id)
+    .whereNull("p.deleted_at")
+    .modify((qb) => applyVisibility(qb, viewerId))
+    .first() as Promise<FeedPostRow | undefined>;
+}
+
+/**
  * Timeline page. Keyset (not OFFSET) on the exact triple the ORDER BY uses, so a post inserted mid-
- * pagination can neither duplicate nor skip a row.
- *
- * Visibility:
- *   everyone → all authenticated users
- *   business → members of that business per user_business_index
- *   private  → the author only
+ * pagination can neither duplicate nor skip a row. Visibility comes from applyVisibility above.
  */
 export async function listPosts(input: {
   viewerId: number;
@@ -115,19 +156,7 @@ export async function listPosts(input: {
     .modify((qb) => {
       if (postType && postType !== "all") qb.where("p.post_type", postType);
     })
-    .where((qb) => {
-      qb.where("p.visibility", "everyone")
-        .orWhere((own) => own.where("p.visibility", "private").andWhere("p.author_platform_user_id", viewerId))
-        .orWhere((biz) =>
-          biz.where("p.visibility", "business").whereIn(
-            "p.business_id",
-            masterKnex("user_business_index")
-              .select("business_id")
-              .where({ platform_user_id: viewerId })
-              .whereNull("deleted_at"),
-          ),
-        );
-    })
+    .modify((qb) => applyVisibility(qb, viewerId))
     .modify((qb) => {
       if (!cursor) return;
       // ORDER BY is_pinned DESC, created_at DESC, id DESC — so "after the cursor" means strictly lower.

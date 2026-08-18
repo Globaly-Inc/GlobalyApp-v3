@@ -66,15 +66,21 @@ export async function deletePost(postId: number, callerId: number) {
   await repo.softDeletePost(postId);
 }
 
-/** Explicit add/update — not a toggle. The client knows its own current reaction and picks the method. */
+/**
+ * Explicit add/update — not a toggle. The client knows its own current reaction and picks the method.
+ *
+ * Resolved through findVisiblePost, not findPost: reacting to a post is a write against it, and a
+ * caller who cannot see a private post must not be able to touch it — nor learn it exists from the
+ * difference between 404 and 204.
+ */
 export async function setReaction(postId: number, callerId: number, emoji: string) {
-  const post = await repo.findPost(postId);
+  const post = await repo.findVisiblePost(postId, callerId);
   if (!post) throw new NotFoundError("Post not found");
   return repo.setReaction(postId, callerId, emoji);
 }
 
 export async function removeReaction(postId: number, callerId: number) {
-  const post = await repo.findPost(postId);
+  const post = await repo.findVisiblePost(postId, callerId);
   if (!post) throw new NotFoundError("Post not found");
   return repo.removeReaction(postId, callerId);
 }
