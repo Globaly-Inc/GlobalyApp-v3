@@ -48,7 +48,7 @@ async function makeTestBusiness(opts: { verificationStatus?: "verified" | "unver
       owner_id: owner.id,
       subdomain: `repr-test-${suffix}`,
       business_name: `Representation Test Biz ${suffix}`,
-      ...(opts.verificationStatus ? { verification_status: opts.verificationStatus } : {}),
+      ...(opts.verificationStatus ? { status: opts.verificationStatus } : {}),
     })
     .returning("id");
   return row.id;
@@ -179,7 +179,7 @@ async function main() {
     }
   });
 
-  // ── 4. verification_status is read from businesses, not hardcoded ──
+  // ── 4. the directory's verification_status is derived from businesses.status ──
   await assert("a verified business syncs a verified match-directory row", async () => {
     const businessId = await makeTestBusiness({ verificationStatus: "verified" });
     const { jobId, courseId } = await makeTestJobAndCourse();
@@ -187,7 +187,7 @@ async function main() {
       await representationsService.createRepresentation({ businessId, extractionJobId: jobId, extractionCourseId: courseId });
       const dirRows = await masterKnex("enquiry_match_directory").where({ business_id: businessId });
       eq(dirRows.length, 1, "directory row count");
-      eq(dirRows[0].verification_status, "verified", "directory verification_status reflects business.verification_status");
+      eq(dirRows[0].verification_status, "verified", "directory verification_status reflects business.status");
     } finally {
       await cleanup(businessId, jobId);
     }

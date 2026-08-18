@@ -51,7 +51,7 @@ export async function findBusinessById(businessId: number) {
   return masterKnex("businesses")
     .where({ id: businessId })
     .whereNull("deleted_at")
-    .first("id", "enquiry_enabled", "is_suspended");
+    .first("id", "enquiry_enabled", "status");
 }
 
 export async function insert(data: {

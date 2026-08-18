@@ -1,9 +1,10 @@
 // Match directory sync — rebuilds a business's enquiry_match_directory rows
 // from its active representations + businesses/extraction_courses data.
 //
-// businesses.verification_status (migration 20260812_001) carries the PRD §12
-// sense of "verified rep" — distinct from `status`/`verified_at`, which mean
-// onboarding state. Admins toggle it via the platform business PATCH route.
+// The directory's verification_status/is_suspended are derived from
+// businesses.status, the single column admins actually maintain (PATCH
+// /businesses/:id/status): 'verified' grants the verified tier, 'suspended'
+// takes the business out of routing.
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 import * as representationsRepo from "../repositories/representations.repository.js";
@@ -17,9 +18,8 @@ export async function syncForBusiness(businessId: number): Promise<void> {
     .leftJoin("countries", "businesses.country_id", "countries.id")
     .where("businesses.id", businessId)
     .select(
-      "businesses.is_suspended",
+      "businesses.status",
       "businesses.enquiry_enabled",
-      "businesses.verification_status",
       "businesses.latitude",
       "businesses.longitude",
       "countries.iso2 as country_code",
@@ -70,10 +70,10 @@ export async function syncForBusiness(businessId: number): Promise<void> {
       business_id: businessId,
       subject_area: course?.subject_area ?? null,
       country_code: course?.country_code ?? business.country_code ?? null,
-      verification_status: business.verification_status as "verified" | "unverified",
+      verification_status: business.status === "verified" ? "verified" : "unverified",
       latitude: business.latitude ?? null,
       longitude: business.longitude ?? null,
-      is_suspended: business.is_suspended,
+      is_suspended: business.status === "suspended",
       is_institution_contact: isSoleRepresenter,
     };
   });

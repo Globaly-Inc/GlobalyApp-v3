@@ -143,7 +143,7 @@ async function main() {
       const { rows } = await client.query(`SELECT id FROM businesses WHERE schema_name = $1`, [businessOrgId]);
       eq(rows.length, 1, "business row found by schema_name");
       businessIntId = rows[0].id;
-      await client.query(`UPDATE businesses SET verification_status = 'verified' WHERE id = $1`, [businessIntId]);
+      await client.query(`UPDATE businesses SET status = 'verified' WHERE id = $1`, [businessIntId]);
 
       const sw = await api("POST", "/auth/switch-account", { org_id: businessOrgId }, studentToken);
       eq(sw.status, 200, "switch-account status");
@@ -183,7 +183,7 @@ async function main() {
       );
       // Let the sync build the directory row from the representation + business,
       // rather than hand-inserting it — that exercises the real sync path
-      // (verification_status, geo, enquiry_enabled, sole-representer flag).
+      // (verified status, geo, enquiry_enabled, sole-representer flag).
       const { syncForBusiness } = await import("../../src/modules/enquiries/services/match-directory-sync.service.js");
       await syncForBusiness(businessIntId);
 

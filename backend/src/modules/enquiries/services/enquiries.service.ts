@@ -58,7 +58,7 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
     if (!business) {
       throw new BadRequestError("Invalid business_id");
     }
-    if (!business.enquiry_enabled || business.is_suspended) {
+    if (!business.enquiry_enabled || business.status === "suspended") {
       throw new BadRequestError("This business is not currently accepting enquiries");
     }
   }
