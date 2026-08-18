@@ -1,7 +1,7 @@
 // Application entry point — builds Fastify instance, registers plugins and modules, starts server.
 
-import Fastify from "fastify";
-import cors from "@fastify/cors";
+import Fastify, { type FastifyRequest } from "fastify";
+import cors, { type FastifyCorsOptions } from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import { config } from "./config.js";
@@ -55,7 +55,7 @@ export async function buildServer() {
   // 403 before any provider call. CORS is not the check here; it must not be, since
   // a non-browser client ignores it entirely. Credentials stay OFF for that surface
   // so a reflected origin can never ride a user's cookies.
-  await app.register(cors, () => (req, cb) => {
+  await app.register(cors, () => (req: FastifyRequest, cb: (err: Error | null, opts: FastifyCorsOptions) => void) => {
     if (req.url.startsWith("/api/v3/ai-embed/")) {
       cb(null, { origin: req.headers.origin ?? true, credentials: false });
       return;
