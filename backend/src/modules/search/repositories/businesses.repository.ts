@@ -30,7 +30,9 @@ function baseQuery({ categorySlug, country, city, search }: BusinessSearchFilter
 export async function listPublicBusinesses(filters: BusinessSearchFilters, limit: number, offset: number) {
   return baseQuery(filters)
     .select(
-      "b.id", "b.business_name", "b.subdomain", "b.logo_url", "b.description",
+      // b.slug is the public profile slug (20260817_004_org_slugs) — the only
+      // thing that lets a directory card link to /institutions/{slug}.
+      "b.id", "b.slug", "b.business_name", "b.subdomain", "b.logo_url", "b.description",
       "b.city", "c.name as country_name",
       "b.website", "b.email",
     )

@@ -368,6 +368,21 @@ describeDb("public profiles, facets and SEO", () => {
       expect(countries.meta.total).toBeGreaterThan(5);
     });
 
+    it("emits a city under its country's path, not a bare slug", async () => {
+      const country = await db("countries").whereNotNull("slug").orderBy("id").first("id", "slug");
+      const [city] = await db("cities")
+        .insert({ country_id: country.id, name: `Sitemap City ${TAG}`, slug: `sitemap-city-${TAG}` })
+        .returning("id");
+      try {
+        const body = await get(`/api/v3/catalog/sitemap?type=city&limit=5000`);
+        expect(body.data.map((e: { path: string }) => e.path)).toContain(
+          `/city/${country.slug}/sitemap-city-${TAG}`,
+        );
+      } finally {
+        await db("cities").where({ id: city.id }).del();
+      }
+    });
+
     it("paginates rather than dumping every url at once", async () => {
       const first = await get(`/api/v3/catalog/sitemap?type=country&limit=2&page=1`);
       const second = await get(`/api/v3/catalog/sitemap?type=country&limit=2&page=2`);
