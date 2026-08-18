@@ -36,7 +36,7 @@ GET  /me             → returns user profile + list of business memberships
 3. User verifies OTP → `account_status` set to 1, `is_email_verified` set to true
 4. User is now authenticated — chooses Personal or Business account during onboarding
 5. `platform_user` remains the root identity across all account types
-6. **Anti-enumeration**: duplicate registration returns same response shape + sends "someone tried to register" email
+6. **Anti-enumeration**: duplicate registration returns same response shape + sends "someone tried to register" email — **except** when the email is the owner of a pre-seeded, not-yet-claimed business (`businesses.claim_status != 'claimed'`), in which case registration is blocked with a `BUSINESS_CLAIM_AVAILABLE` (409) error naming the business and offering to claim it. Confirming triggers `POST /businesses/claim/request { email }` (public, silent no-op if nothing matches), which emails a claim link reusing the same `claim_token` flow as the admin-initiated "Send claim request."
 
 ## User Type Detection (Single Login, Post-Auth Routing)
 
@@ -174,4 +174,5 @@ Defined in `core/plugins/auth.plugin.ts`:
 - `/api/v3/auth/send-otp`, `/verify-otp`, `/refresh`, `/register`
 - `/api/v3/admin/users/invite/accept`
 - `/api/v3/agents/invite/accept`
+- `/api/v3/businesses/claim/accept`, `/api/v3/businesses/claim/request`
 - `/healthz`, `/health/*`

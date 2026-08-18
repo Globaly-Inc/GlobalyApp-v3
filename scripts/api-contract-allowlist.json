@@ -1,4 +1,10 @@
 {
   "_comment": "Frontend calls whose backend endpoint is scheduled but not yet built. Every entry must name the wave that builds it. Delete entries as waves land — check:api-contract reports stale ones. Empty is the goal: a page with no backend should say so in the UI (see app/admin/components/admin-not-available-view.tsx) rather than ship a call that can only 404.",
-  "allowed": []
+  "_merge_note": "The four D1-merge entries below are NOT scheduled work in the usual sense — they are the fallout of two independent enquiries implementations meeting in the staging merge. staging's business inbox UI (app/business/enquiries) was written against staging's own /enquiry-distributions backend; devops-staging-mvp's D1 enquiries module serves the same feature at /business/enquiries (list, :distributionId, :distributionId/unlock) and has no close endpoint or per-module credits read at all. The D1 backend is the one that survived the merge (it owns the migrations, the tests and the coverage floor). Someone has to decide whether to re-point this UI at the D1 surface (and map DistributionListItem onto toInboxItem's shape) or add the /enquiry-distributions alias + a close endpoint to the D1 module. Until then these four calls 404 and the business enquiry inbox screen does not work. Do not let these entries go stale unnoticed.",
+  "allowed": [
+    { "method": "GET", "path": "/enquiry-distributions", "wave": "D1-merge" },
+    { "method": "GET", "path": "/enquiry-distributions/credits", "wave": "D1-merge" },
+    { "method": "POST", "path": "/enquiry-distributions/:id/unlock", "wave": "D1-merge" },
+    { "method": "POST", "path": "/enquiry-distributions/:id/close", "wave": "D1-merge" }
+  ]
 }

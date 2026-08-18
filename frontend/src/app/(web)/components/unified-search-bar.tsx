@@ -38,7 +38,7 @@ export function UnifiedSearchBar() {
         router.push(`${destination.path}${params}`);
         return;
       }
-      const params = trimmed ? `&q=${encodeURIComponent(trimmed)}` : "";
+      const params = trimmed ? `&search=${encodeURIComponent(trimmed)}` : "";
       router.push(`/search?tab=${activeSlug}${params}`);
     }
   };

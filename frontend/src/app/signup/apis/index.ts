@@ -3,4 +3,4 @@ import { signupMockApi } from "./mock-data";
 import { signupRealApi } from "./real-api";
 
 export const signupApi = createApi({ mock: signupMockApi, real: signupRealApi });
-export type { AuthUser } from "./types";
+export type { AuthUser, ClaimRequestParams } from "./types";

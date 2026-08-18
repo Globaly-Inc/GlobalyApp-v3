@@ -67,6 +67,6 @@ export async function findBySession(
   return q;
 }
 
-export async function updateFeedback(id: number, feedback: "positive" | "negative"): Promise<void> {
+export async function updateFeedback(id: number, feedback: "positive" | "negative" | null): Promise<void> {
   await masterKnex(TABLE).where({ id }).update({ feedback });
 }

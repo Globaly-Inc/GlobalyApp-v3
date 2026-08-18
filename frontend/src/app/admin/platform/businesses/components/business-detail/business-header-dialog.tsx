@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { FieldError } from "@/components/field-error";
 import { useValidatedForm } from "@/lib/use-validated-form";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
+import { isValidPhoneForCountry } from "../../utils";
+import { splitPhone } from "@/lib/utils";
 import type { Category, CountryOption } from "@/app/admin/platform/categories/apis";
 import type { BusinessDetail, BusinessPatch } from "../../apis/types";
 
@@ -21,26 +23,25 @@ type FormState = {
 
 const urlField = z.string().refine((v) => v === "" || /^https?:\/\/\S+\.\S+/.test(v), "Enter a valid URL");
 
-const schema: z.ZodType<FormState> = z.object({
-  name: z.string().min(2, "Required"),
-  categoryId: z.string().min(1, "Required"),
-  countryId: z.string(),
-  address: z.string(),
-  state: z.string(),
-  postcode: z.string(),
-  email: z.string().refine((v) => v === "" || /^\S+@\S+\.\S+$/.test(v), "Enter a valid email"),
-  phoneCountryId: z.string(),
-  phoneNumber: z.string(),
-  website: urlField,
-});
-
-function splitPhone(phone: string | null, countries: CountryOption[]): { phoneCountryId: string; phoneNumber: string } {
-  if (!phone) return { phoneCountryId: "", phoneNumber: "" };
-  const withCode = countries.filter((c): c is CountryOption & { phoneCode: string } => !!c.phoneCode);
-  withCode.sort((a, b) => b.phoneCode.length - a.phoneCode.length);
-  const match = withCode.find((c) => phone.startsWith(c.phoneCode));
-  if (!match) return { phoneCountryId: "", phoneNumber: phone };
-  return { phoneCountryId: String(match.id), phoneNumber: phone.slice(match.phoneCode.length).trim() };
+function buildSchema(countries: CountryOption[]): z.ZodType<FormState> {
+  return z.object({
+    name: z.string().min(2, "Required"),
+    categoryId: z.string().min(1, "Required"),
+    countryId: z.string(),
+    address: z.string(),
+    state: z.string(),
+    postcode: z.string(),
+    email: z.string().refine((v) => v === "" || /^\S+@\S+\.\S+$/.test(v), "Enter a valid email"),
+    phoneCountryId: z.string(),
+    phoneNumber: z.string(),
+    website: urlField,
+  }).superRefine((data, ctx) => {
+    if (!data.phoneCountryId || !data.phoneNumber) return;
+    const iso2 = countries.find((c) => String(c.id) === data.phoneCountryId)?.iso2;
+    if (!isValidPhoneForCountry(data.phoneNumber, iso2)) {
+      ctx.addIssue({ code: "custom", path: ["phoneNumber"], message: "Enter a valid phone number for the selected country" });
+    }
+  });
 }
 
 function toForm(b: BusinessDetail, countries: CountryOption[]): FormState {
@@ -76,6 +77,7 @@ export function BusinessHeaderDialog({
   onSave: (patch: BusinessPatch) => Promise<boolean>;
   saving: boolean;
 }>) {
+  const schema = useMemo(() => buildSchema(countries), [countries]);
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(business, countries));
 
   const categoryOptions = categories.map((c) => ({ value: String(c.id), label: c.name }));
@@ -176,8 +178,15 @@ export function BusinessHeaderDialog({
                   options={phoneCountryOptions}
                 />
               </div>
-              <Input className="h-10" value={form.phoneNumber} onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))} placeholder="984 1234567" />
+              <Input
+                className="h-10"
+                value={form.phoneNumber}
+                onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))}
+                placeholder="984 1234567"
+                aria-invalid={!!errors.phoneNumber}
+              />
             </div>
+            <FieldError message={errors.phoneNumber} />
           </div>
 
           <div className="space-y-2">

@@ -1,5 +1,6 @@
 "use client";
 
+import { Paperclip } from "lucide-react";
 import type { CourseCard as CourseCardType, Message } from "../apis/types";
 import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
@@ -61,6 +62,18 @@ export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
         )}
       </div>
 
+      {/* Attachments — stored as storage paths; show just the filename */}
+      {!!message.attachments?.length && (
+        <div className="flex max-w-[85%] flex-wrap gap-1.5">
+          {message.attachments.map((path) => (
+            <span key={path} className="flex items-center gap-1 rounded-full border bg-muted px-2.5 py-1 text-xs">
+              <Paperclip className="size-3" />
+              <span className="max-w-40 truncate">{path.split("/").pop()}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Course cards */}
       {message.cards.length > 0 && (
         <div className="flex max-w-[85%] flex-col gap-2">
@@ -116,7 +129,8 @@ export function StreamingMessage({
         </div>
       )}
       {cards.length > 0 && (
-        <div className="flex max-w-[85%] flex-col gap-2">
+        <div className="grid w-full max-w-[85%] grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-2">
+          {/* auto-fit: two cards share a row when there's room (3rd wraps), single column in narrow containers (popover) */}
           {cards.map((card, i) => (
             <CourseCard key={i} card={card} />
           ))}

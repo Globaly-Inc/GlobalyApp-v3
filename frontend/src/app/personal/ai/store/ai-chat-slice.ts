@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { aiApi } from "../apis";
+import { stripStructuredBlocks } from "../utils";
 import type { ChatSession, CourseCard, CreditBalance, Message, SSEEvent } from "../apis/types";
 import type { AppDispatch } from "@/lib/store";
 
@@ -17,6 +18,11 @@ export const updateSession = createAsyncThunk(
     aiApi.updateSession(sessionId, data),
 );
 
+export const deleteSession = createAsyncThunk("aiChat/deleteSession", async (sessionId: number) => {
+  await aiApi.deleteSession(sessionId);
+  return sessionId;
+});
+
 export const setFeedback = createAsyncThunk(
   "aiChat/setFeedback",
   async ({ messageId, feedback }: { messageId: number; feedback: "up" | "down" | null }) => {
@@ -31,17 +37,31 @@ export const setFeedback = createAsyncThunk(
  */
 export const sendMessage = createAsyncThunk<
   number, // return: final message_id
-  { sessionId: number | null; content: string },
+  { sessionId: number | null; content: string; files?: File[] },
   { dispatch: AppDispatch }
->("aiChat/sendMessage", async ({ sessionId, content }, { dispatch, signal }) => {
+>("aiChat/sendMessage", async ({ sessionId, content, files }, { dispatch, signal }) => {
   let finalMessageId = 0;
+  let createdNewSession = false;
+
+  // Attachments upload first; their storage paths ride along with the message
+  const attachments = files?.length
+    ? (await Promise.all(files.map((f) => aiApi.uploadAttachment(f)))).map((u) => u.storage_path)
+    : undefined;
 
   await aiApi.sendMessage(
-    { session_id: sessionId, content },
+    { session_id: sessionId, content, attachments },
     (event: SSEEvent) => {
       switch (event.type) {
         case "session_created":
+          createdNewSession = true;
           dispatch(sessionCreated(event.session));
+          // New chat: the view couldn't add the optimistic user message earlier
+          // (no session id existed yet), so add it now or it never renders.
+          dispatch(addOptimisticUserMessage({
+            sessionId: event.session.id,
+            content,
+            attachments: files?.map((f) => f.name),
+          }));
           break;
         case "trace":
           dispatch(addTrace(event.step));
@@ -69,6 +89,12 @@ export const sendMessage = createAsyncThunk<
     },
     signal,
   );
+
+  // The generated title lands server-side a moment after the stream ends
+  // (fire-and-forget Gemini call) — refresh the sidebar once to pick it up.
+  if (createdNewSession) {
+    setTimeout(() => dispatch(fetchSessions()), 3000);
+  }
 
   return finalMessageId;
 });
@@ -106,7 +132,6 @@ type AiChatState = {
   sendStatus: RegionStatus;
   credits: CreditBalance | null;
   creditsStatus: RegionStatus;
-  compareTray: CourseCard[];
   streamingContent: string;
   streamingCards: CourseCard[];
   streamingChips: string[];
@@ -123,7 +148,6 @@ const initialState: AiChatState = {
   sendStatus: "idle",
   credits: null,
   creditsStatus: "idle",
-  compareTray: [],
   streamingContent: "",
   streamingCards: [],
   streamingChips: [],
@@ -177,19 +201,9 @@ const aiChatSlice = createSlice({
       state.streamingChips = [];
       state.traceSteps = [];
     },
-    addToCompare(state, action: PayloadAction<CourseCard>) {
-      if (state.compareTray.length < 4 && !state.compareTray.some(c => c.course_name === action.payload.course_name && c.institution_name === action.payload.institution_name)) {
-        state.compareTray.push(action.payload);
-      }
-    },
-    removeFromCompare(state, action: PayloadAction<number>) {
-      state.compareTray.splice(action.payload, 1);
-    },
-    clearCompare(state) {
-      state.compareTray = [];
-    },
-    addOptimisticUserMessage(state, action: PayloadAction<{ sessionId: number; content: string }>) {
-      const { sessionId, content } = action.payload;
+    // compare moved to the shared useCompareTray store (search feature) — one list app-wide
+    addOptimisticUserMessage(state, action: PayloadAction<{ sessionId: number; content: string; attachments?: string[] }>) {
+      const { sessionId, content, attachments } = action.payload;
       const msg: Message = {
         id: -Date.now(), // negative temp id
         session_id: sessionId,
@@ -198,6 +212,7 @@ const aiChatSlice = createSlice({
         cards: [],
         chips: [],
         feedback: null,
+        attachments,
         created_at: new Date().toISOString(),
       };
       if (!state.messages[sessionId]) state.messages[sessionId] = [];
@@ -251,7 +266,9 @@ const aiChatSlice = createSlice({
             id: action.payload, // message_id from done event
             session_id: sessionId,
             role: "assistant",
-            content: state.streamingContent,
+            // Raw stream still contains the chips/card fences; the backend only
+            // strips them from the *persisted* copy — mirror it here.
+            content: stripStructuredBlocks(state.streamingContent),
             cards: state.streamingCards,
             chips: state.streamingChips,
             feedback: null,
@@ -274,15 +291,19 @@ const aiChatSlice = createSlice({
         state.traceSteps = [];
       })
 
-      // updateSession
+      // updateSession — archived sessions stay in state; the sidebar's tabs filter them
       .addCase(updateSession.fulfilled, (state, action) => {
         const updated = action.payload;
-        if (updated.is_archived) {
-          state.sessions = state.sessions.filter((s) => s.id !== updated.id);
-          if (state.activeSessionId === updated.id) state.activeSessionId = null;
-        } else {
-          state.sessions = state.sessions.map((s) => (s.id === updated.id ? updated : s));
+        state.sessions = state.sessions.map((s) => (s.id === updated.id ? updated : s));
+        if (updated.is_archived && state.activeSessionId === updated.id) {
+          state.activeSessionId = null;
         }
+      })
+
+      // deleteSession
+      .addCase(deleteSession.fulfilled, (state, action) => {
+        state.sessions = state.sessions.filter((s) => s.id !== action.payload);
+        if (state.activeSessionId === action.payload) state.activeSessionId = null;
       })
 
       // fetchCreditBalance
@@ -321,9 +342,6 @@ export const {
   sessionCreated,
   clearStreamingState,
   addOptimisticUserMessage,
-  addToCompare,
-  removeFromCompare,
-  clearCompare,
 } = aiChatSlice.actions;
 
 export const aiChatReducer = aiChatSlice.reducer;

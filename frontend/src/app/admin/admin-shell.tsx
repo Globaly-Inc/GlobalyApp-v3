@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { ShieldCheck, ChevronDown, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useHydrated } from "@/lib/use-hydrated";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +30,8 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   const { me, status, error } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
   const isAdmin = authUser?.type === "admin";
+  // See use-hydrated.ts for why this is not a setState-in-effect flag.
+  const mounted = useHydrated();
 
   useEffect(() => {
     if (!initializing && !isAdmin) {
@@ -62,7 +65,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
 
   if (!isAdmin) return null;
 
-  if (status === "failed") {
+  if (mounted && status === "failed") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center px-4">
         <p className="text-sm text-muted-foreground">

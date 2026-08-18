@@ -3,4 +3,4 @@ import { businessMockApi } from "./mock-data";
 import { businessRealApi } from "./real-api";
 
 export const businessApi = createApi({ mock: businessMockApi, real: businessRealApi });
-export type { BusinessType, BusinessProfile, BusinessProfilePatch, UpdateSubCategoryParams } from "./types";
+export type { BusinessType, BusinessProfile, BusinessProfilePatch, SelectOption, UpdateSubCategoryParams } from "./types";

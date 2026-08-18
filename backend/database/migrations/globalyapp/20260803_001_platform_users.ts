@@ -11,6 +11,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("phone").nullable();
     t.integer("account_status").notNullable().defaultTo(0); // 0=inactive until OTP verified, 1=active
     t.text("photo_url").nullable();
+    t.text("cover_url").nullable();
     t.boolean("is_email_verified").notNullable().defaultTo(false);
     t.boolean("is_personal_account").notNullable().defaultTo(false);
     t.boolean("is_business_account").notNullable().defaultTo(false);

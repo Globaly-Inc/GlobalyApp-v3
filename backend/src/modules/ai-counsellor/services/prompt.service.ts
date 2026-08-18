@@ -1,20 +1,39 @@
 import type { ProfileContext } from "../repositories/knowledge.repository.js";
+import { sanitizeCustomInstructions } from "./embed.service.js";
 
 export function buildSystemPrompt(opts: {
   profile: ProfileContext | null;
   ragContext: string;
   isFirstMessage: boolean;
+  /** Embed mode: brand the counsellor and scope it to this business. */
+  embedConfig?: { display_name: string | null; custom_instructions: string | null };
 }): string {
   const sections: string[] = [];
 
   // ── Identity ──
-  sections.push(
-    "You are Globaly AI — a friendly, knowledgeable education counselor built by Globaly. " +
-    "Your mission: 'Because Education Matters.' " +
-    "You ONLY answer using data provided in the CONTEXT section below for specific course/institution/fee/visa/deadline claims. " +
-    "NEVER invent these. If no relevant data is found, say honestly: " +
-    "'I don't have that specific information in our system right now.'",
-  );
+  if (opts.embedConfig) {
+    const name = opts.embedConfig.display_name ?? "this institution";
+    sections.push(
+      `You are the AI counsellor for ${name}. You help visitors find courses and services offered by ${name}. ` +
+      "You ONLY answer using data provided in the CONTEXT section below for specific course/fee/visa/deadline claims. " +
+      "NEVER invent these. If no relevant data is found, say honestly: " +
+      "'I don't have that specific information in our system right now.'",
+    );
+    sections.push(
+      `Only recommend courses from ${name}. If the user asks about courses from other institutions, ` +
+      `politely explain that you can only help with ${name}'s offerings and suggest they visit globalyhub.com for broader search.`,
+    );
+    const custom = sanitizeCustomInstructions(opts.embedConfig.custom_instructions);
+    if (custom) sections.push(`Additional guidance from ${name}: ${custom}`);
+  } else {
+    sections.push(
+      "You are Globaly AI — a friendly, knowledgeable education counselor built by Globaly. " +
+      "Your mission: 'Because Education Matters.' " +
+      "You ONLY answer using data provided in the CONTEXT section below for specific course/institution/fee/visa/deadline claims. " +
+      "NEVER invent these. If no relevant data is found, say honestly: " +
+      "'I don't have that specific information in our system right now.'",
+    );
+  }
 
   // ── Privacy ──
   sections.push(
@@ -72,7 +91,7 @@ export function buildSystemPrompt(opts: {
   sections.push(
     "When you find matching courses in CONTEXT, emit them in this format:\n" +
     "```course-card\n" +
-    '{"id":"<id>","name":"<name>","institution":"<institution>","degree_level":"<level>",' +
+    '{"id":"<id>","slug":"<slug>","name":"<name>","institution":"<institution>","degree_level":"<level>",' +
     '"duration":"<duration>","fees":<amount>,"currency":"<currency>",' +
     '"country":"<country>","city":"<city>","intakes":["<intake>"],' +
     '"study_modes":["<mode>"],"source_url":"<url>"}\n' +

@@ -1,140 +1,104 @@
 import { httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import { getAccessToken } from "@/lib/session";
 import type {
+  AttachmentUpload,
   ChatSession,
   CourseCard,
   CreditBalance,
-  FeedbackInput,
   GuestMigrationResult,
   Message,
-  MessagesResponse,
   SendMessageInput,
-  SessionListResponse,
   SSEEvent,
+  WireCourseCard,
 } from "./types";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
-const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3`;
+const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3/ai-chat`;
 
-/**
- * The counsellor's own card shape, as it comes off the wire.
- * `real-api.ts` is the only place that knows it; the store and the components see
- * CourseCard and nothing else.
- */
-type WireCard = {
-  id?: string;
-  name?: string;
-  institution?: string;
-  degree_level?: string;
-  duration?: string;
-  fees?: number | null;
-  currency?: string;
-  country?: string;
-  city?: string;
-  intakes?: string[];
-  study_modes?: string[];
-  source_url?: string | null;
-};
-
-function toCourseCard(card: WireCard): CourseCard {
+/** Backend streams/stores cards in prompt format; the renderer wants CourseCard.
+ * Mirror of the mapper in embed/[key]/apis/real-api.ts, which must stay import-free of this file. */
+function toCourseCard(w: WireCourseCard): CourseCard {
   return {
-    institution_name: card.institution ?? "",
-    course_name: card.name ?? "",
-    degree_level: card.degree_level ?? "",
-    duration: card.duration ?? "",
-    annual_tuition_fee: card.fees ?? null,
-    currency: card.currency ?? "",
-    country: card.country ?? "",
-    intakes: card.intakes ?? [],
-    study_modes: card.study_modes ?? [],
-    source_url: card.source_url ?? null,
+    id: w.id,
+    slug: w.slug ?? null,
+    course_name: w.name ?? "",
+    institution_name: w.institution ?? "",
+    degree_level: w.degree_level ?? "",
+    duration: w.duration ?? "",
+    annual_tuition_fee: w.fees ?? null,
+    currency: w.currency ?? "",
+    country: w.country ?? "",
+    intakes: w.intakes ?? [],
+    study_modes: w.study_modes ?? [],
+    source_url: w.source_url ?? null,
   };
 }
 
-/**
- * Translate one SSE frame into the store's event vocabulary.
- *
- * The backend emits named frames (`session`, `trace`, `cards`, `chips`, `usage`)
- * plus data-only frames in the OpenAI delta shape, and closes with `[DONE]`. The
- * store speaks a flatter language, so the mapping lives here rather than being
- * spread through reducers.
- *
- * `usage` carries the assistant message's real id, which is what `done` needs in
- * order for feedback to address the right row.
- */
-function translateFrame(frame: string, state: { messageId: number }): SSEEvent | null {
-  const lines = frame.split("\n");
-  const eventLine = lines.find((l) => l.startsWith("event:"));
-  const dataLines = lines.filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim());
-  if (!dataLines.length) return null;
+/** DB title is null until auto-title lands (or if it failed) — the UI always shows a label. */
+type WireSession = Omit<ChatSession, "title"> & { title: string | null };
+const toSession = (s: WireSession): ChatSession => ({ ...s, title: s.title ?? "New chat" });
 
-  const raw = dataLines.join("\n");
-  if (raw === "[DONE]") return { type: "done", message_id: state.messageId };
+/** DB stores feedback as positive/negative; the UI speaks up/down. */
+const toUiFeedback = { positive: "up", negative: "down" } as const;
+const toWireFeedback = { up: "positive", down: "negative" } as const;
 
-  let data: unknown;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return null; // malformed frame — drop it rather than break the stream
-  }
+type WireMessage = Omit<Message, "cards" | "feedback"> & {
+  cards: WireCourseCard[];
+  feedback: "positive" | "negative" | null;
+};
 
-  // Data-only frame: a token of the answer.
-  if (!eventLine) {
-    const text = (data as { choices?: Array<{ delta?: { content?: string } }> })?.choices?.[0]?.delta
-      ?.content;
-    return text ? { type: "delta", text } : null;
-  }
-
-  const payload = data as Record<string, unknown>;
-  switch (eventLine.slice(6).trim()) {
-    case "session": {
-      // Only a brand-new session belongs at the top of the sidebar.
-      if (!payload.isNew) return null;
-      const now = new Date().toISOString();
-      const session: ChatSession = {
-        id: Number(payload.id),
-        title: "New chat",
-        is_archived: false,
-        created_at: now,
-        updated_at: now,
-      };
-      return { type: "session_created", session };
-    }
-    case "trace":
-      return { type: "trace", step: String(payload.step ?? "") };
-    case "cards":
-      return { type: "cards", cards: (data as WireCard[]).map(toCourseCard) };
-    case "chips":
-      return { type: "chips", chips: (data as string[]).filter((c) => typeof c === "string") };
-    case "usage":
-      state.messageId = Number(payload.message_id ?? 0);
-      return { type: "usage", credits_charged: Number(payload.credits_charged ?? 0) };
-    default:
-      // `sources` and anything the backend adds later: not consumed by this view yet.
-      return null;
-  }
+function toMessage(m: WireMessage): Message {
+  return {
+    ...m,
+    cards: (m.cards ?? []).map(toCourseCard),
+    feedback: m.feedback ? toUiFeedback[m.feedback] : null,
+  };
 }
 
 export const aiRealApi = {
   listSessions: async (): Promise<ChatSession[]> => {
-    const res = await httpGet<SessionListResponse>("/ai-chat/sessions");
-    return res.sessions;
+    // Archived included — the sidebar's Archived tab filters client-side.
+    const res = await httpGet<{ sessions: WireSession[] }>("/ai-chat/sessions?include_archived=true");
+    return res.sessions.map(toSession);
   },
 
   getMessages: async (sessionId: number): Promise<Message[]> => {
-    const res = await httpGet<MessagesResponse>(`/ai-chat/sessions/${sessionId}/messages`);
-    return res.messages;
+    const res = await httpGet<{ messages: WireMessage[] }>(`/ai-chat/sessions/${sessionId}/messages`);
+    return res.messages.map(toMessage);
   },
 
   updateSession: async (sessionId: number, data: { title?: string; is_archived?: boolean }): Promise<ChatSession> =>
-    httpPatch<ChatSession>(`/ai-chat/sessions/${sessionId}`, data),
+    toSession(await httpPatch<WireSession>(`/ai-chat/sessions/${sessionId}`, data)),
+
+  deleteSession: async (sessionId: number): Promise<void> => {
+    // Soft delete rides the same PATCH endpoint (backend sets deleted_at).
+    await httpPatch<ChatSession>(`/ai-chat/sessions/${sessionId}`, { delete: true });
+  },
 
   setFeedback: async (messageId: number, feedback: "up" | "down" | null): Promise<void> => {
-    await httpPatch<unknown>(`/ai-chat/messages/${messageId}/feedback`, { feedback } satisfies FeedbackInput);
+    await httpPatch<unknown>(`/ai-chat/messages/${messageId}/feedback`, {
+      feedback: feedback ? toWireFeedback[feedback] : null,
+    });
   },
 
   getCreditBalance: async (): Promise<CreditBalance> =>
     httpGet<CreditBalance>("/ai-chat/credits/balance"),
+
+  uploadAttachment: async (file: File): Promise<AttachmentUpload> => {
+    const token = getAccessToken();
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE_URL}/attachments`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error((body as { error?: string } | null)?.error ?? "Upload failed");
+    }
+    return res.json();
+  },
 
   /**
    * Adopt the transcript from a chat had before signing up. Safe to call more than
@@ -144,8 +108,10 @@ export const aiRealApi = {
     httpPost<GuestMigrationResult>("/ai-chat/guest/migrate", { fingerprint_hash: fingerprintHash }),
 
   /**
-   * SSE streaming for sendMessage. Uses raw fetch + ReadableStream because httpPost
-   * expects JSON, but this endpoint returns text/event-stream.
+   * SSE stream for POST /messages. Raw fetch + ReadableStream because httpPost
+   * expects JSON. Named events carry `event:` + `data:` pairs; deltas arrive as
+   * data-only OpenAI-format chunks; a named `done` event carries the message id
+   * and `data: [DONE]` ends the stream. Same protocol as embed/[key]/apis/real-api.ts.
    */
   sendMessage: async (
     input: SendMessageInput,
@@ -153,14 +119,18 @@ export const aiRealApi = {
     signal?: AbortSignal,
   ): Promise<void> => {
     const token = getAccessToken();
-
-    const res = await fetch(`${BASE_URL}/ai-chat/messages`, {
+    const res = await fetch(`${BASE_URL}/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        // Backend schema wants the key absent for a new chat, not null
+        ...(input.session_id ? { session_id: input.session_id } : {}),
+        content: input.content,
+        ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+      }),
       signal,
     });
 
@@ -182,25 +152,63 @@ export const aiRealApi = {
     if (!reader) throw new Error("No response body");
 
     const decoder = new TextDecoder();
-    const state = { messageId: 0 };
     let buffer = "";
+    let eventType = "";
+
+    const emit = (data: string) => {
+      if (data === "[DONE]") return; // named `done` event already delivered the ids
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        return; // skip malformed events
+      }
+      if (!eventType) {
+        // Data-only line = OpenAI-format delta chunk
+        const text = (parsed as { choices?: [{ delta?: { content?: string } }] }).choices?.[0]?.delta?.content;
+        if (text) onEvent({ type: "delta", text });
+      } else if (eventType === "session") {
+        const { id, isNew, title } = parsed as { id: number; isNew: boolean; title?: string };
+        if (isNew) {
+          // Stub entry named after the prompt; auto-title upgrades it after the exchange
+          const now = new Date().toISOString();
+          onEvent({
+            type: "session_created",
+            session: { id, title: title ?? "New chat", is_archived: false, created_at: now, updated_at: now },
+          });
+        }
+      } else if (eventType === "trace") {
+        onEvent({ type: "trace", step: (parsed as { step: string }).step });
+      } else if (eventType === "cards") {
+        onEvent({ type: "cards", cards: (parsed as WireCourseCard[]).map(toCourseCard) });
+      } else if (eventType === "chips") {
+        onEvent({ type: "chips", chips: parsed as string[] });
+      } else if (eventType === "usage") {
+        // What the turn actually cost — the credit widget reads this, so it cannot
+        // be dropped the way `sources` is.
+        onEvent({
+          type: "usage",
+          credits_charged: Number((parsed as { credits_charged?: number }).credits_charged ?? 0),
+        });
+      } else if (eventType === "done") {
+        onEvent({ type: "done", message_id: (parsed as { message_id: number }).message_id });
+      } else if (eventType === "error") {
+        onEvent({ type: "error", error: (parsed as { error: string }).error });
+      }
+      // sources — nothing to render yet
+    };
 
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-
       buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split("\n\n");
-      // Keep the last (potentially incomplete) frame in the buffer
-      buffer = frames.pop() ?? "";
-
-      for (const frame of frames) {
-        const event = translateFrame(frame, state);
-        if (event) onEvent(event);
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.startsWith("event:")) eventType = line.slice(6).trim();
+        else if (line.startsWith("data:")) emit(line.slice(5).trim());
+        else if (line === "") eventType = "";
       }
     }
-
-    const tail = translateFrame(buffer, state);
-    if (tail) onEvent(tail);
   },
 };

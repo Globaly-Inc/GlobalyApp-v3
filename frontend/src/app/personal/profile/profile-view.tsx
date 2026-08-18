@@ -3,15 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { User, Mail, GraduationCap, Briefcase, Languages, CheckCircle2, Circle, Loader2, Camera, Lock } from "lucide-react";
+import { User, Mail, GraduationCap, Briefcase, Languages, CheckCircle2, Circle, Loader2, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CoverLogoEditor } from "@/components/cover-logo-editor";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { geoApi, type Country } from "../../geo/apis";
+import { personalApi } from "../apis";
 import {
   fetchFullProfile,
   updateProfile,
@@ -82,6 +82,7 @@ export function ProfileView() {
     open: false,
     item: null,
   });
+  const [imageUploading, setImageUploading] = useState<"profile" | "cover" | null>(null);
   useEffect(() => {
     if (status === "idle" && !profile) dispatch(fetchFullProfile());
     geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
@@ -143,33 +144,39 @@ export function ProfileView() {
 
   const confirmDelete = (label: string) => window.confirm(`Delete this ${label}?`);
 
+  const handleImageFile = async (category: "profile" | "cover", file: File) => {
+    setImageUploading(category);
+    try {
+      await personalApi.uploadImage(category, file);
+      await dispatch(fetchFullProfile());
+    } catch (e) {
+      toast.error("Upload failed", { description: e instanceof Error ? e.message : "Please try again." });
+    } finally {
+      setImageUploading(null);
+    }
+  };
+
   const completion = computeCompletion(profile, qualifications, languageTests);
   const initial = profile.first_name?.[0]?.toUpperCase() ?? "U";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <Card className="overflow-hidden">
-        <div className="relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48">
-          <Button
-            variant="secondary"
-            size="sm"
-            className="absolute right-4 top-4 gap-1.5"
-            onClick={() => toast("Coming soon", { description: "Cover photo uploads aren't available yet." })}
-          >
-            <Camera className="h-4 w-4" /> Edit cover
-          </Button>
-          <Avatar className="absolute -bottom-12 left-6 size-24 border-4 border-background">
-            {profile.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
-            <AvatarFallback className="text-2xl">{initial}</AvatarFallback>
-          </Avatar>
-        </div>
+        <CoverLogoEditor
+          className="h-40 sm:h-48"
+          coverUrl={profile.cover_url}
+          onCoverFile={(file) => handleImageFile("cover", file)}
+          coverUploading={imageUploading === "cover"}
+          logoUrl={profile.photo_url}
+          logoFallback={initial}
+          onLogoFile={(file) => handleImageFile("profile", file)}
+          logoUploading={imageUploading === "profile"}
+        />
         <CardContent className="pt-16">
           <h1 className="text-xl font-bold text-foreground">
             {profile.first_name} {profile.last_name}
           </h1>
-          {countryName(profile.nationality_id) && (
-            <p className="text-sm text-muted-foreground">From {countryName(profile.nationality_id)}</p>
-          )}
+          <p className="text-sm text-muted-foreground">{profile.email}</p>
         </CardContent>
       </Card>
 

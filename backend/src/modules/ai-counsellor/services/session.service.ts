@@ -15,9 +15,13 @@ async function requireOwned(id: number, scope: ChatScope): Promise<SessionRow> {
   return session;
 }
 
-export async function getOrCreateSession(scope: ChatScope, sessionId?: number): Promise<SessionRow> {
+export async function getOrCreateSession(
+  scope: ChatScope,
+  sessionId?: number,
+  embedConfigId?: number,
+): Promise<SessionRow> {
   if (sessionId) return requireOwned(sessionId, scope);
-  return sessionsRepo.create(scope);
+  return sessionsRepo.create(scope, embedConfigId);
 }
 
 export async function getSession(id: number, scope: ChatScope): Promise<SessionRow> {

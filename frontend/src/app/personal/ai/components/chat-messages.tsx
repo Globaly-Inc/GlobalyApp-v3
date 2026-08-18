@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useAppSelector } from "@/lib/hooks";
 import { ChatMessage, StreamingMessage } from "./chat-message";
+import { stripStructuredBlocks } from "../utils";
 import { ThinkingIndicator } from "./thinking-indicator";
 
 type ChatMessagesProps = {
@@ -39,7 +40,7 @@ export function ChatMessages({ onChipClick }: ChatMessagesProps) {
 
         {isStreaming && streamingContent && (
           <StreamingMessage
-            content={streamingContent}
+            content={stripStructuredBlocks(streamingContent)}
             cards={streamingCards}
             chips={streamingChips}
             onChipClick={onChipClick}

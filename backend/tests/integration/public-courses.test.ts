@@ -6,6 +6,8 @@
 //
 // The load-bearing assertion is the first one: `verification_status <> 'verified'`
 // rows are scraped, unreviewed data and must never reach a public response.
+// Publication additionally requires the course's extraction job to have been
+// promoted ('exported'), which is why the fixture job below is seeded that way.
 
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Knex } from "knex";
@@ -54,7 +56,10 @@ describeDb("public course search", () => {
     await app.ready();
 
     const [job] = await db(`${S}.extraction_jobs`)
-      .insert({ institution_name: `${TAG} Uni`, institution_url: `https://${TAG}.test`, status: "completed" })
+      // 'exported' = promoted to a business. Public visibility needs that AND a
+      // per-course verified/confirmed status — see PUBLICLY_VISIBLE in
+      // search/repositories/courses.repository.ts.
+      .insert({ institution_name: `${TAG} Uni`, institution_url: `https://${TAG}.test`, status: "exported" })
       .returning(["id"]);
 
     const insertCourse = async (row: Record<string, unknown>) => {

@@ -21,19 +21,35 @@ export type CourseSort = "best_match" | "fee_asc" | "fee_desc" | "duration_asc";
 
 const EFFECTIVE_FEE = "coalesce(ec.domestic_fee_total, ec.international_fee_total)";
 
+// Public visibility takes BOTH gates, which is what ai-counsellor's
+// knowledge.repository.searchCourses already applies and calls "the same gate as
+// the search module":
+//
+//   1. the course's job was promoted to a business (promote.service.ts sets
+//      status 'exported'), and
+//   2. the course itself was cleared in review.
+//
+// Gate 1 alone is job-level: promoting one job would publish every course in it,
+// including rows the reviewer never looked at. That is the exposure
+// public-courses.test.ts exists to prevent, so the per-course status stays in.
+// The value set matches searchCourses ('confirmed' as well as 'verified'), and a
+// 'flagged' row can never satisfy a positive IN, so no separate exclusion is needed.
+const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')
+  and ec.verification_status in ('verified', 'confirmed')`;
+
 const LIST_COLUMNS = [
   "ec.id", "ec.name", "ec.short_name", "ec.degree_level", "ec.subject_area",
   "ec.duration_weeks", "ec.study_mode", "ec.description",
   "ec.domestic_fee_total", "ec.domestic_currency",
   "ec.international_fee_total", "ec.international_currency",
-  "ec.awarding_institution", "ec.image_url",
+  "ec.awarding_institution", "ec.image_url", "ec.source_url",
   "c.name as country_name",
 ];
 
 function baseQuery({ country, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear }: CourseSearchFilters) {
   const q = masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
-    .where("ec.verification_status", "verified");
+    .whereRaw(PUBLICLY_VISIBLE);
 
   if (country) {
     q.where((b) =>
@@ -119,7 +135,7 @@ export async function findPublicCourseBySlug(slug: string) {
 
   const course = await masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
-    .where("ec.verification_status", "verified")
+    .whereRaw(PUBLICLY_VISIBLE)
     .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
     .select(...LIST_COLUMNS)
     .first();

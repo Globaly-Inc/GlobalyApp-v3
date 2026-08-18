@@ -21,6 +21,7 @@ export const authPlugin = fp(async (app) => {
     "/api/v3/auth/register",
     "/api/v3/agents/invite/accept",
     "/api/v3/businesses/claim/accept",
+    "/api/v3/businesses/claim/request",
     // Health
     "/healthz",
     "/health/detailed",

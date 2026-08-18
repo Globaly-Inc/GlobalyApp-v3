@@ -122,6 +122,20 @@ export type MemberPatch = Partial<{
   is_owner: boolean;
 }>;
 
+export type InvitedMember = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  phone: string | null;
+  role: string | null;
+  admin_point_of_contact: boolean;
+  invited_at: string;
+  expires_at: string;
+};
+
+export type InvitationListResult = { data: InvitedMember[]; total: number };
+
 export type RelationType = "partner" | "subsidiary" | "franchise";
 
 export type BusinessRelation = {

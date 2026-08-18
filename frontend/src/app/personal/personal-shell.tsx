@@ -19,6 +19,7 @@ import {
   Building2,
   LogOut,
   Loader2,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useHydrated } from "@/lib/use-hydrated";
 import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
@@ -50,6 +52,7 @@ const NAV_ITEMS = [
   { label: "Explore", icon: Compass, href: "/personal/explore" },
   { label: "Earn", icon: Coins, href: "/personal/earn" },
   { label: "Learning", icon: GraduationCap, href: "/personal/learning" },
+  { label: "Enquiries", icon: Inbox, href: "/personal/enquiries" },
 ];
 
 export function PersonalShell({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -58,11 +61,13 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const dispatch = useAppDispatch();
   const { profile, status } = useAppSelector((state) => state.profile);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // See use-hydrated.ts for why this is not a setState-in-effect flag.
+  const mounted = useHydrated();
 
   const portalTarget =
-    profile?.user_category === "business"
+    mounted && profile?.user_category === "business"
       ? { label: "Business Portal", icon: Building2, href: "/business/profile" }
-      : profile?.user_category === "personal"
+      : mounted && profile?.user_category === "personal"
         ? { label: "Personal Portal", icon: UserIcon, href: "/personal/portal" }
         : null;
 
@@ -87,14 +92,17 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
     router.push("/auth/sign-in");
   };
 
-  if (status === "loading" && !profile) {
+  if (mounted && status === "loading" && !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
-  const initial = profile?.first_name?.[0]?.toUpperCase() ?? "U";
+  // Same reasoning as the `mounted`-gated loading branch above: anything derived from `profile` must
+  // fall back to the profile-less shape until mounted, or it can disagree with cached/hydrated HTML.
+  const initial = mounted ? profile?.first_name?.[0]?.toUpperCase() ?? "U" : "U";
+  const avatarPhotoUrl = mounted ? profile?.photo_url : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -189,7 +197,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
               }
             >
               <Avatar className="size-7">
-                {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+                {avatarPhotoUrl && <AvatarImage src={avatarPhotoUrl} alt={profile?.first_name} />}
                 <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />

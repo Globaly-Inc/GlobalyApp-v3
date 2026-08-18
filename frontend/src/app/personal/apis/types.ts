@@ -1,10 +1,11 @@
 export type StudentProfile = {
-  // platform_users — read-only, no PATCH route exists for these today
+  // platform_users
   first_name: string;
   last_name: string;
   email: string;
   phone: string | null;
   photo_url: string | null;
+  cover_url: string | null;
   user_category: string | null;
   user_sub_category: string | null;
   // platform_user_profiles — editable via PATCH /platform-users/me
@@ -18,6 +19,8 @@ export type StudentProfile = {
   personal_address_state: string | null;
   personal_address_street: string | null;
   personal_address_postcode: string | null;
+  latitude: number | null;
+  longitude: number | null;
   budget_min: number | null;
   budget_max: number | null;
   budget_currency: string | null;

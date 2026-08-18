@@ -1,13 +1,11 @@
 // Business-owner-facing counterpart to admin/platform/businesses/store/businesses-slice.ts.
-// Thunks keep the same `{ id, ... }` argument shape as the admin slice (id is unused here — the
-// backend infers the business from the caller's JWT org) so tab components port over with only
-// an import-path change, not a call-site rewrite.
+
 
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessProfileDetailApi } from "../apis";
 import type {
   ActivityListParams, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchPatch, BusinessRelation,
-  BusinessService, LinkExistingBranchInput, Member, MemberInviteInput, MemberListParams, MemberPatch, MemberRole,
+  BusinessService, InvitedMember, LinkExistingBranchInput, Member, MemberInviteInput, MemberListParams, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch, ServiceSearchParams,
 } from "../apis/types";
 
@@ -92,6 +90,17 @@ export const removeMember = createAsyncThunk(
     return memberId;
   },
 );
+export const fetchInvitations = createAsyncThunk(
+  "businessProfileDetail/fetchInvitations",
+  ({ params }: { id: number; params?: MemberListParams }) => businessProfileDetailApi.getInvitations(params),
+);
+export const cancelInvitation = createAsyncThunk(
+  "businessProfileDetail/cancelInvitation",
+  async ({ invitationId }: { id: number; invitationId: string }) => {
+    await businessProfileDetailApi.cancelInvitation(invitationId);
+    return invitationId;
+  },
+);
 
 // ─── Relations (Partners tab) ─────────────────────────────────────────────────
 export const fetchRelations = createAsyncThunk(
@@ -128,13 +137,14 @@ type BusinessProfileDetailState = {
   branches: ListState<Branch>;
   services: ListState<BusinessService>;
   members: ListState<Member>;
+  invitations: ListState<InvitedMember>;
   memberRoles: MemberRole[];
   relations: ListState<BusinessRelation>;
   activity: ListState<ActivityLogEntry>;
 };
 
 const initialState: BusinessProfileDetailState = {
-  branches: emptyList(), services: emptyList(), members: emptyList(),
+  branches: emptyList(), services: emptyList(), members: emptyList(), invitations: emptyList(),
   memberRoles: [], relations: emptyList(), activity: emptyList(),
 };
 
@@ -195,6 +205,17 @@ const businessProfileDetailSlice = createSlice({
         const wasMember = state.members.items.some((m) => m.id === action.payload);
         state.members.items = state.members.items.filter((m) => m.id !== action.payload);
         if (wasMember) state.members.total = Math.max(0, state.members.total - 1);
+      })
+
+      .addCase(fetchInvitations.pending, (state) => { state.invitations.status = "loading"; })
+      .addCase(fetchInvitations.fulfilled, (state, action) => {
+        state.invitations = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
+      })
+      .addCase(fetchInvitations.rejected, (state, action) => { state.invitations.status = "failed"; state.invitations.error = action.error.message ?? "Failed to load invitations."; })
+      .addCase(cancelInvitation.fulfilled, (state, action) => {
+        const wasPresent = state.invitations.items.some((i) => i.id === action.payload);
+        state.invitations.items = state.invitations.items.filter((i) => i.id !== action.payload);
+        if (wasPresent) state.invitations.total = Math.max(0, state.invitations.total - 1);
       })
 
       .addCase(fetchRelations.pending, (state) => { state.relations.status = "loading"; })

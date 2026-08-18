@@ -13,6 +13,7 @@ import { authPlugin } from "./core/plugins/auth.plugin.js";
 import { tenantPlugin } from "./core/plugins/tenant.plugin.js";
 import { startEvictionLoop, shutdownAll } from "./core/db/pool-manager.js";
 import { masterKnex } from "./core/db/master-pool.js";
+import { closeCache } from "./core/cache/dragonfly.js";
 import { createChildLogger } from "./shared/logger.js";
 
 // Modules
@@ -20,6 +21,7 @@ import authModule from "./modules/auth/index.js";
 import superadminModule from "./modules/superadmin/index.js";
 import platformUsersModule, { publicStudentProfilesModule } from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
+import placesModule from "./modules/places/index.js";
 import agentsModule from "./modules/agents/index.js";
 import feedModule from "./modules/feed/index.js";
 import blogModule from "./modules/blog/index.js";
@@ -35,6 +37,7 @@ import messagingModule from "./modules/messaging/index.js";
 import eventsModule, { publicEventsModule } from "./modules/events/index.js";
 import notificationsModule from "./modules/notifications/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
+import coursesModule from "./modules/courses/index.js";
 import jobsModule from "./modules/jobs/index.js";
 import ambassadorsModule, { publicAmbassadorsModule } from "./modules/ambassadors/index.js";
 import trainingModule, { publicCertificatesModule } from "./modules/training/index.js";
@@ -81,6 +84,7 @@ export async function buildServer() {
     await protectedApp.register(superadminModule);   // admin users + data extraction
     await protectedApp.register(platformUsersModule); // platform user profiles + sub-resources
     await protectedApp.register(businessesModule);   // business registration + profiles
+    await protectedApp.register(placesModule);       // address autocomplete for self-service profile forms
     await protectedApp.register(agentsModule);       // agent invitations + management (per-business DB)
     await protectedApp.register(feedModule);          // cross-portal social feed
     await protectedApp.register(otherServicesModule);      // service listings, orders, reviews
@@ -88,6 +92,7 @@ export async function buildServer() {
     await protectedApp.register(eventsModule);             // events, ticketing, registrations, admin monitoring
     await protectedApp.register(notificationsModule);      // per-user inbox, channel preferences, push tokens
     await protectedApp.register(enquiriesModule);          // student enquiries, distribution, credit unlock
+    await protectedApp.register(coursesModule);            // student course browse (extracted courses)
     await protectedApp.register(jobsModule);               // jobs board: posting, applicants, AI assist, admin oversight
     await protectedApp.register(ambassadorsModule);        // ambassador programs, engagement, earnings, payouts
     await protectedApp.register(trainingModule);           // training programs, certificates, gamification
@@ -104,7 +109,7 @@ export async function buildServer() {
   await app.register(publicServicesModule);  // public marketplace browse (no auth)
   await app.register(geoModule);              // public geo reads (no auth)
   await app.register(searchModule);          // public search reads (no auth)
-  await app.register(aiCounsellorModule);    // public AI counsellor (no auth)
+  await app.register(aiCounsellorModule);    // AI counsellor: open guest + embed resolve, own auth sub-scope for the rest
   await app.register(aiEmbedModule);         // AI-embed widget: public widget surface + owner config CRUD
   await app.register(fxModule);              // public FX rate cache (no auth)
   await app.register(crossAppModule);        // GlobalyAI feed: shared-secret machine-to-machine
@@ -199,6 +204,7 @@ const shutdown = async () => {
   logger.info("Shutting down...");
   await app.close();
   await shutdownAll();
+  await closeCache();
   await masterKnex.destroy();
   process.exit(0);
 };

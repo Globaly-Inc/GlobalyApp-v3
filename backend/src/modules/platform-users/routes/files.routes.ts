@@ -42,9 +42,11 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
       size_bytes: buffer.length,
     });
 
-    // If profile photo, update photo_url on platform_users
+    // If profile photo or cover, update the corresponding URL column on platform_users
     if (fileCategory === "profile") {
       await userRepo.updateUser(userId, { photo_url: storagePath });
+    } else if (fileCategory === "cover") {
+      await userRepo.updateUser(userId, { cover_url: storagePath });
     }
 
     return reply.status(201).send({
@@ -111,9 +113,11 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
     await storage.deleteFile(file.storage_path);
     await filesRepo.deleteFileRecord(id);
 
-    // Clear photo_url if deleting profile photo
+    // Clear the corresponding URL column if deleting a profile photo or cover
     if (file.category === "profile") {
       await userRepo.updateUser(Number(req.auth.sub), { photo_url: null });
+    } else if (file.category === "cover") {
+      await userRepo.updateUser(Number(req.auth.sub), { cover_url: null });
     }
 
     return reply.status(204).send();

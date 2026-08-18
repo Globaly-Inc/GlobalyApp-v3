@@ -35,6 +35,8 @@ export interface BusinessRecord {
   city: string | null;
   address: string | null;
   postcode: string | null;
+  latitude: number | null;
+  longitude: number | null;
   linkedin_url: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
@@ -69,5 +71,6 @@ declare module "fastify" {
     auth: AuthClaims;
     db: Knex;          // per-business DB (set for business context routes)
     business?: BusinessRecord;     // resolved business row (set alongside db)
+    businessId: number; // numeric businesses.id for the resolved tenant (auth.orgId is its schema_name)
   }
 }

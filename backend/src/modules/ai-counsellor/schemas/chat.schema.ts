@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { webUrl } from "../../../shared/url.js";
 
 export const SendMessageSchema = z.object({
   session_id: z.coerce.number().int().positive().optional(),
@@ -21,7 +22,7 @@ export const UpdateSessionSchema = z.object({
 });
 
 export const FeedbackSchema = z.object({
-  feedback: z.enum(["positive", "negative"]),
+  feedback: z.enum(["positive", "negative"]).nullable(),
 });
 
 export const ListSessionsQuerySchema = z.object({
@@ -45,6 +46,25 @@ export const CreditGrantSchema = z.object({
 export const GuestMessageSchema = z.object({
   content: z.string().trim().min(1).max(5000),
   fingerprint: z.string().min(1),
+  embed_key: z.string().uuid().optional(),
+});
+
+export const EmbedConfigCreateSchema = z.object({
+  display_name: z.string().trim().min(1).max(120).optional(),
+  // webUrl(), never z.string().url(): this value is rendered into the embed
+  // widget's <img src>, and the URL constructor accepts javascript:/data: schemes.
+  logo_url: webUrl({ max: 500 }).optional(),
+  brand_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  custom_instructions: z.string().trim().max(2000).optional(),
+  monthly_credit_limit: z.coerce.number().int().min(1).max(100000).optional(),
+});
+
+export const EmbedConfigIdParamSchema = z.object({
+  id: z.coerce.number().int().positive(),
+});
+
+export const EmbedKeyQuerySchema = z.object({
+  key: z.string().uuid(),
 });
 
 export const GuestMigrateSchema = z.object({
