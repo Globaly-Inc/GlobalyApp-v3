@@ -18,7 +18,7 @@ import {
   UNLOCK_REFERENCE_TYPE,
   unlockIdempotencyKey,
 } from "../consts.js";
-import { EnquiryRateLimitError } from "../errors.js";
+import { EnquiryClosedError, EnquiryRateLimitError } from "../errors.js";
 import * as repo from "../repositories/enquiries.repository.js";
 import type {
   AdminListQuery,
@@ -275,6 +275,12 @@ export async function unlockEnquiry(
 ) {
   const distribution = await repo.findDistributionForBusiness(distributionId, businessId);
   if (!distribution) throw new NotFoundError("Enquiry not found in this inbox");
+
+  // Before anything is claimed or charged. The transaction below sets the status
+  // to 'viewed', which on a closed row would drag it back out of 'closed' while
+  // leaving closed_at and close_reason set — a row asserting both at once — and
+  // would bill a business for a lead it had already declared finished with.
+  if (distribution.status === "closed") throw new EnquiryClosedError();
 
   const settled = await repo.findUnlock(distributionId);
   if (settled) return unlockResponse(businessId, distributionId, settled, true);

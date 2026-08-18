@@ -150,15 +150,18 @@ export const businessEnquiriesMockApi = {
         enquiry: target,
       };
     }
+    // Mirrors the server's 409: unlocking a closed lead would move it back out of
+    // 'closed' and bill for something already declared finished with.
+    if (target.status === "closed") {
+      throw new Error("This enquiry has been closed and can no longer be unlocked");
+    }
     if (mockBalance < target.coin_cost) {
       throw new Error(`Insufficient credits — unlocking costs ${target.coin_cost}`);
     }
     mockBalance -= target.coin_cost;
 
-    // Closing does not re-lock a lead, and unlocking does not un-close one:
-    // status is carried through rather than forced to 'viewed'.
     const revealed = unlocked(target.id, "Do you handle student visa applications as well as admissions?", {
-      status: target.status === "closed" ? "closed" : "viewed",
+      status: "viewed",
       distance_km: target.distance_km,
       preferred_intake: target.preferred_intake,
       preferred_year: target.preferred_year,

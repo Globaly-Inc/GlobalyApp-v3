@@ -601,6 +601,32 @@ describeDb("enquiries", () => {
       expect(retry.json().already_unlocked).toBe(false);
     });
 
+    it("refuses to unlock a lead this business has already closed", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+      await fundWallet(near.id, 500);
+      const before = await balanceOf(near.id);
+
+      expect(
+        (await post(`/api/v3/business/enquiries/${dist.id}/close`, near.token, { close_reason: "Not for us" }))
+          .statusCode,
+      ).toBe(200);
+
+      // Without this guard the unlock path's `setDistributionStatus(id, 'viewed')`
+      // would drag the row back out of 'closed' while leaving closed_at and
+      // close_reason set — a row that claims to be both closed and not.
+      const res = await post(`/api/v3/business/enquiries/${dist.id}/unlock`, near.token);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().code).toBe("ENQUIRY_CLOSED");
+
+      const row = await distributionFor(created.id, near.id);
+      expect(row.status).toBe("closed");
+      expect(row.close_reason).toBe("Not for us");
+      expect(await balanceOf(near.id)).toBe(before);
+      expect(await masterKnex("enquiry_unlocks").where({ distribution_id: dist.id })).toHaveLength(0);
+    });
+
     it("moves the distribution and the enquiry to 'viewed' on unlock", async () => {
       const student = await makeStudent();
       const created = await createEnquiry(student.token);
@@ -661,6 +687,10 @@ describeDb("enquiries", () => {
       expect(row.close_reason).toBe("Student is outside the regions we service");
       // No unlock was created and no credit moved — close is free.
       expect(await masterKnex("enquiry_unlocks").where({ distribution_id: dist.id })).toHaveLength(0);
+
+      // And the student's enquiry is untouched: one recipient losing interest is
+      // not the enquiry closing.
+      expect((await masterKnex("enquiries").where({ id: created.id }).first()).status).toBe("pending");
     });
 
     it("closing twice is a no-op — the second call never rewrites the row", async () => {

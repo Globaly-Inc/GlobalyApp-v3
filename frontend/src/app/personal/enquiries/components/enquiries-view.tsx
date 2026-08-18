@@ -22,8 +22,13 @@ export function EnquiriesView() {
   const { profile, qualifications, languageTests, status: profileStatus } = useAppSelector((s) => s.profile);
   const completion = profile ? computeCompletion(profile, qualifications, languageTests).percentage : null;
   const profileLoaded = profileStatus !== "loading" && !!profile;
-  // Blocked on the percentage (v2 parity) OR the backend's own onboarding flag,
-  // so the UI never lets through something POST /enquiries would 403.
+  // Blocked on the percentage (v2 parity) OR the backend's own onboarding flag.
+  //
+  // This gate is UI-only: POST /enquiries enforces the 3-per-24h rate limit and
+  // nothing else — no completion check, no onboarding check — so it is stricter
+  // than the server rather than a mirror of it. It stays because v2 required 100%
+  // and loosening it is a product decision, but nobody should read it as
+  // preventing a 403 the server would otherwise return.
   const canEnquire =
     profileLoaded && completion !== null && completion >= REQUIRED_COMPLETION && profile!.onboarding_completed;
 

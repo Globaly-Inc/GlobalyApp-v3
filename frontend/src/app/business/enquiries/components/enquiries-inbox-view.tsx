@@ -58,7 +58,7 @@ export function EnquiriesInboxView() {
   const handleConfirmUnlock = async () => {
     if (unlockTarget == null) return;
     const result = await dispatch(unlockDistribution(unlockTarget));
-    // Close on success only — on a 402 the banner explains why, and dismissing
+    // Close on success only — on a 402/409 the banner explains why, and dismissing
     // the dialog first would hide what the user just tried to do.
     if (unlockDistribution.fulfilled.match(result)) setUnlockTarget(null);
   };
@@ -106,7 +106,7 @@ export function EnquiriesInboxView() {
         ))}
       </div>
 
-      {/* A 402 from unlock lands here with the server's own wording. */}
+      {/* A 402 or 409 from unlock lands here with the server's own wording. */}
       {actionError && (
         <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
           <p className="text-destructive">{actionError}</p>

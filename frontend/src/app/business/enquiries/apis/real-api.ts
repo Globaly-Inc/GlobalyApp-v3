@@ -13,9 +13,10 @@ export const businessEnquiriesRealApi = {
 
   getCredits: (): Promise<CreditBalance> => httpGet(`${BASE}/credits`),
 
-  // 402 when credits are short — surfaces as a thrown ApiError carrying the
-  // server's own message. There is no unlock cap to 409 on: the cap in this
-  // module is on how many businesses the lead reaches, applied at distribution.
+  // 402 when credits are short, 409 ENQUIRY_CLOSED on a lead this business has
+  // already closed — both surface as a thrown ApiError carrying the server's own
+  // message. The 409 is not an unlock cap: the cap in this module is on how many
+  // businesses the lead reaches, and it is applied at distribution.
   unlock: (id: number): Promise<UnlockResult> => httpPost(`${BASE}/${id}/unlock`, {}),
 
   close: (id: number, closeReason: string): Promise<CloseResult> =>
