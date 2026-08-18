@@ -31,6 +31,11 @@ export function testEnv(): Record<string, string> {
     // the tests would still pass while proving the opposite of what they claim.
     // Tests that want a configured provider inject one; they never read the env.
     GEMINI_API_KEY: "",
+    // Same reasoning for storage. storage-preview-url.test.ts asserts
+    // isConfigured() === false as its precondition, because an unsignable bucket is
+    // exactly the condition resolvePreviewUrl's fail-soft path exists for. Leaving
+    // this to .env means whoever configures GCS locally breaks that suite.
+    GCS_BUCKET_NAME: "",
     CORS_ORIGINS: "http://localhost:3001",
   };
 }
