@@ -39,7 +39,7 @@
     "migrate:v1-extract-ddl": "node scripts/migration/extract.mjs --emit-ddl",
     "verify:staging": "node scripts/migration/verify-staging.mjs",
     "migrate:ensure-mig": "node --import tsx scripts/migration/lib.ts --ensure-mig",
-    "check:migration": "node scripts/migration/extract.mjs --self-check && node scripts/migration/verify-staging.mjs --self-check && node --import tsx scripts/migration/lib.ts --self-check && node database/scripts/verify-migration.mjs --self-check",
+    "check:migration": "node scripts/migration/extract.mjs --self-check && node scripts/migration/verify-staging.mjs --self-check && node --import tsx scripts/migration/lib.ts --self-check && node database/scripts/verify-migration.mjs --self-check && node --import tsx scripts/migration/w6-storage.ts --self-check",
     "job:enquiry-digest": "node --import tsx src/workers/enquiry-digest.worker.ts",
     "migrate:w1-geo": "node --import tsx scripts/migration/w1-geo.ts",
     "migrate:w1-identity": "node --import tsx scripts/migration/w1-identity.ts",
@@ -49,7 +49,8 @@
     "migrate:w3-subprofiles": "node --import tsx scripts/migration/w3-subprofiles.ts",
     "job:notifications": "node --import tsx src/workers/notification.worker.ts",
     "migrate:w4-extraction": "node --import tsx scripts/migration/w4-extraction.ts",
-    "migrate:w5-content": "node --import tsx scripts/migration/w5-content.ts"
+    "migrate:w5-content": "node --import tsx scripts/migration/w5-content.ts",
+    "migrate:w6-storage": "node --import tsx scripts/migration/w6-storage.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
