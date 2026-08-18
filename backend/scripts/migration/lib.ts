@@ -167,6 +167,18 @@ export function normalizeCountryKey(value: unknown): string | null {
 }
 
 /**
+ * normalizeCountryKey(), expressed as SQL over an arbitrary expression.
+ *
+ * The resolver views and the transforms both join on this, and a geo key that
+ * means one thing in SQL and another in TypeScript is exactly how a country
+ * resolves in the importer and not in the gate. NFKD + stripping the combining
+ * marks is the half that matters in practice: without it `São Paulo` and
+ * `Sao Paulo` are different cities, and V1 accents every one of them.
+ */
+export const normKeySql = (expr: string): string =>
+  `btrim(regexp_replace(regexp_replace(lower(normalize(${expr}, NFKD)), '[̀-ͯ]', '', 'g'), '[^a-z0-9]+', ' ', 'g'))`;
+
+/**
  * A DNS label for a tenant subdomain: lowercase alphanumerics and hyphens, no
  * leading or trailing hyphen, 63 characters max. Returns null when nothing
  * usable survives — a business with an unusable name needs a decision, not a
@@ -287,7 +299,7 @@ CREATE INDEX IF NOT EXISTS unresolved_run_idx    ON ${MIG_SCHEMA}.unresolved (ru
  * Resolver maps that need only the V3 side. Materialised as views so they can
  * never go stale between waves.
  */
-export const MIG_TARGET_MAPS_SQL = `
+export const MIG_TARGET_MAPS_SQL = (): string => `
 -- V1 business uuid -> V3 businesses.id + the tenant schema that holds its data.
 -- The uuid is stamped into businesses.meta at load time (§5), which is what
 -- makes this a lookup rather than a guess.
@@ -304,7 +316,7 @@ CREATE OR REPLACE VIEW ${MIG_SCHEMA}.map_businesses AS
 -- unclaimed institution has no V1 business row to point back at. Where one does
 -- exist, v1_business_id carries it and both paths must agree.
 CREATE OR REPLACE VIEW ${MIG_SCHEMA}.map_institutions AS
-  SELECT lower(btrim(i.institution_name)) AS name_key,
+  SELECT ${normKeySql("i.institution_name")} AS name_key,
          i.country_id                     AS country_id,
          i.id                             AS institution_id,
          i.v1_business_id                 AS v1_business_id,
@@ -321,13 +333,13 @@ CREATE OR REPLACE VIEW ${MIG_SCHEMA}.map_institutions AS
 CREATE OR REPLACE VIEW ${MIG_SCHEMA}.map_countries AS
   SELECT DISTINCT ON (key) key, id, priority
     FROM (
-      SELECT btrim(regexp_replace(lower(c.iso2), '[^a-z0-9]+', ' ', 'g')) AS key, c.id, 1 AS priority
+      SELECT ${normKeySql("c.iso2")} AS key, c.id, 1 AS priority
         FROM public.countries c WHERE c.iso2 IS NOT NULL
       UNION ALL
-      SELECT btrim(regexp_replace(lower(c.iso3), '[^a-z0-9]+', ' ', 'g')), c.id, 2
+      SELECT ${normKeySql("c.iso3")}, c.id, 2
         FROM public.countries c WHERE c.iso3 IS NOT NULL
       UNION ALL
-      SELECT btrim(regexp_replace(lower(c.name), '[^a-z0-9]+', ' ', 'g')), c.id, 3
+      SELECT ${normKeySql("c.name")}, c.id, 3
         FROM public.countries c WHERE c.name IS NOT NULL
     ) s
    WHERE key <> ''
@@ -336,9 +348,9 @@ CREATE OR REPLACE VIEW ${MIG_SCHEMA}.map_countries AS
 -- Cities are only unique within a country, so the key is the pair. Resolving a
 -- city name alone is how you get a Sydney in Nova Scotia.
 CREATE OR REPLACE VIEW ${MIG_SCHEMA}.map_cities AS
-  SELECT c.country_id                                                        AS country_id,
-         btrim(regexp_replace(lower(c.name), '[^a-z0-9]+', ' ', 'g'))        AS name_key,
-         c.id                                                               AS city_id
+  SELECT c.country_id            AS country_id,
+         ${normKeySql("c.name")} AS name_key,
+         c.id                    AS city_id
     FROM public.cities c
    WHERE c.deleted_at IS NULL AND btrim(coalesce(c.name, '')) <> '';
 `;
@@ -369,7 +381,7 @@ export async function ensureMigSchema(db: pg.ClientBase): Promise<string[]> {
   const created: string[] = [];
   await db.query(MIG_REPORT_SQL);
   created.push(`${MIG_SCHEMA}.unresolved`);
-  await db.query(MIG_TARGET_MAPS_SQL);
+  await db.query(MIG_TARGET_MAPS_SQL());
   created.push(`${MIG_SCHEMA}.map_businesses`, `${MIG_SCHEMA}.map_institutions`, `${MIG_SCHEMA}.map_countries`, `${MIG_SCHEMA}.map_cities`);
 
   const { rows } = await db.query<{ n: string }>(
@@ -453,9 +465,15 @@ export async function assertParentCounts(
     const { rows: tgt } = await ctx.db.query<{ n: string }>(
       `SELECT count(*) AS n FROM ${parent.targetTable}${parent.targetFilter ? ` WHERE ${parent.targetFilter}` : ""}`,
     );
+    // Every reason-coded row for this parent table, from ANY run — not just this
+    // one. A junction in W2 stands on parents W1 loaded, and W1's explanations
+    // are still the explanation; scoping this to the current run would make a
+    // cross-wave junction refuse to load over a perfectly reconciled parent.
+    // Distinct on the source key, because a parent row can be reported for more
+    // than one column without being lost more than once.
     const { rows: skipped } = await ctx.db.query<{ n: string }>(
-      `SELECT count(*) AS n FROM ${MIG_SCHEMA}.unresolved WHERE run_id = $1 AND source_table = $2`,
-      [ctx.runId, parent.stagingTable],
+      `SELECT count(DISTINCT source_key) AS n FROM ${MIG_SCHEMA}.unresolved WHERE source_table = $1`,
+      [parent.stagingTable],
     );
     const staged = Number(src[0].n);
     const written = Number(tgt[0].n);
@@ -493,6 +511,118 @@ export async function upsertRows(
   return sent;
 }
 
+/**
+ * Run one set-based write (INSERT … SELECT … ON CONFLICT) and account for it.
+ *
+ * Convention 3 lives in the SQL: every statement passed here carries its own
+ * `ON CONFLICT (<natural key>) DO UPDATE`, so a second run converges on the rows
+ * the first one wrote instead of duplicating them. The row count lands in the
+ * report under `label`, which is what makes "rows in → rows out" arithmetic
+ * rather than narration.
+ *
+ * Set-based rather than row-by-row on purpose: the whole wave is one statement
+ * per target, which is both the batching convention and the only way the
+ * dry-run rehearsal hits the same constraint checks the apply will.
+ */
+export async function execWrite(
+  ctx: TransformContext,
+  label: string,
+  sql: string,
+  params: readonly unknown[] = [],
+): Promise<number> {
+  const res = await ctx.db.query(sql, params as unknown[]);
+  const n = res.rowCount ?? 0;
+  ctx.report.written[label] = (ctx.report.written[label] ?? 0) + n;
+  return n;
+}
+
+/**
+ * Drop this wave's previous verdict on the tables it is about to re-read.
+ *
+ * Convention 3 applies to the report as much as to the data: without this, a
+ * second run appends a second copy of every skip and "what did not migrate" stops
+ * being a count. Scoped to (this wave, these source tables) — two waves can read
+ * the same V1 table for different targets, and neither may erase the other's
+ * findings.
+ */
+export async function clearReport(ctx: TransformContext, sourceTables: readonly string[]): Promise<number> {
+  if (sourceTables.length === 0) return 0;
+  const res = await ctx.db.query(
+    `DELETE FROM ${MIG_SCHEMA}.unresolved WHERE wave = $1 AND source_table = ANY($2::text[])`,
+    [ctx.wave, [...sourceTables]],
+  );
+  return res.rowCount ?? 0;
+}
+
+/**
+ * Reason-code a whole class of skips in one statement (convention 4).
+ *
+ * `sql` must return exactly two columns: the source row key and a free-text
+ * detail. The reason code is checked against mapping.json's closed enum before
+ * anything is written, so an unexplainable skip cannot reach the report table in
+ * the first place — Gate 2 check 6 treats "unexplained" as red.
+ */
+export async function reportUnresolvedQuery(
+  ctx: TransformContext,
+  allowedCodes: ReadonlySet<string>,
+  spec: {
+    sourceTable: string;
+    targetTable?: string | null;
+    column?: string | null;
+    reasonCode: string;
+    sql: string;
+    params?: readonly unknown[];
+  },
+): Promise<number> {
+  if (!allowedCodes.has(spec.reasonCode)) {
+    throw new MigrationError(
+      `unknown reason code "${spec.reasonCode}" for ${spec.sourceTable} — ` +
+        `add it to mapping.json meta.reasonCodes with a definition, or use an existing one.`,
+    );
+  }
+  // The caller's own parameters come FIRST, so `sql` can use $1, $2 … and never
+  // has to know how many bookkeeping columns this helper prepends.
+  const own = spec.params ?? [];
+  const p = (i: number) => `$${own.length + i}`;
+  const res = await ctx.db.query(
+    `INSERT INTO ${MIG_SCHEMA}.unresolved (run_id, wave, source_table, target_table, column_name, reason_code, source_key, detail)
+     SELECT ${p(1)}, ${p(2)}, ${p(3)}, ${p(4)}, ${p(5)}, ${p(6)}, s.key::text, s.detail::text FROM (${spec.sql}) s(key, detail)`,
+    [...own, ctx.runId, ctx.wave, spec.sourceTable, spec.targetTable ?? null, spec.column ?? null, spec.reasonCode],
+  );
+  const n = res.rowCount ?? 0;
+  for (let i = 0; i < n; i += 1) {
+    ctx.report.unresolved.push({
+      sourceTable: spec.sourceTable,
+      sourceKey: "(set-based)",
+      targetTable: spec.targetTable ?? null,
+      column: spec.column ?? null,
+      reasonCode: spec.reasonCode,
+    });
+  }
+  return n;
+}
+
+/**
+ * Convention 2 as a guard: every column a transform writes must exist on the
+ * live target. A renamed column then fails loudly at the top of the wave instead
+ * of silently not being written — which is exactly how the hand-written
+ * importers lost 24 columns.
+ */
+export async function assertTargetColumns(
+  db: pg.ClientBase,
+  schema: string,
+  table: string,
+  columns: readonly string[],
+): Promise<void> {
+  const live = await tableColumns(db, schema, table);
+  const missing = columns.filter((c) => !live.has(c));
+  if (missing.length) {
+    throw new MigrationError(
+      `${schema}.${table} has no column(s): ${missing.join(", ")} — the transform and the schema have drifted`,
+    );
+  }
+}
+
 // ── The runner ──────────────────────────────────────────────────────────────
 
 /**
@@ -509,6 +639,8 @@ export async function runTransform(
     argv?: readonly string[];
     connectionString?: string;
     body: (ctx: TransformContext, allowedCodes: ReadonlySet<string>) => Promise<void>;
+    /** Extra pure-helper assertions this script owns, run after the shared ones. */
+    selfCheck?: () => void;
   },
 ): Promise<number> {
   let flags: RunnerFlags;
@@ -522,6 +654,7 @@ export async function runTransform(
   if (flags.selfCheck) {
     try {
       selfCheck();
+      options.selfCheck?.();
       return 0;
     } catch (err) {
       console.error(`self-check FAILED: ${err instanceof Error ? err.message : String(err)}`);
