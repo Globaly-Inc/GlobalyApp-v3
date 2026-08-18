@@ -406,17 +406,6 @@ export async function listInvitations(
   return { rows, total: Number(counted?.count ?? 0) };
 }
 
-export async function findInvitationInProgram(
-  invitationId: number,
-  programId: number,
-  trx?: Db,
-) {
-  const row = await db(trx)("training_invitations")
-    .where({ id: invitationId, program_id: programId })
-    .first([...INVITATION_COLUMNS]);
-  return row ?? null;
-}
-
 export async function deleteInvitation(invitationId: number, programId: number, trx?: Db) {
   return db(trx)("training_invitations")
     .where({ id: invitationId, program_id: programId, status: "pending" })

@@ -887,6 +887,203 @@ describeDb("lms delivery", () => {
     });
   });
 
+  // ── Filters, due dates and re-decision guards ─────────────────────────────
+
+  describe("filters and remaining guards", () => {
+    it("filters the application queue by status", async () => {
+      const { programId } = await newProgram(bizA, "App filter");
+      const mine = await post(`${ME}/enrollment-applications`, learnerToken, {
+        program_id: programId,
+      });
+      await post(`${ME}/enrollment-applications`, outsiderToken, { program_id: programId });
+      await post(
+        `${BIZ}/programs/${programId}/enrollment-applications/${mine.json().application.id}/approve`,
+        bizA.token,
+      );
+
+      const pending = await get(
+        `${BIZ}/programs/${programId}/enrollment-applications?status=pending`,
+        bizA.token,
+      );
+      expect(pending.json().data).toHaveLength(1);
+      expect(pending.json().data[0].user_id).toBe(outsiderId);
+
+      const approved = await get(
+        `${BIZ}/programs/${programId}/enrollment-applications?status=approved`,
+        bizA.token,
+      );
+      expect(approved.json().data).toHaveLength(1);
+      expect(approved.json().data[0].user_id).toBe(learnerId);
+    });
+
+    it("filters the invitation list by status", async () => {
+      const { programId } = await newProgram(bizA, "Invite filter");
+      await post(`${BIZ}/programs/${programId}/invitations`, bizA.token, {
+        emails: ["pending-one@example.com"],
+      });
+      const pending = await get(
+        `${BIZ}/programs/${programId}/invitations?status=pending`,
+        bizA.token,
+      );
+      expect(pending.json().data).toHaveLength(1);
+      // V1's CHECK carried 'accepted' and 'expired'; V2 dropped the constraint.
+      const accepted = await get(
+        `${BIZ}/programs/${programId}/invitations?status=accepted`,
+        bizA.token,
+      );
+      expect(accepted.json().data).toHaveLength(0);
+    });
+
+    it("rejects an invitation status outside the vocabulary", async () => {
+      const { programId } = await newProgram(bizA, "Invite bad status");
+      const res = await get(`${BIZ}/programs/${programId}/invitations?status=revoked`, bizA.token);
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("carries the programme's due date onto an approved enrolment", async () => {
+      const created = await post(`${BIZ}/programs`, bizA.token, {
+        title: `Due date ${Date.now()}`,
+        is_published: true,
+        due_date: "2026-11-30T00:00:00.000Z",
+      });
+      const programId = created.json().id;
+      const applied = await post(`${ME}/enrollment-applications`, learnerToken, {
+        program_id: programId,
+      });
+      await post(
+        `${BIZ}/programs/${programId}/enrollment-applications/${applied.json().application.id}/approve`,
+        bizA.token,
+      );
+
+      const roster = await get(`${BIZ}/programs/${programId}/assignments`, bizA.token);
+      const row = roster.json().data.find((a: { user_id: number }) => a.user_id === learnerId);
+      expect(row.due_date).not.toBeNull();
+    });
+
+    it("carries a null due date without inventing one", async () => {
+      const { programId } = await newProgram(bizA, "No due date");
+      const applied = await post(`${ME}/enrollment-applications`, learnerToken, {
+        program_id: programId,
+      });
+      await post(
+        `${BIZ}/programs/${programId}/enrollment-applications/${applied.json().application.id}/approve`,
+        bizA.token,
+      );
+      const roster = await get(`${BIZ}/programs/${programId}/assignments`, bizA.token);
+      const row = roster.json().data.find((a: { user_id: number }) => a.user_id === learnerId);
+      expect(row.due_date).toBeNull();
+    });
+
+    it("refuses to re-decide a rejected application", async () => {
+      const { programId } = await newProgram(bizA, "Rejected is final");
+      const applied = await post(`${ME}/enrollment-applications`, learnerToken, {
+        program_id: programId,
+      });
+      const applicationId = applied.json().application.id;
+      await post(
+        `${BIZ}/programs/${programId}/enrollment-applications/${applicationId}/reject`,
+        bizA.token,
+        { rejection_reason: "Prerequisites not met" },
+      );
+
+      const approve = await post(
+        `${BIZ}/programs/${programId}/enrollment-applications/${applicationId}/approve`,
+        bizA.token,
+      );
+      expect(approve.statusCode).toBe(409);
+
+      // And the learner cannot quietly reapply past the rejection.
+      const reapply = await post(`${ME}/enrollment-applications`, learnerToken, {
+        program_id: programId,
+      });
+      expect(reapply.statusCode).toBe(409);
+      expect(reapply.json().error ?? reapply.json().message).toMatch(/reject/i);
+    });
+
+    it("refuses an application from someone already enrolled", async () => {
+      const { programId } = await newProgram(bizA, "Already enrolled");
+      await enrol(bizA, programId, learnerId);
+      const res = await post(`${ME}/enrollment-applications`, learnerToken, {
+        program_id: programId,
+      });
+      expect(res.statusCode).toBe(409);
+    });
+
+    it("404s an application in another programme of the same business", async () => {
+      const a = await newProgram(bizA, "App owner A");
+      const b = await newProgram(bizA, "App owner B");
+      const applied = await post(`${ME}/enrollment-applications`, learnerToken, {
+        program_id: a.programId,
+      });
+      const res = await post(
+        `${BIZ}/programs/${b.programId}/enrollment-applications/${applied.json().application.id}/approve`,
+        bizA.token,
+      );
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("404s a submission in another programme of the same business", async () => {
+      const a = await newProgram(bizA, "Sub owner A");
+      await put(
+        `${BIZ}/programs/${a.programId}/chapters/${a.chapterIds[0]}/attachments`,
+        bizA.token,
+        { attachments: { assignment: ASSIGNMENT } },
+      );
+      await enrol(bizA, a.programId, learnerId);
+      const created = await post(`${ME}/assignment-submissions`, learnerToken, {
+        program_id: a.programId,
+        chapter_id: a.chapterIds[0],
+        submission_text: "essay",
+      });
+      const b = await newProgram(bizA, "Sub owner B");
+      const res = await post(
+        `${BIZ}/programs/${b.programId}/submissions/${created.json().submission.id}/grade`,
+        bizA.token,
+        { status: "passed" },
+      );
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("refuses to submit into a closed enrolment", async () => {
+      const { programId, chapterIds } = await newProgram(bizA, "Closed enrolment");
+      await put(`${BIZ}/programs/${programId}/chapters/${chapterIds[0]}/attachments`, bizA.token, {
+        attachments: { assignment: ASSIGNMENT, quiz: QUIZ },
+      });
+      await enrol(bizA, programId, learnerId);
+      await masterKnex("training_assignments")
+        .where({ program_id: programId, user_id: learnerId })
+        .update({ is_closed: true });
+
+      const submit = await post(`${ME}/assignment-submissions`, learnerToken, {
+        program_id: programId,
+        chapter_id: chapterIds[0],
+        submission_text: "too late",
+      });
+      expect(submit.statusCode).toBe(409);
+
+      const quiz = await post(`${ME}/quiz-submissions`, learnerToken, {
+        program_id: programId,
+        chapter_id: chapterIds[0],
+        answers: ALL_CORRECT,
+      });
+      expect(quiz.statusCode).toBe(409);
+    });
+
+    it("404s a learner read of an unpublished programme's submissions", async () => {
+      const created = await post(`${BIZ}/programs`, bizA.token, {
+        title: `Unpublished reads ${Date.now()}`,
+        is_published: false,
+      });
+      const programId = created.json().id;
+      for (const path of [
+        `${ME}/programs/${programId}/assignment-submissions`,
+        `${ME}/programs/${programId}/quiz-submissions`,
+      ]) {
+        expect((await get(path, learnerToken)).statusCode).toBe(404);
+      }
+    });
+  });
+
   // ── Cross-tenant isolation ────────────────────────────────────────────────
 
   describe("cross-tenant isolation", () => {

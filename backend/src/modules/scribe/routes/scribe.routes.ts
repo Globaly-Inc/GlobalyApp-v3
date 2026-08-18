@@ -12,6 +12,7 @@
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
+import { consentEvidence } from "../lib/consent-evidence.js";
 import type { AiContext } from "../services/ai.service.js";
 import * as ai from "../services/ai.service.js";
 import * as sessions from "../services/session.service.js";
@@ -40,15 +41,6 @@ function aiContext(req: FastifyRequest): AiContext {
   };
 }
 
-/** Consent evidence taken from the connection, not from the body. */
-function evidence(req: FastifyRequest) {
-  const forwarded = req.headers["x-forwarded-for"];
-  const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  return {
-    ip_address: (first?.split(",")[0].trim() || req.ip || null)?.slice(0, 200) ?? null,
-    user_agent: (req.headers["user-agent"] ?? null)?.slice(0, 500) ?? null,
-  };
-}
 
 export async function scribeRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireBusinessContext);
@@ -67,7 +59,12 @@ export async function scribeRoutes(app: FastifyInstance) {
     const body = StartSessionSchema.parse(req.body);
     return reply
       .code(201)
-      .send(await sessions.startSession(req.db!, counselorId(req), body, evidence(req)));
+      .send(await sessions.startSession(
+          req.db!,
+          counselorId(req),
+          body,
+          consentEvidence(req.headers, req.ip),
+        ));
   });
 
   app.get("/sessions/:id", async (req, reply) => {

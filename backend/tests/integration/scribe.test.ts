@@ -1030,6 +1030,148 @@ describeDb("scribe", () => {
     });
   });
 
+  // ── Filters and remaining state transitions ───────────────────────────────
+
+  describe("history filters", () => {
+    it("filters the session list by status", async () => {
+      const ended = await startSession(bizA);
+      await post(`${BASE}/sessions/${ended}/end`, bizA.token, {});
+      const active = await startSession(bizA);
+
+      const endedOnly = await get(`${BASE}/sessions?status=ended&limit=100`, bizA.token);
+      const ids = endedOnly.json().data.map((s: { id: number }) => s.id);
+      expect(ids).toContain(ended);
+      expect(ids).not.toContain(active);
+
+      const activeOnly = await get(`${BASE}/sessions?status=active&limit=100`, bizA.token);
+      expect(activeOnly.json().data.map((s: { id: number }) => s.id)).toContain(active);
+    });
+
+    it("filters the session list by student, which V1's history could not", async () => {
+      const forStudent = await startSession(bizA);
+      const forGuest = await startSession(bizA, {
+        student_profile_id: null,
+        guest_name: "Someone Else",
+        consent: { student_name: "Someone Else", consent_text: CONSENT_TEXT },
+      });
+
+      const res = await get(
+        `${BASE}/sessions?student_profile_id=${studentId}&limit=100`,
+        bizA.token,
+      );
+      const ids = res.json().data.map((s: { id: number }) => s.id);
+      expect(ids).toContain(forStudent);
+      expect(ids).not.toContain(forGuest);
+    });
+
+    it("rejects a status the state machine does not have", async () => {
+      // V1's CHECK constraint carried 'abandoned', which nothing ever wrote.
+      const res = await get(`${BASE}/sessions?status=abandoned`, bizA.token);
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe("closed-session guards", () => {
+    async function reviewedSession() {
+      const sessionId = await startSession(bizA);
+      await seedTranscript(bizA, sessionId);
+      await post(`${BASE}/sessions/${sessionId}/end`, bizA.token, {});
+      stubAi(REVIEW_JSON);
+      await post(`${BASE}/sessions/${sessionId}/review`, bizA.token);
+      await put(`${BASE}/sessions/${sessionId}/review`, bizA.token, { counselor_notes: "signed" });
+      return sessionId;
+    }
+
+    it("refuses coaching on a reviewed session", async () => {
+      const sessionId = await reviewedSession();
+      stubAi(COACHING_JSON);
+      const res = await post(`${BASE}/sessions/${sessionId}/coaching`, bizA.token);
+      expect(res.statusCode).toBe(409);
+    });
+
+    it("refuses to save a review while the session is still recording", async () => {
+      const sessionId = await startSession(bizA);
+      await seedTranscript(bizA, sessionId);
+      const res = await put(`${BASE}/sessions/${sessionId}/review`, bizA.token, {
+        counselor_notes: "written mid-conversation",
+      });
+      expect(res.statusCode).toBe(409);
+    });
+
+    it("saves course recommendations as part of the counsellor's record", async () => {
+      const sessionId = await startSession(bizA);
+      await seedTranscript(bizA, sessionId);
+      await post(`${BASE}/sessions/${sessionId}/end`, bizA.token, {});
+      stubAi(REVIEW_JSON);
+      await post(`${BASE}/sessions/${sessionId}/review`, bizA.token);
+
+      const res = await put(`${BASE}/sessions/${sessionId}/review`, bizA.token, {
+        course_recommendations: [
+          { name: "MSc Data Science", institution: "Uni Y", reason: "matches her maths background" },
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().review.course_recommendations).toEqual([
+        { name: "MSc Data Science", institution: "Uni Y", reason: "matches her maths background" },
+      ]);
+    });
+
+    it("rejects a course recommendation with no name", async () => {
+      const sessionId = await startSession(bizA);
+      await seedTranscript(bizA, sessionId);
+      await post(`${BASE}/sessions/${sessionId}/end`, bizA.token, {});
+      stubAi(REVIEW_JSON);
+      await post(`${BASE}/sessions/${sessionId}/review`, bizA.token);
+      const res = await put(`${BASE}/sessions/${sessionId}/review`, bizA.token, {
+        course_recommendations: [{ institution: "Uni Y" }],
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe("business type absent", () => {
+    it("coaches a business with no business_type using the institution prompt", async () => {
+      // V1 branched on `business_type === "agent"` with no else-guard; a NULL type
+      // is a real row shape (institutions imported without one).
+      const [row] = await masterKnex("businesses")
+        .insert({
+          owner_id: bizA.ownerId,
+          subdomain: `scribe-untyped-${process.pid}${Date.now() % 1_000_000}`,
+          business_name: `Scribe Untyped ${Date.now()}`,
+          business_type: null,
+          account_status: 1,
+          status: "active",
+        })
+        .returning(["id", "schema_name"]);
+      const { provisionBusinessSchema } = await import("../../src/core/business/provisioner.js");
+      await provisionBusinessSchema(row.schema_name);
+
+      const untyped = {
+        id: row.id as number,
+        schema: row.schema_name as string,
+        ownerId: bizA.ownerId,
+        token: sign({
+          sub: String(bizA.ownerId),
+          type: "platform_user",
+          orgId: row.schema_name,
+        }),
+      };
+
+      try {
+        await grantCredits(untyped.id, 10);
+        const sessionId = await startSession(untyped);
+        await seedTranscript(untyped, sessionId);
+        const calls = stubAi(COACHING_JSON);
+        const res = await post(`${BASE}/sessions/${sessionId}/coaching`, untyped.token);
+        expect(res.statusCode).toBe(201);
+        expect(calls[0].system).toMatch(/institution/i);
+      } finally {
+        await masterKnex.raw(`DROP SCHEMA IF EXISTS "${untyped.schema}" CASCADE`);
+        await masterKnex("businesses").where({ id: untyped.id }).del();
+      }
+    });
+  });
+
   // ── Pure helpers ──────────────────────────────────────────────────────────
 
   describe("prompt assembly", () => {
