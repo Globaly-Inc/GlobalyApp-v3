@@ -223,7 +223,8 @@ async function main(): Promise<number> {
   // nothing to write into without it. See the header.
   const schemas = await tenantSchemas(url);
   const provisioned = await provisionTenantSchemas(url, schemas);
-  console.log(`provisioned ${provisioned.length} tenant schema(s) (idempotent DDL, outside the data transaction)`);
+  // stderr, not stdout: --json output has to stay parseable.
+  console.error(`provisioned ${provisioned.length} tenant schema(s) (idempotent DDL, outside the data transaction)`);
 
   return runTransform({ wave: "W1-tenants", argv, body: transformTenantAgents, selfCheck: tenantsSelfCheck });
 }
