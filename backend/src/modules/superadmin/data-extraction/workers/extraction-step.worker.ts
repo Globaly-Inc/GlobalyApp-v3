@@ -42,6 +42,15 @@ import { enrichAgents } from "../lib/agent-enrichment.js";
 import { matchFeesToCourses } from "../lib/fee-matcher.js";
 import { parseInstallments } from "../lib/installment-parser.js";
 import { createDocumentExtractor, buildDocumentContext, type DocInput } from "../lib/document-extractor.js";
+import {
+  CONTEXT_MAX_CHARS,
+  contextAddendum,
+  countBundle,
+  describeBundle,
+  parseBundle,
+} from "../lib/context-bundle.js";
+import { loadContextBundle, saveContextBundle } from "../repositories/context.repository.js";
+import { contextBundlePrompt, CONTEXT_BUNDLE_SYSTEM } from "../lib/extraction-prompts.js";
 import type { PipelineStep, CourseDataType } from "../schemas/step.schema.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
@@ -203,7 +212,7 @@ async function handleInstitutionStep(jobId: string) {
   // Recall memory
   const domain = domainOf(baseUrl);
   const recalled = await recallMemory(domain, "institution");
-  const addendum = buildSystemAddendum(recalled);
+  const addendum = buildSystemAddendum(recalled) + contextAddendum(await loadContextBundle(jobId));
   const system = addendum ? `${INSTITUTION_EXTRACTION_SYSTEM}\n\n${addendum}` : INSTITUTION_EXTRACTION_SYSTEM;
 
   // Scrape all in parallel
@@ -308,7 +317,7 @@ async function handleBranchesStep(jobId: string) {
 
   const domain = domainOf(job.institution_url);
   const recalled = await recallMemory(domain, "branches");
-  const addendum = buildSystemAddendum(recalled);
+  const addendum = buildSystemAddendum(recalled) + contextAddendum(await loadContextBundle(jobId));
   const system = addendum ? `${CAMPUS_EXTRACTION_SYSTEM}\n\n${addendum}` : CAMPUS_EXTRACTION_SYSTEM;
 
   let allCampuses: ExtractedCampus[] = [];
@@ -426,7 +435,7 @@ async function handleAgentsStep(jobId: string) {
 
   const domain = domainOf(job.institution_url);
   const recalled = await recallMemory(domain, "agents");
-  const addendum = buildSystemAddendum(recalled);
+  const addendum = buildSystemAddendum(recalled) + contextAddendum(await loadContextBundle(jobId));
   const system = addendum ? `${AGENT_EXTRACTION_SYSTEM}\n\n${addendum}` : AGENT_EXTRACTION_SYSTEM;
 
   const allRawAgents: AgentSourceRow[] = [];
@@ -581,7 +590,7 @@ async function handleDiscoveryStep(jobId: string) {
 
   const domain = domainOf(job.institution_url);
   const recalled = await recallMemory(domain, "discovery");
-  const addendum = buildSystemAddendum(recalled);
+  const addendum = buildSystemAddendum(recalled) + contextAddendum(await loadContextBundle(jobId));
   const system = addendum ? `${COURSE_LIST_SYSTEM}\n\n${addendum}` : COURSE_LIST_SYSTEM;
 
   let totalCoursePages = 0;
@@ -731,7 +740,7 @@ async function handleEnrichmentStep(jobId: string) {
 
   const domain = domainOf(job.institution_url);
   const recalled = await recallMemory(domain, "enrichment");
-  const addendum = buildSystemAddendum(recalled);
+  const addendum = buildSystemAddendum(recalled) + contextAddendum(await loadContextBundle(jobId));
   const system = addendum ? `${BULK_FEE_SYSTEM}\n\n${addendum}` : BULK_FEE_SYSTEM;
 
   const scEnrich = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
@@ -845,7 +854,7 @@ async function handleCourseDataStep(
 
   const domain = domainOf(job.institution_url);
   const recalled = await recallMemory(domain, `course_data_${dataType}`);
-  const addendum = buildSystemAddendum(recalled);
+  const addendum = buildSystemAddendum(recalled) + contextAddendum(await loadContextBundle(jobId));
   const system = addendum ? `${COURSE_DATA_SYSTEM}\n\n${addendum}` : COURSE_DATA_SYSTEM;
 
   // Admin-supplied pages for this data type (fees_urls, intakes_urls, …) get appended to
@@ -1052,6 +1061,71 @@ async function handleCourseDataStep(
   });
 }
 
+// ── context_ingest ─────────────────────────────────────────────
+
+/**
+ * Parse the job's supporting documents into a Job Context Bundle once, so the six
+ * downstream prompts can be anchored to it instead of each re-downloading and
+ * re-parsing the same PDFs (which is what V1's rerun-* functions do).
+ *
+ * Idempotent and retry-safe in the same shape as every other step: the bundle row is
+ * replaced, not appended, so a re-delivered queue message overwrites rather than
+ * accumulating. A job with no documents is a skip, not a failure — most jobs have none.
+ */
+async function handleContextIngestStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) throw new Error("Job not found");
+
+  const docs: DocInput[] = Array.isArray(job.supporting_documents)
+    ? (job.supporting_documents as DocInput[]).filter((d) => d?.file_url)
+    : [];
+
+  if (docs.length === 0) {
+    await saveContextBundle(jobId, null);
+    await writeJobEvent(jobId, "step_complete", {
+      phase: "context_ingest",
+      message: "No supporting documents uploaded — nothing to ingest",
+    });
+    return;
+  }
+
+  await heartbeat(jobId);
+  const combined = await buildDocumentContext(createDocumentExtractor(), docs, CONTEXT_MAX_CHARS);
+  if (!combined.trim()) {
+    // Thrown, not swallowed: the operator uploaded files and got nothing out of them,
+    // which is a failure they need to see on the step, and the queue's retry semantics
+    // are the right place for a transient fetch problem.
+    throw new Error("No text could be extracted from any supporting document");
+  }
+
+  await heartbeat(jobId);
+  const raw = await extractJson<unknown>({
+    system: CONTEXT_BUNDLE_SYSTEM,
+    prompt: contextBundlePrompt(combined, job.guidance_notes as string | null),
+  });
+
+  const bundle = parseBundle(raw);
+  if (!bundle) throw new Error("The documents parsed, but produced no usable bundle entries");
+
+  const counts = countBundle(bundle);
+  await saveContextBundle(jobId, bundle);
+
+  await rememberMemory({
+    job_id: jobId,
+    domain: domainOf(job.institution_url as string),
+    step: "context_ingest",
+    entity_type: "context_bundle",
+    source_excerpt: combined.slice(0, 500),
+    ai_output: bundle,
+  });
+
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "context_ingest",
+    message: describeBundle(counts, docs.length),
+    data: { ...counts },
+  });
+}
+
 // ── Main consumer ───────────────────────────────────────────────────────────
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
@@ -1066,6 +1140,7 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
 
   try {
     switch (step as PipelineStep) {
+      case "context_ingest": await handleContextIngestStep(jobId); break;
       case "institution":   await handleInstitutionStep(jobId); break;
       case "branches":      await handleBranchesStep(jobId); break;
       case "agents":        await handleAgentsStep(jobId); break;

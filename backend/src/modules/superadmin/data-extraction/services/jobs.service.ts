@@ -6,6 +6,7 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { logAudit } from "../shared/audit.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import * as repo from "../repositories/jobs.repository.js";
+import { mergeJobDuplicates } from "./merge.service.js";
 import type { CreateJobInput, FailJobInput, PatchJobContextInput } from "../schemas/jobs.schema.js";
 
 const logger = createChildLogger("extraction-jobs-service");
@@ -153,12 +154,7 @@ export async function deleteJob(id: string, adminId: number) {
   return { updated: true };
 }
 
+/** V1's merge_extraction_job_duplicates RPC. See services/merge.service.ts. */
 export async function mergeDuplicates(id: string, dryRun: boolean, adminId: number) {
-  // ponytail: V2 calls a SQL RPC (merge_extraction_job_duplicates) that doesn't exist in this repo.
-  // Stub: returns empty result. Implement the SQL function when needed.
-  const result = {};
-  if (!dryRun) {
-    await logAudit(adminId, "JOB_MERGE_DUPLICATES", { entityType: "extraction_jobs", entityId: id });
-  }
-  return result;
+  return mergeJobDuplicates(id, dryRun, adminId);
 }

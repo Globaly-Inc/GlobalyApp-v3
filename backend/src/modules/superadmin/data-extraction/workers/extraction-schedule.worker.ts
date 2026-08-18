@@ -1,98 +1,83 @@
-// Worker — processes due agent_extraction_schedule rows.
-// Publishes each due schedule to the STEPS queue (step: "agents"),
-// then advances next_run_at based on cadence.
+// Worker — the periodic trigger for agent_extraction_schedule.
 //
-// Designed as one-shot: process due schedules, then exit.
-// Run with: npm run job:extraction-schedule
+// All three modes call the same guarded tick (services/schedule.service.ts), so they
+// can be running at once without stampeding: a Postgres advisory lock lets exactly one
+// tick through and the others skip. See that file for why a lock rather than a claim
+// column.
+//
+//   npm run job:extraction-schedule                 one-shot, then exit  (external cron)
+//   npm run job:extraction-schedule -- --every=60   tick every 60s       (compose default)
+//   npm run job:extraction-schedule -- --consume    tick on SCHEDULE queue (manual trigger)
+//
+// --every is what closes §3.4's gap. The container was always in compose; it ran the
+// one-shot, exited, and — with no restart policy — never ran again.
 
 import "dotenv/config";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { runScheduleTick } from "../services/schedule.service.js";
 
 const logger = createChildLogger("extraction-schedule-worker");
 
-type Cadence = "daily" | "weekly" | "monthly";
+const DEFAULT_INTERVAL_SECONDS = 60;
 
-interface DueSchedule {
-  id: string;
-  job_id: string;
-  cadence: Cadence;
-}
-
-// ponytail: simple additive cadence, same as V2
-function addCadence(from: Date, cadence: Cadence): Date {
-  const d = new Date(from);
-  if (cadence === "daily") d.setUTCDate(d.getUTCDate() + 1);
-  else if (cadence === "weekly") d.setUTCDate(d.getUTCDate() + 7);
-  else d.setUTCMonth(d.getUTCMonth() + 1);
-  return d;
-}
-
-async function processDueSchedules() {
-  const due = await masterKnex(`${S}.agent_extraction_schedule`)
-    .where({ enabled: true })
-    .where("next_run_at", "<=", masterKnex.fn.now())
-    .select("id", "job_id", "cadence")
-    .orderBy("next_run_at", "asc")
-    .limit(25) as DueSchedule[];
-
-  logger.info(`${due.length} due schedules`);
-
-  const results: Array<{ schedule_id: string; job_id: string; ok: boolean; error?: string }> = [];
-
-  for (const s of due) {
-    const startedAt = new Date();
-    try {
-      await queueService.publish(EXTRACTION_QUEUES.STEPS, {
-        jobId: s.job_id,
-        step: "agents",
-      });
-
-      await masterKnex(`${S}.agent_extraction_schedule`).where({ id: s.id }).update({
-        last_run_at: startedAt,
-        next_run_at: addCadence(startedAt, s.cadence),
-        last_status: "success",
-        last_error: null,
-        updated_at: masterKnex.fn.now(),
-      });
-
-      results.push({ schedule_id: s.id, job_id: s.job_id, ok: true });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      logger.error("Schedule failed", { schedule_id: s.id, error: msg });
-
-      await masterKnex(`${S}.agent_extraction_schedule`).where({ id: s.id }).update({
-        last_run_at: startedAt,
-        next_run_at: addCadence(startedAt, s.cadence),
-        last_status: "failed_exception",
-        last_error: msg.slice(0, 500),
-        updated_at: masterKnex.fn.now(),
-      }).catch((updateErr) => logger.error("Failed to update schedule status", { schedule_id: s.id, error: updateErr }));
-
-      results.push({ schedule_id: s.id, job_id: s.job_id, ok: false, error: msg });
-    }
+/** Parsed rather than assumed: a typo'd --every=abc should not silently become a busy loop. */
+function intervalSeconds(args: string[]): number | null {
+  const flag = args.find((a) => a.startsWith("--every"));
+  if (!flag) return null;
+  const raw = flag.includes("=") ? flag.split("=")[1] : args[args.indexOf(flag) + 1];
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds < 1) {
+    logger.warn(`Unusable --every value ${JSON.stringify(raw)} — using ${DEFAULT_INTERVAL_SECONDS}s`);
+    return DEFAULT_INTERVAL_SECONDS;
   }
-
-  logger.info("Schedule run complete", { processed: results.length });
-  return results;
+  return Math.floor(seconds);
 }
 
-// One-shot: can also be consumed via SCHEDULE queue for manual triggers
-const mode = process.argv[2];
-
-if (mode === "--consume") {
-  // Long-running consumer mode (for manual triggers via queue)
-  await queueService.consume(EXTRACTION_QUEUES.SCHEDULE, async () => {
-    await processDueSchedules();
-  });
-  logger.info("Listening on SCHEDULE queue");
-} else {
-  // One-shot cron mode (default)
+/** A tick must never take the process down; the next one is a whole interval away. */
+async function tickSafely() {
   try {
-    await processDueSchedules();
+    const report = await runScheduleTick();
+    if (report.ran && (report.schedules.length || report.reaped)) {
+      logger.info("Tick complete", { schedules: report.schedules.length, reaped: report.reaped });
+    }
+  } catch (err) {
+    logger.error("Schedule tick failed", { err: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+const args = process.argv.slice(2);
+const every = intervalSeconds(args);
+
+if (args.includes("--consume")) {
+  await queueService.consume(EXTRACTION_QUEUES.SCHEDULE, tickSafely);
+  logger.info(`Listening on "${EXTRACTION_QUEUES.SCHEDULE}" queue`);
+} else if (every !== null) {
+  logger.info(`Schedule ticker started — every ${every}s`);
+  await tickSafely();
+
+  // Chained timeout, not setInterval: a tick that outruns its interval must not have a
+  // second one stacked on top of it. The advisory lock would refuse the overlap anyway,
+  // but skipped ticks are noise, not scheduling.
+  const loop = async () => {
+    await tickSafely();
+    timer = setTimeout(loop, every * 1000);
+  };
+  let timer = setTimeout(loop, every * 1000);
+
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.on(signal, () => {
+      logger.info(`${signal} — stopping ticker`);
+      clearTimeout(timer);
+      void masterKnex.destroy().finally(() => process.exit(0));
+    });
+  }
+} else {
+  // One-shot: for an external cron (pg_cron, Cloud Scheduler, a k8s CronJob).
+  try {
+    await tickSafely();
   } finally {
     await masterKnex.destroy();
     process.exit(0);

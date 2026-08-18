@@ -409,7 +409,9 @@ All under `/api/v3/admin/data-extraction/`. Requires `super_admin` or `data_admi
 | POST | /jobs/:id/fail | Mark failed |
 | PATCH | /jobs/:id/context | Update guided URLs/notes |
 | DELETE | /jobs/:id | Delete job (CASCADE) |
-| POST | /jobs/:id/merge-duplicates | Merge duplicate courses (stub) |
+| POST | /jobs/:id/merge-duplicates | Merge duplicate fees/eligibility in the promoted tenant catalog (`dry_run` previews) |
+| POST | /jobs/:id/validate-quality | Final-batch quality audit; 503 when no LLM key |
+| GET | /jobs/:id/quality-flags | Quality flags for a job |
 | GET | /jobs/:id/events | Pipeline event timeline |
 | GET | /jobs/:id/agent-runs | Agent extraction run history |
 
