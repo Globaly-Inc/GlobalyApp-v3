@@ -8,14 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/combobox";
 import { FieldError } from "@/components/field-error";
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useValidatedForm } from "@/lib/use-validated-form";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
-import { splitPhone } from "@/lib/utils";
+import { isValidPhoneForCountry } from "@/app/admin/platform/businesses/utils";
+import { splitPhone, toNumberOrNull } from "@/lib/utils";
+import type { PlaceDetails } from "@/lib/api/places";
 import type { Country } from "../../geo/apis";
 import { businessApi } from "../apis";
-import type { BusinessProfile, BusinessProfilePatch, PlaceDetails, SelectOption } from "../apis/types";
-import { AddressAutocomplete } from "./address-autocomplete";
+import type { BusinessProfile, BusinessProfilePatch, SelectOption } from "../apis/types";
 
 type FormState = {
   categoryId: string;
@@ -34,20 +36,28 @@ type FormState = {
 
 const REQUIRED = "This field is required";
 
-const schema: z.ZodType<FormState> = z.object({
-  categoryId: z.string().min(1, REQUIRED),
-  email: z.string().min(1, REQUIRED).pipe(z.email("Enter a valid email")),
-  phoneCountryId: z.string().min(1, REQUIRED),
-  phoneNumber: z.string().min(1, REQUIRED),
-  description: z.string().min(1, REQUIRED),
-  countryId: z.string().min(1, REQUIRED),
-  state: z.string().min(1, REQUIRED),
-  city: z.string().min(1, REQUIRED),
-  address: z.string().min(1, REQUIRED),
-  postcode: z.string().min(1, REQUIRED),
-  latitude: z.number().nullable(),
-  longitude: z.number().nullable(),
-});
+function buildSchema(countries: Country[]): z.ZodType<FormState> {
+  return z.object({
+    categoryId: z.string().min(1, REQUIRED),
+    email: z.string().min(1, REQUIRED).pipe(z.email("Enter a valid email")),
+    phoneCountryId: z.string().min(1, REQUIRED),
+    phoneNumber: z.string().min(1, REQUIRED),
+    description: z.string().min(1, REQUIRED),
+    countryId: z.string().min(1, REQUIRED),
+    state: z.string().min(1, REQUIRED),
+    city: z.string().min(1, REQUIRED),
+    address: z.string().min(1, REQUIRED),
+    postcode: z.string().min(1, REQUIRED),
+    latitude: z.number().nullable(),
+    longitude: z.number().nullable(),
+  }).superRefine((data, ctx) => {
+    if (!data.phoneCountryId || !data.phoneNumber) return;
+    const iso2 = countries.find((c) => String(c.id) === data.phoneCountryId)?.iso2;
+    if (!isValidPhoneForCountry(data.phoneNumber, iso2)) {
+      ctx.addIssue({ code: "custom", path: ["phoneNumber"], message: "Enter a valid phone number for the selected country" });
+    }
+  });
+}
 
 
 function toForm(profile: BusinessProfile, countries: Country[]): FormState {
@@ -63,8 +73,8 @@ function toForm(profile: BusinessProfile, countries: Country[]): FormState {
     city: profile.city ?? "",
     address: profile.address ?? "",
     postcode: profile.postcode ?? "",
-    latitude: profile.latitude,
-    longitude: profile.longitude,
+    latitude: toNumberOrNull(profile.latitude),
+    longitude: toNumberOrNull(profile.longitude),
   };
 }
 
@@ -83,6 +93,7 @@ export function BusinessDetailsDialog({
   onSave: (patch: BusinessProfilePatch) => Promise<boolean>;
   saving: boolean;
 }>) {
+  const schema = useMemo(() => buildSchema(countries), [countries]);
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(profile, countries));
   const [categoryOptions, setCategoryOptions] = useState<SelectOption[]>([]);
   const categorySearchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -142,7 +153,7 @@ export function BusinessDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ maxWidth: "48rem" }}>
         <DialogHeader>
           <DialogTitle>Edit Business Details</DialogTitle>
         </DialogHeader>
@@ -156,6 +167,7 @@ export function BusinessDetailsDialog({
               searchPlaceholder="Search categories..."
               options={categoryOptions}
               onQueryChange={handleCategoryQueryChange}
+              aria-invalid={!!errors.categoryId}
             />
             <FieldError message={errors.categoryId} />
           </div>
@@ -179,6 +191,7 @@ export function BusinessDetailsDialog({
                 options={phoneCountryOptions}
                 placeholder="Code"
                 searchPlaceholder="Search countries..."
+                aria-invalid={!!errors.phoneCountryId}
               />
               <Input
                 className="h-10 col-span-2"
@@ -212,6 +225,7 @@ export function BusinessDetailsDialog({
                 placeholder="Select country"
                 searchPlaceholder="Search countries..."
                 options={countryOptions}
+                aria-invalid={!!errors.countryId}
               />
               <FieldError message={errors.countryId} />
             </div>

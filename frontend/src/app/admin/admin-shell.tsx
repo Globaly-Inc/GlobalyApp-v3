@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -29,6 +29,12 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   const { me, status, error } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
   const isAdmin = authUser?.type === "admin";
+  // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
+  // that has since moved on (e.g. after a back/forward navigation) — `status`/`me` in that cached HTML
+  // can genuinely disagree with the live store. Gate on `mounted` so the branch below matches whatever
+  // HTML is being hydrated against on the very first render.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!initializing && !isAdmin) {
@@ -62,7 +68,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
 
   if (!isAdmin) return null;
 
-  if (status === "failed") {
+  if (mounted && status === "failed") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center px-4">
         <p className="text-sm text-muted-foreground">

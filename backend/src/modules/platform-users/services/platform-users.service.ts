@@ -1,6 +1,7 @@
 // Platform user service — profile management and sub-resources (registration + OTP auth handled by auth module).
 
 import { NotFoundError, ConflictError, BadRequestError } from "../../../shared/errors.js";
+import * as storage from "../../../shared/storage/storageService.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as bizRepo from "../../businesses/repositories/businesses.repository.js";
 import { registerBusiness } from "../../businesses/services/businesses.service.js";
@@ -28,7 +29,12 @@ export async function getProfile(userId: number) {
   if (user.is_business_account) user_category = "business";
   else if (user.is_personal_account) user_category = "personal";
 
-  return { ...user, user_category, profile: profile ?? null, qualifications, language_tests, work_experiences };
+  const [photo_url, cover_url] = await Promise.all([
+    storage.resolvePreviewUrl(user.photo_url),
+    storage.resolvePreviewUrl(user.cover_url),
+  ]);
+
+  return { ...user, photo_url, cover_url, user_category, profile: profile ?? null, qualifications, language_tests, work_experiences };
 }
 
 /** Sets which portal the user lands in — flips is_personal_account / is_business_account. */
@@ -124,17 +130,20 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
 }
 
 export async function updateProfile(userId: number, data: ProfilePatchInput) {
+  const { phone, ...profileFields } = data;
+  if (phone !== undefined) await repo.updateUser(userId, { phone });
+
   // Update or auto-create profile
-  const hasProfileData = Object.keys(data).length > 0;
+  const hasProfileData = Object.keys(profileFields).length > 0;
   if (!hasProfileData) return getProfile(userId);
 
   // Serialize jsonb fields
-  const serialized: Record<string, unknown> = { ...data };
-  if (data.preferred_destinations !== undefined) {
-    serialized.preferred_destinations = JSON.stringify(data.preferred_destinations);
+  const serialized: Record<string, unknown> = { ...profileFields };
+  if (profileFields.preferred_destinations !== undefined) {
+    serialized.preferred_destinations = JSON.stringify(profileFields.preferred_destinations);
   }
-  if (data.fields_of_study !== undefined) {
-    serialized.fields_of_study = JSON.stringify(data.fields_of_study);
+  if (profileFields.fields_of_study !== undefined) {
+    serialized.fields_of_study = JSON.stringify(profileFields.fields_of_study);
   }
 
   const existing = await repo.findProfileByUserId(userId);

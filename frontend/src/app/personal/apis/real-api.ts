@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm } from "@/lib/api/http";
 import type {
   FullProfile,
   LanguageTest,
@@ -18,6 +18,7 @@ type PlatformUserMeResponse = {
   email: string;
   phone: string | null;
   photo_url: string | null;
+  cover_url: string | null;
   user_category: string | null;
   user_sub_category: string | null;
   profile: {
@@ -31,6 +32,8 @@ type PlatformUserMeResponse = {
     personal_address_state: string | null;
     personal_address_street: string | null;
     personal_address_postcode: string | null;
+    latitude: number | null;
+    longitude: number | null;
     budget_min: number | null;
     budget_max: number | null;
     budget_currency: string | null;
@@ -56,6 +59,7 @@ function toStudentProfile(raw: PlatformUserMeResponse): StudentProfile {
     email: raw.email,
     phone: raw.phone,
     photo_url: raw.photo_url,
+    cover_url: raw.cover_url,
     user_category: raw.user_category,
     user_sub_category: raw.user_sub_category,
     nationality_id: profile?.nationality_id ?? null,
@@ -68,6 +72,8 @@ function toStudentProfile(raw: PlatformUserMeResponse): StudentProfile {
     personal_address_state: profile?.personal_address_state ?? null,
     personal_address_street: profile?.personal_address_street ?? null,
     personal_address_postcode: profile?.personal_address_postcode ?? null,
+    latitude: profile?.latitude ?? null,
+    longitude: profile?.longitude ?? null,
     budget_min: profile?.budget_min ?? null,
     budget_max: profile?.budget_max ?? null,
     budget_currency: profile?.budget_currency ?? null,
@@ -103,6 +109,12 @@ export const personalRealApi = {
 
   updateSubCategory: (params: UpdateSubCategoryParams): Promise<void> =>
     httpPatch("/platform-users/me/sub-category", params),
+
+  uploadImage: (category: "profile" | "cover", file: File): Promise<{ storage_path: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm(`/platform-users/me/files?category=${category}`, form);
+  },
 
   getFullProfile: async (): Promise<FullProfile> => {
     const raw = await fetchMe();

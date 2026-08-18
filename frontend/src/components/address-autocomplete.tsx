@@ -4,8 +4,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { ApiError } from "@/lib/api/http";
-import { placesApi } from "../apis";
-import type { PlaceDetails } from "../apis/types";
+import { placesApi, type PlaceDetails } from "@/lib/api/places";
 
 export function AddressAutocomplete({
   value,
