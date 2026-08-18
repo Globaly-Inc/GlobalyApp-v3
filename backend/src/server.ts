@@ -32,6 +32,8 @@ import messagingModule from "./modules/messaging/index.js";
 import eventsModule, { publicEventsModule } from "./modules/events/index.js";
 import notificationsModule from "./modules/notifications/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
+import ambassadorsModule, { publicAmbassadorsModule } from "./modules/ambassadors/index.js";
+import trainingModule, { publicCertificatesModule } from "./modules/training/index.js";
 
 const logger = createChildLogger("server");
 
@@ -60,6 +62,8 @@ export async function buildServer() {
     await protectedApp.register(eventsModule);             // events, ticketing, registrations, admin monitoring
     await protectedApp.register(notificationsModule);      // per-user inbox, channel preferences, push tokens
     await protectedApp.register(enquiriesModule);          // student enquiries, distribution, credit unlock
+    await protectedApp.register(ambassadorsModule);        // ambassador programs, engagement, earnings, payouts
+    await protectedApp.register(trainingModule);           // training programs, certificates, gamification
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
@@ -70,6 +74,8 @@ export async function buildServer() {
   await app.register(billingModule);         // credits, subscriptions, Stripe webhook (own auth scope)
   await app.register(publicEventsModule);    // public event browse + Stripe event-ticket webhook (no JWT)
   await app.register(publicStudentProfilesModule); // public student profiles by slug (no auth)
+  await app.register(publicAmbassadorsModule);     // public ambassador + program profiles (no auth)
+  await app.register(publicCertificatesModule);    // public training-certificate verification (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

@@ -79,6 +79,9 @@ export default defineConfig({
         // D3 — events, ticketing, notifications
         "src/modules/events/**/*.ts",
         "src/modules/notifications/**/*.ts",
+        // G4 — ambassador ops + training certificates/gamification
+        "src/modules/ambassadors/**/*.ts",
+        "src/modules/training/**/*.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {
