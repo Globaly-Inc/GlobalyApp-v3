@@ -77,6 +77,19 @@ const envSchema = z.object({
 
   // Google Maps (Places Autocomplete + Details for address lookup)
   GOOGLE_MAPS_API_KEY: z.string().optional(),
+
+  // FX rates (exchangerate-api.com — the provider V1 and V2 both use).
+  // Unset means the cache can be read but never refilled: modules/fx serves a stale
+  // snapshot in preference to failing, and 503s only when nothing is cached.
+  FX_API_KEY: z.string().optional(),
+
+  // Cross-app GlobalyAI feed (§3.4). Two separate shared secrets, deliberately not
+  // one: outbound export is a read of the whole live catalog, inbound ingest is a
+  // write into extraction staging, and a partner that may pull must not
+  // automatically be able to push. Both unset here, and both surfaces fail closed
+  // with 503 rather than run unauthenticated — see modules/cross-app/shared/sync-auth.ts.
+  GLOBALY_AI_SYNC_SECRET: z.string().optional(),
+  WEBHOOK_INGEST_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.parse(process.env);

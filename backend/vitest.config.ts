@@ -84,6 +84,12 @@ export default defineConfig({
         // G4 — ambassador ops + training certificates/gamification
         "src/modules/ambassadors/**/*.ts",
         "src/modules/training/**/*.ts",
+        // G7 — AI-embed widget, FX rates cache, cross-app GlobalyAI feed.
+        // gemini-stream.ts is already excluded below; the widget script is a served
+        // string asserted on in tests/integration/ai-embed.test.ts.
+        "src/modules/ai-embed/**/*.ts",
+        "src/modules/fx/**/*.ts",
+        "src/modules/cross-app/**/*.ts",
         // Shared URL validation (the stored-XSS guard every schema routes through)
         "src/shared/url.ts",
         // G1 — scholarships moderation, visa/MARA public directory + promote

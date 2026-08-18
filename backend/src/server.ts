@@ -1,7 +1,7 @@
 // Application entry point — builds Fastify instance, registers plugins and modules, starts server.
 
-import Fastify from "fastify";
-import cors from "@fastify/cors";
+import Fastify, { type FastifyRequest } from "fastify";
+import cors, { type FastifyCorsOptions } from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import { config } from "./config.js";
@@ -27,6 +27,9 @@ import otherServicesModule, { publicServicesModule } from "./modules/other-servi
 import geoModule from "./modules/geo/index.js";
 import searchModule from "./modules/search/index.js";
 import aiCounsellorModule from "./modules/ai-counsellor/index.js";
+import aiEmbedModule from "./modules/ai-embed/index.js";
+import fxModule from "./modules/fx/index.js";
+import crossAppModule from "./modules/cross-app/index.js";
 import billingModule from "./modules/billing/index.js";
 import messagingModule from "./modules/messaging/index.js";
 import eventsModule, { publicEventsModule } from "./modules/events/index.js";
@@ -46,7 +49,21 @@ export async function buildServer() {
   const app = Fastify({ logger: true });
 
   // --- Framework plugins ---
-  await app.register(cors, { origin: config.CORS_ORIGINS, credentials: true });
+  // Dynamic CORS, for one reason: the AI-embed widget (§3.8) is loaded BY
+  // third-party pages, whose origins are per-tenant rows in ai_embed_configs and
+  // can never be in a static CORS_ORIGINS list. Those routes therefore reflect the
+  // caller's origin — and are authorized server-side instead, by the embed config's
+  // own allowlist (modules/ai-embed/services/origin.service.ts), which refuses with
+  // 403 before any provider call. CORS is not the check here; it must not be, since
+  // a non-browser client ignores it entirely. Credentials stay OFF for that surface
+  // so a reflected origin can never ride a user's cookies.
+  await app.register(cors, () => (req: FastifyRequest, cb: (err: Error | null, opts: FastifyCorsOptions) => void) => {
+    if (req.url.startsWith("/api/v3/ai-embed/")) {
+      cb(null, { origin: req.headers.origin ?? true, credentials: false });
+      return;
+    }
+    cb(null, { origin: config.CORS_ORIGINS, credentials: true });
+  });
   await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
   await app.register(multipart, { limits: { fileSize: config.GCS_MAX_FILE_SIZE_MB * 1024 * 1024 } });
   await app.register(errorHandlerPlugin);
@@ -80,6 +97,9 @@ export async function buildServer() {
   await app.register(geoModule);              // public geo reads (no auth)
   await app.register(searchModule);          // public search reads (no auth)
   await app.register(aiCounsellorModule);    // public AI counsellor (no auth)
+  await app.register(aiEmbedModule);         // AI-embed widget: public widget surface + owner config CRUD
+  await app.register(fxModule);              // public FX rate cache (no auth)
+  await app.register(crossAppModule);        // GlobalyAI feed: shared-secret machine-to-machine
   await app.register(billingModule);         // credits, subscriptions, Stripe webhook (own auth scope)
   await app.register(publicEventsModule);    // public event browse + Stripe event-ticket webhook (no JWT)
   await app.register(publicStudentProfilesModule); // public student profiles by slug (no auth)
