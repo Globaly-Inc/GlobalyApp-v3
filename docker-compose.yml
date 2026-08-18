@@ -198,7 +198,13 @@ services:
     container_name: globalyapp-extraction-schedule-worker
     image: globalyapp-backend:local
     profiles: ["globalyapp-extraction-schedule"]
-    command: npm run job:extraction-schedule
+    # --every makes this a real periodic trigger. Without it the one-shot exits
+    # immediately and, with no restart policy, the container never runs again --
+    # which was the actual gap behind master-plan 3.4 "Scheduler trigger".
+    # Overlap across replicas is prevented by a Postgres advisory lock, not by
+    # this being a singleton; see services/schedule.service.ts.
+    command: npm run job:extraction-schedule -- --every=60
+    restart: unless-stopped
     env_file:
       - ./backend/.env
     depends_on:
