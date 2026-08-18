@@ -23,6 +23,7 @@ import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-s
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 import { enquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
+import { aiKnowledgeReducer } from "@/app/admin/data/ai-knowledge/store/ai-knowledge-slice"
 import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
 
 const appReducer = combineReducers({
@@ -50,6 +51,7 @@ const appReducer = combineReducers({
     monitoringOtherServices: adminOtherServicesReducer,
     monitoringEnquiries: enquiriesReducer,
     aiChat: aiChatReducer,
+    dataAiKnowledge: aiKnowledgeReducer,
     messages: messagesReducer,
 })
 
