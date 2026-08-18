@@ -20,6 +20,7 @@ import { agentcisImportReducer } from "@/app/admin/data/agentcis-import/store/ag
 import { aiMemoryReducer } from "@/app/admin/data/ai-memory/store/ai-memory-slice"
 import { visasReducer } from "@/app/admin/data/visas/store/visas-slice"
 import { maraAgentsReducer } from "@/app/admin/data/mara-agents/store/mara-agents-slice"
+import { serviceVerticalsReducer } from "@/app/admin/data/service-verticals/store/service-verticals-slice"
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 import { enquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
@@ -58,6 +59,7 @@ const appReducer = combineReducers({
     dataAiMemory: aiMemoryReducer,
     dataVisas: visasReducer,
     dataMaraAgents: maraAgentsReducer,
+    dataServiceVerticals: serviceVerticalsReducer,
     monitoringLogs: logsReducer,
     monitoringOtherServices: adminOtherServicesReducer,
     monitoringEnquiries: enquiriesReducer,
