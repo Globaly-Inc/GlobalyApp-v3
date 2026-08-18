@@ -106,7 +106,10 @@ describeDb("ai counsellor", () => {
     const { requestContextPlugin } = await import("../../src/core/plugins/request-context.plugin.js");
     const aiChatModule = (await import("../../src/modules/ai-counsellor/index.js")).default;
 
+    const multipart = (await import("@fastify/multipart")).default;
+
     app = Fastify({ logger: false });
+    await app.register(multipart);
     await app.register(errorHandlerPlugin);
     await app.register(requestContextPlugin);
     await app.register(aiChatModule);
@@ -265,6 +268,64 @@ describeDb("ai counsellor", () => {
         payload: { content: "hi", fingerprint: `fp-open-${runId}` },
       });
       expect(res.statusCode).not.toBe(401);
+    });
+  });
+
+  // ── attachments ────────────────────────────────────────────────────────────
+
+  describe("attachments", () => {
+    // Multipart body built by hand: nothing else in this suite posts a file, so
+    // there is no helper to reuse and pulling a form-data dependency in for four
+    // assertions would be worse.
+    const upload = async (opts: { file?: { name: string; mime: string; body: string } }) => {
+      const boundary = "----vitestboundary";
+      const parts = opts.file
+        ? [
+            `--${boundary}`,
+            `Content-Disposition: form-data; name="file"; filename="${opts.file.name}"`,
+            `Content-Type: ${opts.file.mime}`,
+            "",
+            opts.file.body,
+            `--${boundary}--`,
+            "",
+          ]
+        : [`--${boundary}`, 'Content-Disposition: form-data; name="other"', "", "x", `--${boundary}--`, ""];
+
+      return app.inject({
+        method: "POST",
+        url: "/api/v3/ai-chat/attachments",
+        headers: {
+          authorization: `Bearer ${tokenA}`,
+          "content-type": `multipart/form-data; boundary=${boundary}`,
+        },
+        payload: parts.join("\r\n"),
+      });
+    };
+
+    it("400s when the request carries no file", async () => {
+      const res = await upload({});
+      expect(res.statusCode, res.body).toBe(400);
+    });
+
+    it("400s a mime type the storage allowlist does not carry", async () => {
+      const res = await upload({ file: { name: "payload.html", mime: "text/html", body: "<script>x</script>" } });
+      expect(res.statusCode, res.body).toBe(400);
+      expect(res.body).not.toContain("storage_path");
+    });
+
+    it("refuses rather than fabricating a path when storage is unconfigured", async () => {
+      // testEnv() pins GCS_BUCKET_NAME empty on purpose, so this is the
+      // unconfigured-provider path. The contract that matters: no 201 and no
+      // storage_path, ever, for a file that was never stored.
+      //
+      // Known gap, not asserted as correct: this surfaces as a 500 because
+      // storageService throws a bare Error. Every other unconfigured provider in
+      // this codebase answers 503 (see assertProviderConfigured). Flagged for
+      // follow-up; the refusal itself is what this test locks down.
+      const res = await upload({ file: { name: "notes.txt", mime: "text/plain", body: "hello" } });
+      expect(res.statusCode).toBeGreaterThanOrEqual(400);
+      expect(res.statusCode).not.toBe(201);
+      expect(res.body).not.toContain("storage_path");
     });
   });
 
