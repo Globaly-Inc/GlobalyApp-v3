@@ -59,14 +59,6 @@ export async function buildServer() {
   await app.register(geoModule);              // public geo reads (no auth)
   await app.register(searchModule);          // public search reads (no auth)
   await app.register(aiCounsellorModule);    // public AI counsellor (no auth)
-  // --- Modules ---
-  await app.register(authModule);           // unified OTP login for all user types
-  await app.register(superadminModule);     // admin users + data extraction
-  await app.register(platformUsersModule);   // platform user profiles + sub-resources
-  await app.register(businessesModule);     // business registration + profiles
-  await app.register(agentsModule);         // agent invitations + management (per-business DB)
-  await app.register(feedModule);            // cross-portal social feed
-  await app.register(aiCounsellorModule);     // AI counsellor — chat, RAG, credits, sessions
   await app.register(scholarshipsPublicModule); // public scholarships reads (no auth)
 
   // --- Health checks ---
