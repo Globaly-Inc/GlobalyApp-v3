@@ -7,6 +7,7 @@ import { extname } from "path";
 import { config } from "../../config.js";
 import { createChildLogger } from "../logger.js";
 import { BadRequestError } from "../errors.js";
+import { isWebUrl } from "../url.js";
 
 const logger = createChildLogger("storage-service");
 
@@ -204,8 +205,38 @@ export function toStoragePath(raw: string): string {
   return withoutQuery.slice(idx + marker.length).split("/").slice(1).join("/");
 }
 
-/** Resolve a stored path (or null) to a signed, viewable URL — the shared "preview this image" call. */
-export function resolvePreviewUrl(path: string | null | undefined): Promise<string | null> {
-  if (!path) return Promise.resolve(null);
-  return getSignedViewUrl(toStoragePath(path));
+/**
+ * Resolve a stored path (or null) to a signed, viewable URL — the shared "preview this image" call.
+ *
+ * Two things this must never do, both of which it used to:
+ *
+ *   1. SIGN SOMETHING THAT IS NOT A STORAGE OBJECT. The V1 migration carries image
+ *      columns holding absolute external URLs (pexels, unsplash, supabase) on 191 of
+ *      198 countries and 338 cities. toStoragePath() passes those through unchanged
+ *      and the signer then threw on every one, 500-ing the geo detail endpoints.
+ *      An absolute http(s) URL is already fetchable — hand it back as-is. The check
+ *      runs on the toStoragePath() OUTPUT, so a legacy `storage.googleapis.com/...`
+ *      URL still resolves to its relative object and gets signed; only a URL that is
+ *      still absolute after that is genuinely external. The ORIGINAL value is what
+ *      gets returned, because toStoragePath() strips the query string and an external
+ *      image's render params (`?w=1600&auto=format`) live there.
+ *   2. FAIL HARD. A picture that cannot be signed degrades that picture, not the whole
+ *      response — same convention as the marketplace cover_url helper in
+ *      modules/other-services/services/{listings,public-services}.service.ts.
+ *
+ * isWebUrl's scheme allowlist is closed (see shared/url.ts), so `javascript:`/`data:`
+ * values do NOT take the passthrough — they fall through and fail soft to null rather
+ * than being echoed into an <img src>.
+ */
+export async function resolvePreviewUrl(path: string | null | undefined): Promise<string | null> {
+  if (!path) return null;
+  const storagePath = toStoragePath(path);
+  if (isWebUrl(storagePath)) return path;
+  if (!isConfigured()) return null;
+  try {
+    return await getSignedViewUrl(storagePath);
+  } catch (err) {
+    logger.warn("Could not sign preview URL", { path, err: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
 }
