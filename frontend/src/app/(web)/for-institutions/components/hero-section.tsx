@@ -10,7 +10,7 @@ export function HeroSection() {
   const { displayText, showCursor } = useTypingEffect(INSTITUTION_TYPING_PHRASES);
 
   return (
-    <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
+    <section className="relative min-h-[calc(100svh-64px)] flex items-center overflow-hidden">
       <AutoplayVideo
         src="/videos/institutions-hero.mp4"
         poster="/videos/institutions-hero-poster.webp"
