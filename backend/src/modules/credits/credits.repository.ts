@@ -10,15 +10,6 @@ import { BadRequestError } from "../../shared/errors.js";
 export type OwnerType = "user" | "business";
 
 /**
- * Which pot a row belongs to. Folded in from staging's credit_wallets, whose three balance columns
- * this replaces: a pot's balance is SUM(amount) over its rows.
- */
-export type BalanceType = "free" | "subscription" | "purchased";
-
-/** Spend order for the AI counsellor: exhaust the free pot before touching paid ones. */
-const WATERFALL: BalanceType[] = ["free", "subscription", "purchased"];
-
-/**
  * Kinds any caller may write.
  *
  * `referral_reward` is EXCLUDED on purpose. referrals.credit_transaction_id is only correct because
@@ -27,14 +18,7 @@ const WATERFALL: BalanceType[] = ["free", "subscription", "purchased"];
  * kind. Excluding it from the type makes the illegal call a COMPILE ERROR instead. Rewards go
  * through addReferralReward, which is not re-exported from this module's index.ts.
  */
-export type GeneralKind =
-  | "purchase"
-  | "manual_adjustment"
-  | "referral_reversal"
-  | "ai_message"
-  | "signup_grant"
-  | "subscription_grant"
-  | "admin_grant";
+export type GeneralKind = "purchase" | "manual_adjustment" | "referral_reversal";
 
 export interface CreditTransactionRow {
   id: number;
@@ -42,7 +26,6 @@ export interface CreditTransactionRow {
   owner_id: number;
   amount: number;
   kind: string;
-  balance_type: BalanceType;
   reference_type: string | null;
   reference_id: number | null;
   description: string | null;
@@ -56,8 +39,6 @@ interface BaseInput {
   owner_id: number;
   /** Signed. Positive credits the owner, negative debits. Zero is rejected by the DB. */
   amount: number;
-  /** Defaults to 'free' — the pot everything except AI counsellor credits lands in. */
-  balance_type?: BalanceType;
   reference_type?: string | null;
   reference_id?: number | null;
   description?: string | null;
@@ -95,7 +76,6 @@ async function insertRow(
       owner_id: input.owner_id,
       amount: input.amount,
       kind: input.kind,
-      balance_type: input.balance_type ?? "free",
       reference_type: input.reference_type ?? null,
       reference_id: input.reference_id ?? null,
       description: input.description ?? null,
@@ -132,74 +112,6 @@ export function addReferralReward(
   });
 }
 
-/**
- * Per-pot balances, plus the total. Replaces credit_wallets' free/subscription/purchased columns —
- * same three numbers, derived from the rows instead of cached alongside them.
- */
-export async function balanceByType(
-  ownerType: OwnerType,
-  ownerId: number,
-  db: Knex | Knex.Transaction = masterKnex,
-): Promise<Record<BalanceType, number> & { total: number }> {
-  const rows = await db("credit_transactions")
-    .where({ owner_type: ownerType, owner_id: ownerId })
-    .groupBy("balance_type")
-    .select("balance_type")
-    .sum({ total: "amount" }) as Array<{ balance_type: BalanceType; total: string | null }>;
-
-  const out = { free: 0, subscription: 0, purchased: 0, total: 0 };
-  for (const r of rows) {
-    out[r.balance_type] = Number(r.total ?? 0);
-    out.total += Number(r.total ?? 0);
-  }
-  return out;
-}
-
-/**
- * Spends `amount` across the pots in waterfall order (free -> subscription -> purchased), writing one
- * negative row per pot it draws from. Returns null — spending NOTHING — when the total does not cover
- * the amount, which callers turn into a 402.
- *
- * The advisory lock is what a wallet row's SELECT ... FOR UPDATE used to do. There is no balance row
- * to lock any more, so two concurrent spends would each read the same pot and both insert, overdrawing
- * it. The lock is keyed on the owner and released with the transaction, so spends serialise per owner
- * while different owners still run in parallel.
- *
- * ponytail: advisory lock rather than reintroducing a lockable balance row — a cached balance is the
- * one thing this ledger exists to avoid. Move to SELECT ... FOR UPDATE on a real balances table only
- * if per-owner serialisation ever becomes a measured bottleneck.
- */
-export async function spend(
-  trx: Knex.Transaction,
-  input: {
-    owner_type: OwnerType;
-    owner_id: number;
-    /** Positive number of credits to spend. */
-    amount: number;
-    kind: GeneralKind;
-    reference_type?: string | null;
-    reference_id?: number | null;
-    description?: string | null;
-  },
-): Promise<CreditTransactionRow[] | null> {
-  if (input.amount <= 0) throw new BadRequestError("Credit ledger: spend amount must be positive");
-
-  await trx.raw("SELECT pg_advisory_xact_lock(hashtext(?), ?)", [input.owner_type, input.owner_id]);
-
-  const balances = await balanceByType(input.owner_type, input.owner_id, trx);
-  if (balances.total < input.amount) return null;
-
-  const rows: CreditTransactionRow[] = [];
-  let outstanding = input.amount;
-  for (const pot of WATERFALL) {
-    if (outstanding === 0) break;
-    const take = Math.min(balances[pot], outstanding);
-    if (take <= 0) continue; // empty or negative pot — skip, never mint credits into it
-    rows.push(await insertRow(trx, { ...input, amount: -take, balance_type: pot }));
-    outstanding -= take;
-  }
-  return rows;
-}
 /** Current balance. Derived, never stored — so it cannot drift from the rows. */
 export async function balance(ownerType: OwnerType, ownerId: number): Promise<number> {
   const row = await masterKnex("credit_transactions")
