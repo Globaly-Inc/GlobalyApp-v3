@@ -465,9 +465,15 @@ export async function assertParentCounts(
     const { rows: tgt } = await ctx.db.query<{ n: string }>(
       `SELECT count(*) AS n FROM ${parent.targetTable}${parent.targetFilter ? ` WHERE ${parent.targetFilter}` : ""}`,
     );
+    // Every reason-coded row for this parent table, from ANY run — not just this
+    // one. A junction in W2 stands on parents W1 loaded, and W1's explanations
+    // are still the explanation; scoping this to the current run would make a
+    // cross-wave junction refuse to load over a perfectly reconciled parent.
+    // Distinct on the source key, because a parent row can be reported for more
+    // than one column without being lost more than once.
     const { rows: skipped } = await ctx.db.query<{ n: string }>(
-      `SELECT count(*) AS n FROM ${MIG_SCHEMA}.unresolved WHERE run_id = $1 AND source_table = $2`,
-      [ctx.runId, parent.stagingTable],
+      `SELECT count(DISTINCT source_key) AS n FROM ${MIG_SCHEMA}.unresolved WHERE source_table = $1`,
+      [parent.stagingTable],
     );
     const staged = Number(src[0].n);
     const written = Number(tgt[0].n);

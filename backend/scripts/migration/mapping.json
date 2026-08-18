@@ -484,7 +484,8 @@
         "public.fee_types"
       ],
       "mapping": "business_categories",
-      "note": "SPLIT (§4): the category row itself plus the fee types embedded in its schema_fields jsonb"
+      "note": "§4 W2: the category row itself. The declared fee_types half of the split yields ZERO rows against the real data — v1 business_categories.schema_fields holds two dynamic FIELD definitions (marn_number, a stray 'Facebook'), not fee types. The fee types come from v1_staging.fee_types, which has its own W2 disposition and its own mapping. Kept in `targets` so the split stays visible; see the question below.",
+      "question": "Was the §4 'business_categories -> fee_types' split written against a different V1 snapshot? In the staged data the schema_fields jsonb contains form-field definitions, not fees, so W2 loads the category row and nothing else from it. If fee types were ever embedded there, the snapshot they were in needs naming."
     },
     "business_category_default_services": {
       "disposition": "transform",
@@ -635,7 +636,8 @@
       "targets": [
         "public.schema_fields"
       ],
-      "note": "rename + reshape (§4 mapping table)"
+      "note": "§4 W2 lists this as rename + reshape. The reshape needs an entity the source does not carry.",
+      "question": "BLOCKED ON AN OWNER DECISION, not implemented by W2. The ledger maps core_field_settings -> public.schema_fields, but the two do not line up: V3's schema_fields is per-entity (UNIQUE on entity_id, entity_type, key; entity_type is one of business_categories | service_categories | other_service_categories) while V1's core_field_settings has NO entity id at all and its entity_type values are 'business' (19), 'user' (16), 'service' (4) and 'qualification' (3) — two of which have no V3 entity to hang off. Fanning the 19 'business' rows across all 6 business categories would invent 114 rows nobody asked for. Meanwhile the field definitions V3's shape actually fits are already sitting in business_categories.schema_fields (2) and service_categories.schema_fields (46) as jsonb. Two answers are possible and they are not the same migration: (a) load schema_fields from the category jsonb and drop core_field_settings as a V1-only global default registry, or (b) fan core_field_settings out per category with is_default = true. Nothing is loaded until this is settled — an unmapped transform table reads as 'the wave has not run yet', which is the truth."
     },
     "countries": {
       "disposition": "transform",
@@ -1335,7 +1337,7 @@
       "targets": [
         "public.service_categories"
       ],
-      "note": "globalyapp/20260722_003_other_service_categories.ts"
+      "note": "§4 W2 reference data. The embedded schema_fields jsonb (46 field definitions across 11 categories) is the natural source for public.schema_fields, but loading it is blocked on the same open question as core_field_settings."
     },
     "service_eligibility_assignments": {
       "disposition": "transform",
@@ -3827,6 +3829,327 @@
         {
           "column": "updated_at",
           "reason": "V3 stamps its own updated_at at load time."
+        }
+      ]
+    },
+    {
+      "name": "degree_levels",
+      "description": "V1 public.degree_levels -> V3 public.degree_levels. Reference data, joined on `slug` (uuid PK -> serial; nothing that migrates holds the uuid).",
+      "source": {
+        "table": "v1_staging.degree_levels",
+        "alias": "d",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.degree_levels",
+        "alias": "t",
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "slug (natural key)",
+        "source": "d.slug",
+        "target": "t.slug"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "d.name",
+          "target": "t.name"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "coalesce(d.sort_order, 0)",
+          "target": "t.sort_order"
+        },
+        {
+          "name": "is_active",
+          "from": "is_active",
+          "source": "coalesce(d.is_active, true)",
+          "target": "t.is_active"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial. platform_user_profiles.preferred_degree_levels stores names, not ids, so the uuid is referenced by nothing that migrates."
+        },
+        {
+          "column": "slug",
+          "reason": "Not copied as a value — it IS the identity key."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time; reference-data creation dates carry no meaning."
+        }
+      ]
+    },
+    {
+      "name": "issuing_organizations",
+      "description": "V1 public.issuing_organizations -> V3 public.issuing_organizations. Joined on `name`, which is UNIQUE on both sides and is what accreditations.issuing_organization (free text) resolves through.",
+      "source": {
+        "table": "v1_staging.issuing_organizations",
+        "alias": "o",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.issuing_organizations",
+        "alias": "t",
+        "filter": null
+      },
+      "identity": {
+        "label": "name (natural key; UNIQUE on both sides)",
+        "source": "lower(btrim(o.name))",
+        "target": "lower(btrim(t.name))"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "logo_url",
+          "from": "logo_url",
+          "source": "o.logo_url",
+          "target": "t.logo_url"
+        },
+        {
+          "name": "website",
+          "from": "website",
+          "source": "o.website",
+          "target": "t.website"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial. The accreditations FK is rebuilt from the organisation NAME, so the uuid is not preserved."
+        },
+        {
+          "column": "name",
+          "reason": "Not copied as a value — it IS the identity key."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time."
+        },
+        {
+          "column": "updated_at",
+          "reason": "V3 stamps its own updated_at at load time."
+        }
+      ]
+    },
+    {
+      "name": "service_categories",
+      "description": "V1 public.service_categories -> V3 public.service_categories. Reference data, joined on `slug`. The embedded schema_fields jsonb is NOT loaded here — see the open question on tables.core_field_settings.",
+      "source": {
+        "table": "v1_staging.service_categories",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.service_categories",
+        "alias": "t",
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "slug (natural key)",
+        "source": "s.slug",
+        "target": "t.slug"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "icon",
+          "from": "icon",
+          "source": "coalesce(nullif(btrim(s.icon), ''), 'Package')",
+          "target": "t.icon",
+          "note": "V3 declares a NOT NULL-ish default of 'Package'; a V1 row with no icon takes it rather than rendering blank."
+        },
+        {
+          "name": "is_active",
+          "from": "is_active",
+          "source": "coalesce(s.is_active, true)",
+          "target": "t.is_active"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "coalesce(s.sort_order, 0)",
+          "target": "t.sort_order"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial; `slug` is the identity, and business_category_default_services is remapped through the same slug bridge."
+        },
+        {
+          "column": "slug",
+          "reason": "Not copied as a value — it IS the identity key."
+        },
+        {
+          "column": "schema_fields",
+          "reason": "V1 embedded the category's dynamic form as jsonb (46 field definitions across 11 categories). V3 normalises it into public.schema_fields keyed (entity_id, entity_type, key). NOT loaded by W2 — the ledger dispositions core_field_settings as the source for schema_fields, and that table names no entity at all. Open question on tables.core_field_settings; this column moves with whichever answer the owner gives."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time."
+        }
+      ]
+    },
+    {
+      "name": "fee_types",
+      "description": "V1 public.fee_types -> V3 public.fee_types. §15 decision 3: the canonical home is public, not superadmin.reference_tables. Ten rows are global; one is owned by a business and resolves through mig.map_businesses.",
+      "source": {
+        "table": "v1_staging.fee_types",
+        "alias": "f",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.fee_types",
+        "alias": "t",
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "lower(name) — the partial UNIQUE index V3 enforces on live rows",
+        "source": "lower(btrim(f.name))",
+        "target": "lower(btrim(t.name))"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "slug",
+          "from": "slug",
+          "source": "f.slug",
+          "target": "t.slug"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "coalesce(f.status, 'pending')",
+          "target": "t.status"
+        },
+        {
+          "name": "is_global",
+          "from": "is_global",
+          "source": "coalesce(f.is_global, false)",
+          "target": "t.is_global"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "coalesce(f.sort_order, 0)",
+          "target": "t.sort_order"
+        },
+        {
+          "name": "owning_business_uuid",
+          "from": "business_id",
+          "source": "f.business_id::text",
+          "target": "(SELECT b.meta->>'v1_business_id' FROM public.businesses b WHERE b.id = t.business_id)",
+          "note": "uuid -> serial FK, compared by resolving the V3 id back to the V1 uuid it was migrated from. A fee owned by a business that became an unclaimed institution instead is reported unresolved_business, never silently promoted to global."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial; lower(name) is the identity, matching the partial UNIQUE index V3 enforces."
+        },
+        {
+          "column": "name",
+          "reason": "Not copied as a value — it IS the identity key."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time."
+        },
+        {
+          "column": "updated_at",
+          "reason": "V3 stamps its own updated_at at load time."
+        }
+      ]
+    },
+    {
+      "name": "business_category_default_services",
+      "description": "V1 public.business_category_default_services -> V3 public.business_category_default_services. A junction whose two uuid FKs are both remapped to serials through the slug bridge; defect D8 means both parents must reconcile before it is trusted.",
+      "junction": {
+        "parents": [
+          "business_categories",
+          "service_categories"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.business_category_default_services",
+        "alias": "d",
+        "joins": [
+          "JOIN v1_staging.business_categories vbc ON vbc.id = d.business_category_id",
+          "JOIN v1_staging.service_categories vsc ON vsc.id = d.service_category_id"
+        ],
+        "filter": null
+      },
+      "target": {
+        "table": "public.business_category_default_services",
+        "alias": "t",
+        "joins": [
+          "JOIN public.business_categories tbc ON tbc.id = t.business_category_id",
+          "JOIN public.service_categories tsc ON tsc.id = t.service_category_id"
+        ],
+        "filter": null
+      },
+      "identity": {
+        "label": "business_category slug | service_category slug",
+        "source": "vbc.slug || '|' || vsc.slug",
+        "target": "tbc.slug || '|' || tsc.slug"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "business_category_slug",
+          "from": "business_category_id",
+          "source": "vbc.slug",
+          "target": "tbc.slug",
+          "note": "uuid -> serial, bridged by the slug both sides are verified on"
+        },
+        {
+          "name": "service_category_slug",
+          "from": "service_category_id",
+          "source": "vsc.slug",
+          "target": "tsc.slug"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK; V3 uses the composite (business_category_id, service_category_id) as its primary key, which is the identity used here."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3's junction has no timestamps at all."
         }
       ]
     }
