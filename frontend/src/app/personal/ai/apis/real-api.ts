@@ -16,24 +16,24 @@ const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3`;
 
 export const aiRealApi = {
   listSessions: async (): Promise<ChatSession[]> => {
-    const res = await httpGet<SessionListResponse>("/ai/sessions");
+    const res = await httpGet<SessionListResponse>("/ai-chat/sessions");
     return res.sessions;
   },
 
   getMessages: async (sessionId: number): Promise<Message[]> => {
-    const res = await httpGet<MessagesResponse>(`/ai/sessions/${sessionId}/messages`);
+    const res = await httpGet<MessagesResponse>(`/ai-chat/sessions/${sessionId}/messages`);
     return res.messages;
   },
 
   updateSession: async (sessionId: number, data: { title?: string; is_archived?: boolean }): Promise<ChatSession> =>
-    httpPatch<ChatSession>(`/ai/sessions/${sessionId}`, data),
+    httpPatch<ChatSession>(`/ai-chat/sessions/${sessionId}`, data),
 
   setFeedback: async (messageId: number, feedback: "up" | "down" | null): Promise<void> => {
-    await httpPatch<unknown>(`/ai/messages/${messageId}/feedback`, { feedback } satisfies FeedbackInput);
+    await httpPatch<unknown>(`/ai-chat/messages/${messageId}/feedback`, { feedback } satisfies FeedbackInput);
   },
 
   getCreditBalance: async (): Promise<CreditBalance> =>
-    httpGet<CreditBalance>("/ai/credits/balance"),
+    httpGet<CreditBalance>("/ai-chat/credits/balance"),
 
   /**
    * SSE streaming for sendMessage. Uses raw fetch + ReadableStream because httpPost

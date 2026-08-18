@@ -149,19 +149,54 @@ function importMap(file, src) {
   return map;
 }
 
+/** Local `const NAME = "/literal";` declarations, so a prefix passed by identifier resolves. */
+function localStringConsts(src) {
+  const out = new Map();
+  const re = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*["'`]([^"'`]*)["'`]\s*;/g;
+  for (const m of src.matchAll(re)) out.set(m[1], m[2]);
+  return out;
+}
+
 /** `.register(ident, { prefix: "..." })` calls in a file, with the prefix (or ""). */
 function registerCalls(src) {
+  const consts = localStringConsts(src);
   const re = /\.register\s*\(\s*([A-Za-z_$][\w$]*)\s*(?:,\s*\{([^}]*)\})?\s*\)/g;
-  return [...src.matchAll(re)].map((m) => ({
-    name: m[1],
-    prefix: m[2]?.match(/prefix\s*:\s*["'`]([^"'`]*)["'`]/)?.[1] ?? "",
-  }));
+  return [...src.matchAll(re)].map((m) => {
+    const opts = m[2] ?? "";
+    // `prefix: "/literal"`
+    let prefix = opts.match(/prefix\s*:\s*["'`]([^"'`]*)["'`]/)?.[1];
+    if (prefix === undefined) {
+      // `prefix: someIdent` or the shorthand `{ prefix }` — resolve via a local const.
+      const ident = opts.match(/prefix\s*:\s*([A-Za-z_$][\w$]*)/)?.[1]
+        ?? (/(^|[{,\s])prefix\s*(?=[,}]|$)/.test(opts) ? "prefix" : undefined);
+      if (ident) prefix = consts.get(ident);
+    }
+    return { name: m[1], prefix: prefix ?? "" };
+  });
 }
 
 function routesIn(src) {
   const found = [];
-  const re = new RegExp(`\\b[A-Za-z_$][\\w$]*\\.(${HTTP_METHODS.join("|")})\\s*\\(\\s*["'\`](/[^"'\`]*)["'\`]`, "g");
-  for (const m of src.matchAll(re)) found.push({ method: m[1].toUpperCase(), path: m[2] });
+  const consts = localStringConsts(src);
+
+  // 1. Quoted literal: app.get("/services/:id", ...)
+  const lit = new RegExp(`\\b[A-Za-z_$][\\w$]*\\.(${HTTP_METHODS.join("|")})\\s*\\(\\s*["'\`](/[^"'\`]*)["'\`]`, "g");
+  for (const m of src.matchAll(lit)) found.push({ method: m[1].toUpperCase(), path: m[2] });
+
+  // 2. Template literal opening with a const: app.get(`${prefix}/search`, ...)
+  const tpl = new RegExp(`\\b[A-Za-z_$][\\w$]*\\.(${HTTP_METHODS.join("|")})\\s*\\(\\s*\\\`\\$\\{\\s*([A-Za-z_$][\\w$]*)\\s*\\}([^\\\`]*)\\\``, "g");
+  for (const m of src.matchAll(tpl)) {
+    const base = consts.get(m[2]);
+    if (base !== undefined) found.push({ method: m[1].toUpperCase(), path: base + m[3] });
+  }
+
+  // 3. Bare const identifier: app.get(prefix, ...)
+  const ident = new RegExp(`\\b[A-Za-z_$][\\w$]*\\.(${HTTP_METHODS.join("|")})\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*,`, "g");
+  for (const m of src.matchAll(ident)) {
+    const base = consts.get(m[2]);
+    if (base !== undefined && base.startsWith("/")) found.push({ method: m[1].toUpperCase(), path: base });
+  }
+
   return found;
 }
 
@@ -305,8 +340,17 @@ function loadAllowlist() {
   return entries;
 }
 
-const allowMatches = (call, entry) =>
-  call.method === entry.method.toUpperCase() && frontendSegments(call.path).join("/") === backendSegments(entry.path).join("/");
+// Same matching as a real route, so an entry covers exactly the calls a built
+// endpoint would. Plain string equality here would miss any call whose path is
+// built by interpolation (e.g. `${BASE}/visa${qs({ q })}`), which matches a route
+// fine but could never match an allowlist entry.
+const allowMatches = (call, entry) => {
+  if (call.method !== entry.method.toUpperCase()) return false;
+  const fe = frontendSegments(call.path);
+  const be = backendSegments(entry.path);
+  if (fe.length !== be.length) return false;
+  return fe.every((seg, i) => segmentMatches(seg, be[i]));
+};
 
 // ── main ─────────────────────────────────────────────────────────────────────
 
