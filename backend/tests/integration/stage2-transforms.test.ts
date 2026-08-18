@@ -38,6 +38,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { dbAvailable } from "../helpers/db.js";
 import { testDatabaseUrl } from "../setup/db-url.js";
+import { DEFAULT_VISIBILITY, resolveVisibility } from "../../src/modules/platform-users/schemas/public-profile.schema.js";
 
 const execFileAsync = promisify(execFile);
 const BACKEND_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -166,9 +167,11 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
     // Two countries: one the seeder has (AU) and one it has never heard of, which
     // is the case W1 must report rather than invent an ISO-3 for.
     await db.query(
-      `INSERT INTO v1_staging.countries (id, name, slug, code, about, created_at, updated_at)
-       VALUES ($1,'Australia','australia','AU','A V1 blurb the seeder does not have',${now},${now}),
-              ($2,'Nowhereland','nowhereland','ZZ','Not in mledoze',${now},${now})`,
+      // AU is featured at sort_order 2 in V1 — the destinations shelf V3 renders
+      // from is_featured/sort_order, which W1 used to drop.
+      `INSERT INTO v1_staging.countries (id, name, slug, code, about, is_featured, sort_order, created_at, updated_at)
+       VALUES ($1,'Australia','australia','AU','A V1 blurb the seeder does not have',true,2,${now},${now}),
+              ($2,'Nowhereland','nowhereland','ZZ','Not in mledoze',false,0,${now},${now})`,
       [COUNTRY_AU, COUNTRY_NOWHERE],
     );
     await db.query(
@@ -186,10 +189,21 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
       [USER_A, USER_B, EMAILS[0], EMAILS[1]],
     );
     await db.query(
+      // Both students published a public profile in V1 (a slug IS the publish flag).
+      // A holds V1's DEFAULT_VISIBILITY — written here with scrambled key order on
+      // purpose, so a transform that compared the JSON as a STRING would pass the
+      // first assertion and fail the "stored as NULL" one. B genuinely customised it.
       `INSERT INTO v1_staging.profiles (id, user_id, first_name, last_name, nationality, country_of_residence,
-                                        portal_type, individual_category, budget_currency, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, 'Aay', 'Aayson', 'Australia', 'AU', 'business', 'student', 'AUD - Australian Dollar', ${now}, ${now}),
-              (gen_random_uuid(), $2, NULL, NULL, 'AU', NULL, 'student', 'exploring', NULL, ${now}, ${now})`,
+                                        portal_type, individual_category, budget_currency, profile_slug,
+                                        public_visibility, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, 'Aay', 'Aayson', 'Australia', 'AU', 'business', 'student', 'AUD - Australian Dollar',
+               'aay-aayson-s2t',
+               '{"contact_info":false,"social_links":true,"certifications":true,"academic_tests":true,"language_tests":true,"work_experience":true,"education":true,"about":true}'::jsonb,
+               ${now}, ${now}),
+              (gen_random_uuid(), $2, NULL, NULL, 'AU', NULL, 'student', 'exploring', NULL,
+               'bee-beeson-s2t',
+               '{"about":true,"education":false,"work_experience":false,"language_tests":true,"academic_tests":false,"certifications":true,"social_links":true,"contact_info":false}'::jsonb,
+               ${now}, ${now})`,
       [USER_A, USER_B],
     );
     await db.query(
@@ -371,6 +385,73 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
     expect(after[0].nationality_id).toBe(correct[0].nationality_id);
   }, 120_000);
 
+  // ── D4: the public student profile ───────────────────────────────────────────
+
+  it("carries the published profile slug across, and stores only a customised visibility", async () => {
+    // profile_slug / public_visibility were dispositioned as dropped on the reason
+    // "V3 has no public individual profile pages". Wave D4 shipped exactly those
+    // pages (20260817_401_student_public_profiles.ts), so the reason is no longer
+    // true and V1's 16 published profiles were being silently lost.
+    //
+    // The half that is easy to get wrong is public_visibility. D4's design makes
+    // NULL mean "the defaults, resolved at read time" — storing the defaults would
+    // freeze them at publish time. 14 of V1's 16 published profiles hold a value
+    // byte-identical to DEFAULT_VISIBILITY, so a verbatim copy would freeze the
+    // defaults for almost every profile it touched.
+    await runTransform("w1-identity.ts", true);
+
+    const { rows } = await db.query<{ email: string; profile_slug: string | null; public_visibility: unknown }>(
+      `SELECT u.email, p.profile_slug, p.public_visibility
+         FROM public.platform_user_profiles p
+         JOIN public.platform_users u ON u.id = p.user_id
+        WHERE u.email = ANY($1) ORDER BY u.email`,
+      [[EMAILS[0], EMAILS[1]]],
+    );
+    const byEmail = new Map(rows.map((r) => [r.email, r]));
+
+    expect(byEmail.get(EMAILS[0])?.profile_slug, "a slug IS the publish flag — losing it unpublishes the profile")
+      .toBe("aay-aayson-s2t");
+    expect(byEmail.get(EMAILS[1])?.profile_slug).toBe("bee-beeson-s2t");
+
+    expect(
+      byEmail.get(EMAILS[0])?.public_visibility,
+      "V1 stored the defaults; storing them again would freeze them at publish time",
+    ).toBeNull();
+    expect(byEmail.get(EMAILS[1])?.public_visibility, "a genuinely customised blob is the one thing worth storing")
+      .toEqual({
+        about: true, education: false, work_experience: false, language_tests: true,
+        academic_tests: false, certifications: true, social_links: true, contact_info: false,
+      });
+
+    // The claim in one number, the way the migrated database will be counted.
+    const { rows: counts } = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM public.platform_user_profiles p
+         JOIN public.platform_users u ON u.id = p.user_id
+        WHERE u.email = ANY($1) AND p.public_visibility IS NOT NULL`,
+      [[EMAILS[0], EMAILS[1]]],
+    );
+    expect(Number(counts[0].n), "exactly the customised ones are stored").toBe(1);
+  }, 120_000);
+
+  it("resolves both published profiles to the same visibility V1 rendered", async () => {
+    // The parity claim that actually matters: NULL-means-defaults is a storage
+    // decision, not a behaviour change. Resolved through the service's own helper,
+    // every migrated profile must show the sections V1 showed.
+    await runTransform("w1-identity.ts", true);
+
+    const { rows } = await db.query<{ email: string; public_visibility: unknown }>(
+      `SELECT u.email, p.public_visibility
+         FROM public.platform_user_profiles p
+         JOIN public.platform_users u ON u.id = p.user_id
+        WHERE u.email = ANY($1)`,
+      [[EMAILS[0], EMAILS[1]]],
+    );
+    const resolved = new Map(rows.map((r) => [r.email, resolveVisibility(r.public_visibility)]));
+
+    expect(resolved.get(EMAILS[0]), "a stored NULL must resolve to exactly what V1 held").toEqual(DEFAULT_VISIBILITY);
+    expect(resolved.get(EMAILS[1])).toEqual({ ...DEFAULT_VISIBILITY, education: false, work_experience: false, academic_tests: false });
+  }, 120_000);
+
   // ── the geo reconcile ────────────────────────────────────────────────────────
 
   it("reports a V1 country the seeder does not have rather than inserting a duplicate", async () => {
@@ -390,6 +471,55 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
       `SELECT source_key FROM mig.unresolved WHERE source_table = 'cities' AND reason_code = 'unresolved_country'`,
     );
     expect(cityRows.map((r) => r.source_key)).toEqual(["zz|ghost town"]);
+  }, 120_000);
+
+  it("carries V1's featured countries onto the shelf, in V1's order", async () => {
+    // Gate 3: GET /api/v3/countries/featured returned 0 items against the migrated
+    // database. V1 flags 8 countries with sort_order 0-2; all of them landed as
+    // is_featured = false, sort_order = 0, because W1 carried neither column.
+    //
+    // Enrichment is COALESCE-only and cannot fix this: both columns are NOT NULL
+    // with defaults, so the seeded row never has a NULL for the COALESCE to fill.
+    //
+    // beforeEach truncates v1_staging, not public — so put AU back to the state the
+    // seeder leaves it in. Without this the assertion passes on a database an
+    // earlier run already promoted, which is a test that cannot fail.
+    await db.query(`UPDATE public.countries SET is_featured = false, sort_order = 0 WHERE iso2 = 'AU'`);
+
+    await runTransform("w1-geo.ts", true);
+
+    const { rows } = await db.query<{ iso2: string; is_featured: boolean; sort_order: number }>(
+      `SELECT iso2, is_featured, sort_order FROM public.countries WHERE iso2 = 'AU'`,
+    );
+    expect(rows[0], "V1 features Australia; an empty destinations shelf is the bug").toMatchObject({
+      is_featured: true,
+      sort_order: 2,
+    });
+  }, 120_000);
+
+  it("leaves a country V1 does not feature alone, and re-runs to zero writes", async () => {
+    // The write is scoped to the countries V1 actually features. A V3 country V1
+    // never mentions must not be touched at all — un-featuring rows is not what
+    // "carry the flag across" means.
+    // beforeEach truncates v1_staging, not public — so put AU back to the state the
+    // seeder leaves it in, or an earlier test in this file has already promoted it
+    // and "one country to promote" measures nothing.
+    await db.query(`UPDATE public.countries SET is_featured = false, sort_order = 0 WHERE iso2 = 'AU'`);
+
+    const { rows: before } = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM public.countries WHERE is_featured AND iso2 <> 'AU'`,
+    );
+
+    const first = await runTransform("w1-geo.ts", true);
+    expect(first.written["public.countries (featured)"], "one country to promote").toBe(1);
+
+    const { rows: after } = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM public.countries WHERE is_featured AND iso2 <> 'AU'`,
+    );
+    expect(after[0].n).toBe(before[0].n);
+
+    const second = await runTransform("w1-geo.ts", true);
+    expect(second.written["public.countries (featured)"], "a second --apply is 0 changes").toBe(0);
   }, 120_000);
 
   it("adds only the cities the seeder lacks, and enriches the ones it has", async () => {
