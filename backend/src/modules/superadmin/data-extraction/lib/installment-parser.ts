@@ -31,8 +31,11 @@ export function parseInstallments(opts: {
 
   const labelFn = pickLabelFn(text, periodType, count);
   const base = Math.floor(totalAmount / count);
-  // ponytail: rounding remainder goes to last installment, not first — matches V2
-  const remainder = totalAmount - base * count;
+  // ponytail: rounding remainder goes to last installment, not first — matches V2.
+  // Rounded to cents because 11% of the corpus's fee amounts are fractional and the
+  // raw subtraction yields float residue (10000.10 over 3 gave a stored installment of
+  // 3334.1000000000004). Money is exact to the cent or it is wrong on someone's screen.
+  const remainder = Math.round((totalAmount - base * count) * 100) / 100;
 
   return Array.from({ length: count }, (_, i) => ({
     label: labelFn(i, count),
