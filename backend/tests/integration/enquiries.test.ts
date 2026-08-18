@@ -530,9 +530,48 @@ describeDb("enquiries", () => {
       expect(midInbox.data.map((r: { id: number }) => r.id)).not.toContain(nearDist.id);
     });
 
-    it("refuses the inbox without a business context", async () => {
+    it("refuses every business route without a business context", async () => {
       const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+
+      // A token with no orgId never reaches a repository call, so the guard has
+      // to hold on each of the three routes, not just the list.
       expect((await get("/api/v3/business/enquiries", student.token)).statusCode).toBe(403);
+      expect((await get(`/api/v3/business/enquiries/${dist.id}`, student.token)).statusCode).toBe(403);
+      expect(
+        (await post(`/api/v3/business/enquiries/${dist.id}/unlock`, student.token)).statusCode,
+      ).toBe(403);
+
+      // Refused means refused: no unlock, no charge.
+      expect(await masterKnex("enquiry_unlocks").where({ distribution_id: dist.id })).toHaveLength(0);
+    });
+
+    it("refuses every admin route for a non-admin", async () => {
+      const student = await makeStudent();
+      expect((await get("/api/v3/admin/monitoring/enquiries", student.token)).statusCode).toBe(403);
+      expect((await get("/api/v3/admin/monitoring/enquiries/stats", student.token)).statusCode).toBe(403);
+      // A business token is still not an admin token.
+      expect((await get("/api/v3/admin/monitoring/enquiries", near.token)).statusCode).toBe(403);
+    });
+
+    it("rejects an unauthenticated call on every route", async () => {
+      for (const url of [
+        "/api/v3/enquiries",
+        "/api/v3/enquiries/1",
+        "/api/v3/business/enquiries",
+        "/api/v3/business/enquiries/1",
+        "/api/v3/admin/monitoring/enquiries",
+        "/api/v3/admin/monitoring/enquiries/stats",
+      ]) {
+        expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+      }
+      expect(
+        (await app.inject({ method: "POST", url: "/api/v3/enquiries", payload: { message: "x" } })).statusCode,
+      ).toBe(401);
+      expect(
+        (await app.inject({ method: "POST", url: "/api/v3/business/enquiries/1/unlock" })).statusCode,
+      ).toBe(401);
     });
 
     it("shows a student only their own enquiries", async () => {
@@ -547,9 +586,6 @@ describeDb("enquiries", () => {
       expect(list.data.map((e: { id: number }) => e.id)).not.toContain(created.id);
     });
 
-    it("rejects an unauthenticated call", async () => {
-      expect((await app.inject({ method: "GET", url: "/api/v3/enquiries" })).statusCode).toBe(401);
-    });
   });
 
   // ── admin monitoring ──────────────────────────────────────────────────────
@@ -610,10 +646,6 @@ describeDb("enquiries", () => {
       expect(byWrongBusiness.data.map((e: { id: number }) => e.id)).not.toContain(created.id);
     });
 
-    it("refuses a non-admin", async () => {
-      const student = await makeStudent();
-      expect((await get("/api/v3/admin/monitoring/enquiries", student.token)).statusCode).toBe(403);
-    });
   });
 
   // ── digest worker ─────────────────────────────────────────────────────────
