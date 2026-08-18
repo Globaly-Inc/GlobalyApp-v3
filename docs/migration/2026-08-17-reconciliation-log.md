@@ -1068,3 +1068,102 @@ one test** — the test that claims to protect a mechanism is the test that fail
   * **`check-api-contract` is narrower than it looks** — it scans only
     `apis/real-api.ts` for literal/template paths, and never the public `(web)` portal.
   * Frontend absent for favourites-adjacent SOP and scribe surfaces (APIs complete).
+
+## 31. PR #73 opened, and the enquiries collision resolved (2026-08-18)
+
+**https://github.com/Globaly-Inc/GlobalyApp-v3/pull/73** — `staging` ← `devops-staging-mvp`,
+827 files, +128,041/−7,850, MERGEABLE.
+
+    99 files · 2154 tests · 0 failures
+    Statements 93.42%  Branches 82.43%  Functions 94.99%  Lines 95.99%   (coverage rc=0)
+    contract 372 matched · 0 missing · 0 allowlisted
+    backend tsc/eslint rc=0 · frontend tsc/eslint/build rc=0
+
+### 31.1 A false regression I nearly reported
+
+The first post-merge run showed **12 auth failures** — `column "cover_url" does not exist` —
+which read as the merge breaking authentication. It was not: those columns are in *our own*
+base migrations, which were **edited in place** (§1.2.1 allows and prefers this), while my
+test database was never rebuilt. Dropping and recreating it gave 2137/2137 green.
+
+**§1.2.1's "rebuild dev DBs after" is not optional advice.** Editing a migration in place
+means every database that already ran it is silently behind, and the symptom looks exactly
+like a code regression in whatever merged last.
+
+### 31.2 Two live defects found in `staging` while merging
+
+Neither caused by this PR; both are on `staging` today.
+
+  * **`CREDIT_GATE_ENABLED = false`** in `ai-counsellor/routes/chat.routes.ts`, with the
+    comment *"gate disabled while testing RAG results — re-enable before launch"*.
+    **Unlimited paid Gemini calls on an empty wallet.**
+  * **Course visibility relaxed to job level** (`job exported, minus flagged`), so promoting
+    one job publishes every course in it including rows a reviewer never saw. Their own
+    `knowledge.repository.ts` ANDs both gates and its comment claims *"same gate as the
+    search module"* — so the relaxed version contradicts its author's stated intent.
+
+### 31.3 The enquiries collision — owner decision, then reconciliation
+
+Two independent enquiries modules, same table names, incompatible PKs (theirs uuid, ours
+`increments()`). `enquiries`, `enquiry_distributions`, `enquiry_email_queue` and
+`representations` each created twice, so `migrate:globalyapp` failed outright.
+
+**Owner ruled: keep D1, wire their inbox to it.** Their frontend was repointed to our
+canonical paths — no alias routes, because two paths for one resource is the debt the
+collision came from. Two endpoints built:
+
+  * `POST /business/enquiries/:distributionId/close` — `closed` was **already** in
+    `DISTRIBUTION_STATUSES` and CHECK-enforced, so this exposed a transition we modelled and
+    never routed. Closable from every status except `closed`; deliberately **not** blocking
+    `responded`, since that is the status a lead reaches by going well and blocking there
+    would strand those rows permanently. Idempotent by predicate (`WHERE status <> 'closed'`),
+    with the test asserting an unchanged `updated_at` as the witness that no second write
+    happened.
+  * `GET /business/enquiries/credits` — delegates to `billing`'s wallet read. One balance
+    calculation, not two.
+
+`close_reason` stored (owner recommendation) with `closed_at` beside it, because `updated_at`
+cannot answer "when was this closed" once any later write moves it.
+
+### 31.4 Their UI described a backend that no longer existed
+
+More than the four endpoint mismatches: uuid ids, `tier`/`match_rank`, a per-enquiry unlock
+cap we do not have, joins to columns that do not exist — and **flat nullable
+`student_name`/`_email`/`_phone`**.
+
+That last one mattered most. D1 **omits** the contact keys on a locked row rather than
+nulling them, so `InboxItem` became a discriminated union on `unlocked`: **the paywall is now
+a compile error rather than a convention.** The mock omits the keys too, so a component
+cannot pass in mock mode and leak in production.
+
+### 31.5 One more money bug, found while building the close route
+
+`unlockEnquiry` ended its transaction with an **unconditional**
+`setDistributionStatus(id, 'viewed')`. Paying for an already-closed lead dragged the row out
+of `closed` while leaving `closed_at`/`close_reason` set — a row asserting both states — **and
+billed the business for a lead it had declared finished with.** Now a 409 before anything is
+claimed or charged.
+
+The detail worth keeping: the comment on the very next line reads *"Only ever an upgrade: an
+enquiry the student already converted must not be dragged back to 'viewed' by a late unlock"*.
+The author guarded the **enquiry** against exactly this hazard and left the **distribution**
+unguarded one line above. Being right about a hazard in one place is not the same as being
+right about it everywhere it applies.
+
+### 31.6 A mutation that survived, and why that was the useful answer
+
+Dropping `business_id` from the close route's **UPDATE** predicate killed nothing — the
+service lookup 404s before the UPDATE ever runs. Dropping it from the **lookup** killed
+exactly the cross-business test. Both were kept: the guard that holds is the lookup, and the
+repository predicate is a second line no test can currently distinguish. Reported as
+defence-in-depth rather than as a 2-for-2.
+
+### 31.7 Still open for the owner
+
+  * **Gemini billing** (~$0.27) and the **`gmig_` token** — unchanged.
+  * **`staging` has no branch protection** and both workflows trigger on a push to it, so
+    **merging PR #73 is the deploy**. This branch has never been built by CI.
+  * An orphaned `business_enquiries` tenant table from the removed backend; reclaiming it
+    means a migration against every tenant schema.
+  * A `personal/enquiries` UI gate that is stricter than the server (100% profile completion,
+    which our route never checks). Comment corrected; loosening the gate is a product call.
