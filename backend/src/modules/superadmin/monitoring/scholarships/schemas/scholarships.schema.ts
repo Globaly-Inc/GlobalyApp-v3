@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { PaginationSchema } from "../../../../../shared/pagination.js";
+import { webUrl } from "../../../../../shared/url.js";
 
 export const IdParamSchema = z.object({ id: z.coerce.number().int().positive() });
 export const SlugParamSchema = z.object({ slug: z.string().trim().min(1) });
@@ -33,8 +34,10 @@ export const ScholarshipInputSchema = z.object({
   coverage_description: z.string().nullable().optional(),
   deadline: z.string().date().nullable().optional(),
   deadline_notes: z.string().nullable().optional(),
-  application_url: z.string().url().nullable().optional(),
-  source_url: z.string().url().nullable().optional(),
+  // webUrl(), never z.string().url(): both values are rendered into an anchor
+  // href by (web)/scholarships/[slug]/page.tsx. See shared/url.ts.
+  application_url: webUrl().nullable().optional(),
+  source_url: webUrl().nullable().optional(),
   is_published: z.boolean().optional(),
   is_featured: z.boolean().optional(),
 });

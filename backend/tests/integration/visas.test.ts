@@ -40,7 +40,7 @@ describeDb("visas + MARA directory", () => {
   let visaStagedId = "";
   let maraStagedId = "";
   let marn = "";
-  let adminToken = "";
+  let adminId = 0;
 
   beforeAll(async () => {
     const jwt = (await import("jsonwebtoken")).default;
@@ -137,11 +137,17 @@ describeDb("visas + MARA directory", () => {
       .returning(["id"]);
     maraStagedId = mara.id;
 
-    adminToken = jwt.sign(
-      { sub: "1", type: "admin", role: "super_admin", email: "visas@vitest.local" },
-      config.JWT_SECRET as string,
-    );
-    void adminToken;
+    // The promote path writes an audit row, and admin_audit_logs.admin_id is a real
+    // FK — a made-up id fails the insert, not the promote logic.
+    const [adminUser] = await masterKnex("platform_users")
+      .insert({ first_name: "Visa", last_name: "Admin", email: uniqueEmail("visas.admin"), account_status: 1 })
+      .returning(["id"]);
+    const [admin] = await masterKnex("superadmin.admin_users")
+      .insert({ platform_user_id: adminUser.id, role: "super_admin" })
+      .returning(["id"]);
+    adminId = admin.id;
+    void jwt;
+    void config;
   });
 
   afterAll(async () => {
@@ -158,7 +164,7 @@ describeDb("visas + MARA directory", () => {
 
   describe("promote_visa_to_service", () => {
     it("creates the tenant service and its visa_service_details row", async () => {
-      const result = await immigration.promoteVisa(visaStagedId, "institution", deptOrgId, 1);
+      const result = await immigration.promoteVisa(visaStagedId, "institution", deptOrgId, adminId);
       expect(result.service_id).toMatch(/^[0-9a-f-]{36}$/);
 
       const detail = await masterKnex("visa_service_details")
@@ -170,8 +176,8 @@ describeDb("visas + MARA directory", () => {
       expect(detail.schema_name).toBe(deptSchema);
       expect(detail.extraction_source_id).toBe(visaStagedId);
 
-      const service = await masterKnex
-        .withSchema(deptSchema)("business_services")
+      const service = await masterKnex("business_services")
+        .withSchema(deptSchema)
         .where({ id: result.service_id })
         .first();
       expect(service.name).toBe(`Student visa ${runId}`);
@@ -186,7 +192,7 @@ describeDb("visas + MARA directory", () => {
 
     it("is idempotent — a second promote updates in place", async () => {
       const before = await masterKnex("visa_service_details").count({ n: "*" }).first();
-      const result = await immigration.promoteVisa(visaStagedId, "institution", deptOrgId, 1);
+      const result = await immigration.promoteVisa(visaStagedId, "institution", deptOrgId, adminId);
       const after = await masterKnex("visa_service_details").count({ n: "*" }).first();
       expect(Number(after!.n)).toBe(Number(before!.n));
       expect(result.service_id).toBeTruthy();
@@ -194,20 +200,20 @@ describeDb("visas + MARA directory", () => {
 
     it("404s an unknown staged id", async () => {
       await expect(
-        immigration.promoteVisa("00000000-0000-0000-0000-000000000000", "institution", deptOrgId, 1),
+        immigration.promoteVisa("00000000-0000-0000-0000-000000000000", "institution", deptOrgId, adminId),
       ).rejects.toMatchObject({ statusCode: 404 });
     });
 
     it("404s an unknown target org", async () => {
       await expect(
-        immigration.promoteVisa(visaStagedId, "institution", 99_999_999, 1),
+        immigration.promoteVisa(visaStagedId, "institution", 99_999_999, adminId),
       ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 
   describe("promote_mara_to_business", () => {
     it("creates the org from agent_name and its agent_mara_details row", async () => {
-      const result = await immigration.promoteMara(maraStagedId, 1);
+      const result = await immigration.promoteMara(maraStagedId, adminId);
       expect(result.org_id).toBeGreaterThan(0);
 
       const detail = await masterKnex("agent_mara_details").where({ marn }).first();
@@ -235,17 +241,20 @@ describeDb("visas + MARA directory", () => {
       }
     });
 
-    it("marks the staged row promoted", async () => {
+    it("marks the staged row promoted, leaving promoted_business_id null for an institution", async () => {
       const staged = await masterKnex("superadmin.extraction_mara_agents")
         .where({ id: maraStagedId })
         .first();
       expect(staged.status).toBe("promoted");
-      expect(staged.promoted_business_id ?? staged.promoted_org_id).toBeTruthy();
+      // The staging column FKs public.businesses, so an unclaimed-institution
+      // target cannot be recorded there. agent_mara_details carries the link.
+      expect(staged.promoted_business_id).toBeNull();
+      expect(await masterKnex("agent_mara_details").where({ marn }).first()).toBeTruthy();
     });
 
     it("is idempotent on the MARN", async () => {
       const before = await masterKnex("agent_mara_details").count({ n: "*" }).first();
-      await immigration.promoteMara(maraStagedId, 1);
+      await immigration.promoteMara(maraStagedId, adminId);
       const after = await masterKnex("agent_mara_details").count({ n: "*" }).first();
       expect(Number(after!.n)).toBe(Number(before!.n));
     });
@@ -304,11 +313,11 @@ describeDb("visas + MARA directory", () => {
       const detail = await masterKnex("visa_service_details")
         .where({ extraction_source_id: visaStagedId })
         .first();
-      await masterKnex.withSchema(deptSchema)("business_services")
+      await masterKnex("business_services").withSchema(deptSchema)
         .where({ id: detail.service_id })
         .update({ is_published: false });
       expect((await get(`/api/v3/visas?q=${runId}`)).json()).toHaveLength(0);
-      await masterKnex.withSchema(deptSchema)("business_services")
+      await masterKnex("business_services").withSchema(deptSchema)
         .where({ id: detail.service_id })
         .update({ is_published: true });
       expect((await get(`/api/v3/visas?q=${runId}`)).json()).toHaveLength(1);

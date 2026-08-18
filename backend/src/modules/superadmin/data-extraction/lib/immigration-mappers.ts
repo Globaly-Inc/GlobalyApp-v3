@@ -68,14 +68,17 @@ export interface MapResult<T> {
 export type Row = Record<string, unknown>;
 
 /**
- * The public name of a visa. V1 titled the service "<subclass> — <name>" so the
- * directory read "Subclass 500 — Student visa"; falling back to whichever half
- * exists keeps a partial extraction promotable.
+ * The public name of a visa: the extracted name verbatim.
+ *
+ * Deliberately NOT reformatted into "Subclass 500 — Student visa" or similar. The
+ * V1 RPC body lives only in the V1 database (§3.4) and cannot be read from this
+ * repo, so inventing a title format would be guessing at parity rather than
+ * porting it — and the subclass code is already its own field on the wire. The
+ * fallback exists only so a row with a code but no name is still promotable.
  */
 export function visaServiceName(staged: Pick<StagedVisa, "name" | "subclass_code">): string | null {
   const name = staged.name?.trim() || null;
   const code = staged.subclass_code?.trim() || null;
-  if (name && code) return `Subclass ${code} — ${name}`;
   return name ?? (code ? `Subclass ${code}` : null);
 }
 
