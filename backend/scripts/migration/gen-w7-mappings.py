@@ -232,7 +232,7 @@ MAPPINGS.append(mapping(
 ))
 
 MAPPINGS.append(mapping(
-    "tenant_business_branches",
+    "branches_tenant",
     "V1 public.branches (the PHYSICAL branch/campus: name, country, city, address) -> the per-tenant "
     "business_branches table. Not to be confused with V1 public.business_branches, the cross-tenant parent/child org "
     "graph, which is master (see business_branches_master). This is the one tenant table with no v1_id column: its "

@@ -327,18 +327,29 @@ export function masterSelfCheck(): void {
 
   // business_allowed_categories.category_id is a SERVICE category (all 34 V1 rows
   // resolve there, none in business_categories); the V3 column says so too.
-  assert.ok(body.includes("service_categories"), "allowed categories resolve against service_categories");
+  // Asserted on the resolver's VALUE, not on a scraped body: a transpiler is free to
+  // keep or strip the comment right above the call, and a check a comment can flip
+  // is not a check.
+  assert.ok(SERVICE_CATEGORY_ID("x").includes("public.service_categories"), "§15 decision 3: the public vocabulary");
   assert.ok(
-    !body.includes("business_categories"),
+    !SERVICE_CATEGORY_ID("x").includes("business_categories"),
     "resolving against the wrong vocabulary grants the wrong permissions",
   );
-  assert.ok(SERVICE_CATEGORY_ID("x").includes("public.service_categories"), "§15 decision 3: the public vocabulary");
 
   // The two tenant-uuid tables resolve through the mig views, because V3 minted its
   // own uuids and no static SQL can chase a schema name it reads from a column.
-  assert.ok(body.includes("mig.map_services"), "service_branch_sharing resolves its tenant service uuid through mig.map_services");
-  assert.ok(body.includes("mig.map_study_options"), "service_study_option_branches resolves through mig.map_study_options");
-  assert.ok(body.includes("ms.v1_id = s.service_id"), "the join is on the V1 uuid, which is the only key both sides share");
+  assert.ok(
+    body.includes("mig.map_services"),
+    "service_branch_sharing resolves its tenant service uuid through mig.map_services",
+  );
+  assert.ok(
+    body.includes("mig.map_study_options"),
+    "service_study_option_branches resolves through mig.map_study_options",
+  );
+  assert.ok(
+    body.includes("ms.v1_id = s.service_id"),
+    "the join is on the V1 uuid, which is the only key both sides share",
+  );
 
   console.log("w7-master self-check: ok");
 }

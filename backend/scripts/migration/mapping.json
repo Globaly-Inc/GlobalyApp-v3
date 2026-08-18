@@ -9602,6 +9602,103 @@
       ]
     },
     {
+      "name": "tenant_business_branches",
+      "description": "V1 public.branches (the PHYSICAL branch/campus: name, country, city, address) -> the per-tenant business_branches table. Not to be confused with V1 public.business_branches, the cross-tenant parent/child org graph, which is master (see business_branches_master). This is the one tenant table with no v1_id column: its external identity is `uuid`, so the V1 branch uuid lands there and is the upsert key.",
+      "source": {
+        "table": "v1_staging.branches",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".business_branches",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'business_branches') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in uuid)",
+        "source": "s.id::text",
+        "target": "t.uuid::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "country",
+          "from": "country",
+          "source": "s.country",
+          "target": "t.country"
+        },
+        {
+          "name": "state",
+          "from": "state",
+          "source": "s.state",
+          "target": "t.state"
+        },
+        {
+          "name": "city",
+          "from": "city",
+          "source": "s.city",
+          "target": "t.city"
+        },
+        {
+          "name": "address",
+          "from": "address",
+          "source": "s.address",
+          "target": "t.address"
+        },
+        {
+          "name": "phone",
+          "from": "phone",
+          "source": "s.phone",
+          "target": "t.phone"
+        },
+        {
+          "name": "email",
+          "from": "email",
+          "source": "s.email",
+          "target": "t.email"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "is_primary",
+          "from": "is_primary",
+          "source": "coalesce(s.is_primary, false)",
+          "target": "t.is_primary"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key, carried in the tenant table's `uuid` column (there is no v1_id column here)."
+        },
+        {
+          "column": "business_id",
+          "reason": "Part of the identity of the TENANT, not of the row: it selects WHICH schema the row lives in. Inside that schema it would be a constant repeated on every row."
+        }
+      ]
+    },
+    {
       "name": "business_services_tenant",
       "description": "V1 public.business_services -> the per-tenant business_services table in each owner's own schema. C1 dropped the thin table's serial id and renamed its uuid to id, so V1's id lands in v1_id and every child resolves its parent through v1_id -> id. 14 of the 39 unclaimed institutions own 363 of the 402 rows, so the schema list spans businesses AND institutions.",
       "source": {
@@ -10392,7 +10489,7 @@
       ]
     },
     {
-      "name": "tenant_business_branches",
+      "name": "branches_tenant",
       "description": "V1 public.branches (the PHYSICAL branch/campus: name, country, city, address) -> the per-tenant business_branches table. Not to be confused with V1 public.business_branches, the cross-tenant parent/child org graph, which is master (see business_branches_master). This is the one tenant table with no v1_id column: its external identity is `uuid`, so the V1 branch uuid lands there and is the upsert key.",
       "source": {
         "table": "v1_staging.branches",
