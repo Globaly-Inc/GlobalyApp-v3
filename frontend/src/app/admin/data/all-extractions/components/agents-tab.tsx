@@ -98,8 +98,8 @@ function AddAgentForm({
 }: Readonly<{ saving: boolean; onCancel: () => void; onSave: (v: AgentValues) => void }>) {
   const [values, setValues] = useState<AgentValues>(EMPTY);
   const [countries, setCountries] = useState<Country[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
-  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [fetchedCities, setFetchedCities] = useState<City[]>([]);
+  const [citiesLoadedFor, setCitiesLoadedFor] = useState<number>();
 
   const set = (key: keyof AgentValues, value: string) => setValues((v) => ({ ...v, [key]: value }));
 
@@ -111,16 +111,16 @@ function AddAgentForm({
 
   // Same country → city dependency as the branch form.
   const countryId = countries.find((c) => c.name === values.country)?.id;
+  // No country picked means no cities, and we are loading until the fetch for this
+  // country settles — both derived, so the effect only owns the fetch itself.
+  const cities = countryId ? fetchedCities : [];
+  const citiesLoading = !!countryId && citiesLoadedFor !== countryId;
   useEffect(() => {
-    if (!countryId) {
-      setCities([]);
-      return;
-    }
-    setCitiesLoading(true);
+    if (!countryId) return;
     geoApi.getCities(countryId)
-      .then(setCities)
+      .then(setFetchedCities)
       .catch((e: Error) => toast.error("Could not load cities", { description: e.message }))
-      .finally(() => setCitiesLoading(false));
+      .finally(() => setCitiesLoadedFor(countryId));
   }, [countryId]);
 
   return (

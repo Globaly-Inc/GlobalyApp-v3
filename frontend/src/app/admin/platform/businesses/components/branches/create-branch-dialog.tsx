@@ -34,8 +34,8 @@ export function CreateBranchDialog({
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(EMPTY_BRANCH_FORM);
-  const [cities, setCities] = useState<CityOption[]>([]);
-  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [fetchedCities, setFetchedCities] = useState<CityOption[]>([]);
+  const [citiesLoadedFor, setCitiesLoadedFor] = useState<string>();
   const [branchType, setBranchType] = useState<BranchType>("same_company");
   const [copyDescription, setCopyDescription] = useState(false);
   const [sharedServices, setSharedServices] = useState<SharedServices>([]);
@@ -47,8 +47,13 @@ export function CreateBranchDialog({
     setErrors((e) => (e[key as string] ? { ...e, [key]: undefined } : e));
   };
 
-  useEffect(() => {
-    if (!open) return;
+  // Re-seed the form when the sheet opens, or when a different branch is handed in while
+  // it is open. Derived by comparing against the previous props during render — seeding
+  // from an effect would commit one render of the stale form first. Nothing is re-seeded
+  // while closing, so the form does not flash empty behind the sheet's exit animation.
+  const seedFor = open ? (editBranch ?? null) : undefined;
+  const [seededFor, setSeededFor] = useState<Branch | null | undefined>(undefined);
+  if (seedFor !== seededFor && open) {
     setStep(0);
     if (editBranch) {
       const country = countries.find((c) => c.name === editBranch.country);
@@ -75,21 +80,28 @@ export function CreateBranchDialog({
       setCopyDescription(false);
       setSharedServices([]);
     }
-    setCities([]);
     setErrors({});
-    if (countries.length === 0) dispatch(fetchCountries());
-  }, [open, editBranch]);
+  }
+  if (seedFor !== seededFor) setSeededFor(seedFor);
 
   useEffect(() => {
-    if (!form.countryId) {
-      setCities([]);
-      return;
-    }
-    setCitiesLoading(true);
+    if (open && countries.length === 0) dispatch(fetchCountries());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Cities belong to the picked country: none without one, and loading until the fetch
+  // for that country settles. Both derived, so the effect only owns the fetch itself.
+  const cities = useMemo(
+    () => (citiesLoadedFor === form.countryId ? fetchedCities : []),
+    [citiesLoadedFor, form.countryId, fetchedCities],
+  );
+  const citiesLoading = !!form.countryId && citiesLoadedFor !== form.countryId;
+  useEffect(() => {
+    if (!form.countryId) return;
     categoriesApi
       .getCitiesByCountry(Number(form.countryId))
-      .then(setCities)
-      .finally(() => setCitiesLoading(false));
+      .then(setFetchedCities)
+      .finally(() => setCitiesLoadedFor(form.countryId));
   }, [form.countryId]);
 
   const countryOptions = useMemo(

@@ -35,16 +35,20 @@ export function SchemaFieldsEditor({
   const [fields, setFields] = useState<SchemaField[]>([]);
   const [draft, setDraft] = useState<SchemaFieldInput | null>(null);
   const [newOption, setNewOption] = useState<Record<number, string>>({});
-  const [loading, setLoading] = useState(false);
+  const [loadedFor, setLoadedFor] = useState<string>();
+
+  // We are loading until the fetch for this kind/category settles — derived,
+  // so the effect only owns the fetch itself.
+  const loadKey = categoryId === null ? undefined : `${kind}:${categoryId}`;
+  const loading = loadKey !== undefined && loadedFor !== loadKey;
 
   useEffect(() => {
     if (categoryId === null) return;
-    setLoading(true);
     categoriesApi
       .getSchemaFields(kind, categoryId)
       .then(setFields)
       .catch(() => toast.error("Couldn't load schema fields"))
-      .finally(() => setLoading(false));
+      .finally(() => setLoadedFor(`${kind}:${categoryId}`));
   }, [kind, categoryId]);
 
   const saveField = async (id: number, patch: Partial<SchemaFieldInput>) => {
