@@ -52,13 +52,16 @@ export async function loadFeeContext(jobId: string) {
  * stale flags are permanent. Replacing makes a re-run report the current state and
  * is still idempotent: same data in, same flags out.
  */
-export async function replaceFlags(
+export async function writeFlags(
   trx: Knex,
   jobId: string,
   issues: readonly QualityIssue[],
   courses: readonly CourseUnderAudit[],
+  mode: "replace" | "append",
 ): Promise<number> {
-  await trx(`${S}.extraction_additional_info`).where({ job_id: jobId, key: QUALITY_FLAG_KEY }).del();
+  if (mode === "replace") {
+    await trx(`${S}.extraction_additional_info`).where({ job_id: jobId, key: QUALITY_FLAG_KEY }).del();
+  }
   if (!issues.length) return 0;
 
   const byId = new Map(courses.map((course) => [course.id, course]));

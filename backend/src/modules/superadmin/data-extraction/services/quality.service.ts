@@ -88,7 +88,7 @@ export async function validateJobQuality(
   const deterministic = keepKnownCourses(findDeterministicIssues(courses, bounds), courses);
 
   // ── 3. Persist them. Committed before the provider is touched. ──
-  const written = await persist(jobId, deterministic, courses, { replace: true });
+  const written = await persist(jobId, deterministic, courses, "replace");
 
   const base: QualityReport = {
     job_id: jobId,
@@ -115,8 +115,11 @@ export async function validateJobQuality(
     context?.institution_name ?? (job as { institution_name?: string | null }).institution_name ?? jobId;
   const judgement = await llm.judge(courses, institutionName);
   const judged = keepKnownCourses(judgement.issues, courses);
+  // Appended, not replaced: the deterministic flags are already committed and
+  // re-writing them would reset the auto-flag count they earned.
+  const appended = await persist(jobId, judged, courses, "append");
+  const autoFlagged = written.autoFlagged + appended.autoFlagged;
   const all = [...deterministic, ...judged];
-  const final = await persist(jobId, all, courses, { replace: true });
 
   // admin_audit_logs.admin_id is a NOT NULL FK to superadmin.admin_users, and the
   // log is a record of what an *admin* did. A pipeline-initiated audit has no admin,
@@ -129,7 +132,7 @@ export async function validateJobQuality(
         courses: courses.length,
         deterministic: deterministic.length,
         judged: judged.length,
-        auto_flagged: final.autoFlagged,
+        auto_flagged: autoFlagged,
         model: llm.model,
       },
     });
@@ -142,21 +145,25 @@ export async function validateJobQuality(
     deterministic: deterministic.length,
     judged: judged.length,
     awaiting: 0,
-    auto_flagged: final.autoFlagged,
+    auto_flagged: autoFlagged,
     model: llm.model,
     summary: judgement.summary || summarise(all),
     passed: all.length === 0,
   };
 }
 
+/**
+ * One transaction per phase: the flag rows and the verification_status downgrades
+ * they cause commit together, or neither does.
+ */
 async function persist(
   jobId: string,
   issues: readonly QualityIssue[],
   courses: readonly CourseUnderAudit[],
-  opts: { replace: boolean },
+  mode: "replace" | "append",
 ): Promise<{ flags: number; autoFlagged: number }> {
   return masterKnex.transaction(async (trx: Knex) => {
-    const flags = opts.replace ? await repo.replaceFlags(trx, jobId, issues, courses) : 0;
+    const flags = await repo.writeFlags(trx, jobId, issues, courses, mode);
     const autoFlagged = await repo.flagHighSeverity(trx, issues);
     return { flags, autoFlagged };
   });
