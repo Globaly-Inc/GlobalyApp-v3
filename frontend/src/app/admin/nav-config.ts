@@ -66,6 +66,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { icon: Bot, label: "AI Knowledge", href: "/admin/data/ai-knowledge" },
       { icon: Sparkles, label: "Visas", href: "/admin/data/visas" },
       { icon: Sparkles, label: "MARA Agents", href: "/admin/data/mara-agents" },
+      { icon: Layers, label: "Service Verticals", href: "/admin/data/service-verticals" },
     ],
   },
   {
