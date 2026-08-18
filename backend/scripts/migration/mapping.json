@@ -4546,6 +4546,4777 @@
           "reason": "V3 stamps its own updated_at at load time."
         }
       ]
+    },
+    {
+      "name": "extraction_jobs",
+      "description": "V1 public.extraction_jobs -> V3 superadmin.extraction_jobs. Root of the whole corpus: every extraction_* child hangs off job_id. Two uuid category FKs become serials, bridged by the slug both vocabularies share (s15 decision 3: public, never the superadmin views).",
+      "source": {
+        "table": "v1_staging.extraction_jobs",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_jobs",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "aggregator_name",
+          "from": "aggregator_name",
+          "source": "s.aggregator_name",
+          "target": "t.aggregator_name"
+        },
+        {
+          "name": "attempts",
+          "from": "attempts",
+          "source": "s.attempts",
+          "target": "t.attempts"
+        },
+        {
+          "name": "business_category_slug",
+          "from": "business_category_id",
+          "source": "(SELECT v.slug FROM v1_staging.business_categories v WHERE v.id = s.business_category_id)",
+          "target": "(SELECT p.slug FROM public.business_categories p WHERE p.id = t.business_category_id)",
+          "note": "uuid -> serial FK, compared by resolving each side's id back to the slug. An unresolved category is reported unresolved_category, never NULLed silently."
+        },
+        {
+          "name": "courses_extracted",
+          "from": "courses_extracted",
+          "source": "s.courses_extracted",
+          "target": "t.courses_extracted"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "error_message",
+          "from": "error_message",
+          "source": "s.error_message",
+          "target": "t.error_message"
+        },
+        {
+          "name": "guidance_notes",
+          "from": "guidance_notes",
+          "source": "s.guidance_notes",
+          "target": "t.guidance_notes"
+        },
+        {
+          "name": "guided_urls",
+          "from": "guided_urls",
+          "source": "s.guided_urls",
+          "target": "t.guided_urls"
+        },
+        {
+          "name": "institution_name",
+          "from": "institution_name",
+          "source": "s.institution_name",
+          "target": "t.institution_name"
+        },
+        {
+          "name": "institution_url",
+          "from": "institution_url",
+          "source": "s.institution_url",
+          "target": "t.institution_url"
+        },
+        {
+          "name": "last_progress_at",
+          "from": "last_progress_at",
+          "source": "s.last_progress_at",
+          "target": "t.last_progress_at"
+        },
+        {
+          "name": "max_attempts",
+          "from": "max_attempts",
+          "source": "s.max_attempts",
+          "target": "t.max_attempts"
+        },
+        {
+          "name": "page_queue",
+          "from": "page_queue",
+          "source": "s.page_queue",
+          "target": "t.page_queue"
+        },
+        {
+          "name": "pages_failed",
+          "from": "pages_failed",
+          "source": "s.pages_failed",
+          "target": "t.pages_failed"
+        },
+        {
+          "name": "pages_scraped",
+          "from": "pages_scraped",
+          "source": "s.pages_scraped",
+          "target": "t.pages_scraped"
+        },
+        {
+          "name": "pages_total",
+          "from": "pages_total",
+          "source": "s.pages_total",
+          "target": "t.pages_total"
+        },
+        {
+          "name": "pipeline_progress",
+          "from": "pipeline_progress",
+          "source": "s.pipeline_progress",
+          "target": "t.pipeline_progress"
+        },
+        {
+          "name": "processing_heartbeat_at",
+          "from": "processing_heartbeat_at",
+          "source": "s.processing_heartbeat_at",
+          "target": "t.processing_heartbeat_at"
+        },
+        {
+          "name": "sample_course_url",
+          "from": "sample_course_url",
+          "source": "s.sample_course_url",
+          "target": "t.sample_course_url"
+        },
+        {
+          "name": "service_category_slug",
+          "from": "service_category_id",
+          "source": "(SELECT v.slug FROM v1_staging.service_categories v WHERE v.id = s.service_category_id)",
+          "target": "(SELECT p.slug FROM public.service_categories p WHERE p.id = t.service_category_id)"
+        },
+        {
+          "name": "skipped_records",
+          "from": "skipped_records",
+          "source": "s.skipped_records",
+          "target": "t.skipped_records"
+        },
+        {
+          "name": "source_type",
+          "from": "source_type",
+          "source": "s.source_type",
+          "target": "t.source_type"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "stop_requested",
+          "from": "stop_requested",
+          "source": "s.stop_requested",
+          "target": "t.stop_requested"
+        },
+        {
+          "name": "supporting_documents",
+          "from": "supporting_documents",
+          "source": "s.supporting_documents",
+          "target": "t.supporting_documents"
+        },
+        {
+          "name": "total_pages_found",
+          "from": "total_pages_found",
+          "source": "s.total_pages_found",
+          "target": "t.total_pages_found"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "verification_score",
+          "from": "verification_score",
+          "source": "s.verification_score",
+          "target": "t.verification_score"
+        },
+        {
+          "name": "verification_total",
+          "from": "verification_total",
+          "source": "s.verification_total",
+          "target": "t.verification_total"
+        },
+        {
+          "name": "worker_id",
+          "from": "worker_id",
+          "source": "s.worker_id",
+          "target": "t.worker_id"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_site_profiles",
+      "description": "V1 public.extraction_site_profiles -> V3 superadmin.extraction_site_profiles. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_site_profiles",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_site_profiles",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "domain (V3's primary key, unchanged from V1)",
+        "source": "s.domain",
+        "target": "t.domain"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "canonical_institution_name",
+          "from": "canonical_institution_name",
+          "source": "s.canonical_institution_name",
+          "target": "t.canonical_institution_name"
+        },
+        {
+          "name": "canonical_legal_name",
+          "from": "canonical_legal_name",
+          "source": "s.canonical_legal_name",
+          "target": "t.canonical_legal_name"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "fee_format_hint",
+          "from": "fee_format_hint",
+          "source": "s.fee_format_hint",
+          "target": "t.fee_format_hint"
+        },
+        {
+          "name": "hints",
+          "from": "hints",
+          "source": "s.hints",
+          "target": "t.hints"
+        },
+        {
+          "name": "intake_format_hint",
+          "from": "intake_format_hint",
+          "source": "s.intake_format_hint",
+          "target": "t.intake_format_hint"
+        },
+        {
+          "name": "notes",
+          "from": "notes",
+          "source": "s.notes",
+          "target": "t.notes"
+        },
+        {
+          "name": "success_rate",
+          "from": "success_rate",
+          "source": "s.success_rate",
+          "target": "t.success_rate"
+        },
+        {
+          "name": "total_corrections",
+          "from": "total_corrections",
+          "source": "s.total_corrections",
+          "target": "t.total_corrections"
+        },
+        {
+          "name": "total_runs",
+          "from": "total_runs",
+          "source": "s.total_runs",
+          "target": "t.total_runs"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "domain",
+          "reason": "Not copied as a value - it IS the identity key. superadmin.extraction_site_profiles keeps V1's domain-keyed primary key unchanged."
+        }
+      ]
+    },
+    {
+      "name": "extraction_lessons",
+      "description": "V1 public.extraction_lessons -> V3 superadmin.extraction_lessons. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_lessons",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_lessons",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "domain",
+          "from": "domain",
+          "source": "s.domain",
+          "target": "t.domain"
+        },
+        {
+          "name": "example_bad",
+          "from": "example_bad",
+          "source": "s.example_bad",
+          "target": "t.example_bad"
+        },
+        {
+          "name": "example_good",
+          "from": "example_good",
+          "source": "s.example_good",
+          "target": "t.example_good"
+        },
+        {
+          "name": "is_active",
+          "from": "is_active",
+          "source": "s.is_active",
+          "target": "t.is_active"
+        },
+        {
+          "name": "rule",
+          "from": "rule",
+          "source": "s.rule",
+          "target": "t.rule"
+        },
+        {
+          "name": "scope",
+          "from": "scope",
+          "source": "s.scope",
+          "target": "t.scope"
+        },
+        {
+          "name": "source",
+          "from": "source",
+          "source": "s.source",
+          "target": "t.source"
+        },
+        {
+          "name": "step",
+          "from": "step",
+          "source": "s.step",
+          "target": "t.step"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "weight",
+          "from": "weight",
+          "source": "s.weight",
+          "target": "t.weight"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_accreditations",
+      "description": "V1 public.extraction_accreditations -> V3 superadmin.extraction_accreditations. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_accreditations",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_accreditations",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "issuing_organization",
+          "from": "issuing_organization",
+          "source": "s.issuing_organization",
+          "target": "t.issuing_organization"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "website",
+          "from": "website",
+          "source": "s.website",
+          "target": "t.website"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_visas",
+      "description": "V1 public.extraction_visas -> V3 superadmin.extraction_visas. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_visas",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_visas",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "age_max",
+          "from": "age_max",
+          "source": "s.age_max",
+          "target": "t.age_max"
+        },
+        {
+          "name": "age_min",
+          "from": "age_min",
+          "source": "s.age_min",
+          "target": "t.age_min"
+        },
+        {
+          "name": "application_fee_amount",
+          "from": "application_fee_amount",
+          "source": "s.application_fee_amount",
+          "target": "t.application_fee_amount"
+        },
+        {
+          "name": "application_fee_currency",
+          "from": "application_fee_currency",
+          "source": "s.application_fee_currency",
+          "target": "t.application_fee_currency"
+        },
+        {
+          "name": "category",
+          "from": "category",
+          "source": "s.category",
+          "target": "t.category"
+        },
+        {
+          "name": "confidence_score",
+          "from": "confidence_score",
+          "source": "s.confidence_score",
+          "target": "t.confidence_score"
+        },
+        {
+          "name": "country_code",
+          "from": "country_code",
+          "source": "s.country_code",
+          "target": "t.country_code"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "duration_months",
+          "from": "duration_months",
+          "source": "s.duration_months",
+          "target": "t.duration_months"
+        },
+        {
+          "name": "eligible_nationalities",
+          "from": "eligible_nationalities",
+          "source": "s.eligible_nationalities",
+          "target": "t.eligible_nationalities"
+        },
+        {
+          "name": "english_requirements",
+          "from": "english_requirements",
+          "source": "s.english_requirements",
+          "target": "t.english_requirements"
+        },
+        {
+          "name": "excluded_nationalities",
+          "from": "excluded_nationalities",
+          "source": "s.excluded_nationalities",
+          "target": "t.excluded_nationalities"
+        },
+        {
+          "name": "is_permanent",
+          "from": "is_permanent",
+          "source": "s.is_permanent",
+          "target": "t.is_permanent"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "min_points",
+          "from": "min_points",
+          "source": "s.min_points",
+          "target": "t.min_points"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "official_url",
+          "from": "official_url",
+          "source": "s.official_url",
+          "target": "t.official_url"
+        },
+        {
+          "name": "points_test_required",
+          "from": "points_test_required",
+          "source": "s.points_test_required",
+          "target": "t.points_test_required"
+        },
+        {
+          "name": "processing_time_max_days",
+          "from": "processing_time_max_days",
+          "source": "s.processing_time_max_days",
+          "target": "t.processing_time_max_days"
+        },
+        {
+          "name": "processing_time_min_days",
+          "from": "processing_time_min_days",
+          "source": "s.processing_time_min_days",
+          "target": "t.processing_time_min_days"
+        },
+        {
+          "name": "promoted_service_id",
+          "from": "promoted_service_id",
+          "source": "s.promoted_service_id",
+          "target": "t.promoted_service_id"
+        },
+        {
+          "name": "raw_payload",
+          "from": "raw_payload",
+          "source": "s.raw_payload",
+          "target": "t.raw_payload"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "study_rights",
+          "from": "study_rights",
+          "source": "s.study_rights",
+          "target": "t.study_rights"
+        },
+        {
+          "name": "subclass_code",
+          "from": "subclass_code",
+          "source": "s.subclass_code",
+          "target": "t.subclass_code"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "visa_stream",
+          "from": "visa_stream",
+          "source": "s.visa_stream",
+          "target": "t.visa_stream"
+        },
+        {
+          "name": "work_rights",
+          "from": "work_rights",
+          "source": "s.work_rights",
+          "target": "t.work_rights"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_campuses",
+      "description": "V1 public.extraction_campuses -> V3 superadmin.extraction_campuses. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_campuses",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_campuses",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "address",
+          "from": "address",
+          "source": "s.address",
+          "target": "t.address"
+        },
+        {
+          "name": "city",
+          "from": "city",
+          "source": "s.city",
+          "target": "t.city"
+        },
+        {
+          "name": "country",
+          "from": "country",
+          "source": "s.country",
+          "target": "t.country"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "email",
+          "from": "email",
+          "source": "s.email",
+          "target": "t.email"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "map_link",
+          "from": "map_link",
+          "source": "s.map_link",
+          "target": "t.map_link"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "phone",
+          "from": "phone",
+          "source": "s.phone",
+          "target": "t.phone"
+        },
+        {
+          "name": "postcode",
+          "from": "postcode",
+          "source": "s.postcode",
+          "target": "t.postcode"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "state",
+          "from": "state",
+          "source": "s.state",
+          "target": "t.state"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_agents",
+      "description": "V1 public.extraction_agents -> V3 superadmin.extraction_agents. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_agents",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_agents",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "address",
+          "from": "address",
+          "source": "s.address",
+          "target": "t.address"
+        },
+        {
+          "name": "city",
+          "from": "city",
+          "source": "s.city",
+          "target": "t.city"
+        },
+        {
+          "name": "country",
+          "from": "country",
+          "source": "s.country",
+          "target": "t.country"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "email",
+          "from": "email",
+          "source": "s.email",
+          "target": "t.email"
+        },
+        {
+          "name": "external_id",
+          "from": "external_id",
+          "source": "s.external_id",
+          "target": "t.external_id"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "location_count",
+          "from": "location_count",
+          "source": "s.location_count",
+          "target": "t.location_count"
+        },
+        {
+          "name": "logo_source_url",
+          "from": "logo_source_url",
+          "source": "s.logo_source_url",
+          "target": "t.logo_source_url"
+        },
+        {
+          "name": "logo_storage_path",
+          "from": "logo_storage_path",
+          "source": "s.logo_storage_path",
+          "target": "t.logo_storage_path"
+        },
+        {
+          "name": "logo_url",
+          "from": "logo_url",
+          "source": "s.logo_url",
+          "target": "t.logo_url"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "page_number",
+          "from": "page_number",
+          "source": "s.page_number",
+          "target": "t.page_number"
+        },
+        {
+          "name": "phone",
+          "from": "phone",
+          "source": "s.phone",
+          "target": "t.phone"
+        },
+        {
+          "name": "postcode",
+          "from": "postcode",
+          "source": "s.postcode",
+          "target": "t.postcode"
+        },
+        {
+          "name": "source_status",
+          "from": "source_status",
+          "source": "s.source_status",
+          "target": "t.source_status"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "state",
+          "from": "state",
+          "source": "s.state",
+          "target": "t.state"
+        },
+        {
+          "name": "street1",
+          "from": "street1",
+          "source": "s.street1",
+          "target": "t.street1"
+        },
+        {
+          "name": "street2",
+          "from": "street2",
+          "source": "s.street2",
+          "target": "t.street2"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "website",
+          "from": "website",
+          "source": "s.website",
+          "target": "t.website"
+        },
+        {
+          "name": "website_source",
+          "from": "website_source",
+          "source": "s.website_source",
+          "target": "t.website_source"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_additional_info",
+      "description": "V1 public.extraction_additional_info -> V3 superadmin.extraction_additional_info. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_additional_info",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_additional_info",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "key",
+          "from": "key",
+          "source": "s.key",
+          "target": "t.key"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "value",
+          "from": "value",
+          "source": "s.value",
+          "target": "t.value"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_institution_overview",
+      "description": "V1 public.extraction_institution_overview -> V3 superadmin.extraction_institution_overview. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_institution_overview",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_institution_overview",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "address",
+          "from": "address",
+          "source": "s.address",
+          "target": "t.address"
+        },
+        {
+          "name": "city",
+          "from": "city",
+          "source": "s.city",
+          "target": "t.city"
+        },
+        {
+          "name": "country",
+          "from": "country",
+          "source": "s.country",
+          "target": "t.country"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "email",
+          "from": "email",
+          "source": "s.email",
+          "target": "t.email"
+        },
+        {
+          "name": "facebook_url",
+          "from": "facebook_url",
+          "source": "s.facebook_url",
+          "target": "t.facebook_url"
+        },
+        {
+          "name": "instagram_url",
+          "from": "instagram_url",
+          "source": "s.instagram_url",
+          "target": "t.instagram_url"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "linkedin_url",
+          "from": "linkedin_url",
+          "source": "s.linkedin_url",
+          "target": "t.linkedin_url"
+        },
+        {
+          "name": "logo_url",
+          "from": "logo_url",
+          "source": "s.logo_url",
+          "target": "t.logo_url"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "phone",
+          "from": "phone",
+          "source": "s.phone",
+          "target": "t.phone"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "state",
+          "from": "state",
+          "source": "s.state",
+          "target": "t.state"
+        },
+        {
+          "name": "twitter_url",
+          "from": "twitter_url",
+          "source": "s.twitter_url",
+          "target": "t.twitter_url"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "website",
+          "from": "website",
+          "source": "s.website",
+          "target": "t.website"
+        },
+        {
+          "name": "youtube_url",
+          "from": "youtube_url",
+          "source": "s.youtube_url",
+          "target": "t.youtube_url"
+        },
+        {
+          "name": "zip_code",
+          "from": "zip_code",
+          "source": "s.zip_code",
+          "target": "t.zip_code"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_queue",
+      "description": "V1 public.extraction_queue -> V3 superadmin.extraction_queue. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_queue",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_queue",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "error",
+          "from": "error",
+          "source": "s.error",
+          "target": "t.error"
+        },
+        {
+          "name": "extracted_data",
+          "from": "extracted_data",
+          "source": "s.extracted_data",
+          "target": "t.extracted_data"
+        },
+        {
+          "name": "failure_class",
+          "from": "failure_class",
+          "source": "s.failure_class",
+          "target": "t.failure_class"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "kind",
+          "from": "kind",
+          "source": "s.kind",
+          "target": "t.kind"
+        },
+        {
+          "name": "processing_meta",
+          "from": "processing_meta",
+          "source": "s.processing_meta",
+          "target": "t.processing_meta"
+        },
+        {
+          "name": "retry_count",
+          "from": "retry_count",
+          "source": "s.retry_count",
+          "target": "t.retry_count"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "url",
+          "from": "url",
+          "source": "s.url",
+          "target": "t.url"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_site_intelligence",
+      "description": "V1 public.extraction_site_intelligence -> V3 superadmin.extraction_site_intelligence. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_site_intelligence",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_site_intelligence",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "country",
+          "from": "country",
+          "source": "s.country",
+          "target": "t.country"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "currency",
+          "from": "currency",
+          "source": "s.currency",
+          "target": "t.currency"
+        },
+        {
+          "name": "extraction_hints",
+          "from": "extraction_hints",
+          "source": "s.extraction_hints",
+          "target": "t.extraction_hints"
+        },
+        {
+          "name": "fee_structure",
+          "from": "fee_structure",
+          "source": "s.fee_structure",
+          "target": "t.fee_structure"
+        },
+        {
+          "name": "institution_name",
+          "from": "institution_name",
+          "source": "s.institution_name",
+          "target": "t.institution_name"
+        },
+        {
+          "name": "institution_type",
+          "from": "institution_type",
+          "source": "s.institution_type",
+          "target": "t.institution_type"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "navigation_patterns",
+          "from": "navigation_patterns",
+          "source": "s.navigation_patterns",
+          "target": "t.navigation_patterns"
+        },
+        {
+          "name": "raw_analysis",
+          "from": "raw_analysis",
+          "source": "s.raw_analysis",
+          "target": "t.raw_analysis"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_study_options",
+      "description": "V1 public.extraction_study_options -> V3 superadmin.extraction_study_options. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_study_options",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_study_options",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "applicable_to",
+          "from": "applicable_to",
+          "source": "s.applicable_to",
+          "target": "t.applicable_to"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "duration_unit",
+          "from": "duration_unit",
+          "source": "s.duration_unit",
+          "target": "t.duration_unit"
+        },
+        {
+          "name": "duration_value",
+          "from": "duration_value",
+          "source": "s.duration_value",
+          "target": "t.duration_value"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "save_for_reuse",
+          "from": "save_for_reuse",
+          "source": "s.save_for_reuse",
+          "target": "t.save_for_reuse"
+        },
+        {
+          "name": "study_load",
+          "from": "study_load",
+          "source": "s.study_load",
+          "target": "t.study_load"
+        },
+        {
+          "name": "study_mode",
+          "from": "study_mode",
+          "source": "s.study_mode",
+          "target": "t.study_mode"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_study_units",
+      "description": "V1 public.extraction_study_units -> V3 superadmin.extraction_study_units. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_study_units",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_study_units",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "credit_points",
+          "from": "credit_points",
+          "source": "s.credit_points",
+          "target": "t.credit_points"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "unit_code",
+          "from": "unit_code",
+          "source": "s.unit_code",
+          "target": "t.unit_code"
+        },
+        {
+          "name": "unit_name",
+          "from": "unit_name",
+          "source": "s.unit_name",
+          "target": "t.unit_name"
+        },
+        {
+          "name": "unit_type",
+          "from": "unit_type",
+          "source": "s.unit_type",
+          "target": "t.unit_type"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_agent_locations",
+      "description": "V1 public.extraction_agent_locations -> V3 superadmin.extraction_agent_locations. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_agent_locations",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_agent_locations",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "address",
+          "from": "address",
+          "source": "s.address",
+          "target": "t.address"
+        },
+        {
+          "name": "agent_id",
+          "from": "agent_id",
+          "source": "s.agent_id",
+          "target": "t.agent_id"
+        },
+        {
+          "name": "city",
+          "from": "city",
+          "source": "s.city",
+          "target": "t.city"
+        },
+        {
+          "name": "country",
+          "from": "country",
+          "source": "s.country",
+          "target": "t.country"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "email",
+          "from": "email",
+          "source": "s.email",
+          "target": "t.email"
+        },
+        {
+          "name": "external_id",
+          "from": "external_id",
+          "source": "s.external_id",
+          "target": "t.external_id"
+        },
+        {
+          "name": "is_head_office",
+          "from": "is_head_office",
+          "source": "s.is_head_office",
+          "target": "t.is_head_office"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "phone",
+          "from": "phone",
+          "source": "s.phone",
+          "target": "t.phone"
+        },
+        {
+          "name": "postcode",
+          "from": "postcode",
+          "source": "s.postcode",
+          "target": "t.postcode"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "state",
+          "from": "state",
+          "source": "s.state",
+          "target": "t.state"
+        },
+        {
+          "name": "street1",
+          "from": "street1",
+          "source": "s.street1",
+          "target": "t.street1"
+        },
+        {
+          "name": "street2",
+          "from": "street2",
+          "source": "s.street2",
+          "target": "t.street2"
+        },
+        {
+          "name": "website",
+          "from": "website",
+          "source": "s.website",
+          "target": "t.website"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_intakes",
+      "description": "V1 public.extraction_intakes -> V3 superadmin.extraction_intakes. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_intakes",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_intakes",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "admission_deadline",
+          "from": "admission_deadline",
+          "source": "s.admission_deadline",
+          "target": "t.admission_deadline"
+        },
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "end_date",
+          "from": "end_date",
+          "source": "s.end_date",
+          "target": "t.end_date"
+        },
+        {
+          "name": "intake_month",
+          "from": "intake_month",
+          "source": "s.intake_month",
+          "target": "t.intake_month"
+        },
+        {
+          "name": "intake_name",
+          "from": "intake_name",
+          "source": "s.intake_name",
+          "target": "t.intake_name"
+        },
+        {
+          "name": "intake_year",
+          "from": "intake_year",
+          "source": "s.intake_year",
+          "target": "t.intake_year"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "orientation_date",
+          "from": "orientation_date",
+          "source": "s.orientation_date",
+          "target": "t.orientation_date"
+        },
+        {
+          "name": "start_date",
+          "from": "start_date",
+          "source": "s.start_date",
+          "target": "t.start_date"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_english_requirements",
+      "description": "V1 public.extraction_english_requirements -> V3 superadmin.extraction_english_requirements. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_english_requirements",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_english_requirements",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "listening_score",
+          "from": "listening_score",
+          "source": "s.listening_score",
+          "target": "t.listening_score"
+        },
+        {
+          "name": "overall_score",
+          "from": "overall_score",
+          "source": "s.overall_score",
+          "target": "t.overall_score"
+        },
+        {
+          "name": "reading_score",
+          "from": "reading_score",
+          "source": "s.reading_score",
+          "target": "t.reading_score"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "speaking_score",
+          "from": "speaking_score",
+          "source": "s.speaking_score",
+          "target": "t.speaking_score"
+        },
+        {
+          "name": "test_type",
+          "from": "test_type",
+          "source": "s.test_type",
+          "target": "t.test_type"
+        },
+        {
+          "name": "test_type_name",
+          "from": "test_type_name",
+          "source": "s.test_type_name",
+          "target": "t.test_type_name"
+        },
+        {
+          "name": "writing_score",
+          "from": "writing_score",
+          "source": "s.writing_score",
+          "target": "t.writing_score"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_verification_results",
+      "description": "V1 public.extraction_verification_results -> V3 superadmin.extraction_verification_results. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.extraction_verification_results",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_verification_results",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "extracted_value",
+          "from": "extracted_value",
+          "source": "s.extracted_value",
+          "target": "t.extracted_value"
+        },
+        {
+          "name": "field_name",
+          "from": "field_name",
+          "source": "s.field_name",
+          "target": "t.field_name"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "live_value",
+          "from": "live_value",
+          "source": "s.live_value",
+          "target": "t.live_value"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "agent_extraction_runs",
+      "description": "V1 public.agent_extraction_runs -> V3 superadmin.agent_extraction_runs. Shape unchanged: V3's extraction schema is V1's, so this is a straight uuid-keyed upsert.",
+      "source": {
+        "table": "v1_staging.agent_extraction_runs",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.agent_extraction_runs",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "agents_found",
+          "from": "agents_found",
+          "source": "s.agents_found",
+          "target": "t.agents_found"
+        },
+        {
+          "name": "agents_new",
+          "from": "agents_new",
+          "source": "s.agents_new",
+          "target": "t.agents_new"
+        },
+        {
+          "name": "agents_removed",
+          "from": "agents_removed",
+          "source": "s.agents_removed",
+          "target": "t.agents_removed"
+        },
+        {
+          "name": "agents_updated",
+          "from": "agents_updated",
+          "source": "s.agents_updated",
+          "target": "t.agents_updated"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "error_message",
+          "from": "error_message",
+          "source": "s.error_message",
+          "target": "t.error_message"
+        },
+        {
+          "name": "finished_at",
+          "from": "finished_at",
+          "source": "s.finished_at",
+          "target": "t.finished_at"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "meta",
+          "from": "meta",
+          "source": "s.meta",
+          "target": "t.meta"
+        },
+        {
+          "name": "provider",
+          "from": "provider",
+          "source": "s.provider",
+          "target": "t.provider"
+        },
+        {
+          "name": "started_at",
+          "from": "started_at",
+          "source": "s.started_at",
+          "target": "t.started_at"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_courses",
+      "description": "V1 public.extraction_courses -> V3 superadmin.extraction_courses. 17,037 rows, the largest table in the corpus. The two fee-installment columns are text in V1 and jsonb in V3.",
+      "source": {
+        "table": "v1_staging.extraction_courses",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_courses",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "awarding_institution",
+          "from": "awarding_institution",
+          "source": "s.awarding_institution",
+          "target": "t.awarding_institution"
+        },
+        {
+          "name": "brochure_url",
+          "from": "brochure_url",
+          "source": "s.brochure_url",
+          "target": "t.brochure_url"
+        },
+        {
+          "name": "career_paths",
+          "from": "career_paths",
+          "source": "s.career_paths",
+          "target": "t.career_paths"
+        },
+        {
+          "name": "country_code",
+          "from": "country_code",
+          "source": "s.country_code",
+          "target": "t.country_code"
+        },
+        {
+          "name": "course_status",
+          "from": "course_status",
+          "source": "s.course_status",
+          "target": "t.course_status"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "degree_level",
+          "from": "degree_level",
+          "source": "s.degree_level",
+          "target": "t.degree_level"
+        },
+        {
+          "name": "degree_level_code",
+          "from": "degree_level_code",
+          "source": "s.degree_level_code",
+          "target": "t.degree_level_code"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "domestic_currency",
+          "from": "domestic_currency",
+          "source": "s.domestic_currency",
+          "target": "t.domestic_currency"
+        },
+        {
+          "name": "domestic_eligibility",
+          "from": "domestic_eligibility",
+          "source": "s.domestic_eligibility",
+          "target": "t.domestic_eligibility"
+        },
+        {
+          "name": "domestic_fee_heading",
+          "from": "domestic_fee_heading",
+          "source": "s.domestic_fee_heading",
+          "target": "t.domestic_fee_heading"
+        },
+        {
+          "name": "domestic_fee_installments",
+          "from": "domestic_fee_installments",
+          "source": "(CASE WHEN s.domestic_fee_installments IS NULL THEN NULL WHEN btrim(s.domestic_fee_installments) ~ '^[[{]' THEN s.domestic_fee_installments::jsonb ELSE to_jsonb(s.domestic_fee_installments) END)",
+          "target": "t.domestic_fee_installments",
+          "note": "text -> jsonb. V1 put prose in this column ('Payable in five installments'), which a bare ::jsonb cast rejects. A JSON string is valid jsonb, so non-JSON text becomes one - lossless, and nothing is dropped."
+        },
+        {
+          "name": "domestic_fee_total",
+          "from": "domestic_fee_total",
+          "source": "s.domestic_fee_total",
+          "target": "t.domestic_fee_total"
+        },
+        {
+          "name": "duration_weeks",
+          "from": "duration_weeks",
+          "source": "s.duration_weeks",
+          "target": "t.duration_weeks"
+        },
+        {
+          "name": "image_url",
+          "from": "image_url",
+          "source": "s.image_url",
+          "target": "t.image_url"
+        },
+        {
+          "name": "international_currency",
+          "from": "international_currency",
+          "source": "s.international_currency",
+          "target": "t.international_currency"
+        },
+        {
+          "name": "international_eligibility",
+          "from": "international_eligibility",
+          "source": "s.international_eligibility",
+          "target": "t.international_eligibility"
+        },
+        {
+          "name": "international_fee_installments",
+          "from": "international_fee_installments",
+          "source": "(CASE WHEN s.international_fee_installments IS NULL THEN NULL WHEN btrim(s.international_fee_installments) ~ '^[[{]' THEN s.international_fee_installments::jsonb ELSE to_jsonb(s.international_fee_installments) END)",
+          "target": "t.international_fee_installments"
+        },
+        {
+          "name": "international_fee_total",
+          "from": "international_fee_total",
+          "source": "s.international_fee_total",
+          "target": "t.international_fee_total"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "last_verified_at",
+          "from": "last_verified_at",
+          "source": "s.last_verified_at",
+          "target": "t.last_verified_at"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "short_name",
+          "from": "short_name",
+          "source": "s.short_name",
+          "target": "t.short_name"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "study_mode",
+          "from": "study_mode",
+          "source": "s.study_mode",
+          "target": "t.study_mode"
+        },
+        {
+          "name": "subject_area",
+          "from": "subject_area",
+          "source": "s.subject_area",
+          "target": "t.subject_area"
+        },
+        {
+          "name": "subject_area_code",
+          "from": "subject_area_code",
+          "source": "s.subject_area_code",
+          "target": "t.subject_area_code"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "verification_status",
+          "from": "verification_status",
+          "source": "s.verification_status",
+          "target": "t.verification_status"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_course_fees",
+      "description": "V1 public.extraction_course_fees -> V3 superadmin.extraction_course_fees. fee_type_id becomes a public.fee_types serial, joined on lower(name) - the partial UNIQUE index W2 loaded fee types under.",
+      "source": {
+        "table": "v1_staging.extraction_course_fees",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_course_fees",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "currency",
+          "from": "currency",
+          "source": "s.currency",
+          "target": "t.currency"
+        },
+        {
+          "name": "fee_type_name",
+          "from": "fee_type_id",
+          "source": "(SELECT lower(btrim(v.name)) FROM v1_staging.fee_types v WHERE v.id = s.fee_type_id)",
+          "target": "(SELECT lower(btrim(p.name)) FROM public.fee_types p WHERE p.id = t.fee_type_id)",
+          "note": "uuid -> serial FK. public.fee_types has no slug UNIQUE; its natural key is the partial expression index on lower(name), which is the key W2 upserted on and therefore the key this comparison must use."
+        },
+        {
+          "name": "installments",
+          "from": "installments",
+          "source": "s.installments",
+          "target": "t.installments"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "period_type",
+          "from": "period_type",
+          "source": "s.period_type",
+          "target": "t.period_type"
+        },
+        {
+          "name": "save_for_reuse",
+          "from": "save_for_reuse",
+          "source": "s.save_for_reuse",
+          "target": "t.save_for_reuse"
+        },
+        {
+          "name": "student_type",
+          "from": "student_type",
+          "source": "s.student_type",
+          "target": "t.student_type"
+        },
+        {
+          "name": "total_amount",
+          "from": "total_amount",
+          "source": "s.total_amount",
+          "target": "t.total_amount"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_eligibility_requirements",
+      "description": "V1 public.extraction_eligibility_requirements -> V3 superadmin.extraction_eligibility_requirements. degree_level_id becomes a public.degree_levels serial via the slug.",
+      "source": {
+        "table": "v1_staging.extraction_eligibility_requirements",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_eligibility_requirements",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "academic_tests",
+          "from": "academic_tests",
+          "source": "s.academic_tests",
+          "target": "t.academic_tests"
+        },
+        {
+          "name": "applicable_to",
+          "from": "applicable_to",
+          "source": "s.applicable_to",
+          "target": "t.applicable_to"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "degree_level_slug",
+          "from": "degree_level_id",
+          "source": "(SELECT v.slug FROM v1_staging.degree_levels v WHERE v.id = s.degree_level_id)",
+          "target": "(SELECT p.slug FROM public.degree_levels p WHERE p.id = t.degree_level_id)",
+          "note": "uuid -> serial FK, bridged by the slug both sides are keyed on (s15 decision 3: public.degree_levels, not the superadmin view)."
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "language_tests",
+          "from": "language_tests",
+          "source": "s.language_tests",
+          "target": "t.language_tests"
+        },
+        {
+          "name": "min_degree_level",
+          "from": "min_degree_level",
+          "source": "s.min_degree_level",
+          "target": "t.min_degree_level"
+        },
+        {
+          "name": "min_score",
+          "from": "min_score",
+          "source": "s.min_score",
+          "target": "t.min_score"
+        },
+        {
+          "name": "min_score_grade",
+          "from": "min_score_grade",
+          "source": "s.min_score_grade",
+          "target": "t.min_score_grade"
+        },
+        {
+          "name": "min_score_percent",
+          "from": "min_score_percent",
+          "source": "s.min_score_percent",
+          "target": "t.min_score_percent"
+        },
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "score_type",
+          "from": "score_type",
+          "source": "s.score_type",
+          "target": "t.score_type"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_mara_agents",
+      "description": "V1 public.extraction_mara_agents -> V3 superadmin.extraction_mara_agents. promoted_business_id becomes a public.businesses serial, compared by resolving it back to the V1 uuid stamped into businesses.meta.",
+      "source": {
+        "table": "v1_staging.extraction_mara_agents",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_mara_agents",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "agent_name",
+          "from": "agent_name",
+          "source": "s.agent_name",
+          "target": "t.agent_name"
+        },
+        {
+          "name": "business_name",
+          "from": "business_name",
+          "source": "s.business_name",
+          "target": "t.business_name"
+        },
+        {
+          "name": "confidence_score",
+          "from": "confidence_score",
+          "source": "s.confidence_score",
+          "target": "t.confidence_score"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "email",
+          "from": "email",
+          "source": "s.email",
+          "target": "t.email"
+        },
+        {
+          "name": "expiry_date",
+          "from": "expiry_date",
+          "source": "s.expiry_date",
+          "target": "t.expiry_date"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "languages_spoken",
+          "from": "languages_spoken",
+          "source": "s.languages_spoken",
+          "target": "t.languages_spoken"
+        },
+        {
+          "name": "marn",
+          "from": "marn",
+          "source": "s.marn",
+          "target": "t.marn"
+        },
+        {
+          "name": "office_address",
+          "from": "office_address",
+          "source": "s.office_address",
+          "target": "t.office_address"
+        },
+        {
+          "name": "office_city",
+          "from": "office_city",
+          "source": "s.office_city",
+          "target": "t.office_city"
+        },
+        {
+          "name": "office_country",
+          "from": "office_country",
+          "source": "s.office_country",
+          "target": "t.office_country"
+        },
+        {
+          "name": "office_state",
+          "from": "office_state",
+          "source": "s.office_state",
+          "target": "t.office_state"
+        },
+        {
+          "name": "phone",
+          "from": "phone",
+          "source": "s.phone",
+          "target": "t.phone"
+        },
+        {
+          "name": "practice_areas",
+          "from": "practice_areas",
+          "source": "s.practice_areas",
+          "target": "t.practice_areas"
+        },
+        {
+          "name": "promoted_business_uuid",
+          "from": "promoted_business_id",
+          "source": "s.promoted_business_id::text",
+          "target": "(SELECT b.meta->>'v1_business_id' FROM public.businesses b WHERE b.id = t.promoted_business_id)",
+          "note": "uuid -> serial FK. A MARA agent promoted onto a business that did not migrate is reported unresolved_business, never silently unlinked."
+        },
+        {
+          "name": "raw_payload",
+          "from": "raw_payload",
+          "source": "s.raw_payload",
+          "target": "t.raw_payload"
+        },
+        {
+          "name": "registration_date",
+          "from": "registration_date",
+          "source": "s.registration_date",
+          "target": "t.registration_date"
+        },
+        {
+          "name": "registration_status",
+          "from": "registration_status",
+          "source": "s.registration_status",
+          "target": "t.registration_status"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "website",
+          "from": "website",
+          "source": "s.website",
+          "target": "t.website"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_memory",
+      "description": "V1 public.extraction_memory -> V3 superadmin.extraction_memory. The rows migrate; the embedding does not.",
+      "source": {
+        "table": "v1_staging.extraction_memory",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_memory",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "ai_output",
+          "from": "ai_output",
+          "source": "s.ai_output",
+          "target": "t.ai_output"
+        },
+        {
+          "name": "corrected_at",
+          "from": "corrected_at",
+          "source": "s.corrected_at",
+          "target": "t.corrected_at"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "diff",
+          "from": "diff",
+          "source": "s.diff",
+          "target": "t.diff"
+        },
+        {
+          "name": "domain",
+          "from": "domain",
+          "source": "s.domain",
+          "target": "t.domain"
+        },
+        {
+          "name": "entity_ref",
+          "from": "entity_ref",
+          "source": "s.entity_ref",
+          "target": "t.entity_ref"
+        },
+        {
+          "name": "entity_type",
+          "from": "entity_type",
+          "source": "s.entity_type",
+          "target": "t.entity_type"
+        },
+        {
+          "name": "final_output",
+          "from": "final_output",
+          "source": "s.final_output",
+          "target": "t.final_output"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "source_excerpt",
+          "from": "source_excerpt",
+          "source": "s.source_excerpt",
+          "target": "t.source_excerpt"
+        },
+        {
+          "name": "source_url",
+          "from": "source_url",
+          "source": "s.source_url",
+          "target": "t.source_url"
+        },
+        {
+          "name": "step",
+          "from": "step",
+          "source": "s.step",
+          "target": "t.step"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "embedding",
+          "reason": "Embeddings are NEVER copied (Part 3 s1.5). V1 stores a 1536-dim OpenAI vector as text; V3 declares vector(3072) and re-embeds with its own model in wave E1. A vector from a different model is not merely differently sized - cosine distance cannot compare it, so a widened copy would be silently wrong rather than loudly missing. memory-client.ts already treats a missing embedding as non-fatal."
+        },
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "agent_extraction_schedule",
+      "description": "V1 public.agent_extraction_schedule -> V3 superadmin.agent_extraction_schedule. cadence is free text in V1 and a superadmin.agent_extraction_cadence enum in V3.",
+      "source": {
+        "table": "v1_staging.agent_extraction_schedule",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.agent_extraction_schedule",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "cadence",
+          "from": "cadence",
+          "source": "s.cadence",
+          "target": "t.cadence::text",
+          "note": "text -> enum. Compared as text on both sides; a value outside the enum fails the insert loudly rather than being coerced."
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "enabled",
+          "from": "enabled",
+          "source": "s.enabled",
+          "target": "t.enabled"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "last_error",
+          "from": "last_error",
+          "source": "s.last_error",
+          "target": "t.last_error"
+        },
+        {
+          "name": "last_run_at",
+          "from": "last_run_at",
+          "source": "s.last_run_at",
+          "target": "t.last_run_at"
+        },
+        {
+          "name": "last_status",
+          "from": "last_status",
+          "source": "s.last_status",
+          "target": "t.last_status"
+        },
+        {
+          "name": "next_run_at",
+          "from": "next_run_at",
+          "source": "s.next_run_at",
+          "target": "t.next_run_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_course_campuses",
+      "description": "V1 public.extraction_course_campuses -> V3 superadmin.extraction_course_campuses. A junction: defect D8 means both parents must reconcile before it is trusted, however good its own numbers look.",
+      "junction": {
+        "parents": [
+          "extraction_courses",
+          "extraction_campuses"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.extraction_course_campuses",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_course_campuses",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "campus_email",
+          "from": "campus_email",
+          "source": "s.campus_email",
+          "target": "t.campus_email"
+        },
+        {
+          "name": "campus_id",
+          "from": "campus_id",
+          "source": "s.campus_id",
+          "target": "t.campus_id"
+        },
+        {
+          "name": "campus_name",
+          "from": "campus_name",
+          "source": "s.campus_name",
+          "target": "t.campus_name"
+        },
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_course_eligibility_assignments",
+      "description": "V1 public.extraction_course_eligibility_assignments -> V3 superadmin.extraction_course_eligibility_assignments. A junction: defect D8 means both parents must reconcile before it is trusted, however good its own numbers look.",
+      "junction": {
+        "parents": [
+          "extraction_courses",
+          "extraction_eligibility_requirements"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.extraction_course_eligibility_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_course_eligibility_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "eligibility_requirement_id",
+          "from": "eligibility_requirement_id",
+          "source": "s.eligibility_requirement_id",
+          "target": "t.eligibility_requirement_id"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_course_fee_assignments",
+      "description": "V1 public.extraction_course_fee_assignments -> V3 superadmin.extraction_course_fee_assignments. A junction: defect D8 means both parents must reconcile before it is trusted, however good its own numbers look.",
+      "junction": {
+        "parents": [
+          "extraction_courses",
+          "extraction_course_fees"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.extraction_course_fee_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_course_fee_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "course_fee_id",
+          "from": "course_fee_id",
+          "source": "s.course_fee_id",
+          "target": "t.course_fee_id"
+        },
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_course_intake_assignments",
+      "description": "V1 public.extraction_course_intake_assignments -> V3 superadmin.extraction_course_intake_assignments. A junction: defect D8 means both parents must reconcile before it is trusted, however good its own numbers look.",
+      "junction": {
+        "parents": [
+          "extraction_courses",
+          "extraction_intakes"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.extraction_course_intake_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_course_intake_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "intake_id",
+          "from": "intake_id",
+          "source": "s.intake_id",
+          "target": "t.intake_id"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_course_study_option_assignments",
+      "description": "V1 public.extraction_course_study_option_assignments -> V3 superadmin.extraction_course_study_option_assignments. A junction: defect D8 means both parents must reconcile before it is trusted, however good its own numbers look.",
+      "junction": {
+        "parents": [
+          "extraction_courses",
+          "extraction_study_options"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.extraction_course_study_option_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_course_study_option_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "study_option_id",
+          "from": "study_option_id",
+          "source": "s.study_option_id",
+          "target": "t.study_option_id"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_course_study_unit_assignments",
+      "description": "V1 public.extraction_course_study_unit_assignments -> V3 superadmin.extraction_course_study_unit_assignments. A junction: defect D8 means both parents must reconcile before it is trusted, however good its own numbers look.",
+      "junction": {
+        "parents": [
+          "extraction_courses",
+          "extraction_study_units"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.extraction_course_study_unit_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_course_study_unit_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        },
+        {
+          "name": "study_unit_id",
+          "from": "study_unit_id",
+          "source": "s.study_unit_id",
+          "target": "t.study_unit_id"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "extraction_course_accreditation_assignments",
+      "description": "V1 public.extraction_course_accreditation_assignments -> V3 superadmin.extraction_course_accreditation_assignments. A junction: defect D8 means both parents must reconcile before it is trusted, however good its own numbers look.",
+      "junction": {
+        "parents": [
+          "extraction_courses",
+          "extraction_accreditations"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.extraction_course_accreditation_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.extraction_course_accreditation_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "accreditation_id",
+          "from": "accreditation_id",
+          "source": "s.accreditation_id",
+          "target": "t.accreditation_id"
+        },
+        {
+          "name": "course_id",
+          "from": "course_id",
+          "source": "s.course_id",
+          "target": "t.course_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "extraction_accreditation_id",
+          "from": "extraction_accreditation_id",
+          "source": "s.extraction_accreditation_id",
+          "target": "t.extraction_accreditation_id"
+        },
+        {
+          "name": "job_id",
+          "from": "job_id",
+          "source": "s.job_id",
+          "target": "t.job_id"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "ai_knowledge_categories",
+      "description": "V1 public.ai_knowledge_categories -> V3 superadmin.ai_knowledge_categories.",
+      "source": {
+        "table": "v1_staging.ai_knowledge_categories",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.ai_knowledge_categories",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "active",
+          "from": "active",
+          "source": "s.active",
+          "target": "t.active"
+        },
+        {
+          "name": "country_code",
+          "from": "country_code",
+          "source": "s.country_code",
+          "target": "t.country_code"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "kind",
+          "from": "kind",
+          "source": "s.kind",
+          "target": "t.kind"
+        },
+        {
+          "name": "label",
+          "from": "label",
+          "source": "s.label",
+          "target": "t.label"
+        },
+        {
+          "name": "slug",
+          "from": "slug",
+          "source": "s.slug",
+          "target": "t.slug"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "s.sort_order",
+          "target": "t.sort_order"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "crawl_rules",
+          "reason": "V3's superadmin.ai_knowledge_categories (20260814_001_ai_knowledge.ts) has no crawl_rules column - the V3 crawler takes its rules from ai_knowledge_sources, not the category. No target column exists to carry it."
+        },
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "ai_knowledge_sources",
+      "description": "V1 public.ai_knowledge_sources -> V3 superadmin.ai_knowledge_sources. added_by is an auth uuid in V1 and a superadmin.admin_users serial in V3.",
+      "source": {
+        "table": "v1_staging.ai_knowledge_sources",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.ai_knowledge_sources",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "active",
+          "from": "active",
+          "source": "s.active",
+          "target": "t.active"
+        },
+        {
+          "name": "added_by_email",
+          "from": "added_by",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.added_by)",
+          "target": "(SELECT lower(btrim(p.email)) FROM superadmin.admin_users au JOIN public.platform_users p ON p.id = au.platform_user_id WHERE au.id = t.added_by)",
+          "note": "uuid -> serial FK across two hops (auth uuid -> platform_users -> admin_users), compared on the email that mig.map_users itself keys on."
+        },
+        {
+          "name": "added_via",
+          "from": "added_via",
+          "source": "s.added_via",
+          "target": "t.added_via"
+        },
+        {
+          "name": "business_id",
+          "from": "business_id",
+          "source": "s.business_id",
+          "target": "t.business_id"
+        },
+        {
+          "name": "category_id",
+          "from": "category_id",
+          "source": "s.category_id",
+          "target": "t.category_id"
+        },
+        {
+          "name": "crawl_frequency",
+          "from": "crawl_frequency",
+          "source": "s.crawl_frequency",
+          "target": "t.crawl_frequency"
+        },
+        {
+          "name": "crawl_summary",
+          "from": "crawl_summary",
+          "source": "s.crawl_summary",
+          "target": "t.crawl_summary"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "doc_count",
+          "from": "doc_count",
+          "source": "s.doc_count",
+          "target": "t.doc_count"
+        },
+        {
+          "name": "domain",
+          "from": "domain",
+          "source": "s.domain",
+          "target": "t.domain"
+        },
+        {
+          "name": "last_crawled_at",
+          "from": "last_crawled_at",
+          "source": "s.last_crawled_at",
+          "target": "t.last_crawled_at"
+        },
+        {
+          "name": "last_error",
+          "from": "last_error",
+          "source": "s.last_error",
+          "target": "t.last_error"
+        },
+        {
+          "name": "last_status",
+          "from": "last_status",
+          "source": "s.last_status",
+          "target": "t.last_status"
+        },
+        {
+          "name": "max_pages",
+          "from": "max_pages",
+          "source": "s.max_pages",
+          "target": "t.max_pages"
+        },
+        {
+          "name": "title",
+          "from": "title",
+          "source": "s.title",
+          "target": "t.title"
+        },
+        {
+          "name": "trust_tier",
+          "from": "trust_tier",
+          "source": "s.trust_tier",
+          "target": "t.trust_tier"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "url",
+          "from": "url",
+          "source": "s.url",
+          "target": "t.url"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "ai_knowledge_documents",
+      "description": "V1 public.ai_knowledge_documents -> V3 superadmin.ai_knowledge_documents. 207 crawled documents; their embeddings are re-computed in V3, not copied.",
+      "source": {
+        "table": "v1_staging.ai_knowledge_documents",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.ai_knowledge_documents",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "active",
+          "from": "active",
+          "source": "s.active",
+          "target": "t.active"
+        },
+        {
+          "name": "category_id",
+          "from": "category_id",
+          "source": "s.category_id",
+          "target": "t.category_id"
+        },
+        {
+          "name": "content_hash",
+          "from": "content_hash",
+          "source": "s.content_hash",
+          "target": "t.content_hash"
+        },
+        {
+          "name": "crawled_at",
+          "from": "crawled_at",
+          "source": "s.crawled_at",
+          "target": "t.crawled_at"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "markdown",
+          "from": "markdown",
+          "source": "s.markdown",
+          "target": "t.markdown"
+        },
+        {
+          "name": "source_id",
+          "from": "source_id",
+          "source": "s.source_id",
+          "target": "t.source_id"
+        },
+        {
+          "name": "title",
+          "from": "title",
+          "source": "s.title",
+          "target": "t.title"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "url",
+          "from": "url",
+          "source": "s.url",
+          "target": "t.url"
+        },
+        {
+          "name": "word_count",
+          "from": "word_count",
+          "source": "s.word_count",
+          "target": "t.word_count"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "embedded_at",
+          "reason": "Bookkeeping for a V1 embedding that is not carried. Re-stamped by wave E1 when V3 embeds the document with its own model; copying it would claim the row is embedded when it is not."
+        },
+        {
+          "column": "embedded_hash",
+          "reason": "Bookkeeping for a V1 embedding that is not carried; V3's superadmin.ai_knowledge_documents has no such column and content_hash already covers change detection."
+        },
+        {
+          "column": "embedding",
+          "reason": "Embeddings are NEVER copied (Part 3 s1.5). V1 stores a 1536-dim OpenAI vector as text; V3 declares vector(3072) and re-embeds with its own model in wave E1. A vector from a different model is not merely differently sized - cosine distance cannot compare it, so a widened copy would be silently wrong rather than loudly missing. memory-client.ts already treats a missing embedding as non-fatal."
+        },
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "ai_knowledge_faqs",
+      "description": "V1 public.ai_knowledge_faqs -> V3 superadmin.ai_knowledge_faqs.",
+      "source": {
+        "table": "v1_staging.ai_knowledge_faqs",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.ai_knowledge_faqs",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "active",
+          "from": "active",
+          "source": "s.active",
+          "target": "t.active"
+        },
+        {
+          "name": "answer",
+          "from": "answer",
+          "source": "s.answer",
+          "target": "t.answer"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "created_by_email",
+          "from": "created_by",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.created_by)",
+          "target": "(SELECT lower(btrim(p.email)) FROM superadmin.admin_users au JOIN public.platform_users p ON p.id = au.platform_user_id WHERE au.id = t.created_by)",
+          "note": "uuid -> serial FK; NOT NULL in V1 and nullable in V3, so an author with no admin_users row is reported unresolved_user rather than blocking the FAQ."
+        },
+        {
+          "name": "question",
+          "from": "question",
+          "source": "s.question",
+          "target": "t.question"
+        },
+        {
+          "name": "tags",
+          "from": "tags",
+          "source": "s.tags",
+          "target": "t.tags"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "embedding",
+          "reason": "Embeddings are NEVER copied (Part 3 s1.5). V1 stores a 1536-dim OpenAI vector as text; V3 declares vector(3072) and re-embeds with its own model in wave E1. A vector from a different model is not merely differently sized - cosine distance cannot compare it, so a widened copy would be silently wrong rather than loudly missing. memory-client.ts already treats a missing embedding as non-fatal."
+        },
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "ai_knowledge_visa",
+      "description": "V1 public.ai_knowledge_visa -> V3 superadmin.ai_knowledge_visa.",
+      "source": {
+        "table": "v1_staging.ai_knowledge_visa",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.ai_knowledge_visa",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "active",
+          "from": "active",
+          "source": "s.active",
+          "target": "t.active"
+        },
+        {
+          "name": "application_fee_usd",
+          "from": "application_fee_usd",
+          "source": "s.application_fee_usd",
+          "target": "t.application_fee_usd"
+        },
+        {
+          "name": "common_rejections",
+          "from": "common_rejections",
+          "source": "s.common_rejections",
+          "target": "t.common_rejections"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "destination_country",
+          "from": "destination_country",
+          "source": "s.destination_country",
+          "target": "t.destination_country"
+        },
+        {
+          "name": "eligible_nationalities",
+          "from": "eligible_nationalities",
+          "source": "s.eligible_nationalities",
+          "target": "t.eligible_nationalities"
+        },
+        {
+          "name": "last_verified_date",
+          "from": "last_verified_date",
+          "source": "s.last_verified_date",
+          "target": "t.last_verified_date"
+        },
+        {
+          "name": "post_study_visa",
+          "from": "post_study_visa",
+          "source": "s.post_study_visa",
+          "target": "t.post_study_visa"
+        },
+        {
+          "name": "processing_time_days",
+          "from": "processing_time_days",
+          "source": "s.processing_time_days",
+          "target": "t.processing_time_days"
+        },
+        {
+          "name": "required_documents",
+          "from": "required_documents",
+          "source": "s.required_documents",
+          "target": "t.required_documents"
+        },
+        {
+          "name": "requirements",
+          "from": "requirements",
+          "source": "s.requirements",
+          "target": "t.requirements"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "verified_by_email",
+          "from": "verified_by",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.verified_by)",
+          "target": "(SELECT lower(btrim(p.email)) FROM superadmin.admin_users au JOIN public.platform_users p ON p.id = au.platform_user_id WHERE au.id = t.verified_by)"
+        },
+        {
+          "name": "visa_type",
+          "from": "visa_type",
+          "source": "s.visa_type",
+          "target": "t.visa_type"
+        },
+        {
+          "name": "work_rights_hours",
+          "from": "work_rights_hours",
+          "source": "s.work_rights_hours",
+          "target": "t.work_rights_hours"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "embedding",
+          "reason": "Embeddings are NEVER copied (Part 3 s1.5). V1 stores a 1536-dim OpenAI vector as text; V3 declares vector(3072) and re-embeds with its own model in wave E1. A vector from a different model is not merely differently sized - cosine distance cannot compare it, so a widened copy would be silently wrong rather than loudly missing. memory-client.ts already treats a missing embedding as non-fatal."
+        },
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "ai_knowledge_country_guides",
+      "description": "V1 public.ai_knowledge_country_guides -> V3 superadmin.ai_knowledge_country_guides.",
+      "source": {
+        "table": "v1_staging.ai_knowledge_country_guides",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.ai_knowledge_country_guides",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "active",
+          "from": "active",
+          "source": "s.active",
+          "target": "t.active"
+        },
+        {
+          "name": "climate",
+          "from": "climate",
+          "source": "s.climate",
+          "target": "t.climate"
+        },
+        {
+          "name": "cost_of_living_monthly_usd",
+          "from": "cost_of_living_monthly_usd",
+          "source": "s.cost_of_living_monthly_usd",
+          "target": "t.cost_of_living_monthly_usd"
+        },
+        {
+          "name": "country",
+          "from": "country",
+          "source": "s.country",
+          "target": "t.country"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "culture_notes",
+          "from": "culture_notes",
+          "source": "s.culture_notes",
+          "target": "t.culture_notes"
+        },
+        {
+          "name": "education_system",
+          "from": "education_system",
+          "source": "s.education_system",
+          "target": "t.education_system"
+        },
+        {
+          "name": "last_verified_date",
+          "from": "last_verified_date",
+          "source": "s.last_verified_date",
+          "target": "t.last_verified_date"
+        },
+        {
+          "name": "popular_cities",
+          "from": "popular_cities",
+          "source": "s.popular_cities",
+          "target": "t.popular_cities"
+        },
+        {
+          "name": "student_life",
+          "from": "student_life",
+          "source": "s.student_life",
+          "target": "t.student_life"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "embedding",
+          "reason": "Embeddings are NEVER copied (Part 3 s1.5). V1 stores a 1536-dim OpenAI vector as text; V3 declares vector(3072) and re-embeds with its own model in wave E1. A vector from a different model is not merely differently sized - cosine distance cannot compare it, so a widened copy would be silently wrong rather than loudly missing. memory-client.ts already treats a missing embedding as non-fatal."
+        },
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "data_verification_queue",
+      "description": "V1 public.data_verification_queue -> V3 superadmin.data_verification_queue. Two different id spaces that both look like `integer`: submitted_by is a platform_users id, reviewed_by an admin_users id.",
+      "source": {
+        "table": "v1_staging.data_verification_queue",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.data_verification_queue",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "data_id",
+          "from": "data_id",
+          "source": "s.data_id",
+          "target": "t.data_id"
+        },
+        {
+          "name": "data_type",
+          "from": "data_type",
+          "source": "s.data_type",
+          "target": "t.data_type"
+        },
+        {
+          "name": "rejection_reason",
+          "from": "rejection_reason",
+          "source": "s.rejection_reason",
+          "target": "t.rejection_reason"
+        },
+        {
+          "name": "reviewed_at",
+          "from": "reviewed_at",
+          "source": "s.reviewed_at",
+          "target": "t.reviewed_at"
+        },
+        {
+          "name": "reviewed_by_email",
+          "from": "reviewed_by",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.reviewed_by)",
+          "target": "(SELECT lower(btrim(p.email)) FROM superadmin.admin_users au JOIN public.platform_users p ON p.id = au.platform_user_id WHERE au.id = t.reviewed_by)"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "submitted_by_email",
+          "from": "submitted_by",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.submitted_by)",
+          "target": "(SELECT lower(btrim(p.email)) FROM public.platform_users p WHERE p.id = t.submitted_by)",
+          "note": "NOT NULL on both sides: a submitter that does not resolve makes the row unloadable, so it is skipped and reason-coded unresolved_user rather than attributed to someone else."
+        },
+        {
+          "name": "submitter_type",
+          "from": "submitter_type",
+          "source": "s.submitter_type",
+          "target": "t.submitter_type"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "feature_flags",
+      "description": "V1 public.feature_flags -> V3 superadmin.feature_flags. uuid PK -> serial, keyed on flag_key. updated_by is a platform_users id in V3 (the routes pass req.auth.sub), not an admin_users id - there is no FK to catch that mix-up, so it is asserted in the transform.",
+      "source": {
+        "table": "v1_staging.feature_flags",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.feature_flags",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "flag_key (the UNIQUE V3 enforces)",
+        "source": "s.flag_key",
+        "target": "t.flag_key"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "is_enabled",
+          "from": "is_enabled",
+          "source": "coalesce(s.is_enabled, false)",
+          "target": "t.is_enabled",
+          "note": "nullable in V1, NOT NULL in V3; absent means off."
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "updated_by_email",
+          "from": "updated_by",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.updated_by)",
+          "target": "(SELECT lower(btrim(p.email)) FROM public.platform_users p WHERE p.id = t.updated_by)"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "flag_key",
+          "reason": "Not copied as a value - it IS the identity key, and the UNIQUE V3 enforces."
+        },
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial. Not preserved: the natural key named in `identity` is the stable one, and nothing that migrates holds this uuid."
+        }
+      ]
+    },
+    {
+      "name": "site_access_settings",
+      "description": "V1 public.site_access_settings -> V3 superadmin.site_access_settings. A singleton: one row of site-lock configuration. V3 seeds id = 1 at migration time and this converges onto that row rather than inserting a second singleton.",
+      "source": {
+        "table": "v1_staging.site_access_settings",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.site_access_settings",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "singleton (one row on both sides; V3 seeds id = 1)",
+        "source": "'singleton'",
+        "target": "'singleton'"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "access_code",
+          "from": "access_code",
+          "source": "s.access_code",
+          "target": "t.access_code"
+        },
+        {
+          "name": "is_locked",
+          "from": "is_locked",
+          "source": "s.is_locked",
+          "target": "t.is_locked"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "updated_by_email",
+          "from": "updated_by",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.updated_by)",
+          "target": "(SELECT lower(btrim(p.email)) FROM public.platform_users p WHERE p.id = t.updated_by)"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial. Not preserved: the natural key named in `identity` is the stable one, and nothing that migrates holds this uuid."
+        }
+      ]
+    },
+    {
+      "name": "admin_audit_logs",
+      "description": "V1 public.admin_logs -> V3 superadmin.admin_audit_logs (s4 rename). admin_id is an auth uuid in V1 and a superadmin.admin_users serial in V3, and it is NOT NULL there: the 8 V1 rows with a NULL admin_id have no actor to attribute and are reason-coded unresolved_user.",
+      "source": {
+        "table": "v1_staging.admin_logs",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.admin_audit_logs",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "action",
+          "from": "action",
+          "source": "s.action",
+          "target": "t.action"
+        },
+        {
+          "name": "admin_email",
+          "from": "admin_id",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.admin_id)",
+          "target": "(SELECT lower(btrim(p.email)) FROM superadmin.admin_users au JOIN public.platform_users p ON p.id = au.platform_user_id WHERE au.id = t.admin_id)",
+          "note": "uuid -> serial FK across two hops (auth uuid -> platform_users -> admin_users). NOT NULL in V3, so an unresolvable actor means the row does not load - reported, never re-attributed."
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "details",
+          "from": "details",
+          "source": "coalesce(s.details, '{}'::jsonb)",
+          "target": "t.details",
+          "note": "nullable in V1, NOT NULL DEFAULT '{}' in V3."
+        },
+        {
+          "name": "entity_id",
+          "from": "entity_id",
+          "source": "s.entity_id",
+          "target": "t.entity_id"
+        },
+        {
+          "name": "entity_type",
+          "from": "entity_type",
+          "source": "s.entity_type",
+          "target": "t.entity_type"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        },
+        {
+          "column": "ip_address",
+          "reason": "superadmin.admin_audit_logs has no ip_address column - V3's admin audit records the actor and the action, not the transport. All 129 V1 rows have it NULL, so nothing is actually lost; this is declared rather than assumed."
+        }
+      ]
+    },
+    {
+      "name": "audit_logs",
+      "description": "V1 public.audit_events -> V3 public.audit_logs (s4 rename). V3 models an ACTION (action / entity_type / entity_id), V1 an EVENT PAIR (event_category / event_type) with an outcome. event_category, outcome, user_email and user_agent have no V3 column and are FOLDED into details under v1_* keys rather than dropped - details is jsonb precisely so a record can carry what the columns do not.",
+      "source": {
+        "table": "v1_staging.audit_events",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.audit_logs",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved as the V3 primary key)",
+        "source": "s.id",
+        "target": "t.id"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "action",
+          "from": "event_type",
+          "source": "s.event_type",
+          "target": "t.action",
+          "note": "event_type is the action; event_category is the coarser bucket and folds into details."
+        },
+        {
+          "name": "actor_email",
+          "from": "user_id",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.user_id)",
+          "target": "(SELECT lower(btrim(p.email)) FROM public.platform_users p WHERE p.id = t.platform_user_id)"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "details",
+          "from": [
+            "details",
+            "event_category",
+            "outcome",
+            "user_email",
+            "user_agent"
+          ],
+          "source": "(coalesce(s.details, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object('v1_event_category', s.event_category, 'v1_outcome', s.outcome, 'v1_user_email', s.user_email, 'v1_user_agent', s.user_agent)))",
+          "target": "t.details",
+          "note": "The four columns V3 has no home for are folded in under v1_* keys. jsonb_strip_nulls keeps a row that had none of them byte-identical to its source details."
+        },
+        {
+          "name": "entity_id",
+          "from": "resource_id",
+          "source": "s.resource_id",
+          "target": "t.entity_id"
+        },
+        {
+          "name": "entity_type",
+          "from": "resource",
+          "source": "s.resource",
+          "target": "t.entity_type"
+        },
+        {
+          "name": "ip_address",
+          "from": "ip_address",
+          "source": "s.ip_address",
+          "target": "t.ip_address"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value - it IS the identity key. V3 preserves the V1 uuid as its own primary key, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "blog_keywords",
+      "description": "V1 public.blog_keywords -> V3 superadmin.blog_keywords. uuid PK -> serial, keyed on keyword. V3's blog module (PR #31) models a keyword shortlist, not V1's SEO research worksheet, so four research columns have no target.",
+      "source": {
+        "table": "v1_staging.blog_keywords",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.blog_keywords",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "keyword (the UNIQUE V3 enforces)",
+        "source": "s.keyword",
+        "target": "t.keyword"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "category",
+          "from": "category",
+          "source": "s.category",
+          "target": "t.category"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "difficulty",
+          "from": "difficulty",
+          "source": "s.difficulty",
+          "target": "t.difficulty"
+        },
+        {
+          "name": "is_active",
+          "from": "is_active",
+          "source": "coalesce(s.is_active, true)",
+          "target": "t.is_active",
+          "note": "nullable in V1, NOT NULL DEFAULT true in V3."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial. Not preserved: the natural key named in `identity` is the stable one, and nothing that migrates holds this uuid."
+        },
+        {
+          "column": "keyword",
+          "reason": "Not copied as a value - it IS the identity key, and the UNIQUE V3 enforces."
+        },
+        {
+          "column": "last_analyzed_at",
+          "reason": "No column in superadmin.blog_keywords - V3 does not re-analyse keywords on a schedule. OWNER DECISION."
+        },
+        {
+          "column": "relevance_score",
+          "reason": "No column in superadmin.blog_keywords - same SEO-research group as search_volume. OWNER DECISION."
+        },
+        {
+          "column": "search_volume",
+          "reason": "No column in superadmin.blog_keywords: V3's blog module keeps a keyword shortlist (keyword / category / difficulty / is_active), not V1's SEO research worksheet. OWNER DECISION recorded here rather than assumed - restoring it needs a schema change, not a mapping change."
+        },
+        {
+          "column": "suggested_by_ai",
+          "reason": "No column in superadmin.blog_keywords - V3 does not track how a keyword was proposed. OWNER DECISION."
+        }
+      ]
+    },
+    {
+      "name": "blog_posts",
+      "description": "V1 public.blog_posts -> V3 superadmin.blog_posts. uuid PK -> serial, keyed on slug. V1 carries two pairs of duplicate columns (image_url/cover_image_url, read_time_minutes/reading_time_minutes) and V3 kept one of each; both pairs are identical in all 9 source rows. V3's blog (PR #31) does not model V1's AI-generation workflow.",
+      "source": {
+        "table": "v1_staging.blog_posts",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "superadmin.blog_posts",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "slug (the UNIQUE V3 enforces)",
+        "source": "s.slug",
+        "target": "t.slug"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "author_avatar_url",
+          "from": "author_avatar_url",
+          "source": "s.author_avatar_url",
+          "target": "t.author_avatar_url"
+        },
+        {
+          "name": "author_name",
+          "from": "author_name",
+          "source": "s.author_name",
+          "target": "t.author_name"
+        },
+        {
+          "name": "canonical_url",
+          "from": "canonical_url",
+          "source": "s.canonical_url",
+          "target": "t.canonical_url"
+        },
+        {
+          "name": "category",
+          "from": "category",
+          "source": "s.category",
+          "target": "t.category"
+        },
+        {
+          "name": "content",
+          "from": "content",
+          "source": "s.content",
+          "target": "t.content"
+        },
+        {
+          "name": "country_focus",
+          "from": "country_focus",
+          "source": "s.country_focus",
+          "target": "t.country_focus"
+        },
+        {
+          "name": "cover_image_url",
+          "from": "cover_image_url",
+          "source": "s.cover_image_url",
+          "target": "t.cover_image_url"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "excerpt",
+          "from": "excerpt",
+          "source": "s.excerpt",
+          "target": "t.excerpt"
+        },
+        {
+          "name": "focus_keyword",
+          "from": "focus_keyword",
+          "source": "s.focus_keyword",
+          "target": "t.focus_keyword"
+        },
+        {
+          "name": "is_published",
+          "from": "is_published",
+          "source": "coalesce(s.is_published, false)",
+          "target": "t.is_published"
+        },
+        {
+          "name": "meta_description",
+          "from": "meta_description",
+          "source": "s.meta_description",
+          "target": "t.meta_description"
+        },
+        {
+          "name": "meta_title",
+          "from": "meta_title",
+          "source": "s.meta_title",
+          "target": "t.meta_title"
+        },
+        {
+          "name": "og_image_url",
+          "from": "og_image_url",
+          "source": "s.og_image_url",
+          "target": "t.og_image_url"
+        },
+        {
+          "name": "published_at",
+          "from": "published_at",
+          "source": "s.published_at",
+          "target": "t.published_at"
+        },
+        {
+          "name": "reading_time_minutes",
+          "from": "reading_time_minutes",
+          "source": "coalesce(s.reading_time_minutes, 5)",
+          "target": "t.reading_time_minutes"
+        },
+        {
+          "name": "seo_score",
+          "from": "seo_score",
+          "source": "s.seo_score",
+          "target": "t.seo_score"
+        },
+        {
+          "name": "tags",
+          "from": "tags",
+          "source": "to_jsonb(s.tags)",
+          "target": "t.tags",
+          "note": "text[] -> jsonb."
+        },
+        {
+          "name": "title",
+          "from": "title",
+          "source": "s.title",
+          "target": "t.title"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "views",
+          "from": "views",
+          "source": "coalesce(s.views, 0)",
+          "target": "t.views"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "ai_generated",
+          "reason": "V3's superadmin.blog_posts (dev-feat-admin-blog, PR #31) does not model V1's AI-generation workflow - no target column exists. OWNER DECISION recorded here."
+        },
+        {
+          "column": "author_avatar",
+          "reason": "Superseded by author_avatar_url, which V3 kept. NULL in all 9 source rows."
+        },
+        {
+          "column": "generation_metadata",
+          "reason": "Same AI-generation workflow as ai_generated; no target column. OWNER DECISION."
+        },
+        {
+          "column": "generation_status",
+          "reason": "Same AI-generation workflow as ai_generated; no target column. OWNER DECISION."
+        },
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial. Not preserved: the natural key named in `identity` is the stable one, and nothing that migrates holds this uuid."
+        },
+        {
+          "column": "image_url",
+          "reason": "Superseded by cover_image_url, which V3 kept. The two are identical in all 9 source rows, so this is a duplicate column and not a second image."
+        },
+        {
+          "column": "read_time_minutes",
+          "reason": "Superseded by reading_time_minutes, which V3 kept. The two are identical in all 9 source rows."
+        },
+        {
+          "column": "reviewed_at",
+          "reason": "Part of the same generation/review workflow; no target column. OWNER DECISION."
+        },
+        {
+          "column": "reviewed_by",
+          "reason": "Part of the same generation/review workflow; V3's only actor column is creator_id, which is a different fact (who wrote it, not who reviewed a generated draft). OWNER DECISION."
+        },
+        {
+          "column": "slug",
+          "reason": "Not copied as a value - it IS the identity key, and the UNIQUE V3 enforces."
+        }
+      ]
+    },
+    {
+      "name": "feed_posts",
+      "description": "V1 public.feed_posts -> V3 public.feed_posts. Users and businesses both resolve to serials. V3 has no column for the V1 uuid, so the natural key is (author, created_at) - the transform refuses to load if that pair is ever non-unique in the source.",
+      "source": {
+        "table": "v1_staging.feed_posts",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.feed_posts",
+        "alias": "t",
+        "joins": [],
+        "filter": null
+      },
+      "identity": {
+        "label": "author email | created_at (public.feed_posts has a serial PK and nowhere to keep the V1 uuid)",
+        "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.author_user_id) || '|' || s.created_at::text",
+        "target": "(SELECT lower(btrim(p.email)) FROM public.platform_users p WHERE p.id = t.author_platform_user_id) || '|' || t.created_at::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "author_email",
+          "from": "author_user_id",
+          "source": "(SELECT lower(btrim(u.email)) FROM v1_staging.auth_users u WHERE u.id = s.author_user_id)",
+          "target": "(SELECT lower(btrim(p.email)) FROM public.platform_users p WHERE p.id = t.author_platform_user_id)",
+          "note": "NOT NULL on both sides: a post whose author did not migrate cannot be attributed, so it is reported unresolved_user rather than reassigned."
+        },
+        {
+          "name": "business_uuid",
+          "from": "business_id",
+          "source": "s.business_id::text",
+          "target": "(SELECT b.meta->>'v1_business_id' FROM public.businesses b WHERE b.id = t.business_id)",
+          "note": "NOT NULL in V1, nullable in V3; compared by resolving the V3 serial back to the V1 uuid in businesses.meta."
+        },
+        {
+          "name": "content",
+          "from": "content",
+          "source": "s.content",
+          "target": "t.content"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "is_deleted",
+          "from": "is_deleted",
+          "source": "coalesce(s.is_deleted, false)",
+          "target": "(t.deleted_at IS NOT NULL)",
+          "note": "V1's boolean becomes V3's soft-delete timestamp; compared as the predicate both shapes agree on."
+        },
+        {
+          "name": "is_pinned",
+          "from": "is_pinned",
+          "source": "coalesce(s.is_pinned, false)",
+          "target": "t.is_pinned"
+        },
+        {
+          "name": "media",
+          "from": "media",
+          "source": "coalesce(s.media, '[]'::jsonb)",
+          "target": "t.media"
+        },
+        {
+          "name": "post_type",
+          "from": "post_type",
+          "source": "s.post_type",
+          "target": "t.post_type"
+        },
+        {
+          "name": "reactions_count",
+          "from": "reactions_count",
+          "source": "coalesce(s.reactions_count, 0)",
+          "target": "t.reactions_count"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "visibility",
+          "from": "visibility",
+          "source": "s.visibility",
+          "target": "t.visibility"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "ack_count",
+          "reason": "Same acknowledgement workflow as ack_required; no target column. OWNER DECISION."
+        },
+        {
+          "column": "ack_deadline",
+          "reason": "Same acknowledgement workflow as ack_required; no target column. OWNER DECISION."
+        },
+        {
+          "column": "ack_required",
+          "reason": "V1's acknowledgement workflow. V3's feed (globalyapp/20260811_009_feed.ts) has no ack model at all. OWNER DECISION."
+        },
+        {
+          "column": "comments_count",
+          "reason": "public.feed_posts has no comments_count: feed_comments is BLOCKED on wave D4 (s3.5), and the counter is derived from the comments table once D4 lands. Carrying a stale count now would be wrong the moment D4 ships."
+        },
+        {
+          "column": "entity_ref",
+          "reason": "V1 linked a post to an arbitrary entity; V3's feed has no such column. OWNER DECISION."
+        },
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial. Not preserved: the natural key named in `identity` is the stable one, and nothing that migrates holds this uuid."
+        },
+        {
+          "column": "source",
+          "reason": "V1's 'manual' / feed-origin discriminator. V3 models origin as post_type plus the presence of business_id; no target column. OWNER DECISION."
+        }
+      ]
+    },
+    {
+      "name": "feed_reactions",
+      "description": "V1 public.feed_reactions -> V3 public.feed_reactions. A junction over feed_posts and platform_users; V3's primary key is (post_id, platform_user_id), so the emoji is a value and not part of the identity.",
+      "junction": {
+        "parents": [
+          "feed_posts",
+          "platform_users"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.feed_reactions",
+        "alias": "s",
+        "joins": [
+          "JOIN v1_staging.feed_posts fp ON fp.id = s.post_id",
+          "JOIN v1_staging.auth_users ru ON ru.id = s.user_id",
+          "JOIN v1_staging.auth_users au ON au.id = fp.author_user_id"
+        ],
+        "filter": null
+      },
+      "target": {
+        "table": "public.feed_reactions",
+        "alias": "t",
+        "joins": [
+          "JOIN public.feed_posts tp ON tp.id = t.post_id",
+          "JOIN public.platform_users tu ON tu.id = t.platform_user_id",
+          "JOIN public.platform_users ta ON ta.id = tp.author_platform_user_id"
+        ],
+        "filter": null
+      },
+      "identity": {
+        "label": "post (author email | created_at) | reacting user email",
+        "source": "lower(btrim(au.email)) || '|' || fp.created_at::text || '|' || lower(btrim(ru.email))",
+        "target": "lower(btrim(ta.email)) || '|' || tp.created_at::text || '|' || lower(btrim(tu.email))"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "emoji",
+          "from": "emoji",
+          "source": "s.emoji",
+          "target": "t.emoji"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK -> V3 serial. Not preserved: the natural key named in `identity` is the stable one, and nothing that migrates holds this uuid."
+        },
+        {
+          "column": "post_id",
+          "reason": "Not copied as a value - it is half of the identity key, bridged through the post's own natural key (author + created_at)."
+        },
+        {
+          "column": "user_id",
+          "reason": "Not copied as a value - it is the other half of the identity key, bridged through the reacting user's email."
+        }
+      ]
     }
   ]
 }
