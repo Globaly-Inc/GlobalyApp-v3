@@ -32,10 +32,11 @@ export async function verifyCertificate(code: string) {
   return {
     valid: !row.is_expired && !lapsed,
     verification_code: row.verification_code,
-    holder_name:
-      `${row.holder_first_name ?? ""} ${row.holder_last_name ?? ""}`.trim() || "Certificate holder",
-    program_title: row.program_title ?? null,
-    issued_by: row.issued_by ?? null,
+    // first_name / last_name are NOT NULL on platform_users; the program and
+    // issuer are left-joined and so can genuinely be absent.
+    holder_name: `${row.holder_first_name} ${row.holder_last_name}`.trim(),
+    program_title: row.program_title as string | null,
+    issued_by: row.issued_by as string | null,
     level: row.level,
     score: row.score,
     issued_at: row.issued_at,
@@ -92,20 +93,20 @@ export async function listForAdmin(query: AdminListQuery) {
   const data = rows.map((r: Record<string, unknown>) => ({
     id: Number(r.id),
     business_id: Number(r.business_id),
-    business_name: (r.business_name as string) ?? null,
+    business_name: r.business_name as string | null,
     title: r.title as string,
-    category: (r.category as string) ?? null,
+    category: r.category as string | null,
     target_audience: r.target_audience as TargetAudience,
     is_published: r.is_published as boolean,
     is_mandatory: r.is_mandatory as boolean,
     passing_score: Number(r.passing_score),
     created_at: r.created_at as Date,
-    chapters: Number(r.chapters ?? 0),
-    enrolments: Number(r.enrolments ?? 0),
-    certificates_issued: Number(r.certificates_issued ?? 0),
+    chapters: Number(r.chapters),
+    enrolments: Number(r.enrolments),
+    certificates_issued: Number(r.certificates_issued),
   }));
 
-  return buildPaginatedResponse(data, Number(countRow?.count ?? 0), query);
+  return buildPaginatedResponse(data, Number(countRow!.count), query);
 }
 
 export async function statsForAdmin() {
@@ -139,19 +140,20 @@ export async function statsForAdmin() {
       .first(),
   ]);
 
-  const n = (v: unknown) => Number(v ?? 0);
+  // A bare aggregate with no GROUP BY always returns exactly one row.
+  const n = (v: unknown) => Number(v);
   return {
-    programs: { total: n(programs?.total), published: n(programs?.published) },
-    enrolments: { total: n(enrolments?.total), last_30_days: n(enrolments?.last_30_days) },
+    programs: { total: n(programs!.total), published: n(programs!.published) },
+    enrolments: { total: n(enrolments!.total), last_30_days: n(enrolments!.last_30_days) },
     certificates: {
-      total: n(certificates?.total),
-      expired: n(certificates?.expired),
-      gold: n(certificates?.gold),
+      total: n(certificates!.total),
+      expired: n(certificates!.expired),
+      gold: n(certificates!.gold),
     },
     gamification: {
-      learners: n(gamification?.learners),
-      total_xp: n(gamification?.total_xp),
-      longest_streak: n(gamification?.longest_streak),
+      learners: n(gamification!.learners),
+      total_xp: n(gamification!.total_xp),
+      longest_streak: n(gamification!.longest_streak),
     },
   };
 }

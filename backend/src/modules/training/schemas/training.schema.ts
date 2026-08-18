@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { PaginationSchema } from "../../../shared/pagination.js";
+import { webUrl } from "../../../shared/url.js";
 import { TARGET_AUDIENCES } from "../consts.js";
 
 export const IdParamSchema = z.object({ id: z.coerce.number().int().positive() });
@@ -22,7 +23,7 @@ const programWritable = z.object({
   description: z.string().max(20000).nullable().optional(),
   category: z.string().max(120).nullable().optional(),
   target_audience: z.enum(TARGET_AUDIENCES).optional(),
-  thumbnail_url: z.string().url().max(1000).nullable().optional(),
+  thumbnail_url: webUrl({ max: 1000 }).nullable().optional(),
   is_mandatory: z.boolean().optional(),
   due_date: z.string().datetime().nullable().optional(),
   auto_close: z.boolean().optional(),
@@ -62,7 +63,7 @@ export const PutChaptersSchema = z
             id: z.number().int().positive().optional(),
             title: z.string().min(1).max(300),
             content_text: z.string().max(200000).nullable().optional(),
-            video_url: z.string().url().max(1000).nullable().optional(),
+            video_url: webUrl({ max: 1000 }).nullable().optional(),
           })
           .strict(),
       )

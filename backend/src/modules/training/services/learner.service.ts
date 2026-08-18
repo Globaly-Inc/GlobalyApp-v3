@@ -10,12 +10,7 @@
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../../../shared/errors.js";
-import {
-  DEFAULT_MAX_ATTEMPTS,
-  DEFAULT_PASSING_SCORE,
-  EXPIRY_DAYS_PER_MONTH,
-  XP_BY_LEVEL,
-} from "../consts.js";
+import { DEFAULT_MAX_ATTEMPTS, EXPIRY_DAYS_PER_MONTH, XP_BY_LEVEL } from "../consts.js";
 import {
   certLevelFor,
   gradeAnswers,
@@ -181,7 +176,8 @@ export async function submitAssessment(
     }
 
     const { score } = gradeAnswers((assessment.questions ?? []) as Question[], body.answers);
-    const passed = score >= (program.passing_score ?? DEFAULT_PASSING_SCORE);
+    // passing_score is NOT NULL with a default — no fallback needed.
+    const passed = score >= program.passing_score;
 
     await repo.insertAttempt(
       {

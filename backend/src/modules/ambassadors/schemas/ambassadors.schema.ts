@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { PaginationSchema } from "../../../shared/pagination.js";
+import { webUrl } from "../../../shared/url.js";
 import {
   AMBASSADOR_SETTABLE_STATUSES,
   APPLICATION_STATUSES,
@@ -44,7 +45,7 @@ const programWritable = z.object({
     .max(200)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be lowercase alphanumeric with dashes"),
   description: z.string().max(8000).nullable().optional(),
-  welcome_video_url: z.string().url().max(1000).nullable().optional(),
+  welcome_video_url: webUrl({ max: 1000 }).nullable().optional(),
   status: z.enum(PROGRAM_STATUSES).optional(),
   application_stages: z.array(z.record(z.string(), z.unknown())).optional(),
   compensation_model: z.record(z.string(), z.unknown()).optional(),
@@ -65,7 +66,7 @@ export const ApplySchema = z
   .object({
     program_id: z.number().int().positive(),
     application_data: z.record(z.string(), z.unknown()).default({}),
-    video_url: z.string().url().max(1000).nullable().optional(),
+    video_url: webUrl({ max: 1000 }).nullable().optional(),
   })
   .strict();
 
@@ -142,7 +143,7 @@ export const RequestPayoutSchema = z
   .strict();
 
 export const ConnectOnboardingSchema = z
-  .object({ return_url: z.string().url().max(2000).optional() })
+  .object({ return_url: webUrl({ max: 2000 }).optional() })
   .strict();
 
 // ── Admin ───────────────────────────────────────────────────────────────────

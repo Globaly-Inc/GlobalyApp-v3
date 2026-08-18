@@ -24,8 +24,6 @@ export const DEFAULT_LEVEL_THRESHOLDS = { gold: 95, silver: 85, bronze: 70 } as 
 
 /** V2: `attemptCount >= (program.max_attempts ?? 3)`. */
 export const DEFAULT_MAX_ATTEMPTS = 3;
-/** V2: `score >= (program.passing_score ?? 70)`. */
-export const DEFAULT_PASSING_SCORE = 70;
 
 /** V2 awarded a 20 XP bonus on every 7th consecutive day. */
 export const STREAK_BONUS_XP = 20;

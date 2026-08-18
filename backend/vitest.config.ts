@@ -80,6 +80,7 @@ export default defineConfig({
         "src/modules/events/**/*.ts",
         "src/modules/notifications/**/*.ts",
         // G4 — ambassador ops + training certificates/gamification
+        "src/shared/url.ts",
         "src/modules/ambassadors/**/*.ts",
         "src/modules/training/**/*.ts",
       ],

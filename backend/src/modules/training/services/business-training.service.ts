@@ -144,11 +144,11 @@ export async function leaderboard(businessId: number) {
         current_streak: number;
         longest_streak: number;
         badges: unknown;
-        first_name: string | null;
-        last_name: string | null;
+        first_name: string;
+        last_name: string;
       }) => ({
         user_id: r.user_id,
-        name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || `Learner ${r.user_id}`,
+        name: `${r.first_name} ${r.last_name}`.trim(),
         total_xp: r.total_xp,
         current_streak: r.current_streak,
         longest_streak: r.longest_streak,

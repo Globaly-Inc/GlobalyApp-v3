@@ -61,19 +61,19 @@ export async function listForAdmin(query: AdminListQuery) {
     (r: Record<string, unknown>) => ({
       id: Number(r.id),
       business_id: Number(r.business_id),
-      business_name: (r.business_name as string) ?? null,
+      business_name: r.business_name as string | null,
       name: r.name as string,
       slug: r.slug as string,
       status: r.status as ProgramStatus,
       created_at: r.created_at as Date,
-      active_ambassadors: Number(r.active_ambassadors ?? 0),
-      pending_applications: Number(r.pending_applications ?? 0),
-      total_inquiries: Number(r.total_inquiries ?? 0),
-      resolved_inquiries: Number(r.resolved_inquiries ?? 0),
+      active_ambassadors: Number(r.active_ambassadors),
+      pending_applications: Number(r.pending_applications),
+      total_inquiries: Number(r.total_inquiries),
+      resolved_inquiries: Number(r.resolved_inquiries),
     }),
   );
 
-  return buildPaginatedResponse(data, Number(countRow?.count ?? 0), query);
+  return buildPaginatedResponse(data, Number(countRow!.count), query);
 }
 
 export async function statsForAdmin() {
@@ -102,20 +102,22 @@ export async function statsForAdmin() {
       .count<{ count: string }[]>({ count: "*" }).first(),
   ]);
 
-  const n = (v: unknown) => Number(v ?? 0);
+  // A bare aggregate with no GROUP BY always returns exactly one row, so the
+  // assertions below are facts about SQL, not optimism about the data.
+  const n = (v: unknown) => Number(v);
   return {
-    programs: { total: n(programs?.total), active: n(programs?.active) },
-    ambassadors: { total: n(ambassadors?.total), active: n(ambassadors?.active) },
+    programs: { total: n(programs!.total), active: n(programs!.active) },
+    ambassadors: { total: n(ambassadors!.total), active: n(ambassadors!.active) },
     inquiries: {
-      total: n(inquiries?.total),
-      resolved: n(inquiries?.resolved),
-      last_7_days: n(inquiries?.last_7_days),
-      escalated: n(escalated?.count),
+      total: n(inquiries!.total),
+      resolved: n(inquiries!.resolved),
+      last_7_days: n(inquiries!.last_7_days),
+      escalated: n(escalated!.count),
     },
     payouts: {
-      total: n(payouts?.total),
-      paid_minor: n(payouts?.paid_minor),
-      failed: n(payouts?.failed),
+      total: n(payouts!.total),
+      paid_minor: n(payouts!.paid_minor),
+      failed: n(payouts!.failed),
     },
   };
 }
