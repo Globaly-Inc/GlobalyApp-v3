@@ -354,6 +354,71 @@ describeDb("applications + charges", () => {
       await masterKnex("subscription_plans").where({ id: plan.id }).delete();
     });
 
+    it("falls back to 10 credits when the subscription's period has lapsed", async () => {
+      const id = await apply(alpha);
+      await setBalance(alpha.id, 200);
+      const plan = await masterKnex("subscription_plans")
+        .insert({ code: `g5-lapsed-${suffix}`, name: `G5 lapsed ${suffix}`, pay_per_application_cost: 40 })
+        .returning(["id"])
+        .then((r) => r[0]);
+      // status still says 'active' but the paid period ran out — Stripe has not told
+      // us yet, or the webhook was lost. V1's get_active_subscription checked only
+      // the status and would have priced this at 40.
+      await masterKnex("business_subscriptions").insert({
+        business_id: alpha.id,
+        plan_id: plan.id,
+        status: "active",
+        billing_interval: "month",
+        current_period_start: new Date(Date.now() - 2 * 86_400_000),
+        current_period_end: new Date(Date.now() - 86_400_000),
+      });
+
+      expect(json(await post(`/api/v3/business/applications/${id}/accept`, alpha.token))).toMatchObject({
+        credits_charged: 10,
+      });
+      expect(await balanceOf(alpha.id)).toBe(190);
+
+      await masterKnex("business_subscriptions").where({ business_id: alpha.id }).delete();
+      await masterKnex("subscription_plans").where({ id: plan.id }).delete();
+    });
+
+    it("refuses to accept an application that was already rejected or withdrawn", async () => {
+      const id = await apply(alpha);
+      await setBalance(alpha.id, 200);
+      await post(`/api/v3/business/applications/${id}/reject`, alpha.token);
+
+      const res = await post(`/api/v3/business/applications/${id}/accept`, alpha.token);
+      expect(res.statusCode).toBe(400);
+      expect(await chargesFor(id)).toHaveLength(0);
+      expect(await balanceOf(alpha.id)).toBe(200);
+
+      // Re-rejecting is idempotent rather than an error.
+      expect((await post(`/api/v3/business/applications/${id}/reject`, alpha.token)).statusCode).toBe(200);
+    });
+
+    it("404s an unknown application on every business verb", async () => {
+      expect((await get("/api/v3/business/applications/99999999", alpha.token)).statusCode).toBe(404);
+      expect((await post("/api/v3/business/applications/99999999/accept", alpha.token)).statusCode).toBe(404);
+      expect((await post("/api/v3/business/applications/99999999/reject", alpha.token)).statusCode).toBe(404);
+      expect(
+        (await post("/api/v3/admin/revenue/application-charges/99999999/refund", adminToken)).statusCode,
+      ).toBe(404);
+      expect(
+        (await post("/api/v3/admin/revenue/application-charges/99999999/waive", adminToken)).statusCode,
+      ).toBe(404);
+    });
+
+    it("refuses a body naming a field the server owns", async () => {
+      // .strict() at the boundary: a client cannot set its own price or status.
+      for (const body of [
+        { org_type: "business", org_id: alpha.id, credits_charged: 0 },
+        { org_type: "business", org_id: alpha.id, status: "accepted" },
+        { org_type: "business", org_id: alpha.id, student_id: 1 },
+      ]) {
+        expect((await post("/api/v3/applications", student.token, body)).statusCode).toBe(400);
+      }
+    });
+
     it("rejecting an application never charges", async () => {
       const id = await apply(alpha);
       await setBalance(alpha.id, 200);
@@ -549,6 +614,39 @@ describeDb("applications + charges", () => {
       expect((await get("/api/v3/business/applications", student.token)).statusCode).toBe(403);
       expect((await get("/api/v3/business/application-charges", student.token)).statusCode).toBe(403);
       expect((await get("/api/v3/admin/revenue/application-charges", student.token)).statusCode).toBe(403);
+    });
+
+    it("refuses an admin token on the student's own application routes", async () => {
+      // An admin has no applications of their own, and req.auth.sub for an admin is
+      // an admin_users id — reading it as a platform_users id would list a
+      // completely unrelated person's applications.
+      expect((await get("/api/v3/applications", adminToken)).statusCode).toBe(403);
+      expect(
+        (await post("/api/v3/applications", adminToken, { org_type: "business", org_id: alpha.id })).statusCode,
+      ).toBe(403);
+    });
+
+    it("accepts an institution as the application target, which is never billed", async () => {
+      const [institution] = await masterKnex("institutions")
+        .insert({ institution_name: `G5 Institute ${suffix}` })
+        .returning(["id"]);
+
+      const res = await post("/api/v3/applications", student.token, {
+        org_type: "institution",
+        org_id: Number(institution.id),
+        service_id: newServiceId(),
+      });
+      expect(res.statusCode).toBe(201);
+      const body = json(res) as unknown as { org_type: string; business_id: number | null };
+      expect(body.org_type).toBe("institution");
+      // No wallet, so no billable party: business_id stays null and the row never
+      // reaches the charge path.
+      expect(body.business_id).toBeNull();
+
+      expect(
+        (await post("/api/v3/applications", student.token, { org_type: "institution", org_id: 99999999 }))
+          .statusCode,
+      ).toBe(404);
     });
   });
 });

@@ -286,6 +286,72 @@ describeDb("ads", () => {
       ).toBe(200);
     });
 
+    it("treats an empty patch as a no-op on both a campaign and a creative", async () => {
+      const c = await makeCampaign(alpha);
+      const campaign = await patch(`/api/v3/business/ads/campaigns/${c.id}`, alpha.token, {});
+      expect(campaign.statusCode).toBe(200);
+      expect((json(campaign) as unknown as { name: string }).name).toBe(`Campaign ${c.placement}`);
+
+      const creative = await patch(`/api/v3/business/ads/creatives/${c.creativeId}`, alpha.token, {});
+      expect(creative.statusCode).toBe(200);
+      expect((json(creative) as unknown as { id: number }).id).toBe(c.creativeId);
+    });
+
+    it("patches a creative and refuses a field the server owns", async () => {
+      const c = await makeCampaign(alpha);
+      const ok = await patch(`/api/v3/business/ads/creatives/${c.creativeId}`, alpha.token, {
+        headline: "New headline",
+        is_active: false,
+      });
+      expect(ok.statusCode).toBe(200);
+      const body = json(ok) as unknown as { headline: string; is_active: boolean };
+      expect(body.headline).toBe("New headline");
+      expect(body.is_active).toBe(false);
+
+      // .strict() on every schema: a body naming a server-owned column is refused,
+      // not silently ignored. Silently ignored is how a client ships a bug that
+      // looks like it works.
+      expect(
+        (await patch(`/api/v3/business/ads/creatives/${c.creativeId}`, alpha.token, { campaign_id: 1 }))
+          .statusCode,
+      ).toBe(400);
+      expect(
+        (await patch(`/api/v3/business/ads/campaigns/${c.id}`, alpha.token, { spent_amount: 0 })).statusCode,
+      ).toBe(400);
+    });
+
+    it("404s an unknown campaign, creative, analytics and moderation id", async () => {
+      expect((await get("/api/v3/business/ads/campaigns/99999999", alpha.token)).statusCode).toBe(404);
+      expect((await get("/api/v3/business/ads/campaigns/99999999/analytics", alpha.token)).statusCode).toBe(404);
+      expect((await get("/api/v3/business/ads/campaigns/99999999/placements", alpha.token)).statusCode).toBe(404);
+      expect(
+        (await patch("/api/v3/business/ads/creatives/99999999", alpha.token, { headline: "x" })).statusCode,
+      ).toBe(404);
+      expect((await del("/api/v3/business/ads/creatives/99999999", alpha.token)).statusCode).toBe(404);
+      expect((await post("/api/v3/admin/marketing/ads/99999999/approve", adminToken)).statusCode).toBe(404);
+      expect(
+        (await post("/api/v3/ads/reports", viewer.token, { campaign_id: 99999999, reason: "spam" })).statusCode,
+      ).toBe(404);
+    });
+
+    it("refuses an out-of-vocabulary cost_model, objective or budget_type", async () => {
+      // V1's validate_ad_campaign trigger allows exactly two of each. `cpc` in
+      // particular must NOT be creatable: it has no charge path in V1 or V2, so a
+      // cpc campaign would serve and be clicked for free forever. A click here is a
+      // LEAD with lead_type 'click', which cpl bills.
+      for (const body of [
+        { name: "x", cost_model: "cpc" },
+        { name: "x", cost_model: "flat" },
+        { name: "x", objective: "traffic" },
+        { name: "x", objective: "engagement" },
+        { name: "x", budget_type: "weekly" },
+        { name: "" },
+      ]) {
+        const res = await post("/api/v3/business/ads/campaigns", alpha.token, body);
+        expect(res.statusCode, JSON.stringify(body)).toBe(400);
+      }
+    });
+
     it("soft-deletes a creative rather than dropping the row its impressions point at", async () => {
       const c = await makeCampaign(alpha);
       expect((await del(`/api/v3/business/ads/creatives/${c.creativeId}`, alpha.token)).statusCode).toBe(204);

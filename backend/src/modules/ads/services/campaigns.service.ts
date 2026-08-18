@@ -76,8 +76,13 @@ export async function create(businessId: number, actorId: number | null, input: 
   return serialize.ownerCampaign(row);
 }
 
+/** Drops the keys a PATCH left out, so `undefined` never becomes a NULL write. */
+function definedOnly(input: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+}
+
 export async function update(businessId: number, id: number, input: CampaignPatchInput) {
-  await ownedCampaign(id, businessId);
+  const existing = await ownedCampaign(id, businessId);
 
   if (input.status && !(ADVERTISER_SETTABLE_STATUSES as readonly string[]).includes(input.status)) {
     throw new BadRequestError(
@@ -85,11 +90,10 @@ export async function update(businessId: number, id: number, input: CampaignPatc
     );
   }
 
-  const values: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined) values[key] = value;
-  }
-  if (!Object.keys(values).length) return serialize.ownerCampaign(await ownedCampaign(id, businessId));
+  const values = definedOnly(input);
+  // An empty patch is a no-op, not an error — return the row already read above
+  // rather than issuing a second identical query for it.
+  if (!Object.keys(values).length) return serialize.ownerCampaign(existing);
 
   const row = await repo.updateCampaign(id, businessId, values);
   if (!row) throw new NotFoundError("Campaign not found");
@@ -129,18 +133,14 @@ async function ownedCreative(id: number, businessId: number) {
 
 export async function updateCreative(businessId: number, id: number, input: CreativePatchInput) {
   await ownedCreative(id, businessId);
-  const values: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined) values[key] = value;
-  }
-  const row = Object.keys(values).length ? await repo.updateCreative(id, values) : undefined;
-  if (!row) {
-    const current = (await repo.listCreatives((await ownedCreative(id, businessId)).campaign_id)).find(
-      (c) => c.id === id,
-    );
-    if (!current) throw new NotFoundError("Creative not found");
-    return serialize.creative(current);
-  }
+  const values = definedOnly(input);
+  // Empty patch → one read, same as the campaign path. The earlier version fell
+  // back through listCreatives().find(), which was three queries to answer "give
+  // me this row".
+  const row = Object.keys(values).length
+    ? await repo.updateCreative(id, values)
+    : await repo.findCreative(id);
+  if (!row) throw new NotFoundError("Creative not found");
   return serialize.creative(row);
 }
 

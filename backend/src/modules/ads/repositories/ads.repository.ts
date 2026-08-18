@@ -326,6 +326,13 @@ export async function listActiveCreatives(campaignIds: number[]): Promise<Creati
     .select(...CREATIVE_COLUMNS);
 }
 
+export async function findCreative(id: number): Promise<CreativeRow | undefined> {
+  return masterKnex<CreativeRow>("ad_creatives")
+    .where("id", id)
+    .whereNull("deleted_at")
+    .first(...CREATIVE_COLUMNS);
+}
+
 export async function listCreatives(campaignId: number): Promise<CreativeRow[]> {
   return masterKnex<CreativeRow>("ad_creatives")
     .where({ campaign_id: campaignId })
