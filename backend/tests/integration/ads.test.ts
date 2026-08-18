@@ -370,22 +370,72 @@ describeDb("ads", () => {
         lead_type: "enquiry",
       });
 
-      const body = await get(`/api/v3/ads/placements/${c.placement}`).then((r) => r.payload);
-      // The serialiser lists its columns; if it ever grows to `select *` these fail.
+      const res = await get(`/api/v3/ads/placements/${c.placement}`);
+      const body = res.payload;
+
+      // Two assertions, because a substring scan alone is not enough: a numeric id
+      // like "4" appears by coincidence in any payload. Field NAMES are scanned as
+      // substrings; then the actual key set is walked, which is what catches a
+      // future `select *` regardless of what the column ends up being called.
       for (const forbidden of [
         "viewer_user_id",
         "viewer_fingerprint",
-        "user_id",
         "reporter_user_id",
-        String(viewer.id),
         "spent_amount",
         "budget_amount",
         "created_by",
         "rejection_reason",
         "impressions_count",
+        "leads_count",
+        "cost_per_unit",
       ]) {
         expect(body, `leaked ${forbidden}`).not.toContain(forbidden);
       }
+
+      const keys = new Set<string>();
+      const walk = (node: unknown) => {
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (node && typeof node === "object") {
+          for (const [k, v] of Object.entries(node)) {
+            keys.add(k);
+            walk(v);
+          }
+        }
+      };
+      walk(res.json());
+      // An exhaustive whitelist: anything new in the anonymous projection has to be
+      // added here deliberately, which is the point.
+      expect([...keys].sort()).toEqual(
+        [
+          "ads",
+          "business_logo",
+          "business_name",
+          "campaign",
+          "cost_model",
+          "creative",
+          "cta_text",
+          "cta_url",
+          "description",
+          "headline",
+          "id",
+          "media_type",
+          "media_url",
+          "objective",
+          "placement",
+          "thumbnail_url",
+          "business_id",
+          "name",
+        ].sort(),
+      );
+      // The viewer's own id must not appear as a value anywhere in the tree.
+      const values: unknown[] = [];
+      const collect = (node: unknown) => {
+        if (Array.isArray(node)) return node.forEach(collect);
+        if (node && typeof node === "object") return Object.values(node).forEach(collect);
+        values.push(node);
+      };
+      collect(res.json());
+      expect(values.filter((v) => v === viewer.id)).toHaveLength(0);
     });
   });
 
