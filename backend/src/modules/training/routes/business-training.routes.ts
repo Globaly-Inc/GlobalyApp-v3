@@ -15,7 +15,21 @@ import {
   PutChaptersSchema,
   UpdateTrainingProgramSchema,
 } from "../schemas/training.schema.js";
+import {
+  ApplicationIdParamSchema,
+  ChapterIdParamSchema,
+  GradeSubmissionSchema,
+  InvitationIdParamSchema,
+  InviteSchema,
+  ListApplicationsQuerySchema,
+  ListInvitationsQuerySchema,
+  ListSubmissionsQuerySchema,
+  PutChapterAttachmentsSchema,
+  RejectApplicationSchema,
+  SubmissionIdParamSchema,
+} from "../schemas/lms.schema.js";
 import * as service from "../services/business-training.service.js";
+import * as lms from "../services/lms-business.service.js";
 
 function businessId(req: FastifyRequest): number {
   return Number(req.business!.id);
@@ -95,5 +109,108 @@ export async function businessTrainingRoutes(app: FastifyInstance) {
   app.get("/programs/:programId/roster", async (req, reply) => {
     const { programId } = ProgramIdParamSchema.parse(req.params);
     return reply.send(await service.getRoster(businessId(req), programId));
+  });
+
+  // ── LMS delivery (Wave E4) ──────────────────────────────────────────────
+  //
+  // The lesson task definition. Its own route, not part of the chapter-list PUT,
+  // so reordering chapters can never blank an assignment brief. V2 had neither.
+
+  app.get("/programs/:programId/chapters/:chapterId/attachments", async (req, reply) => {
+    const { programId, chapterId } = ChapterIdParamSchema.parse(req.params);
+    return reply.send(await lms.getChapterAttachments(businessId(req), programId, chapterId));
+  });
+
+  app.put("/programs/:programId/chapters/:chapterId/attachments", async (req, reply) => {
+    const { programId, chapterId } = ChapterIdParamSchema.parse(req.params);
+    const { attachments } = PutChapterAttachmentsSchema.parse(req.body);
+    return reply.send(
+      await lms.putChapterAttachments(businessId(req), programId, chapterId, attachments),
+    );
+  });
+
+  // The grading queue. Paginated — V2's had no LIMIT.
+  app.get("/programs/:programId/submissions", async (req, reply) => {
+    const { programId } = ProgramIdParamSchema.parse(req.params);
+    const query = ListSubmissionsQuerySchema.parse(req.query);
+    return reply.send(await lms.listSubmissions(businessId(req), programId, query));
+  });
+
+  app.post("/programs/:programId/submissions/:submissionId/grade", async (req, reply) => {
+    const { programId, submissionId } = SubmissionIdParamSchema.parse(req.params);
+    const body = GradeSubmissionSchema.parse(req.body);
+    return reply.send(
+      await lms.gradeSubmission(
+        businessId(req),
+        programId,
+        submissionId,
+        Number(req.auth.sub),
+        body,
+      ),
+    );
+  });
+
+  // Enrolment applications.
+  app.get("/programs/:programId/enrollment-applications", async (req, reply) => {
+    const { programId } = ProgramIdParamSchema.parse(req.params);
+    const query = ListApplicationsQuerySchema.parse(req.query);
+    return reply.send(await lms.listApplications(businessId(req), programId, query));
+  });
+
+  app.get("/programs/:programId/enrollment-applications/counts", async (req, reply) => {
+    const { programId } = ProgramIdParamSchema.parse(req.params);
+    return reply.send(await lms.applicationCounts(businessId(req), programId));
+  });
+
+  app.post(
+    "/programs/:programId/enrollment-applications/:applicationId/approve",
+    async (req, reply) => {
+      const { programId, applicationId } = ApplicationIdParamSchema.parse(req.params);
+      return reply.send(
+        await lms.approveApplication(
+          businessId(req),
+          programId,
+          applicationId,
+          Number(req.auth.sub),
+        ),
+      );
+    },
+  );
+
+  app.post(
+    "/programs/:programId/enrollment-applications/:applicationId/reject",
+    async (req, reply) => {
+      const { programId, applicationId } = ApplicationIdParamSchema.parse(req.params);
+      const { rejection_reason } = RejectApplicationSchema.parse(req.body);
+      return reply.send(
+        await lms.rejectApplication(
+          businessId(req),
+          programId,
+          applicationId,
+          Number(req.auth.sub),
+          rejection_reason,
+        ),
+      );
+    },
+  );
+
+  // Invitations. The token is never in a response.
+  app.get("/programs/:programId/invitations", async (req, reply) => {
+    const { programId } = ProgramIdParamSchema.parse(req.params);
+    const query = ListInvitationsQuerySchema.parse(req.query);
+    return reply.send(await lms.listInvitations(businessId(req), programId, query));
+  });
+
+  app.post("/programs/:programId/invitations", async (req, reply) => {
+    const { programId } = ProgramIdParamSchema.parse(req.params);
+    const { emails } = InviteSchema.parse(req.body);
+    return reply
+      .code(201)
+      .send(await lms.invite(businessId(req), programId, Number(req.auth.sub), emails));
+  });
+
+  app.delete("/programs/:programId/invitations/:invitationId", async (req, reply) => {
+    const { programId, invitationId } = InvitationIdParamSchema.parse(req.params);
+    return reply.send(await lms.revokeInvitation(businessId(req), programId, invitationId));
   });
 }

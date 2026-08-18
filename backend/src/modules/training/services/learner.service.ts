@@ -97,7 +97,52 @@ export async function getProgram(userId: number, programId: number) {
       max_attempts: program.max_attempts,
       certificate_expiry_months: program.certificate_expiry_months,
     },
-    chapters,
+    chapters: chapters.map(learnerChapter),
+  };
+}
+
+/**
+ * A chapter as a learner may see it.
+ *
+ * Wave E4 added `training_chapters.attachments`, which holds the quiz ANSWER KEY
+ * (`questions[].correct_index`). `repo.listChapters` selects every column, so
+ * returning its rows unchanged would hand every answer to every enrolled learner
+ * the moment the column existed. The projection is a rebuild, not a delete, so a
+ * field added to `attachments` later is excluded by default rather than leaked —
+ * the same reasoning as lib/grading.stripAnswers.
+ *
+ * The learner gets the assignment BRIEF (they have to read it to do the work) and
+ * a flag saying a quiz exists; the questions come from
+ * `GET /me/training/programs/:programId/chapters/:chapterId/quiz`, which strips
+ * the answers.
+ */
+function learnerChapter(chapter: repo.ChapterRow & { attachments?: unknown }) {
+  const attachments = (chapter.attachments ?? {}) as {
+    assignment?: { instruction?: string; accepted_types?: string[]; due_date?: string | null };
+    quiz?: { passing_score?: number; questions?: unknown[] };
+  };
+  return {
+    id: chapter.id,
+    program_id: chapter.program_id,
+    title: chapter.title,
+    content_text: chapter.content_text,
+    video_url: chapter.video_url,
+    sort_order: chapter.sort_order,
+    assignment: attachments.assignment
+      ? {
+          instruction: attachments.assignment.instruction ?? null,
+          accepted_types: attachments.assignment.accepted_types ?? [],
+          due_date: attachments.assignment.due_date ?? null,
+        }
+      : null,
+    quiz: attachments.quiz
+      ? {
+          passing_score: attachments.quiz.passing_score ?? null,
+          question_count: Array.isArray(attachments.quiz.questions)
+            ? attachments.quiz.questions.length
+            : 0,
+        }
+      : null,
   };
 }
 

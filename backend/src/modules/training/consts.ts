@@ -39,3 +39,45 @@ export const EXPIRY_DAYS_PER_MONTH = 30;
 /** Prefix on the public verification identifier, so a support agent can tell at
  *  a glance what a pasted code is. */
 export const VERIFICATION_CODE_PREFIX = "GC";
+
+// ── LMS delivery (Wave E4) ──────────────────────────────────────────────────
+
+/**
+ * V2's grade vocabulary (`gradeBody`, business-training.ts) plus the insert
+ * default. V1's learner UI knew a DIFFERENT four (submitted/reviewed/approved/
+ * rejected) and fell back to "awaiting review" on a miss, so every graded
+ * submission displayed as ungraded for ever. One list, one CHECK constraint.
+ */
+export const SUBMISSION_STATUSES = ["submitted", "needs_revision", "passed", "failed"] as const;
+export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
+
+/** The outcomes a reviewer may set. `submitted` is not one of them. */
+export const GRADE_STATUSES = ["needs_revision", "passed", "failed"] as const;
+export type GradeStatus = (typeof GRADE_STATUSES)[number];
+
+/**
+ * V1's grading UI required at least 10 characters of feedback before it would
+ * let a reviewer fail or return work — client-side only. V2 ported the route and
+ * not the rule, leaving the server as the sole validator, validating nothing:
+ * a learner could be failed with `feedback: null`. Enforced server-side now.
+ */
+export const MIN_FEEDBACK_CHARS_FOR_NEGATIVE_GRADE = 10;
+
+export const APPLICATION_STATUSES = ["pending", "approved", "rejected"] as const;
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
+
+export const INVITATION_STATUSES = ["pending", "accepted", "expired"] as const;
+export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
+
+/** V1 and V2 both used 30 days. */
+export const INVITE_TTL_DAYS = 30;
+
+/** V1's lms-course-invite capped a bulk request at 100 addresses. */
+export const MAX_INVITE_EMAILS = 100;
+
+/** Bytes of entropy in an invite token — V1's gen_random_bytes(32). V2 used a
+ *  crypto.randomUUID(), which is 122 bits, not 256. */
+export const INVITE_TOKEN_BYTES = 32;
+
+/** Per-chapter quiz default, from lms2-ai's generated `minScore`. */
+export const DEFAULT_QUIZ_PASSING_SCORE = 70;
