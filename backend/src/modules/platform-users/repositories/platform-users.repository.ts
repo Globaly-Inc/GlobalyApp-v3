@@ -18,6 +18,7 @@ export interface PlatformUserRow {
   phone: string | null;
   account_status: number;
   photo_url: string | null;
+  cover_url: string | null;
   is_email_verified: boolean;
   is_personal_account: boolean;
   is_business_account: boolean;
@@ -29,7 +30,7 @@ export interface PlatformUserRow {
 
 const SAFE_COLUMNS = [
   "id", "uuid", "first_name", "last_name", "email", "phone",
-  "account_status", "photo_url", "is_email_verified",
+  "account_status", "photo_url", "cover_url", "is_email_verified",
   "is_personal_account", "is_business_account", "account_categories",
   "meta", "created_at", "updated_at",
 ] as const;

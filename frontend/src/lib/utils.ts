@@ -10,6 +10,13 @@ export function formatNumber(value: number | null | undefined) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+/** Postgres `numeric`/`decimal` columns arrive over the wire as strings (pg avoids float precision loss) — coerce at the API boundary before a form treats it as a number. */
+export function toNumberOrNull(value: number | string | null | undefined): number | null {
+  if (value == null) return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isNaN(n) ? null : n;
+}
+
 type CountryWithPhoneCode = { id: number; phoneCode: string | null };
 
 /** A stored phone (e.g. "+61 412345678") is one string — split back into code + number for editing a form. */

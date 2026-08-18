@@ -6,7 +6,10 @@ import { BUSINESS_TYPES } from "../../businesses/consts.js";
 
 // ── Profile (full patch — used by PATCH /me) ──
 
+const REQUIRED = "This field is required";
+
 export const ProfilePatchSchema = z.object({
+  phone: z.string().min(1, REQUIRED).max(50).nullable(),
   // Profile-level fields (platform_user_profiles table)
   individual_category: z.enum(PERSONAL_SUB_CATEGORIES).nullable(),
   nationality_id: z.number().int().positive().nullable(),

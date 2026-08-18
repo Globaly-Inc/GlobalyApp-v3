@@ -37,6 +37,12 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const [contextReady, setContextReady] = useState(false);
   const [businesses, setBusinesses] = useState<AuthMeBusiness[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
+  // that has since moved on (e.g. after a back/forward navigation) — `status`/`profile` in that cached
+  // HTML can genuinely disagree with the live store. Gate on `mounted` so the branch below matches
+  // whatever HTML is being hydrated against on the very first render.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     let active = true;
@@ -79,7 +85,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     router.push("/auth/sign-in");
   };
 
-  if (status === "failed" && !profile) {
+  if (mounted && status === "failed" && !profile) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center px-4">
         <p className="text-sm text-muted-foreground">

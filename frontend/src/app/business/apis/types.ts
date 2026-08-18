@@ -36,13 +36,3 @@ export type UpdateSubCategoryParams = {
 };
 
 export type SelectOption = { value: string; label: string };
-
-export type PlaceSuggestion = { placeId: string; description: string };
-export type PlaceDetails = {
-  address: string;
-  latitude: number;
-  longitude: number;
-  city: string | null;
-  state: string | null;
-  postcode: string | null;
-};

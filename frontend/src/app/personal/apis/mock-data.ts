@@ -21,6 +21,7 @@ let mockProfile: StudentProfile = {
   email: "test.student@example.com",
   phone: null,
   photo_url: null,
+  cover_url: null,
   user_category: "personal",
   user_sub_category: "student",
   nationality_id: null,
@@ -33,6 +34,8 @@ let mockProfile: StudentProfile = {
   personal_address_state: null,
   personal_address_street: null,
   personal_address_postcode: null,
+  latitude: null,
+  longitude: null,
   budget_min: null,
   budget_max: null,
   budget_currency: null,
@@ -67,6 +70,14 @@ export const personalMockApi = {
   updateSubCategory: async (params: UpdateSubCategoryParams): Promise<void> => {
     console.log("[mock] PATCH /platform-users/me/sub-category", params);
     await delay(300);
+  },
+
+  uploadImage: async (category: "profile" | "cover", file: File): Promise<{ storage_path: string }> => {
+    console.log(`[mock] POST /platform-users/me/files?category=${category}`, file.name);
+    await delay(400);
+    const url = URL.createObjectURL(file);
+    mockProfile = { ...mockProfile, [category === "profile" ? "photo_url" : "cover_url"]: url };
+    return { storage_path: url };
   },
 
   getFullProfile: async (): Promise<FullProfile> => {
