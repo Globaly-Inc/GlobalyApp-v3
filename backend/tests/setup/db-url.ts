@@ -36,6 +36,12 @@ export function testEnv(): Record<string, string> {
     // exactly the condition resolvePreviewUrl's fail-soft path exists for. Leaving
     // this to .env means whoever configures GCS locally breaks that suite.
     GCS_BUCKET_NAME: "",
+    // Same reasoning again for web push. push-client.test.ts asserts
+    // isPushConfigured() === false as its precondition — an unconfigured provider is
+    // exactly the condition the 503 exists for — so real FCM credentials in
+    // backend/.env would leave the suite green while proving the opposite.
+    FCM_PROJECT_ID: "",
+    FCM_SERVICE_ACCOUNT_JSON: "",
     CORS_ORIGINS: "http://localhost:3001",
   };
 }
