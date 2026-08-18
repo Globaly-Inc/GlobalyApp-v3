@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, MoreHorizontal, Archive, Pencil, MessagesSquare } from "lucide-react";
+import { Plus, MoreHorizontal, Archive, ArchiveRestore, Pencil, MessagesSquare, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { setActiveSession, updateSession, fetchMessages } from "../store/ai-chat-slice";
+import { setActiveSession, updateSession, deleteSession, fetchMessages } from "../store/ai-chat-slice";
 import type { ChatSession } from "../apis/types";
 import { cn } from "@/lib/utils";
 
@@ -55,8 +55,10 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
   const activeSessionId = useAppSelector((s) => s.aiChat.activeSessionId);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [view, setView] = useState<"chats" | "archived">("chats");
 
-  const groups = groupSessions(sessions);
+  const showArchived = view === "archived";
+  const groups = groupSessions(sessions.filter((s) => s.is_archived === showArchived));
 
   const selectSession = (id: number) => {
     if (id === activeSessionId) return;
@@ -76,14 +78,38 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
     setEditingId(null);
   };
 
-  const archiveSession = (id: number) => {
-    dispatch(updateSession({ sessionId: id, data: { is_archived: true } }));
+  const setArchived = (session: ChatSession, archived: boolean) => {
+    // Unarchiving is non-destructive — no confirm needed there.
+    if (archived && !window.confirm(`Archive "${session.title}"? You can restore it from the Archived tab.`)) {
+      return;
+    }
+    dispatch(updateSession({ sessionId: session.id, data: { is_archived: archived } }));
+  };
+
+  const removeSession = (session: ChatSession) => {
+    if (window.confirm(`Delete "${session.title}"? This cannot be undone.`)) {
+      dispatch(deleteSession(session.id));
+    }
   };
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b p-3">
-        <h2 className="text-sm font-medium">Chats</h2>
+        <div className="flex gap-1">
+          {(["chats", "archived"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setView(tab)}
+              className={cn(
+                "rounded-md px-2 py-1 text-sm capitalize transition-colors",
+                view === tab ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
         <Button variant="ghost" size="icon-sm" onClick={onNewChat} aria-label="New chat">
           <Plus />
         </Button>
@@ -121,7 +147,8 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span className="flex-1 truncate">{session.title}</span>
+                  // ponytail: native title tooltip shows the full name — swap for ui/tooltip if design wants styled hovers
+                  <span className="flex-1 truncate" title={session.title}>{session.title}</span>
                 )}
 
                 <DropdownMenu>
@@ -137,8 +164,17 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
                     <DropdownMenuItem onClick={() => startRename(session)}>
                       <Pencil /> Rename
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => archiveSession(session.id)}>
-                      <Archive /> Archive
+                    {session.is_archived ? (
+                      <DropdownMenuItem onClick={() => setArchived(session, false)}>
+                        <ArchiveRestore /> Unarchive
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={() => setArchived(session, true)}>
+                        <Archive /> Archive
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem variant="destructive" onClick={() => removeSession(session)}>
+                      <Trash2 /> Delete
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -147,12 +183,14 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
           </div>
         ))}
 
-        {sessions.length === 0 && (
+        {groups.length === 0 && (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
             <span className="inline-flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground">
               <MessagesSquare className="size-4" />
             </span>
-            <p className="text-xs text-muted-foreground">No conversations yet</p>
+            <p className="text-xs text-muted-foreground">
+              {showArchived ? "No archived chats" : "No conversations yet"}
+            </p>
           </div>
         )}
       </div>

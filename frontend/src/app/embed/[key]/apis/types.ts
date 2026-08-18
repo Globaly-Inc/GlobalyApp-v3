@@ -12,6 +12,7 @@ export type EmbedPublicConfig = {
 /** Card shape the backend streams (prompt format) — adapted to the shared CourseCard for rendering. */
 export type WireCourseCard = {
   id: string | null;
+  slug?: string | null;
   name: string | null;
   institution: string | null;
   degree_level: string | null;

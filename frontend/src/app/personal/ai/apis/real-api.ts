@@ -18,6 +18,8 @@ const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3/ai-chat`;
  * Mirror of the mapper in embed/[key]/apis/real-api.ts, which must stay import-free of this file. */
 function toCourseCard(w: WireCourseCard): CourseCard {
   return {
+    id: w.id,
+    slug: w.slug ?? null,
     course_name: w.name ?? "",
     institution_name: w.institution ?? "",
     degree_level: w.degree_level ?? "",
@@ -30,6 +32,10 @@ function toCourseCard(w: WireCourseCard): CourseCard {
     source_url: w.source_url ?? null,
   };
 }
+
+/** DB title is null until auto-title lands (or if it failed) — the UI always shows a label. */
+type WireSession = Omit<ChatSession, "title"> & { title: string | null };
+const toSession = (s: WireSession): ChatSession => ({ ...s, title: s.title ?? "New chat" });
 
 /** DB stores feedback as positive/negative; the UI speaks up/down. */
 const toUiFeedback = { positive: "up", negative: "down" } as const;
@@ -50,8 +56,9 @@ function toMessage(m: WireMessage): Message {
 
 export const aiRealApi = {
   listSessions: async (): Promise<ChatSession[]> => {
-    const res = await httpGet<{ sessions: ChatSession[] }>("/ai-chat/sessions");
-    return res.sessions;
+    // Archived included — the sidebar's Archived tab filters client-side.
+    const res = await httpGet<{ sessions: WireSession[] }>("/ai-chat/sessions?include_archived=true");
+    return res.sessions.map(toSession);
   },
 
   getMessages: async (sessionId: number): Promise<Message[]> => {
@@ -60,7 +67,12 @@ export const aiRealApi = {
   },
 
   updateSession: async (sessionId: number, data: { title?: string; is_archived?: boolean }): Promise<ChatSession> =>
-    httpPatch<ChatSession>(`/ai-chat/sessions/${sessionId}`, data),
+    toSession(await httpPatch<WireSession>(`/ai-chat/sessions/${sessionId}`, data)),
+
+  deleteSession: async (sessionId: number): Promise<void> => {
+    // Soft delete rides the same PATCH endpoint (backend sets deleted_at).
+    await httpPatch<ChatSession>(`/ai-chat/sessions/${sessionId}`, { delete: true });
+  },
 
   setFeedback: async (messageId: number, feedback: "up" | "down" | null): Promise<void> => {
     await httpPatch<unknown>(`/ai-chat/messages/${messageId}/feedback`, {
@@ -139,13 +151,13 @@ export const aiRealApi = {
         const text = (parsed as { choices?: [{ delta?: { content?: string } }] }).choices?.[0]?.delta?.content;
         if (text) onEvent({ type: "delta", text });
       } else if (eventType === "session") {
-        const { id, isNew } = parsed as { id: number; isNew: boolean };
+        const { id, isNew, title } = parsed as { id: number; isNew: boolean; title?: string };
         if (isNew) {
-          // Backend only sends the id; the sidebar entry is a stub until auto-title lands
+          // Stub entry named after the prompt; auto-title upgrades it after the exchange
           const now = new Date().toISOString();
           onEvent({
             type: "session_created",
-            session: { id, title: "New chat", is_archived: false, created_at: now, updated_at: now },
+            session: { id, title: title ?? "New chat", is_archived: false, created_at: now, updated_at: now },
           });
         }
       } else if (eventType === "trace") {

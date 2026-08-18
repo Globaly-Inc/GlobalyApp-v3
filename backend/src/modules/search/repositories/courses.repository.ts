@@ -31,7 +31,7 @@ const LIST_COLUMNS = [
   "ec.duration_weeks", "ec.study_mode", "ec.description",
   "ec.domestic_fee_total", "ec.domestic_currency",
   "ec.international_fee_total", "ec.international_currency",
-  "ec.awarding_institution", "ec.image_url",
+  "ec.awarding_institution", "ec.image_url", "ec.source_url",
   "c.name as country_name",
 ];
 

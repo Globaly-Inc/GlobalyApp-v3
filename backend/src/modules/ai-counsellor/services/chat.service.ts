@@ -36,7 +36,14 @@ export async function handleMessage(opts: {
     const isNew = !opts.sessionId;
     const session = await sessionService.getOrCreateSession(opts.userId, opts.sessionId, opts.embed?.config.id);
 
-    writeEvent(opts.reply, "session", { id: session.id, isNew });
+    // Provisional title from the prompt so the sidebar never shows an unnamed chat;
+    // autoTitle upgrades it to a generated summary after the first exchange.
+    const provisionalTitle = isNew ? opts.content.replace(/\s+/g, " ").trim().slice(0, 60) : undefined;
+    if (provisionalTitle) {
+      sessionsRepo.update(session.id, { title: provisionalTitle }).catch(() => {});
+    }
+
+    writeEvent(opts.reply, "session", { id: session.id, isNew, title: provisionalTitle });
 
     // 3. Persist user message
     await messagesRepo.create({

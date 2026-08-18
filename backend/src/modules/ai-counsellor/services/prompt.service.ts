@@ -91,7 +91,7 @@ export function buildSystemPrompt(opts: {
   sections.push(
     "When you find matching courses in CONTEXT, emit them in this format:\n" +
     "```course-card\n" +
-    '{"id":"<id>","name":"<name>","institution":"<institution>","degree_level":"<level>",' +
+    '{"id":"<id>","slug":"<slug>","name":"<name>","institution":"<institution>","degree_level":"<level>",' +
     '"duration":"<duration>","fees":<amount>,"currency":"<currency>",' +
     '"country":"<country>","city":"<city>","intakes":["<intake>"],' +
     '"study_modes":["<mode>"],"source_url":"<url>"}\n' +
