@@ -20,6 +20,7 @@ export const authPlugin = fp(async (app) => {
     "/api/v3/admin/users/invite/accept",
     "/api/v3/auth/register",
     "/api/v3/agents/invite/accept",
+    "/api/v3/businesses/claim/accept",
     // Health
     "/healthz",
     "/health/detailed",

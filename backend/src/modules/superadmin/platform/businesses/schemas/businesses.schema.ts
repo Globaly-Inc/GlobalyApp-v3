@@ -41,7 +41,11 @@ export const ListQuerySchema = PaginationSchema.extend({
 });
 
 export const StatusPatchSchema = z.object({
-  status: z.enum(["unverified", "claim_pending", "verified", "suspended", "rejected"]),
+  status: z.enum(["unverified", "claim_pending", "claimed", "verified", "suspended", "rejected"]),
+});
+
+export const BulkClaimRequestSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(200),
 });
 
 export const PublishedPatchSchema = z.object({ is_published: z.boolean() });
@@ -108,5 +112,6 @@ export type BusinessCreateInput = z.infer<typeof BusinessCreateSchema>;
 export type BusinessPatchInput = z.infer<typeof BusinessPatchSchema>;
 export type EnquirySettingsPatchInput = z.infer<typeof EnquirySettingsPatchSchema>;
 export type BusinessStatus = z.infer<typeof StatusPatchSchema>["status"];
+export type BulkClaimRequestInput = z.infer<typeof BulkClaimRequestSchema>;
 export type MemberInviteInput = z.infer<typeof MemberInviteSchema>;
 export type MemberPatchInput = z.infer<typeof MemberPatchSchema>;

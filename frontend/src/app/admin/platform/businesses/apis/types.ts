@@ -1,4 +1,5 @@
-export type BusinessStatus = "unverified" | "claim_pending" | "verified" | "suspended" | "rejected";
+export type BusinessStatus = "unverified" | "claim_pending" | "claimed" | "verified" | "suspended" | "rejected";
+export type BusinessClaimStatus = "unclaimed" | "claim_pending" | "claimed";
 
 export type Business = {
   id: number;
@@ -10,6 +11,7 @@ export type Business = {
   email: string | null;
   phone: string | null;
   status: BusinessStatus;
+  claim_status: BusinessClaimStatus;
   is_published: boolean;
   country_id: number | null;
   country_name: string | null;

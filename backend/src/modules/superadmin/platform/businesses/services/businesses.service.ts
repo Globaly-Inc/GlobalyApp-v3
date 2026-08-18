@@ -1,11 +1,17 @@
 // Businesses service — admin-managed listing CRUD, owner provisioning, members, activity.
 
+import { randomBytes } from "node:crypto";
 import { NotFoundError, ConflictError } from "../../../../../shared/errors.js";
 import * as storage from "../../../../../shared/storage/storageService.js";
 import { provisionBusinessSchema } from "../../../../../core/business/provisioner.js";
 import { getKnex } from "../../../../../core/db/pool-manager.js";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
 import { schemaName } from "../../../../../core/db/knex.js";
+import { config } from "../../../../../config.js";
+import { createChildLogger } from "../../../../../shared/logger.js";
+import { queueService } from "../../../../../shared/queue/queueService.js";
+import { queueEmail } from "../../../../auth/auth.service.js";
+import { claimBusinessEmail } from "../../../../../shared/mail/templates.js";
 import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../../../platform-users/repositories/platform-users.repository.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
@@ -14,6 +20,10 @@ import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput,
   MemberInviteInput, MemberPatchInput,
 } from "../schemas/businesses.schema.js";
+
+const logger = createChildLogger("superadmin-businesses-service");
+
+const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin/agent invite convention
 
 async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(biz: T): Promise<T> {
   const [logo_url, cover_url] = await Promise.all([
@@ -123,6 +133,37 @@ export async function updateStatus(id: number, status: BusinessStatus) {
   if (status === "verified") updates.verified_at = new Date();
   await repo.updateBusiness(id, updates);
   return { status };
+}
+
+/** Emails the business owner a link to claim their pre-seeded account, then flips claim_status to claim_pending — `status` (verification) is untouched. */
+export async function sendClaimRequest(id: number) {
+  const biz = await repo.findBusinessDetail(id);
+  if (!biz) throw new NotFoundError("Business not found");
+  if (!biz.owner_email) throw new ConflictError("This business has no owner email to send a claim request to");
+
+  const token = randomBytes(32).toString("hex");
+  const claim_token_expires_at = new Date(Date.now() + CLAIM_TOKEN_TTL_MS);
+  await repo.updateBusiness(id, { claim_token: token, claim_token_expires_at, claim_status: "claim_pending" });
+
+  const claimUrl = `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
+  const ownerName = `${biz.owner_first_name ?? ""} ${biz.owner_last_name ?? ""}`.trim() || "there";
+  queueEmail({ to: biz.owner_email, ...claimBusinessEmail({ ownerName, businessName: biz.business_name, claimUrl }) }).catch((err) =>
+    logger.warn("Claim request email failed", { businessId: id, err: err.message }),
+  );
+
+  return { claim_status: "claim_pending" as const };
+}
+
+/** Enqueues claim-request emails for many businesses at once — processed by the `job:business-claim-requests` worker. */
+export async function queueBulkClaimRequests(ids: number[]) {
+  try {
+    await queueService.publish("business_claim_requests_bulk", { ids });
+  } catch {
+    // ponytail: fallback to inline processing when the queue is unavailable (local dev)
+    logger.warn("Queue unavailable, sending bulk claim requests inline", { count: ids.length });
+    await Promise.allSettled(ids.map((id) => sendClaimRequest(id)));
+  }
+  return { queued: ids.length };
 }
 
 export async function updatePublished(id: number, isPublished: boolean) {

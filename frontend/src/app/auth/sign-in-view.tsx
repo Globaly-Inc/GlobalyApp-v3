@@ -31,7 +31,7 @@ export function SignInView() {
   const redirectQuery = redirectPath ? `?redirect=${encodeURIComponent(redirectPath)}` : "";
   const signUpHref = `/auth/sign-up${redirectQuery}`;
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);

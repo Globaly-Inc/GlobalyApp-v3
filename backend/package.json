@@ -20,6 +20,7 @@
     "job:extraction-schedule": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-schedule.worker.ts",
     "job:extraction-agentcis": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-agentcis.worker.ts",
     "job:ai-knowledge-crawl": "node --import tsx src/modules/superadmin/ai-knowledge/workers/knowledge-crawl.worker.ts",
+    "job:business-claim-requests": "node --import tsx src/modules/superadmin/platform/businesses/workers/claim-requests-bulk.worker.ts",
     "lint": "eslint src/"
   },
   "dependencies": {

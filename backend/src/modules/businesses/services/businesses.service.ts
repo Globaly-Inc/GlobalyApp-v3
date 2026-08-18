@@ -104,3 +104,16 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
   if (!existing) throw new NotFoundError("Business not found");
   return repo.updateBusinessProfile(existing.id, data);
 }
+
+export async function acceptClaim(token: string) {
+  const business = await repo.findByClaimToken(token);
+  if (!business) throw new NotFoundError("This claim link is invalid or has already been used");
+  if (!business.claim_token_expires_at || new Date(business.claim_token_expires_at) < new Date()) {
+    throw new ConflictError("This claim link has expired");
+  }
+
+  const owner = await userRepo.findByIdFull(business.owner_id);
+  await repo.clearClaim(business.id);
+
+  return { email: owner?.email ?? null, business_name: business.business_name };
+}

@@ -105,6 +105,25 @@ services:
     networks:
       - globalyapp
 
+  business-claim-requests-worker:
+    container_name: globalyapp-business-claim-requests-worker
+    image: globalyapp-backend:local
+    command: npm run job:business-claim-requests
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   extraction-worker:
     container_name: globalyapp-extraction-worker
     image: globalyapp-backend:local

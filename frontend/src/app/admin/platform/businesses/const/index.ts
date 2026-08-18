@@ -3,6 +3,7 @@ import type { BranchType, BusinessCreateInput, BusinessStatus } from "../apis/ty
 export const STATUS_COLORS: Record<BusinessStatus, string> = {
   unverified: "bg-muted text-muted-foreground",
   claim_pending: "bg-amber-100 text-amber-700",
+  claimed: "bg-sky-100 text-sky-700",
   verified: "bg-emerald-100 text-emerald-700",
   suspended: "bg-muted text-muted-foreground",
   rejected: "bg-red-100 text-red-700",
@@ -11,6 +12,7 @@ export const STATUS_COLORS: Record<BusinessStatus, string> = {
 export const STATUS_LABELS: Record<BusinessStatus, string> = {
   unverified: "Unverified",
   claim_pending: "Claim Pending",
+  claimed: "Claimed",
   verified: "Verified",
   suspended: "Suspended",
   rejected: "Rejected",
@@ -20,6 +22,7 @@ export const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All statuses" },
   { value: "unverified", label: "Unverified" },
   { value: "claim_pending", label: "Claim Pending" },
+  { value: "claimed", label: "Claimed" },
   { value: "verified", label: "Verified" },
   { value: "suspended", label: "Suspended" },
   { value: "rejected", label: "Rejected" },
