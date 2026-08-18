@@ -6,6 +6,7 @@ import { homeReducer } from "@/app/personal/portal/store/home-slice"
 import { myServicesReducer } from "@/app/personal/earn/services/store/my-services-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { businessProfileDetailReducer } from "@/app/business/profile/store/business-profile-detail-slice"
+import { businessEventsReducer } from "@/app/business/events/store/business-events-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
@@ -36,6 +37,7 @@ const appReducer = combineReducers({
     myServices: myServicesReducer,
     businessOnboarding: businessOnboardingReducer,
     businessProfileDetail: businessProfileDetailReducer,
+    businessEvents: businessEventsReducer,
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,
