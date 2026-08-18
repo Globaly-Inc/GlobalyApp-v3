@@ -26,7 +26,7 @@ import type {
   ListInboxQuery,
   ListMyEnquiriesQuery,
 } from "../schemas/enquiries.schema.js";
-import { distribute } from "./distribution.service.js";
+import { distribute, priceLead } from "./distribution.service.js";
 
 const logger = createChildLogger("enquiries");
 
@@ -113,6 +113,10 @@ export function toInboxItem(row: repo.InboxRow) {
     preferred_intake: row.preferred_intake,
     preferred_year: row.preferred_year,
     created_at: row.created_at,
+    // Distribution-level, so they belong on both sides of the paywall: a business
+    // that closed a lead it never paid for still has to see that it did.
+    closed_at: row.closed_at,
+    close_reason: row.close_reason,
   };
 
   if (row.unlock_id == null) {
@@ -164,6 +168,77 @@ export async function getInboxItem(businessId: number, distributionId: number) {
   // business's distribution is indistinguishable from one that does not exist.
   if (!row) throw new NotFoundError("Enquiry not found in this inbox");
   return toInboxItem(row);
+}
+
+/**
+ * Credit balance + per-lead price for the inbox's own widget.
+ *
+ * Deliberately thin: the wallet is billing's, and this reads it through
+ * `credits.getBalance` rather than touching `credit_wallets` — one balance
+ * calculation in the codebase, not two that can disagree. `unlock_cost` is the
+ * caller's own `businesses.enquiry_coin_cost` run through the same `priceLead`
+ * the distributor uses, so the number shown is the number that will be charged
+ * on the next lead. (An existing distribution keeps the price frozen at its own
+ * `coin_cost`; that is on the row, and the row is what unlock spends.)
+ */
+export async function getCreditBalance(businessId: number) {
+  const [wallet, coinCost] = await Promise.all([
+    credits.getBalance(businessId),
+    repo.findEnquiryCoinCost(businessId),
+  ]);
+  return { balance: wallet.balance, unlock_cost: priceLead(coinCost) };
+}
+
+// ── Close (housekeeping) ────────────────────────────────────────────────────
+
+/**
+ * Retire one distribution from one business's inbox.
+ *
+ * Allowed from every status except 'closed', and that is a decision, not an
+ * oversight. A distribution is a business's private copy of a lead, and closing
+ * it destroys nothing: the unlock row, the ledger entry, the student's enquiry
+ * and every other business's copy are all untouched. So there is no status from
+ * which "I am finished with this lead" is incoherent — not 'pending' (never
+ * interested), not 'viewed' (paid, worked, dead), and not 'responded', where a
+ * rule would be actively harmful: it is the one status a lead reaches by going
+ * *well*, and blocking close there would strand those rows in the inbox for ever
+ * with no way to clear them. `closed` itself is the no-op below.
+ *
+ * Free, and reveals nothing. The response is distribution-level only, so close
+ * cannot be used to read around the unlock paywall.
+ */
+export async function closeDistribution(
+  businessId: number,
+  distributionId: number,
+  closeReason: string | null,
+) {
+  const distribution = await repo.findDistributionForBusiness(distributionId, businessId);
+  // Same cross-tenant story as the rest of this file: the lookup is scoped by
+  // business_id, so another business's distribution is a 404, never a 403.
+  if (!distribution) throw new NotFoundError("Enquiry not found in this inbox");
+
+  const closed = await repo.closeDistribution(distributionId, businessId, closeReason);
+  if (!closed) {
+    // Nothing matched, and the lookup above proved the row is ours — so it was
+    // already closed. Report the close that actually happened, not this attempt:
+    // the first reason is the one on the record.
+    return {
+      id: distribution.id,
+      status: distribution.status,
+      already_closed: true as const,
+      closed_at: distribution.closed_at,
+      close_reason: distribution.close_reason,
+    };
+  }
+
+  logger.info("enquiry distribution closed", { businessId, distributionId });
+  return {
+    id: closed.id,
+    status: closed.status,
+    already_closed: false as const,
+    closed_at: closed.closed_at,
+    close_reason: closed.close_reason,
+  };
 }
 
 // ── Unlock (the monetised path) ─────────────────────────────────────────────

@@ -9,6 +9,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 import {
+  CloseDistributionSchema,
   DistributionIdParamSchema,
   ListInboxQuerySchema,
 } from "../schemas/enquiries.schema.js";
@@ -31,6 +32,13 @@ export async function businessEnquiriesRoutes(app: FastifyInstance) {
     return reply.send(await service.listInbox(businessId(req), query));
   });
 
+  // Static, so find-my-way prefers it over /:distributionId regardless of the
+  // order these are declared in. Listed first anyway, because a reader should not
+  // have to know that to be sure "credits" is never parsed as an id.
+  app.get("/credits", async (req, reply) => {
+    return reply.send(await service.getCreditBalance(businessId(req)));
+  });
+
   app.get("/:distributionId", async (req, reply) => {
     const { distributionId } = DistributionIdParamSchema.parse(req.params);
     return reply.send(await service.getInboxItem(businessId(req), distributionId));
@@ -42,6 +50,16 @@ export async function businessEnquiriesRoutes(app: FastifyInstance) {
     const { distributionId } = DistributionIdParamSchema.parse(req.params);
     return reply.send(
       await service.unlockEnquiry(businessId(req), distributionId, Number(req.auth.sub)),
+    );
+  });
+
+  // Free, idempotent, and reveals nothing — the response carries distribution
+  // columns only, never the lead behind them.
+  app.post("/:distributionId/close", async (req, reply) => {
+    const { distributionId } = DistributionIdParamSchema.parse(req.params);
+    const { close_reason } = CloseDistributionSchema.parse(req.body ?? {});
+    return reply.send(
+      await service.closeDistribution(businessId(req), distributionId, close_reason ?? null),
     );
   });
 }

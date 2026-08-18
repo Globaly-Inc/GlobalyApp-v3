@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import { PaginationSchema } from "../../../shared/pagination.js";
-import { DISTRIBUTION_STATUSES, ENQUIRY_STATUSES } from "../consts.js";
+import { DISTRIBUTION_STATUSES, ENQUIRY_STATUSES, MAX_CLOSE_REASON_CHARS } from "../consts.js";
 
 export const CreateEnquirySchema = z
   .object({
@@ -30,6 +30,22 @@ export const IdParamSchema = z.object({ id: z.coerce.number().int().positive() }
 export const DistributionIdParamSchema = z.object({
   distributionId: z.coerce.number().int().positive(),
 });
+
+/**
+ * Body of POST /business/enquiries/:distributionId/close.
+ *
+ * The reason is optional: the inbox UI insists on one, but "I am done with this
+ * lead" is a complete statement on its own and a client that has nothing to add
+ * should not have to invent something. `.strict()` for the same reason every
+ * schema here is — a typo'd key is a bug the caller should hear about, and no
+ * identity field is accepted at all (the business comes from the JWT).
+ */
+export const CloseDistributionSchema = z
+  .object({
+    close_reason: z.string().trim().min(1).max(MAX_CLOSE_REASON_CHARS).nullish(),
+  })
+  .strict();
+export type CloseDistributionInput = z.infer<typeof CloseDistributionSchema>;
 
 export const ListMyEnquiriesQuerySchema = PaginationSchema.extend({
   status: z.enum(ENQUIRY_STATUSES).optional(),

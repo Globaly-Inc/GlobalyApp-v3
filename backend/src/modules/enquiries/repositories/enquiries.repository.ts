@@ -50,9 +50,19 @@ export interface DistributionRow {
   coin_cost: number;
   distance_km: string | null;
   status: DistributionStatus;
+  closed_at: Date | null;
+  close_reason: string | null;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
+}
+
+/** What the close transition writes back. No student columns — see closeDistribution. */
+export interface ClosedDistribution {
+  id: number;
+  status: DistributionStatus;
+  closed_at: Date | null;
+  close_reason: string | null;
 }
 
 export interface UnlockRow {
@@ -330,6 +340,58 @@ export async function setDistributionStatus(
     .update({ status, updated_at: db(trx).fn.now() });
 }
 
+/**
+ * Move one distribution to 'closed'. Returns the closed row, or undefined when
+ * nothing matched — which is either "not this business's row" or "already
+ * closed", and the caller distinguishes those with its own lookup.
+ *
+ * Both guards live in the WHERE clause on purpose:
+ *   * `business_id` is repeated here even though the caller has already checked
+ *     ownership. A lookup and a write are two statements, and only the predicate
+ *     on the write itself can guarantee the row that changes is the row that was
+ *     authorised.
+ *   * `status <> 'closed'` is what makes closing twice a genuine no-op rather
+ *     than a second UPDATE with the same values: no row matches, so `closed_at`,
+ *     `close_reason` and `updated_at` all keep their original values, and two
+ *     simultaneous closes settle on the first one without a transaction.
+ *
+ * RETURNING lists its columns: the row carries no student data, and it must stay
+ * that way whatever columns this table grows.
+ */
+export async function closeDistribution(
+  distributionId: number,
+  businessId: number,
+  closeReason: string | null,
+  trx?: Db,
+): Promise<ClosedDistribution | undefined> {
+  const [row] = await db(trx)("enquiry_distributions")
+    .where({ id: distributionId, business_id: businessId })
+    .whereNot({ status: "closed" })
+    .whereNull("deleted_at")
+    .update({
+      status: "closed",
+      closed_at: db(trx).fn.now(),
+      close_reason: closeReason,
+      updated_at: db(trx).fn.now(),
+    })
+    .returning<ClosedDistribution[]>(["id", "status", "closed_at", "close_reason"]);
+  return row;
+}
+
+/**
+ * The caller's own per-lead price, for the inbox's credit widget.
+ *
+ * A single explicit column: this read exists only to price an unlock, and
+ * `businesses` carries plenty that has no business being on that wire.
+ */
+export async function findEnquiryCoinCost(businessId: number): Promise<number | null> {
+  const row = await masterKnex("businesses")
+    .where({ id: businessId })
+    .whereNull("deleted_at")
+    .first("enquiry_coin_cost");
+  return row?.enquiry_coin_cost == null ? null : Number(row.enquiry_coin_cost);
+}
+
 /** The business inbox. Joins the unlock ledger so the caller can mask. */
 function inboxQuery(businessId: number, filters: { status?: DistributionStatus; unlocked?: boolean }) {
   const q = masterKnex("enquiry_distributions as d")
@@ -357,6 +419,8 @@ function withInboxColumns(q: Knex.QueryBuilder) {
       "d.coin_cost",
       "d.distance_km",
       "d.status",
+      "d.closed_at",
+      "d.close_reason",
       "d.created_at",
       "e.message",
       "e.preferred_intake",
@@ -386,6 +450,8 @@ export interface InboxRow {
   coin_cost: number;
   distance_km: string | null;
   status: DistributionStatus;
+  closed_at: Date | null;
+  close_reason: string | null;
   created_at: Date;
   message: string;
   preferred_intake: string | null;
