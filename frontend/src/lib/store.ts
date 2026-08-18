@@ -21,6 +21,7 @@ import { visasReducer } from "@/app/admin/data/visas/store/visas-slice"
 import { maraAgentsReducer } from "@/app/admin/data/mara-agents/store/mara-agents-slice"
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
+import { enquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
 
 const appReducer = combineReducers({
@@ -46,6 +47,7 @@ const appReducer = combineReducers({
     dataMaraAgents: maraAgentsReducer,
     monitoringLogs: logsReducer,
     monitoringOtherServices: adminOtherServicesReducer,
+    monitoringEnquiries: enquiriesReducer,
     aiChat: aiChatReducer,
 })
 
