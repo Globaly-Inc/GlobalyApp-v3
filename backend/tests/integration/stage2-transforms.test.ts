@@ -484,23 +484,34 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
     expect(report.written["public.institutions"]).toBe(1);
     expect(report.written["public.user_business_index"]).toBe(1);
 
+    // Scoped to this fixture's own rows. Other suites share this database and leave
+    // businesses behind, so an unscoped SELECT reads whichever row sorts first and
+    // fails on suite order alone.
     const { rows } = await db.query<{ v1: string; subdomain: string; schema_name: string }>(
-      `SELECT meta->>'v1_business_id' AS v1, subdomain, schema_name::text AS schema_name FROM public.businesses`,
+      `SELECT meta->>'v1_business_id' AS v1, subdomain, schema_name::text AS schema_name
+         FROM public.businesses WHERE meta->>'v1_business_id' = $1`,
+      [BIZ_OWNED],
     );
+    expect(rows).toHaveLength(1);
     expect(rows[0].v1).toBe(BIZ_OWNED);
     expect(rows[0].subdomain).toBe("stage2-owned-agency");
 
     // Derived, not generated: a second run must land on the same tenant schema.
     await runTransform("w1-businesses.ts", true);
     const { rows: again } = await db.query<{ schema_name: string }>(
-      `SELECT schema_name::text AS schema_name FROM public.businesses`,
+      `SELECT schema_name::text AS schema_name
+         FROM public.businesses WHERE meta->>'v1_business_id' = $1`,
+      [BIZ_OWNED],
     );
     expect(again).toHaveLength(1);
     expect(again[0].schema_name).toBe(rows[0].schema_name);
 
     const { rows: inst } = await db.query<{ v1_business_id: string; claim_status: string }>(
-      `SELECT v1_business_id::text AS v1_business_id, claim_status FROM public.institutions`,
+      `SELECT v1_business_id::text AS v1_business_id, claim_status
+         FROM public.institutions WHERE v1_business_id = $1`,
+      [BIZ_UNCLAIMED],
     );
+    expect(inst).toHaveLength(1);
     expect(inst[0]).toMatchObject({ v1_business_id: BIZ_UNCLAIMED, claim_status: "unclaimed" });
   }, 120_000);
 });
