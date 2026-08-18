@@ -211,6 +211,12 @@ describeDb("favorites", () => {
     expect(await masterKnex("student_favorites").where({ platform_user_id: bob }).first()).toBeUndefined();
   });
 
+  it("400s a request with no body at all", async () => {
+    // Exercises the `req.body ?? {}` fallback.
+    const res = await app.inject({ method: "POST", url: "/api/v3/favorites", headers: auth(aliceToken) });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("rejects an item_type outside the vocabulary", async () => {
     // item_type has no DB CHECK on purpose (20260817_820) — this route is the guard.
     for (const bad of ["course", "agent", "platform_users", ""]) {

@@ -17,6 +17,7 @@ import type { Knex } from "knex";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { dbAvailable } from "../helpers/db.js";
+import { queueService as queue } from "../../src/shared/queue/queueService.js";
 import type { PublishedEmail } from "../helpers/mail-capture.js";
 
 // The confirmation mail goes through the existing "emails" queue (same path the
@@ -181,6 +182,28 @@ describeDb("waitlist", () => {
       expect(res.statusCode, JSON.stringify(over)).toBe(400);
     }
     expect(await masterKnex("waitlist_registrations").where({ email: emailFor("valid") }).first()).toBeUndefined();
+  });
+
+  it("400s a request with no body at all", async () => {
+    // Exercises the `req.body ?? {}` fallback: a bodyless POST must be a validation
+    // error, not a crash on undefined.
+    expect((await app.inject({ method: "POST", url: "/api/v3/waitlist" })).statusCode).toBe(400);
+  });
+
+  it("still registers the sign-up when the confirmation mail cannot be enqueued", async () => {
+    // The row is committed before the mail is queued, so a broker outage must not
+    // fail a sign-up that already succeeded — it is logged for replay instead.
+    const boom = new Error("broker down");
+    const spy = vi.spyOn(queue, "publish").mockRejectedValueOnce(boom);
+    try {
+      const res = await register("mailfail");
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true, already_registered: false });
+      expect(await masterKnex("waitlist_registrations").where({ email: emailFor("mailfail") }).first())
+        .toBeDefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("rejects unknown keys rather than storing them", async () => {
