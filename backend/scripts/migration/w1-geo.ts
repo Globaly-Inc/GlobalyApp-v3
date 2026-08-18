@@ -119,6 +119,22 @@ export const ISO3_IMPORTS: readonly { iso2: string; iso3: string; official: bool
   { iso2: "EH", iso3: "ESH", official: true },
 ];
 
+/**
+ * The destinations shelf. NOT enrichment, and the difference is the whole point:
+ * both columns are NOT NULL with defaults (false / 0), so a seeded row never holds
+ * a NULL for the COALESCE-only merge above to fill. Listing them there would have
+ * looked like carrying them and carried nothing — which is exactly what happened:
+ * V1 flags 8 countries with sort_order 0-2 and all 8 landed featured = false,
+ * sort_order = 0, leaving GET /api/v3/countries/featured returning an empty shelf.
+ *
+ * Scoped to the countries V1 actually features (§1.2.1 parity-first: V1 is the only
+ * source of this editorial there is — the seeder has no opinion and features none).
+ * A V3 country V1 never mentions is not touched at all: un-featuring rows is not
+ * what carrying a flag across means, and it is the one way this write could destroy
+ * something.
+ */
+const COUNTRY_FEATURED: readonly string[] = ["is_featured", "sort_order"];
+
 const CITY_COLUMNS: readonly string[] = [
   "country_id",
   "name",
@@ -179,7 +195,7 @@ const RESOLVED_CITIES = `
 `;
 
 export async function transformGeo(ctx: TransformContext, allowedCodes: ReadonlySet<string>): Promise<void> {
-  await assertTargetColumns(ctx.db, "public", "countries", ["iso2", ...COUNTRY_ENRICH]);
+  await assertTargetColumns(ctx.db, "public", "countries", ["iso2", ...COUNTRY_ENRICH, ...COUNTRY_FEATURED]);
   await assertTargetColumns(ctx.db, "public", "cities", [...CITY_COLUMNS]);
   await clearReport(ctx, ["countries", "cities"]);
 
@@ -235,6 +251,24 @@ export async function transformGeo(ctx: TransformContext, allowedCodes: Readonly
        FROM (SELECT rc.v3_id, v.* FROM (${RESOLVED_COUNTRIES}) rc JOIN v1_staging.countries v ON v.id = rc.v1_id) r
       WHERE t.id = r.v3_id
         AND (${COUNTRY_ENRICH.map((c) => `(t.${c} IS NULL AND r.${c} IS NOT NULL)`).join(" OR ")})`,
+  );
+
+  // The featured shelf. See COUNTRY_FEATURED: a separate statement because COALESCE
+  // cannot reach a NOT NULL DEFAULT column. The WHERE is what makes it idempotent —
+  // a second --apply finds both values already equal and writes 0 rows.
+  await execWrite(
+    ctx,
+    "public.countries (featured)",
+    `UPDATE public.countries t
+        SET is_featured = true,
+            sort_order  = r.sort_order,
+            updated_at  = now()
+       FROM (SELECT rc.v3_id, coalesce(v.sort_order, 0) AS sort_order
+               FROM (${RESOLVED_COUNTRIES}) rc
+               JOIN v1_staging.countries v ON v.id = rc.v1_id
+              WHERE rc.v3_id IS NOT NULL AND coalesce(v.is_featured, false)) r
+      WHERE t.id = r.v3_id
+        AND (t.is_featured IS DISTINCT FROM true OR t.sort_order IS DISTINCT FROM r.sort_order)`,
   );
 
   await reportUnresolvedQuery(ctx, allowedCodes, {
@@ -351,6 +385,16 @@ export function geoSelfCheck(): void {
   assert.ok(GEO_KEY("x").includes("[^a-z0-9]+"), "…and collapse the rest to single spaces");
   assert.ok(COUNTRY_ENRICH.length > 0 && !COUNTRY_ENRICH.includes("name"), "the seeder's authoritative name is never overwritten");
   assert.ok(!COUNTRY_ENRICH.includes("iso2") && !COUNTRY_ENRICH.includes("iso3") && !COUNTRY_ENRICH.includes("slug"));
+  // The featured shelf must never be folded into the COALESCE-only enrichment:
+  // is_featured and sort_order are NOT NULL with defaults, so a COALESCE would be a
+  // no-op that reads like a migration. That mistake is what emptied the shelf.
+  assert.deepEqual([...COUNTRY_FEATURED], ["is_featured", "sort_order"]);
+  assert.equal(
+    COUNTRY_ENRICH.filter((c) => COUNTRY_FEATURED.includes(c)).length,
+    0,
+    "a NOT NULL DEFAULT column cannot be carried by COALESCE — it needs its own statement",
+  );
+  assert.equal(COUNTRY_INSERT_ONLY.filter((c) => COUNTRY_FEATURED.includes(c.column)).length, 0);
   assert.ok(CITY_COLUMNS.includes("country_id") && CITY_COLUMNS.includes("slug"), "the city natural key must be written");
   assert.ok(new Set(CITY_COLUMNS).size === CITY_COLUMNS.length, "duplicate column in the city insert");
 
@@ -371,7 +415,8 @@ export function geoSelfCheck(): void {
   assert.ok(!insertOnly.has("name") && !insertOnly.has("iso2") && !insertOnly.has("iso3") && !insertOnly.has("slug"));
 
   console.log(
-    `w1-geo self-check: ok — ${COUNTRY_ENRICH.length} enrich columns, ${CITY_COLUMNS.length} city columns, ` +
+    `w1-geo self-check: ok — ${COUNTRY_ENRICH.length} enrich columns, ${COUNTRY_FEATURED.length} featured columns, ` +
+      `${CITY_COLUMNS.length} city columns, ` +
       `${ISO3_IMPORTS.length} owner-assigned ISO-3 imports`,
   );
 }

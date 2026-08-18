@@ -3356,6 +3356,20 @@
           "from": "meta_description",
           "source": "v.meta_description",
           "target": "t.meta_description"
+        },
+        {
+          "name": "is_featured",
+          "from": "is_featured",
+          "source": "coalesce(v.is_featured, false)",
+          "target": "t.is_featured",
+          "note": "RE-DISPOSITIONED 2026-08-17 (was dropped: \u201cV3 editorial choice, made in V3\u201d). Gate 3 found GET /api/v3/countries/featured returning 0 items \u2014 V1 flags 8 (AU, GB, US, CA, CN, NZ, NP, SG) and public.countries held 0, because W1 carried neither column. The drop assumed a competing V3 editorial choice; there is none. Every seeded country is is_featured = false / sort_order = 0, so the shelf V1 built is the only one that exists, and \u00a71.2.1 parity-first says carry it. Not enrichment: both columns are NOT NULL with defaults, so the COALESCE-only merge would have been a silent no-op \u2014 w1-geo writes them in their own statement."
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "coalesce(v.sort_order, 0)",
+          "target": "t.sort_order",
+          "note": "See is_featured. The W1 write is scoped to the countries V1 features, which loses nothing: 0 of the 190 non-featured V1 countries carry a non-zero sort_order, so every ordering V1 expresses lives inside the featured set. Scoping it that way is also what stops the transform un-featuring a country V1 has no opinion about."
         }
       ],
       "dropped": [
@@ -3414,14 +3428,6 @@
         {
           "column": "is_active",
           "reason": "SEEDER-AUTHORITATIVE \u2014 every seeded country is active; V1's flag would deactivate rows V3 publishes. Written on INSERT for the four countries the seeder never had (\u00a715: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
-        },
-        {
-          "column": "is_featured",
-          "reason": "V3 editorial choice, made in V3. Overwriting it with V1's 8 featured countries would silently reorder the live homepage."
-        },
-        {
-          "column": "sort_order",
-          "reason": "V3 editorial ordering. See is_featured."
         },
         {
           "column": "embedding",

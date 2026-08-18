@@ -166,9 +166,11 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
     // Two countries: one the seeder has (AU) and one it has never heard of, which
     // is the case W1 must report rather than invent an ISO-3 for.
     await db.query(
-      `INSERT INTO v1_staging.countries (id, name, slug, code, about, created_at, updated_at)
-       VALUES ($1,'Australia','australia','AU','A V1 blurb the seeder does not have',${now},${now}),
-              ($2,'Nowhereland','nowhereland','ZZ','Not in mledoze',${now},${now})`,
+      // AU is featured at sort_order 2 in V1 — the destinations shelf V3 renders
+      // from is_featured/sort_order, which W1 used to drop.
+      `INSERT INTO v1_staging.countries (id, name, slug, code, about, is_featured, sort_order, created_at, updated_at)
+       VALUES ($1,'Australia','australia','AU','A V1 blurb the seeder does not have',true,2,${now},${now}),
+              ($2,'Nowhereland','nowhereland','ZZ','Not in mledoze',false,0,${now},${now})`,
       [COUNTRY_AU, COUNTRY_NOWHERE],
     );
     await db.query(
@@ -390,6 +392,49 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
       `SELECT source_key FROM mig.unresolved WHERE source_table = 'cities' AND reason_code = 'unresolved_country'`,
     );
     expect(cityRows.map((r) => r.source_key)).toEqual(["zz|ghost town"]);
+  }, 120_000);
+
+  it("carries V1's featured countries onto the shelf, in V1's order", async () => {
+    // Gate 3: GET /api/v3/countries/featured returned 0 items against the migrated
+    // database. V1 flags 8 countries with sort_order 0-2; all of them landed as
+    // is_featured = false, sort_order = 0, because W1 carried neither column.
+    //
+    // Enrichment is COALESCE-only and cannot fix this: both columns are NOT NULL
+    // with defaults, so the seeded row never has a NULL for the COALESCE to fill.
+    await runTransform("w1-geo.ts", true);
+
+    const { rows } = await db.query<{ iso2: string; is_featured: boolean; sort_order: number }>(
+      `SELECT iso2, is_featured, sort_order FROM public.countries WHERE iso2 = 'AU'`,
+    );
+    expect(rows[0], "V1 features Australia; an empty destinations shelf is the bug").toMatchObject({
+      is_featured: true,
+      sort_order: 2,
+    });
+  }, 120_000);
+
+  it("leaves a country V1 does not feature alone, and re-runs to zero writes", async () => {
+    // The write is scoped to the countries V1 actually features. A V3 country V1
+    // never mentions must not be touched at all — un-featuring rows is not what
+    // "carry the flag across" means.
+    // beforeEach truncates v1_staging, not public — so put AU back to the state the
+    // seeder leaves it in, or an earlier test in this file has already promoted it
+    // and "one country to promote" measures nothing.
+    await db.query(`UPDATE public.countries SET is_featured = false, sort_order = 0 WHERE iso2 = 'AU'`);
+
+    const { rows: before } = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM public.countries WHERE is_featured AND iso2 <> 'AU'`,
+    );
+
+    const first = await runTransform("w1-geo.ts", true);
+    expect(first.written["public.countries (featured)"], "one country to promote").toBe(1);
+
+    const { rows: after } = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM public.countries WHERE is_featured AND iso2 <> 'AU'`,
+    );
+    expect(after[0].n).toBe(before[0].n);
+
+    const second = await runTransform("w1-geo.ts", true);
+    expect(second.written["public.countries (featured)"], "a second --apply is 0 changes").toBe(0);
   }, 120_000);
 
   it("adds only the cities the seeder lacks, and enriches the ones it has", async () => {
