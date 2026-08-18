@@ -11,12 +11,13 @@
  * Three deliberate decisions, each of which is the difference between a
  * reconcile and a mess:
  *
- *   1. COUNTRIES ARE MATCHED, NEVER INSERTED. `public.countries.iso3` is NOT
+ *   1. COUNTRIES ARE MATCHED, NEVER INVENTED. `public.countries.iso3` is NOT
  *      NULL and V1's countries table has no ISO-3 column at all — only a 2-letter
- *      `code`. Inserting an unmatched V1 country would mean inventing an ISO-3,
- *      so the four that do not match (XK, PS, TW, EH) are reason-coded
- *      `unresolved_country` and left for the owner. See the question recorded in
- *      mapping.json under tables.countries.
+ *      `code`. So a country is inserted only when the OWNER has named its ISO-3:
+ *      §15 decision — XK→XKX, PS→PSE, TW→TWN, EH→ESH (ISO3_IMPORTS below), the
+ *      four the mledoze seeder does not carry. Names come from V1 verbatim, so
+ *      the migration takes no naming position. Anything else that does not match
+ *      is still reason-coded `unresolved_country` and left for the owner.
  *   2. ENRICHMENT IS COALESCE-ONLY. V1's countries carry real editorial content
  *      the seeder has none of (about ×198, why_study_here ×98, hero images ×191,
  *      visa detail ×98). It is merged into the matched row only where the seeded
@@ -79,6 +80,43 @@ const COUNTRY_ENRICH: readonly string[] = [
   "youtube_embed_url",
   "meta_title",
   "meta_description",
+];
+
+/**
+ * Columns V1 is the ONLY source for on a country the seeder never had. Written
+ * on INSERT only: on a matched row the seeder stays authoritative (decision 2),
+ * so these never appear in the COALESCE-only enrichment above.
+ *
+ * `region` is derived from V1's `continent`, but only where the two vocabularies
+ * already agree. mledoze says "Americas" where V1 says "North America" /
+ * "South America"; translating that would be a mapping nobody asked for, and all
+ * four imported countries are Europe/Asia/Africa anyway.
+ */
+const COUNTRY_INSERT_ONLY: readonly { column: string; expr: string }[] = [
+  { column: "flag_emoji", expr: "v.flag_emoji" },
+  { column: "capital", expr: "v.capital" },
+  { column: "currency", expr: "v.currency" },
+  { column: "languages", expr: "v.languages" },
+  { column: "timezone", expr: "v.timezone" },
+  { column: "is_active", expr: "coalesce(v.is_active, true)" },
+  { column: "region", expr: `(CASE WHEN v.continent IN ('Africa', 'Americas', 'Asia', 'Europe', 'Oceania') THEN v.continent END)` },
+];
+
+/**
+ * The ISO-3 codes the owner assigned to the four V1 countries mledoze/countries
+ * does not ship (§15). A closed list on purpose: `public.countries.iso3` is NOT
+ * NULL, and "derive an ISO-3 for whatever V1 happens to carry" is how a
+ * transform starts inventing country rows nobody approved.
+ *
+ * `official: false` is reported on EVERY run, not once — same convention as
+ * database/scripts/migrate-lib.mjs NON_OFFICIAL_ISO3. Kosovo has no ISO 3166-1
+ * code at all; XK/XKX are user-assigned (World Bank convention).
+ */
+export const ISO3_IMPORTS: readonly { iso2: string; iso3: string; official: boolean; note?: string }[] = [
+  { iso2: "XK", iso3: "XKX", official: false, note: "Kosovo has no ISO 3166-1 code; XK/XKX are user-assigned (World Bank convention)" },
+  { iso2: "PS", iso3: "PSE", official: true },
+  { iso2: "TW", iso3: "TWN", official: true },
+  { iso2: "EH", iso3: "ESH", official: true },
 ];
 
 const CITY_COLUMNS: readonly string[] = [
@@ -145,9 +183,48 @@ export async function transformGeo(ctx: TransformContext, allowedCodes: Readonly
   await assertTargetColumns(ctx.db, "public", "cities", [...CITY_COLUMNS]);
   await clearReport(ctx, ["countries", "cities"]);
 
+  // ── countries: the four owner-approved imports ─────────────────────────────
+  // Only the ISO3_IMPORTS codes, and only when nothing already occupies any of
+  // countries' four UNIQUE columns (iso2, iso3, name, slug). That guard — not
+  // the ON CONFLICT — is what makes this idempotent: a second run inserts
+  // nothing, and no unique can be violated instead of being caught.
+  const importColumns = ["name", "iso2", "iso3", "slug", ...COUNTRY_INSERT_ONLY.map((c) => c.column), ...COUNTRY_ENRICH];
+  const importValues = [
+    "v.name",
+    "upper(btrim(v.code))",
+    "iso.iso3",
+    "v.slug",
+    ...COUNTRY_INSERT_ONLY.map((c) => c.expr),
+    ...COUNTRY_ENRICH.map((c) => `v.${c}`),
+  ];
+  const isoValues = ISO3_IMPORTS.map((i) => `('${i.iso2}', '${i.iso3}')`).join(", ");
+  await assertTargetColumns(ctx.db, "public", "countries", importColumns);
+  await execWrite(
+    ctx,
+    "public.countries (imported)",
+    `INSERT INTO public.countries (${importColumns.join(", ")})
+     SELECT ${importValues.join(", ")}
+       FROM v1_staging.countries v
+       JOIN (VALUES ${isoValues}) AS iso(iso2, iso3) ON iso.iso2 = upper(btrim(v.code))
+      WHERE NOT EXISTS (
+              SELECT 1 FROM public.countries c
+               WHERE c.iso2 = upper(btrim(v.code))
+                  OR c.iso3 = iso.iso3
+                  OR lower(btrim(c.name)) = lower(btrim(v.name))
+                  OR c.slug = v.slug)
+     ON CONFLICT (iso2) DO NOTHING`,
+  );
+
+  // Reported every run, not once: a user-assigned code that silently looks
+  // official is exactly the kind of fact that stops being said out loud.
+  for (const i of ISO3_IMPORTS.filter((x) => !x.official)) {
+    ctx.report.notes.push(`${i.iso2} -> ${i.iso3} is NOT an ISO 3166-1 code — ${i.note}`);
+  }
+
   // ── countries ──────────────────────────────────────────────────────────────
-  // Matched rows are enriched in place; nothing is inserted, so `matched` and
-  // `reported` must add up to the 198 staged rows for the wave to be honest.
+  // Everything else is matched and enriched in place, never inserted, so
+  // `matched` and `reported` must add up to the staged rows for the wave to be
+  // honest.
   const enrich = COUNTRY_ENRICH.map((c) => `${c} = coalesce(t.${c}, r.${c})`).join(",\n           ");
   await execWrite(
     ctx,
@@ -166,7 +243,7 @@ export async function transformGeo(ctx: TransformContext, allowedCodes: Readonly
     column: "iso2",
     reasonCode: "unresolved_country",
     sql: `SELECT lower(btrim(r.code)),
-                 'V1 ' || r.code || ' / ' || r.name || ' matches no seeded country on ISO-2, ISO-3 or name. '
+                 'V1 ' || r.code || ' / ' || r.name || ' matches no country on ISO-2, ISO-3 or name, and is not in ISO3_IMPORTS. '
                  || 'public.countries.iso3 is NOT NULL and V1 carries no ISO-3, so inserting it would mean inventing one — owner decision.'
             FROM (${RESOLVED_COUNTRIES}) r WHERE r.v3_id IS NULL`,
   });
@@ -276,7 +353,27 @@ export function geoSelfCheck(): void {
   assert.ok(!COUNTRY_ENRICH.includes("iso2") && !COUNTRY_ENRICH.includes("iso3") && !COUNTRY_ENRICH.includes("slug"));
   assert.ok(CITY_COLUMNS.includes("country_id") && CITY_COLUMNS.includes("slug"), "the city natural key must be written");
   assert.ok(new Set(CITY_COLUMNS).size === CITY_COLUMNS.length, "duplicate column in the city insert");
-  console.log(`w1-geo self-check: ok — ${COUNTRY_ENRICH.length} enrich columns, ${CITY_COLUMNS.length} city columns`);
+
+  // The owner-assigned ISO-3s. A closed list of exactly four, each a real
+  // alpha-3, and Kosovo flagged as the one that is not ISO-official.
+  assert.deepEqual(
+    ISO3_IMPORTS.map((i) => `${i.iso2}:${i.iso3}`),
+    ["XK:XKX", "PS:PSE", "TW:TWN", "EH:ESH"],
+    "the imported ISO-3s are an owner decision, not something the transform derives",
+  );
+  assert.ok(ISO3_IMPORTS.every((i) => /^[A-Z]{2}$/.test(i.iso2) && /^[A-Z]{3}$/.test(i.iso3)));
+  assert.deepEqual(ISO3_IMPORTS.filter((i) => !i.official).map((i) => i.iso2), ["XK"]);
+  assert.ok(ISO3_IMPORTS.filter((i) => !i.official).every((i) => (i.note ?? "").length > 20), "a non-official code must say why on every run");
+  // The insert-only set and the enrich set must not overlap: a column in both
+  // would be written on insert and then quietly re-decided by the COALESCE.
+  const insertOnly = new Set(COUNTRY_INSERT_ONLY.map((c) => c.column));
+  assert.equal(COUNTRY_ENRICH.filter((c) => insertOnly.has(c)).length, 0);
+  assert.ok(!insertOnly.has("name") && !insertOnly.has("iso2") && !insertOnly.has("iso3") && !insertOnly.has("slug"));
+
+  console.log(
+    `w1-geo self-check: ok — ${COUNTRY_ENRICH.length} enrich columns, ${CITY_COLUMNS.length} city columns, ` +
+      `${ISO3_IMPORTS.length} owner-assigned ISO-3 imports`,
+  );
 }
 
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {

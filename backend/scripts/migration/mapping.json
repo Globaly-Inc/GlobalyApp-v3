@@ -54,7 +54,8 @@
       "unresolved_category": "Category reference did not resolve.",
       "unresolved_parent": "A declared parent row is missing, so the child cannot be attached.",
       "duplicate_natural_key": "Two source rows collapse onto one natural key; the later one is reported, not overwritten silently.",
-      "invalid_source_data": "Source row fails a validity rule the V3 schema enforces."
+      "invalid_source_data": "Source row fails a validity rule the V3 schema enforces.",
+      "no_v3_column": "The source carries a value the V3 target has no column for. Reported so a future schema change can find it — never folded into a neighbouring column, and never dropped."
     },
     "tenantServiceIds": {
       "$comment": [
@@ -181,11 +182,11 @@
       "dependency": "§6 wave G / §3.4 gap table: agent_mara_details (1:1 business_id) exists in V1 but has no V3 migration. Visa/MARA promote target."
     },
     "ai_content_jobs": {
-      "disposition": "blocked",
+      "disposition": "drop",
       "wave": "E",
       "rows": 0,
-      "dependency": "No V3 table and no row in the §3 feature inventory.",
-      "question": "V1's AI content-job queue (ai_content_jobs) is not named anywhere in the master document. Is it in scope for wave E (AI), or is it dead V1 plumbing to drop? 0 rows either way."
+      "reasonCode": "v1_infrastructure",
+      "reason": "OWNER DECISION (§15). V1's AI content-job queue: 0 rows, no V3 table, and named nowhere in the §3 feature inventory. V3 runs its background work on its own worker mechanism (src/workers + the extraction/AI job workers), so a V1 queue table has nothing to carry into it. Dead V1 plumbing, dropped."
     },
     "ai_counselor_messages": {
       "disposition": "transform",
@@ -481,11 +482,10 @@
       "rows": 6,
       "targets": [
         "public.business_categories",
-        "public.fee_types"
+        "public.schema_fields"
       ],
       "mapping": "business_categories",
-      "note": "§4 W2: the category row itself. The declared fee_types half of the split yields ZERO rows against the real data — v1 business_categories.schema_fields holds two dynamic FIELD definitions (marn_number, a stray 'Facebook'), not fee types. The fee types come from v1_staging.fee_types, which has its own W2 disposition and its own mapping. Kept in `targets` so the split stays visible; see the question below.",
-      "question": "Was the §4 'business_categories -> fee_types' split written against a different V1 snapshot? In the staged data the schema_fields jsonb contains form-field definitions, not fees, so W2 loads the category row and nothing else from it. If fee types were ever embedded there, the snapshot they were in needs naming."
+      "note": "PLAN ERRATUM (§4 W2). §4 declares business_categories as a SPLIT into fee_types + business_categories. That split does not exist: the schema_fields jsonb on this table holds two dynamic FORM-FIELD definitions (marn_number on education_agency, a stray 'Facebook' on institutions), not fees, and it yields ZERO fee rows against the staged data. The real fee types are v1_staging.fee_types (11 rows: Tuition Fee, Material Fee, COE Fee, ...), which has its own transform disposition and its own green mapping. The fee_types target has therefore been REMOVED from this entry — do not restore it. What the jsonb does feed is public.schema_fields, one row per array element with this category's V3 id as entity_id (mapping schema_fields_business_categories)."
     },
     "business_category_default_services": {
       "disposition": "transform",
@@ -520,11 +520,11 @@
       "dependency": "No V3 table. V3 models team growth as {tenant}.agent_invitations (invite-out), not join-requests (request-in)."
     },
     "business_locations": {
-      "disposition": "blocked",
+      "disposition": "drop",
       "wave": "C1",
       "rows": 0,
-      "dependency": "No V3 table. Distinct from `branches`; unused in V1 (0 rows).",
-      "question": "V1 has three location-ish tables — branches (7 rows, physical campuses), business_locations (0 rows) and business_contacts (0 rows). Is business_locations dead V1 schema to drop, or does it need a V3 home?"
+      "reasonCode": "rebuild_in_v3",
+      "reason": "OWNER DECISION (§15). Dead V1 schema: 0 rows, never used. V3 models physical presence as branches (business_branches, tenant-scoped) — V1's own 7 campus rows live in `branches`, not here. Nothing is lost by dropping an empty table whose concept V3 already expresses differently; a location list, if it is ever wanted, is designed against V3's branch model rather than inherited from an unused V1 table."
     },
     "business_members": {
       "disposition": "transform",
@@ -619,7 +619,7 @@
       "targets": [
         "public.cities"
       ],
-      "note": "§4 W1 RECONCILE: the GeoNames seeder shipped 2,380 cities before Stage 2. 1,222 of V1's 2,078 matched on (country, normalized name), 808 were new, 47 are reason-coded (40 under the four unresolved countries, 7 whose slug is already held by the same city under a transliterated name)."
+      "note": "§4 W1 RECONCILE: the GeoNames seeder shipped 2,380 cities before Stage 2. 1,222 of V1's 2,078 matched on (country, normalized name), 848 were new (808 plus the 40 under the four countries §15 unblocked), and 7 are reason-coded — each one a city whose slug is already held by the same place under a transliterated name."
     },
     "conversations": {
       "disposition": "drop",
@@ -630,14 +630,11 @@
       "source": "Part 2 §3.5 + §4 mapping table"
     },
     "core_field_settings": {
-      "disposition": "transform",
+      "disposition": "drop",
       "wave": "W2",
       "rows": 42,
-      "targets": [
-        "public.schema_fields"
-      ],
-      "note": "§4 W2 lists this as rename + reshape. The reshape needs an entity the source does not carry.",
-      "question": "BLOCKED ON AN OWNER DECISION, not implemented by W2. The ledger maps core_field_settings -> public.schema_fields, but the two do not line up: V3's schema_fields is per-entity (UNIQUE on entity_id, entity_type, key; entity_type is one of business_categories | service_categories | other_service_categories) while V1's core_field_settings has NO entity id at all and its entity_type values are 'business' (19), 'user' (16), 'service' (4) and 'qualification' (3) — two of which have no V3 entity to hang off. Fanning the 19 'business' rows across all 6 business categories would invent 114 rows nobody asked for. Meanwhile the field definitions V3's shape actually fits are already sitting in business_categories.schema_fields (2) and service_categories.schema_fields (46) as jsonb. Two answers are possible and they are not the same migration: (a) load schema_fields from the category jsonb and drop core_field_settings as a V1-only global default registry, or (b) fan core_field_settings out per category with is_default = true. Nothing is loaded until this is settled — an unmapped transform table reads as 'the wave has not run yet', which is the truth."
+      "reasonCode": "rebuild_in_v3",
+      "reason": "OWNER DECISION (§15). V1's core_field_settings is a PLATFORM-GLOBAL field registry with no entity id at all — 42 rows across entity_type 'business' (19), 'user' (16), 'service' (4) and 'qualification' (3). V3's public.schema_fields is per-entity: UNIQUE (entity_id, entity_type, key), entity_type one of business_categories | service_categories, entity_id NOT NULL. There is no V3 entity for these rows to attach to: two of the four entity_types have no V3 counterpart at all, and fanning the 19 'business' rows across the 6 business categories would invent 114 rows nobody asked for. A future 'global field settings' feature needs a schema change (a nullable entity_id, or its own table) before these rows have a home; until then they are not carried. The field definitions that DO fit V3's shape are migrated instead, from the jsonb already attached to categories — see business_categories and service_categories, both of which carry a real entity id."
     },
     "countries": {
       "disposition": "transform",
@@ -646,8 +643,7 @@
       "targets": [
         "public.countries"
       ],
-      "note": "§4 W1 RECONCILE (not a load): public.countries was already seeded with 194 rows from mledoze/countries before Stage 2 ran. 194 of V1's 198 match on ISO-2; V1's editorial content is merged COALESCE-only. Fixes the silent-wrong country_ids risk (§8 risk 1) by making ISO-2 the resolver key.",
-      "question": "V1 has four countries the seeder does not: XK Kosovo, PS State of Palestine, TW Taiwan, EH Western Sahara. public.countries.iso3 is NOT NULL and V1's countries table has no ISO-3 column, so inserting them means choosing an ISO-3 (XKX / PSE / TWN / ESH) — an owner decision, not a transform's. All four are reason-coded `unresolved_country` in mig.unresolved and their 40 cities with them."
+      "note": "§4 W1 RECONCILE, plus four owner-approved imports. public.countries was already seeded with 194 rows from mledoze/countries before Stage 2 ran; 194 of V1's 198 match on ISO-2 and V1's editorial content is merged COALESCE-only onto them. Fixes the silent-wrong country_ids risk (§8 risk 1) by making ISO-2 the resolver key. The four the seeder does not carry are now INSERTED under the ISO-3 codes the owner assigned (§15): XK→XKX, PS→PSE, TW→TWN, EH→ESH, names taken from V1 verbatim so the migration takes no naming position. XKX is user-assigned (World Bank convention), not ISO 3166-1, and W1-geo says so on every run. unresolved_country is 0 after this; their 40 cities load with them."
     },
     "coupons": {
       "disposition": "transform",
@@ -1335,9 +1331,10 @@
       "wave": "W2",
       "rows": 11,
       "targets": [
-        "public.service_categories"
+        "public.service_categories",
+        "public.schema_fields"
       ],
-      "note": "§4 W2 reference data. The embedded schema_fields jsonb (46 field definitions across 11 categories) is the natural source for public.schema_fields, but loading it is blocked on the same open question as core_field_settings."
+      "note": "§4 W2 reference data. The embedded schema_fields jsonb (46 field definitions across 10 non-empty categories) is expanded into public.schema_fields with this category's V3 id as entity_id and entity_type='service_categories' — see mapping schema_fields_service_categories. That is the half of the core_field_settings question the data actually supports: these definitions have a real entity to hang off, core_field_settings does not."
     },
     "service_eligibility_assignments": {
       "disposition": "transform",
@@ -1425,17 +1422,18 @@
       ]
     },
     "service_orders": {
-      "disposition": "blocked",
+      "disposition": "drop",
       "wave": "C3",
       "rows": 0,
-      "dependency": "No V3 table for orders against a business_service. public.other_service_orders exists (20260812_001_other_services.ts) but is a DIFFERENT model: its listing_id points at other_service_listings, the peer-to-peer marketplace, not at the tenant service catalog. §3.8 also notes the booking-request flow is still on the unmerged dev-feat-personal-my-services branch.",
-      "question": "Three V1 tables — service_orders, service_reviews and student_services — are the ordering side of the business_services catalog, and V3's nearest structures (other_service_orders / _reviews / _listings) model a different marketplace. Does the catalog get its own ordering tables, or do the two marketplaces converge on other_service_*? All three are 0 rows today, so nothing is at risk — but W7 cannot resolve their FKs until the shape is decided."
+      "reasonCode": "rebuild_in_v3",
+      "reason": "OWNER DECISION (§15). Orders placed against a business_service. 0 rows in V1, and no V3 table. These three tables — service_orders, service_reviews and student_services — are the ORDERING SIDE of the tenant course/service catalog. V3's nearest structures, public.other_service_orders / _reviews / _listings, model a DIFFERENT product: the peer-to-peer other-services marketplace, whose listing_id points at other_service_listings and not at a tenant's business_services. Converging the two would fuse two marketplaces that were never the same thing. Whichever wave needs course ordering designs it fresh against V3's tenant catalog rather than inheriting an unused V1 schema; there is no data to migrate either way. This unblocks W7, which no longer has to resolve FKs into a shape that was never going to exist."
     },
     "service_reviews": {
-      "disposition": "blocked",
+      "disposition": "drop",
       "wave": "G",
       "rows": 0,
-      "dependency": "No V3 table for reviews of a business_service. public.other_service_reviews reviews an other_service_listing, a different entity — see the service_orders question."
+      "reasonCode": "rebuild_in_v3",
+      "reason": "OWNER DECISION (§15). Reviews of a business_service. 0 rows in V1, and no V3 table. These three tables — service_orders, service_reviews and student_services — are the ORDERING SIDE of the tenant course/service catalog. V3's nearest structures, public.other_service_orders / _reviews / _listings, model a DIFFERENT product: the peer-to-peer other-services marketplace, whose listing_id points at other_service_listings and not at a tenant's business_services. Converging the two would fuse two marketplaces that were never the same thing. Whichever wave needs course ordering designs it fresh against V3's tenant catalog rather than inheriting an unused V1 schema; there is no data to migrate either way. This unblocks W7, which no longer has to resolve FKs into a shape that was never going to exist."
     },
     "service_study_option_assignments": {
       "disposition": "transform",
@@ -1542,10 +1540,11 @@
       "mapping": "platform_user_qualifications"
     },
     "student_services": {
-      "disposition": "blocked",
+      "disposition": "drop",
       "wave": "D",
       "rows": 0,
-      "dependency": "No V3 table. A student's booked business_services; public.other_service_orders is the peer-to-peer marketplace equivalent, not this. §3.8 marks the booking-request flow as still on the unmerged dev-feat-personal-my-services branch, which §14 says must land before G3. See the service_orders question."
+      "reasonCode": "rebuild_in_v3",
+      "reason": "OWNER DECISION (§15). A student's booked business_services. 0 rows in V1, and no V3 table. These three tables — service_orders, service_reviews and student_services — are the ORDERING SIDE of the tenant course/service catalog. V3's nearest structures, public.other_service_orders / _reviews / _listings, model a DIFFERENT product: the peer-to-peer other-services marketplace, whose listing_id points at other_service_listings and not at a tenant's business_services. Converging the two would fuse two marketplaces that were never the same thing. Whichever wave needs course ordering designs it fresh against V3's tenant catalog rather than inheriting an unused V1 schema; there is no data to migrate either way. This unblocks W7, which no longer has to resolve FKs into a shape that was never going to exist."
     },
     "student_work_experiences": {
       "disposition": "transform",
@@ -1577,11 +1576,18 @@
       "note": "globalyapp/20260817_001_billing_catalogue.ts"
     },
     "test_provider_logos": {
-      "disposition": "blocked",
-      "wave": "W3",
+      "disposition": "transform",
+      "wave": "W2",
       "rows": 10,
-      "dependency": "No V3 table. Reference rows (test_type, category, logo_url) backing the language/academic test pickers.",
-      "question": "Where do the 10 test-provider logos land? Options: a small public reference table, a column on a tests reference table, or W6 rehosts the 10 images into uploaded_files and the UI hardcodes the mapping. The logo_url values are supabase.co URLs, so they are also part of the 19-URL §8 risk."
+      "targets": [
+        "public.test_provider_logos"
+      ],
+      "mapping": "test_provider_logos",
+      "note": "OWNER DECISION (§15): the 10 reference rows behind the language/academic test pickers land in their own small public table, created by globalyapp/20260817_200_test_provider_logos.ts (serial PK, v1_id uuid UNIQUE nullable, timestamps, deleted_at). Loaded by W2 with the rest of the reference data. Moved from wave W3 — it is reference data, not a student sub-profile.",
+      "storageRehost": [
+        "public.test_provider_logos.logo_url"
+      ],
+      "storageRehostNote": "logo_url carries V1's supabase.co object URLs VERBATIM, exactly as businesses.logo_url and platform_users.photo_url do. W6 walks the referring columns and rewrites them once each object has an uploaded_files row; until then these are part of the §8 live-supabase-URL risk and V1's project must not be deleted."
     },
     "training_assessment_attempts": {
       "disposition": "blocked",
@@ -3145,7 +3151,7 @@
     },
     {
       "name": "countries",
-      "description": "V1 public.countries -> V3 public.countries. NOT a load: the repo's own seeder (mledoze) had already put 194 countries into public before Stage 2 ran, so W1 RECONCILES on ISO-2 and merges V1's editorial content COALESCE-only. Nothing is inserted — see the four unmatched codes reported to mig.unresolved, and the open question on tables.countries.",
+      "description": "V1 public.countries -> V3 public.countries. Mostly NOT a load: the repo's own seeder (mledoze) had already put 194 countries into public before Stage 2 ran, so W1 RECONCILES on ISO-2 and merges V1's editorial content COALESCE-only. The only rows inserted are the four the owner assigned an ISO-3 to (§15: XK→XKX, PS→PSE, TW→TWN, EH→ESH) — see tables.countries.",
       "source": {
         "table": "v1_staging.countries",
         "alias": "v",
@@ -3313,35 +3319,35 @@
         },
         {
           "column": "name",
-          "reason": "SEEDER-AUTHORITATIVE. public.countries.name is UNIQUE and came from mledoze/countries; overwriting it with V1's free text would break the name half of mig.map_countries."
+          "reason": "SEEDER-AUTHORITATIVE. public.countries.name is UNIQUE and came from mledoze/countries; overwriting it with V1's free text would break the name half of mig.map_countries. Written on INSERT for the four countries the seeder never had (§15: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
         },
         {
           "column": "slug",
-          "reason": "SEEDER-AUTHORITATIVE and UNIQUE. See name."
+          "reason": "SEEDER-AUTHORITATIVE and UNIQUE. See name. Written on INSERT for the four countries the seeder never had (§15: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
         },
         {
           "column": "flag_emoji",
-          "reason": "SEEDER-AUTHORITATIVE (mledoze ships the flag for all 194)."
+          "reason": "SEEDER-AUTHORITATIVE (mledoze ships the flag for all 194). Written on INSERT for the four countries the seeder never had (§15: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
         },
         {
           "column": "capital",
-          "reason": "SEEDER-AUTHORITATIVE — present on 194/194 target rows already."
+          "reason": "SEEDER-AUTHORITATIVE — present on 194/194 target rows already. Written on INSERT for the four countries the seeder never had (§15: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
         },
         {
           "column": "currency",
-          "reason": "SEEDER-AUTHORITATIVE — present on 193/194 target rows already."
+          "reason": "SEEDER-AUTHORITATIVE — present on 193/194 target rows already. Written on INSERT for the four countries the seeder never had (§15: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
         },
         {
           "column": "languages",
-          "reason": "SEEDER-AUTHORITATIVE."
+          "reason": "SEEDER-AUTHORITATIVE. Written on INSERT for the four countries the seeder never had (§15: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
         },
         {
           "column": "timezone",
-          "reason": "SEEDER-AUTHORITATIVE."
+          "reason": "SEEDER-AUTHORITATIVE. Written on INSERT for the four countries the seeder never had (§15: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
         },
         {
           "column": "continent",
-          "reason": "No V3 column — V3 stores `region` from the seeder instead."
+          "reason": "No V3 column — V3 stores `region` from the seeder instead. On the four imported rows the V1 continent is copied into `region`, but only where the two vocabularies already agree (mledoze says \"Americas\" where V1 says \"North America\"/\"South America\"); all four are Europe/Asia/Africa, so none is translated."
         },
         {
           "column": "population",
@@ -3357,7 +3363,7 @@
         },
         {
           "column": "is_active",
-          "reason": "SEEDER-AUTHORITATIVE — every seeded country is active; V1's flag would deactivate rows V3 publishes."
+          "reason": "SEEDER-AUTHORITATIVE — every seeded country is active; V1's flag would deactivate rows V3 publishes. Written on INSERT for the four countries the seeder never had (§15: XK/PS/TW/EH), where V1 is the only source there is; never on a matched row."
         },
         {
           "column": "is_featured",
@@ -4544,6 +4550,265 @@
         {
           "column": "updated_at",
           "reason": "V3 stamps its own updated_at at load time."
+        }
+      ]
+    },
+    {
+      "name": "schema_fields_business_categories",
+      "description": "V1 v1_staging.business_categories.schema_fields (jsonb array) -> V3 public.schema_fields, one row per array element. §15: core_field_settings is dropped (platform-global, no entity id), and these definitions are migrated instead because the category row IS the entity — its V3 serial becomes entity_id and entity_type is 'business_categories'. Identity is the category slug + the field key, which is the UNIQUE V3 enforces (entity_id, entity_type, key) expressed on the source side.",
+      "source": {
+        "table": "v1_staging.business_categories",
+        "alias": "s",
+        "joins": [
+          "CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(s.schema_fields) = 'array' THEN s.schema_fields ELSE '[]'::jsonb END) WITH ORDINALITY AS f(v, ord)"
+        ],
+        "filter": "btrim(coalesce(f.v->>'key', '')) <> '' AND btrim(coalesce(f.v->>'label', '')) <> '' AND btrim(coalesce(f.v->>'type', '')) <> '' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(s.schema_fields) = 'array' THEN s.schema_fields ELSE '[]'::jsonb END) WITH ORDINALITY AS g(v, ord) WHERE g.v->>'key' = f.v->>'key' AND g.ord < f.ord)"
+      },
+      "target": {
+        "table": "public.schema_fields",
+        "alias": "t",
+        "joins": [
+          "JOIN public.business_categories c ON c.id = t.entity_id AND c.deleted_at IS NULL"
+        ],
+        "filter": "t.entity_type = 'business_categories'"
+      },
+      "identity": {
+        "label": "category slug | field key (the V3 UNIQUE, source-side)",
+        "source": "s.slug || '|' || (f.v->>'key')",
+        "target": "c.slug || '|' || t.key"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "label",
+          "from": "schema_fields",
+          "source": "f.v->>'label'",
+          "target": "t.label"
+        },
+        {
+          "name": "type",
+          "from": null,
+          "source": "(CASE WHEN f.v->>'type' = 'multi-select' THEN 'multi_select' ELSE f.v->>'type' END)",
+          "target": "t.type"
+        },
+        {
+          "name": "is_required",
+          "from": null,
+          "source": "coalesce((f.v->>'required')::boolean, false)",
+          "target": "t.is_required"
+        },
+        {
+          "name": "filterable",
+          "from": null,
+          "source": "coalesce((f.v->>'filterable')::boolean, false)",
+          "target": "t.filterable"
+        },
+        {
+          "name": "options",
+          "from": null,
+          "source": "f.v->'options'",
+          "target": "t.options"
+        },
+        {
+          "name": "is_default",
+          "from": null,
+          "source": "false",
+          "target": "t.is_default"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK of the CATEGORY, not of the field. The category's own mapping declares it; here it is the entity the field hangs off, resolved through the slug."
+        },
+        {
+          "column": "slug",
+          "reason": "Not copied as a value — it is half the identity key, and on the target side it is reached through schema_fields.entity_id -> the category row."
+        },
+        {
+          "column": "name",
+          "reason": "Belongs to the category row, not to its field definitions. Carried by the category's own mapping."
+        },
+        {
+          "column": "description",
+          "reason": "Category column, carried by the category's own mapping. See name."
+        },
+        {
+          "column": "icon",
+          "reason": "Category column, carried by the category's own mapping. See name."
+        },
+        {
+          "column": "is_active",
+          "reason": "Category column, carried by the category's own mapping. See name."
+        },
+        {
+          "column": "sort_order",
+          "reason": "Category ordering, carried by the category's own mapping. public.schema_fields has no ordering column, so the array order of the definitions is not preserved."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own at load time; a field definition inherits no creation date from the category row it was embedded in."
+        }
+      ]
+    },
+    {
+      "name": "schema_fields_service_categories",
+      "description": "V1 v1_staging.service_categories.schema_fields (jsonb array) -> V3 public.schema_fields, one row per array element. §15: core_field_settings is dropped (platform-global, no entity id), and these definitions are migrated instead because the category row IS the entity — its V3 serial becomes entity_id and entity_type is 'service_categories'. Identity is the category slug + the field key, which is the UNIQUE V3 enforces (entity_id, entity_type, key) expressed on the source side.",
+      "source": {
+        "table": "v1_staging.service_categories",
+        "alias": "s",
+        "joins": [
+          "CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(s.schema_fields) = 'array' THEN s.schema_fields ELSE '[]'::jsonb END) WITH ORDINALITY AS f(v, ord)"
+        ],
+        "filter": "btrim(coalesce(f.v->>'key', '')) <> '' AND btrim(coalesce(f.v->>'label', '')) <> '' AND btrim(coalesce(f.v->>'type', '')) <> '' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(s.schema_fields) = 'array' THEN s.schema_fields ELSE '[]'::jsonb END) WITH ORDINALITY AS g(v, ord) WHERE g.v->>'key' = f.v->>'key' AND g.ord < f.ord)"
+      },
+      "target": {
+        "table": "public.schema_fields",
+        "alias": "t",
+        "joins": [
+          "JOIN public.service_categories c ON c.id = t.entity_id AND c.deleted_at IS NULL"
+        ],
+        "filter": "t.entity_type = 'service_categories'"
+      },
+      "identity": {
+        "label": "category slug | field key (the V3 UNIQUE, source-side)",
+        "source": "s.slug || '|' || (f.v->>'key')",
+        "target": "c.slug || '|' || t.key"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "label",
+          "from": "schema_fields",
+          "source": "f.v->>'label'",
+          "target": "t.label"
+        },
+        {
+          "name": "type",
+          "from": null,
+          "source": "(CASE WHEN f.v->>'type' = 'multi-select' THEN 'multi_select' ELSE f.v->>'type' END)",
+          "target": "t.type"
+        },
+        {
+          "name": "is_required",
+          "from": null,
+          "source": "coalesce((f.v->>'required')::boolean, false)",
+          "target": "t.is_required"
+        },
+        {
+          "name": "filterable",
+          "from": null,
+          "source": "coalesce((f.v->>'filterable')::boolean, false)",
+          "target": "t.filterable"
+        },
+        {
+          "name": "options",
+          "from": null,
+          "source": "f.v->'options'",
+          "target": "t.options"
+        },
+        {
+          "name": "is_default",
+          "from": null,
+          "source": "false",
+          "target": "t.is_default"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK of the CATEGORY, not of the field. The category's own mapping declares it; here it is the entity the field hangs off, resolved through the slug."
+        },
+        {
+          "column": "slug",
+          "reason": "Not copied as a value — it is half the identity key, and on the target side it is reached through schema_fields.entity_id -> the category row."
+        },
+        {
+          "column": "name",
+          "reason": "Belongs to the category row, not to its field definitions. Carried by the category's own mapping."
+        },
+        {
+          "column": "description",
+          "reason": "Category column, carried by the category's own mapping. See name."
+        },
+        {
+          "column": "icon",
+          "reason": "Category column, carried by the category's own mapping. See name."
+        },
+        {
+          "column": "is_active",
+          "reason": "Category column, carried by the category's own mapping. See name."
+        },
+        {
+          "column": "sort_order",
+          "reason": "Category ordering, carried by the category's own mapping. public.schema_fields has no ordering column, so the array order of the definitions is not preserved."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own at load time; a field definition inherits no creation date from the category row it was embedded in."
+        }
+      ]
+    },
+    {
+      "name": "test_provider_logos",
+      "description": "V1 public.test_provider_logos -> V3 public.test_provider_logos (globalyapp/20260817_200_test_provider_logos.ts). §15: the 10 reference rows behind the language/academic test pickers get their own small public table. uuid PK -> serial with the uuid preserved in v1_id; identity is test_type, the natural key V3 makes UNIQUE.",
+      "source": {
+        "table": "v1_staging.test_provider_logos",
+        "alias": "l",
+        "joins": [],
+        "filter": "btrim(coalesce(l.test_type, '')) <> '' AND l.category IN ('language', 'academic')"
+      },
+      "target": {
+        "table": "public.test_provider_logos",
+        "alias": "t",
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "test_type (natural key; UNIQUE in V3)",
+        "source": "lower(btrim(l.test_type))",
+        "target": "lower(btrim(t.test_type))"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "v1_id",
+          "from": "id",
+          "source": "l.id::text",
+          "target": "t.v1_id::text"
+        },
+        {
+          "name": "category",
+          "from": "category",
+          "source": "l.category",
+          "target": "t.category"
+        },
+        {
+          "name": "logo_url",
+          "from": "logo_url",
+          "source": "l.logo_url",
+          "target": "t.logo_url"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "coalesce(l.sort_order, 0)",
+          "target": "t.sort_order"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "test_type",
+          "reason": "Not copied as a value — it IS the identity key, matched case- and space-insensitively on both sides."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time; a reference row's V1 creation date carries no meaning. The V1 identity that does matter is preserved in v1_id."
         }
       ]
     }
