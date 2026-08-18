@@ -535,14 +535,15 @@ export async function execWrite(
  *
  * Convention 3 applies to the report as much as to the data: without this, a
  * second run appends a second copy of every skip and "what did not migrate" stops
- * being a count. Scoped to the named source tables so one wave never erases
- * another's findings.
+ * being a count. Scoped to (this wave, these source tables) — two waves can read
+ * the same V1 table for different targets, and neither may erase the other's
+ * findings.
  */
 export async function clearReport(ctx: TransformContext, sourceTables: readonly string[]): Promise<number> {
   if (sourceTables.length === 0) return 0;
   const res = await ctx.db.query(
-    `DELETE FROM ${MIG_SCHEMA}.unresolved WHERE source_table = ANY($1::text[])`,
-    [[...sourceTables]],
+    `DELETE FROM ${MIG_SCHEMA}.unresolved WHERE wave = $1 AND source_table = ANY($2::text[])`,
+    [ctx.wave, [...sourceTables]],
   );
   return res.rowCount ?? 0;
 }
@@ -573,11 +574,14 @@ export async function reportUnresolvedQuery(
         `add it to mapping.json meta.reasonCodes with a definition, or use an existing one.`,
     );
   }
-  const head = [ctx.runId, ctx.wave, spec.sourceTable, spec.targetTable ?? null, spec.column ?? null, spec.reasonCode];
+  // The caller's own parameters come FIRST, so `sql` can use $1, $2 … and never
+  // has to know how many bookkeeping columns this helper prepends.
+  const own = spec.params ?? [];
+  const p = (i: number) => `$${own.length + i}`;
   const res = await ctx.db.query(
     `INSERT INTO ${MIG_SCHEMA}.unresolved (run_id, wave, source_table, target_table, column_name, reason_code, source_key, detail)
-     SELECT $1, $2, $3, $4, $5, $6, s.key::text, s.detail::text FROM (${spec.sql}) s(key, detail)`,
-    [...head, ...(spec.params ?? [])],
+     SELECT ${p(1)}, ${p(2)}, ${p(3)}, ${p(4)}, ${p(5)}, ${p(6)}, s.key::text, s.detail::text FROM (${spec.sql}) s(key, detail)`,
+    [...own, ctx.runId, ctx.wave, spec.sourceTable, spec.targetTable ?? null, spec.column ?? null, spec.reasonCode],
   );
   const n = res.rowCount ?? 0;
   for (let i = 0; i < n; i += 1) {
