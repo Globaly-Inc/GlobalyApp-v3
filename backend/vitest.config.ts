@@ -145,6 +145,9 @@ export default defineConfig({
         "src/modules/superadmin/data-extraction/services/service-verticals.service.ts",
         "src/modules/superadmin/data-extraction/routes/service-verticals.routes.ts",
         "src/modules/superadmin/data-extraction/schemas/service-verticals.schema.ts",
+        // E5 — SOP generator: intake questionnaire, metered draft, revision
+        // history, text/markdown export.
+        "src/modules/sop/**/*.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {
