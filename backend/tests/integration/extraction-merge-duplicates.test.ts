@@ -281,8 +281,8 @@ describeDb("extraction merge-duplicates", () => {
     ]);
 
     await merge.mergeJobDuplicates(jobId, false, ADMIN_ID);
-    expect(await tenant.db("service_fee_assignments").where({ service_fee_id: keep }).pluck("service_id"))
-      .toEqual([c, b].sort());
+    const reaching = await tenant.db("service_fee_assignments").where({ service_fee_id: keep }).pluck("service_id");
+    expect([...reaching].sort()).toEqual([c, b].sort());
   });
 
   it("collapses a group of three into one without losing any service", async () => {
@@ -299,26 +299,49 @@ describeDb("extraction merge-duplicates", () => {
 
   // ── the guard is load-bearing ─────────────────────────────────────────────
 
-  it("aborts the whole transaction when the parent-count guard finds a lost service", async () => {
+  // A REAL orphan, no mocking. A soft-deleted junction row still occupies the
+  // UNIQUE(service_id, service_fee_id) index, so the re-point insert conflicts and
+  // ON CONFLICT DO NOTHING swallows it — service c ends up with no live link to the
+  // survivor. That is defect D8 exactly: an insert that reports success while
+  // achieving nothing. Only counting the parents afterwards catches it, and the
+  // whole transaction has to abort rather than partially apply.
+  it("fails loudly and applies nothing when a unique constraint silently swallows a re-point", async () => {
     const jobId = await promotedJob();
     const a = await makeService("Nursing");
     const b = await makeService("Midwifery");
-    await makeFee(a, {}, 1);
-    await makeFee(b, {}, 2);
+    const c = await makeService("Paramedicine");
+    const keep = await makeFee(a, {}, 1);
+    const dup = await makeFee(b, {}, 2);
+    await tenant.db("service_fee_assignments").insert({ service_id: c, service_fee_id: dup });
+    // c had a link to the survivor once and it was withdrawn; the index still holds it.
+    await tenant.db("service_fee_assignments").insert({
+      service_id: c,
+      service_fee_id: keep,
+      deleted_at: new Date(),
+    });
 
-    const lib = await import("../../src/modules/superadmin/data-extraction/lib/merge-duplicates.js");
-    const real = lib.findOrphans;
-    // Simulate the D8 failure: a re-point that silently did nothing.
-    (lib as { findOrphans: unknown }).findOrphans = () => [{ keep_id: "x", lost: [b] }];
-    try {
-      await expect(merge.mergeJobDuplicates(jobId, false, ADMIN_ID)).rejects.toThrow(/Merge aborted/);
-    } finally {
-      (lib as { findOrphans: unknown }).findOrphans = real;
-    }
+    await expect(merge.mergeJobDuplicates(jobId, false, ADMIN_ID)).rejects.toThrow(/Merge aborted/);
 
-    // Nothing was deleted and nothing was audited.
-    expect(await feeIds()).toHaveLength(2);
+    // Nothing partially applied: both fees still there, junctions untouched, no audit.
+    expect((await feeIds()).sort()).toEqual([keep, dup].sort());
+    expect(await tenant.db("service_fee_assignments").where({ service_fee_id: dup }).pluck("service_id")).toEqual([c]);
     expect(await db("superadmin.admin_audit_logs").where({ admin_id: ADMIN_ID }).pluck("id")).toEqual([]);
+  });
+
+  it("names the service that would have been orphaned", async () => {
+    const jobId = await promotedJob();
+    const a = await makeService("Nursing");
+    const b = await makeService("Midwifery");
+    const keep = await makeFee(a, {}, 1);
+    const dup = await makeFee(b, {}, 2);
+    await tenant.db("service_fee_assignments").insert([
+      { service_id: b, service_fee_id: dup },
+      { service_id: b, service_fee_id: keep, deleted_at: new Date() },
+    ]);
+
+    await expect(merge.mergeJobDuplicates(jobId, false, ADMIN_ID)).rejects.toThrow(
+      new RegExp(`${keep} lost \\[${b}\\]`),
+    );
   });
 
   // ── dry run, idempotency, audit ───────────────────────────────────────────
