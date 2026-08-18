@@ -1,4 +1,4 @@
-import type { ChatSession, CourseCard, CreditBalance, Message, SendMessageInput, SSEEvent } from "./types";
+import type { AttachmentUpload, ChatSession, CourseCard, CreditBalance, Message, SendMessageInput, SSEEvent } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -105,6 +105,17 @@ export const aiMockApi = {
   setFeedback: async (messageId: number, feedback: "up" | "down" | null): Promise<void> => {
     console.log("[mock] PATCH /ai/messages/:id/feedback", messageId, feedback);
     await delay(100);
+  },
+
+  uploadAttachment: async (file: File): Promise<AttachmentUpload> => {
+    console.log("[mock] POST /ai-chat/attachments", file.name);
+    await delay(400);
+    return {
+      storage_path: `ai-chat/1/attachments/${file.name}`,
+      filename: file.name,
+      mime_type: file.type,
+      size: file.size,
+    };
   },
 
   getCreditBalance: async (): Promise<CreditBalance> => {

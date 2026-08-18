@@ -21,7 +21,7 @@ export const UpdateSessionSchema = z.object({
 });
 
 export const FeedbackSchema = z.object({
-  feedback: z.enum(["positive", "negative"]),
+  feedback: z.enum(["positive", "negative"]).nullable(),
 });
 
 export const ListSessionsQuerySchema = z.object({

@@ -160,41 +160,31 @@ module (the plan's `ai-chat` name predates the module). Deviations flagged inlin
 
 ---
 
-## Phase 4: Knowledge Rack + Admin Tools
+## Phase 4: Knowledge Rack + Admin Tools — ✅ DONE 2026-08-18
 
-Vector search and admin knowledge management. Requires pgvector extension.
+Vector search and admin knowledge management. **Major deviation:** the knowledge
+corpus, admin CRUD, crawling, and embedding pipeline had already been built in the
+separate AI Knowledge track (`superadmin/ai-knowledge` module + `superadmin/20260814_001_ai_knowledge.ts`
+migration + `/admin/data/ai-knowledge` console). Phase 4 therefore did NOT create the
+planned `globalyapp` knowledge tables — it wired the counsellor's RAG into the existing
+superadmin corpus instead.
 
-### Backend
+### Superseded by the AI Knowledge track (already live before Phase 4)
 
-- [ ] **Enable pgvector extension** -- Migration: `CREATE EXTENSION IF NOT EXISTS vector`. Must run before any table with `vector()` columns.
-- [ ] **Migration: `20260816_010_ai_knowledge_documents`** -- Create table with `embedding vector(768)` column. IVFFlat index with `lists = 100` for cosine similarity search. Columns: `title`, `content`, `source_type` (CHECK: government/institution/internal), `source_url`, `metadata` (JSONB), `is_active`, `created_by` FK to `platform_users(id)`. Indexes on `source_type`, `is_active`.
-- [ ] **Migration: `20260816_007_ai_knowledge_visa`** -- Create `ai_knowledge_visa` table. FK to `countries(id)`. Columns: `visa_type`, `title`, `content`, `requirements` (JSONB), `processing_time`, `is_active`. Indexes on `country_id`, `is_active`. (Note: no `embedding` column in Phase 1 -- text tables use keyword search. Add `embedding vector(768)` column via ALTER TABLE when vector search is needed for these tables.)
-- [ ] **Migration: `20260816_008_ai_knowledge_faqs`** -- Create `ai_knowledge_faqs` table. Columns: `question`, `answer`, `category`, `display_order`, `is_active`. Index on `category`, `is_active`.
-- [ ] **Migration: `20260816_009_ai_knowledge_country_guides`** -- Create `ai_knowledge_country_guides` table. FK to `countries(id)`. Columns: `title`, `content`, `sections` (JSONB), `is_active`. Index on `country_id`, `is_active`.
-- [ ] **Embedding service** -- `services/embedding.service.ts`. Functions:
-  - `chunkDocument(content: string, chunkSize?: number, overlap?: number)` -- Split text into chunks (default: 512 tokens, 50 token overlap). Returns `string[]`.
-  - `generateEmbedding(text: string)` -- Call Gemini `text-embedding-004` via `@google/generative-ai`. Returns `number[]` (768-dimensional vector).
-  - `embedDocument(documentId: number)` -- Chunk the document's content, generate an embedding for each chunk, store as separate rows (or update the single document row if content fits in one chunk). For multi-chunk documents, create one `ai_knowledge_documents` row per chunk with a shared `metadata.parent_document_id`.
-- [ ] **Update `rag.service.ts`** -- Add vector search path. When `ai_knowledge_documents` table has rows, generate an embedding for the user's query, then: `SELECT id, title, content, 1 - (embedding <=> $query_embedding) AS similarity FROM ai_knowledge_documents WHERE is_active = true AND 1 - (embedding <=> $query_embedding) > 0.7 ORDER BY similarity DESC LIMIT 10`. Merge vector results with keyword results from other sources.
-- [ ] **Admin routes for knowledge CRUD** -- New route file: `routes/knowledge.routes.ts`. Requires admin auth (`req.auth.type === 'admin'`).
-  - Visa: `POST /knowledge/visa`, `GET /knowledge/visa`, `PATCH /knowledge/visa/:id`, `DELETE /knowledge/visa/:id`.
-  - FAQs: `POST /knowledge/faqs`, `GET /knowledge/faqs`, `PATCH /knowledge/faqs/:id`, `DELETE /knowledge/faqs/:id`.
-  - Country guides: `POST /knowledge/country-guides`, `GET /knowledge/country-guides`, `PATCH /knowledge/country-guides/:id`, `DELETE /knowledge/country-guides/:id`.
-  - Documents: `POST /knowledge/documents` (multipart upload), `GET /knowledge/documents`, `DELETE /knowledge/documents/:id`.
-  All DELETE endpoints set `is_active = false` (soft deactivation), not hard delete.
-- [ ] **`POST /api/v3/ai-chat/attachments`** -- Auth required. Multipart file upload. Accepts PDF, DOCX, PNG, JPG (max 10MB, matching `GCS_MAX_FILE_SIZE_MB`). Uploads to GCS via the existing `shared/storage` module. Returns `{ storage_path, filename, mime_type, size }`. The `storage_path` is sent with the chat message in the `attachments` array.
+- [x] **pgvector** -- enabled in `superadmin/20260814_001_ai_knowledge.ts` (plus pg_trgm). Embeddings are `vector(3072)` (`gemini-embedding-001`), HNSW-indexed via halfvec cast — not the planned 768-dim IVFFlat.
+- [x] **Knowledge tables** -- `superadmin.ai_knowledge_visa / _faqs / _country_guides / _categories / _sources / _documents` + `data_verification_queue`. Different (richer) columns than planned; `active` flag instead of `is_active`.
+- [x] **Embedding pipeline** -- `data-extraction/lib/llm-client.ts` `embed()` + the knowledge-crawl worker (`job:ai-knowledge-crawl`) embed whole documents (first 8k chars). No chunking service — revisit only if long-document recall proves poor.
+- [x] **Admin CRUD routes** -- `/api/v3/admin/ai-knowledge/*` (superadmin-guarded), including verification queue, rack categories/sources/documents, and crawl dispatch.
+- [x] **Admin knowledge management UI** -- `/admin/data/ai-knowledge` console (visa / FAQs / guides / queue / rack tabs).
 
-### Frontend
+### Built in Phase 4
 
-- [ ] **Admin knowledge management UI** -- Admin pages under `/admin/ai-knowledge/` (or within existing superadmin section):
-  - **Visa entries**: Table listing all visa knowledge entries. Create/edit form with country selector, visa type, title, content (rich text), requirements (JSON editor or structured form), processing time. Active/inactive toggle.
-  - **FAQs**: Table with question, answer, category, display order. Drag-to-reorder. Create/edit form.
-  - **Country guides**: Table by country. Create/edit form with country selector, title, content, structured sections (accordion editor for overview, cost of living, work rights, healthcare, etc.).
-  - **Document upload**: Upload form (drag-and-drop file zone). Shows processing status (chunking + embedding progress). Table of uploaded documents with title, source type, chunk count, active/inactive toggle. Delete with confirmation.
-- [ ] **Attachment UI in composer** -- Extend `ChatInput` component:
-  - **`ComposerToolsMenu`**: Button (paperclip icon) that opens a dropdown menu: "Upload file". Triggers hidden file input.
-  - **`ComposerAttachmentChip`**: Shows attached file as a chip above the input area. Filename + remove button. Multiple attachments allowed (max 3).
-  - On send, upload files via `POST /attachments` first, then include returned `storage_path` values in the message request's `attachments` array.
+- [x] **RAG wiring** (`rag.service.ts`, `knowledge.repository.ts`) -- three keyword searches over curated content (`searchKnowledgeVisas`, `searchKnowledgeFaqs`, `searchCountryGuides`, per-keyword `ILIKE` OR-matching) plus semantic Rack search: query → `embed()` → `superadmin.match_ai_knowledge_documents()` (top 4, markdown capped at 1500 chars each). New context blocks: VISA KNOWLEDGE, FAQs, COUNTRY GUIDES, KNOWLEDGE ARTICLES. Rack search is skipped in embed mode (crawled institution updates must not surface under another business's brand) and when `GEMINI_API_KEY` is missing; curated content stays available everywhere.
+- [x] **`POST /api/v3/ai-chat/attachments`** -- multipart upload via `shared/storage` (shared MIME allowlist + `GCS_MAX_FILE_SIZE_MB`), path `ai-chat/{userId}/attachments/…`, returns `{ storage_path, filename, mime_type, size }`. *Attachment contents are stored with the message but not yet fed to Gemini — multimodal input is a follow-up.*
+- [x] **Attachment UI in composer** -- paperclip + hidden file input + removable chips (max 3) inside `ChatInput` behind an `allowAttachments` prop (off for the unauthenticated embed widget). Files upload on send, storage paths ride in the message's `attachments` array; `ChatMessage` renders attachment chips. Skipped the planned dropdown `ComposerToolsMenu` — one button, one action.
+- [x] **Feedback can be cleared** -- `PATCH /messages/:id/feedback` now accepts `null` (toggle-off), matching the UI.
+- [x] **`done` SSE event** -- authed chat now emits `event: done` with `{ message_id, session_id }` before `data: [DONE]`, so the frontend can attach feedback to the streamed message.
+- [x] **Frontend real-api realignment** *(bug found during phase 4)* -- `personal/ai/apis/real-api.ts` still targeted the pre-implementation contract (`POST /ai/chat`, `/ai/sessions`, form-style SSE events, `up/down` feedback on the wire) and only worked in mock mode. Rewritten against the real backend: `/ai-chat/*` paths, embed-widget SSE protocol (named events + OpenAI-format deltas + `[DONE]`), wire-card → `CourseCard` mapping, `positive/negative` ↔ `up/down` feedback mapping.
 
 ---
 
@@ -207,7 +197,7 @@ Vector search and admin knowledge management. Requires pgvector extension.
 | `countries` table populated | Phase 1 | Existing migration `20260722_001_countries.ts` | Done | Country-based filters return empty |
 | `platform_user_profiles` + sub-resource tables | Phase 1 | Existing migrations | Done | Profile context is empty; AI asks qualifying questions |
 | `businesses` table populated | Phase 3 | Existing migration `20260804_001_businesses.ts` | Done | Embed configs cannot be created |
-| `pgvector` Postgres extension | Phase 4 only | DBA / DevOps | Not yet enabled | Knowledge Rack and vector search blocked; keyword search covers everything else |
+| `pgvector` Postgres extension | Phase 4 only | DBA / DevOps | Enabled by `superadmin/20260814_001_ai_knowledge.ts` | Knowledge Rack and vector search blocked; keyword search covers everything else |
 | GCS storage configured | Phase 4 (attachments) | DevOps | Config keys exist | File uploads return 400; chat works without attachments |
 | Chargebee webhook integration | Future (credit purchases) | Billing epic | Config keys exist, integration not built | Credit purchases blocked; free + admin-granted credits work |
 

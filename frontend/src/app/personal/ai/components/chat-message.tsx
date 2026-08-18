@@ -1,5 +1,6 @@
 "use client";
 
+import { Paperclip } from "lucide-react";
 import type { CourseCard as CourseCardType, Message } from "../apis/types";
 import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
@@ -60,6 +61,18 @@ export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
           <SimpleMarkdown text={message.content} />
         )}
       </div>
+
+      {/* Attachments — stored as storage paths; show just the filename */}
+      {!!message.attachments?.length && (
+        <div className="flex max-w-[85%] flex-wrap gap-1.5">
+          {message.attachments.map((path) => (
+            <span key={path} className="flex items-center gap-1 rounded-full border bg-muted px-2.5 py-1 text-xs">
+              <Paperclip className="size-3" />
+              <span className="max-w-40 truncate">{path.split("/").pop()}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Course cards */}
       {message.cards.length > 0 && (

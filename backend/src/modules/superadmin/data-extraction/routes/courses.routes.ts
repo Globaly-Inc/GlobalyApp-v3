@@ -3,7 +3,7 @@
 import type { FastifyInstance } from "fastify";
 import * as service from "../services/courses.service.js";
 import { UuidParamSchema, JobIdParamSchema } from "../schemas/jobs.schema.js";
-import { CreateCourseSchema, PatchCourseSchema, CourseAccreditationLinkSchema } from "../schemas/courses.schema.js";
+import { CreateCourseSchema, PatchCourseSchema, CourseAccreditationLinkSchema, BulkVerifyCoursesSchema } from "../schemas/courses.schema.js";
 import { z } from "zod";
 
 const CourseAccredParamSchema = z.object({
@@ -38,6 +38,12 @@ export async function coursesRoutes(app: FastifyInstance) {
     const { id } = UuidParamSchema.parse(req.params);
     const input = PatchCourseSchema.parse(req.body);
     return reply.send(await service.patchCourse(id, input, adminId(req)));
+  });
+
+  // Bulk approve/flag — replaces N single approve/reject calls from the review UI.
+  app.post("/courses/bulk-verify", async (req, reply) => {
+    const { ids, approve } = BulkVerifyCoursesSchema.parse(req.body);
+    return reply.send(await service.bulkVerifyCourses(ids, approve, adminId(req)));
   });
 
   // RC4: POST /courses/:id/approve

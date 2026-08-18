@@ -24,6 +24,12 @@ export async function updateCourse(id: string, data: Record<string, unknown>) {
   return count > 0;
 }
 
+export async function updateCoursesByIds(ids: string[], data: Record<string, unknown>) {
+  return masterKnex(T)
+    .whereIn("id", ids)
+    .update({ ...data, updated_at: masterKnex.fn.now() });
+}
+
 // ── Course links (13-key bundle for RC2) ──
 
 export async function getCourseLinks(jobId: string) {
