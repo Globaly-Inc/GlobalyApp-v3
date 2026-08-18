@@ -22,6 +22,7 @@ import { maraAgentsReducer } from "@/app/admin/data/mara-agents/store/mara-agent
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
+import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
@@ -47,6 +48,7 @@ const appReducer = combineReducers({
     monitoringLogs: logsReducer,
     monitoringOtherServices: adminOtherServicesReducer,
     aiChat: aiChatReducer,
+    messages: messagesReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

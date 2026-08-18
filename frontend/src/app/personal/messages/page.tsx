@@ -1,5 +1,5 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { MessagesView } from "./components/messages-view";
 
 export default function MessagesPage() {
-  return <ComingSoon title="Messages" />;
+  return <MessagesView />;
 }
