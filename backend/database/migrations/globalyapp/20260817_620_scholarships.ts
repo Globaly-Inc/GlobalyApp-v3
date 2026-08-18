@@ -163,6 +163,22 @@ export async function up(knex: Knex): Promise<void> {
   `);
   await knex.raw(`CREATE INDEX scholarships_degree_levels_idx ON scholarships USING gin (degree_levels)`);
 
+  // Slug generation reuses the org trigger from 20260817_004_org_slugs.ts rather
+  // than growing a second slugifier. set_org_public_slug() is already generic over
+  // (prefix, name column) via tg_argv, and appending the row's own id makes the
+  // value unique by construction — no retry loop, no uniqueness probe, no race
+  // between two admins submitting the same title. NOT NULL still holds: a BEFORE
+  // INSERT trigger runs after the serial default is applied and before the
+  // constraint is checked. A caller may still set the slug explicitly (the V1
+  // loader carrying a row's original URL across), because the trigger only fires
+  // when slug IS NULL.
+  await knex.raw(`
+    create trigger scholarships_set_public_slug
+      before insert on public.scholarships
+      for each row
+      execute function public.set_org_public_slug('s', 'title');
+  `);
+
   await knex.schema.createTable("scholarship_eligibility_criteria", (t) => {
     t.increments("id").primary();
     t.uuid("v1_id").nullable().unique();
@@ -184,6 +200,7 @@ export async function up(knex: Knex): Promise<void> {
 }
 
 export async function down(knex: Knex): Promise<void> {
+  await knex.raw(`drop trigger if exists scholarships_set_public_slug on public.scholarships`);
   await knex.schema.dropTableIfExists("scholarship_eligibility_criteria");
   await knex.schema.dropTableIfExists("scholarships");
 }
