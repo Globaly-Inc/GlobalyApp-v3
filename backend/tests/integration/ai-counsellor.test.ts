@@ -423,6 +423,52 @@ describeDb("ai counsellor", () => {
       provider.setAiProvider(makeProvider());
     });
 
+    it("meters only what the socket accepted when the client walks away mid-answer", async () => {
+      // A client that disconnects is not a provider failure: the answer completes
+      // and the provider reports its full usage. Only the bytes the socket took
+      // were delivered, so only those may be charged. Driven through the service
+      // rather than inject(), because a dead socket is the whole point.
+      const chatService = await import("../../src/modules/ai-counsellor/services/chat.service.js");
+
+      let deltas = 0;
+      const raw = {
+        destroyed: false,
+        writeHead() {},
+        write(chunk: unknown) {
+          // Named frames (session, trace, sources) are bookkeeping; only the
+          // data-only frames carry answer text.
+          if (String(chunk).startsWith("data: {")) {
+            deltas += 1;
+            if (deltas >= 3) raw.destroyed = true; // three chunks in, the client is gone
+          }
+          return true;
+        },
+        end() {},
+      };
+      const before = await walletTotal(userWalletA);
+      const [{ max: previousId }] = await masterKnex("ai_usage_events").max("id as max");
+
+      await chatService.handleMessage({
+        scope: scopeOf("user", userA, null),
+        content: "Where should I study?",
+        reply: { raw } as unknown as Parameters<typeof chatService.handleMessage>[0]["reply"],
+      });
+
+      const row = await masterKnex("ai_usage_events")
+        .where({ platform_user_id: userA })
+        .orderBy("id", "desc")
+        .first();
+
+      // The row must be this turn's, not a leftover from the case before it.
+      expect(Number(row.id)).toBeGreaterThan(Number(previousId ?? 0));
+      expect(deltas).toBe(3);
+      expect(row.outcome).toBe("interrupted");
+      expect(row.completion_tokens).toBeGreaterThan(0);
+      expect(row.completion_tokens).toBeLessThan(STUB_USAGE.completionTokens);
+      expect(row.credits_charged).toBeLessThan(FULL_TURN_CREDITS);
+      expect(await walletTotal(userWalletA)).toBe(before - row.credits_charged);
+    });
+
     it("returns 402 with no usage row when the wallet is empty", async () => {
       const [emptyUser] = await masterKnex("platform_users")
         .insert({ first_name: "AI", last_name: "Broke", email: uniqueEmail("ai.broke"), account_status: 1 })

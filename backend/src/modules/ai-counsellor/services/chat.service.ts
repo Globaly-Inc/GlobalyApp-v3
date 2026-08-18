@@ -102,8 +102,12 @@ export async function handleMessage(opts: {
       history,
       userMessage: opts.content,
       onChunk: (chunk) => {
-        delivered += chunk;
-        writeData(opts.reply, { choices: [{ delta: { content: chunk } }] });
+        // Only what the socket took counts. A chunk dropped into a closed
+        // connection was generated but never delivered, and metering says the
+        // difference matters.
+        if (writeData(opts.reply, { choices: [{ delta: { content: chunk } }] })) {
+          delivered += chunk;
+        }
       },
     });
 
@@ -135,15 +139,25 @@ export async function handleMessage(opts: {
     await sessionsRepo.incrementMessageCount(session.id);
 
     // 14. Settle — one usage row, one debit, in one transaction.
+    //
+    // The provider's own figures are only the right ones when the whole answer
+    // reached a live socket. If the client walked away mid-stream we generated
+    // more than we delivered, so the turn is metered as interrupted, on the bytes
+    // the socket actually accepted.
+    const clientGone = opts.reply.raw.destroyed;
     const settled = await metering.settleTurn({
       turnId,
       scope: opts.scope,
       sessionId: session.id,
       messageId: aiMessage.id,
       model: provider.model,
-      promptTokens: result.usage.promptTokens,
-      completionTokens: result.usage.completionTokens,
-      outcome: "complete",
+      promptTokens: clientGone
+        ? Math.min(result.usage.promptTokens, tokensFromChars(promptChars))
+        : result.usage.promptTokens,
+      completionTokens: clientGone
+        ? Math.min(result.usage.completionTokens, estimateTokens(delivered))
+        : result.usage.completionTokens,
+      outcome: clientGone ? "interrupted" : "complete",
     });
 
     // 15. Usage + done
