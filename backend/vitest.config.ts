@@ -54,6 +54,8 @@ export default defineConfig({
         "src/modules/superadmin/audit-logs/**/*.ts",
         // C2 / C2b — public catalog, profiles, SEO (search module)
         "src/modules/search/**/*.ts",
+        // D1 — enquiries
+        "src/modules/enquiries/**/*.ts",
         // D2 — messaging
         "src/modules/messaging/**/*.ts",
       ],
