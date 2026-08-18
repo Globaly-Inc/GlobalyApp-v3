@@ -1513,7 +1513,8 @@
       "targets": [
         "public.platform_user_language_tests"
       ],
-      "note": "MERGE + DISCRIMINATOR (§15 decision 2, shipped as globalyapp/20260816_002_language_test_category.ts): SAT/GRE/GMAT rows land in the language-tests table carrying category='academic'."
+      "note": "MERGE + DISCRIMINATOR (§15 decision 2, shipped as globalyapp/20260816_002_language_test_category.ts): SAT/GRE/GMAT rows land in the language-tests table carrying category='academic'.",
+      "mapping": "platform_user_academic_tests"
     },
     "student_documents": {
       "disposition": "blocked",
@@ -1528,7 +1529,8 @@
       "targets": [
         "public.platform_user_language_tests"
       ],
-      "note": "category='language' — the other half of the §15 decision-2 discriminator"
+      "note": "category='language' — the other half of the §15 decision-2 discriminator",
+      "mapping": "platform_user_language_tests"
     },
     "student_qualifications": {
       "disposition": "transform",
@@ -1536,7 +1538,8 @@
       "rows": 11,
       "targets": [
         "public.platform_user_qualifications"
-      ]
+      ],
+      "mapping": "platform_user_qualifications"
     },
     "student_services": {
       "disposition": "blocked",
@@ -1550,7 +1553,8 @@
       "rows": 9,
       "targets": [
         "public.platform_user_work_experiences"
-      ]
+      ],
+      "mapping": "platform_user_work_experiences"
     },
     "subscription_plan_features": {
       "disposition": "transform",
@@ -4150,6 +4154,396 @@
         {
           "column": "created_at",
           "reason": "V3's junction has no timestamps at all."
+        }
+      ]
+    },
+    {
+      "name": "platform_user_qualifications",
+      "description": "V1 public.student_qualifications -> V3 public.platform_user_qualifications. Near-exact column parity, so the transform discovers the columns by introspecting both live schemas rather than declaring them. The V1 uuid PK is preserved as the V3 uuid PK — it is the only natural key these rows have (one person can hold two degrees from the same institution).",
+      "source": {
+        "table": "v1_staging.student_qualifications",
+        "alias": "s",
+        "joins": [
+          "JOIN v1_staging.auth_users u ON u.id = s.user_id"
+        ],
+        "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND btrim(u.email::text) <> ''"
+      },
+      "target": {
+        "table": "public.platform_user_qualifications",
+        "alias": "t",
+        "joins": [
+          "JOIN public.platform_users pu ON pu.id = t.user_id"
+        ],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "V1 student_qualifications.id (uuid PK, preserved)",
+        "source": "s.id::text",
+        "target": "t.id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "owner_uuid",
+          "from": "user_id",
+          "source": "s.user_id::text",
+          "target": "pu.uuid::text",
+          "note": "V1 auth uuid -> the serial platform_users.id, compared by resolving it back to the uuid it was migrated from"
+        },
+        {
+          "name": "qualification_type",
+          "from": "qualification_type",
+          "source": "s.qualification_type",
+          "target": "t.qualification_type"
+        },
+        {
+          "name": "degree_title",
+          "from": "degree_title",
+          "source": "s.degree_title",
+          "target": "t.degree_title"
+        },
+        {
+          "name": "subject_area",
+          "from": "subject_area",
+          "source": "s.subject_area",
+          "target": "t.subject_area"
+        },
+        {
+          "name": "institution_name",
+          "from": "institution_name",
+          "source": "s.institution_name",
+          "target": "t.institution_name"
+        },
+        {
+          "name": "grading_system",
+          "from": "grading_system",
+          "source": "s.grading_system",
+          "target": "t.grading_system"
+        },
+        {
+          "name": "grade_value",
+          "from": "grade_value",
+          "source": "s.grade_value",
+          "target": "t.grade_value"
+        },
+        {
+          "name": "is_current",
+          "from": "is_current",
+          "source": "s.is_current",
+          "target": "t.is_current"
+        },
+        {
+          "name": "start_date",
+          "from": "start_date",
+          "source": "s.start_date",
+          "target": "t.start_date",
+          "note": "free text on both sides ('2019', 'MM-YYYY') — deliberately not reinterpreted as a date"
+        },
+        {
+          "name": "end_date",
+          "from": "end_date",
+          "source": "s.end_date",
+          "target": "t.end_date"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "s.sort_order",
+          "target": "t.sort_order"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value — it IS the identity key, preserved verbatim as the V3 uuid PK."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time."
+        },
+        {
+          "column": "updated_at",
+          "reason": "V3 stamps its own updated_at at load time."
+        }
+      ]
+    },
+    {
+      "name": "platform_user_work_experiences",
+      "description": "V1 public.student_work_experiences -> V3 public.platform_user_work_experiences. Exact column parity minus source_business_member_id, which V3 has no concept of.",
+      "source": {
+        "table": "v1_staging.student_work_experiences",
+        "alias": "s",
+        "joins": [
+          "JOIN v1_staging.auth_users u ON u.id = s.user_id"
+        ],
+        "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND btrim(u.email::text) <> ''"
+      },
+      "target": {
+        "table": "public.platform_user_work_experiences",
+        "alias": "t",
+        "joins": [
+          "JOIN public.platform_users pu ON pu.id = t.user_id"
+        ],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "V1 student_work_experiences.id (uuid PK, preserved)",
+        "source": "s.id::text",
+        "target": "t.id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "owner_uuid",
+          "from": "user_id",
+          "source": "s.user_id::text",
+          "target": "pu.uuid::text"
+        },
+        {
+          "name": "job_title",
+          "from": "job_title",
+          "source": "s.job_title",
+          "target": "t.job_title"
+        },
+        {
+          "name": "organization_name",
+          "from": "organization_name",
+          "source": "s.organization_name",
+          "target": "t.organization_name"
+        },
+        {
+          "name": "is_current",
+          "from": "is_current",
+          "source": "s.is_current",
+          "target": "t.is_current"
+        },
+        {
+          "name": "start_date",
+          "from": "start_date",
+          "source": "s.start_date",
+          "target": "t.start_date",
+          "note": "free text on both sides"
+        },
+        {
+          "name": "end_date",
+          "from": "end_date",
+          "source": "s.end_date",
+          "target": "t.end_date"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "s.sort_order",
+          "target": "t.sort_order"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value — it IS the identity key, preserved verbatim as the V3 uuid PK."
+        },
+        {
+          "column": "source_business_member_id",
+          "reason": "V1 linked a work entry back to the business_members row it was derived from. V3 has no such column and no such concept: the agent relationship lives in user_business_index and the per-tenant agents table, and a work-history entry belongs to the person, not the tenant."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time."
+        },
+        {
+          "column": "updated_at",
+          "reason": "V3 stamps its own updated_at at load time."
+        }
+      ]
+    },
+    {
+      "name": "platform_user_language_tests",
+      "description": "V1 public.student_language_tests -> V3 public.platform_user_language_tests carrying category='language'. Half of the §15 decision-2 merge; the academic half is the next mapping, into the SAME table.",
+      "source": {
+        "table": "v1_staging.student_language_tests",
+        "alias": "s",
+        "joins": [
+          "JOIN v1_staging.auth_users u ON u.id = s.user_id"
+        ],
+        "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND btrim(u.email::text) <> ''"
+      },
+      "target": {
+        "table": "public.platform_user_language_tests",
+        "alias": "t",
+        "joins": [
+          "JOIN public.platform_users pu ON pu.id = t.user_id"
+        ],
+        "filter": "t.deleted_at IS NULL AND t.category = 'language'"
+      },
+      "identity": {
+        "label": "V1 student_language_tests.id (uuid PK, preserved)",
+        "source": "s.id::text",
+        "target": "t.id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "owner_uuid",
+          "from": "user_id",
+          "source": "s.user_id::text",
+          "target": "pu.uuid::text"
+        },
+        {
+          "name": "test_status",
+          "from": "test_status",
+          "source": "s.test_status",
+          "target": "t.test_status"
+        },
+        {
+          "name": "test_type",
+          "from": "test_type",
+          "source": "s.test_type",
+          "target": "t.test_type"
+        },
+        {
+          "name": "overall_score",
+          "from": "overall_score",
+          "source": "s.overall_score",
+          "target": "t.overall_score"
+        },
+        {
+          "name": "test_date",
+          "from": "test_date",
+          "source": "s.test_date::text",
+          "target": "t.test_date::text",
+          "note": "A REAL `date` on both sides, compared as text on purpose: node-pg parses `date` into a JS Date at local midnight, and stringifying one carelessly is what silently NULLed every row in the previous attempt. The loader is set-based so no date crosses into JavaScript at all, and w3-subprofiles reads both sides back through dateOnly() before it finishes."
+        },
+        {
+          "name": "sub_scores",
+          "from": "sub_scores",
+          "source": "s.sub_scores",
+          "target": "t.sub_scores"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "s.sort_order",
+          "target": "t.sort_order"
+        },
+        {
+          "name": "category",
+          "from": null,
+          "source": "'language'",
+          "target": "t.category",
+          "note": "§15 decision 2: the discriminator that lets one table hold both kinds of test."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value — it IS the identity key, preserved verbatim as the V3 uuid PK."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time."
+        },
+        {
+          "column": "updated_at",
+          "reason": "V3 stamps its own updated_at at load time."
+        }
+      ]
+    },
+    {
+      "name": "platform_user_academic_tests",
+      "description": "V1 public.student_academic_tests -> V3 public.platform_user_language_tests carrying category='academic'. §15 decision 2, shipped as globalyapp/20260816_002_language_test_category.ts: SAT/GRE/GMAT do NOT get their own table, they land in the language-tests table behind the discriminator. Same target as the previous mapping; the target filter is what separates the two halves.",
+      "source": {
+        "table": "v1_staging.student_academic_tests",
+        "alias": "s",
+        "joins": [
+          "JOIN v1_staging.auth_users u ON u.id = s.user_id"
+        ],
+        "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND btrim(u.email::text) <> ''"
+      },
+      "target": {
+        "table": "public.platform_user_language_tests",
+        "alias": "t",
+        "joins": [
+          "JOIN public.platform_users pu ON pu.id = t.user_id"
+        ],
+        "filter": "t.deleted_at IS NULL AND t.category = 'academic'"
+      },
+      "identity": {
+        "label": "V1 student_academic_tests.id (uuid PK, preserved)",
+        "source": "s.id::text",
+        "target": "t.id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "owner_uuid",
+          "from": "user_id",
+          "source": "s.user_id::text",
+          "target": "pu.uuid::text"
+        },
+        {
+          "name": "test_status",
+          "from": "test_status",
+          "source": "s.test_status",
+          "target": "t.test_status"
+        },
+        {
+          "name": "test_type",
+          "from": "test_type",
+          "source": "s.test_type",
+          "target": "t.test_type"
+        },
+        {
+          "name": "overall_score",
+          "from": "overall_score",
+          "source": "s.overall_score",
+          "target": "t.overall_score"
+        },
+        {
+          "name": "test_date",
+          "from": "test_date",
+          "source": "s.test_date::text",
+          "target": "t.test_date::text",
+          "note": "See the language half — same real `date`, same trap, same text comparison."
+        },
+        {
+          "name": "sub_scores",
+          "from": "sub_scores",
+          "source": "s.sub_scores",
+          "target": "t.sub_scores"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "s.sort_order",
+          "target": "t.sort_order"
+        },
+        {
+          "name": "category",
+          "from": null,
+          "source": "'academic'",
+          "target": "t.category"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value — it IS the identity key, preserved verbatim as the V3 uuid PK."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time."
+        },
+        {
+          "column": "updated_at",
+          "reason": "V3 stamps its own updated_at at load time."
         }
       ]
     }
