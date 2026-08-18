@@ -19,3 +19,7 @@ export type VerifyOtpParams = {
   email: string;
   otp: string;
 };
+
+export type ClaimRequestParams = {
+  email: string;
+};

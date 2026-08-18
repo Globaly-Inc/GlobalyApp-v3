@@ -6,12 +6,13 @@ import { randomInt, randomBytes, createHash, scryptSync, timingSafeEqual, random
 import jwt from "jsonwebtoken";
 import { config } from "../../config.js";
 import { createChildLogger } from "../../shared/logger.js";
-import { NotFoundError, UnauthorizedError } from "../../shared/errors.js";
+import { AppError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
 import { queueService } from "../../shared/queue/queueService.js";
 import { mailerService } from "../../shared/mail/mailerService.js";
 import { emailLayout, otpEmail, esc } from "../../shared/mail/templates.js";
 
 import * as platformUserRepo from "../platform-users/repositories/platform-users.repository.js";
+import * as businessRepo from "../businesses/repositories/businesses.repository.js";
 import * as adminRepo from "../superadmin/admin-users/repositories/admin-users.repository.js";
 import * as authRepo from "./auth.repository.js";
 import { getKnex } from "../../core/db/pool-manager.js";
@@ -138,6 +139,18 @@ export async function queueInvitationEmail(options: {
 export async function registerUser(firstName: string, lastName: string, email: string) {
   const existing = await platformUserRepo.findByEmail(email);
   if (existing) {
+    // A business was pre-seeded for this exact person (owner account created ahead of time by an
+    // admin) and they haven't claimed it yet — tell them plainly, rather than the generic
+    // anti-enumeration response below, so they can claim instead of hitting a dead end.
+    const pendingBusiness = await businessRepo.findUnclaimedBusinessByOwnerId(existing.id);
+    if (pendingBusiness) {
+      throw new AppError(
+        `A business profile ("${pendingBusiness.business_name}") already exists for this email. Would you like to claim it?`,
+        409,
+        "BUSINESS_CLAIM_AVAILABLE",
+      );
+    }
+
     // Anti-enumeration: return identical response, send "someone tried to register" email
     queueEmail({
       to: email,

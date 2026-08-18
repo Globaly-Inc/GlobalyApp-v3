@@ -52,7 +52,12 @@ export const ClaimAcceptSchema = z.object({
   token: z.string().min(1),
 });
 
+export const ClaimRequestByEmailSchema = z.object({
+  email: z.string().email(),
+});
+
 export type BusinessRegisterInput = z.infer<typeof BusinessRegisterSchema>;
 export type BusinessProfilePatchInput = z.infer<typeof BusinessProfilePatchSchema>;
 export type BusinessSearchQueryInput = z.infer<typeof BusinessSearchQuerySchema>;
 export type ClaimAcceptInput = z.infer<typeof ClaimAcceptSchema>;
+export type ClaimRequestByEmailInput = z.infer<typeof ClaimRequestByEmailSchema>;
