@@ -7,7 +7,7 @@
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import type { OwnerType } from "../../credits/credits.repository.js";
+import type { OwnerType } from "../consts.js";
 import { CONSTRAINTS, PG_UNIQUE_VIOLATION } from "../consts.js";
 import * as repo from "../repositories/referrals.repository.js";
 import { generateReferralCode } from "../utils/generate-referral-code.js";

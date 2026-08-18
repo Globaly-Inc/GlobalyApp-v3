@@ -7,7 +7,6 @@
 // authenticated by construction while one added here is not.
 
 import type { FastifyInstance } from "fastify";
-import { REFERRAL_CONFIG } from "../consts.js";
 import { LookupParamsSchema, LookupResponseSchema } from "../schemas/referrals.schema.js";
 import { resolveUsableCode } from "../services/codes.service.js";
 import { mintRefToken } from "../services/attribution.service.js";
@@ -16,11 +15,6 @@ import { mintRefToken } from "../services/attribution.service.js";
 const NOT_FOUND_BODY = { error: "We couldn't find that invite link." };
 
 export async function publicReferralsRoutes(app: FastifyInstance) {
-  // Reward amounts and windows for every surface. No frontend file hard-codes 20 or 100.
-  app.get("/config", async (_req, reply) => {
-    return reply.send(REFERRAL_CONFIG);
-  });
-
   app.get(
     "/lookup/:code",
     {

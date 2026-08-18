@@ -1,12 +1,11 @@
 // Profile completion — the single source of truth.
 //
 // This was previously computed ONLY in the browser (frontend profile-completion.ts), and
-// platform_user_profiles.completion_percentage was never written by anything. Referral qualification
-// needs a server-side figure, and two implementations of the same 8-item rule would inevitably drift,
-// so the browser copy is deleted and everything reads this.
+// platform_user_profiles.completion_percentage was never written by anything. Two implementations
+// of the same 8-item rule would inevitably drift, so the browser copy is deleted and everything
+// reads this. The credits phase will also hang referral qualification off syncCompletion.
 
 import { createChildLogger } from "../../../shared/logger.js";
-import { onIndividualQualified } from "../../referrals/services/qualification.service.js";
 import * as repo from "../repositories/platform-users.repository.js";
 
 const logger = createChildLogger("profile-completion");
@@ -62,27 +61,14 @@ export async function loadCompletion(userId: number): Promise<Completion> {
 }
 
 /**
- * Recompute, persist, and fire referral qualification at 100%.
+ * Recompute and persist. Called from every mutator that can change one of the 8 inputs.
  *
- * Called from every mutator that can change one of the 8 inputs. Never called from a read: money must
- * not move as a side effect of a GET.
- *
- * Idempotency is REQUIRED here and is what makes redundant calls correct — there is deliberately no
- * "did it just cross from <100 to 100" edge detection, because onIndividualQualified is a no-op once
- * the referral is credited (the award claims the row with `WHERE state = 'signed_up'`).
- *
- * Never throws: a profile save must not fail because a referral could not be evaluated.
+ * Never throws: a profile save must not fail because the percentage could not be recomputed.
  */
 export async function syncCompletion(userId: number): Promise<void> {
   try {
     const { percentage } = await loadCompletion(userId);
     await repo.updateProfile(userId, { completion_percentage: percentage });
-
-    if (percentage === 100) {
-      // Must NOT mutate any completion input, or award -> profile write -> syncCompletion -> award
-      // would cycle. INV-1 would prevent a double payment, but the repeated work would still be wrong.
-      await onIndividualQualified(userId);
-    }
   } catch (err) {
     logger.warn("completion sync failed", { userId, err: (err as Error).message });
   }

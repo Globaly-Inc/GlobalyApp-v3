@@ -1,20 +1,17 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { joinApi } from "../apis";
-import type { ReferralConfig, ReferralLookup } from "../apis/types";
+import type { ReferralLookup } from "../apis/types";
 
-/** Resolve the code and fetch reward amounts together — the landing page needs both to say anything. */
-export const resolveInvite = createAsyncThunk("join/resolveInvite", async (code: string) => {
-  const [lookup, config] = await Promise.all([joinApi.lookup(code), joinApi.getConfig()]);
-  return { lookup, config };
-});
+export const resolveInvite = createAsyncThunk("join/resolveInvite", async (code: string) =>
+  joinApi.lookup(code),
+);
 
 type JoinState = {
   lookup: ReferralLookup | null;
-  config: ReferralConfig | null;
   status: "idle" | "loading" | "invalid" | "ready";
 };
 
-const initialState: JoinState = { lookup: null, config: null, status: "idle" };
+const initialState: JoinState = { lookup: null, status: "idle" };
 
 const joinSlice = createSlice({
   name: "join",
@@ -27,8 +24,7 @@ const joinSlice = createSlice({
       })
       .addCase(resolveInvite.fulfilled, (state, action) => {
         state.status = "ready";
-        state.lookup = action.payload.lookup;
-        state.config = action.payload.config;
+        state.lookup = action.payload;
       })
       // An unknown or unusable code is not an error state to apologise for — it just means the invite
       // does not apply, and sign-up continues normally.

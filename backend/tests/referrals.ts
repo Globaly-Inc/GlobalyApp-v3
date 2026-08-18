@@ -1,30 +1,25 @@
 /**
- * Referral program tests — exercises the money path and every invariant that guards it.
+ * Referral program tests — attribution, codes, and the public surface. Phase 1 is credit-free:
+ * the award/ledger tests return with the credits phase.
  * Run: DB_NAME=globalyapp_test node --import tsx tests/referrals.ts   (or: npm run test:referrals)
  *
  * Style matches tests/auth.ts: a plain tsx script with manual counters, no framework.
  *
  * Two things it does differently, both deliberate:
  *
- *  1. It imports masterKnex DIRECTLY as well as calling HTTP. The concurrency case has to race real
- *     transactions against real row locks — a mocked transaction cannot exercise that and would pass
- *     vacuously.
+ *  1. It imports masterKnex DIRECTLY as well as calling HTTP. Constraint tests have to hit real
+ *     unique indexes — a mocked layer would pass vacuously.
  *
- *  2. It REFUSES to run outside a dedicated test database. credit_transactions is append-only and
- *     trigger-protected, so this suite physically cannot clean up after itself: every run leaves
- *     permanent ledger rows. Against a shared dev database that is unrecoverable pollution.
- *     Every assertion is additionally scoped to fixtures this run created, and balances are compared
- *     as DELTAS, so the suite stays correct on an already-populated database.
+ *  2. It REFUSES to run outside a dedicated test database: it inserts platform_users, businesses,
+ *     referral_codes and referrals fixtures it never deletes. Every assertion is scoped to fixtures
+ *     this run created, so the suite stays correct on an already-populated database.
  */
 
 import { masterKnex } from "../src/core/db/master-pool.js";
 import { config } from "../src/config.js";
 import { generateReferralCode } from "../src/modules/referrals/utils/generate-referral-code.js";
 import { mintRefToken } from "../src/modules/referrals/services/attribution.service.js";
-import { onBusinessVerified } from "../src/modules/referrals/services/qualification.service.js";
 import { issueCode } from "../src/modules/referrals/services/codes.service.js";
-import { REFERRAL_CONFIG } from "../src/modules/referrals/consts.js";
-import { addTransaction } from "../src/modules/credits/credits.repository.js";
 import jwt from "jsonwebtoken";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3010/api/v3";
@@ -34,8 +29,8 @@ if (!/_test$/.test(config.DB_NAME)) {
   console.error(
     `\nREFUSING TO RUN.\n\n` +
       `  DB_NAME is "${config.DB_NAME}", which does not end in "_test".\n\n` +
-      `  credit_transactions is append-only and protected by a trigger, so this suite cannot delete\n` +
-      `  what it writes. Running it against a shared database permanently pollutes the ledger.\n\n` +
+      `  This suite inserts fixtures it never deletes; against a shared database that is\n` +
+      `  unrecoverable pollution.\n\n` +
       `  Create one and point at it:\n` +
       `    DB_NAME=${config.DB_NAME}_test node --import tsx node_modules/knex/bin/cli.js \\\n` +
       `      migrate:latest --knexfile knexfile.ts --env globalyapp\n` +
@@ -113,7 +108,7 @@ async function makeBusiness(ownerId: number, status = "pending") {
   return b as { id: number };
 }
 
-/** Attribute directly, bypassing HTTP — most cases care about the award, not the sign-up flow. */
+/** Attribute directly, bypassing HTTP — most cases care about the row, not the sign-up flow. */
 async function makeReferral(referrerType: "user" | "business", referrerId: number, codeId: number, referredId: number) {
   const [r] = await masterKnex("referrals")
     .insert({
@@ -128,20 +123,6 @@ async function makeReferral(referrerType: "user" | "business", referrerId: numbe
     .returning("*");
   return r as { id: number };
 }
-
-const rewardRows = (referralId: number) =>
-  masterKnex("credit_transactions")
-    .where({ reference_type: "referral", reference_id: referralId, kind: "referral_reward" })
-    .count({ n: "*" })
-    .first<{ n: string }>()
-    .then((r) => Number(r.n));
-
-const balanceOf = (ownerType: string, ownerId: number) =>
-  masterKnex("credit_transactions")
-    .where({ owner_type: ownerType, owner_id: ownerId })
-    .sum({ s: "amount" })
-    .first<{ s: string | null }>()
-    .then((r) => Number(r.s ?? 0));
 
 const api = async (method: string, path: string, body?: unknown, token?: string) => {
   const res = await fetch(`${BASE}${path}`, {
@@ -160,75 +141,6 @@ const api = async (method: string, path: string, body?: unknown, token?: string)
 
 // ── Tests ───────────────────────────────────────────────────────────────────────────────────────
 
-async function tConcurrency() {
-  console.log("\nT-01/T-02  INV-1 — award is credited at most once");
-  const referrer = await makeUserWithCode();
-  const referred = await makeUser();
-  const biz = await makeBusiness(referred.id, "verified");
-  const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
-
-  const before = await balanceOf("user", referrer.user.id);
-
-  // 10 genuinely concurrent awards against one signed_up row.
-  await Promise.all(Array.from({ length: 10 }, () => onBusinessVerified(biz.id)));
-
-  const rewards = await rewardRows(referral.id);
-  const after = await balanceOf("user", referrer.user.id);
-  const row = await masterKnex("referrals").where({ id: referral.id }).first();
-
-  check("T-01a", "10 concurrent awards -> exactly 1 reward row", rewards === 1, { rewards });
-  check("T-01b", "balance delta equals exactly one reward",
-    after - before === REFERRAL_CONFIG.business_referral_reward, { before, after });
-  check("T-01c", "state credited, amount snapshotted",
-    row.state === "credited" && row.credits_awarded === REFERRAL_CONFIG.business_referral_reward, {
-      state: row.state, credits: row.credits_awarded });
-  check("T-01d", "credit_transaction_id pointer set", row.credit_transaction_id !== null);
-
-  // T-02: re-run after settling.
-  await onBusinessVerified(biz.id);
-  check("T-02", "re-award after credited -> no second reward", (await rewardRows(referral.id)) === 1);
-
-  return { referralId: referral.id, referrerId: referrer.user.id };
-}
-
-async function tLedgerConstraints(referralId: number, referrerId: number) {
-  console.log("\nT-03/T-04/T-18  ledger constraints");
-
-  await expectThrow("T-03", "second referral_reward for same referral rejected", async () => {
-    await masterKnex.transaction((trx) =>
-      addTransaction(trx, {
-        owner_type: "user", owner_id: referrerId, amount: 20,
-        kind: "manual_adjustment", reference_type: "referral", reference_id: referralId,
-      }).then(() =>
-        // manual_adjustment is allowed to share the reference; force the real collision instead
-        trx.raw(
-          `INSERT INTO credit_transactions (owner_type, owner_id, amount, kind, reference_type, reference_id)
-           VALUES ('user', ?, 20, 'referral_reward', 'referral', ?)`,
-          [referrerId, referralId],
-        ),
-      ),
-    );
-  }, "23505");
-
-  await masterKnex.transaction(async (trx) => {
-    await addTransaction(trx, {
-      owner_type: "user", owner_id: referrerId, amount: -20,
-      kind: "referral_reversal", reference_type: "referral", reference_id: referralId,
-    });
-  });
-  check("T-04", "referral_reversal with same reference_id inserts (index correctly scoped)", true);
-
-  const anyRow = await masterKnex("credit_transactions").where({ owner_id: referrerId }).first();
-  await expectThrow("T-18a", "UPDATE on credit_transactions raises", () =>
-    masterKnex("credit_transactions").where({ id: anyRow.id }).update({ amount: 1 }));
-  await expectThrow("T-18b", "DELETE on credit_transactions raises", () =>
-    masterKnex("credit_transactions").where({ id: anyRow.id }).del());
-
-  await expectThrow("T-18c", "addTransaction rejects a nonexistent owner", () =>
-    masterKnex.transaction((trx) =>
-      addTransaction(trx, { owner_type: "user", owner_id: 999_999_99, amount: 5, kind: "purchase" })));
-}
-
 async function tUniqueReferred() {
   console.log("\nT-05  INV-3 — a person is referred at most once");
   const a = await makeUserWithCode();
@@ -237,23 +149,6 @@ async function tUniqueReferred() {
   await makeReferral("user", a.user.id, a.codeId, referred.id);
   await expectThrow("T-05", "second attribution for same referred user rejected", () =>
     makeReferral("user", b.user.id, b.codeId, referred.id), "referrals_referred_unique");
-}
-
-async function tW2() {
-  console.log("\nT-10  W2 is enforced at award time in Phase 1");
-  const referrer = await makeUserWithCode();
-  const referred = await makeUser();
-  const biz = await makeBusiness(referred.id, "verified");
-  const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
-
-  // Backdate beyond W2.
-  await masterKnex("referrals").where({ id: referral.id })
-    .update({ signed_up_at: masterKnex.raw(`now() - interval '${REFERRAL_CONFIG.w2_days + 10} days'`) });
-
-  await onBusinessVerified(biz.id);
-  const row = await masterKnex("referrals").where({ id: referral.id }).first();
-  check("T-10a", "late qualification credits nothing", (await rewardRows(referral.id)) === 0);
-  check("T-10b", "row remains signed_up (claim rolled back)", row.state === "signed_up", { state: row.state });
 }
 
 async function tTokens() {
@@ -415,67 +310,17 @@ async function tRetryAfterTransientFailure() {
     !!row && row.referrer_id === referrer.user.id && row.state === "signed_up");
 }
 
-async function tMultipleBusinesses() {
-  console.log("\nT-15  INV-4 — one referred user yields at most one business reward");
-  const referrer = await makeUserWithCode();
-  const referred = await makeUser();
-  const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
-
-  const b1 = await makeBusiness(referred.id, "verified");
-  const b2 = await makeBusiness(referred.id, "verified");
-  const b3 = await makeBusiness(referred.id, "verified");
-
-  await onBusinessVerified(b1.id);
-  await onBusinessVerified(b2.id);
-  await onBusinessVerified(b3.id);
-
-  const row = await masterKnex("referrals").where({ id: referral.id }).first();
-  check("T-15a", "3 verified businesses -> exactly 1 reward", (await rewardRows(referral.id)) === 1);
-  check("T-15b", "action_type=business_referral, qualifying_business_id = FIRST verified",
-    row.action_type === "business_referral" && row.qualifying_business_id === b1.id,
-    { action: row.action_type, qualifying: row.qualifying_business_id, first: b1.id });
-  check("T-15c", "credits_awarded = business amount",
-    row.credits_awarded === REFERRAL_CONFIG.business_referral_reward);
-}
-
-async function tBusinessGuards() {
-  console.log("\nT-26  onBusinessVerified re-verifies its own preconditions");
-  const referrer = await makeUserWithCode();
-  const referred = await makeUser();
-  const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
-
-  const unverified = await makeBusiness(referred.id, "pending");
-  await onBusinessVerified(unverified.id);
-  check("T-26a", "non-verified business does not qualify", (await rewardRows(referral.id)) === 0);
-
-  const deleted = await makeBusiness(referred.id, "verified");
-  await masterKnex("businesses").where({ id: deleted.id }).update({ deleted_at: masterKnex.fn.now() });
-  await onBusinessVerified(deleted.id);
-  check("T-26b", "soft-deleted business does not qualify", (await rewardRows(referral.id)) === 0);
-
-  const otherOwner = await makeUser();
-  const foreign = await makeBusiness(otherOwner.id, "verified");
-  await onBusinessVerified(foreign.id);
-  check("T-26c", "business owned by someone else does not pay this referral",
-    (await rewardRows(referral.id)) === 0);
-}
-
 async function tSoftDeleteRetention() {
   console.log("\nT-17  INV-6 — history survives deletion");
   const referrer = await makeUserWithCode();
   const referred = await makeUser();
-  const biz = await makeBusiness(referred.id, "verified");
   const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
-  await onBusinessVerified(biz.id);
-  check("T-17a", "credited before deletion", (await rewardRows(referral.id)) === 1);
 
   await masterKnex("platform_users").whereIn("id", [referrer.user.id, referred.id])
     .update({ deleted_at: masterKnex.fn.now() });
-  await masterKnex("businesses").where({ id: biz.id }).update({ deleted_at: masterKnex.fn.now() });
 
   const row = await masterKnex("referrals").where({ id: referral.id }).first();
-  check("T-17b", "referral row still readable after soft delete", !!row && row.state === "credited");
-  check("T-17c", "ledger rows still readable", (await rewardRows(referral.id)) === 1);
+  check("T-17b", "referral row still readable after soft delete", !!row && row.state === "signed_up");
 
   // Name resolution must degrade, not vanish or throw.
   const joined = await masterKnex("referrals as r")
@@ -528,12 +373,6 @@ async function tPublicEndpoints() {
   console.log("\nT-19  public endpoints and the default-private rule");
   const { code, user } = await makeUserWithCode();
 
-  const cfg = await api("GET", "/referrals/config");
-  check("T-19a1", "GET /referrals/config is 200 unauthenticated", cfg.status === 200, cfg.body);
-  check("T-19a2", "config matches the single source of truth",
-    cfg.body.student_referral_reward === REFERRAL_CONFIG.student_referral_reward &&
-    cfg.body.business_referral_reward === REFERRAL_CONFIG.business_referral_reward);
-
   const look = await api("GET", `/referrals/lookup/${code}`);
   check("T-19a3", "lookup is 200 unauthenticated", look.status === 200, look.body);
   check("T-19a4", "lookup returns EXACTLY 3 fields",
@@ -569,39 +408,11 @@ async function tPublicEndpoints() {
     !!(await masterKnex("referral_codes").where({ owner_id: inactive.user.id, owner_type: "user" }).first()));
 }
 
-async function tStudentPath() {
-  console.log("\nT-16  student qualification pays the student amount");
-  const { onIndividualQualified } = await import("../src/modules/referrals/services/qualification.service.js");
-  const referrer = await makeUserWithCode();
-  const referred = await makeUser();
-  const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
-
-  const before = await balanceOf("user", referrer.user.id);
-  await onIndividualQualified(referred.id);
-  const row = await masterKnex("referrals").where({ id: referral.id }).first();
-  const after = await balanceOf("user", referrer.user.id);
-
-  check("T-16a", "student path -> exactly 1 reward", (await rewardRows(referral.id)) === 1);
-  check("T-16b", "action_type=student_referral, amount=student amount, qualifying_business_id NULL",
-    row.action_type === "student_referral" &&
-    row.credits_awarded === REFERRAL_CONFIG.student_referral_reward &&
-    row.qualifying_business_id === null,
-    { action: row.action_type, credits: row.credits_awarded, qb: row.qualifying_business_id });
-  check("T-16c", "balance delta = student amount",
-    after - before === REFERRAL_CONFIG.student_referral_reward, { before, after });
-}
-
 // ── Run ─────────────────────────────────────────────────────────────────────────────────────────
 async function main() {
   console.log(`Referral tests — DB=${config.DB_NAME}  API=${BASE}  run=${RUN}`);
 
-  const { referralId, referrerId } = await tConcurrency();
-  await tLedgerConstraints(referralId, referrerId);
   await tUniqueReferred();
-  await tW2();
-  await tStudentPath();
-  await tMultipleBusinesses();
-  await tBusinessGuards();
   await tSoftDeleteRetention();
   await tCodeIssuance();
   await tTokens();

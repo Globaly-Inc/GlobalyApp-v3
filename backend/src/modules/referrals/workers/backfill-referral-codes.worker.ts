@@ -14,7 +14,7 @@
 import "dotenv/config";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import type { OwnerType } from "../../credits/credits.repository.js";
+import type { OwnerType } from "../consts.js";
 import { issueCode } from "../services/codes.service.js";
 import * as repo from "../repositories/referrals.repository.js";
 

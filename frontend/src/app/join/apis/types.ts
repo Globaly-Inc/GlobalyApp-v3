@@ -11,10 +11,3 @@ export interface ReferralLookup {
   /** Opaque signed W1 token. The client stores and forwards it; it never parses it. */
   ref_token: string;
 }
-
-export interface ReferralConfig {
-  student_referral_reward: number;
-  business_referral_reward: number;
-  w1_days: number;
-  w2_days: number;
-}

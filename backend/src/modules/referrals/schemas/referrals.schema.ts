@@ -25,11 +25,4 @@ export const LookupResponseSchema = z.object({
   ref_token: z.string(),
 });
 
-export const ConfigResponseSchema = z.object({
-  student_referral_reward: z.number().int(),
-  business_referral_reward: z.number().int(),
-  w1_days: z.number().int(),
-  w2_days: z.number().int(),
-});
-
 export type LookupResponse = z.infer<typeof LookupResponseSchema>;

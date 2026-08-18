@@ -2,8 +2,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
-import type { OwnerType } from "../../credits/credits.repository.js";
-import type { ReferralActionType, ReferralState } from "../consts.js";
+import type { OwnerType, ReferralActionType, ReferralState } from "../consts.js";
 
 export interface ReferralCodeRow {
   id: number;
@@ -28,7 +27,6 @@ export interface ReferralRow {
   credited_at: Date | null;
   expired_at: Date | null;
   credits_awarded: number | null;
-  credit_transaction_id: number | null;
   void_category: string | null;
   created_at: Date;
   updated_at: Date;
@@ -115,10 +113,7 @@ export async function insertReferral(
   return row;
 }
 
-/**
- * Referrals a given entity has made. Phase 1 callers pass states: ["credited"] — pending and expired
- * rows exist in the table but are not rendered until Phase 2.
- */
+/** Referrals a given entity has made, newest first. */
 export async function listReferralsByReferrer(
   referrerType: OwnerType,
   referrerId: number,
@@ -130,22 +125,11 @@ export async function listReferralsByReferrer(
     .orderBy("signed_up_at", "desc");
 }
 
-/** Credited totals for the stats row. Counts come from the same rows the history renders. */
+/** Counts for the stats row. Credit totals return with the credits phase. */
 export async function referrerStats(referrerType: OwnerType, referrerId: number) {
-  const rows = await masterKnex("referrals")
-    .where({ referrer_type: referrerType, referrer_id: referrerId, state: "credited" })
-    .select("action_type")
-    .sum({ credits: "credits_awarded" })
+  const row = await masterKnex("referrals")
+    .where({ referrer_type: referrerType, referrer_id: referrerId })
     .count({ n: "*" })
-    .groupBy("action_type");
-
-  let total_credits = 0;
-  let students_referred = 0;
-  let businesses_referred = 0;
-  for (const r of rows as Array<{ action_type: ReferralActionType; credits: string; n: string }>) {
-    total_credits += Number(r.credits ?? 0);
-    if (r.action_type === "student_referral") students_referred = Number(r.n);
-    if (r.action_type === "business_referral") businesses_referred = Number(r.n);
-  }
-  return { total_credits, students_referred, businesses_referred };
+    .first<{ n: string }>();
+  return { total_referred: Number(row?.n ?? 0) };
 }

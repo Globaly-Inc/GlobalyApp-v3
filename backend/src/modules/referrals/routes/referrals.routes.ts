@@ -1,7 +1,6 @@
 // Authenticated referral routes.
 
 import type { FastifyInstance } from "fastify";
-import { REFERRAL_CONFIG } from "../consts.js";
 import * as repo from "../repositories/referrals.repository.js";
 
 export async function referralsRoutes(app: FastifyInstance) {
@@ -24,10 +23,8 @@ export async function referralsRoutes(app: FastifyInstance) {
     const [code, stats, referrals] = await Promise.all([
       repo.findCodeByOwner("user", userId),
       repo.referrerStats("user", userId),
-      // Phase 1 renders CREDITED rows only, so the "Credited" badge is accurate rather than
-      // fabricated (V2 hard-coded it for every row). signed_up/expired rows exist in the table but
-      // are deliberately not surfaced until Phase 2 ships the lifecycle model and the countdowns.
-      repo.listReferralsByReferrer("user", userId, ["credited"]),
+      // Phase 1 records sign-ups only; the credited/expired lifecycle arrives with the credits phase.
+      repo.listReferralsByReferrer("user", userId, ["signed_up"]),
     ]);
 
     return reply.send({
@@ -36,11 +33,8 @@ export async function referralsRoutes(app: FastifyInstance) {
       referrals: referrals.map((r) => ({
         id: r.id,
         date: r.signed_up_at,
-        action_type: r.action_type,
         state: r.state,
-        credits_awarded: r.credits_awarded,
       })),
-      config: REFERRAL_CONFIG,
     });
   });
 }

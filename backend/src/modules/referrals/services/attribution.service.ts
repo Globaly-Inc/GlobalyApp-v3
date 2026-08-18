@@ -14,8 +14,7 @@ import jwt from "jsonwebtoken";
 import { config } from "../../../config.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import type { OwnerType } from "../../credits/credits.repository.js";
-import { CONSTRAINTS, PG_UNIQUE_VIOLATION, REFERRAL_CONFIG } from "../consts.js";
+import { CONSTRAINTS, PG_UNIQUE_VIOLATION, REFERRAL_CONFIG, type OwnerType } from "../consts.js";
 import * as repo from "../repositories/referrals.repository.js";
 import { resolveUsableCodeOwner } from "./codes.service.js";
 

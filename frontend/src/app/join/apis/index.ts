@@ -4,4 +4,4 @@ import { joinRealApi } from "./real-api";
 
 export const joinApi = createApi({ mock: joinMockApi, real: joinRealApi });
 
-export type { ReferralConfig, ReferralLookup } from "./types";
+export type { ReferralLookup } from "./types";

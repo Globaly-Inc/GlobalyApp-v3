@@ -1,9 +1,7 @@
 // Referral program — codes and the referral lifecycle.
 //
-// MIGRATION ORDER: this must run AFTER 20260818_001_credit_ledger, because
-// referrals.credit_transaction_id references credit_transactions. Rollback is the reverse, and the
-// two should only ever be rolled back together with the app stopped: rolling back 002 alone would
-// 500 every referrals request and could leave a referral_reward row with no referral to point at.
+// Deliberately credit-free: Phase 1 records referrals only. The credited/expired columns below are
+// schema-reserved so the credits phase can ship without an ALTER, but nothing writes them yet.
 
 import type { Knex } from "knex";
 import { generateReferralCode } from "../../../src/modules/referrals/utils/generate-referral-code.js";
@@ -65,11 +63,6 @@ export async function up(knex: Knex): Promise<void> {
     // Snapshot: a later config change must never rewrite what was actually paid.
     t.integer("credits_awarded").nullable();
 
-    // Convenience pointer ONLY. credit_transactions.(reference_type, reference_id) is authoritative
-    // — it lives on the append-only side and carries the credit_tx_one_referral_reward index.
-    t.integer("credit_transaction_id").nullable()
-      .references("id").inTable("credit_transactions").onDelete("RESTRICT");
-
     // Phase 3 governance.
     t.text("void_category").nullable();
     t.text("void_reason_internal").nullable();
@@ -105,17 +98,14 @@ export async function up(knex: Knex): Promise<void> {
   `);
 
   // Notes on the constraints above:
-  //  * state: expired/voided/rejected are SCHEMA-RESERVED in Phase 1 — listed so no later migration
-  //    has to ALTER the constraint, but no Phase 1 code writes them. Phase 1 writes signed_up and
-  //    credited only.
+  //  * state: credited/expired/voided/rejected are SCHEMA-RESERVED — listed so no later migration
+  //    has to ALTER the constraint, but no Phase 1 code writes them. Phase 1 writes signed_up only.
   //  * action_type: business_upgrade_referral is deliberately ABSENT. V3 never issues it and no V2
   //    rows are migrated, so admitting it would be dead surface.
   //  * referrals_referred_unique is INV-3 — a person is referred at most once, EVER. Strictly
   //    stronger than the PRD unique_referral_pair(referrer, referred), which is therefore redundant.
   //    Named so materialiseReferral can recognise this specific 23505 as "already attributed"
   //    rather than as an unexpected error.
-  //  * referrals_credited_complete deliberately omits credit_transaction_id: it is written by a
-  //    second statement inside the same award transaction, so a legal intermediate state has it null.
 
   // The referrer history query.
   await knex.raw(`CREATE INDEX referrals_referrer_idx ON referrals (referrer_type, referrer_id, state)`);
@@ -193,6 +183,6 @@ async function backfillCodes(knex: Knex, ownerType: "user" | "business", table: 
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.schema.dropTableIfExists("referrals"); // FKs to referral_codes + credit_transactions
+  await knex.schema.dropTableIfExists("referrals"); // FK to referral_codes
   await knex.schema.dropTableIfExists("referral_codes");
 }

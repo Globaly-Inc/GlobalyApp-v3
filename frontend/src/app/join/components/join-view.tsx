@@ -11,14 +11,14 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, Copy, Loader2, UserPlus } from "lucide-react";
+import { Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { getAccessToken } from "@/lib/session";
 import { buildReferralLink, captureRefTokenIfAbsent } from "@/lib/referral-token";
-import { cn, formatNumber } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { referralsApi } from "@/app/personal/earn/referrals/apis";
 import { resolveInvite } from "../store/join-slice";
 
@@ -28,7 +28,7 @@ export function JoinView() {
   const code = params.get("ref");
 
   const dispatch = useAppDispatch();
-  const { lookup, config, status } = useAppSelector((s) => s.join);
+  const { lookup, status } = useAppSelector((s) => s.join);
 
   /** "self" once we know the signed-in viewer owns this code. */
   const [relationship, setRelationship] = useState<"unknown" | "self" | "signed-in-other">("unknown");
@@ -116,7 +116,7 @@ export function JoinView() {
               <>
                 <h1 className="text-xl font-bold text-foreground">This is your own referral link</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Share it with someone else to start earning credits.
+                  Share it with someone else instead.
                 </p>
                 <div className="mt-6 flex flex-col gap-2">
                   <Button className="w-full cursor-pointer" onClick={copyOwnLink}>
@@ -155,26 +155,6 @@ export function JoinView() {
                 </p>
                 <h1 className="mt-1 text-2xl font-bold text-foreground">{lookup?.display_name}</h1>
                 <p className="mt-1 text-sm text-muted-foreground">has invited you to join Globaly</p>
-
-                {config && (
-                  <div className="mt-6 space-y-2 rounded-lg bg-muted/50 p-4 text-left text-sm">
-                    <p className="font-medium text-foreground">How referrals work</p>
-                    <div className="flex items-start gap-2 text-muted-foreground">
-                      <UserPlus className="mt-0.5 h-4 w-4 shrink-0" />
-                      <span>
-                        They earn {formatNumber(config.student_referral_reward)} credits once you complete
-                        your profile
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-2 text-muted-foreground">
-                      <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
-                      <span>
-                        Or {formatNumber(config.business_referral_reward)} credits if you register and
-                        verify a business
-                      </span>
-                    </div>
-                  </div>
-                )}
 
                 <Button className="mt-6 w-full cursor-pointer" onClick={goToSignUp}>
                   Create your account
