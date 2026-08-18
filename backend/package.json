@@ -40,7 +40,13 @@
     "verify:staging": "node scripts/migration/verify-staging.mjs",
     "migrate:ensure-mig": "node --import tsx scripts/migration/lib.ts --ensure-mig",
     "check:migration": "node scripts/migration/extract.mjs --self-check && node scripts/migration/verify-staging.mjs --self-check && node --import tsx scripts/migration/lib.ts --self-check && node database/scripts/verify-migration.mjs --self-check",
-    "job:enquiry-digest": "node --import tsx src/workers/enquiry-digest.worker.ts"
+    "job:enquiry-digest": "node --import tsx src/workers/enquiry-digest.worker.ts",
+    "migrate:w1-geo": "node --import tsx scripts/migration/w1-geo.ts",
+    "migrate:w1-identity": "node --import tsx scripts/migration/w1-identity.ts",
+    "migrate:w1-businesses": "node --import tsx scripts/migration/w1-businesses.ts",
+    "migrate:w1-tenants": "node --import tsx scripts/migration/w1-tenants.ts",
+    "migrate:w2-reference": "node --import tsx scripts/migration/w2-reference.ts",
+    "migrate:w3-subprofiles": "node --import tsx scripts/migration/w3-subprofiles.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
