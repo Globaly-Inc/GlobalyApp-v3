@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { homeApi } from "../apis";
-import type { ComposeWithAiInput, CreatePostInput, FeedPost, ReactionGroup } from "../apis/types";
+import type { ComposeWithAiInput, CreatePostInput, FeedComment, FeedPost, ReactionGroup } from "../apis/types";
 import type { RootState } from "@/lib/store";
 
 export const fetchFeedPage = createAsyncThunk(
@@ -52,6 +52,36 @@ export const removePostReaction = createAsyncThunk("home/removeReaction", async 
   return id;
 });
 
+// ── Comments ──
+// Threads are fetched on demand (opening the thread), never eagerly with the timeline: most posts
+// are scrolled past, and the post already carries `comments_count` for the collapsed label.
+
+export const fetchComments = createAsyncThunk(
+  "home/fetchComments",
+  async ({ postId, cursor }: { postId: number; cursor?: string | null }) => {
+    const page = await homeApi.listComments(postId, cursor);
+    return { postId, ...page, append: !!cursor };
+  },
+);
+
+export const addComment = createAsyncThunk(
+  "home/addComment",
+  async ({ postId, content }: { postId: number; content: string }) => homeApi.addComment(postId, content),
+);
+
+export const editComment = createAsyncThunk(
+  "home/editComment",
+  async ({ id, content }: { id: number; content: string }) => homeApi.editComment(id, content),
+);
+
+export const deleteComment = createAsyncThunk(
+  "home/deleteComment",
+  async ({ id, postId }: { id: number; postId: number }) => {
+    await homeApi.deleteComment(id);
+    return { id, postId };
+  },
+);
+
 /** Mirrors the server's cap, so the client's stack never shows more faces than a refetch would. */
 const MAX_REACTOR_AVATARS = 3;
 
@@ -79,6 +109,22 @@ function withoutMe(
 
 type RegionStatus = "idle" | "loading" | "failed";
 
+export type CommentThread = {
+  items: FeedComment[];
+  nextCursor: string | null;
+  status: RegionStatus;
+  loadingMore: boolean;
+  error: string | null;
+};
+
+const EMPTY_THREAD: CommentThread = {
+  items: [],
+  nextCursor: null,
+  status: "idle",
+  loadingMore: false,
+  error: null,
+};
+
 type HomeState = {
   posts: FeedPost[];
   nextCursor: string | null;
@@ -88,6 +134,8 @@ type HomeState = {
   postType: string;
   /** null = not checked yet; the composer hides the AI affordance when the backend has no key. */
   aiAvailable: boolean | null;
+  /** Keyed by post id — only threads the user actually opened are ever populated. */
+  commentsByPost: Record<number, CommentThread>;
 };
 
 const initialState: HomeState = {
@@ -98,6 +146,7 @@ const initialState: HomeState = {
   feedError: null,
   postType: "all",
   aiAvailable: null,
+  commentsByPost: {},
 };
 
 const homeSlice = createSlice({
@@ -161,6 +210,61 @@ const homeSlice = createSlice({
             reactions: groups.sort((a, b) => b.count - a.count),
           };
         });
+      })
+      .addCase(fetchComments.pending, (state, action) => {
+        const thread = state.commentsByPost[action.meta.arg.postId] ?? { ...EMPTY_THREAD };
+        if (action.meta.arg.cursor) thread.loadingMore = true;
+        else thread.status = "loading";
+        thread.error = null;
+        state.commentsByPost[action.meta.arg.postId] = thread;
+      })
+      .addCase(fetchComments.fulfilled, (state, action) => {
+        const { postId, comments, next_cursor, append } = action.payload;
+        const previous = state.commentsByPost[postId] ?? EMPTY_THREAD;
+        state.commentsByPost[postId] = {
+          items: append ? [...previous.items, ...comments] : comments,
+          nextCursor: next_cursor,
+          status: "idle",
+          loadingMore: false,
+          error: null,
+        };
+      })
+      .addCase(fetchComments.rejected, (state, action) => {
+        const previous = state.commentsByPost[action.meta.arg.postId] ?? EMPTY_THREAD;
+        state.commentsByPost[action.meta.arg.postId] = {
+          ...previous,
+          status: "failed",
+          loadingMore: false,
+          error: action.error.message ?? "Couldn't load the comments.",
+        };
+      })
+      .addCase(addComment.fulfilled, (state, action) => {
+        const comment = action.payload;
+        const previous = state.commentsByPost[comment.post_id] ?? EMPTY_THREAD;
+        // Appended, not prepended: the thread reads oldest-first, same as the server's ordering.
+        state.commentsByPost[comment.post_id] = { ...previous, items: [...previous.items, comment] };
+        state.posts = state.posts.map((p) =>
+          p.id === comment.post_id ? { ...p, comments_count: p.comments_count + 1 } : p,
+        );
+      })
+      .addCase(editComment.fulfilled, (state, action) => {
+        const comment = action.payload;
+        const previous = state.commentsByPost[comment.post_id];
+        if (!previous) return;
+        state.commentsByPost[comment.post_id] = {
+          ...previous,
+          items: previous.items.map((c) => (c.id === comment.id ? comment : c)),
+        };
+      })
+      .addCase(deleteComment.fulfilled, (state, action) => {
+        const { id, postId } = action.payload;
+        const previous = state.commentsByPost[postId];
+        if (previous) {
+          state.commentsByPost[postId] = { ...previous, items: previous.items.filter((c) => c.id !== id) };
+        }
+        state.posts = state.posts.map((p) =>
+          p.id === postId ? { ...p, comments_count: Math.max(p.comments_count - 1, 0) } : p,
+        );
       })
       .addCase(removePostReaction.fulfilled, (state, action) => {
         state.posts = state.posts.map((p) =>

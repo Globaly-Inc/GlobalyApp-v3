@@ -1,5 +1,13 @@
-import { httpDelete, httpGet, httpPost, httpPostForm, httpPostNoContent } from "@/lib/api/http";
-import type { ComposeWithAiInput, CreatePostInput, FeedPage, FeedPost, PostMedia } from "./types";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPostNoContent } from "@/lib/api/http";
+import type {
+  ComposeWithAiInput,
+  CreatePostInput,
+  FeedComment,
+  FeedCommentPage,
+  FeedPage,
+  FeedPost,
+  PostMedia,
+} from "./types";
 
 /**
  * Normalize at the boundary.
@@ -26,6 +34,7 @@ function normalizePost(raw: Partial<FeedPost> | undefined | null): FeedPost {
     media: toArray<PostMedia>(post.media),
     is_pinned: !!post.is_pinned,
     reactions_count: Number(post.reactions_count ?? 0),
+    comments_count: Number(post.comments_count ?? 0),
     created_at: post.created_at ?? new Date().toISOString(),
     author_first_name: post.author_first_name ?? null,
     author_last_name: post.author_last_name ?? null,
@@ -35,6 +44,23 @@ function normalizePost(raw: Partial<FeedPost> | undefined | null): FeedPost {
     my_reaction: post.my_reaction ?? null,
     is_mine: !!post.is_mine,
     reactions: toArray(post.reactions),
+  };
+}
+
+function normalizeComment(raw: Partial<FeedComment> | undefined | null): FeedComment {
+  const comment = raw ?? {};
+  return {
+    id: Number(comment.id ?? 0),
+    post_id: Number(comment.post_id ?? 0),
+    author_platform_user_id: Number(comment.author_platform_user_id ?? 0),
+    parent_comment_id: comment.parent_comment_id ?? null,
+    content: comment.content ?? "",
+    created_at: comment.created_at ?? new Date().toISOString(),
+    updated_at: comment.updated_at ?? comment.created_at ?? new Date().toISOString(),
+    author_first_name: comment.author_first_name ?? null,
+    author_last_name: comment.author_last_name ?? null,
+    author_photo_url: comment.author_photo_url ?? null,
+    is_mine: !!comment.is_mine,
   };
 }
 
@@ -68,4 +94,22 @@ export const homeRealApi = {
   setReaction: (id: number, emoji: string): Promise<void> =>
     httpPostNoContent(`/feed/posts/${id}/reactions`, { emoji }),
   removeReaction: (id: number): Promise<void> => httpDelete(`/feed/posts/${id}/reactions`),
+
+  // ── Comments ──
+  listComments: async (postId: number, cursor?: string | null): Promise<FeedCommentPage> => {
+    const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+    const page = await httpGet<Partial<FeedCommentPage>>(`/feed/posts/${postId}/comments${suffix}`);
+    return {
+      comments: toArray<Partial<FeedComment>>(page?.comments).map(normalizeComment),
+      next_cursor: page?.next_cursor ?? null,
+    };
+  },
+
+  addComment: async (postId: number, content: string): Promise<FeedComment> =>
+    normalizeComment(await httpPost<Partial<FeedComment>>(`/feed/posts/${postId}/comments`, { content })),
+
+  editComment: async (id: number, content: string): Promise<FeedComment> =>
+    normalizeComment(await httpPatch<Partial<FeedComment>>(`/feed/comments/${id}`, { content })),
+
+  deleteComment: (id: number): Promise<void> => httpDelete(`/feed/comments/${id}`),
 };
