@@ -29,6 +29,7 @@ import searchModule from "./modules/search/index.js";
 import aiCounsellorModule from "./modules/ai-counsellor/index.js";
 import billingModule from "./modules/billing/index.js";
 import messagingModule from "./modules/messaging/index.js";
+import enquiriesModule from "./modules/enquiries/index.js";
 
 const logger = createChildLogger("server");
 
@@ -54,6 +55,7 @@ export async function buildServer() {
     await protectedApp.register(feedModule);          // cross-portal social feed
     await protectedApp.register(otherServicesModule);      // service listings, orders, reviews
     await protectedApp.register(messagingModule);          // conversations + messages (SSE live thread)
+    await protectedApp.register(enquiriesModule);          // student enquiries, distribution, credit unlock
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
