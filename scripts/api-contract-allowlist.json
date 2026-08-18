@@ -1,5 +1,5 @@
 {
-  "_comment": "Frontend calls whose backend endpoint is scheduled but not yet built. Every entry must name the wave that builds it. Delete entries as waves land — check:api-contract reports stale ones. Empty is the goal: a page with no backend should say so in the UI (see app/admin/components/admin-not-available-view.tsx) rather than ship a call that can only 404.",
+  "_comment": "Frontend calls whose backend endpoint is scheduled but not yet built. Every entry must name the wave that builds it. Delete entries as waves land \u2014 check:api-contract reports stale ones. Empty is the goal: a page with no backend should say so in the UI (see app/admin/components/admin-not-available-view.tsx) rather than ship a call that can only 404.",
   "allowed": [
     {
       "method": "GET",
@@ -72,66 +72,6 @@
       "path": "/admin/ai-knowledge/country-guides/:id",
       "wave": "E1",
       "note": "AI knowledge base + RAG admin console"
-    },
-    {
-      "method": "GET",
-      "path": "/admin/events/stats",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "GET",
-      "path": "/admin/events",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "GET",
-      "path": "/admin/events/:id/registrations",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "GET",
-      "path": "/notifications",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "GET",
-      "path": "/notifications/unread-count",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "GET",
-      "path": "/notifications/preferences",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "PUT",
-      "path": "/notifications/preferences",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "POST",
-      "path": "/notifications/read-all",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "POST",
-      "path": "/notifications/:id/read",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
-    },
-    {
-      "method": "DELETE",
-      "path": "/notifications/:id",
-      "wave": "D3",
-      "note": "Built. Only the server.ts registration is outstanding — D1 owns that edit. Delete the moment it lands."
     }
   ]
 }

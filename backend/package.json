@@ -46,7 +46,8 @@
     "migrate:w1-businesses": "node --import tsx scripts/migration/w1-businesses.ts",
     "migrate:w1-tenants": "node --import tsx scripts/migration/w1-tenants.ts",
     "migrate:w2-reference": "node --import tsx scripts/migration/w2-reference.ts",
-    "migrate:w3-subprofiles": "node --import tsx scripts/migration/w3-subprofiles.ts"
+    "migrate:w3-subprofiles": "node --import tsx scripts/migration/w3-subprofiles.ts",
+    "job:notifications": "node --import tsx src/workers/notification.worker.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

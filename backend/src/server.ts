@@ -29,6 +29,8 @@ import searchModule from "./modules/search/index.js";
 import aiCounsellorModule from "./modules/ai-counsellor/index.js";
 import billingModule from "./modules/billing/index.js";
 import messagingModule from "./modules/messaging/index.js";
+import eventsModule, { publicEventsModule } from "./modules/events/index.js";
+import notificationsModule from "./modules/notifications/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
 
 const logger = createChildLogger("server");
@@ -55,6 +57,8 @@ export async function buildServer() {
     await protectedApp.register(feedModule);          // cross-portal social feed
     await protectedApp.register(otherServicesModule);      // service listings, orders, reviews
     await protectedApp.register(messagingModule);          // conversations + messages (SSE live thread)
+    await protectedApp.register(eventsModule);             // events, ticketing, registrations, admin monitoring
+    await protectedApp.register(notificationsModule);      // per-user inbox, channel preferences, push tokens
     await protectedApp.register(enquiriesModule);          // student enquiries, distribution, credit unlock
   });
 
@@ -64,6 +68,7 @@ export async function buildServer() {
   await app.register(searchModule);          // public search reads (no auth)
   await app.register(aiCounsellorModule);    // public AI counsellor (no auth)
   await app.register(billingModule);         // credits, subscriptions, Stripe webhook (own auth scope)
+  await app.register(publicEventsModule);    // public event browse + Stripe event-ticket webhook (no JWT)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

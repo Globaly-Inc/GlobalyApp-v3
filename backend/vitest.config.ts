@@ -58,6 +58,9 @@ export default defineConfig({
         "src/modules/enquiries/**/*.ts",
         // D2 — messaging
         "src/modules/messaging/**/*.ts",
+        // D3 — events, ticketing, notifications
+        "src/modules/events/**/*.ts",
+        "src/modules/notifications/**/*.ts",
       ],
       thresholds: {
         lines: 80,
