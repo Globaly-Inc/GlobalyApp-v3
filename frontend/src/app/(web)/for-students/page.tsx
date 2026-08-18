@@ -61,7 +61,7 @@ export default function ForStudentsPage() {
   return (
     <>
       {/* ── 1. HERO ─────────────────────────────────────────────────────── */}
-      <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
+      <section className="relative min-h-[calc(100svh-64px)] flex items-center overflow-hidden">
         <AutoplayVideo
           src="https://videos.pexels.com/video-files/7945680/7945680-hd_1920_1080_25fps.mp4"
           poster="https://images.pexels.com/photos/1205651/pexels-photo-1205651.jpeg?auto=compress&cs=tinysrgb&w=1920"
