@@ -10,8 +10,13 @@ import { paginationToOffset, buildPaginatedResponse, PaginationSchema } from "..
 import { countAllTransactions, listAllTransactions } from "../../../credits/credits.repository.js";
 
 const ListQuery = PaginationSchema.extend({
-  // Lets an operator isolate referral credits from purchases and manual adjustments.
-  kind: z.enum(["referral_reward", "referral_reversal", "purchase", "manual_adjustment"]).optional(),
+  // Lets an operator isolate referral credits from AI spend, purchases and manual adjustments.
+  // Mirrors credit_tx_kind_check — a kind the table accepts but this enum rejects would be a row the
+  // ledger holds and no operator can filter to.
+  kind: z.enum([
+    "referral_reward", "referral_reversal", "purchase", "manual_adjustment",
+    "ai_message", "signup_grant", "subscription_grant", "admin_grant",
+  ]).optional(),
 });
 
 export async function adminCreditRoutes(app: FastifyInstance) {

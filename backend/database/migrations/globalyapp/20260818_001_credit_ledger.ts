@@ -3,6 +3,11 @@
 // Referrals is its first writer, but this is deliberately not a referral table: purchases and
 // manual admin adjustments land here too.
 //
+// This is the ONLY credit table. The wallet pair added in staging (credit_wallets +
+// a wallet-scoped credit_transactions) was folded in here: `balance_type` below carries the
+// free/subscription/purchased split the AI counsellor needs, so the waterfall works off ledger rows
+// instead of three cached balance columns.
+//
 // ponytail: balance is SUM(amount) — no wallets table and no cached balance column, so there is
 // nothing that can drift out of sync with the rows.
 
@@ -23,6 +28,11 @@ export async function up(knex: Knex): Promise<void> {
 
     t.text("kind").notNullable();
 
+    // Which pot the credits belong to. Grants say where credits land; spends say where they came
+    // from, so the AI waterfall (free -> subscription -> purchased) is answerable from rows alone.
+    // Defaulted because every non-AI kind — referrals, purchases, adjustments — lands in "free".
+    t.text("balance_type").notNullable().defaultTo("free");
+
     // ('referral', referrals.id) for referral rows. This pair is the AUTHORITATIVE link between a
     // referral and its money — referrals.credit_transaction_id is only a convenience pointer.
     t.text("reference_type").nullable();
@@ -39,7 +49,14 @@ export async function up(knex: Knex): Promise<void> {
     ALTER TABLE credit_transactions
       ADD CONSTRAINT credit_tx_owner_type_check CHECK (owner_type IN ('user', 'business')),
       ADD CONSTRAINT credit_tx_kind_check CHECK (
-        kind IN ('referral_reward', 'referral_reversal', 'purchase', 'manual_adjustment')
+        kind IN (
+          'referral_reward', 'referral_reversal', 'purchase', 'manual_adjustment',
+          -- AI counsellor credits, formerly credit_transactions.reason
+          'ai_message', 'signup_grant', 'subscription_grant', 'admin_grant'
+        )
+      ),
+      ADD CONSTRAINT credit_tx_balance_type_check CHECK (
+        balance_type IN ('free', 'subscription', 'purchased')
       ),
       ADD CONSTRAINT credit_tx_amount_nonzero CHECK (amount <> 0)
   `);
@@ -60,6 +77,17 @@ export async function up(knex: Knex): Promise<void> {
     CREATE UNIQUE INDEX credit_tx_one_referral_reward
       ON credit_transactions (reference_id)
       WHERE reference_type = 'referral' AND kind = 'referral_reward'
+  `);
+
+  // Exactly one signup grant per owner, ever.
+  //
+  // This carries the idempotency that credit_wallets.UNIQUE(platform_user_id) used to provide: the
+  // grant was previously safe because creating the wallet twice was impossible. With no wallet row,
+  // two concurrent first-messages would each insert a +10 grant, so the constraint moves here.
+  await knex.raw(`
+    CREATE UNIQUE INDEX credit_tx_one_signup_grant
+      ON credit_transactions (owner_type, owner_id)
+      WHERE kind = 'signup_grant'
   `);
 
   // Append-only, ENFORCED rather than merely documented.

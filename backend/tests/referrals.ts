@@ -24,7 +24,7 @@ import { mintRefToken } from "../src/modules/referrals/services/attribution.serv
 import { onBusinessVerified } from "../src/modules/referrals/services/qualification.service.js";
 import { issueCode } from "../src/modules/referrals/services/codes.service.js";
 import { REFERRAL_CONFIG } from "../src/modules/referrals/consts.js";
-import { addTransaction } from "../src/modules/credits/credits.repository.js";
+import { addTransaction, balanceByType, spend } from "../src/modules/credits/credits.repository.js";
 import jwt from "jsonwebtoken";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3010/api/v3";
@@ -591,6 +591,62 @@ async function tStudentPath() {
     after - before === REFERRAL_CONFIG.student_referral_reward, { before, after });
 }
 
+// ── Waterfall spend ─────────────────────────────────────────────────────────────────────────────
+//
+// Covers what the credit_wallets fold-in changed: the free -> subscription -> purchased order used to
+// be a read of three columns under SELECT ... FOR UPDATE, and is now derived from ledger rows under an
+// advisory lock. T-19d is the one that actually matters — it fails if that lock is ever removed.
+async function tWaterfall() {
+  console.log("\nT-19 waterfall spend");
+  const u = await makeUser();
+
+  await masterKnex.transaction(async (trx) => {
+    for (const [pot, amount] of [["free", 2], ["subscription", 3], ["purchased", 5]] as const) {
+      await addTransaction(trx, {
+        owner_type: "user", owner_id: u.id, amount, kind: "admin_grant", balance_type: pot,
+      });
+    }
+  });
+
+  const seeded = await balanceByType("user", u.id);
+  check("T-19a", "pot balances derive from rows",
+    seeded.free === 2 && seeded.subscription === 3 && seeded.purchased === 5 && seeded.total === 10, seeded);
+
+  // 4 credits spans the free pot (2) and part of subscription (3) — one row per pot drawn from.
+  const rows = await masterKnex.transaction((trx) =>
+    spend(trx, { owner_type: "user", owner_id: u.id, amount: 4, kind: "ai_message" }));
+  check("T-19b", "spend drains free before subscription, one row per pot",
+    rows?.length === 2 &&
+    rows[0].balance_type === "free" && rows[0].amount === -2 &&
+    rows[1].balance_type === "subscription" && rows[1].amount === -2,
+    rows?.map((r) => [r.balance_type, r.amount]));
+
+  // Short balance spends NOTHING — not a partial draw.
+  const before = await balanceByType("user", u.id);
+  const short = await masterKnex.transaction((trx) =>
+    spend(trx, { owner_type: "user", owner_id: u.id, amount: 999, kind: "ai_message" }));
+  const afterShort = await balanceByType("user", u.id);
+  check("T-19c", "insufficient balance returns null and writes nothing",
+    short === null && afterShort.total === before.total, { short, before: before.total, after: afterShort.total });
+
+  // Two concurrent spends of the whole remaining balance: the lock must serialise them, so exactly
+  // one succeeds. Without it both read the same pots and the owner goes negative.
+  const remaining = afterShort.total;
+  const results = await Promise.all([1, 2].map(() =>
+    masterKnex.transaction((trx) =>
+      spend(trx, { owner_type: "user", owner_id: u.id, amount: remaining, kind: "ai_message" }))));
+  const final = await balanceByType("user", u.id);
+  check("T-19d", "concurrent spends cannot overdraw",
+    results.filter((r) => r !== null).length === 1 && final.total === 0,
+    { won: results.filter((r) => r !== null).length, final: final.total });
+
+  // Exactly-once signup grant — the index that replaced credit_wallets.UNIQUE(platform_user_id).
+  const grant = () => masterKnex.transaction((trx) => addTransaction(trx, {
+    owner_type: "user", owner_id: u.id, amount: 10, kind: "signup_grant", balance_type: "free",
+  }));
+  await grant();
+  await expectThrow("T-19e", "second signup_grant is rejected", grant, "credit_tx_one_signup_grant");
+}
 // ── Run ─────────────────────────────────────────────────────────────────────────────────────────
 async function main() {
   console.log(`Referral tests — DB=${config.DB_NAME}  API=${BASE}  run=${RUN}`);
@@ -608,6 +664,7 @@ async function main() {
   await tRelatedPartyAndSelf();
   await tRetryAfterTransientFailure();
   await tPublicEndpoints();
+  await tWaterfall();
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failures.length) console.log("failed:\n  " + failures.join("\n  "));
