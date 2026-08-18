@@ -183,9 +183,14 @@ const slice = createSlice({
         state.error = action.error.message ?? "Could not load registrations.";
       })
 
+      // The host PATCH returns the raw registration row, not the joined list shape — and
+      // nothing at all when the row was already cancelled. Merge over the existing row so
+      // the attendee columns survive, and ignore an empty response.
       .addCase(setRegistrationStatus.fulfilled, (state, action) => {
+        const updated = action.payload as EventRegistration | undefined;
+        if (!updated?.id) return;
         state.registrations = state.registrations.map((r) =>
-          r.id === action.payload.id ? { ...r, ...action.payload } : r,
+          r.id === updated.id ? { ...r, ...updated } : r,
         );
       });
   },
