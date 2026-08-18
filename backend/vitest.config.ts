@@ -93,6 +93,9 @@ export default defineConfig({
         "src/modules/superadmin/data-extraction/lib/immigration-mappers.ts",
         "src/modules/superadmin/data-extraction/repositories/immigration.repository.ts",
         "src/modules/superadmin/data-extraction/services/immigration.service.ts",
+        // G5 — ads (campaigns, impressions, leads) + applications & charges
+        "src/modules/ads/**/*.ts",
+        "src/modules/applications/**/*.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {

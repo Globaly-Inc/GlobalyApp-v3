@@ -38,7 +38,12 @@ bower_components
 build/Release
 
 # Dependency directories
+# Both spellings on purpose: `node_modules/` matches only a DIRECTORY, so a
+# SYMLINK named node_modules slips past it. One did — a self-referential symlink
+# (frontend/node_modules -> frontend/node_modules) was committed, and checking it
+# out replaced the real dependency directory with a loop.
 node_modules/
+node_modules
 jspm_packages/
 
 # Snowpack dependency directory (https://snowpack.dev/)

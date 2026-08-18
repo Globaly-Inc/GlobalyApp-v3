@@ -37,6 +37,8 @@ import ambassadorsModule, { publicAmbassadorsModule } from "./modules/ambassador
 import trainingModule, { publicCertificatesModule } from "./modules/training/index.js";
 import scholarshipsPublicModule, { businessScholarshipsModule } from "./modules/scholarships/index.js";
 import { publicVisasModule } from "./modules/visas/index.js";
+import adsModule, { publicAdsModule } from "./modules/ads/index.js";
+import applicationsModule from "./modules/applications/index.js";
 
 const logger = createChildLogger("server");
 
@@ -69,6 +71,8 @@ export async function buildServer() {
     await protectedApp.register(ambassadorsModule);        // ambassador programs, engagement, earnings, payouts
     await protectedApp.register(trainingModule);           // training programs, certificates, gamification
     await protectedApp.register(businessScholarshipsModule); // business-owned scholarship submission
+    await protectedApp.register(adsModule);                // ad campaigns, engagement recording, admin moderation
+    await protectedApp.register(applicationsModule);        // student applications + per-application credit charges
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
@@ -83,6 +87,7 @@ export async function buildServer() {
   await app.register(publicCertificatesModule);    // public training-certificate verification (no auth)
   await app.register(scholarshipsPublicModule);    // public scholarships reads (no auth)
   await app.register(publicVisasModule);           // public visa + MARA agent directory (no auth)
+  await app.register(publicAdsModule);             // public ad serving (optional identity, no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));
