@@ -23,6 +23,42 @@ services:
         limits:
           memory: 2g
 
+  # The integration-test database. It existed only as a hand-created `docker run`
+  # container (v3-test-db on 5460) until 2026-08-18, which meant its configuration
+  # was not reproducible and every per-agent test database vanished with it.
+  #
+  # shm_size is the reason this is written down. Docker defaults /dev/shm to 64M;
+  # Postgres allocates dynamic shared memory there for parallel query workers, and
+  # with many concurrent test databases w6-storage-rewrite.test.ts failed with
+  # "could not resize shared memory segment: No space left on device" — an
+  # environment failure that reads exactly like a code failure. 256M plus
+  # max_parallel_workers_per_gather=0 removes both the pressure and the need for it;
+  # tests gain nothing from parallel query.
+  #
+  # Not started by default: `docker compose up test-db` when you need it, and note
+  # it claims 5460, so stop any hand-created v3-test-db first.
+  test-db:
+    container_name: v3-test-db
+    image: pgvector/pgvector:pg17
+    profiles: ["test"]
+    ports:
+      - "5460:5432"
+    environment:
+      POSTGRES_DB: globalyapp_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    shm_size: 256m
+    command:
+      - postgres
+      - -c
+      - max_parallel_workers_per_gather=0
+    networks:
+      - globalyapp
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d globalyapp_test"]
+      interval: 5s
+      retries: 10
+
   frontend-dev:
     container_name: globalyapp-frontend-dev
     build:
@@ -112,8 +148,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
-        condition: service_started
       lavinmq:
         condition: service_started
     volumes:
