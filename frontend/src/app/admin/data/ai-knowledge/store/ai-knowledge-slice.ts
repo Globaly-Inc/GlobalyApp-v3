@@ -1,12 +1,16 @@
 import { createAsyncThunk, createSlice, isAnyOf } from "@reduxjs/toolkit";
 import { aiKnowledgeApi } from "../apis";
 import type {
-  CountryGuide, Faq, KnowledgeCounts, QueueItem, RackCategory,
+  CountryGuide, EmbeddingStatus, Faq, KnowledgeCounts, QueueItem, RackCategory,
   RackCounts, RackDocument, RackSource, VisaEntry,
 } from "../apis/types";
 
 export const fetchCounts = createAsyncThunk("dataAiKnowledge/counts", () => aiKnowledgeApi.getCounts());
 export const fetchRackCounts = createAsyncThunk("dataAiKnowledge/rackCounts", () => aiKnowledgeApi.getRackCounts());
+export const fetchEmbeddingStatus = createAsyncThunk(
+  "dataAiKnowledge/embeddingStatus",
+  () => aiKnowledgeApi.getEmbeddingStatus(),
+);
 export const fetchVisas = createAsyncThunk("dataAiKnowledge/visas", (q: string | undefined) => aiKnowledgeApi.getVisas(q));
 export const fetchFaqs = createAsyncThunk("dataAiKnowledge/faqs", (q: string | undefined) => aiKnowledgeApi.getFaqs(q));
 export const fetchGuides = createAsyncThunk("dataAiKnowledge/guides", (q: string | undefined) => aiKnowledgeApi.getGuides(q));
@@ -24,6 +28,7 @@ export const fetchDocuments = createAsyncThunk(
 type AiKnowledgeState = {
   counts: KnowledgeCounts | null;
   rackCounts: RackCounts | null;
+  embeddingStatus: EmbeddingStatus | null;
   visas: VisaEntry[];
   faqs: Faq[];
   guides: CountryGuide[];
@@ -36,7 +41,7 @@ type AiKnowledgeState = {
 };
 
 const initialState: AiKnowledgeState = {
-  counts: null, rackCounts: null,
+  counts: null, rackCounts: null, embeddingStatus: null,
   visas: [], faqs: [], guides: [], queue: [],
   categories: [], sources: [], documents: [],
   status: "idle", error: null,
@@ -50,6 +55,7 @@ const aiKnowledgeSlice = createSlice({
     builder
       .addCase(fetchCounts.fulfilled, (s, a) => { s.counts = a.payload; })
       .addCase(fetchRackCounts.fulfilled, (s, a) => { s.rackCounts = a.payload; })
+      .addCase(fetchEmbeddingStatus.fulfilled, (s, a) => { s.embeddingStatus = a.payload; })
       .addCase(fetchVisas.fulfilled, (s, a) => { s.visas = a.payload; })
       .addCase(fetchFaqs.fulfilled, (s, a) => { s.faqs = a.payload; })
       .addCase(fetchGuides.fulfilled, (s, a) => { s.guides = a.payload; })

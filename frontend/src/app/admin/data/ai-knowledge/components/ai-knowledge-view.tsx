@@ -6,11 +6,12 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
-  fetchCategories, fetchCounts, fetchDocuments, fetchFaqs, fetchGuides,
-  fetchQueue, fetchRackCounts, fetchSources, fetchVisas,
+  fetchCategories, fetchCounts, fetchDocuments, fetchEmbeddingStatus, fetchFaqs,
+  fetchGuides, fetchQueue, fetchRackCounts, fetchSources, fetchVisas,
 } from "../store/ai-knowledge-slice";
 import { KNOWLEDGE_TABS } from "../const";
 import type { KnowledgeTab } from "../types";
+import { EmbeddingStatusBanner } from "./embedding-status-banner";
 import { FaqsTab } from "./faqs-tab";
 import { GuidesTab } from "./guides-tab";
 import { QueueTab } from "./queue-tab";
@@ -20,7 +21,8 @@ import { VisaTab } from "./visa-tab";
 export function AiKnowledgeView() {
   const dispatch = useAppDispatch();
   const {
-    counts, rackCounts, visas, faqs, guides, queue, categories, sources, documents, status,
+    counts, rackCounts, embeddingStatus, visas, faqs, guides, queue, categories,
+    sources, documents, status,
   } = useAppSelector((state) => state.dataAiKnowledge);
 
   const [tab, setTab] = useState<KnowledgeTab>("rack");
@@ -34,6 +36,7 @@ export function AiKnowledgeView() {
     fetchedRef.current = true;
     dispatch(fetchCounts());
     dispatch(fetchRackCounts());
+    dispatch(fetchEmbeddingStatus());
     dispatch(fetchCategories());
   }, [dispatch]);
 
@@ -68,6 +71,12 @@ export function AiKnowledgeView() {
   const reloadSources = useCallback((id: string) => {
     dispatch(fetchSources({ categoryId: id }));
     dispatch(fetchRackCounts());
+    // A crawl adds documents, which adds pending chunks — keep the banner honest.
+    dispatch(fetchEmbeddingStatus());
+  }, [dispatch]);
+
+  const reloadEmbeddingStatus = useCallback(() => {
+    dispatch(fetchEmbeddingStatus());
   }, [dispatch]);
 
   const reloadDocuments = useCallback((sourceId: string) => {
@@ -153,6 +162,7 @@ export function AiKnowledgeView() {
 
       {tab === "rack" && (
         <>
+          <EmbeddingStatusBanner status={embeddingStatus} onRefresh={reloadEmbeddingStatus} />
           {rackCounts && (
             <p className="mb-3 text-xs text-muted-foreground">
               {rackCounts.categories} categories · {rackCounts.sources} sources · {rackCounts.documents} documents ·{" "}

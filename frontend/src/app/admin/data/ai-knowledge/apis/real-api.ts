@@ -1,6 +1,6 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import type {
-  CategoryParams, CountryGuide, Faq, GuideParams, FaqParams, KnowledgeCounts,
+  CategoryParams, CountryGuide, EmbeddingStatus, Faq, GuideParams, FaqParams, KnowledgeCounts,
   QueueItem, RackCategory, RackCounts, RackDocument, RackDocumentDetail,
   RackSource, SourceParams, VisaEntry, VisaParams,
 } from "./types";
@@ -82,6 +82,15 @@ export const aiKnowledgeRealApi = {
     const { counts } = await httpGet<{ counts: RackCounts }>(`${BASE}/rack/overview`);
     return counts;
   },
+  // ── Embedding ──
+  getEmbeddingStatus: async (): Promise<EmbeddingStatus> => {
+    const { embedding } = await httpGet<{ embedding: EmbeddingStatus }>(`${BASE}/embedding-status`);
+    return embedding;
+  },
+  /** 503s when no provider is configured — the caller surfaces that, it is not a no-op. */
+  reembed: (documentId?: string): Promise<{ dispatched: boolean; model: string; documents_awaiting: number }> =>
+    httpPost(`${BASE}/reembed`, documentId ? { document_id: documentId } : {}),
+
   getCategories: async (): Promise<RackCategory[]> => {
     const { categories } = await httpGet<{ categories: RackCategory[] }>(`${BASE}/categories`);
     return categories;
