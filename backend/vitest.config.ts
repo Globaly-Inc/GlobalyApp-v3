@@ -81,6 +81,11 @@ export default defineConfig({
         "src/modules/notifications/**/*.ts",
         // G2 — jobs board: posting, applicants, AI assist, admin oversight
         "src/modules/jobs/**/*.ts",
+        // G4 — ambassador ops + training certificates/gamification
+        "src/modules/ambassadors/**/*.ts",
+        "src/modules/training/**/*.ts",
+        // Shared URL validation (the stored-XSS guard every schema routes through)
+        "src/shared/url.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {

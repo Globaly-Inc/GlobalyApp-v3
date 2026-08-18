@@ -60,11 +60,46 @@ export interface RemoteSubscription {
   cancel_at: number | null;
 }
 
+/** A Stripe Connect express account — the ambassador payout rail (Wave G4). */
+export interface ConnectAccount {
+  id: string;
+  /** True once the account holder has finished Stripe's onboarding form. */
+  details_submitted: boolean;
+}
+
+export interface Transfer {
+  id: string;
+  amount: number;
+  currency: string;
+  destination: string;
+}
+
 export interface StripeClient {
   createCheckoutSession(params: CheckoutSessionParams): Promise<CheckoutSession>;
   retrieveCheckoutSession(sessionId: string): Promise<CheckoutSession>;
   retrieveSubscription(subscriptionId: string): Promise<RemoteSubscription>;
   createBillingPortalSession(params: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
+
+  // ── Connect (money OUT, as opposed to the checkout rails above) ────────────
+  createConnectAccount(params: {
+    email: string | null;
+    metadata: Record<string, string>;
+  }): Promise<ConnectAccount>;
+  retrieveConnectAccount(accountId: string): Promise<ConnectAccount>;
+  createAccountLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<{ url: string }>;
+  /** `idempotencyKey` is passed to Stripe's own Idempotency-Key header, so a
+   *  retried transfer is deduplicated on their side as well as ours. */
+  createTransfer(params: {
+    amount: number;
+    currency: string;
+    destination: string;
+    idempotencyKey: string;
+    metadata: Record<string, string>;
+  }): Promise<Transfer>;
 }
 
 /** True when the operator has supplied enough config for outbound Stripe calls. */

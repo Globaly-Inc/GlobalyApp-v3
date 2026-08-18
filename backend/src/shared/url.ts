@@ -1,39 +1,40 @@
-// Web-linkable URL validation.
+// Safe URL validation for anything that will end up in an anchor href, an
+// <img src>, an <iframe src>, or a redirect.
 //
-// z.string().url() is NOT this. It delegates to the URL constructor, which accepts
-// ANY scheme — javascript:, data:, vbscript: and file: all parse as valid URLs and
-// all pass. Every one of these columns is rendered straight into an anchor href by
-// the frontend (course-card.tsx, visas-view.tsx, course-detail-panel.tsx and others
-// do `href={row.source_url}`), so a javascript: value stored through the admin API
-// is stored XSS that fires on click. rel="noopener noreferrer" does not help: it
-// governs the new browsing context, not whether the scheme executes.
+// `z.string().url()` is NOT this: the WHATWG URL constructor happily parses
+// `javascript:alert(1)`, `data:text/html;base64,...` and `vbscript:...`, and the
+// frontend renders stored URLs straight into hrefs. A closed allowlist of
+// http/https is the only version of this check that is not a stored-XSS bug
+// waiting for a renderer.
 //
-// The scheme allowlist is closed on purpose. Anything not http/https is rejected
-// rather than sanitised, because a link the user cannot click is a visible bug
-// while a link that runs script is an invisible one.
+// Use `webUrl()` for every user-supplied URL field. Never `z.string().url()`.
 
 import { z } from "zod";
 
-/** Schemes a stored URL may use. Closed set — see the file header. */
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
+
+/** Default cap — long enough for a real CDN URL, short enough to bound storage. */
+const DEFAULT_MAX = 2000;
 
 export function isWebUrl(value: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    return false; // relative or malformed — never a link we hand to a browser
+    return false;
   }
   return ALLOWED_PROTOCOLS.has(parsed.protocol);
 }
 
 /**
- * Drop-in replacement for `z.string().url()` for any value that reaches an href.
- * Use this everywhere instead; `.url()` alone is a stored-XSS vector.
+ * A zod string that only accepts an absolute http(s) URL.
+ * `max` bounds the stored length (defaults to 2000).
  */
-export function webUrl(opts: { max?: number } = {}) {
-  // .max() has to be applied before .refine(), because refine returns a
-  // ZodEffects and ZodString's chainable methods are gone after it.
-  const base = opts.max === undefined ? z.string().trim() : z.string().trim().max(opts.max);
-  return base.refine(isWebUrl, { message: "Must be an http(s) URL" });
+export function webUrl(options: { max?: number } = {}) {
+  return z
+    .string()
+    .trim()
+    .min(1)
+    .max(options.max ?? DEFAULT_MAX)
+    .refine(isWebUrl, { message: "Must be an absolute http(s) URL" });
 }
