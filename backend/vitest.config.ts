@@ -12,7 +12,15 @@ export default defineConfig({
           include: ["tests/unit/**/*.test.ts"],
           // src/config.ts zod-parses at module scope, so anything importing a
           // module that reaches it needs the env present even with no DB.
-          env: testEnv(),
+          // LLM_THROTTLE_MS: the extraction client sleeps 500ms between model calls
+          // to be polite to Gemini. With an injected fixture provider there is nobody
+          // to be polite to, and the default cost the unit project 22 seconds of
+          // sleeping. extraction-llm-parsing.test.ts re-imports the module with a
+          // non-zero gap to cover the throttle itself.
+          // HOST_THROTTLE_MS: same for the scraper's per-host politeness gap, whose
+          // 800ms default is spent waiting on a stubbed fetch.
+          // ("1", not "0": both are read with `|| default`, so a zero falls back.)
+          env: { ...testEnv(), LLM_THROTTLE_MS: "1", HOST_THROTTLE_MS: "1" },
         },
       },
       {
@@ -116,6 +124,14 @@ export default defineConfig({
         "src/modules/superadmin/data-extraction/services/quality.service.ts",
         "src/modules/superadmin/data-extraction/services/schedule.service.ts",
         "src/modules/superadmin/data-extraction/routes/quality.routes.ts",
+        // A-COV — the five extraction areas G8 named as uncovered: the scraper, LLM
+        // parsing, the staging writer, the fee matcher and junction assignment.
+        // (Junction assignment has no file of its own; it lives in staging-writer.ts.)
+        "src/modules/superadmin/data-extraction/lib/scraper.ts",
+        "src/modules/superadmin/data-extraction/lib/llm-client.ts",
+        "src/modules/superadmin/data-extraction/lib/staging-writer.ts",
+        "src/modules/superadmin/data-extraction/lib/fee-matcher.ts",
+        "src/modules/superadmin/data-extraction/lib/installment-parser.ts",
         // G5 — ads (campaigns, impressions, leads) + applications & charges
         "src/modules/ads/**/*.ts",
         "src/modules/applications/**/*.ts",

@@ -87,6 +87,36 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * One model round-trip. The default talks to Gemini; tests inject a fixture so the
+ * JSON-repair chain below can be exercised on real malformed output without a
+ * provider — and without a key, which the suite pins empty on purpose.
+ */
+export type LlmGenerate = (req: {
+  model: string;
+  system: string;
+  prompt: string;
+  maxTokens: number;
+  json: boolean;
+}) => Promise<{ text: string; truncated: boolean }>;
+
+const geminiGenerate: LlmGenerate = async (req) => {
+  const ai = getClient();
+  const model = ai.getGenerativeModel({
+    model: req.model,
+    systemInstruction: req.system,
+    generationConfig: {
+      maxOutputTokens: req.maxTokens,
+      ...(req.json ? { responseMimeType: "application/json" } : {}),
+    },
+  });
+  const result = await model.generateContent(req.prompt);
+  return {
+    text: result.response.text(),
+    truncated: result.response.candidates?.[0]?.finishReason === "MAX_TOKENS",
+  };
+};
+
+/**
  * Send a prompt to Gemini and parse JSON from the response.
  */
 export async function extractJson<T>(opts: {
@@ -94,48 +124,59 @@ export async function extractJson<T>(opts: {
   prompt: string;
   model?: string;
   maxTokens?: number;
+  generate?: LlmGenerate;
 }): Promise<T> {
-  const ai = getClient();
-  const model = ai.getGenerativeModel({
-    model: opts.model ?? config.GEMINI_MODEL,
-    systemInstruction: opts.system,
-    generationConfig: {
-      maxOutputTokens: opts.maxTokens ?? 16384,
-      responseMimeType: "application/json",
-    },
-  });
+  const { text, truncated } = await withRetry(() =>
+    (opts.generate ?? geminiGenerate)({
+      model: opts.model ?? config.GEMINI_MODEL,
+      system: opts.system,
+      prompt: opts.prompt,
+      maxTokens: opts.maxTokens ?? 16384,
+      json: true,
+    }),
+  );
 
-  const result = await withRetry(() => model.generateContent(opts.prompt));
-  const text = result.response.text();
-  const truncated = result.response.candidates?.[0]?.finishReason === "MAX_TOKENS";
+  const direct = asObject<T>(text);
+  if (direct) return direct;
 
+  // Gemini sometimes wraps JSON in markdown code fences or adds trailing junk
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const fenced = asObject<T>(cleaned);
+  if (fenced) return fenced;
+
+  // ponytail: strip trailing garbage after the last balanced brace
+  // Gemini often emits an extra } or }} after valid JSON
+  const lastBrace = findBalancedEnd(cleaned);
+  if (lastBrace > 0 && lastBrace < cleaned.length - 1) {
+    const trimmed = asObject<T>(cleaned.slice(0, lastBrace + 1));
+    if (trimmed) return trimmed;
+  }
+
+  // Try to salvage incomplete/truncated JSON
+  const salvaged = salvageTruncatedJson(cleaned);
+  if (salvaged) {
+    logger.warn("Salvaged incomplete LLM JSON response", { truncated });
+    return salvaged as T;
+  }
+  logger.error("LLM returned invalid JSON", { raw: text.slice(0, 500), truncated });
+  throw new Error("LLM returned invalid JSON");
+}
+
+/**
+ * Parse, but only accept an object or array.
+ *
+ * `null`, `42` and `"sorry"` are all valid JSON, so a plain JSON.parse hands the
+ * caller a value that satisfies no extraction shape and fails much later as a
+ * TypeError on `.courses`. Every caller of extractJson is typed to an object;
+ * anything else is a non-answer and has to fail closed here, where the error still
+ * says what happened and the page worker can classify it as a parse error.
+ */
+function asObject<T>(text: string): T | null {
   try {
-    return JSON.parse(text) as T;
+    const value: unknown = JSON.parse(text);
+    return value !== null && typeof value === "object" ? (value as T) : null;
   } catch {
-    // Gemini sometimes wraps JSON in markdown code fences or adds trailing junk
-    let cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    try {
-      return JSON.parse(cleaned) as T;
-    } catch {
-      // ponytail: strip trailing garbage after the last balanced brace
-      // Gemini often emits an extra } or }} after valid JSON
-      const lastBrace = findBalancedEnd(cleaned);
-      if (lastBrace > 0 && lastBrace < cleaned.length - 1) {
-        const trimmed = cleaned.slice(0, lastBrace + 1);
-        try {
-          return JSON.parse(trimmed) as T;
-        } catch { /* fall through */ }
-      }
-
-      // Try to salvage incomplete/truncated JSON
-      const salvaged = salvageTruncatedJson(cleaned);
-      if (salvaged) {
-        logger.warn("Salvaged incomplete LLM JSON response", { truncated });
-        return salvaged as T;
-      }
-      logger.error("LLM returned invalid JSON", { raw: text.slice(0, 500), truncated });
-      throw new Error("LLM returned invalid JSON");
-    }
+    return null;
   }
 }
 
@@ -185,8 +226,8 @@ function salvageTruncatedJson(text: string): unknown | null {
   return null;
 }
 
-/** Close unclosed brackets/braces in correct nesting order and try to parse. */
-function tryCloseJson(partial: string): unknown | null {
+/** Close unclosed brackets/braces in correct nesting order and try to parse an object. */
+function tryCloseJson(partial: string): object | null {
   // If we're inside an open string, close it first
   let inString = false;
   let escape = false;
@@ -213,11 +254,9 @@ function tryCloseJson(partial: string): unknown | null {
   }
   attempt += stack.reverse().join("");
 
-  try {
-    return JSON.parse(attempt);
-  } catch {
-    return null;
-  }
+  // Object-only, for the reason asObject spells out: `"42,"` truncates to a valid
+  // JSON number, and returning 42 as an extraction result would be a fabrication.
+  return asObject<object>(attempt);
 }
 
 /**
@@ -228,18 +267,18 @@ export async function complete(opts: {
   prompt: string;
   model?: string;
   maxTokens?: number;
+  generate?: LlmGenerate;
 }): Promise<string> {
-  const ai = getClient();
-  const model = ai.getGenerativeModel({
-    model: opts.model ?? config.GEMINI_MODEL,
-    systemInstruction: opts.system,
-    generationConfig: {
-      maxOutputTokens: opts.maxTokens ?? 2048,
-    },
-  });
-
-  const result = await withRetry(() => model.generateContent(opts.prompt));
-  return result.response.text();
+  const { text } = await withRetry(() =>
+    (opts.generate ?? geminiGenerate)({
+      model: opts.model ?? config.GEMINI_MODEL,
+      system: opts.system,
+      prompt: opts.prompt,
+      maxTokens: opts.maxTokens ?? 2048,
+      json: false,
+    }),
+  );
+  return text;
 }
 
 /** Width of every `embedding vector(...)` column in the superadmin schema. */
