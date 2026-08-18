@@ -113,7 +113,8 @@ export function parseMatchScore(text: string): MatchScore {
   };
 }
 
-function buildMatchPrompt(job: jobRepo.JobRow, profile: Record<string, unknown>): string {
+/** Exported for the unit test: this prompt is the V1 contract, not an internal detail. */
+export function buildMatchPrompt(job: jobRepo.JobRow, profile: Record<string, unknown>): string {
   return [
     "Score the fit between this student and job.",
     "",

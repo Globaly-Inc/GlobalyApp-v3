@@ -183,6 +183,30 @@ describeDb("jobs board", () => {
       expect(job.applications_count).toBe(0);
     });
 
+    it("round-trips every writable V2 field, screening questions included", async () => {
+      const res = await post("/api/v3/business/jobs", alpha.token, {
+        ...draftBody(`Full spec ${suffix}`),
+        summary: "Barista, inner west",
+        is_remote: false,
+        is_hybrid: true,
+        company_name: "Alpha Coffee",
+        apply_method: "external",
+        apply_url: "https://alpha.example/apply",
+        is_student_friendly: true,
+        closing_at: "2026-12-01T00:00:00.000Z",
+        screening_questions: [{ id: "q1", label: "Do you hold work rights?", type: "boolean" }],
+      });
+      expect(res.statusCode).toBe(201);
+      const { job } = res.json();
+      expect(job.is_hybrid).toBe(true);
+      expect(job.apply_method).toBe("external");
+      expect(job.company_name).toBe("Alpha Coffee");
+      expect(job.screening_questions).toEqual([
+        { id: "q1", label: "Do you hold work rights?", type: "boolean" },
+      ]);
+      expect(job.closing_at).not.toBeNull();
+    });
+
     it("rejects a posting without the fields V2 marks NOT NULL", async () => {
       const res = await post("/api/v3/business/jobs", alpha.token, { title: "Only a title" });
       expect(res.statusCode).toBe(400);
@@ -350,6 +374,47 @@ describeDb("jobs board", () => {
       expect(res.json().application.stage_changed_at).not.toBeNull();
     });
 
+    it("annotates without moving the stage, and rejects an empty patch", async () => {
+      const id = await publishedJob(alpha, `Notes only ${suffix}`);
+      const applied = await post(`/api/v3/jobs/${id}/applications`, student.token, {});
+      const applicationId = applied.json().application.id;
+      const url = `/api/v3/business/jobs/${id}/applications/${applicationId}`;
+
+      const noted = await patch(url, alpha.token, { notes: "Call back Monday" });
+      expect(noted.statusCode).toBe(200);
+      expect(noted.json().application.notes).toBe("Call back Monday");
+      expect(noted.json().application.stage).toBe("new");
+      expect(noted.json().application.stage_changed_by).toBeNull();
+
+      expect((await patch(url, alpha.token, {})).statusCode).toBe(400);
+    });
+
+    it("404s an application id that belongs to a different job", async () => {
+      const jobA = await publishedJob(alpha, `Mismatch a ${suffix}`);
+      const jobB = await publishedJob(alpha, `Mismatch b ${suffix}`);
+      const applied = await post(`/api/v3/jobs/${jobA}/applications`, student.token, {});
+      const res = await patch(
+        `/api/v3/business/jobs/${jobB}/applications/${applied.json().application.id}`,
+        alpha.token,
+        { stage: "offer" },
+      );
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("filters the applicant list by stage", async () => {
+      const id = await publishedJob(alpha, `Stage filter ${suffix}`);
+      const applied = await post(`/api/v3/jobs/${id}/applications`, student.token, {});
+      await patch(
+        `/api/v3/business/jobs/${id}/applications/${applied.json().application.id}`,
+        alpha.token,
+        { stage: "interview" },
+      );
+      const hit = await get(`/api/v3/business/jobs/${id}/applications?stage=interview`, alpha.token);
+      expect(hit.json().data).toHaveLength(1);
+      const miss = await get(`/api/v3/business/jobs/${id}/applications?stage=rejected`, alpha.token);
+      expect(miss.json().data).toHaveLength(0);
+    });
+
     it("rejects a stage outside V1's vocabulary", async () => {
       const id = await publishedJob(alpha, `Bad stage ${suffix}`);
       const applied = await post(`/api/v3/jobs/${id}/applications`, student.token, {});
@@ -463,6 +528,21 @@ describeDb("jobs board", () => {
           j.business_id === beta.id && j.status === "open",
         ),
       ).toBe(true);
+    });
+
+    it("narrows by title search, job type and category", async () => {
+      const title = `Needle ${suffix}`;
+      await publishedJob(alpha, title);
+      const res = await get(
+        `/api/v3/admin/monitoring/jobs?q=Needle&job_type=part_time&category=hospitality&limit=100`,
+        adminToken,
+      );
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.map((j: { title: string }) => j.title)).toContain(title);
+
+      const miss = await get("/api/v3/admin/monitoring/jobs?category=aerospace", adminToken);
+      expect(miss.json().data).toHaveLength(0);
+      expect(miss.json().meta.total).toBe(0);
     });
 
     it("reports funnel counters", async () => {
