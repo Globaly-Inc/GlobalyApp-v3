@@ -13,6 +13,7 @@ import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import { verificationPrompt, VERIFICATION_SYSTEM } from "../lib/extraction-prompts.js";
 import { writeJobEvent } from "../lib/staging-writer.js";
+import { auditQualityBestEffort } from "../services/quality.service.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -118,6 +119,18 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
           data: { course_id: course.id },
         });
       }
+    }
+
+    // V1 runs its quality validator here — on the final batch, immediately before
+    // the job goes to 'review'. Best-effort by design: the deterministic flags are
+    // already committed inside, and a missing key must not fail a finished job.
+    const audit = await auditQualityBestEffort(jobId);
+    if (audit && !audit.passed) {
+      await writeJobEvent(jobId, "quality_flags", {
+        level: "warn", phase: "verification",
+        message: `Quality audit: ${audit.summary}`,
+        data: { deterministic: audit.deterministic, judged: audit.judged, auto_flagged: audit.auto_flagged },
+      });
     }
 
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
