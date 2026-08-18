@@ -25,6 +25,12 @@ export function testEnv(): Record<string, string> {
     JWT_SECRET: process.env.JWT_SECRET || "integration-test-secret",
     // Keep third-party integrations inert during tests.
     LAVINMQ_URL: "amqp://guest:guest@127.0.0.1:1",
+    // Pinned empty on purpose. src/config.ts does `import "dotenv/config"`, so a
+    // real key in backend/.env would otherwise reach the suite and silently flip
+    // every fail-closed assertion (AI paths are specified to 503 without a key) —
+    // the tests would still pass while proving the opposite of what they claim.
+    // Tests that want a configured provider inject one; they never read the env.
+    GEMINI_API_KEY: "",
     CORS_ORIGINS: "http://localhost:3001",
   };
 }
