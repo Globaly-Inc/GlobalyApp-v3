@@ -173,6 +173,38 @@ describe("the live embedBatch path", () => {
     expect(attempts).toBeLessThanOrEqual(5);
   });
 
+  it("spaces concurrent calls, because the provider's limit is per key not per caller", async () => {
+    withKey("test-key");
+    const gap = 40;
+    process.env.LLM_THROTTLE_MS = String(gap);
+
+    const startedAt: number[] = [];
+    globalThis.fetch = (async () => {
+      startedAt.push(Date.now());
+      return reply(unitVector());
+    }) as typeof globalThis.fetch;
+
+    // The embed worker runs several documents at once — each one its own queue
+    // message, each calling embedBatch concurrently. A throttle that only compares
+    // "now" against the last call lets every waiter wake together and fire as one
+    // burst, which is precisely how 184 documents got 429'd off the real corpus.
+    const provider = getEmbeddingProvider();
+    await Promise.all([
+      provider.embedBatch(["a"]),
+      provider.embedBatch(["b"]),
+      provider.embedBatch(["c"]),
+      provider.embedBatch(["d"]),
+    ]);
+
+    expect(startedAt).toHaveLength(4);
+    const sorted = [...startedAt].sort((x, y) => x - y);
+    for (let i = 1; i < sorted.length; i += 1) {
+      // Timers fire a hair early on some platforms; allow a small slack.
+      expect(sorted[i] - sorted[i - 1], `call ${i} came too soon after call ${i - 1}`)
+        .toBeGreaterThanOrEqual(gap - 10);
+    }
+  });
+
   it("does not retry a wrong-width vector — that is a bug, not a blip", async () => {
     withKey("test-key");
     let attempts = 0;

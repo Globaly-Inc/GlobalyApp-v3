@@ -31,6 +31,34 @@ function isTransient(err: unknown): boolean {
 let lastLlmCall = 0;
 const minLlmGapMs = () => Number(process.env.LLM_THROTTLE_MS) || 500;
 
+/**
+ * Take a turn, then wait out the gap. Callers queue on a promise chain rather than
+ * each comparing `now` against `lastLlmCall` independently — with N concurrent
+ * callers the latter has every one of them compute the same wait, sleep for it, and
+ * then fire together as a burst of N, which is not a rate limit at all.
+ *
+ * Measured, not theorised: the embed worker takes several queue messages at once, so
+ * the knowledge backfill sent bursts into a 100-requests-per-minute key, got 429s,
+ * backed off ~58s in lockstep, and burst again — 21 chunks embedded in five minutes
+ * out of a budget that should have carried ~400.
+ *
+ * The provider's limit is per key, so the gate has to be per process, not per call
+ * site. It is deliberately not a semaphore: one call at a time, spaced, is exactly
+ * what a requests-per-minute quota wants.
+ */
+let llmGate: Promise<void> = Promise.resolve();
+
+function takeLlmTurn(): Promise<void> {
+  const turn = llmGate.then(async () => {
+    const wait = minLlmGapMs() - (Date.now() - lastLlmCall);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastLlmCall = Date.now();
+  });
+  // A rejected turn must not wedge the queue for everyone behind it.
+  llmGate = turn.catch(() => undefined);
+  return turn;
+}
+
 // ponytail: parse "retryDelay":"52s" from Gemini 429 errors
 function parseRetryDelay(err: unknown): number | null {
   const msg = err instanceof Error ? err.message : String(err);
@@ -41,10 +69,7 @@ function parseRetryDelay(err: unknown): number | null {
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const now = Date.now();
-      const wait = minLlmGapMs() - (now - lastLlmCall);
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-      lastLlmCall = Date.now();
+      await takeLlmTurn();
       return await fn();
     } catch (err) {
       if (attempt < MAX_RETRIES && isTransient(err)) {
