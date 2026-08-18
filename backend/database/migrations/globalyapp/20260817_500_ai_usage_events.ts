@@ -61,10 +61,13 @@ export async function up(knex: Knex): Promise<void> {
     t.text("idempotency_key").notNullable().unique();
 
     t.text("owner_type").notNullable();
+    // CASCADE, not SET NULL: the owner column is half of owner_check, and a usage
+    // event with no owner is unrepresentable. It also matches the wallet and the
+    // ledger, which already cascade away with their owner.
     t.integer("platform_user_id").unsigned().nullable()
-      .references("id").inTable("platform_users").onDelete("SET NULL");
+      .references("id").inTable("platform_users").onDelete("CASCADE");
     t.integer("business_id").unsigned().nullable()
-      .references("id").inTable("businesses").onDelete("SET NULL");
+      .references("id").inTable("businesses").onDelete("CASCADE");
 
     t.integer("session_id").unsigned().nullable()
       .references("id").inTable("ai_counselor_sessions").onDelete("SET NULL");

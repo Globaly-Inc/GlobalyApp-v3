@@ -15,6 +15,7 @@ const describeDb = describe.skipIf(!dbAvailable);
 describeDb("credit_wallets (reconciled)", () => {
   let masterKnex: import("knex").Knex;
   let creditService: typeof import("../../src/modules/ai-counsellor/services/credit.service.js");
+  let metering: typeof import("../../src/modules/ai-counsellor/services/metering.service.js");
 
   let userId = 0;
   let otherUserId = 0;
@@ -23,6 +24,7 @@ describeDb("credit_wallets (reconciled)", () => {
   beforeAll(async () => {
     ({ masterKnex } = await import("../../src/core/db/master-pool.js"));
     creditService = await import("../../src/modules/ai-counsellor/services/credit.service.js");
+    metering = await import("../../src/modules/ai-counsellor/services/metering.service.js");
 
     const suffix = `${process.pid}${Date.now()}`;
     const newUser = async (label: string) => {
@@ -160,19 +162,45 @@ describeDb("credit_wallets (reconciled)", () => {
   // ── AI-counsellor behaviour, unchanged ─────────────────────────────────────
 
   describe("ai-counsellor credit paths", () => {
+    // A personal chat's scope: the counsellor reads and debits this user's own
+    // wallet and nothing else.
+    const personal = (id: number) =>
+      ({ ownerType: "user", userId: id, businessId: null }) as Parameters<
+        typeof metering.settleTurn
+      >[0]["scope"];
+
+    // One credit's worth of tokens, which is what a chat message used to cost flat.
+    // The spend now goes through metering — the counsellor has ONE settlement path
+    // for the wallet, not a second one beside billing's.
+    let turn = 0;
+    const spendOneCredit = (id: number) => {
+      turn += 1;
+      return metering.settleTurn({
+        turnId: `wallet-suite-${process.pid}-${Date.now()}-${turn}`,
+        scope: personal(id),
+        sessionId: null,
+        messageId: null,
+        model: "gemini-3.5-flash",
+        promptTokens: 0,
+        completionTokens: 1,
+        outcome: "complete",
+      });
+    };
+
     it("lazily provisions a user wallet with 10 free credits", async () => {
-      const balance = await creditService.getBalance(userId);
+      const balance = await creditService.getBalance(personal(userId));
       expect(balance).toEqual({ free: 10, subscription: 0, purchased: 0, total: 10 });
 
       const wallet = await masterKnex("credit_wallets").where({ platform_user_id: userId }).first();
       expect(wallet).toMatchObject({ owner_type: "user", business_id: null, free_balance: 10, balance: 0 });
-      expect(await creditService.checkBalance(userId)).toBe(true);
+      await expect(creditService.assertSpendable(personal(userId))).resolves.toBeUndefined();
     });
 
     it("spends free credits first and writes one ledger row per spend", async () => {
-      await creditService.deductCredit(userId, 4242);
+      const settled = await spendOneCredit(userId);
+      expect(settled.charged).toBe(1);
 
-      expect(await creditService.getBalance(userId)).toEqual({
+      expect(await creditService.getBalance(personal(userId))).toEqual({
         free: 9,
         subscription: 0,
         purchased: 0,
@@ -191,9 +219,15 @@ describeDb("credit_wallets (reconciled)", () => {
         reason: "message",
         // V1's vocabulary on the shared ledger column; `reason` keeps the detail.
         transaction_type: "ai_deduct",
-        reference_type: "ai_message",
-        reference_id: "4242",
+        // The ledger now points at the metering record, which is what carries the
+        // model, the token counts and the message the charge was for.
+        reference_type: "ai_usage_event",
       });
+      const usage = await masterKnex("ai_usage_events")
+        .where({ id: Number(txn.reference_id) })
+        .first();
+      expect(usage).toMatchObject({ owner_type: "user", platform_user_id: userId, credits_charged: 1 });
+
       // balance_after is the spendable total: free + subscription + purchased.
       expect(txn.balance_after).toBe(9);
       // Free credits are promotional, so they never move the monetary counters.
@@ -213,8 +247,8 @@ describeDb("credit_wallets (reconciled)", () => {
       });
 
       // Waterfall: free is drained first, so these 9 spends stay on free_balance.
-      for (let i = 0; i < 9; i += 1) await creditService.deductCredit(userId, 5000 + i);
-      expect(await creditService.getBalance(userId)).toEqual({
+      for (let i = 0; i < 9; i += 1) await spendOneCredit(userId);
+      expect(await creditService.getBalance(personal(userId))).toEqual({
         free: 0,
         subscription: 5,
         purchased: 3,
@@ -222,7 +256,7 @@ describeDb("credit_wallets (reconciled)", () => {
       });
 
       // The tenth spend crosses into subscription credits and must move `balance` too.
-      await creditService.deductCredit(userId, 6000);
+      await spendOneCredit(userId);
       wallet = await masterKnex("credit_wallets").where({ platform_user_id: userId }).first();
       expect(wallet).toMatchObject({
         free_balance: 0,

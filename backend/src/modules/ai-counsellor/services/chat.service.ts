@@ -147,7 +147,11 @@ export async function handleMessage(opts: {
     });
 
     // 15. Usage + done
-    writeEvent(opts.reply, "usage", { ...result.usage, credits_charged: settled.charged });
+    writeEvent(opts.reply, "usage", {
+      ...result.usage,
+      message_id: aiMessage.id,
+      credits_charged: settled.charged,
+    });
     writeDone(opts.reply);
 
     // 16. Auto-title (fire-and-forget)

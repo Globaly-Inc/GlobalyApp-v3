@@ -759,4 +759,267 @@ describeDb("ai counsellor", () => {
       expect(res.statusCode).toBe(401);
     });
   });
+  // ── session lifecycle & feedback ────────────────────────────────────────────
+
+  describe("session lifecycle", () => {
+    const patch = (url: string, token: string, payload: unknown) =>
+      app.inject({ method: "PATCH", url, headers: auth(token), payload: payload as object });
+
+    async function newSession(token: string): Promise<number> {
+      const res = await chat(token);
+      return Number(sseEvent(res.payload, "session")?.id);
+    }
+
+    it("renames a session", async () => {
+      const id = await newSession(tokenA);
+      const res = await patch(`/api/v3/ai-chat/sessions/${id}`, tokenA, { title: "My shortlist" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().title).toBe("My shortlist");
+    });
+
+    it("hides an archived session unless it is asked for", async () => {
+      const id = await newSession(tokenA);
+      expect((await patch(`/api/v3/ai-chat/sessions/${id}`, tokenA, { is_archived: true })).statusCode).toBe(200);
+
+      const plain = await get("/api/v3/ai-chat/sessions", tokenA);
+      const withArchived = await get("/api/v3/ai-chat/sessions?include_archived=true", tokenA);
+      const ids = (res: typeof plain) => res.json().sessions.map((s: { id: number }) => s.id);
+
+      expect(ids(plain)).not.toContain(id);
+      expect(ids(withArchived)).toContain(id);
+    });
+
+    it("soft-deletes a session and stops serving it", async () => {
+      const id = await newSession(tokenA);
+      expect((await patch(`/api/v3/ai-chat/sessions/${id}`, tokenA, { delete: true })).statusCode).toBe(200);
+
+      const listed = await get("/api/v3/ai-chat/sessions?include_archived=true", tokenA);
+      expect(listed.json().sessions.map((s: { id: number }) => s.id)).not.toContain(id);
+      expect((await get(`/api/v3/ai-chat/sessions/${id}/messages`, tokenA)).statusCode).toBe(404);
+    });
+
+    it("404s an unknown session", async () => {
+      expect((await get("/api/v3/ai-chat/sessions/99999999/messages", tokenA)).statusCode).toBe(404);
+    });
+
+    it("serves the transcript of a session the caller owns", async () => {
+      const id = await newSession(tokenA);
+      const res = await get(`/api/v3/ai-chat/sessions/${id}/messages`, tokenA);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().messages.map((m: { role: string }) => m.role)).toEqual(["user", "assistant"]);
+    });
+
+    it("records feedback on the caller's own message, and nobody else's", async () => {
+      const id = await newSession(tokenA);
+      const message = await masterKnex("ai_counselor_messages")
+        .where({ session_id: id, role: "assistant" })
+        .first();
+
+      const ok = await patch(`/api/v3/ai-chat/messages/${message.id}/feedback`, tokenA, {
+        feedback: "positive",
+      });
+      expect(ok.statusCode).toBe(200);
+      const stored = await masterKnex("ai_counselor_messages").where({ id: message.id }).first();
+      expect(stored.feedback).toBe("positive");
+
+      const stranger = await patch(`/api/v3/ai-chat/messages/${message.id}/feedback`, tokenB, {
+        feedback: "negative",
+      });
+      expect(stranger.statusCode).toBe(403);
+      const unchanged = await masterKnex("ai_counselor_messages").where({ id: message.id }).first();
+      expect(unchanged.feedback).toBe("positive");
+    });
+
+    it("404s feedback on a message that does not exist", async () => {
+      const res = await patch("/api/v3/ai-chat/messages/99999999/feedback", tokenA, { feedback: "positive" });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
+  // ── admin credit grant ─────────────────────────────────────────────────────
+
+  describe("credit grant", () => {
+    it("lets an admin top up a user wallet and records the ledger row", async () => {
+      const jwt = (await import("jsonwebtoken")).default;
+      const adminToken = jwt.sign(
+        { sub: "1", type: "admin", role: "super_admin", email: "admin@vitest.local" },
+        config.JWT_SECRET as string,
+      );
+
+      const before = await walletTotal(userWalletB);
+      const res = await post("/api/v3/ai-chat/credits/grant", adminToken, {
+        user_id: userB,
+        amount: 25,
+        balance_type: "purchased",
+        reason: "admin_grant",
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(await walletTotal(userWalletB)).toBe(before + 25);
+
+      const ledger = await masterKnex("credit_transactions")
+        .where({ wallet_id: userWalletB, reason: "admin_grant" })
+        .orderBy("id", "desc")
+        .first();
+      expect(Number(ledger.amount)).toBe(25);
+      expect(ledger.transaction_type).toBe("manual_adjustment");
+    });
+
+    it("refuses a non-admin", async () => {
+      const res = await post("/api/v3/ai-chat/credits/grant", tokenA, {
+        user_id: userA,
+        amount: 1_000,
+        balance_type: "purchased",
+        reason: "admin_grant",
+      });
+      expect(res.statusCode).toBe(403);
+    });
+  });
+
+  // ── retrieval grounding ────────────────────────────────────────────────────
+  //
+  // Retrieval itself is E1's module; what is asserted here is the counsellor's half
+  // of the contract: whatever the knowledge layer returns reaches the prompt and is
+  // announced to the client as a source.
+
+  describe("retrieval", () => {
+    // Unique per run: extraction_visas has a natural-key unique index, so a second
+    // run of this suite must not re-insert the same row.
+    let keyword = "";
+
+    beforeAll(async () => {
+      keyword = `zorbistan${runId}`;
+      await masterKnex("superadmin.extraction_visas").insert({
+        country_code: "ZB",
+        subclass_code: "500",
+        // Part of extraction_visas_natural_key, so this is what keeps runs distinct.
+        visa_stream: keyword,
+        category: "study",
+        name: `${keyword} student visa`,
+        description: `A study visa for ${keyword}.`,
+        duration_months: 24,
+        application_fee_amount: 710,
+        application_fee_currency: "AUD",
+        processing_time_min_days: 20,
+        processing_time_max_days: 60,
+        official_url: "https://example.test/visa",
+      });
+      // A course only reaches the prompt through its institution, which only exists
+      // inside an extraction job — so the whole chain is seeded, not stubbed.
+      const [job] = await masterKnex("superadmin.extraction_jobs")
+        .insert({ institution_url: `https://${keyword}.test` })
+        .returning(["id"]);
+      await masterKnex("superadmin.extraction_institution_overview").insert({
+        job_id: job.id,
+        name: `${keyword} University`,
+        country: "Zorbistan",
+        city: "Zorb City",
+        website: `https://${keyword}.test`,
+        description: `A university in ${keyword}.`,
+      });
+      await masterKnex("superadmin.extraction_courses").insert({
+        job_id: job.id,
+        name: `${keyword} BSc Computing`,
+        degree_level: "Bachelor",
+        subject_area: "Computing",
+        duration_weeks: 156,
+        country_code: "ZB",
+        source_url: `https://${keyword}.test/bsc`,
+        description: `A computing degree in ${keyword}.`,
+      });
+      await masterKnex("superadmin.extraction_agents").insert({
+        job_id: job.id,
+        name: `${keyword} Education Agents`,
+        country: "Zorbistan",
+        city: "Zorb City",
+        website: `https://agents.${keyword}.test`,
+        location_count: 1,
+      });
+      await masterKnex("superadmin.extraction_mara_agents").insert({
+        marn: `MARN-${runId}`,
+        agent_name: `${keyword} Migration`,
+        business_name: `${keyword} Migration Pty`,
+        registration_status: "active",
+        office_country: "Australia",
+        practice_areas: ["student visas"],
+        status: "pending",
+      });
+    });
+
+    it("announces the retrieved rows as sources and traces the search", async () => {
+      // rag.service joins the surviving keywords into one LIKE phrase, so the
+      // question has to be the phrase — that is the retrieval layer's own shape.
+      const res = await chat(tokenA, { content: keyword });
+      expect(res.statusCode).toBe(200);
+
+      const sources = sseEvent(res.payload, "sources") as unknown as Array<{ type: string }>;
+      expect(sources).toBeTruthy();
+      const types = sources.map((s) => s.type);
+      expect(types).toContain("course");
+      expect(types).toContain("institution");
+      expect(types).toContain("visa");
+      expect(types).toContain("agent");
+      expect(types).toContain("mara_agent");
+
+      expect(res.payload).toContain("event: trace");
+    });
+
+    it("says so, rather than searching, when the question carries no keywords", async () => {
+      const res = await chat(tokenA, { content: "is it a the" });
+      expect(res.statusCode).toBe(200);
+      expect(res.payload).toContain("No searchable keywords extracted");
+      expect(sseEvent(res.payload, "sources")).toBeUndefined();
+    });
+  });
+
+  // ── guest chat ─────────────────────────────────────────────────────────────
+
+  describe("guest chat", () => {
+    const guest = (fingerprint: string, content = "What can I study?") =>
+      app.inject({
+        method: "POST",
+        url: "/api/v3/ai-chat/guest/messages",
+        payload: { content, fingerprint },
+      });
+
+    /** The transcript write is fire-and-forget; give it the ticks it needs. */
+    async function waitForGuestRow(hash: string): Promise<Record<string, unknown>> {
+      for (let i = 0; i < 60; i++) {
+        const row = await masterKnex("ai_guest_chat_sessions").where({ fingerprint_hash: hash }).first();
+        if (row) return row;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error(`guest transcript for ${hash} was never persisted`);
+    }
+
+    it("answers a first-time guest and stores the transcript", async () => {
+      const fingerprint = `fp-first-${runId}`;
+      const res = await guest(fingerprint);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.payload).toContain("event: guest-meta");
+      expect(res.payload).toContain("data: [DONE]");
+
+      const hash = sseEvent(res.payload, "guest-meta")!.fingerprint_hash as string;
+      const row = await waitForGuestRow(hash);
+      expect(row.response_content).toContain("studying abroad");
+      expect(row.migrated_to_session_id).toBeNull();
+    });
+
+    it("refuses a second reply to the same guest and never meters one", async () => {
+      const fingerprint = `fp-second-${runId}`;
+      const first = await guest(fingerprint);
+      expect(first.statusCode).toBe(200);
+
+      // The gate only closes once the first transcript has landed, and the hash the
+      // stream reported is the only reliable way to wait for that exact row.
+      const hash = sseEvent(first.payload, "guest-meta")!.fingerprint_hash as string;
+      await waitForGuestRow(hash);
+
+      const second = await guest(fingerprint);
+      expect(second.statusCode).toBe(403);
+      // Guest turns are never metered: there is no wallet to debit.
+      expect(await masterKnex("ai_usage_events").whereNull("platform_user_id")).toHaveLength(0);
+    });
+  });
 });
