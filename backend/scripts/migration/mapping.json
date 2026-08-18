@@ -565,10 +565,11 @@
       "wave": "W1",
       "rows": 55,
       "targets": [
-        "public.businesses"
+        "public.businesses",
+        "public.institutions"
       ],
       "mapping": "businesses",
-      "note": "V1 uuid stamped into businesses.meta->>'v1_business_id'; each row also provisions a tenant schema (§5 resolver mig.map_businesses)"
+      "note": "§4 W1 SPLIT: V1 kept one table for two things. The 16 rows with an accepted, live owner become tenants in public.businesses (owner_id is NOT NULL in V3, so nothing else can); the other 39 unclaimed directory listings become claimable rows in public.institutions. 55 staged = 16 + 39, no skips. The V1 uuid is stamped into businesses.meta->>'v1_business_id' and institutions.v1_business_id, and each tenant's schema_name is DERIVED from that uuid so a re-run converges on the schema it already provisioned."
     },
     "chat_conversations": {
       "disposition": "drop",
@@ -3504,6 +3505,328 @@
         {
           "column": "updated_at",
           "reason": "Stamped by the reconcile itself."
+        }
+      ]
+    },
+    {
+      "name": "institutions",
+      "description": "V1 public.businesses (the 39 with NO accepted owner) -> V3 public.institutions. The other half of the §4 W1 split: V3's businesses.owner_id is NOT NULL, so an unclaimed directory listing cannot be a tenant — it becomes a claimable institution instead. Together with the `businesses` mapping this accounts for all 55 staged rows with no skips: 16 + 39.",
+      "source": {
+        "table": "v1_staging.businesses",
+        "alias": "b",
+        "joins": [],
+        "filter": "NOT EXISTS (SELECT 1 FROM v1_staging.business_members bm JOIN v1_staging.auth_users bu ON bu.id = bm.user_id WHERE bm.business_id = b.id AND bm.role::text = 'owner' AND bm.invite_status = 'accepted' AND bm.user_id IS NOT NULL AND bu.deleted_at IS NULL)"
+      },
+      "target": {
+        "table": "public.institutions",
+        "alias": "t",
+        "filter": "t.deleted_at IS NULL AND t.v1_business_id IS NOT NULL"
+      },
+      "identity": {
+        "label": "V1 businesses.id (institutions.v1_business_id)",
+        "source": "b.id::text",
+        "target": "t.v1_business_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "institution_name",
+          "from": "name",
+          "source": "b.name",
+          "target": "t.institution_name",
+          "note": "renamed name -> institution_name; the name half of the (name, country) natural key mig.map_institutions resolves on"
+        },
+        {
+          "name": "institution_type",
+          "from": "business_type",
+          "source": "b.business_type::text",
+          "target": "t.institution_type"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "b.description",
+          "target": "t.description"
+        },
+        {
+          "name": "logo_url",
+          "from": "logo_url",
+          "source": "b.logo_url",
+          "target": "t.logo_url"
+        },
+        {
+          "name": "cover_url",
+          "from": "cover_url",
+          "source": "b.cover_url",
+          "target": "t.cover_url"
+        },
+        {
+          "name": "website",
+          "from": "website",
+          "source": "b.website",
+          "target": "t.website"
+        },
+        {
+          "name": "email",
+          "from": "email",
+          "source": "CASE WHEN nullif(btrim(coalesce(b.email, '')), '') IS NULL THEN NULL WHEN EXISTS (SELECT 1 FROM v1_staging.businesses b2 WHERE lower(btrim(b2.email)) = lower(btrim(b.email)) AND b2.id < b.id) THEN NULL ELSE btrim(b.email) END",
+          "target": "t.email",
+          "note": "institutions.email is UNIQUE and V1's directory shares four addresses across listings. The earliest V1 id keeps the address; the rest migrate with a NULL email and a `duplicate_natural_key` row naming the column."
+        },
+        {
+          "name": "phone",
+          "from": "phone",
+          "source": "b.phone",
+          "target": "t.phone"
+        },
+        {
+          "name": "country_id",
+          "from": "country",
+          "source": "(SELECT c.id FROM globaly_countries c WHERE c.key = lower(btrim(b.country)))",
+          "target": "t.country_id",
+          "note": "text -> FK, the country half of the mig.map_institutions natural key"
+        },
+        {
+          "name": "state",
+          "from": "state",
+          "source": "b.state",
+          "target": "t.state"
+        },
+        {
+          "name": "city",
+          "from": "city",
+          "source": "b.city",
+          "target": "t.city"
+        },
+        {
+          "name": "address",
+          "from": "address",
+          "source": "b.address",
+          "target": "t.address"
+        },
+        {
+          "name": "postcode",
+          "from": "postcode",
+          "source": "b.postcode",
+          "target": "t.postcode"
+        },
+        {
+          "name": "linkedin_url",
+          "from": "linkedin_url",
+          "source": "b.linkedin_url",
+          "target": "t.linkedin_url"
+        },
+        {
+          "name": "facebook_url",
+          "from": "facebook_url",
+          "source": "b.facebook_url",
+          "target": "t.facebook_url"
+        },
+        {
+          "name": "twitter_url",
+          "from": "twitter_url",
+          "source": "b.twitter_url",
+          "target": "t.twitter_url"
+        },
+        {
+          "name": "instagram_url",
+          "from": "instagram_url",
+          "source": "b.instagram_url",
+          "target": "t.instagram_url"
+        },
+        {
+          "name": "youtube_url",
+          "from": "youtube_url",
+          "source": "b.youtube_url",
+          "target": "t.youtube_url"
+        },
+        {
+          "name": "whatsapp_url",
+          "from": "whatsapp_url",
+          "source": "b.whatsapp_url",
+          "target": "t.whatsapp_url"
+        },
+        {
+          "name": "gallery_images",
+          "from": "gallery_images",
+          "source": "b.gallery_images",
+          "target": "t.gallery_images"
+        },
+        {
+          "name": "video_urls",
+          "from": "video_urls",
+          "source": "b.video_urls",
+          "target": "t.video_urls"
+        },
+        {
+          "name": "registration_number",
+          "from": "registration_code",
+          "source": "b.registration_code",
+          "target": "t.registration_number",
+          "note": "renamed registration_code -> registration_number"
+        },
+        {
+          "name": "registration_licenses",
+          "from": "registration_licenses",
+          "source": "b.registration_licenses",
+          "target": "t.registration_licenses"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "coalesce(b.status::text, 'pending')",
+          "target": "t.status"
+        },
+        {
+          "name": "verified_at",
+          "from": "verified_at",
+          "source": "b.verified_at",
+          "target": "t.verified_at"
+        },
+        {
+          "name": "is_published",
+          "from": "is_published",
+          "source": "(b.is_published IS TRUE)",
+          "target": "(t.is_published IS TRUE)"
+        },
+        {
+          "name": "provider_code",
+          "from": "provider_code",
+          "source": "b.provider_code",
+          "target": "t.meta->>'v1_provider_code'",
+          "note": "CRICOS/provider code. institutions has no dedicated column, so it rides on meta rather than being dropped — the extraction corpus (W4) keys on it."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value — it IS the identity key, stored in the real column institutions.v1_business_id (UNIQUE)."
+        },
+        {
+          "column": "slug",
+          "reason": "institutions.subdomain is left NULL for an unclaimed listing: a subdomain is allocated when someone claims it (promote.service.ts), and reserving one now would burn the namespace for a tenant that may never exist."
+        },
+        {
+          "column": "is_claimed",
+          "reason": "Superseded by institutions.claim_status, which defaults to 'unclaimed'. Every row in this half is by definition unclaimed — that is the filter that selected it."
+        },
+        {
+          "column": "claim_requested_by",
+          "reason": "V1 directory-claim workflow; V3 rebuilds claiming on top of claim_status. No V1 row carries one."
+        },
+        {
+          "column": "is_suspended",
+          "reason": "No account_status on institutions — an unclaimed listing has no account to suspend."
+        },
+        {
+          "column": "business_category_id",
+          "reason": "No V3 column: institutions are typed by institution_type, and business_categories classify tenants, not directory listings."
+        },
+        {
+          "column": "default_currency",
+          "reason": "No V3 column — an unclaimed listing sells nothing, so it has no billing currency."
+        },
+        {
+          "column": "latitude",
+          "reason": "No V3 column — institutions store the address textually only, same as businesses."
+        },
+        {
+          "column": "longitude",
+          "reason": "No V3 column. See latitude."
+        },
+        {
+          "column": "cover_position",
+          "reason": "No V3 column — cover cropping was dropped from the V3 design."
+        },
+        {
+          "column": "tiktok_url",
+          "reason": "No V3 column."
+        },
+        {
+          "column": "threads_url",
+          "reason": "No V3 column."
+        },
+        {
+          "column": "messenger_url",
+          "reason": "No V3 column."
+        },
+        {
+          "column": "telegram_url",
+          "reason": "No V3 column."
+        },
+        {
+          "column": "line_url",
+          "reason": "No V3 column."
+        },
+        {
+          "column": "viber_url",
+          "reason": "No V3 column."
+        },
+        {
+          "column": "gallery_urls",
+          "reason": "V1 jsonb gallery, superseded by gallery_images in V1 itself."
+        },
+        {
+          "column": "embedding",
+          "reason": "pgvector search embedding; V3 regenerates embeddings from its own content."
+        },
+        {
+          "column": "total_services",
+          "reason": "Denormalised counter; V3 recomputes from live data."
+        },
+        {
+          "column": "total_students",
+          "reason": "Denormalised counter; V3 recomputes."
+        },
+        {
+          "column": "total_agents",
+          "reason": "Denormalised counter; V3 recomputes."
+        },
+        {
+          "column": "profile_views",
+          "reason": "Analytics counter; not carried into V3."
+        },
+        {
+          "column": "enquiry_enabled",
+          "reason": "V1 coin-based enquiry marketplace; not in the V3 scope."
+        },
+        {
+          "column": "enquiry_coin_cost",
+          "reason": "V1 coin marketplace. See enquiry_enabled."
+        },
+        {
+          "column": "enquiry_max_distributions",
+          "reason": "V1 coin marketplace. See enquiry_enabled."
+        },
+        {
+          "column": "show_team_public",
+          "reason": "No V3 column — an unclaimed listing has no team."
+        },
+        {
+          "column": "public_visibility",
+          "reason": "No V3 column. See show_team_public."
+        },
+        {
+          "column": "created_by",
+          "reason": "V1 provenance of the directory listing; V3 tracks the claimant via platform_user_id once it is claimed."
+        },
+        {
+          "column": "created_via",
+          "reason": "V1 provenance metadata (directory import vs signup); not carried."
+        },
+        {
+          "column": "source_reference",
+          "reason": "V1 provenance metadata; not carried."
+        },
+        {
+          "column": "created_at",
+          "reason": "V3 stamps its own created_at at load time."
+        },
+        {
+          "column": "updated_at",
+          "reason": "V3 stamps its own updated_at at load time."
         }
       ]
     }
