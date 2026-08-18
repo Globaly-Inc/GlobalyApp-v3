@@ -47,7 +47,10 @@ async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Respo
     if (!(await refreshAccessToken())) forceSignIn();
   }
   const res = await attempt();
-  if (res.status !== 401) return res;
+  // A 401 only means "my access token expired" when there was a token to begin with — pre-auth
+  // calls (register, send-otp, verify-otp) have none, and a 401 there means e.g. "invalid OTP",
+  // not a session expiry. Let it fall through as a normal ApiError instead of hard-redirecting.
+  if (res.status !== 401 || !token) return res;
   const refreshed = await refreshAccessToken();
   if (!refreshed) forceSignIn();
   const retried = await attempt();

@@ -70,6 +70,21 @@ export async function findByClaimToken(token: string): Promise<BusinessRecord | 
   return masterKnex<BusinessRecord>("businesses").where({ claim_token: token }).whereNull("deleted_at").first();
 }
 
+/** The business a platform_user owns that they haven't finished claiming yet (pre-seeded by an admin). */
+export async function findUnclaimedBusinessByOwnerId(ownerId: number): Promise<BusinessRecord | undefined> {
+  return masterKnex<BusinessRecord>("businesses")
+    .where({ owner_id: ownerId })
+    .whereNot("claim_status", "claimed")
+    .whereNull("deleted_at")
+    .first();
+}
+
+export async function setClaimPending(id: string | number, token: string, expiresAt: Date): Promise<void> {
+  await masterKnex("businesses")
+    .where({ id: String(id) })
+    .update({ claim_token: token, claim_token_expires_at: expiresAt, claim_status: "claim_pending", updated_at: masterKnex.fn.now() });
+}
+
 export async function clearClaim(id: string | number): Promise<BusinessRecord> {
   const [row] = await masterKnex<BusinessRecord>("businesses")
     .where({ id: String(id) })
