@@ -9,8 +9,7 @@ import {
   ListQuerySchema, PatchFaqSchema, PatchGuideSchema, PatchVisaSchema,
   QueueQuerySchema, RejectQueueItemSchema, UuidParamSchema,
 } from "../schemas/content.schema.js";
-
-const adminId = (req: FastifyRequest) => Number(req.auth!.sub);
+import { resolveAdminId } from "../shared/admin-id.js";
 
 /**
  * The three content tabs are the same four handlers over a different table and
@@ -24,16 +23,16 @@ function handlersFor(kind: ContentKind, create: ZodTypeAny, patch: ZodTypeAny) {
       reply.send(await service.listContent(kind, ListQuerySchema.parse(req.query))),
 
     create: async (req: FastifyRequest, reply: FastifyReply) =>
-      reply.status(201).send(await service.createContent(kind, create.parse(req.body), adminId(req))),
+      reply.status(201).send(await service.createContent(kind, create.parse(req.body), await resolveAdminId(req))),
 
     patch: async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = UuidParamSchema.parse(req.params);
-      return reply.send(await service.updateContent(kind, id, patch.parse(req.body), adminId(req)));
+      return reply.send(await service.updateContent(kind, id, patch.parse(req.body), await resolveAdminId(req)));
     },
 
     remove: async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = UuidParamSchema.parse(req.params);
-      return reply.send(await service.deleteContent(kind, id, adminId(req)));
+      return reply.send(await service.deleteContent(kind, id, await resolveAdminId(req)));
     },
   };
 }
@@ -70,12 +69,12 @@ export async function contentRoutes(app: FastifyInstance) {
 
   app.post("/verification-queue/:id/approve", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.reviewQueueItem(id, "verified", adminId(req)));
+    return reply.send(await service.reviewQueueItem(id, "verified", await resolveAdminId(req)));
   });
 
   app.post("/verification-queue/:id/reject", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const { rejection_reason } = RejectQueueItemSchema.parse(req.body);
-    return reply.send(await service.reviewQueueItem(id, "rejected", adminId(req), rejection_reason));
+    return reply.send(await service.reviewQueueItem(id, "rejected", await resolveAdminId(req), rejection_reason));
   });
 }

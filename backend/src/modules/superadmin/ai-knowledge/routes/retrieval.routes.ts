@@ -1,12 +1,11 @@
 // Retrieval + embedding routes: search preview, embedding status, re-embed dispatch.
 
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import * as retrieval from "../services/retrieval.service.js";
 import * as embedding from "../services/embedding.service.js";
 import { requestEmbedding } from "../services/dispatch.service.js";
 import { ReembedSchema, SearchQuerySchema } from "../schemas/retrieval.schema.js";
-
-const adminId = (req: FastifyRequest) => Number(req.auth!.sub);
+import { resolveAdminId } from "../shared/admin-id.js";
 
 export async function retrievalRoutes(app: FastifyInstance) {
   /**
@@ -42,6 +41,6 @@ export async function retrievalRoutes(app: FastifyInstance) {
   /** 503 when there is no provider — see dispatch.service.ts. */
   app.post("/reembed", async (req, reply) => {
     const input = ReembedSchema.parse(req.body ?? {});
-    return reply.status(202).send(await requestEmbedding(input, adminId(req)));
+    return reply.status(202).send(await requestEmbedding(input, await resolveAdminId(req)));
   });
 }

@@ -54,3 +54,52 @@ describe("embedding provider", () => {
     expect(isEmbeddingConfigured()).toBe(false);
   });
 });
+
+describe("the live embedBatch path", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  /** One Gemini embedContent response, of whatever width the test wants. */
+  const reply = (values: number[]) =>
+    ({ ok: true, json: async () => ({ embedding: { values } }) }) as unknown as Response;
+
+  it("embeds every text and normalises each vector", async () => {
+    withKey("test-key");
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push(String(url));
+      const body = JSON.parse(String(init?.body)) as { content: { parts: { text: string }[] } };
+      // Only one non-zero component, encoding the input length — enough to tell the
+      // two results apart and to check that normalisation happened.
+      const values = new Array(EMBEDDING_DIMS).fill(0);
+      values[0] = body.content.parts[0].text.length;
+      return reply(values);
+    }) as typeof globalThis.fetch;
+
+    const vectors = await getEmbeddingProvider().embedBatch(["short", "much longer text"]);
+
+    expect(vectors).toHaveLength(2);
+    expect(calls).toHaveLength(2);
+    for (const url of calls) expect(url).toContain(config.GEMINI_EMBEDDING_MODEL);
+    for (const vector of vectors) {
+      expect(vector).toHaveLength(EMBEDDING_DIMS);
+      expect(vector[0]).toBeCloseTo(1);
+    }
+  });
+
+  it("refuses a vector of the wrong width rather than storing it", async () => {
+    withKey("test-key");
+    globalThis.fetch = (async () => reply(new Array(768).fill(0.1))) as typeof globalThis.fetch;
+    await expect(getEmbeddingProvider().embedBatch(["anything"])).rejects.toThrow(/768 dims/);
+  });
+
+  it("surfaces a provider HTTP error", async () => {
+    withKey("test-key");
+    globalThis.fetch = (async () =>
+      ({ ok: false, status: 429, text: async () => "rate limited" }) as unknown as Response) as typeof globalThis.fetch;
+    await expect(getEmbeddingProvider().embedBatch(["anything"])).rejects.toThrow(/429/);
+  });
+});

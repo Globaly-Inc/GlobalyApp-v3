@@ -109,6 +109,50 @@ describeDb("ai-knowledge RAG pipeline", () => {
     expect((await embedding.handleEmbedMessage(JSON.stringify({ documentId: 7 }), stub)).handled).toBe("discarded");
   });
 
+  it("skips a document that is missing, inactive, or too thin to be knowledge", async () => {
+    const gone = await embedding.embedDocument("00000000-0000-4000-8000-000000000000", stub);
+    expect(gone.skipped).toBe("not_found");
+
+    const id = docId("ca-housing");
+    await masterKnex(chunkRepo.DOCUMENTS).where({ id }).update({ active: false });
+    try {
+      expect((await embedding.embedDocument(id, stub)).skipped).toBe("inactive");
+    } finally {
+      await masterKnex(chunkRepo.DOCUMENTS).where({ id }).update({ active: true });
+    }
+
+    const [thin] = await masterKnex(chunkRepo.DOCUMENTS)
+      .insert({
+        source_id: seeded.sourceId,
+        category_id: seeded.categoryId,
+        url: "https://fixture.invalid/thin",
+        title: "Thin",
+        markdown: "Page not found.",
+        content_hash: "thin-hash",
+        word_count: 3,
+        active: true,
+      })
+      .returning("id");
+    expect((await embedding.embedDocument(thin.id, stub)).skipped).toBe("too_short");
+    await masterKnex(chunkRepo.DOCUMENTS).where({ id: thin.id }).delete();
+  });
+
+  it("refuses a provider that returns the wrong number of vectors", async () => {
+    const id = docId("ca-housing");
+    await masterKnex(chunkRepo.CHUNKS).where({ document_id: id }).delete();
+    const stingy = { ...stub, embedBatch: async () => [] as number[][] };
+    await expect(embedding.embedDocument(id, stingy)).rejects.toThrow(/0 vectors for/);
+  });
+
+  it("treats a message with no documentId as a sweep tick", async () => {
+    const handled = await embedding.handleEmbedMessage("{}", stub);
+    expect(handled.handled).toBe("sweep");
+    if (handled.handled === "sweep") {
+      expect(handled.result.provider_unavailable).toBe(false);
+      expect(handled.result.model).toBe(STUB_MODEL);
+    }
+  });
+
   it("re-chunks when the document's content changes, dropping the stale vectors", async () => {
     const id = docId("ca-fees");
     await embedding.embedDocument(id, stub);
@@ -272,6 +316,55 @@ describeDb("ai-knowledge RAG pipeline", () => {
     const textSees = await retrieval.retrieve({ query: exact, topK: 5, provider: stub, legs: "text" });
     expect(vectorBlind.chunks.map((c) => c.document_id)).not.toContain(orphan);
     expect(textSees.chunks.map((c) => c.document_id)).toContain(orphan);
+  });
+
+  it("falls back to the text leg when the provider errors for any other reason", async () => {
+    const { makeFailingEmbedder } = await import("../helpers/knowledge-fixtures.js");
+    const broken = makeFailingEmbedder(new Error("upstream exploded"));
+
+    const result = await retrieval.retrieve({
+      query: "Immigration Health Surcharge National Health Service",
+      topK: 5,
+      provider: broken,
+    });
+    expect(result.degraded).toBe(true);
+    expect(result.degraded_reason).toBe("embedding_failed");
+    // Degraded, not empty — the text leg still answered.
+    expect(result.chunks.length).toBeGreaterThan(0);
+  });
+
+  it("rethrows a provider error when the caller demands the vector leg", async () => {
+    const { makeFailingEmbedder } = await import("../helpers/knowledge-fixtures.js");
+    const broken = makeFailingEmbedder(new Error("upstream exploded"));
+    await expect(
+      retrieval.retrieve({ query: "Immigration Health Surcharge", provider: broken, requireVector: true }),
+    ).rejects.toThrow("upstream exploded");
+  });
+
+  it("returns nothing for an empty query rather than the whole corpus", async () => {
+    const result = await retrieval.retrieve({ query: "   ", provider: stub });
+    expect(result.chunks).toHaveLength(0);
+    expect(result.text_leg).toBe(false);
+  });
+
+  it("flattens retrieved chunks into prompt context the counsellor can use", async () => {
+    const result = await retrieval.retrieve({
+      query: "student visa work hours per fortnight Australia",
+      topK: 3,
+      provider: stub,
+    });
+    const context = retrieval.toContext(result.chunks);
+
+    expect(context.contextText).toContain("--- KNOWLEDGE BASE ---");
+    expect(context.contextText).toContain("fixture.invalid");
+    expect(context.sources).toHaveLength(result.chunks.length);
+    for (const source of context.sources) {
+      expect(source.type).toBe("knowledge");
+      expect(source.url).toContain("fixture.invalid");
+      expect(source.title).toBeTruthy();
+    }
+
+    expect(retrieval.toContext([])).toEqual({ contextText: "", sources: [] });
   });
 
   it("records both ranks so a fused score can be explained", async () => {

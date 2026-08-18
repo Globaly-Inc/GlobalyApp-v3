@@ -166,9 +166,10 @@ export async function hybridSearch(opts: HybridSearchOptions): Promise<Retrieved
     JOIN ${S}.ai_knowledge_documents d ON d.id = c.document_id
     JOIN ${S}.ai_knowledge_sources s ON s.id = d.source_id
     JOIN ${S}.ai_knowledge_categories cat ON cat.id = d.category_id
-    -- c.id breaks score ties deterministically, so the gate measures retrieval and
-    -- not the planner's mood.
-    ORDER BY f.score DESC, c.id
+    -- (url, chunk_index) breaks score ties, not c.id: the primary key is a random
+    -- uuid, so ordering on it makes two runs over identical content disagree and the
+    -- recall gate stops being reproducible. This pair is the chunk's natural identity.
+    ORDER BY f.score DESC, d.url, c.chunk_index
     LIMIT :topK
   `;
 
