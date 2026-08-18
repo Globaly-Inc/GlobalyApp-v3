@@ -164,7 +164,8 @@ export interface ServingCampaign {
 
 export async function findActiveCampaign(id: number, trx?: Db): Promise<ServingCampaign | undefined> {
   return db(trx)<ServingCampaign>("ad_campaigns")
-    .where({ id, status: "active" })
+    .where("id", id)
+    .where("status", "active")
     .whereNull("deleted_at")
     .first(
       "id",
