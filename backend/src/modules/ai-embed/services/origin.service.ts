@@ -34,6 +34,17 @@ import { ForbiddenError } from "../../../shared/errors.js";
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 
 /**
+ * A real hostname: DNS labels, or a bracketed IPv6 literal.
+ *
+ * `new URL("https://*.example.com")` parses happily and yields the origin
+ * `https://*.example.com`, so without this a tenant could store what looks like a
+ * wildcard entry. It would never match anything (no browser sends `*` in a host),
+ * but it would look like it worked — an allowlist that silently means something
+ * other than what the operator typed is worse than one that rejects the input.
+ */
+const VALID_HOST = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*|\[[0-9a-f:.]+\])$/;
+
+/**
  * Reduce a URL or origin string to its canonical `scheme://host[:port]` form, or
  * null when it is not an http(s) origin at all.
  *
@@ -56,6 +67,7 @@ export function normalizeOrigin(value: string | undefined | null): string | null
   // Credentials in the authority (`https://ok.test@evil.test`) mean the origin is
   // not the host a reader expects; refuse rather than guess which half wins.
   if (parsed.username || parsed.password) return null;
+  if (!VALID_HOST.test(parsed.hostname)) return null;
 
   const origin = parsed.origin;
   if (!origin || origin === "null") return null;

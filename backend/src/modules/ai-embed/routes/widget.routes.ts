@@ -169,7 +169,12 @@ export async function widgetRoutes(app: FastifyInstance) {
 
         // Transcript persistence rides the existing guest-session table, which has
         // carried `embed_config_id` since 20260816_006 for exactly this.
-        guestService
+        //
+        // Awaited, unlike the counsellor's fire-and-forget equivalent: the SSE stream
+        // is already closed by writeDone above, so awaiting costs the visitor nothing
+        // and makes the write observable — a detached promise is a persistence step
+        // that no test can assert on and no operator can see fail.
+        await guestService
           .createGuestSession({
             fingerprintHash,
             messageContent: input.content,
