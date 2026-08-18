@@ -1,58 +1,37 @@
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
+import { DISTRIBUTION_STATUSES } from "../apis/types";
 
 /**
- * The full status vocabulary — mirrors chk_business_enquiries_status in
- * backend/database/migrations/business/20260812_001_business_enquiries.ts, which
- * in turn matches chk_enquiries_status. The list endpoint returns the tenant
- * row's status, so these are the values a business can actually receive.
+ * Summary counters, one per status a business can actually receive.
+ *
+ * The vocabulary is the four values in `chk_enquiry_distributions_status`
+ * (backend/database/migrations/globalyapp/20260817_100_enquiries.ts), carried
+ * verbatim from V1. This file previously held eight values mirroring a tenant-side
+ * `business_enquiries` table that belonged to a second enquiries backend removed
+ * in the staging merge; six of them (distributed, unlocked, in_conversation,
+ * converted, no_match, expired) can never arrive on this wire.
+ *
+ * All four are reachable: a distribution starts 'pending', unlock moves it to
+ * 'viewed', close moves it to 'closed'. No code path writes 'responded' yet, but
+ * it is in the CHECK and can arrive from a data load, so it counts rather than
+ * silently vanishing from the totals.
  */
-export const ENQUIRY_STATUSES = [
-  "pending",
-  "distributed",
-  "unlocked",
-  "in_conversation",
-  "converted",
-  "closed",
-  "no_match",
-  "expired",
-] as const;
+export const ENQUIRY_STAT_STATUSES = DISTRIBUTION_STATUSES;
 
-export type EnquiryStatus = (typeof ENQUIRY_STATUSES)[number];
-
-/**
- * Which statuses get a summary card. `pending` and `no_match` are deliberately
- * excluded: a tenant row is only ever created at distribution time, and an
- * enquiry that matched nobody has no tenant row at all — so both could only ever
- * count zero. Badges still render them correctly if one somehow appears.
- */
-export const ENQUIRY_STAT_STATUSES = [
-  "distributed",
-  "unlocked",
-  "in_conversation",
-  "converted",
-  "closed",
-  "expired",
-] as const satisfies readonly EnquiryStatus[];
-
+// 'viewed' is deliberately not labelled "Unlocked": a lead can be unlocked and
+// then closed, so the status and the paywall state are two different facts. The
+// card renders the paywall state itself.
 export const ENQUIRY_STATUS_LABEL: Record<string, string> = {
-  pending: "Pending",
-  distributed: "Distributed",
-  unlocked: "Unlocked",
-  in_conversation: "In Conversation",
-  converted: "Converted",
+  pending: "New",
+  viewed: "Viewed",
+  responded: "Responded",
   closed: "Closed",
-  no_match: "No Match",
-  expired: "Expired",
 };
 
 export const ENQUIRY_STATUS_BADGE_VARIANT: Record<string, VariantProps<typeof badgeVariants>["variant"]> = {
-  pending: "outline",
-  distributed: "default",
-  unlocked: "secondary",
-  in_conversation: "secondary",
-  converted: "default",
+  pending: "default",
+  viewed: "secondary",
+  responded: "secondary",
   closed: "outline",
-  no_match: "destructive",
-  expired: "destructive",
 };

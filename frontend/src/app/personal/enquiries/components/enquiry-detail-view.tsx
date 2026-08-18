@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Clock, MessageSquare } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock, MessageSquare, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,7 +76,7 @@ export function EnquiryDetailView({ enquiryId }: Readonly<{ enquiryId: string }>
               <MessageSquare className="size-5 text-primary" aria-hidden />
             </div>
             <div className="min-w-0">
-              <CardTitle className="text-lg leading-snug">{enquiry.course_name}</CardTitle>
+              <CardTitle className="text-lg leading-snug">{enquiry.course_name ?? "General enquiry"}</CardTitle>
               {enquiry.institution_name && (
                 <p className="mt-0.5 text-sm text-primary">{enquiry.institution_name}</p>
               )}
@@ -98,12 +98,21 @@ export function EnquiryDetailView({ enquiryId }: Readonly<{ enquiryId: string }>
         <CardContent className="space-y-4">
           <p className="text-sm whitespace-pre-line">{enquiry.message}</p>
 
-          {/* Recipients are deliberately not shown. The student should only ever see
-              businesses that have unlocked their enquiry, and unlocking does not
-              exist in this phase — so there is nothing to list yet. */}
+          {/* Recipients are still not named. Unlocking exists now, but the student
+              is only entitled to know HOW MANY businesses have paid to see their
+              details — naming them would expose which agents bought the lead. */}
           <div className="grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-2">
             <Meta icon={CalendarDays} label="Preferred intake" value={intake} />
             <Meta icon={Clock} label="Submitted" value={new Date(enquiry.created_at).toLocaleDateString()} />
+            <Meta
+              icon={Users}
+              label="Agents viewing"
+              value={
+                enquiry.unlocked_by_count === 0
+                  ? "None yet"
+                  : `${enquiry.unlocked_by_count} ${enquiry.unlocked_by_count === 1 ? "agent" : "agents"}`
+              }
+            />
           </div>
         </CardContent>
       </Card>

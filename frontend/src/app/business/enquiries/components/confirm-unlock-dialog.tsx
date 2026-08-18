@@ -19,7 +19,7 @@ export function ConfirmUnlockDialog({
   open,
   onOpenChange,
   onConfirm,
-  courseName,
+  leadLabel,
   unlockCost,
   credits,
   submitting,
@@ -27,7 +27,7 @@ export function ConfirmUnlockDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
-  courseName: string | null;
+  leadLabel: string | null;
   unlockCost: number;
   credits: number | null;
   submitting: boolean;
@@ -37,11 +37,14 @@ export function ConfirmUnlockDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Unlock this enquiry?</DialogTitle>
+          {/* No unlock cap to warn about: this module caps how many businesses a
+              lead is distributed to, not how many of them may pay for it. Every
+              business that received it can unlock its own copy. */}
           <DialogDescription>
-            {courseName
-              ? `This will reveal the student's contact details for ${courseName}.`
-              : "This will reveal the student's contact details."}{" "}
-            Only 3 businesses can unlock the same enquiry.
+            {leadLabel
+              ? `This will reveal the full message and contact details for ${leadLabel}.`
+              : "This will reveal the full message and the student's contact details."}{" "}
+            Other businesses this lead was matched to can unlock their own copy too.
           </DialogDescription>
         </DialogHeader>
 

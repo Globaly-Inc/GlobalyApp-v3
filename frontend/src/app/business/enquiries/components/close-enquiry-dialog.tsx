@@ -25,13 +25,13 @@ export function CloseEnquiryDialog({
   open,
   onOpenChange,
   onConfirm,
-  courseName,
+  leadLabel,
   submitting,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (reason: string) => void;
-  courseName: string | null;
+  leadLabel: string | null;
   submitting: boolean;
 }>) {
   const [reason, setReason] = useState("");
@@ -52,7 +52,7 @@ export function CloseEnquiryDialog({
         <DialogHeader>
           <DialogTitle>Close this enquiry</DialogTitle>
           <DialogDescription>
-            {courseName ? `Why are you closing the enquiry for ${courseName}?` : "Why are you closing this enquiry?"}
+            {leadLabel ? `Why are you closing ${leadLabel}?` : "Why are you closing this enquiry?"}
             {" Your reason is recorded against your business only — other businesses keep their own."}
           </DialogDescription>
         </DialogHeader>

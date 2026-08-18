@@ -29,6 +29,8 @@ export interface EnquiryRow {
   target_org_type: "business" | "institution" | null;
   target_org_id: number | null;
   service_id: string | null;
+  /** App-level reference into superadmin.extraction_courses — no FK, see 20260817_961. */
+  course_id: string | null;
   agent_business_id: number | null;
   message: string;
   preferred_intake: string | null;
@@ -50,9 +52,19 @@ export interface DistributionRow {
   coin_cost: number;
   distance_km: string | null;
   status: DistributionStatus;
+  closed_at: Date | null;
+  close_reason: string | null;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
+}
+
+/** What the close transition writes back. No student columns — see closeDistribution. */
+export interface ClosedDistribution {
+  id: number;
+  status: DistributionStatus;
+  closed_at: Date | null;
+  close_reason: string | null;
 }
 
 export interface UnlockRow {
@@ -87,6 +99,53 @@ export async function findEnquiry(id: number, trx?: Db): Promise<EnquiryRow | un
   return db(trx)<EnquiryRow>("enquiries").where({ id }).whereNull("deleted_at").first();
 }
 
+/**
+ * Does this catalog course exist? Nothing more — there is no FK behind
+ * `enquiries.course_id`, so this is the only thing that keeps the stored
+ * reference resolvable at the moment it is written.
+ *
+ * A single explicit column, and `id` at that: the caller needs a yes/no, and
+ * `extraction_courses` is a wide staging table nobody should be selecting * from.
+ */
+export async function courseExists(courseId: string): Promise<boolean> {
+  const row = await masterKnex("superadmin.extraction_courses").where({ id: courseId }).first("id");
+  return row != null;
+}
+
+/**
+ * The course + institution names a student's own enquiry reads render.
+ *
+ * LEFT JOIN both ways down: the extraction tail HARD deletes staging courses when
+ * it merges duplicates (merge.repository.ts `deleteRows`), so an enquiry can
+ * legitimately outlive the course it names — and an institution overview is
+ * nullable on `name` in the first place. Columns are listed explicitly; this
+ * joins two staging tables and the student is only entitled to the four labels.
+ *
+ * Same join as courses.repository.ts listCourses, and the same caveat: there is
+ * no unique index on extraction_institution_overview.job_id, so a job with two
+ * overviews would duplicate the row. 1:1 in practice, as jobs.repository.ts also
+ * assumes.
+ */
+const COURSE_JOIN_COLUMNS = [
+  "c.name as course_name",
+  "c.short_name as course_short_name",
+  "o.name as institution_name",
+  "o.logo_url as institution_logo_url",
+] as const;
+
+function joinCourse(q: Knex.QueryBuilder, enquiryAlias: string): Knex.QueryBuilder {
+  return q
+    .leftJoin("superadmin.extraction_courses as c", "c.id", `${enquiryAlias}.course_id`)
+    .leftJoin("superadmin.extraction_institution_overview as o", "o.job_id", "c.job_id");
+}
+
+export interface CourseLabels {
+  course_name: string | null;
+  course_short_name: string | null;
+  institution_name: string | null;
+  institution_logo_url: string | null;
+}
+
 export async function setEnquiryFields(
   id: number,
   values: Partial<EnquiryRow>,
@@ -108,9 +167,14 @@ export async function countRecentEnquiries(studentId: number, windowHours: numbe
   return Number(rows[0]?.count ?? 0);
 }
 
+// Columns are table-qualified because listEnquiriesByStudent joins two staging
+// tables onto this: an unqualified `deleted_at` or `status` would become ambiguous
+// the day either of them grows a column of that name.
 function myEnquiriesQuery(studentId: number, status?: EnquiryStatus) {
-  const q = masterKnex("enquiries").where({ student_id: studentId }).whereNull("deleted_at");
-  if (status) q.where({ status });
+  const q = masterKnex("enquiries")
+    .where("enquiries.student_id", studentId)
+    .whereNull("enquiries.deleted_at");
+  if (status) q.where("enquiries.status", status);
   return q;
 }
 
@@ -120,9 +184,10 @@ export async function listEnquiriesByStudent(
   limit: number,
   offset: number,
 ) {
-  return myEnquiriesQuery(studentId, status)
+  return joinCourse(myEnquiriesQuery(studentId, status), "enquiries")
     .select(
       "enquiries.*",
+      ...COURSE_JOIN_COLUMNS,
       masterKnex.raw(
         `(SELECT count(*)::int FROM enquiry_distributions d
             WHERE d.enquiry_id = enquiries.id AND d.deleted_at IS NULL) AS distributed_to`,
@@ -132,17 +197,29 @@ export async function listEnquiriesByStudent(
             WHERE u.enquiry_id = enquiries.id AND u.deleted_at IS NULL) AS unlocked_by_count`,
       ),
     )
-    .orderBy("created_at", "desc")
-    .orderBy("id", "desc")
+    .orderBy("enquiries.created_at", "desc")
+    .orderBy("enquiries.id", "desc")
     .limit(limit)
     .offset(offset);
+}
+
+/** One enquiry with its course labels, for the student's own detail page. */
+export async function findEnquiryWithCourse(
+  id: number,
+): Promise<(EnquiryRow & CourseLabels) | undefined> {
+  return joinCourse(
+    masterKnex("enquiries").where("enquiries.id", id).whereNull("enquiries.deleted_at"),
+    "enquiries",
+  ).first("enquiries.*", ...COURSE_JOIN_COLUMNS);
 }
 
 export async function countEnquiriesByStudent(
   studentId: number,
   status?: EnquiryStatus,
 ): Promise<number> {
-  const rows = await myEnquiriesQuery(studentId, status).count<{ count: string }[]>("id as count");
+  const rows = await myEnquiriesQuery(studentId, status).count<{ count: string }[]>(
+    "enquiries.id as count",
+  );
   return Number(rows[0]?.count ?? 0);
 }
 
@@ -330,6 +407,58 @@ export async function setDistributionStatus(
     .update({ status, updated_at: db(trx).fn.now() });
 }
 
+/**
+ * Move one distribution to 'closed'. Returns the closed row, or undefined when
+ * nothing matched — which is either "not this business's row" or "already
+ * closed", and the caller distinguishes those with its own lookup.
+ *
+ * Both guards live in the WHERE clause on purpose:
+ *   * `business_id` is repeated here even though the caller has already checked
+ *     ownership. A lookup and a write are two statements, and only the predicate
+ *     on the write itself can guarantee the row that changes is the row that was
+ *     authorised.
+ *   * `status <> 'closed'` is what makes closing twice a genuine no-op rather
+ *     than a second UPDATE with the same values: no row matches, so `closed_at`,
+ *     `close_reason` and `updated_at` all keep their original values, and two
+ *     simultaneous closes settle on the first one without a transaction.
+ *
+ * RETURNING lists its columns: the row carries no student data, and it must stay
+ * that way whatever columns this table grows.
+ */
+export async function closeDistribution(
+  distributionId: number,
+  businessId: number,
+  closeReason: string | null,
+  trx?: Db,
+): Promise<ClosedDistribution | undefined> {
+  const [row] = await db(trx)("enquiry_distributions")
+    .where({ id: distributionId, business_id: businessId })
+    .whereNot({ status: "closed" })
+    .whereNull("deleted_at")
+    .update({
+      status: "closed",
+      closed_at: db(trx).fn.now(),
+      close_reason: closeReason,
+      updated_at: db(trx).fn.now(),
+    })
+    .returning<ClosedDistribution[]>(["id", "status", "closed_at", "close_reason"]);
+  return row;
+}
+
+/**
+ * The caller's own per-lead price, for the inbox's credit widget.
+ *
+ * A single explicit column: this read exists only to price an unlock, and
+ * `businesses` carries plenty that has no business being on that wire.
+ */
+export async function findEnquiryCoinCost(businessId: number): Promise<number | null> {
+  const row = await masterKnex("businesses")
+    .where({ id: businessId })
+    .whereNull("deleted_at")
+    .first("enquiry_coin_cost");
+  return row?.enquiry_coin_cost == null ? null : Number(row.enquiry_coin_cost);
+}
+
 /** The business inbox. Joins the unlock ledger so the caller can mask. */
 function inboxQuery(businessId: number, filters: { status?: DistributionStatus; unlocked?: boolean }) {
   const q = masterKnex("enquiry_distributions as d")
@@ -357,6 +486,8 @@ function withInboxColumns(q: Knex.QueryBuilder) {
       "d.coin_cost",
       "d.distance_km",
       "d.status",
+      "d.closed_at",
+      "d.close_reason",
       "d.created_at",
       "e.message",
       "e.preferred_intake",
@@ -386,6 +517,8 @@ export interface InboxRow {
   coin_cost: number;
   distance_km: string | null;
   status: DistributionStatus;
+  closed_at: Date | null;
+  close_reason: string | null;
   created_at: Date;
   message: string;
   preferred_intake: string | null;

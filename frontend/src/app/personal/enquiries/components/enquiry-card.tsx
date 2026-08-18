@@ -10,6 +10,11 @@ export function EnquiryCard({ enquiry }: Readonly<{ enquiry: EnquiryListItem }>)
   // Full course name is the headline — never the short code (EMHA/MSBA mean
   // nothing at a glance) and never the intake. Institution sits beneath it, with
   // the intake kept as secondary detail since it's still useful to the student.
+  //
+  // The name is nullable: an enquiry may name no course, and a course can be hard
+  // deleted by the extraction tail's duplicate merge while the enquiry lives on
+  // (20260817_961). Both cases need a headline, so fall back rather than render an
+  // empty line.
   const intakeMonth = enquiry.preferred_intake?.trim();
   const intake = intakeMonth
     ? `${intakeMonth}${enquiry.preferred_year ? ` ${enquiry.preferred_year}` : ""} intake`
@@ -23,13 +28,20 @@ export function EnquiryCard({ enquiry }: Readonly<{ enquiry: EnquiryListItem }>)
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-foreground">{enquiry.course_name}</p>
+          <p className="font-semibold text-foreground">{enquiry.course_name ?? "General enquiry"}</p>
           {enquiry.institution_name && (
             <p className="mt-0.5 truncate text-sm text-primary">{enquiry.institution_name}</p>
           )}
           <p className="mt-1.5 text-xs text-muted-foreground">
             {new Date(enquiry.created_at).toLocaleDateString()}
             {intake && <span> · {intake}</span>}
+            {enquiry.distributed_to > 0 && (
+              <span>
+                {" "}
+                · sent to {enquiry.distributed_to}
+                {enquiry.unlocked_by_count > 0 && `, ${enquiry.unlocked_by_count} viewing`}
+              </span>
+            )}
           </p>
         </div>
 

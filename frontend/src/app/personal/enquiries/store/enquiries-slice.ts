@@ -41,6 +41,7 @@ export const fetchCourseOptions = createAsyncThunk(
 
 type EnquiriesState = {
   items: EnquiryListItem[];
+  /** Keyed by the raw route param, so the detail view's lookup always matches. */
   byId: Record<string, Enquiry>;
   courseOptions: Course[];
   courseOptionsStatus: "idle" | "loading" | "failed";
@@ -82,7 +83,9 @@ const enquiriesSlice = createSlice({
         state.error = action.error.message ?? "Failed to load enquiries";
       })
       .addCase(fetchEnquiry.fulfilled, (state, action) => {
-        state.byId[action.payload.id] = action.payload;
+        // meta.arg, not payload.id: the id on the wire is a number and the detail
+        // view looks up by the string it got from the URL.
+        state.byId[action.meta.arg] = action.payload;
       })
       .addCase(fetchCourseOptions.pending, (state) => {
         state.courseOptionsStatus = "loading";
@@ -98,9 +101,11 @@ const enquiriesSlice = createSlice({
         state.createStatus = "saving";
         state.error = null;
       })
-      .addCase(createEnquiry.fulfilled, (state, action) => {
+      .addCase(createEnquiry.fulfilled, (state) => {
         state.createStatus = "idle";
-        state.byId[action.payload.id] = action.payload;
+        // POST /enquiries answers with the fan-out result, not an enquiry row, so
+        // there is nothing to cache here. The dialog refetches the list, which is
+        // what the screen actually renders.
       })
       .addCase(createEnquiry.rejected, (state, action) => {
         state.createStatus = "failed";

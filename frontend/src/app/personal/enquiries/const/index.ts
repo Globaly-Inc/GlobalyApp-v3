@@ -13,15 +13,22 @@ export function defaultIntakeYear(): number {
 /** Current year through +5 — far enough for deferred intakes, short enough to scan. */
 export const INTAKE_YEAR_RANGE = 6;
 
+/**
+ * The six values in `enquiries_status_check` — V1's enquiry_status enum verbatim.
+ *
+ * These labels are written from the student's side of the transaction: 'viewed'
+ * means a business paid to unlock the lead, which to the student is "someone is
+ * looking at it". The eight-value vocabulary this replaces (distributed,
+ * unlocked, in_conversation, no_match, expired…) belonged to a second enquiries
+ * backend removed in the staging merge and can never arrive on this wire.
+ */
 export const STATUS_LABEL: Record<EnquiryStatus, string> = {
-  pending: "Pending",
-  distributed: "Sent to institutions",
-  unlocked: "Unlocked",
-  in_conversation: "In conversation",
+  pending: "Sent",
+  viewed: "Viewed by an agent",
+  responded: "Replied",
+  assigned: "With a counsellor",
   converted: "Converted",
   closed: "Closed",
-  no_match: "No match found",
-  expired: "Expired",
 };
 
 /**
@@ -30,9 +37,9 @@ export const STATUS_LABEL: Record<EnquiryStatus, string> = {
  * not listed fall back to STATUS_BADGE_VARIANT below.
  */
 export const STATUS_BADGE_CLASS: Partial<Record<EnquiryStatus, string>> = {
-  unlocked: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
+  viewed: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
   converted: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
-  in_conversation: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300",
+  responded: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300",
 };
 
 /** Minimum profile completion required before an enquiry can be sent (v2 parity). */
@@ -40,11 +47,9 @@ export const REQUIRED_COMPLETION = 100;
 
 export const STATUS_BADGE_VARIANT: Record<EnquiryStatus, "default" | "secondary" | "destructive" | "outline"> = {
   pending: "outline",
-  distributed: "secondary",
-  unlocked: "secondary",
-  in_conversation: "default",
+  viewed: "secondary",
+  responded: "default",
+  assigned: "secondary",
   converted: "default",
   closed: "outline",
-  no_match: "destructive",
-  expired: "destructive",
 };

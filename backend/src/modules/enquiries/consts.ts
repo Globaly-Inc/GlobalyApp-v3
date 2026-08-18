@@ -47,6 +47,15 @@ export const ENQUIRY_RATE_WINDOW_HOURS = 24;
 /** How much of the message a business sees before paying. */
 export const MESSAGE_PREVIEW_CHARS = 140;
 
+/**
+ * Cap on `enquiry_distributions.close_reason`.
+ *
+ * V3-only — V1 had no close reason anywhere, so there is no length to match. A
+ * kilobyte is far more than the inbox textarea will ever produce and still small
+ * enough that the column can never be used as free storage.
+ */
+export const MAX_CLOSE_REASON_CHARS = 1000;
+
 // ── Digest worker ───────────────────────────────────────────────────────────
 
 /** LavinMQ queue the digest worker consumes. Messages are ticks, not payloads. */

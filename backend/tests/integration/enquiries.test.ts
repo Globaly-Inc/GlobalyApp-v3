@@ -46,6 +46,7 @@ describeDb("enquiries", () => {
 
   let suffix = "";
   let adminToken = "";
+  let courseSeq = 0;
 
   interface Biz {
     id: number;
@@ -209,6 +210,29 @@ describeDb("enquiries", () => {
     return res.json();
   }
 
+  /**
+   * One staged course in `superadmin.extraction_courses`, with the institution
+   * overview the student-facing join reads its name from. Built here rather than
+   * shared, so a suite that never mentions courses stages none.
+   */
+  async function makeCourse(name: string, shortName: string | null) {
+    const [job] = await masterKnex("superadmin.extraction_jobs")
+      .insert({ institution_url: `https://enq-${suffix}-${++courseSeq}.example.edu`, status: "completed" })
+      .returning(["id"]);
+    const institutionName = `Enq University ${suffix}-${courseSeq}`;
+    await masterKnex("superadmin.extraction_institution_overview").insert({
+      job_id: job.id,
+      name: institutionName,
+    });
+    const [course] = await masterKnex("superadmin.extraction_courses")
+      .insert({ job_id: job.id, name, short_name: shortName })
+      .returning(["id"]);
+    return { id: course.id as string, jobId: job.id as string, institutionName };
+  }
+
+  const courseIdOf = async (enquiryId: number) =>
+    (await masterKnex("enquiries").where({ id: enquiryId }).first("course_id")).course_id;
+
   const distributionFor = async (enquiryId: number, businessId: number) =>
     masterKnex("enquiry_distributions").where({ enquiry_id: enquiryId, business_id: businessId }).first();
 
@@ -331,6 +355,88 @@ describeDb("enquiries", () => {
       const fourth = await post("/api/v3/enquiries", student.token, { message: "one too many" });
       expect(fourth.statusCode).toBe(429);
       expect(fourth.json().code).toBe("ENQUIRY_RATE_LIMIT");
+    });
+  });
+
+  // ── the catalog course a student enquired about ───────────────────────────
+
+  describe("course reference", () => {
+    it("stores the chosen course and joins its names onto the student's own reads", async () => {
+      const student = await makeStudent();
+      const course = await makeCourse("Bachelor of Nursing", "BNurs");
+      const created = await createEnquiry(student.token, { course_id: course.id });
+
+      expect(await courseIdOf(created.id)).toBe(course.id);
+
+      const detail = (await get(`/api/v3/enquiries/${created.id}`, student.token)).json();
+      expect(detail.course_id).toBe(course.id);
+      expect(detail.course_name).toBe("Bachelor of Nursing");
+      expect(detail.course_short_name).toBe("BNurs");
+      expect(detail.institution_name).toBe(course.institutionName);
+
+      const list = (await get("/api/v3/enquiries?limit=100", student.token)).json();
+      const mine = list.data.find((e: { id: number }) => e.id === created.id);
+      expect(mine.course_name).toBe("Bachelor of Nursing");
+      expect(mine.institution_name).toBe(course.institutionName);
+    });
+
+    it("accepts an enquiry with no course at all", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      expect(await courseIdOf(created.id)).toBeNull();
+
+      const detail = (await get(`/api/v3/enquiries/${created.id}`, student.token)).json();
+      expect(detail.course_id).toBeNull();
+      expect(detail.course_name).toBeNull();
+      expect(detail.institution_name).toBeNull();
+    });
+
+    it("refuses a course that is not a uuid, and one that does not exist", async () => {
+      const student = await makeStudent();
+
+      const notUuid = await post("/api/v3/enquiries", student.token, {
+        message: "Please advise on intakes and fees for this programme.",
+        course_id: "not-a-uuid",
+      });
+      expect(notUuid.statusCode).toBe(400);
+
+      // A real uuid for a course that was never staged. Validated rather than
+      // stored blind: this is an app-level reference with no FK behind it, so the
+      // service is the only thing that can keep it resolvable.
+      const missing = await post("/api/v3/enquiries", student.token, {
+        message: "Please advise on intakes and fees for this programme.",
+        course_id: "00000000-0000-4000-8000-000000000000",
+      });
+      expect(missing.statusCode).toBe(404);
+
+      // Neither attempt left an enquiry behind, so neither burned rate limit.
+      const list = (await get("/api/v3/enquiries?limit=100", student.token)).json();
+      expect(list.data).toHaveLength(0);
+    });
+
+    it("renders a course that has since been merged away as no course", async () => {
+      const student = await makeStudent();
+      const course = await makeCourse("Diploma of Business", null);
+      const created = await createEnquiry(student.token, { course_id: course.id });
+
+      // merge.repository.ts deleteRows HARD deletes staging courses, which is
+      // exactly why there is no FK here. The enquiry must survive it.
+      await masterKnex("superadmin.extraction_courses").where({ id: course.id }).delete();
+
+      const detail = (await get(`/api/v3/enquiries/${created.id}`, student.token)).json();
+      expect(detail.course_id).toBe(course.id);
+      expect(detail.course_name).toBeNull();
+      expect(detail.institution_name).toBeNull();
+    });
+
+    it("still refuses an unknown key — the create schema is strict", async () => {
+      const student = await makeStudent();
+      // `extraction_job_id` was a field of the removed second enquiries backend.
+      const res = await post("/api/v3/enquiries", student.token, {
+        message: "Please advise on intakes and fees for this programme.",
+        extraction_job_id: "00000000-0000-4000-8000-000000000000",
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 
@@ -495,6 +601,32 @@ describeDb("enquiries", () => {
       expect(retry.json().already_unlocked).toBe(false);
     });
 
+    it("refuses to unlock a lead this business has already closed", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+      await fundWallet(near.id, 500);
+      const before = await balanceOf(near.id);
+
+      expect(
+        (await post(`/api/v3/business/enquiries/${dist.id}/close`, near.token, { close_reason: "Not for us" }))
+          .statusCode,
+      ).toBe(200);
+
+      // Without this guard the unlock path's `setDistributionStatus(id, 'viewed')`
+      // would drag the row back out of 'closed' while leaving closed_at and
+      // close_reason set — a row that claims to be both closed and not.
+      const res = await post(`/api/v3/business/enquiries/${dist.id}/unlock`, near.token);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().code).toBe("ENQUIRY_CLOSED");
+
+      const row = await distributionFor(created.id, near.id);
+      expect(row.status).toBe("closed");
+      expect(row.close_reason).toBe("Not for us");
+      expect(await balanceOf(near.id)).toBe(before);
+      expect(await masterKnex("enquiry_unlocks").where({ distribution_id: dist.id })).toHaveLength(0);
+    });
+
     it("moves the distribution and the enquiry to 'viewed' on unlock", async () => {
       const student = await makeStudent();
       const created = await createEnquiry(student.token);
@@ -504,6 +636,232 @@ describeDb("enquiries", () => {
       expect((await post(`/api/v3/business/enquiries/${dist.id}/unlock`, near.token)).statusCode).toBe(200);
       expect((await distributionFor(created.id, near.id)).status).toBe("viewed");
       expect((await masterKnex("enquiries").where({ id: created.id }).first()).status).toBe("viewed");
+    });
+  });
+
+  // ── close (the housekeeping path) ─────────────────────────────────────────
+
+  describe("closing a distribution", () => {
+    it("refuses to close another business's distribution and writes nothing", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const nearDist = await distributionFor(created.id, near.id);
+
+      // 404, not 403 — a 403 would confirm the id exists in somebody's inbox.
+      const stolen = await post(`/api/v3/business/enquiries/${nearDist.id}/close`, mid.token, {
+        close_reason: "Not a region we service",
+      });
+      expect(stolen.statusCode).toBe(404);
+
+      const row = await distributionFor(created.id, near.id);
+      expect(row.status).toBe("pending");
+      expect(row.closed_at).toBeNull();
+      expect(row.close_reason).toBeNull();
+    });
+
+    it("closes a locked lead, stores the reason, and reveals nothing", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+
+      const res = await post(`/api/v3/business/enquiries/${dist.id}/close`, near.token, {
+        close_reason: "Student is outside the regions we service",
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.id).toBe(dist.id);
+      expect(body.status).toBe("closed");
+      expect(body.already_closed).toBe(false);
+      expect(body.close_reason).toBe("Student is outside the regions we service");
+      expect(body.closed_at).not.toBeNull();
+
+      // Closing is not a back door around the unlock paywall: the response is
+      // distribution-level only, so it cannot carry a single student field.
+      expect(JSON.stringify(body)).not.toContain("@");
+      expect(Object.keys(body).sort()).toEqual(
+        ["already_closed", "close_reason", "closed_at", "id", "status"],
+      );
+
+      const row = await distributionFor(created.id, near.id);
+      expect(row.status).toBe("closed");
+      expect(row.close_reason).toBe("Student is outside the regions we service");
+      // No unlock was created and no credit moved — close is free.
+      expect(await masterKnex("enquiry_unlocks").where({ distribution_id: dist.id })).toHaveLength(0);
+
+      // And the student's enquiry is untouched: one recipient losing interest is
+      // not the enquiry closing.
+      expect((await masterKnex("enquiries").where({ id: created.id }).first()).status).toBe("pending");
+    });
+
+    it("closing twice is a no-op — the second call never rewrites the row", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+
+      const first = await post(`/api/v3/business/enquiries/${dist.id}/close`, near.token, {
+        close_reason: "First reason",
+      });
+      expect(first.statusCode).toBe(200);
+      expect(first.json().already_closed).toBe(false);
+      const after = await distributionFor(created.id, near.id);
+
+      const second = await post(`/api/v3/business/enquiries/${dist.id}/close`, near.token, {
+        close_reason: "A completely different second reason",
+      });
+      expect(second.statusCode).toBe(200);
+      expect(second.json().already_closed).toBe(true);
+      // The first close is the one that stands; the reason is not overwritten.
+      expect(second.json().close_reason).toBe("First reason");
+
+      // `updated_at` is the witness: an unchanged timestamp means no second write.
+      const again = await distributionFor(created.id, near.id);
+      expect(again.close_reason).toBe("First reason");
+      expect(new Date(again.closed_at).getTime()).toBe(new Date(after.closed_at).getTime());
+      expect(new Date(again.updated_at).getTime()).toBe(new Date(after.updated_at).getTime());
+    });
+
+    it("closes an unlocked lead without refunding it or touching the ledger", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+      await fundWallet(near.id, 500);
+      expect((await post(`/api/v3/business/enquiries/${dist.id}/unlock`, near.token)).statusCode).toBe(200);
+      const spent = await balanceOf(near.id);
+
+      // 'viewed' -> 'closed': a paid, worked lead is exactly what gets closed.
+      const res = await post(`/api/v3/business/enquiries/${dist.id}/close`, near.token, {
+        close_reason: "Spoke to the student, they enrolled elsewhere",
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().status).toBe("closed");
+
+      // Closing does not undo the purchase.
+      expect(await balanceOf(near.id)).toBe(spent);
+      expect(await masterKnex("enquiry_unlocks").where({ distribution_id: dist.id })).toHaveLength(1);
+
+      // And the row stays unlocked in the inbox — close is not a re-lock.
+      const item = (await get(`/api/v3/business/enquiries/${dist.id}`, near.token)).json();
+      expect(item.unlocked).toBe(true);
+      expect(item.status).toBe("closed");
+      expect(item.close_reason).toBe("Spoke to the student, they enrolled elsewhere");
+      expect(item.closed_at).not.toBeNull();
+    });
+
+    it("closes with no reason at all, and rejects a blank or oversized one", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+
+      // The reason is optional server-side; only the UI insists on one.
+      const bare = await post(`/api/v3/business/enquiries/${dist.id}/close`, near.token, {});
+      expect(bare.statusCode).toBe(200);
+      expect(bare.json().close_reason).toBeNull();
+
+      // And with no body at all, not just an empty object: Fastify leaves req.body
+      // undefined when nothing is sent, which the route has to survive rather than
+      // turning it into a zod error about a missing object. A fresh enquiry, so
+      // this does not consume a row the assertions below still need.
+      const otherStudent = await makeStudent();
+      const bodyless = await createEnquiry(otherStudent.token);
+      const bodylessDist = await distributionFor(bodyless.id, near.id);
+      const noBody = await app.inject({
+        method: "POST",
+        url: `/api/v3/business/enquiries/${bodylessDist.id}/close`,
+        headers: auth(near.token),
+      });
+      expect(noBody.statusCode).toBe(200);
+      expect(noBody.json().status).toBe("closed");
+      expect(noBody.json().close_reason).toBeNull();
+
+      const other = await distributionFor(created.id, mid.id);
+      expect(
+        (await post(`/api/v3/business/enquiries/${other.id}/close`, mid.token, { close_reason: "   " })).statusCode,
+      ).toBe(400);
+      expect(
+        (await post(`/api/v3/business/enquiries/${other.id}/close`, mid.token, { close_reason: "x".repeat(1001) }))
+          .statusCode,
+      ).toBe(400);
+      // An unknown key is still refused — the schema is strict.
+      expect(
+        (await post(`/api/v3/business/enquiries/${other.id}/close`, mid.token, { reason: "typo" })).statusCode,
+      ).toBe(400);
+      expect((await distributionFor(created.id, mid.id)).status).toBe("pending");
+    });
+
+    it("keeps one business's close out of every other business's inbox", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const nearDist = await distributionFor(created.id, near.id);
+
+      expect(
+        (
+          await post(`/api/v3/business/enquiries/${nearDist.id}/close`, near.token, {
+            close_reason: "Ours to close",
+          })
+        ).statusCode,
+      ).toBe(200);
+
+      // mid holds its own distribution of the same enquiry. near closing its copy
+      // must not close mid's — that is the whole point of a per-business row.
+      const midRow = await distributionFor(created.id, mid.id);
+      expect(midRow.status).toBe("pending");
+      expect(midRow.close_reason).toBeNull();
+
+      const midInbox = (await get("/api/v3/business/enquiries?limit=100", mid.token)).json();
+      const mine = midInbox.data.find((r: { id: number }) => r.id === midRow.id);
+      expect(mine.status).toBe("pending");
+      expect(mine.close_reason).toBeNull();
+      // And still masked, closed or not.
+      expect(mine.unlocked).toBe(false);
+      expect(mine.student.email).toBeUndefined();
+    });
+
+    it("filters the inbox by the closed status", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+      await post(`/api/v3/business/enquiries/${dist.id}/close`, near.token, { close_reason: "Filtering" });
+
+      const closed = (await get("/api/v3/business/enquiries?status=closed&limit=100", near.token)).json();
+      expect(closed.data.map((r: { id: number }) => r.id)).toContain(dist.id);
+
+      const pending = (await get("/api/v3/business/enquiries?status=pending&limit=100", near.token)).json();
+      expect(pending.data.map((r: { id: number }) => r.id)).not.toContain(dist.id);
+    });
+  });
+
+  // ── credits (the inbox's own balance read) ────────────────────────────────
+
+  describe("credit balance read", () => {
+    it("reports the caller's own wallet balance and per-lead cost", async () => {
+      await fundWallet(near.id, 412);
+
+      const res = await get("/api/v3/business/enquiries/credits", near.token);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ balance: 412, unlock_cost: 30 });
+    });
+
+    it("reports zero for a business that has never transacted", async () => {
+      // `unverified` is never funded by any test in this file.
+      const res = await get("/api/v3/business/enquiries/credits", unverified.token);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().balance).toBe(0);
+      expect(res.json().unlock_cost).toBe(30);
+    });
+
+    it("reads the caller's wallet, never another business's", async () => {
+      await fundWallet(near.id, 999);
+      await fundWallet(mid.id, 1);
+      expect((await get("/api/v3/business/enquiries/credits", mid.token)).json().balance).toBe(1);
+      expect((await get("/api/v3/business/enquiries/credits", near.token)).json().balance).toBe(999);
+    });
+
+    it("does not shadow the numeric :distributionId route", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      const dist = await distributionFor(created.id, near.id);
+      expect((await get(`/api/v3/business/enquiries/${dist.id}`, near.token)).statusCode).toBe(200);
+      expect((await get("/api/v3/business/enquiries/credits", near.token)).statusCode).toBe(200);
     });
   });
 
@@ -542,6 +900,14 @@ describeDb("enquiries", () => {
       expect(
         (await post(`/api/v3/business/enquiries/${dist.id}/unlock`, student.token)).statusCode,
       ).toBe(403);
+      expect(
+        (await post(`/api/v3/business/enquiries/${dist.id}/close`, student.token, { close_reason: "no" }))
+          .statusCode,
+      ).toBe(403);
+      expect((await get("/api/v3/business/enquiries/credits", student.token)).statusCode).toBe(403);
+
+      // Refused means refused: the row is untouched too.
+      expect((await distributionFor(created.id, near.id)).status).toBe("pending");
 
       // Refused means refused: no unlock, no charge.
       expect(await masterKnex("enquiry_unlocks").where({ distribution_id: dist.id })).toHaveLength(0);
@@ -561,6 +927,7 @@ describeDb("enquiries", () => {
         "/api/v3/enquiries/1",
         "/api/v3/business/enquiries",
         "/api/v3/business/enquiries/1",
+        "/api/v3/business/enquiries/credits",
         "/api/v3/admin/monitoring/enquiries",
         "/api/v3/admin/monitoring/enquiries/stats",
       ]) {
@@ -571,6 +938,9 @@ describeDb("enquiries", () => {
       ).toBe(401);
       expect(
         (await app.inject({ method: "POST", url: "/api/v3/business/enquiries/1/unlock" })).statusCode,
+      ).toBe(401);
+      expect(
+        (await app.inject({ method: "POST", url: "/api/v3/business/enquiries/1/close" })).statusCode,
       ).toBe(401);
     });
 
