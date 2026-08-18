@@ -6,7 +6,6 @@ import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../shared/pagination.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
-
 const CategoryListQuery = PaginationSchema.extend({
   search: z.string().trim().min(1).optional(),
 });
@@ -18,6 +17,16 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     const [rows, total] = await Promise.all([
       categoriesService.listServiceCategories(limit, offset, search),
       categoriesService.countServiceCategories(search),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.get("/business-categories", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { search, ...pagination } = CategoryListQuery.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      categoriesService.listBusinessCategories(limit, offset, search),
+      categoriesService.countBusinessCategories(search),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });

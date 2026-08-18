@@ -7,6 +7,7 @@ import { schemaName } from "../../../core/db/knex.js";
 import { provisionBusinessSchema } from "../../../core/business/provisioner.js";
 import { config } from "../../../config.js";
 import { claimBusinessEmail } from "../../../shared/mail/templates.js";
+import * as storage from "../../../shared/storage/storageService.js";
 import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../platform-users/repositories/platform-users.repository.js";
 import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
@@ -95,18 +96,28 @@ export async function searchBusinesses(orgId: string, search: string | undefined
   return repo.searchBusinesses(search, caller.id, limit);
 }
 
+/** Resolve stored logo/cover paths to signed, viewable URLs — mirrors the admin-side helper. */
+async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(biz: T): Promise<T> {
+  const [logo_url, cover_url] = await Promise.all([
+    storage.resolvePreviewUrl(biz.logo_url),
+    storage.resolvePreviewUrl(biz.cover_url),
+  ]);
+  return { ...biz, logo_url, cover_url };
+}
+
 /** Get full business record by schema_name (orgId from JWT). */
 export async function getProfile(orgId: string) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  return business;
+  return withImagePreviews(business);
 }
 
 /** Update business profile fields by schema_name (orgId from JWT). */
 export async function updateProfile(orgId: string, data: BusinessProfilePatchInput) {
   const existing = await repo.findBusinessByDbName(orgId);
   if (!existing) throw new NotFoundError("Business not found");
-  return repo.updateBusinessProfile(existing.id, data);
+  const updated = await repo.updateBusinessProfile(existing.id, data);
+  return withImagePreviews(updated);
 }
 
 /**

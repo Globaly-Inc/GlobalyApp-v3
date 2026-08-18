@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { FieldError } from "@/components/field-error";
 import { useValidatedForm } from "@/lib/use-validated-form";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
+import { splitPhone } from "@/lib/utils";
 import type { Category, CountryOption } from "@/app/admin/platform/categories/apis";
 import type { BusinessDetail, BusinessPatch } from "../../apis/types";
 
@@ -33,15 +34,6 @@ const schema: z.ZodType<FormState> = z.object({
   phoneNumber: z.string(),
   website: urlField,
 });
-
-function splitPhone(phone: string | null, countries: CountryOption[]): { phoneCountryId: string; phoneNumber: string } {
-  if (!phone) return { phoneCountryId: "", phoneNumber: "" };
-  const withCode = countries.filter((c): c is CountryOption & { phoneCode: string } => !!c.phoneCode);
-  withCode.sort((a, b) => b.phoneCode.length - a.phoneCode.length);
-  const match = withCode.find((c) => phone.startsWith(c.phoneCode));
-  if (!match) return { phoneCountryId: "", phoneNumber: phone };
-  return { phoneCountryId: String(match.id), phoneNumber: phone.slice(match.phoneCode.length).trim() };
-}
 
 function toForm(b: BusinessDetail, countries: CountryOption[]): FormState {
   const { phoneCountryId, phoneNumber } = splitPhone(b.phone, countries);

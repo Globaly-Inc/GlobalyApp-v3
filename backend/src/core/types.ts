@@ -35,6 +35,8 @@ export interface BusinessRecord {
   city: string | null;
   address: string | null;
   postcode: string | null;
+  latitude: number | null;
+  longitude: number | null;
   linkedin_url: string | null;
   facebook_url: string | null;
   instagram_url: string | null;

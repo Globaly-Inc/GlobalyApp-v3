@@ -206,3 +206,34 @@ export async function findInvitationByToken(db: Knex, token: string) {
 export async function markInvitationAccepted(db: Knex, id: string) {
   await db("agent_invitations").where({ id }).update({ status: "accepted" });
 }
+
+export async function listPendingInvitations(db: Knex, limit: number, offset: number) {
+  return db<InvitationRow>("agent_invitations")
+    .where({ status: "pending" })
+    .where("expired_at", ">", db.fn.now())
+    .whereNull("deleted_at")
+    .orderBy("created_at", "desc")
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function countPendingInvitations(db: Knex): Promise<number> {
+  const [{ count }] = await db("agent_invitations")
+    .where({ status: "pending" })
+    .where("expired_at", ">", db.fn.now())
+    .whereNull("deleted_at")
+    .count("id as count");
+  return Number(count);
+}
+
+export async function findPendingInvitationById(db: Knex, id: string) {
+  return db<InvitationRow>("agent_invitations")
+    .where({ id, status: "pending" })
+    .where("expired_at", ">", db.fn.now())
+    .whereNull("deleted_at")
+    .first();
+}
+
+export async function cancelInvitation(db: Knex, id: string) {
+  await db("agent_invitations").where({ id }).update({ deleted_at: db.fn.now() });
+}
