@@ -119,6 +119,12 @@ export default defineConfig({
         // notifications glob above, already listed by D3.)
         "src/modules/favorites/**/*.ts",
         "src/modules/waitlist/**/*.ts",
+        // G9 — the eight V3-only service verticals: routes, review, promote.
+        "src/modules/superadmin/data-extraction/lib/service-verticals.ts",
+        "src/modules/superadmin/data-extraction/repositories/service-verticals.repository.ts",
+        "src/modules/superadmin/data-extraction/services/service-verticals.service.ts",
+        "src/modules/superadmin/data-extraction/routes/service-verticals.routes.ts",
+        "src/modules/superadmin/data-extraction/schemas/service-verticals.schema.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {
