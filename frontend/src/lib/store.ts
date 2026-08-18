@@ -23,6 +23,8 @@ import { maraAgentsReducer } from "@/app/admin/data/mara-agents/store/mara-agent
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 import { enquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
+import { ambassadorProgramsReducer } from "@/app/admin/monitoring/ambassador-programs/store/ambassador-programs-slice"
+import { trainingReducer } from "@/app/admin/monitoring/training/store/training-slice"
 import { adminEventsReducer } from "@/app/admin/monitoring/events/store/admin-events-slice"
 import { notificationsReducer } from "@/app/personal/notifications/store/notifications-slice"
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
@@ -54,6 +56,8 @@ const appReducer = combineReducers({
     monitoringLogs: logsReducer,
     monitoringOtherServices: adminOtherServicesReducer,
     monitoringEnquiries: enquiriesReducer,
+    monitoringAmbassadorPrograms: ambassadorProgramsReducer,
+    monitoringTraining: trainingReducer,
     monitoringEvents: adminEventsReducer,
     notifications: notificationsReducer,
     aiChat: aiChatReducer,
