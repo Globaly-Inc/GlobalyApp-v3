@@ -56,4 +56,10 @@ export async function notificationRoutes(app: FastifyInstance) {
     const { token } = PushTokenSchema.parse(req.body ?? {});
     return reply.send(await service.unregisterPushToken(Number(req.auth.sub), token));
   });
+
+  // V2's smoke slice. Pushes to the CALLER's own devices only — it takes no body,
+  // so there is no recipient to tamper with. 503 when no provider is configured.
+  app.post("/push-check", async (req, reply) => {
+    return reply.send(await service.pushCheck(Number(req.auth.sub)));
+  });
 }

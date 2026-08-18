@@ -102,6 +102,10 @@ export default defineConfig({
         // G5 — ads (campaigns, impressions, leads) + applications & charges
         "src/modules/ads/**/*.ts",
         "src/modules/applications/**/*.ts",
+        // G6 — favourites, saved filters, waitlist. (Push lives under the
+        // notifications glob above, already listed by D3.)
+        "src/modules/favorites/**/*.ts",
+        "src/modules/waitlist/**/*.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {

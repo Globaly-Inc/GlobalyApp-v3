@@ -12,6 +12,7 @@ import { buildPaginatedResponse, paginationToOffset, type PaginationInput } from
 import { queueService } from "../../../shared/queue/queueService.js";
 import { CHANNELS, NOTIFICATION_QUEUE, type Channel } from "../consts.js";
 import * as repo from "../repositories/notifications.repository.js";
+import { assertPushConfigured, getPushClient } from "./push.client.js";
 
 const logger = createChildLogger("notifications");
 
@@ -125,4 +126,23 @@ export async function registerPushToken(userId: number, token: string, userAgent
 export async function unregisterPushToken(userId: number, token: string) {
   const deleted = await repo.deletePushToken(userId, token);
   return { deleted: deleted > 0 };
+}
+
+/**
+ * V2's /me/push-check smoke slice: push a test notification to the caller's own
+ * devices and nowhere else.
+ *
+ * The registry read happens FIRST, so an unconfigured deployment still exercises
+ * auth and the token lookup; only then does it refuse. assertPushConfigured()
+ * throws 503 rather than reporting a send that did not happen.
+ */
+export async function pushCheck(userId: number) {
+  const tokens = await repo.pushTokensFor(userId);
+  assertPushConfigured();
+  const result = await getPushClient().send(tokens, {
+    title: "Globaly push check",
+    body: "Web push is working on this device.",
+  });
+  for (const dead of result.invalidTokens) await repo.deletePushToken(userId, dead);
+  return { sent: result.sent, pruned: result.invalidTokens.length };
 }
