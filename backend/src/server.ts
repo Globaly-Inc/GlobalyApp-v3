@@ -13,6 +13,7 @@ import { authPlugin } from "./core/plugins/auth.plugin.js";
 import { tenantPlugin } from "./core/plugins/tenant.plugin.js";
 import { startEvictionLoop, shutdownAll } from "./core/db/pool-manager.js";
 import { masterKnex } from "./core/db/master-pool.js";
+import { closeCache } from "./core/cache/dragonfly.js";
 import { createChildLogger } from "./shared/logger.js";
 
 // Modules
@@ -143,6 +144,7 @@ const shutdown = async () => {
   logger.info("Shutting down...");
   await app.close();
   await shutdownAll();
+  await closeCache();
   await masterKnex.destroy();
   process.exit(0);
 };
