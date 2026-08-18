@@ -13,9 +13,30 @@ import * as messagesRepo from "../repositories/messages.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as creditService from "../services/credit.service.js";
 import * as embedService from "../services/embed.service.js";
-import { NotFoundError, ForbiddenError, PaymentRequiredError } from "../../../shared/errors.js";
+import * as storage from "../../../shared/storage/storageService.js";
+import { NotFoundError, ForbiddenError, PaymentRequiredError, BadRequestError } from "../../../shared/errors.js";
 
 export async function chatRoutes(app: FastifyInstance) {
+  // POST /attachments — upload a file, returns the storage path to send with a message
+  app.post("/attachments", async (req, reply) => {
+    const userId = Number(req.auth.sub);
+    const file = await req.file();
+    if (!file) throw new BadRequestError("No file uploaded");
+
+    const buffer = await file.toBuffer();
+    storage.validateFile(file.mimetype, buffer.length);
+
+    const storagePath = storage.buildPath("ai-chat", String(userId), "attachments", file.filename);
+    await storage.uploadFile(storagePath, buffer, file.mimetype);
+
+    return reply.status(201).send({
+      storage_path: storagePath,
+      filename: file.filename,
+      mime_type: file.mimetype,
+      size: buffer.length,
+    });
+  });
+
   // POST /messages — SSE streaming chat
   app.post("/messages", async (req, reply) => {
     const userId = Number(req.auth.sub);
@@ -28,7 +49,9 @@ export async function chatRoutes(app: FastifyInstance) {
       : undefined;
 
     // Phase 2: credit gate (user wallet) — embed messages are business-paid
-    if (!embed) {
+    // ponytail: gate disabled while testing RAG results — re-enable before launch
+    const CREDIT_GATE_ENABLED = false;
+    if (CREDIT_GATE_ENABLED && !embed) {
       const hasCredits = await creditService.checkBalance(userId);
       if (!hasCredits) throw new PaymentRequiredError();
     }

@@ -87,8 +87,7 @@ export function CoursesTab({
   const bulkVerify = async (approve: boolean) => {
     setSaving(true);
     try {
-      const call = approve ? allExtractionsApi.approveCourse : allExtractionsApi.rejectCourse;
-      await Promise.all(selectedIds.map((id) => call(id)));
+      await allExtractionsApi.bulkVerifyCourses(selectedIds, approve);
       toast.success(`${selectedIds.length} course${selectedIds.length === 1 ? "" : "s"} ${approve ? "approved" : "flagged"}`);
       setSelectedIds([]);
       await load();

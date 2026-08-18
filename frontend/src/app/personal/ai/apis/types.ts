@@ -31,12 +31,37 @@ export type Message = {
   cards: CourseCard[];
   chips: string[];
   feedback: "up" | "down" | null;
+  /** Storage paths (or, for optimistic messages, filenames) of files sent with the message. */
+  attachments?: string[];
   created_at: string;
 };
 
 export type SendMessageInput = {
   session_id: number | null;
   content: string;
+  attachments?: string[];
+};
+
+/** Card shape as the backend streams it (prompt format). Mapped to CourseCard for rendering. */
+export type WireCourseCard = {
+  id?: string;
+  name?: string;
+  institution?: string;
+  degree_level?: string;
+  duration?: string;
+  fees?: number | null;
+  currency?: string;
+  country?: string;
+  intakes?: string[];
+  study_modes?: string[];
+  source_url?: string | null;
+};
+
+export type AttachmentUpload = {
+  storage_path: string;
+  filename: string;
+  mime_type: string;
+  size: number;
 };
 
 /** Server-sent event types from the streaming endpoint. */

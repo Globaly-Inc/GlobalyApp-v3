@@ -136,6 +136,10 @@ export const allExtractionsRealApi = {
     await httpPost(`/admin/data-extraction/courses/${id}/approve`, {});
   },
 
+  bulkVerifyCourses: async (ids: string[], approve: boolean): Promise<void> => {
+    await httpPost(`/admin/data-extraction/courses/bulk-verify`, { ids, approve });
+  },
+
   rejectCourse: async (id: string): Promise<void> => {
     await httpPost(`/admin/data-extraction/courses/${id}/reject`, {});
   },

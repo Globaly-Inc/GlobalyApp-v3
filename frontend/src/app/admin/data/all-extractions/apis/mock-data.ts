@@ -199,6 +199,11 @@ export const allExtractionsMockApi = {
     await delay(200);
   },
 
+  bulkVerifyCourses: async (ids: string[], approve: boolean): Promise<void> => {
+    console.log("[mock] POST bulk-verify courses", ids, approve);
+    await delay(200);
+  },
+
   getCampuses: async (jobId: string): Promise<CampusFull[]> => {
     console.log("[mock] GET campuses for job", jobId);
     await delay(250);

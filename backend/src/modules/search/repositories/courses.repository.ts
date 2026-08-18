@@ -21,6 +21,11 @@ export type CourseSort = "best_match" | "fee_asc" | "fee_desc" | "duration_asc";
 
 const EFFECTIVE_FEE = "coalesce(ec.domestic_fee_total, ec.international_fee_total)";
 
+// Public visibility = the course's job was promoted to a business (promote.service.ts sets
+// status 'exported'), minus courses an admin explicitly flagged in review.
+const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')
+  and coalesce(ec.verification_status, '') <> 'flagged'`;
+
 const LIST_COLUMNS = [
   "ec.id", "ec.name", "ec.short_name", "ec.degree_level", "ec.subject_area",
   "ec.duration_weeks", "ec.study_mode", "ec.description",
@@ -33,7 +38,7 @@ const LIST_COLUMNS = [
 function baseQuery({ country, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear }: CourseSearchFilters) {
   const q = masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
-    .where("ec.verification_status", "verified");
+    .whereRaw(PUBLICLY_VISIBLE);
 
   if (country) {
     q.where((b) =>
@@ -119,7 +124,7 @@ export async function findPublicCourseBySlug(slug: string) {
 
   const course = await masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
-    .where("ec.verification_status", "verified")
+    .whereRaw(PUBLICLY_VISIBLE)
     .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
     .select(...LIST_COLUMNS)
     .first();

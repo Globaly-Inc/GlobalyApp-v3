@@ -1,5 +1,7 @@
 import { createChildLogger } from "../../../shared/logger.js";
 import * as knowledge from "../repositories/knowledge.repository.js";
+// Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
+import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
 const logger = createChildLogger("rag-service");
 
@@ -16,6 +18,8 @@ function extractKeywords(query: string): string[] {
   return query
     .toLowerCase()
     .split(/\s+/)
+    // Strip punctuation — "australia?" must search as "australia"
+    .map(w => w.replace(/[^\p{L}\p{N}]/gu, ""))
     .filter(w => w.length > 2 && !STOPWORDS.has(w));
 }
 
@@ -52,7 +56,7 @@ export async function searchAll(opts: {
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
-  const [courses, visas, institutions, agents, maraAgents] = await Promise.all([
+  const [courses, visas, institutions, agents, maraAgents, knowledgeVisas, faqs, guides, documents] = await Promise.all([
     knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
       .then(r => { trace(`Courses: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Course search failed", { err: String(err) }); trace("Course search failed"); return []; }),
@@ -68,6 +72,22 @@ export async function searchAll(opts: {
     embedScoped ? none : knowledge.searchMaraAgents({ query: searchQuery, limit: 5 })
       .then(r => { trace(`MARA agents: ${r.length} found`); return r; })
       .catch(err => { logger.warn("MARA search failed", { err: String(err) }); trace("MARA search failed"); return []; }),
+    // ── Phase 4: curated knowledge + Knowledge Rack ──
+    knowledge.searchKnowledgeVisas({ query: searchQuery, limit: 3 })
+      .then(r => { trace(`Visa knowledge: ${r.length} found`); return r; })
+      .catch(err => { logger.warn("Visa knowledge search failed", { err: String(err) }); return []; }),
+    knowledge.searchKnowledgeFaqs({ query: searchQuery, limit: 5 })
+      .then(r => { trace(`FAQs: ${r.length} found`); return r; })
+      .catch(err => { logger.warn("FAQ search failed", { err: String(err) }); return []; }),
+    knowledge.searchCountryGuides({ query: searchQuery, limit: 2 })
+      .then(r => { trace(`Country guides: ${r.length} found`); return r; })
+      .catch(err => { logger.warn("Country guide search failed", { err: String(err) }); return []; }),
+    // Rack documents are semantic (vector) search on the raw query. Skipped in embed
+    // mode — crawled institution updates must not surface under another business's brand.
+    embedScoped || !embeddingConfigured() ? none : embed(opts.query)
+      .then(v => knowledge.matchKnowledgeDocuments(v, 4))
+      .then(r => { trace(`Knowledge rack: ${r.length} found`); return r; })
+      .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
   ]);
 
   // ── Hydrate course details for found courses ──
@@ -189,6 +209,67 @@ export async function searchAll(opts: {
       sources.push({ type: "mara_agent", id: m.id, title: m.agent_name ?? m.business_name ?? "MARA Agent" });
     }
     parts.push(lines.filter(Boolean).join("\n"));
+  }
+
+  if (knowledgeVisas.length) {
+    const lines = ["--- VISA KNOWLEDGE (admin-verified) ---"];
+    for (const v of knowledgeVisas) {
+      lines.push(
+        `${v.destination_country} — ${v.visa_type}`,
+        Object.keys(v.requirements ?? {}).length ? `  Requirements: ${JSON.stringify(v.requirements)}` : "",
+        v.required_documents?.length ? `  Documents: ${v.required_documents.join(", ")}` : "",
+        v.processing_time_days != null ? `  Processing: ~${v.processing_time_days} days` : "",
+        v.application_fee_usd != null ? `  Fee: USD ${v.application_fee_usd}` : "",
+        v.work_rights_hours != null ? `  Work rights: ${v.work_rights_hours} hrs/fortnight` : "",
+        v.post_study_visa ? `  Post-study visa: ${v.post_study_visa}` : "",
+        v.common_rejections?.length ? `  Common rejections: ${v.common_rejections.join("; ")}` : "",
+        "",
+      );
+      sources.push({ type: "knowledge_visa", id: v.id, title: `${v.destination_country} ${v.visa_type}` });
+    }
+    parts.push(lines.filter(Boolean).join("\n"));
+  }
+
+  if (faqs.length) {
+    const lines = ["--- FAQs ---"];
+    for (const f of faqs) {
+      lines.push(`Q: ${f.question}`, `A: ${f.answer}`, "");
+      sources.push({ type: "faq", id: f.id, title: f.question });
+    }
+    parts.push(lines.join("\n"));
+  }
+
+  if (guides.length) {
+    const lines = ["--- COUNTRY GUIDES ---"];
+    for (const g of guides) {
+      lines.push(
+        `Country: ${g.country}`,
+        g.education_system ? `  Education system: ${g.education_system}` : "",
+        g.popular_cities?.length ? `  Popular cities: ${g.popular_cities.join(", ")}` : "",
+        g.cost_of_living_monthly_usd ? `  Cost of living (USD/month): ${JSON.stringify(g.cost_of_living_monthly_usd)}` : "",
+        g.culture_notes ? `  Culture: ${g.culture_notes}` : "",
+        g.student_life ? `  Student life: ${g.student_life}` : "",
+        g.climate ? `  Climate: ${g.climate}` : "",
+        "",
+      );
+      sources.push({ type: "country_guide", id: g.id, title: `${g.country} guide` });
+    }
+    parts.push(lines.filter(Boolean).join("\n"));
+  }
+
+  if (documents.length) {
+    const lines = ["--- KNOWLEDGE ARTICLES (crawled from official sources) ---"];
+    for (const d of documents) {
+      lines.push(
+        `Article: ${d.title ?? d.url} (${d.source_domain}, ${d.category_label})`,
+        // Full pages run to thousands of words; cap each so four articles can't crowd out course data.
+        `  ${d.markdown.slice(0, 1500)}`,
+        `  Source: ${d.url}`,
+        "",
+      );
+      sources.push({ type: "document", id: d.id, title: d.title ?? d.url });
+    }
+    parts.push(lines.join("\n"));
   }
 
   const contextText = parts.join("\n\n");

@@ -135,20 +135,24 @@ export async function handleMessage(opts: {
 
     // 15. Usage + done
     writeEvent(opts.reply, "usage", result.usage);
-    writeDone(opts.reply);
+    writeDone(opts.reply, { message_id: aiMessage.id, session_id: session.id });
 
     // 16. Auto-title (fire-and-forget)
     if (isNew) {
       sessionService.autoTitle(session.id, opts.content, cleanText).catch(() => {});
     }
   } catch (err) {
-    logger.error("Chat stream error", { err: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("Chat stream error", { err: message });
 
-    // Write a friendly error to the stream so the client doesn't hang
     if (!opts.reply.raw.destroyed) {
+      // Friendly text for clients that only render deltas (embed widget)…
       writeData(opts.reply, {
         choices: [{ delta: { content: "I'm sorry, something went wrong on my end. Please try again in a moment." } }],
       });
+      // …and the real error as a named event so the main app can surface it
+      // instead of flashing-and-dropping the apology (which read as "nothing happened").
+      writeEvent(opts.reply, "error", { error: message });
       writeDone(opts.reply);
     }
   }
