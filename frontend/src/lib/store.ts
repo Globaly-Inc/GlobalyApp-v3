@@ -32,6 +32,7 @@ import { notificationsReducer } from "@/app/personal/notifications/store/notific
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
 import { aiKnowledgeReducer } from "@/app/admin/data/ai-knowledge/store/ai-knowledge-slice"
 import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
+import { favoritesReducer } from "@/app/personal/favorites/store/favorites-slice"
 import { adsReducer } from "@/app/admin/marketing/ads/store/ads-slice"
 import { applicationChargesReducer } from "@/app/admin/revenue/subscriptions/application-charges/store/application-charges-slice"
 
@@ -69,6 +70,7 @@ const appReducer = combineReducers({
     aiChat: aiChatReducer,
     dataAiKnowledge: aiKnowledgeReducer,
     messages: messagesReducer,
+    favorites: favoritesReducer,
     marketingAds: adsReducer,
     revenueApplicationCharges: applicationChargesReducer,
 })

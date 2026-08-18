@@ -20,6 +20,7 @@ export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
     { label: "For Agents", href: "/for-agents" },
     { label: "Pricing", href: "/pricing" },
     { label: "Ambassador Program", href: "/for-students" },
+    { label: "Join the Waitlist", href: "/waitlist" },
   ],
   "Explore Destinations": [
     { label: "Australia", href: "/country/australia" },

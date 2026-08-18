@@ -10,6 +10,7 @@ import {
   Coins,
   GraduationCap,
   Bell,
+  Heart,
   MessageSquare,
   Sparkles,
   Menu as MenuIcon,
@@ -196,6 +197,9 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
             <DropdownMenuContent align="end">
               <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/profile")}>
                 <UserIcon /> My Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/favorites")}>
+                <Heart /> Saved Items
               </DropdownMenuItem>
               {portalTarget && (
                 <>
