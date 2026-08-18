@@ -757,6 +757,22 @@ describeDb("enquiries", () => {
       expect(bare.statusCode).toBe(200);
       expect(bare.json().close_reason).toBeNull();
 
+      // And with no body at all, not just an empty object: Fastify leaves req.body
+      // undefined when nothing is sent, which the route has to survive rather than
+      // turning it into a zod error about a missing object. A fresh enquiry, so
+      // this does not consume a row the assertions below still need.
+      const otherStudent = await makeStudent();
+      const bodyless = await createEnquiry(otherStudent.token);
+      const bodylessDist = await distributionFor(bodyless.id, near.id);
+      const noBody = await app.inject({
+        method: "POST",
+        url: `/api/v3/business/enquiries/${bodylessDist.id}/close`,
+        headers: auth(near.token),
+      });
+      expect(noBody.statusCode).toBe(200);
+      expect(noBody.json().status).toBe("closed");
+      expect(noBody.json().close_reason).toBeNull();
+
       const other = await distributionFor(created.id, mid.id);
       expect(
         (await post(`/api/v3/business/enquiries/${other.id}/close`, mid.token, { close_reason: "   " })).statusCode,
