@@ -74,6 +74,8 @@ export type CourseDetail = SearchCourse & {
 
 export type SearchBusiness = {
   id: number;
+  /** Public profile slug — /api/v3/catalog/institutions/{slug} and /agents/{slug}. */
+  slug: string | null;
   business_name: string;
   subdomain: string;
   logo_url: string | null;

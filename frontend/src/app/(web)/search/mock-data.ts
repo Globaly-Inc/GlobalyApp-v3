@@ -219,7 +219,12 @@ const MOCK_COURSE_ENGLISH_REQUIREMENTS: Record<string, CourseDetail["englishRequ
   ],
 };
 
-const MOCK_BUSINESSES: Record<"institutions" | "education-agencies" | "visa-services" | "migration-agents", SearchBusiness[]> = {
+// Slugs are derived rather than written out, the same way MOCK_COURSES does it —
+// the real ones come from public.org_public_slug() as `{name}-b{id}`.
+const MOCK_BUSINESS_SEEDS: Record<
+  "institutions" | "education-agencies" | "visa-services" | "migration-agents",
+  Omit<SearchBusiness, "slug">[]
+> = {
   institutions: [
     {
       id: 101, business_name: "Sydney Metropolitan University", subdomain: "demo-sydney-metro-uni", logo_url: null,
@@ -264,6 +269,13 @@ const MOCK_BUSINESSES: Record<"institutions" | "education-agencies" | "visa-serv
     },
   ],
 };
+
+const MOCK_BUSINESSES = Object.fromEntries(
+  Object.entries(MOCK_BUSINESS_SEEDS).map(([category, rows]) => [
+    category,
+    rows.map((b) => ({ ...b, slug: `${slugifyName(b.business_name)}-b${b.id}` })),
+  ]),
+) as Record<keyof typeof MOCK_BUSINESS_SEEDS, SearchBusiness[]>;
 
 const MOCK_JOBS: SearchJob[] = [
   {
