@@ -739,34 +739,49 @@
       "question": "enquiry_email_queue is an outbound send queue, not durable business data. Once D1 lands, should these 3 rows migrate at all, or be dropped as ephemeral like otp_codes?"
     },
     "event_co_hosts": {
-      "disposition": "blocked",
+      "disposition": "transform",
       "wave": "D3",
       "rows": 0,
-      "dependency": "\u00a73.5 Events + ticketing \u2014 MOCK-ONLY (admin/monitoring/events); no V3 tables."
+      "targets": [
+        "public.event_co_hosts"
+      ],
+      "note": "W7 loads this: D3's table is live on staging-mvp, and per Part 3 \u00a74 a blocked mapping flips to transform the moment its target schema merges. business_id becomes a polymorphic org reference (globalyapp/*_events.ts)."
     },
     "event_registrations": {
-      "disposition": "blocked",
+      "disposition": "transform",
       "wave": "D3",
       "rows": 4,
-      "dependency": "\u00a73.5 Events + ticketing \u2014 MOCK-ONLY; no V3 tables."
+      "targets": [
+        "public.event_registrations"
+      ],
+      "note": "W7 loads this: D3's table is live on staging-mvp, and per Part 3 \u00a74 a blocked mapping flips to transform the moment its target schema merges. business_id becomes a polymorphic org reference (globalyapp/*_events.ts)."
     },
     "event_tickets": {
-      "disposition": "blocked",
+      "disposition": "transform",
       "wave": "D3",
       "rows": 6,
-      "dependency": "\u00a73.5 Events + ticketing \u2014 MOCK-ONLY; no V3 tables."
+      "targets": [
+        "public.event_tickets"
+      ],
+      "note": "W7 loads this: D3's table is live on staging-mvp, and per Part 3 \u00a74 a blocked mapping flips to transform the moment its target schema merges. business_id becomes a polymorphic org reference (globalyapp/*_events.ts)."
     },
     "event_updates": {
-      "disposition": "blocked",
+      "disposition": "transform",
       "wave": "D3",
       "rows": 2,
-      "dependency": "\u00a73.5 Events + ticketing \u2014 MOCK-ONLY; no V3 tables."
+      "targets": [
+        "public.event_updates"
+      ],
+      "note": "W7 loads this: D3's table is live on staging-mvp, and per Part 3 \u00a74 a blocked mapping flips to transform the moment its target schema merges. business_id becomes a polymorphic org reference (globalyapp/*_events.ts)."
     },
     "events": {
-      "disposition": "blocked",
+      "disposition": "transform",
       "wave": "D3",
       "rows": 8,
-      "dependency": "\u00a73.5 Events + ticketing \u2014 MOCK-ONLY; no V3 tables."
+      "targets": [
+        "public.events"
+      ],
+      "note": "W7 loads this: D3's table is live on staging-mvp, and per Part 3 \u00a74 a blocked mapping flips to transform the moment its target schema merges. business_id becomes a polymorphic org reference (globalyapp/*_events.ts)."
     },
     "extraction_accreditations": {
       "disposition": "transform",
@@ -1198,10 +1213,13 @@
       "source": "Part 3 \u00a75 runbook step 9"
     },
     "notifications": {
-      "disposition": "blocked",
+      "disposition": "transform",
       "wave": "D3",
       "rows": 16,
-      "dependency": "\u00a73.5 Notifications \u2014 MOCK-ONLY (personal/notifications); \u00a76 wave D creates the notifications table. No V3 table yet."
+      "targets": [
+        "public.notifications"
+      ],
+      "note": "W7 loads this: D3's table is live on staging-mvp, and per Part 3 \u00a74 a blocked mapping flips to transform the moment its target schema merges. business_id becomes a polymorphic org reference (globalyapp/*_events.ts)."
     },
     "otp_codes": {
       "disposition": "drop",
@@ -9615,6 +9633,3250 @@
         {
           "column": "user_id",
           "reason": "Not copied as a value - it is the other half of the identity key, bridged through the reacting user's email."
+        }
+      ]
+    },
+    {
+      "name": "business_services_tenant",
+      "description": "V1 public.business_services -> the per-tenant business_services table in each owner's own schema. C1 dropped the thin table's serial id and renamed its uuid to id, so V1's id lands in v1_id and every child resolves its parent through v1_id -> id. 14 of the 39 unclaimed institutions own 363 of the 402 rows, so the schema list spans businesses AND institutions.",
+      "source": {
+        "table": "v1_staging.business_services",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".business_services",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'business_services') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "slug",
+          "from": "slug",
+          "source": "s.slug",
+          "target": "t.slug"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "overview",
+          "from": "overview",
+          "source": "s.overview",
+          "target": "t.overview"
+        },
+        {
+          "name": "price",
+          "from": "price",
+          "source": "s.price",
+          "target": "t.price"
+        },
+        {
+          "name": "price_currency",
+          "from": "price_currency",
+          "source": "s.price_currency",
+          "target": "t.price_currency"
+        },
+        {
+          "name": "price_type",
+          "from": "price_type",
+          "source": "s.price_type",
+          "target": "t.price_type"
+        },
+        {
+          "name": "duration_value",
+          "from": "duration_value",
+          "source": "s.duration_value",
+          "target": "t.duration_value"
+        },
+        {
+          "name": "duration_unit",
+          "from": "duration_unit",
+          "source": "s.duration_unit",
+          "target": "t.duration_unit"
+        },
+        {
+          "name": "image_url",
+          "from": "image_url",
+          "source": "s.image_url",
+          "target": "t.image_url"
+        },
+        {
+          "name": "brochure_url",
+          "from": "brochure_url",
+          "source": "s.brochure_url",
+          "target": "t.brochure_url"
+        },
+        {
+          "name": "tags",
+          "from": "tags",
+          "source": "s.tags",
+          "target": "t.tags"
+        },
+        {
+          "name": "study_mode",
+          "from": "study_mode",
+          "source": "s.study_mode",
+          "target": "t.study_mode"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "is_published",
+          "from": "is_published",
+          "source": "coalesce(s.is_published, false)",
+          "target": "t.is_published"
+        },
+        {
+          "name": "is_featured",
+          "from": "is_featured",
+          "source": "coalesce(s.is_featured, false)",
+          "target": "t.is_featured"
+        },
+        {
+          "name": "gallery_urls",
+          "from": "gallery_urls",
+          "source": "coalesce(s.gallery_urls, '[]'::jsonb)",
+          "target": "t.gallery_urls"
+        },
+        {
+          "name": "public_visibility",
+          "from": "public_visibility",
+          "source": "coalesce(s.public_visibility, '{}'::jsonb)",
+          "target": "t.public_visibility"
+        },
+        {
+          "name": "category_specific_data",
+          "from": "category_specific_data",
+          "source": "coalesce(s.category_specific_data, '{}'::jsonb)",
+          "target": "t.category_specific_data"
+        },
+        {
+          "name": "service_category_slug",
+          "from": "category_id",
+          "source": "(SELECT v.slug FROM v1_staging.service_categories v WHERE v.id = s.category_id)",
+          "target": "(SELECT p.slug FROM public.service_categories p WHERE p.id = t.service_category_id)",
+          "note": "uuid -> serial FK, compared by resolving each side's id back to the slug (\u00a715 decision 3: the public vocabulary)."
+        },
+        {
+          "name": "degree_level_slug",
+          "from": "degree_level_id",
+          "source": "(SELECT v.slug FROM v1_staging.degree_levels v WHERE v.id = s.degree_level_id)",
+          "target": "(SELECT p.slug FROM public.degree_levels p WHERE p.id = t.degree_level_id)"
+        },
+        {
+          "name": "area_of_study_slug",
+          "from": "area_of_study_id",
+          "source": "(SELECT v.slug FROM v1_staging.areas_of_study v WHERE v.id = s.area_of_study_id)",
+          "target": "(SELECT p.slug FROM public.areas_of_study p WHERE p.id = t.area_of_study_id)"
+        },
+        {
+          "name": "awarded_by_v1_business",
+          "from": "awarded_by_business_id",
+          "source": "s.awarded_by_business_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.awarded_by_org_type AND o.org_id = t.awarded_by_org_id)",
+          "note": "V1's single businesses table split into businesses + institutions, so the awarding body became polymorphic. Compared by resolving the pair back to the V1 business uuid."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        },
+        {
+          "column": "business_id",
+          "reason": "Part of the identity of the TENANT, not of the row: it selects WHICH schema the row lives in. Inside that schema it would be a constant repeated on every row."
+        },
+        {
+          "column": "embedding",
+          "reason": "V1 stores a text embedding at 1536 dims (OpenAI); V3 declares vector(3072) and wave E1 re-embeds with its own model. A vector from a different model cannot be compared by cosine distance, so a widened copy would be silently wrong rather than loudly missing."
+        }
+      ]
+    },
+    {
+      "name": "service_fees_tenant",
+      "description": "V1 public.service_fees -> the per-tenant service_fees table. V3 adds fee_type_id, which V1 never had; it stays NULL.",
+      "source": {
+        "table": "v1_staging.service_fees",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_fees",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_fees') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "student_type",
+          "from": "student_type",
+          "source": "s.student_type",
+          "target": "t.student_type"
+        },
+        {
+          "name": "period_type",
+          "from": "period_type",
+          "source": "s.period_type",
+          "target": "t.period_type"
+        },
+        {
+          "name": "currency",
+          "from": "currency",
+          "source": "s.currency",
+          "target": "t.currency"
+        },
+        {
+          "name": "total_amount",
+          "from": "total_amount",
+          "source": "s.total_amount",
+          "target": "t.total_amount"
+        },
+        {
+          "name": "installments",
+          "from": "installments",
+          "source": "s.installments",
+          "target": "t.installments"
+        },
+        {
+          "name": "save_for_reuse",
+          "from": "save_for_reuse",
+          "source": "s.save_for_reuse",
+          "target": "t.save_for_reuse"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_fee_structures_tenant",
+      "description": "V1 public.service_fee_structures -> the per-tenant service_fee_structures table.",
+      "source": {
+        "table": "v1_staging.service_fee_structures",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_fee_structures",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_fee_structures') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "applicable_to",
+          "from": "applicable_to",
+          "source": "s.applicable_to",
+          "target": "t.applicable_to"
+        },
+        {
+          "name": "period",
+          "from": "period",
+          "source": "s.period",
+          "target": "t.period"
+        },
+        {
+          "name": "currency",
+          "from": "currency",
+          "source": "s.currency",
+          "target": "t.currency"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_fee_installments_tenant",
+      "description": "V1 public.service_fee_installments -> the per-tenant service_fee_installments table. Hangs off a fee STRUCTURE, not a service, so its tenant is reached one hop further out.",
+      "source": {
+        "table": "v1_staging.service_fee_installments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_fee_installments",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_fee_installments') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "fee_structure_v1_id",
+          "from": "fee_structure_id",
+          "source": "s.fee_structure_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".service_fee_structures c WHERE c.id = t.fee_structure_id)"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "coalesce(s.sort_order, 0)",
+          "target": "t.sort_order"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_intakes_tenant",
+      "description": "V1 public.service_intakes -> the per-tenant service_intakes table. V3 also has a service_intake_assignments junction, which V1 has no source table for; nothing is loaded into it.",
+      "source": {
+        "table": "v1_staging.service_intakes",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_intakes",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_intakes') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "intake_name",
+          "from": "intake_name",
+          "source": "s.intake_name",
+          "target": "t.intake_name"
+        },
+        {
+          "name": "start_date",
+          "from": "start_date",
+          "source": "s.start_date",
+          "target": "t.start_date"
+        },
+        {
+          "name": "end_date",
+          "from": "end_date",
+          "source": "s.end_date",
+          "target": "t.end_date"
+        },
+        {
+          "name": "orientation_date",
+          "from": "orientation_date",
+          "source": "s.orientation_date",
+          "target": "t.orientation_date"
+        },
+        {
+          "name": "admission_deadline",
+          "from": "admission_deadline",
+          "source": "s.admission_deadline",
+          "target": "t.admission_deadline"
+        },
+        {
+          "name": "intake_month",
+          "from": "intake_month",
+          "source": "s.intake_month",
+          "target": "t.intake_month"
+        },
+        {
+          "name": "intake_year",
+          "from": "intake_year",
+          "source": "s.intake_year",
+          "target": "t.intake_year"
+        },
+        {
+          "name": "save_for_reuse",
+          "from": "save_for_reuse",
+          "source": "s.save_for_reuse",
+          "target": "t.save_for_reuse"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_eligibility_requirements_tenant",
+      "description": "V1 public.service_eligibility_requirements -> the per-tenant table. V3 adds a degree_level_id FK alongside V1's free-text min_degree_level; V1 has no id to resolve, so it stays NULL and the text is carried unchanged.",
+      "source": {
+        "table": "v1_staging.service_eligibility_requirements",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_eligibility_requirements",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_eligibility_requirements') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "applicable_to",
+          "from": "applicable_to",
+          "source": "s.applicable_to",
+          "target": "t.applicable_to"
+        },
+        {
+          "name": "min_degree_level",
+          "from": "min_degree_level",
+          "source": "s.min_degree_level",
+          "target": "t.min_degree_level"
+        },
+        {
+          "name": "min_score_percent",
+          "from": "min_score_percent",
+          "source": "s.min_score_percent",
+          "target": "t.min_score_percent"
+        },
+        {
+          "name": "min_score_grade",
+          "from": "min_score_grade",
+          "source": "s.min_score_grade",
+          "target": "t.min_score_grade"
+        },
+        {
+          "name": "min_grading_system",
+          "from": "min_grading_system",
+          "source": "s.min_grading_system",
+          "target": "t.min_grading_system"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "academic_tests",
+          "from": "academic_tests",
+          "source": "s.academic_tests",
+          "target": "t.academic_tests"
+        },
+        {
+          "name": "language_tests",
+          "from": "language_tests",
+          "source": "s.language_tests",
+          "target": "t.language_tests"
+        },
+        {
+          "name": "save_for_reuse",
+          "from": "save_for_reuse",
+          "source": "s.save_for_reuse",
+          "target": "t.save_for_reuse"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "min_scores",
+          "from": "min_scores",
+          "source": "coalesce(s.min_scores, '[]'::jsonb)",
+          "target": "t.min_scores"
+        },
+        {
+          "name": "applicable_countries",
+          "from": "applicable_countries",
+          "source": "coalesce(s.applicable_countries, '{}'::text[])",
+          "target": "t.applicable_countries"
+        },
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_study_options_tenant",
+      "description": "V1 public.service_study_options -> the per-tenant service_study_options table. A reusable library keyed on the owner rather than on a service, so business_id selects the schema. V3 adds an optional `name`, which V1 lacks.",
+      "source": {
+        "table": "v1_staging.service_study_options",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_study_options",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_study_options') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "study_mode",
+          "from": "study_mode",
+          "source": "s.study_mode",
+          "target": "t.study_mode"
+        },
+        {
+          "name": "study_load",
+          "from": "study_load",
+          "source": "s.study_load",
+          "target": "t.study_load"
+        },
+        {
+          "name": "duration_value",
+          "from": "duration_value",
+          "source": "s.duration_value",
+          "target": "t.duration_value"
+        },
+        {
+          "name": "duration_unit",
+          "from": "duration_unit",
+          "source": "s.duration_unit",
+          "target": "t.duration_unit"
+        },
+        {
+          "name": "applicable_to",
+          "from": "applicable_to",
+          "source": "s.applicable_to",
+          "target": "t.applicable_to"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "save_for_reuse",
+          "from": "save_for_reuse",
+          "source": "coalesce(s.save_for_reuse, false)",
+          "target": "t.save_for_reuse"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        },
+        {
+          "column": "business_id",
+          "reason": "Part of the identity of the TENANT, not of the row: it selects WHICH schema the row lives in. Inside that schema it would be a constant repeated on every row."
+        }
+      ]
+    },
+    {
+      "name": "service_study_units_tenant",
+      "description": "V1 public.service_study_units -> the per-tenant service_study_units table. The second reusable library, also owner-keyed.",
+      "source": {
+        "table": "v1_staging.service_study_units",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_study_units",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_study_units') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "unit_code",
+          "from": "unit_code",
+          "source": "s.unit_code",
+          "target": "t.unit_code"
+        },
+        {
+          "name": "unit_name",
+          "from": "unit_name",
+          "source": "s.unit_name",
+          "target": "t.unit_name"
+        },
+        {
+          "name": "credit_points",
+          "from": "credit_points",
+          "source": "s.credit_points",
+          "target": "t.credit_points"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        },
+        {
+          "column": "business_id",
+          "reason": "Part of the identity of the TENANT, not of the row: it selects WHICH schema the row lives in. Inside that schema it would be a constant repeated on every row."
+        }
+      ]
+    },
+    {
+      "name": "branches_tenant",
+      "description": "V1 public.branches (the PHYSICAL branch/campus: name, country, city, address) -> the per-tenant business_branches table. Not to be confused with V1 public.business_branches, the cross-tenant parent/child org graph, which is master (see business_branches_master). This is the one tenant table with no v1_id column: its external identity is `uuid`, so the V1 branch uuid lands there and is the upsert key.",
+      "source": {
+        "table": "v1_staging.branches",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".business_branches",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'business_branches') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in uuid)",
+        "source": "s.id::text",
+        "target": "t.uuid::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "country",
+          "from": "country",
+          "source": "s.country",
+          "target": "t.country"
+        },
+        {
+          "name": "state",
+          "from": "state",
+          "source": "s.state",
+          "target": "t.state"
+        },
+        {
+          "name": "city",
+          "from": "city",
+          "source": "s.city",
+          "target": "t.city"
+        },
+        {
+          "name": "address",
+          "from": "address",
+          "source": "s.address",
+          "target": "t.address"
+        },
+        {
+          "name": "phone",
+          "from": "phone",
+          "source": "s.phone",
+          "target": "t.phone"
+        },
+        {
+          "name": "email",
+          "from": "email",
+          "source": "s.email",
+          "target": "t.email"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "is_primary",
+          "from": "is_primary",
+          "source": "coalesce(s.is_primary, false)",
+          "target": "t.is_primary"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key, carried in the tenant table's `uuid` column (there is no v1_id column here)."
+        },
+        {
+          "column": "business_id",
+          "reason": "Part of the identity of the TENANT, not of the row: it selects WHICH schema the row lives in. Inside that schema it would be a constant repeated on every row."
+        }
+      ]
+    },
+    {
+      "name": "service_fee_assignments_tenant",
+      "description": "V1 public.service_fee_assignments -> the per-tenant service_fee_assignments junction. Defect D8: both parents must reconcile before its own numbers mean anything, so it loads last and behind assertParentCounts.",
+      "junction": {
+        "parents": [
+          "business_services_tenant",
+          "service_fees_tenant"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.service_fee_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_fee_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_fee_assignments') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        },
+        {
+          "name": "service_fee_v1_id",
+          "from": "service_fee_id",
+          "source": "s.service_fee_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".service_fees c WHERE c.id = t.service_fee_id)"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_eligibility_assignments_tenant",
+      "description": "V1 public.service_eligibility_assignments -> the per-tenant service_eligibility_assignments junction. Defect D8: both parents must reconcile before its own numbers mean anything, so it loads last and behind assertParentCounts.",
+      "junction": {
+        "parents": [
+          "business_services_tenant",
+          "service_eligibility_requirements_tenant"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.service_eligibility_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_eligibility_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_eligibility_assignments') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        },
+        {
+          "name": "eligibility_requirement_v1_id",
+          "from": "eligibility_requirement_id",
+          "source": "s.eligibility_requirement_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".service_eligibility_requirements c WHERE c.id = t.eligibility_requirement_id)"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_study_option_assignments_tenant",
+      "description": "V1 public.service_study_option_assignments -> the per-tenant service_study_option_assignments junction. Defect D8: both parents must reconcile before its own numbers mean anything, so it loads last and behind assertParentCounts.",
+      "junction": {
+        "parents": [
+          "business_services_tenant",
+          "service_study_options_tenant"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.service_study_option_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_study_option_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_study_option_assignments') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        },
+        {
+          "name": "study_option_v1_id",
+          "from": "study_option_id",
+          "source": "s.study_option_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".service_study_options c WHERE c.id = t.study_option_id)"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_study_unit_assignments_tenant",
+      "description": "V1 public.service_study_unit_assignments -> the per-tenant service_study_unit_assignments junction. Defect D8: both parents must reconcile before its own numbers mean anything, so it loads last and behind assertParentCounts.",
+      "junction": {
+        "parents": [
+          "business_services_tenant",
+          "service_study_units_tenant"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.service_study_unit_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_study_unit_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_study_unit_assignments') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        },
+        {
+          "name": "study_unit_v1_id",
+          "from": "study_unit_id",
+          "source": "s.study_unit_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".service_study_units c WHERE c.id = t.study_unit_id)"
+        },
+        {
+          "name": "unit_type",
+          "from": "unit_type",
+          "source": "s.unit_type",
+          "target": "t.unit_type"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_accreditation_assignments_tenant",
+      "description": "V1 public.service_accreditation_assignments -> the per-tenant junction. accreditation_id is NOT NULL and points at the public.accreditations vocabulary W2 loaded on `name`, so the comparison uses that same key.",
+      "junction": {
+        "parents": [
+          "business_services_tenant",
+          "accreditations"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.service_accreditation_assignments",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "\"{{schema}}\".service_accreditation_assignments",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL",
+        "schemaExpand": "SELECT x.schema FROM (SELECT schema_name::text AS schema FROM public.businesses WHERE deleted_at IS NULL AND schema_name IS NOT NULL UNION SELECT schema_name::text FROM public.institutions WHERE deleted_at IS NULL AND schema_name IS NOT NULL) x WHERE EXISTS (SELECT 1 FROM information_schema.tables it WHERE it.table_schema = x.schema AND it.table_name = 'service_accreditation_assignments') ORDER BY 1"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT c.v1_id::text FROM \"{{schema}}\".business_services c WHERE c.id = t.service_id)",
+          "note": "The V3 service uuid is V3's own; the parent is resolved back through v1_id."
+        },
+        {
+          "name": "accreditation_name",
+          "from": "accreditation_id",
+          "source": "(SELECT v.name FROM v1_staging.accreditations v WHERE v.id = s.accreditation_id)",
+          "target": "(SELECT p.name FROM public.accreditations p WHERE p.id = t.accreditation_id)",
+          "note": "W2 loaded accreditations on `name` (unique on both sides, 30/30), so this must compare on the same key."
+        },
+        {
+          "name": "registration_number",
+          "from": "registration_number",
+          "source": "s.registration_number",
+          "target": "t.registration_number"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "business_branches_master",
+      "description": "V1 public.business_branches (the cross-tenant parent/child ORG graph) -> public.business_branches. MASTER, never tenant (\u00a71.2, \u00a714): a cross-tenant FK inside one tenant's schema gives the other tenant a leg it cannot read. Every org reference is polymorphic in V3 and is compared by resolving the (org_type, org_id) pair back to the V1 business uuid.",
+      "source": {
+        "table": "v1_staging.business_branches",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.business_branches",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "parent_v1_business",
+          "from": "parent_business_id",
+          "source": "s.parent_business_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.parent_org_type AND o.org_id = t.parent_org_id)"
+        },
+        {
+          "name": "child_v1_business",
+          "from": "child_business_id",
+          "source": "s.child_business_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.child_org_type AND o.org_id = t.child_org_id)"
+        },
+        {
+          "name": "branch_type",
+          "from": "branch_type",
+          "source": "s.branch_type",
+          "target": "t.branch_type"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "representations_master",
+      "description": "V1 public.representations (agent <-> institution) -> public.representations. MASTER, never tenant (\u00a71.2, \u00a714): a cross-tenant FK inside one tenant's schema gives the other tenant a leg it cannot read. Every org reference is polymorphic in V3 and is compared by resolving the (org_type, org_id) pair back to the V1 business uuid.",
+      "source": {
+        "table": "v1_staging.representations",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.representations",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "agent_v1_business",
+          "from": "agent_id",
+          "source": "s.agent_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.agent_org_type AND o.org_id = t.agent_org_id)"
+        },
+        {
+          "name": "institution_v1_business",
+          "from": "institution_id",
+          "source": "s.institution_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.institution_org_type AND o.org_id = t.institution_org_id)"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "coalesce(s.status, 'pending')",
+          "target": "t.status"
+        },
+        {
+          "name": "initiated_by_uuid",
+          "from": "initiated_by",
+          "source": "s.initiated_by::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.initiated_by)",
+          "note": "Nullable on both sides: a representation outlives the account that initiated it, so an unresolved actor is a NULL plus a report, not a lost relationship."
+        },
+        {
+          "name": "responded_by_uuid",
+          "from": "responded_by",
+          "source": "s.responded_by::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.responded_by)"
+        },
+        {
+          "name": "regions",
+          "from": "regions",
+          "source": "s.regions",
+          "target": "t.regions"
+        },
+        {
+          "name": "services",
+          "from": "services",
+          "source": "s.services",
+          "target": "t.services"
+        },
+        {
+          "name": "contract_url",
+          "from": "contract_url",
+          "source": "s.contract_url",
+          "target": "t.contract_url"
+        },
+        {
+          "name": "valid_from",
+          "from": "valid_from",
+          "source": "s.valid_from",
+          "target": "t.valid_from"
+        },
+        {
+          "name": "valid_until",
+          "from": "valid_until",
+          "source": "s.valid_until",
+          "target": "t.valid_until"
+        },
+        {
+          "name": "notes",
+          "from": "notes",
+          "source": "s.notes",
+          "target": "t.notes"
+        },
+        {
+          "name": "responded_at",
+          "from": "responded_at",
+          "source": "s.responded_at",
+          "target": "t.responded_at"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_branch_sharing_master",
+      "description": "V1 public.service_branch_sharing -> public.service_branch_sharing. MASTER, never tenant (\u00a71.2, \u00a714): a cross-tenant FK inside one tenant's schema gives the other tenant a leg it cannot read. Every org reference is polymorphic in V3 and is compared by resolving the (org_type, org_id) pair back to the V1 business uuid. service_id is a TENANT uuid V3 minted itself, so it is resolved back through mig.map_services, the view w7-services rebuilds over every tenant schema on each run. No `junction` declaration: check 5 names exactly two parent MAPPINGS, and this row's second parent is an org that may live in either public.businesses or public.institutions \u2014 so its D8 reconciliation is asserted in the transform (assertParentCounts over every tenant schema) rather than declared against an arbitrarily chosen half of the org leg.",
+      "source": {
+        "table": "v1_staging.service_branch_sharing",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.service_branch_sharing",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "service_v1_id",
+          "from": "service_id",
+          "source": "s.service_id::text",
+          "target": "(SELECT ms.v1_id::text FROM mig.map_services ms WHERE ms.id = t.service_id)"
+        },
+        {
+          "name": "branch_v1_business",
+          "from": "branch_business_id",
+          "source": "s.branch_business_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.branch_org_type AND o.org_id = t.branch_org_id)"
+        },
+        {
+          "name": "shared_by_uuid",
+          "from": "shared_by",
+          "source": "s.shared_by::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.shared_by)"
+        },
+        {
+          "name": "shared_at",
+          "from": "shared_at",
+          "source": "coalesce(s.shared_at, now())",
+          "target": "t.shared_at"
+        },
+        {
+          "name": "scope",
+          "from": "scope",
+          "source": "s.scope",
+          "target": "t.scope"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "service_study_option_branches_master",
+      "description": "V1 public.service_study_option_branches -> public.service_study_option_branches. MASTER, never tenant (\u00a71.2, \u00a714): a cross-tenant FK inside one tenant's schema gives the other tenant a leg it cannot read. Every org reference is polymorphic in V3 and is compared by resolving the (org_type, org_id) pair back to the V1 business uuid. study_option_id resolves back through mig.map_study_options. D8 is asserted in the transform for the same reason as service_branch_sharing_master.",
+      "source": {
+        "table": "v1_staging.service_study_option_branches",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.service_study_option_branches",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "study_option_v1_id",
+          "from": "study_option_id",
+          "source": "s.study_option_id::text",
+          "target": "(SELECT mo.v1_id::text FROM mig.map_study_options mo WHERE mo.id = t.study_option_id)"
+        },
+        {
+          "name": "branch_v1_business",
+          "from": "branch_business_id",
+          "source": "s.branch_business_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.branch_org_type AND o.org_id = t.branch_org_id)"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "coalesce(s.created_at, now())",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "business_allowed_categories_master",
+      "description": "V1 public.business_allowed_categories -> public.business_allowed_categories. MASTER, never tenant (\u00a71.2, \u00a714): a cross-tenant FK inside one tenant's schema gives the other tenant a leg it cannot read. Every org reference is polymorphic in V3 and is compared by resolving the (org_type, org_id) pair back to the V1 business uuid. V1's `category_id` is a SERVICE category uuid \u2014 all 34 rows resolve in v1_staging.service_categories and none in business_categories \u2014 and V3 names the column service_category_id accordingly.",
+      "source": {
+        "table": "v1_staging.business_allowed_categories",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.business_allowed_categories",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "owner_v1_business",
+          "from": "business_id",
+          "source": "s.business_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.owner_org_type AND o.org_id = t.owner_org_id)"
+        },
+        {
+          "name": "service_category_slug",
+          "from": "category_id",
+          "source": "(SELECT v.slug FROM v1_staging.service_categories v WHERE v.id = s.category_id)",
+          "target": "(SELECT p.slug FROM public.service_categories p WHERE p.id = t.service_category_id)"
+        },
+        {
+          "name": "granted_by_uuid",
+          "from": "granted_by",
+          "source": "s.granted_by::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.granted_by)"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "subscription_plans_master",
+      "description": "V1 public.subscription_plans -> public.subscription_plans. `slug` becomes `code`. Ten V1 columns V3 has no column for \u2014 per-lead pricing, five entitlement caps, three feature flags \u2014 FOLD into the `limits` jsonb C3 gave the plan for exactly that, under their V1 names, and are compared through it rather than declared lost.",
+      "source": {
+        "table": "v1_staging.subscription_plans",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.subscription_plans",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "tagline",
+          "from": "tagline",
+          "source": "s.tagline",
+          "target": "t.tagline"
+        },
+        {
+          "name": "currency",
+          "from": "currency",
+          "source": "s.currency",
+          "target": "t.currency"
+        },
+        {
+          "name": "trial_days",
+          "from": "trial_days",
+          "source": "s.trial_days",
+          "target": "t.trial_days"
+        },
+        {
+          "name": "stripe_monthly_price_id",
+          "from": "stripe_monthly_price_id",
+          "source": "s.stripe_monthly_price_id",
+          "target": "t.stripe_monthly_price_id"
+        },
+        {
+          "name": "stripe_annual_price_id",
+          "from": "stripe_annual_price_id",
+          "source": "s.stripe_annual_price_id",
+          "target": "t.stripe_annual_price_id"
+        },
+        {
+          "name": "monthly_ai_credits",
+          "from": "monthly_ai_credits",
+          "source": "s.monthly_ai_credits",
+          "target": "t.monthly_ai_credits"
+        },
+        {
+          "name": "is_active",
+          "from": "is_active",
+          "source": "s.is_active",
+          "target": "t.is_active"
+        },
+        {
+          "name": "is_public",
+          "from": "is_public",
+          "source": "s.is_public",
+          "target": "t.is_public"
+        },
+        {
+          "name": "is_popular",
+          "from": "is_popular",
+          "source": "s.is_popular",
+          "target": "t.is_popular"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "s.sort_order",
+          "target": "t.sort_order"
+        },
+        {
+          "name": "feature_highlights",
+          "from": "feature_highlights",
+          "source": "s.feature_highlights",
+          "target": "t.feature_highlights"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "monthly_price",
+          "from": "monthly_price",
+          "source": "(s.monthly_price)::numeric(14,2)",
+          "target": "(t.monthly_price)::numeric(14,2)",
+          "note": "V1 stores this as unconstrained `numeric`, V3 as numeric(_,2), so 5 and 5.00 are the same amount written two ways. Both sides are cast to numeric(14,2) for the comparison \u2014 a scale difference is a formatting artefact, and letting it read as a mismatch would bury a real one."
+        },
+        {
+          "name": "annual_price",
+          "from": "annual_price",
+          "source": "(s.annual_price)::numeric(14,2)",
+          "target": "(t.annual_price)::numeric(14,2)",
+          "note": "V1 stores this as unconstrained `numeric`, V3 as numeric(_,2), so 5 and 5.00 are the same amount written two ways. Both sides are cast to numeric(14,2) for the comparison \u2014 a scale difference is a formatting artefact, and letting it read as a mismatch would bury a real one."
+        },
+        {
+          "name": "code",
+          "from": "slug",
+          "source": "s.slug",
+          "target": "t.code",
+          "note": "V1 `slug` is V3's `code`; both are the plan's stable natural key."
+        },
+        {
+          "name": "monthly_credit_grant",
+          "from": "monthly_credit_grant",
+          "source": "coalesce(s.monthly_credit_grant, 0)",
+          "target": "t.monthly_credit_grant"
+        },
+        {
+          "name": "personal_credit_per_member",
+          "from": "personal_credit_per_member",
+          "source": "coalesce(s.personal_credit_per_member, 0)",
+          "target": "t.personal_credit_per_member"
+        },
+        {
+          "name": "limits_pay_per_lead_cost",
+          "from": "pay_per_lead_cost",
+          "source": "s.pay_per_lead_cost",
+          "target": "(t.limits->>'pay_per_lead_cost')::integer",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_pay_per_application_cost",
+          "from": "pay_per_application_cost",
+          "source": "s.pay_per_application_cost",
+          "target": "(t.limits->>'pay_per_application_cost')::integer",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_max_ad_campaigns",
+          "from": "max_ad_campaigns",
+          "source": "s.max_ad_campaigns",
+          "target": "(t.limits->>'max_ad_campaigns')::integer",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_max_events_per_month",
+          "from": "max_events_per_month",
+          "source": "s.max_events_per_month",
+          "target": "(t.limits->>'max_events_per_month')::integer",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_max_job_postings",
+          "from": "max_job_postings",
+          "source": "s.max_job_postings",
+          "target": "(t.limits->>'max_job_postings')::integer",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_max_ambassador_programs",
+          "from": "max_ambassador_programs",
+          "source": "s.max_ambassador_programs",
+          "target": "(t.limits->>'max_ambassador_programs')::integer",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_max_branch_connections",
+          "from": "max_branch_connections",
+          "source": "s.max_branch_connections",
+          "target": "(t.limits->>'max_branch_connections')::integer",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_has_analytics",
+          "from": "has_analytics",
+          "source": "s.has_analytics",
+          "target": "(t.limits->>'has_analytics')::boolean",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_has_api_access",
+          "from": "has_api_access",
+          "source": "s.has_api_access",
+          "target": "(t.limits->>'has_api_access')::boolean",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        },
+        {
+          "name": "limits_has_ai_tools",
+          "from": "has_ai_tools",
+          "source": "s.has_ai_tools",
+          "target": "(t.limits->>'has_ai_tools')::boolean",
+          "note": "No V3 column; folded into subscription_plans.limits under its V1 name."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "subscription_plan_features_master",
+      "description": "V1 public.subscription_plan_features -> public.subscription_plan_features. 0 V1 rows; the loader exists so the table is not a surprise at cutover.",
+      "source": {
+        "table": "v1_staging.subscription_plan_features",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.subscription_plan_features",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "feature_key",
+          "from": "feature_key",
+          "source": "s.feature_key",
+          "target": "t.feature_key"
+        },
+        {
+          "name": "feature_label",
+          "from": "feature_label",
+          "source": "s.feature_label",
+          "target": "t.feature_label"
+        },
+        {
+          "name": "feature_value",
+          "from": "feature_value",
+          "source": "s.feature_value",
+          "target": "t.feature_value"
+        },
+        {
+          "name": "plan_code",
+          "from": "plan_id",
+          "source": "(SELECT v.slug FROM v1_staging.subscription_plans v WHERE v.id = s.plan_id)",
+          "target": "(SELECT p.code FROM public.subscription_plans p WHERE p.id = t.plan_id)"
+        },
+        {
+          "name": "is_included",
+          "from": "is_included",
+          "source": "coalesce(s.is_included, true)",
+          "target": "t.is_included"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "coalesce(s.sort_order, 0)",
+          "target": "t.sort_order"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "coupons_master",
+      "description": "V1 public.coupons -> public.coupons. Master-level catalogue alongside the plans (\u00a74 W7).",
+      "source": {
+        "table": "v1_staging.coupons",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.coupons",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "code",
+          "from": "code",
+          "source": "s.code",
+          "target": "t.code"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "discount_type",
+          "from": "discount_type",
+          "source": "s.discount_type",
+          "target": "t.discount_type"
+        },
+        {
+          "name": "applicable_plans",
+          "from": "applicable_plans",
+          "source": "s.applicable_plans",
+          "target": "t.applicable_plans"
+        },
+        {
+          "name": "valid_from",
+          "from": "valid_from",
+          "source": "s.valid_from",
+          "target": "t.valid_from"
+        },
+        {
+          "name": "valid_until",
+          "from": "valid_until",
+          "source": "s.valid_until",
+          "target": "t.valid_until"
+        },
+        {
+          "name": "max_uses",
+          "from": "max_uses",
+          "source": "s.max_uses",
+          "target": "t.max_uses"
+        },
+        {
+          "name": "current_uses",
+          "from": "current_uses",
+          "source": "s.current_uses",
+          "target": "t.current_uses"
+        },
+        {
+          "name": "is_active",
+          "from": "is_active",
+          "source": "s.is_active",
+          "target": "t.is_active"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "discount_value",
+          "from": "discount_value",
+          "source": "(s.discount_value)::numeric(14,2)",
+          "target": "(t.discount_value)::numeric(14,2)",
+          "note": "V1 stores this as unconstrained `numeric`, V3 as numeric(_,2), so 5 and 5.00 are the same amount written two ways. Both sides are cast to numeric(14,2) for the comparison \u2014 a scale difference is a formatting artefact, and letting it read as a mismatch would bury a real one."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "business_subscriptions_master",
+      "description": "V1 public.business_subscriptions -> public.business_subscriptions. 22 of the 33 V1 rows (all `expired`) belong to a V1 business that W1 migrated as an INSTITUTION, and business_id FKs to businesses only \u2014 those 22 are reason-coded unresolved_business, which is what the count reconciliation accepts them as.",
+      "source": {
+        "table": "v1_staging.business_subscriptions",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.business_subscriptions",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "stripe_subscription_id",
+          "from": "stripe_subscription_id",
+          "source": "s.stripe_subscription_id",
+          "target": "t.stripe_subscription_id"
+        },
+        {
+          "name": "stripe_customer_id",
+          "from": "stripe_customer_id",
+          "source": "s.stripe_customer_id",
+          "target": "t.stripe_customer_id"
+        },
+        {
+          "name": "current_period_start",
+          "from": "current_period_start",
+          "source": "s.current_period_start",
+          "target": "t.current_period_start"
+        },
+        {
+          "name": "current_period_end",
+          "from": "current_period_end",
+          "source": "s.current_period_end",
+          "target": "t.current_period_end"
+        },
+        {
+          "name": "trial_ends_at",
+          "from": "trial_ends_at",
+          "source": "s.trial_ends_at",
+          "target": "t.trial_ends_at"
+        },
+        {
+          "name": "canceled_at",
+          "from": "canceled_at",
+          "source": "s.canceled_at",
+          "target": "t.canceled_at"
+        },
+        {
+          "name": "downgrade_at",
+          "from": "downgrade_at",
+          "source": "s.downgrade_at",
+          "target": "t.downgrade_at"
+        },
+        {
+          "name": "monthly_credit_grant",
+          "from": "monthly_credit_grant",
+          "source": "s.monthly_credit_grant",
+          "target": "t.monthly_credit_grant"
+        },
+        {
+          "name": "personal_credit_per_member",
+          "from": "personal_credit_per_member",
+          "source": "s.personal_credit_per_member",
+          "target": "t.personal_credit_per_member"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "business_v1_id",
+          "from": "business_id",
+          "source": "s.business_id::text",
+          "target": "(SELECT b.meta->>'v1_business_id' FROM public.businesses b WHERE b.id = t.business_id)",
+          "note": "business_id FKs to public.businesses ONLY \u2014 C3 did not make this table polymorphic. A V1 business that migrated as an institution therefore has no V3 home here and is reason-coded unresolved_business rather than pointed at an institution id."
+        },
+        {
+          "name": "plan_code",
+          "from": "plan_id",
+          "source": "(SELECT v.slug FROM v1_staging.subscription_plans v WHERE v.id = s.plan_id)",
+          "target": "(SELECT p.code FROM public.subscription_plans p WHERE p.id = t.plan_id)"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "business_ai_credits_master",
+      "description": "V1 public.business_ai_credits -> public.business_ai_credits. Per-period AI credit grant/consumption, businesses-only like the subscription it hangs off.",
+      "source": {
+        "table": "v1_staging.business_ai_credits",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.business_ai_credits",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "period_start",
+          "from": "period_start",
+          "source": "s.period_start",
+          "target": "t.period_start"
+        },
+        {
+          "name": "period_end",
+          "from": "period_end",
+          "source": "s.period_end",
+          "target": "t.period_end"
+        },
+        {
+          "name": "granted",
+          "from": "granted",
+          "source": "s.granted",
+          "target": "t.granted"
+        },
+        {
+          "name": "used",
+          "from": "used",
+          "source": "s.used",
+          "target": "t.used"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "business_v1_id",
+          "from": "business_id",
+          "source": "s.business_id::text",
+          "target": "(SELECT b.meta->>'v1_business_id' FROM public.businesses b WHERE b.id = t.business_id)",
+          "note": "business_id FKs to public.businesses ONLY \u2014 C3 did not make this table polymorphic. A V1 business that migrated as an institution therefore has no V3 home here and is reason-coded unresolved_business rather than pointed at an institution id."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "credit_wallets_master",
+      "description": "V1 public.credit_wallets -> public.credit_wallets. V3 keeps V1's polymorphic owner_type/(user | business) shape (reconciliation log \u00a75) and adds free_balance, which V1 never had and which is left at the V3 default rather than derived from the other three balances. 22 of the 35 business-owned wallets belong to a V1 business that migrated as an institution and are reason-coded unresolved_business.",
+      "source": {
+        "table": "v1_staging.credit_wallets",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.credit_wallets",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "owner_type",
+          "from": "owner_type",
+          "source": "s.owner_type",
+          "target": "t.owner_type"
+        },
+        {
+          "name": "balance",
+          "from": "balance",
+          "source": "s.balance",
+          "target": "t.balance"
+        },
+        {
+          "name": "subscription_balance",
+          "from": "subscription_balance",
+          "source": "s.subscription_balance",
+          "target": "t.subscription_balance"
+        },
+        {
+          "name": "purchased_balance",
+          "from": "purchased_balance",
+          "source": "s.purchased_balance",
+          "target": "t.purchased_balance"
+        },
+        {
+          "name": "lifetime_earned",
+          "from": "lifetime_earned",
+          "source": "s.lifetime_earned",
+          "target": "t.lifetime_earned"
+        },
+        {
+          "name": "lifetime_spent",
+          "from": "lifetime_spent",
+          "source": "s.lifetime_spent",
+          "target": "t.lifetime_spent"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "owner_v1_user",
+          "from": "user_id",
+          "source": "s.user_id::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.platform_user_id)"
+        },
+        {
+          "name": "owner_v1_business",
+          "from": "business_id",
+          "source": "s.business_id::text",
+          "target": "(SELECT b.meta->>'v1_business_id' FROM public.businesses b WHERE b.id = t.business_id)"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "credit_transactions_master",
+      "description": "V1 public.credit_transactions -> public.credit_transactions, one polymorphic ledger carrying V1's shape (reconciliation log \u00a75 decision D). V3 adds balance_type, reason and idempotency_key, none of which V1 had. The 22 transactions on the 22 unmigratable wallets are reason-coded unresolved_parent. Not declared a `junction`: it has ONE required parent (the wallet), asserted in the transform; performed_by is a nullable actor, not a parent.",
+      "source": {
+        "table": "v1_staging.credit_transactions",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.credit_transactions",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "transaction_type",
+          "from": "transaction_type",
+          "source": "s.transaction_type",
+          "target": "t.transaction_type"
+        },
+        {
+          "name": "amount",
+          "from": "amount",
+          "source": "s.amount",
+          "target": "t.amount"
+        },
+        {
+          "name": "balance_after",
+          "from": "balance_after",
+          "source": "s.balance_after",
+          "target": "t.balance_after"
+        },
+        {
+          "name": "subscription_amount",
+          "from": "subscription_amount",
+          "source": "s.subscription_amount",
+          "target": "t.subscription_amount"
+        },
+        {
+          "name": "purchased_amount",
+          "from": "purchased_amount",
+          "source": "s.purchased_amount",
+          "target": "t.purchased_amount"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "reference_type",
+          "from": "reference_type",
+          "source": "s.reference_type",
+          "target": "t.reference_type"
+        },
+        {
+          "name": "reference_id",
+          "from": "reference_id",
+          "source": "s.reference_id",
+          "target": "t.reference_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "wallet_v1_id",
+          "from": "wallet_id",
+          "source": "s.wallet_id::text",
+          "target": "(SELECT w.v1_id::text FROM public.credit_wallets w WHERE w.id = t.wallet_id)"
+        },
+        {
+          "name": "performed_by_uuid",
+          "from": "performed_by",
+          "source": "s.performed_by::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.performed_by)"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "events_master",
+      "description": "V1 public.events -> public.events. D3's table is live, so per \u00a74 this blocked mapping flips to transform. business_id becomes the polymorphic host_org_type/host_org_id \u2014 an event can be hosted by an unclaimed institution as readily as by a business.",
+      "source": {
+        "table": "v1_staging.events",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.events",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "title",
+          "from": "title",
+          "source": "s.title",
+          "target": "t.title"
+        },
+        {
+          "name": "slug",
+          "from": "slug",
+          "source": "s.slug",
+          "target": "t.slug"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "summary",
+          "from": "summary",
+          "source": "s.summary",
+          "target": "t.summary"
+        },
+        {
+          "name": "cover_image_url",
+          "from": "cover_image_url",
+          "source": "s.cover_image_url",
+          "target": "t.cover_image_url"
+        },
+        {
+          "name": "event_type",
+          "from": "event_type",
+          "source": "s.event_type",
+          "target": "t.event_type"
+        },
+        {
+          "name": "category",
+          "from": "category",
+          "source": "s.category",
+          "target": "t.category"
+        },
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "visibility",
+          "from": "visibility",
+          "source": "s.visibility",
+          "target": "t.visibility"
+        },
+        {
+          "name": "target_audiences",
+          "from": "target_audiences",
+          "source": "s.target_audiences",
+          "target": "t.target_audiences"
+        },
+        {
+          "name": "target_countries",
+          "from": "target_countries",
+          "source": "s.target_countries",
+          "target": "t.target_countries"
+        },
+        {
+          "name": "venue_name",
+          "from": "venue_name",
+          "source": "s.venue_name",
+          "target": "t.venue_name"
+        },
+        {
+          "name": "venue_address",
+          "from": "venue_address",
+          "source": "s.venue_address",
+          "target": "t.venue_address"
+        },
+        {
+          "name": "venue_city",
+          "from": "venue_city",
+          "source": "s.venue_city",
+          "target": "t.venue_city"
+        },
+        {
+          "name": "venue_country",
+          "from": "venue_country",
+          "source": "s.venue_country",
+          "target": "t.venue_country"
+        },
+        {
+          "name": "venue_latitude",
+          "from": "venue_latitude",
+          "source": "s.venue_latitude",
+          "target": "t.venue_latitude"
+        },
+        {
+          "name": "venue_longitude",
+          "from": "venue_longitude",
+          "source": "s.venue_longitude",
+          "target": "t.venue_longitude"
+        },
+        {
+          "name": "online_url",
+          "from": "online_url",
+          "source": "s.online_url",
+          "target": "t.online_url"
+        },
+        {
+          "name": "online_platform",
+          "from": "online_platform",
+          "source": "s.online_platform",
+          "target": "t.online_platform"
+        },
+        {
+          "name": "starts_at",
+          "from": "starts_at",
+          "source": "s.starts_at",
+          "target": "t.starts_at"
+        },
+        {
+          "name": "ends_at",
+          "from": "ends_at",
+          "source": "s.ends_at",
+          "target": "t.ends_at"
+        },
+        {
+          "name": "timezone",
+          "from": "timezone",
+          "source": "s.timezone",
+          "target": "t.timezone"
+        },
+        {
+          "name": "max_capacity",
+          "from": "max_capacity",
+          "source": "s.max_capacity",
+          "target": "t.max_capacity"
+        },
+        {
+          "name": "registration_deadline",
+          "from": "registration_deadline",
+          "source": "s.registration_deadline",
+          "target": "t.registration_deadline"
+        },
+        {
+          "name": "tags",
+          "from": "tags",
+          "source": "s.tags",
+          "target": "t.tags"
+        },
+        {
+          "name": "contact_email",
+          "from": "contact_email",
+          "source": "s.contact_email",
+          "target": "t.contact_email"
+        },
+        {
+          "name": "contact_phone",
+          "from": "contact_phone",
+          "source": "s.contact_phone",
+          "target": "t.contact_phone"
+        },
+        {
+          "name": "published_at",
+          "from": "published_at",
+          "source": "s.published_at",
+          "target": "t.published_at"
+        },
+        {
+          "name": "cancelled_at",
+          "from": "cancelled_at",
+          "source": "s.cancelled_at",
+          "target": "t.cancelled_at"
+        },
+        {
+          "name": "cancellation_reason",
+          "from": "cancellation_reason",
+          "source": "s.cancellation_reason",
+          "target": "t.cancellation_reason"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "host_v1_business",
+          "from": "business_id",
+          "source": "s.business_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.host_org_type AND o.org_id = t.host_org_id)"
+        },
+        {
+          "name": "created_by_uuid",
+          "from": "created_by",
+          "source": "s.created_by::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.created_by)",
+          "note": "Nullable in V3 (ON DELETE SET NULL): an event outlives the account that created it."
+        },
+        {
+          "name": "is_featured",
+          "from": "is_featured",
+          "source": "coalesce(s.is_featured, false)",
+          "target": "t.is_featured"
+        },
+        {
+          "name": "views_count",
+          "from": "views_count",
+          "source": "coalesce(s.views_count, 0)",
+          "target": "t.views_count"
+        },
+        {
+          "name": "settings",
+          "from": "settings",
+          "source": "coalesce(s.settings, '{}'::jsonb)",
+          "target": "t.settings"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        },
+        {
+          "column": "rsvp_count",
+          "reason": "No V3 column: public.events has no denormalised attendance counter \u2014 V3 counts public.event_registrations, which migrate in this same wave, so the number is derived rather than stored. Three V1 rows carry a non-zero value and each is reported to mig.unresolved under no_v3_column so a future schema change can find them."
+        }
+      ]
+    },
+    {
+      "name": "event_tickets_master",
+      "description": "V1 public.event_tickets -> public.event_tickets. `sold_count` is V3's `claimed_count` \u2014 the counter a hold increments before payment clears.",
+      "source": {
+        "table": "v1_staging.event_tickets",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.event_tickets",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "name",
+          "from": "name",
+          "source": "s.name",
+          "target": "t.name"
+        },
+        {
+          "name": "description",
+          "from": "description",
+          "source": "s.description",
+          "target": "t.description"
+        },
+        {
+          "name": "quantity",
+          "from": "quantity",
+          "source": "s.quantity",
+          "target": "t.quantity"
+        },
+        {
+          "name": "sale_starts_at",
+          "from": "sale_starts_at",
+          "source": "s.sale_starts_at",
+          "target": "t.sale_starts_at"
+        },
+        {
+          "name": "sale_ends_at",
+          "from": "sale_ends_at",
+          "source": "s.sale_ends_at",
+          "target": "t.sale_ends_at"
+        },
+        {
+          "name": "stripe_price_id",
+          "from": "stripe_price_id",
+          "source": "s.stripe_price_id",
+          "target": "t.stripe_price_id"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "event_v1_id",
+          "from": "event_id",
+          "source": "s.event_id::text",
+          "target": "(SELECT e.v1_id::text FROM public.events e WHERE e.id = t.event_id)"
+        },
+        {
+          "name": "price",
+          "from": "price",
+          "source": "(coalesce(s.price, 0))::numeric(14,2)",
+          "target": "(t.price)::numeric(14,2)",
+          "note": "V1 stores this as unconstrained `numeric`, V3 as numeric(_,2), so 5 and 5.00 are the same amount written two ways. Both sides are cast to numeric(14,2) for the comparison \u2014 a scale difference is a formatting artefact, and letting it read as a mismatch would bury a real one."
+        },
+        {
+          "name": "currency",
+          "from": "currency",
+          "source": "coalesce(s.currency, 'USD')",
+          "target": "t.currency"
+        },
+        {
+          "name": "claimed_count",
+          "from": "sold_count",
+          "source": "coalesce(s.sold_count, 0)",
+          "target": "t.claimed_count"
+        },
+        {
+          "name": "max_per_order",
+          "from": "max_per_order",
+          "source": "coalesce(s.max_per_order, 10)",
+          "target": "t.max_per_order"
+        },
+        {
+          "name": "is_active",
+          "from": "is_active",
+          "source": "coalesce(s.is_active, true)",
+          "target": "t.is_active"
+        },
+        {
+          "name": "sort_order",
+          "from": "sort_order",
+          "source": "coalesce(s.sort_order, 0)",
+          "target": "t.sort_order"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "event_registrations_master",
+      "description": "V1 public.event_registrations -> public.event_registrations. Defect D8: needs both a migrated event and a migrated registrant. V3 adds hold_expires_at, which V1 never had.",
+      "junction": {
+        "parents": [
+          "events_master",
+          "platform_users"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.event_registrations",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.event_registrations",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "stripe_session_id",
+          "from": "stripe_session_id",
+          "source": "s.stripe_session_id",
+          "target": "t.stripe_session_id"
+        },
+        {
+          "name": "check_in_at",
+          "from": "check_in_at",
+          "source": "s.check_in_at",
+          "target": "t.check_in_at"
+        },
+        {
+          "name": "cancelled_at",
+          "from": "cancelled_at",
+          "source": "s.cancelled_at",
+          "target": "t.cancelled_at"
+        },
+        {
+          "name": "notes",
+          "from": "notes",
+          "source": "s.notes",
+          "target": "t.notes"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "event_v1_id",
+          "from": "event_id",
+          "source": "s.event_id::text",
+          "target": "(SELECT e.v1_id::text FROM public.events e WHERE e.id = t.event_id)"
+        },
+        {
+          "name": "ticket_v1_id",
+          "from": "ticket_id",
+          "source": "s.ticket_id::text",
+          "target": "(SELECT tk.v1_id::text FROM public.event_tickets tk WHERE tk.id = t.ticket_id)"
+        },
+        {
+          "name": "registrant_uuid",
+          "from": "user_id",
+          "source": "s.user_id::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.platform_user_id)"
+        },
+        {
+          "name": "quantity",
+          "from": "quantity",
+          "source": "coalesce(s.quantity, 1)",
+          "target": "t.quantity"
+        },
+        {
+          "name": "total_paid",
+          "from": "total_paid",
+          "source": "(coalesce(s.total_paid, 0))::numeric(14,2)",
+          "target": "(t.total_paid)::numeric(14,2)",
+          "note": "V1 stores this as unconstrained `numeric`, V3 as numeric(_,2), so 5 and 5.00 are the same amount written two ways. Both sides are cast to numeric(14,2) for the comparison \u2014 a scale difference is a formatting artefact, and letting it read as a mismatch would bury a real one."
+        },
+        {
+          "name": "payment_status",
+          "from": "payment_status",
+          "source": "coalesce(s.payment_status, 'free')",
+          "target": "t.payment_status"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "event_updates_master",
+      "description": "V1 public.event_updates -> public.event_updates. author_id is nullable in V3, so an author who did not migrate leaves the update intact and the column NULL.",
+      "source": {
+        "table": "v1_staging.event_updates",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.event_updates",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "title",
+          "from": "title",
+          "source": "s.title",
+          "target": "t.title"
+        },
+        {
+          "name": "content",
+          "from": "content",
+          "source": "s.content",
+          "target": "t.content"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "event_v1_id",
+          "from": "event_id",
+          "source": "s.event_id::text",
+          "target": "(SELECT e.v1_id::text FROM public.events e WHERE e.id = t.event_id)"
+        },
+        {
+          "name": "author_uuid",
+          "from": "author_id",
+          "source": "s.author_id::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.author_id)"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "event_co_hosts_master",
+      "description": "V1 public.event_co_hosts -> public.event_co_hosts. 0 V1 rows; business_id becomes the polymorphic co_host_org_type/co_host_org_id.",
+      "source": {
+        "table": "v1_staging.event_co_hosts",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.event_co_hosts",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "status",
+          "from": "status",
+          "source": "s.status",
+          "target": "t.status"
+        },
+        {
+          "name": "role",
+          "from": "role",
+          "source": "s.role",
+          "target": "t.role"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "updated_at",
+          "from": "updated_at",
+          "source": "s.updated_at",
+          "target": "t.updated_at"
+        },
+        {
+          "name": "event_v1_id",
+          "from": "event_id",
+          "source": "s.event_id::text",
+          "target": "(SELECT e.v1_id::text FROM public.events e WHERE e.id = t.event_id)"
+        },
+        {
+          "name": "co_host_v1_business",
+          "from": "business_id",
+          "source": "s.business_id::text",
+          "target": "(SELECT o.v1_business_id::text FROM (SELECT (b.meta->>'v1_business_id')::uuid AS v1_business_id, 'business'::text AS org_type, b.id AS org_id FROM public.businesses b WHERE b.deleted_at IS NULL AND b.meta->>'v1_business_id' IS NOT NULL UNION ALL SELECT i.v1_business_id, 'institution'::text, i.id FROM public.institutions i WHERE i.deleted_at IS NULL AND i.v1_business_id IS NOT NULL) o WHERE o.org_type = t.co_host_org_type AND o.org_id = t.co_host_org_id)"
+        },
+        {
+          "name": "invited_by_uuid",
+          "from": "invited_by",
+          "source": "s.invited_by::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.invited_by)"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "notifications_master",
+      "description": "V1 public.notifications -> public.notifications. Three shape changes: is_read boolean becomes a read_at timestamp (V1 kept no read time, so a read notification is stamped at its created_at), reference_id widens from uuid to text so a reference can name a serial row too, and dedupe_key \u2014 NOT NULL in V3, with no V1 equivalent \u2014 is derived as 'v1:<uuid>' so each migrated row is its own dedupe class and two V1 notifications can never collapse onto one (platform_user_id, dedupe_key).",
+      "source": {
+        "table": "v1_staging.notifications",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.notifications",
+        "alias": "t",
+        "joins": [],
+        "filter": "t.deleted_at IS NULL"
+      },
+      "identity": {
+        "label": "id (V1 uuid, preserved in v1_id)",
+        "source": "s.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "type",
+          "from": "type",
+          "source": "s.type",
+          "target": "t.type"
+        },
+        {
+          "name": "title",
+          "from": "title",
+          "source": "s.title",
+          "target": "t.title"
+        },
+        {
+          "name": "body",
+          "from": "body",
+          "source": "s.body",
+          "target": "t.body"
+        },
+        {
+          "name": "reference_type",
+          "from": "reference_type",
+          "source": "s.reference_type",
+          "target": "t.reference_type"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "s.created_at",
+          "target": "t.created_at"
+        },
+        {
+          "name": "recipient_uuid",
+          "from": "user_id",
+          "source": "s.user_id::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.platform_user_id)"
+        },
+        {
+          "name": "reference_id",
+          "from": "reference_id",
+          "source": "s.reference_id::text",
+          "target": "t.reference_id"
+        },
+        {
+          "name": "read_at",
+          "from": "is_read",
+          "source": "CASE WHEN coalesce(s.is_read, false) THEN s.created_at ELSE NULL END",
+          "target": "t.read_at"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key. V3 mints its own id and keeps the V1 uuid in v1_id, which is what makes this wave a natural-key upsert."
+        }
+      ]
+    },
+    {
+      "name": "ai_counselor_sessions_master",
+      "description": "V1 public.ai_counselor_sessions -> public.ai_counselor_sessions. E2's table carries no v1_id column, so the identity is the natural key (platform_user_id, created_at) \u2014 verified unique across all 75 V1 rows, and re-verified at load time because a cutover re-extract could break it. No deleted_at filter on the target: 22 sessions are soft-deleted in V1 and their deleted_at carries over, so they are migrated, not missing.",
+      "source": {
+        "table": "v1_staging.ai_counselor_sessions",
+        "alias": "s",
+        "joins": [],
+        "filter": null
+      },
+      "target": {
+        "table": "public.ai_counselor_sessions",
+        "alias": "t",
+        "joins": [
+          "JOIN public.platform_users pu ON pu.id = t.platform_user_id"
+        ],
+        "filter": null
+      },
+      "identity": {
+        "label": "V1 (user_id, created_at)",
+        "source": "s.user_id::text || '|' || s.created_at::text",
+        "target": "pu.uuid::text || '|' || t.created_at::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "title",
+          "from": "title",
+          "source": "s.title",
+          "target": "t.title"
+        },
+        {
+          "name": "message_count",
+          "from": "message_count",
+          "source": "s.message_count",
+          "target": "t.message_count"
+        },
+        {
+          "name": "credits_used",
+          "from": "credits_used",
+          "source": "s.credits_used",
+          "target": "t.credits_used"
+        },
+        {
+          "name": "deleted_at",
+          "from": "deleted_at",
+          "source": "s.deleted_at",
+          "target": "t.deleted_at"
+        },
+        {
+          "name": "is_archived",
+          "from": "archived_at",
+          "source": "(s.archived_at IS NOT NULL)",
+          "target": "t.is_archived",
+          "note": "V1 stamps when a session was archived; V3 keeps only the boolean."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK. public.ai_counselor_sessions has no v1_id column (E2 shipped before this wave), so the identity is the natural key (platform_user_id, created_at) instead \u2014 which is also what a message uses to find its session."
+        },
+        {
+          "column": "user_id",
+          "reason": "Part of the identity key (resolved to platform_users.id)."
+        },
+        {
+          "column": "created_at",
+          "reason": "Part of the identity key, matched exactly on both sides."
+        },
+        {
+          "column": "profile_id",
+          "reason": "V1's ai_counselor_profiles has no V3 table \u2014 counsellor phase 2 is still in flight on dev-feat-ai-counsellor-p2, so that table stays `blocked` on wave E2. All 75 V1 sessions have profile_id NULL, so nothing is at risk today; a non-NULL value at cutover is a stop-and-classify."
+        },
+        {
+          "column": "started_at",
+          "reason": "No V3 column: public.ai_counselor_sessions models the session's lifetime with created_at. started_at equals created_at on all 75 V1 rows, so this is a declared duplicate rather than a loss."
+        },
+        {
+          "column": "ended_at",
+          "reason": "No V3 column \u2014 V3 has no session end concept, only is_archived and deleted_at. NULL on all 75 V1 rows."
+        },
+        {
+          "column": "session_summary",
+          "reason": "No V3 column \u2014 the counsellor summary feature is not in V3's session shape. NULL on all 75 V1 rows."
+        },
+        {
+          "column": "embed_config_id",
+          "reason": "V1 uuid vs V3 serial FK to public.ai_embed_configs, and NULL on all 75 V1 rows \u2014 there is nothing to resolve, and inventing a config id would attach every migrated session to an embed widget it never came from."
+        }
+      ]
+    },
+    {
+      "name": "ai_counselor_messages_master",
+      "description": "V1 public.ai_counselor_messages -> public.ai_counselor_messages. Also has no v1_id, so the identity chains through its session's natural key: (session owner uuid, session created_at, message created_at). V1's chips text[] becomes jsonb, and V1's feedback vocabulary ('thumbs_up') becomes V3's ('positive'), which V3 enforces with a CHECK.",
+      "junction": {
+        "parents": [
+          "ai_counselor_sessions_master",
+          "platform_users"
+        ]
+      },
+      "source": {
+        "table": "v1_staging.ai_counselor_messages",
+        "alias": "s",
+        "joins": [
+          "JOIN v1_staging.ai_counselor_sessions vs ON vs.id = s.session_id"
+        ],
+        "filter": null
+      },
+      "target": {
+        "table": "public.ai_counselor_messages",
+        "alias": "t",
+        "joins": [
+          "JOIN public.ai_counselor_sessions ts ON ts.id = t.session_id",
+          "JOIN public.platform_users pu ON pu.id = ts.platform_user_id"
+        ],
+        "filter": null
+      },
+      "identity": {
+        "label": "V1 (session owner, session created_at, message created_at)",
+        "source": "vs.user_id::text || '|' || vs.created_at::text || '|' || s.created_at::text",
+        "target": "pu.uuid::text || '|' || ts.created_at::text || '|' || t.created_at::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "role",
+          "from": "role",
+          "source": "s.role",
+          "target": "t.role"
+        },
+        {
+          "name": "content",
+          "from": "content",
+          "source": "s.content",
+          "target": "t.content"
+        },
+        {
+          "name": "prompt_tokens",
+          "from": "prompt_tokens",
+          "source": "s.prompt_tokens",
+          "target": "t.prompt_tokens"
+        },
+        {
+          "name": "completion_tokens",
+          "from": "completion_tokens",
+          "source": "s.completion_tokens",
+          "target": "t.completion_tokens"
+        },
+        {
+          "name": "total_tokens",
+          "from": "total_tokens",
+          "source": "s.total_tokens",
+          "target": "t.total_tokens"
+        },
+        {
+          "name": "sources",
+          "from": "sources",
+          "source": "coalesce(s.sources, '[]'::jsonb)",
+          "target": "t.sources"
+        },
+        {
+          "name": "cards",
+          "from": "cards",
+          "source": "coalesce(s.cards, '[]'::jsonb)",
+          "target": "t.cards"
+        },
+        {
+          "name": "chips",
+          "from": "chips",
+          "source": "coalesce(to_jsonb(s.chips), '[]'::jsonb)",
+          "target": "t.chips",
+          "note": "V1 text[] -> V3 jsonb."
+        },
+        {
+          "name": "feedback",
+          "from": "feedback",
+          "source": "(CASE s.feedback WHEN 'thumbs_up' THEN 'positive' WHEN 'thumbs_down' THEN 'negative' WHEN 'positive' THEN 'positive' WHEN 'negative' THEN 'negative' ELSE NULL END)",
+          "target": "t.feedback",
+          "note": "public.ai_counselor_messages declares CHECK (feedback IN ('positive','negative')); V1's one non-NULL value is 'thumbs_up'. Anything outside the pair is NULLed and reported invalid_source_data."
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "V1 uuid PK. public.ai_counselor_messages has no v1_id column, so the identity chains through the session's natural key plus the message's own created_at."
+        },
+        {
+          "column": "session_id",
+          "reason": "Part of the identity key \u2014 resolved through the session's (owner, created_at) natural key, because V3's session id is its own serial."
+        },
+        {
+          "column": "created_at",
+          "reason": "Part of the identity key, matched exactly on both sides."
+        },
+        {
+          "column": "credits_consumed",
+          "reason": "No V3 column: metering moved to the session's credits_used and, in wave E, to ai_usage_events. 0 on all 301 V1 rows, so nothing is at risk today."
+        },
+        {
+          "column": "queries_used",
+          "reason": "No V3 column \u2014 retrieval accounting is not part of V3's message shape. 0 on all 301 V1 rows."
+        },
+        {
+          "column": "tool_trace",
+          "reason": "No V3 column \u2014 V3 does not persist per-message tool traces. NULL on all 301 V1 rows."
+        },
+        {
+          "column": "retrieved_doc_ids",
+          "reason": "No V3 column, and the uuids would point at V1 knowledge documents whose V3 ids are serials. V3 carries provenance in `sources` instead. NULL on all 301 V1 rows."
+        },
+        {
+          "column": "rating",
+          "reason": "No V3 column \u2014 V3 keeps a single `feedback` verdict rather than a numeric rating. NULL on all 301 V1 rows."
+        },
+        {
+          "column": "rating_comment",
+          "reason": "No V3 column, for the same reason as `rating`. NULL on all 301 V1 rows."
         }
       ]
     }
