@@ -1,4 +1,12 @@
-export type CreditKind = "referral_reward" | "referral_reversal" | "purchase" | "manual_adjustment";
+export type CreditKind =
+  | "referral_reward"
+  | "referral_reversal"
+  | "purchase"
+  | "manual_adjustment"
+  | "ai_message"
+  | "signup_grant"
+  | "subscription_grant"
+  | "admin_grant";
 
 export interface CreditLedgerRow {
   id: number;

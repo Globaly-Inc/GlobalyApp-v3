@@ -8,5 +8,7 @@
 // No Fastify routes yet: the personal credits page is Phase 2 and the admin ledger is Phase 3.
 // ponytail: no empty module wrapper until there is a route to register.
 
-export { addTransaction, balance, listTransactions, countTransactions } from "./credits.repository.js";
-export type { OwnerType, GeneralKind, CreditTransactionRow } from "./credits.repository.js";
+export {
+  addTransaction, balance, balanceByType, spend, listTransactions, countTransactions,
+} from "./credits.repository.js";
+export type { OwnerType, BalanceType, GeneralKind, CreditTransactionRow } from "./credits.repository.js";
