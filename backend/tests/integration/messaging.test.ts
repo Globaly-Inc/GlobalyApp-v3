@@ -467,20 +467,23 @@ describeDb("messaging", () => {
   });
 
   it("cleans up every stream listener on disconnect", async () => {
-    const baseline = streamCount();
-    const streams = await Promise.all([
-      openStream(conversationId, studentToken),
-      openStream(conversationId, agentToken),
-      openStream(conversationId, mateToken),
-    ]);
-    // Registration happens as the request is handled, so give the loop a beat.
     const until = async (predicate: () => boolean) => {
       const deadline = Date.now() + 8000;
       while (Date.now() < deadline && !predicate()) await new Promise((r) => setTimeout(r, 50));
       return predicate();
     };
-    expect(await until(() => streamCount() === baseline + 3)).toBe(true);
+
+    // Every stream opened by the preceding cases must already be gone — that is the
+    // "no leak across a test run" half of the assertion.
+    expect(await until(() => streamCount() === 0)).toBe(true);
+
+    const streams = await Promise.all([
+      openStream(conversationId, studentToken),
+      openStream(conversationId, agentToken),
+      openStream(conversationId, mateToken),
+    ]);
+    expect(await until(() => streamCount() === 3)).toBe(true);
     for (const s of streams) s.close();
-    expect(await until(() => streamCount() === baseline)).toBe(true);
+    expect(await until(() => streamCount() === 0)).toBe(true);
   });
 });
