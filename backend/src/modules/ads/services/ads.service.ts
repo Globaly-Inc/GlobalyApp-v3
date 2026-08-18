@@ -25,6 +25,7 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import { NotFoundError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as credits from "../../billing/services/credits.service.js";
+import { InsufficientCreditsError } from "../../billing/errors.js";
 import { publish } from "../../notifications/services/notifications.service.js";
 import {
   ADS_PER_PLACEMENT,
@@ -189,10 +190,16 @@ async function settleImpressionBlock(campaign: repo.ServingCampaign, total: numb
         trx,
       );
     });
-  } catch {
-    // Insufficient credits (402). The claim rolled back with the debit, so the
-    // block stays unbilled and a later top-up can settle it. V1 paused the
-    // campaign here too — that part it got right.
+  } catch (err) {
+    // ONLY an empty wallet pauses the campaign. A bare catch here would treat a
+    // deadlock, a serialization failure or a bug in spendCredits as "out of
+    // credits": the block would silently stay unbilled (revenue lost with no
+    // error surfaced) and the advertiser would be paused for a reason that was
+    // never true. Anything that is not a 402 is a real fault and must propagate.
+    if (!(err instanceof InsufficientCreditsError)) throw err;
+    // The claim rolled back with the debit, so the block stays unbilled and a
+    // later top-up can settle it. V1 paused the campaign here too — that part it
+    // got right.
     await pauseForInsufficientCredits(campaign);
   }
 }
