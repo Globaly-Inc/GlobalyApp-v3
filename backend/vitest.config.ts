@@ -84,6 +84,10 @@ export default defineConfig({
         // G4 — ambassador ops + training certificates/gamification
         "src/modules/ambassadors/**/*.ts",
         "src/modules/training/**/*.ts",
+        // E3 / E4 — scribe (transcription, coaching, review) and the LMS
+        // delivery gap G4 left open (assignment submissions, quizzes,
+        // enrolment applications, invitations, learner catalogue).
+        "src/modules/scribe/**/*.ts",
         // G7 — AI-embed widget, FX rates cache, cross-app GlobalyAI feed.
         // gemini-stream.ts is already excluded below; the widget script is a served
         // string asserted on in tests/integration/ai-embed.test.ts.

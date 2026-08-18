@@ -31,6 +31,10 @@ export function testEnv(): Record<string, string> {
     // the tests would still pass while proving the opposite of what they claim.
     // Tests that want a configured provider inject one; they never read the env.
     GEMINI_API_KEY: "",
+    // Same reasoning for speech-to-text. scribe.test.ts asserts
+    // isTranscriptionConfigured() === false as its precondition, because the
+    // whole point of that path is a 503 with the transcript still saved.
+    OPENAI_API_KEY: "",
     // Same reasoning for storage. storage-preview-url.test.ts asserts
     // isConfigured() === false as its precondition, because an unsignable bucket is
     // exactly the condition resolvePreviewUrl's fail-soft path exists for. Leaving
