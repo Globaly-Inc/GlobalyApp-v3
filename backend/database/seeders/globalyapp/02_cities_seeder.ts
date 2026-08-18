@@ -7,6 +7,22 @@ import type { Knex } from "knex";
 const require = createRequire(import.meta.url);
 const CITIES_BY_ISO2 = require("./cities.json") as Record<string, string[]>;
 
+
+/**
+ * A city's identity: country plus its accent-stripped, lower-cased name.
+ *
+ * Must match the identity the V1 -> V3 city resolver uses. A plain toLowerCase()
+ * does not: 01_countries_seeder's dataset spells Croatia's cities without
+ * diacritics ("Sibenik", "Varazdin") while this one spells them with
+ * ("\u0160ibenik", "Vara\u017edin"), so lower-casing alone let both spellings in as
+ * separate rows. The migration then collapsed each pair onto one key and Gate 2
+ * failed with "duplicate TARGET identity keys" — but only on a freshly seeded
+ * database, which is exactly what a cutover rehearsal is.
+ */
+function cityKey(name: string): string {
+  return name.normalize("NFD").replace(/\p{Mn}/gu, "").toLowerCase();
+}
+
 export async function seed(knex: Knex): Promise<void> {
   const countries = await knex("countries").select("id", "iso2");
   const idByIso2 = new Map(countries.map((c) => [c.iso2, c.id]));
@@ -20,9 +36,9 @@ export async function seed(knex: Knex): Promise<void> {
     }
 
     const existing = await knex("cities").where({ country_id: countryId }).pluck("name");
-    const have = new Set(existing.map((n: string) => n.toLowerCase()));
+    const have = new Set(existing.map(cityKey));
     const missing = names
-      .filter((name) => !have.has(name.toLowerCase()))
+      .filter((name) => !have.has(cityKey(name)))
       .map((name) => ({ country_id: countryId, name }));
 
     if (missing.length) await knex("cities").insert(missing);

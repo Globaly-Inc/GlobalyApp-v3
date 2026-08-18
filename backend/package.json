@@ -52,7 +52,12 @@
     "migrate:w5-content": "node --import tsx scripts/migration/w5-content.ts",
     "migrate:w6-storage": "node --import tsx scripts/migration/w6-storage.ts",
     "job:ai-knowledge-embed": "node --import tsx src/workers/knowledge-embed.worker.ts",
-    "test:recall": "vitest run --project integration tests/integration/ai-knowledge-recall.test.ts"
+    "test:recall": "vitest run --project integration tests/integration/ai-knowledge-recall.test.ts",
+    "migrate:w7-provision": "node --import tsx scripts/migration/w7-orgs.ts --provision",
+    "migrate:w7-services": "node --import tsx scripts/migration/w7-services.ts",
+    "migrate:w7-master": "node --import tsx scripts/migration/w7-master.ts",
+    "migrate:w7-billing": "node --import tsx scripts/migration/w7-billing.ts",
+    "migrate:w7-engagement": "node --import tsx scripts/migration/w7-engagement.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
