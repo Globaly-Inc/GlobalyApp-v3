@@ -55,6 +55,25 @@ describe.skipIf(!dbAvailable)("W6 URL rewrite (real SQL)", () => {
   beforeAll(async () => {
     db = new pg.Client({ connectionString: testDatabaseUrl() });
     await db.connect();
+
+    // buildInventory scans EVERY schema and every text-ish column, because a V1
+    // storage URL can hide in any of them — that breadth is the point of the sweep.
+    // A full suite run provisions ~516 tenant schemas (~52,000 columns), which took
+    // this one test from 1.5s to a 30s timeout and read as a code failure on a file
+    // no branch had touched. Tenant provisioning never drops its schema.
+    //
+    // Dropping them here rather than raising the timeout keeps the assertion honest:
+    // the test is about what the inventory FINDS, and hiding a 20x slowdown behind a
+    // bigger number would have thrown away the signal. Safe because the integration
+    // project runs files serially (fileParallelism: false), so no other file owns
+    // these, and the UUID pattern cannot match public/superadmin/mig/v1_staging.
+    const { rows } = await db.query<{ schema_name: string }>(
+      `SELECT schema_name FROM information_schema.schemata
+        WHERE schema_name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+    );
+    for (const { schema_name } of rows) {
+      await db.query(`DROP SCHEMA IF EXISTS "${schema_name}" CASCADE`).catch(() => {});
+    }
   });
 
   afterAll(async () => {
