@@ -146,6 +146,11 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
       if (await embedDocument(documentId, `${row.title ?? ""}\n\n${result.markdown}`)) {
         summary.embedded++;
       }
+      // Chunk-level embedding is the retrieval path (hybrid search runs over
+      // ai_knowledge_chunks); the document-level vector above only feeds the older
+      // match_ai_knowledge_documents(). Hand the document to the embed worker rather
+      // than chunking inline so a slow provider never stalls the crawl.
+      await queueService.publish(KNOWLEDGE_QUEUES.EMBED, { documentId });
       await politeDelay(DELAY_MIN_MS, DELAY_MAX_MS);
     }
 
