@@ -22,8 +22,14 @@ import type { ListServicesQuery } from "../schemas/catalog.schema.js";
 
 const T = "catalog_services";
 
-/** The only rows an unauthenticated visitor may ever see. */
-function liveScope(query: Knex.QueryBuilder): Knex.QueryBuilder {
+/**
+ * The only rows an unauthenticated visitor may ever see.
+ *
+ * Exported so the public profile reads (profiles.repository.ts) go through the
+ * same predicate rather than restating it — one place to change, one place the
+ * leak tests point at.
+ */
+export function liveScope(query: Knex.QueryBuilder): Knex.QueryBuilder {
   return query
     .where(`${T}.is_published`, true)
     .whereNull(`${T}.deleted_at`)
@@ -39,7 +45,7 @@ function liveScope(query: Knex.QueryBuilder): Knex.QueryBuilder {
  * consulted: an unclaimed directory listing is unpublished by definition, and its
  * services are exactly what the public catalog exists to show.
  */
-function baseQuery(db: Knex = masterKnex): Knex.QueryBuilder {
+export function baseQuery(db: Knex = masterKnex): Knex.QueryBuilder {
   return db(T)
     .leftJoin("businesses as b", function () {
       this.on(`${T}.owner_org_id`, "b.id").andOnVal(`${T}.owner_org_type`, "business");
@@ -87,6 +93,9 @@ const LIST_COLUMNS = [
 ] as const;
 
 const OWNER_COLUMNS = [
+  // The owner's public profile slug — the only way a service card can link to
+  // the org that runs it. Never schema_name, which stays server-side.
+  "coalesce(b.slug, i.slug) as owner_slug",
   "coalesce(b.business_name, i.institution_name) as owner_name",
   "coalesce(b.city, i.city) as owner_city",
   "coalesce(b.logo_url, i.logo_url) as owner_logo_url",
@@ -230,7 +239,24 @@ export async function findServiceChildren(schema: string, serviceId: string) {
   return { fees, intakes, eligibility, study_options: studyOptions, study_units: studyUnits, accreditations };
 }
 
-/** Facet values for the browse UI — only ones that actually have live services. */
+/**
+ * Facet values for the browse UI — only ones that actually have live services.
+ *
+ * FACET COMPLETENESS (§3.3, Wave C2b)
+ * The rule the filter sidebar already states in the frontend ("a control that
+ * looks like a filter and changes no results is worse than an absent one") has a
+ * mirror image on this side: a filter the API implements with no facet behind it
+ * is a control the UI cannot build. Every dimension applyFilters() understands is
+ * therefore counted here — city, currency, study mode and intake month were the
+ * gaps, plus the fee bounds a range slider needs and the unfiltered total that
+ * V2's facet endpoints returned.
+ *
+ * Facets are deliberately NOT scoped to the current query. Narrowing every facet
+ * by the active filters makes each dimension exclude its own alternatives, which
+ * is a different (and larger) feature than counting.
+ * ponytail: unscoped counts. Add per-dimension scoped counts when the UI starts
+ * showing live-narrowing numbers next to unselected values.
+ */
 export async function listFacets() {
   const distinct = (table: string, column: string) =>
     liveScope(baseQuery())
@@ -241,7 +267,32 @@ export async function listFacets() {
       .count({ services: `${T}.service_id` })
       .orderBy("t.name", "asc");
 
-  const [categories, degreeLevels, areasOfStudy, countries] = await Promise.all([
+  /**
+   * study_mode and intake_months are arrays and the matching filters use `@>`, so
+   * a service belongs to every value it carries. unnest + count(distinct) keeps a
+   * facet count equal to what filtering on that value returns, which is the
+   * property the suite asserts.
+   */
+  const fromArray = (column: string, alias: string) =>
+    liveScope(baseQuery())
+      .joinRaw(`join lateral unnest(${T}.${column}) as u(value) on true`)
+      .groupBy("u.value")
+      .select({ [alias]: "u.value" })
+      .countDistinct({ services: `${T}.service_id` })
+      .orderBy("u.value", "asc");
+
+  const [
+    categories,
+    degreeLevels,
+    areasOfStudy,
+    countries,
+    cities,
+    currencies,
+    studyModes,
+    intakeMonths,
+    [bounds],
+    [{ count: total }],
+  ] = await Promise.all([
     distinct("service_categories", "service_category_id"),
     distinct("degree_levels", "degree_level_id"),
     distinct("areas_of_study", "area_of_study_id"),
@@ -251,7 +302,40 @@ export async function listFacets() {
       .select("c.id", "c.name", "c.iso2")
       .count({ services: `${T}.service_id` })
       .orderBy("c.name", "asc"),
+    // The org's city is free text on businesses/institutions, not an FK to
+    // public.cities, so this counts the same expression the city filter matches.
+    liveScope(baseQuery())
+      .whereRaw("coalesce(b.city, i.city) is not null")
+      .groupByRaw("coalesce(b.city, i.city), c.id, c.name")
+      .select(masterKnex.raw("coalesce(b.city, i.city) as name"), "c.id as country_id", "c.name as country_name")
+      .count({ services: `${T}.service_id` })
+      .orderByRaw("coalesce(b.city, i.city) asc"),
+    liveScope(baseQuery())
+      .whereRaw(`coalesce(${T}.fee_currency, ${T}.price_currency) is not null`)
+      .groupByRaw(`coalesce(${T}.fee_currency, ${T}.price_currency)`)
+      .select(masterKnex.raw(`coalesce(${T}.fee_currency, ${T}.price_currency) as code`))
+      .count({ services: `${T}.service_id` })
+      .orderByRaw(`coalesce(${T}.fee_currency, ${T}.price_currency) asc`),
+    fromArray("study_mode", "value"),
+    fromArray("intake_months", "month"),
+    // Bounds for the budget slider. Mixed currencies are not converted — the same
+    // caveat the sidebar already prints — so this is the raw span of live prices.
+    liveScope(baseQuery()).select(
+      masterKnex.raw(`min(coalesce(${T}.min_fee, ${T}.price)) as min, max(coalesce(${T}.max_fee, ${T}.price)) as max`),
+    ),
+    liveScope(baseQuery()).count({ count: `${T}.service_id` }),
   ]);
 
-  return { categories, degree_levels: degreeLevels, areas_of_study: areasOfStudy, countries };
+  return {
+    categories,
+    degree_levels: degreeLevels,
+    areas_of_study: areasOfStudy,
+    countries,
+    cities,
+    currencies,
+    study_modes: studyModes,
+    intake_months: intakeMonths,
+    fee_range: { min: bounds.min === null ? null : Number(bounds.min), max: bounds.max === null ? null : Number(bounds.max) },
+    total: Number(total),
+  };
 }

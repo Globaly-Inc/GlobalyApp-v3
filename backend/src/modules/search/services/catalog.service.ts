@@ -6,6 +6,7 @@ import { NotFoundError } from "../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
 import * as repo from "../repositories/catalog.repository.js";
 import type { ListServicesQuery } from "../schemas/catalog.schema.js";
+import { serviceSeo } from "../utils/seo.js";
 
 interface Row extends Record<string, unknown> {
   service_id: string;
@@ -17,6 +18,7 @@ function toService(row: Row) {
   const {
     owner_org_type,
     owner_org_id,
+    owner_slug,
     owner_name,
     owner_city,
     owner_logo_url,
@@ -48,6 +50,8 @@ function toService(row: Row) {
     provider: {
       org_type: owner_org_type,
       org_id: owner_org_id,
+      // The org's public profile slug — what a service card links to.
+      slug: owner_slug ?? null,
       name: owner_name,
       city: owner_city,
       logo_url: owner_logo_url,
@@ -70,7 +74,22 @@ export async function getService(serviceId: string) {
   if (!row) throw new NotFoundError("Service not found");
 
   const children = await repo.findServiceChildren(row.schema_name as string, serviceId);
-  return { data: { ...toService(row), ...children } };
+  return {
+    data: {
+      ...toService(row),
+      ...children,
+      // Wave C2b: the detail page's canonical URL, title and JSON-LD live with
+      // the record, not with whichever page renders it (see utils/seo.ts).
+      seo: serviceSeo({
+        service_id: serviceId,
+        name: row.name as string,
+        description: row.description as string | null,
+        overview: row.overview as string | null,
+        image_url: row.image_url as string | null,
+        provider_name: row.owner_name as string | null,
+      }),
+    },
+  };
 }
 
 export async function getFacets() {
