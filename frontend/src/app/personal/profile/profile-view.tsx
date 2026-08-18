@@ -34,7 +34,6 @@ import type {
   WorkExperienceInput,
   LanguageTest
 } from "../apis/types";
-import { computeCompletion } from "../profile-completion";
 import { SectionCard, OneToManySection, Field } from "./section-card";
 import { ItemRow } from "./item-row";
 import { PersonalDetailsDialog } from "./personal-details-dialog";
@@ -156,7 +155,9 @@ export function ProfileView() {
     }
   };
 
-  const completion = computeCompletion(profile, qualifications, languageTests);
+  // Server-computed: the backend owns this rule because it also gates referral qualification.
+  // Fall back to an empty shell only so an older backend response cannot crash the page.
+  const completion = profile.completion ?? { percentage: 0, items: [] };
   const initial = profile.first_name?.[0]?.toUpperCase() ?? "U";
 
   return (

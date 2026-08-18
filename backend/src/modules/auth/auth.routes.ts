@@ -9,6 +9,9 @@ const RegisterSchema = z.object({
   first_name: z.string().min(1).max(100),
   last_name: z.string().min(1).max(100),
   email: z.string().email(),
+  // Signed W1 capability token minted by GET /referrals/lookup/:code. Optional, and an invalid,
+  // expired, or forged one is silently ignored — a referral must never block account creation.
+  ref_token: z.string().optional(),
 });
 
 const SendOtpSchema = z.object({
@@ -32,8 +35,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/register", {
     config: { rateLimit: RATE_LIMITS.register },
   }, async (req, reply) => {
-    const { first_name, last_name, email } = RegisterSchema.parse(req.body);
-    const result = await service.registerUser(first_name, last_name, email);
+    const { first_name, last_name, email, ref_token } = RegisterSchema.parse(req.body);
+    const result = await service.registerUser(first_name, last_name, email, ref_token);
     return reply.status(201).send(result);
   });
 

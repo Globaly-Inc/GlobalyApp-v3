@@ -3,11 +3,13 @@ import { saveTokens } from "@/lib/session";
 import type { AuthUser, ClaimRequestParams, RegisterParams, SendOtpParams, VerifyOtpParams } from "./types";
 
 export const signupRealApi = {
-  register: ({ firstName, lastName, email }: RegisterParams): Promise<void> =>
+  register: ({ firstName, lastName, email, refToken }: RegisterParams): Promise<void> =>
     httpPost("/auth/register", {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       email: email.trim().toLowerCase(),
+      // Omitted entirely when absent, so the backend zod schema sees an optional field rather than null.
+      ...(refToken ? { ref_token: refToken } : {}),
     }),
 
   sendOtp: ({ email }: SendOtpParams): Promise<void> =>

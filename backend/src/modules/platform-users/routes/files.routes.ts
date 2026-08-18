@@ -6,6 +6,7 @@ import * as storage from "../../../shared/storage/storageService.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as userRepo from "../repositories/platform-users.repository.js";
 import { NotFoundError, ForbiddenError } from "../../../shared/errors.js";
+import { syncCompletion } from "../services/completion.js";
 
 const FileIdParam = z.object({ id: z.coerce.number().int().positive() });
 const CategoryQuery = z.object({ category: z.string().optional() });
@@ -45,6 +46,9 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
     // If profile photo or cover, update the corresponding URL column on platform_users
     if (fileCategory === "profile") {
       await userRepo.updateUser(userId, { photo_url: storagePath });
+      // "Profile photo" is one of the 8 completion criteria, so this is a completion-changing site
+      // even though it lives outside platform-users.service.ts.
+      await syncCompletion(userId);
     } else if (fileCategory === "cover") {
       await userRepo.updateUser(userId, { cover_url: storagePath });
     }
@@ -116,6 +120,7 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
     // Clear the corresponding URL column if deleting a profile photo or cover
     if (file.category === "profile") {
       await userRepo.updateUser(Number(req.auth.sub), { photo_url: null });
+      await syncCompletion(Number(req.auth.sub)); // completion can go DOWN, not only up
     } else if (file.category === "cover") {
       await userRepo.updateUser(Number(req.auth.sub), { cover_url: null });
     }

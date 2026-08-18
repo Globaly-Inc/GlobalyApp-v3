@@ -47,6 +47,21 @@ let mockProfile: StudentProfile = {
   linkedin_url: null,
   website_url: null,
   onboarding_completed: false,
+  // Mirrors the server contract. The real figure is computed by the backend, which is also what
+  // decides referral qualification — the browser no longer computes it at all.
+  completion: {
+    percentage: 25,
+    items: [
+      { label: "Full name", met: true },
+      { label: "Profile photo", met: true },
+      { label: "Nationality", met: false },
+      { label: "Country of residence", met: false },
+      { label: "Education background", met: false },
+      { label: "Test scores", met: false },
+      { label: "Budget range", met: false },
+      { label: "Preferred destinations", met: false },
+    ],
+  },
 };
 
 let mockQualifications: Qualification[] = [];
