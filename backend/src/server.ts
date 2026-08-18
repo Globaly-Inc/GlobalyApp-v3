@@ -18,7 +18,7 @@ import { createChildLogger } from "./shared/logger.js";
 // Modules
 import authModule from "./modules/auth/index.js";
 import superadminModule from "./modules/superadmin/index.js";
-import platformUsersModule from "./modules/platform-users/index.js";
+import platformUsersModule, { publicStudentProfilesModule } from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
 import agentsModule from "./modules/agents/index.js";
 import feedModule from "./modules/feed/index.js";
@@ -69,6 +69,7 @@ export async function buildServer() {
   await app.register(aiCounsellorModule);    // public AI counsellor (no auth)
   await app.register(billingModule);         // credits, subscriptions, Stripe webhook (own auth scope)
   await app.register(publicEventsModule);    // public event browse + Stripe event-ticket webhook (no JWT)
+  await app.register(publicStudentProfilesModule); // public student profiles by slug (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

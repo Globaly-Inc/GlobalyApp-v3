@@ -58,6 +58,9 @@ export default defineConfig({
         "src/modules/enquiries/**/*.ts",
         // D2 — messaging
         "src/modules/messaging/**/*.ts",
+        // D4 — feed comments, public student profiles
+        "src/modules/feed/**/*comment*.ts",
+        "src/modules/platform-users/**/*public-profile*.ts",
         // D3 — events, ticketing, notifications
         "src/modules/events/**/*.ts",
         "src/modules/notifications/**/*.ts",
