@@ -81,6 +81,17 @@ describeDb("ai counsellor", () => {
 
   let runId = "";
 
+  /**
+   * Every platform_user this suite invents, so afterAll can take them back out.
+   *
+   * Leaving them behind is not harmless: the database is shared, and a stray
+   * `businesses` row makes the W1 tenant-provisioning suite provision one more
+   * schema on every future run.
+   */
+  const createdUserIds: number[] = [];
+  let extractionJobId = "";
+  const suiteStart = new Date();
+
   const START_CREDITS = 200;
 
   beforeAll(async () => {
@@ -113,6 +124,7 @@ describeDb("ai counsellor", () => {
           account_status: 1,
         })
         .returning(["id"]);
+      createdUserIds.push(Number(row.id));
       return Number(row.id);
     };
     userA = await insertUser("owner-a");
@@ -173,6 +185,24 @@ describeDb("ai counsellor", () => {
   afterAll(async () => {
     provider?.setAiProvider(null);
     await app?.close();
+
+    if (masterKnex) {
+      // Wallets, ledger rows, sessions, messages and usage events all cascade from
+      // their owner, and the businesses cascade from theirs — so removing the users
+      // removes everything this suite wrote about them.
+      // Guest rows are keyed by a hash, so there is no run marker to match on —
+      // but nothing else in the suite set writes this table.
+      await masterKnex("ai_guest_chat_sessions").where("created_at", ">=", suiteStart).del();
+      await masterKnex("businesses").whereIn("id", [bizA, bizB]).del();
+      await masterKnex("platform_users").whereIn("id", createdUserIds).del();
+      if (extractionJobId) {
+        await masterKnex("superadmin.extraction_visas").where("visa_stream", "like", `%${runId}`).del();
+        await masterKnex("superadmin.extraction_mara_agents").where({ marn: `MARN-${runId}` }).del();
+        // courses / institution overview / agents cascade from the job.
+        await masterKnex("superadmin.extraction_jobs").where({ id: extractionJobId }).del();
+      }
+    }
+
     await shutdownPools?.();
     await masterKnex?.destroy();
   });
@@ -474,6 +504,7 @@ describeDb("ai counsellor", () => {
         .insert({ first_name: "AI", last_name: "Broke", email: uniqueEmail("ai.broke"), account_status: 1 })
         .returning(["id"]);
       const brokeId = Number(emptyUser.id);
+      createdUserIds.push(brokeId);
       await masterKnex("credit_wallets").insert({
         owner_type: "user",
         platform_user_id: brokeId,
@@ -498,6 +529,7 @@ describeDb("ai counsellor", () => {
         .insert({ first_name: "AI", last_name: "Thin", email: uniqueEmail("ai.thin"), account_status: 1 })
         .returning(["id"]);
       const thinId = Number(thin.id);
+      createdUserIds.push(thinId);
       const [wallet] = await masterKnex("credit_wallets")
         .insert({ owner_type: "user", platform_user_id: thinId, free_balance: 1 })
         .returning(["id"]);
@@ -522,6 +554,7 @@ describeDb("ai counsellor", () => {
         .insert({ first_name: "AI", last_name: "Mixed", email: uniqueEmail("ai.mixed"), account_status: 1 })
         .returning(["id"]);
       const mixedId = Number(mixed.id);
+      createdUserIds.push(mixedId);
       const [wallet] = await masterKnex("credit_wallets")
         .insert({
           owner_type: "user",
@@ -955,6 +988,7 @@ describeDb("ai counsellor", () => {
       const [job] = await masterKnex("superadmin.extraction_jobs")
         .insert({ institution_url: `https://${keyword}.test` })
         .returning(["id"]);
+      extractionJobId = job.id;
       await masterKnex("superadmin.extraction_institution_overview").insert({
         job_id: job.id,
         name: `${keyword} University`,
