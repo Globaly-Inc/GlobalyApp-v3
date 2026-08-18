@@ -32,6 +32,8 @@ import messagingModule from "./modules/messaging/index.js";
 import eventsModule, { publicEventsModule } from "./modules/events/index.js";
 import notificationsModule from "./modules/notifications/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
+import scholarshipsPublicModule from "./modules/scholarships/index.js";
+import { publicVisasModule } from "./modules/visas/index.js";
 
 const logger = createChildLogger("server");
 
@@ -70,6 +72,8 @@ export async function buildServer() {
   await app.register(billingModule);         // credits, subscriptions, Stripe webhook (own auth scope)
   await app.register(publicEventsModule);    // public event browse + Stripe event-ticket webhook (no JWT)
   await app.register(publicStudentProfilesModule); // public student profiles by slug (no auth)
+  await app.register(scholarshipsPublicModule);    // public scholarships reads (no auth)
+  await app.register(publicVisasModule);           // public visa + MARA agent directory (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));
