@@ -497,11 +497,11 @@ describeDb("ads", () => {
     });
 
     it("counts distinct viewers separately", async () => {
-      const c = await makeCampaign(alpha, { cost_model: "flat" });
+      const c = await makeCampaign(alpha, { cost_model: "cpl" });
       await post("/api/v3/ads/impressions", viewer.token, { campaign_id: c.id, placement: c.placement });
       await post("/api/v3/ads/impressions", viewer2.token, { campaign_id: c.id, placement: c.placement });
       expect((await campaignRow(c.id)).impressions_count).toBe(2);
-      // 'flat' is not CPV — nothing is spent per view.
+      // A cpl campaign charges per lead, not per view — nothing is spent here.
       expect(Number((await campaignRow(c.id)).spent_amount)).toBe(0);
     });
 
@@ -523,7 +523,7 @@ describeDb("ads", () => {
     });
 
     it("bills 50 credits on the 1,000th impression, exactly once (D-G5-1)", async () => {
-      const c = await makeCampaign(alpha, { cost_model: "flat" });
+      const c = await makeCampaign(alpha, { cost_model: "cpl" });
       await fundWallet(alpha.id, 10_000);
       const before = await balanceOf(alpha.id);
 
@@ -549,7 +549,7 @@ describeDb("ads", () => {
     });
 
     it("pauses the campaign and notifies the owner when credits run short at a block boundary", async () => {
-      const c = await makeCampaign(alpha, { cost_model: "flat" });
+      const c = await makeCampaign(alpha, { cost_model: "cpl" });
       // Drain the wallet so the 50-credit block charge cannot be covered.
       const balance = await balanceOf(alpha.id);
       if (balance > 0) {
@@ -584,6 +584,40 @@ describeDb("ads", () => {
       expect(note).toBeTruthy();
       expect(note!.platform_user_ids).toEqual([alpha.ownerId]);
       expect(note!.reference_type).toBe("ad_campaign");
+      spy.mockRestore();
+    });
+
+    // Regression guard for the fail-open the security review caught: a bare
+    // `catch {}` around the block settlement read EVERY failure as "out of
+    // credits", so a deadlock or a bug inside spendCredits silently lost the
+    // revenue AND paused the advertiser for a reason that was never true.
+    // Only a 402 may pause; anything else is a real fault and must propagate.
+    it("propagates a non-402 settle failure instead of pausing the campaign", async () => {
+      const c = await makeCampaign(alpha, { cost_model: "cpl" });
+      await fundWallet(alpha.id, 10_000);
+      const before = await balanceOf(alpha.id);
+      await masterKnex("ad_campaigns").where({ id: c.id }).update({ impressions_count: 999 });
+
+      const creditsModule = await import("../../src/modules/billing/services/credits.service.js");
+      const spy = vi
+        .spyOn(creditsModule, "spendCredits")
+        .mockRejectedValue(new Error("deadlock detected"));
+
+      const res = await post("/api/v3/ads/impressions", viewer.token, {
+        campaign_id: c.id,
+        placement: c.placement,
+      });
+      // The fault surfaces as a 500 rather than a quiet success.
+      expect(res.statusCode).toBe(500);
+
+      const row = await campaignRow(c.id);
+      // NOT paused: an infrastructure fault is not an empty wallet.
+      expect(row.status).toBe("active");
+      // And the block is not marked billed, so a retry can still settle it.
+      expect(row.billed_impression_blocks).toBe(0);
+      // The wallet was never touched.
+      expect(await balanceOf(alpha.id)).toBe(before);
+
       spy.mockRestore();
     });
 
@@ -660,7 +694,7 @@ describeDb("ads", () => {
 
   describe("analytics", () => {
     it("returns the raw per-creative rows V2's editor slices, with no viewer identity", async () => {
-      const c = await makeCampaign(alpha, { cost_model: "flat" });
+      const c = await makeCampaign(alpha, { cost_model: "cpl" });
       await post("/api/v3/ads/impressions", viewer.token, {
         campaign_id: c.id,
         placement: c.placement,

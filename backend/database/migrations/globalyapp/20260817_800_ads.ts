@@ -33,10 +33,13 @@
 
 import type { Knex } from "knex";
 
-const OBJECTIVES = ["awareness", "traffic", "leads", "engagement"] as const;
+// V1's `validate_ad_campaign` trigger, expressed as CHECK constraints. Its four
+// lists ARE the vocabulary — objective and cost_model each have exactly two legal
+// values, and a trigger that RAISEs is a constraint written the long way.
+const OBJECTIVES = ["awareness", "leads"] as const;
 const STATUSES = ["draft", "pending_review", "active", "paused", "rejected", "completed"] as const;
 const BUDGET_TYPES = ["daily", "lifetime"] as const;
-const COST_MODELS = ["cpv", "cpl", "cpc", "flat"] as const;
+const COST_MODELS = ["cpv", "cpl"] as const;
 const MEDIA_TYPES = ["image", "video"] as const;
 
 export async function up(knex: Knex): Promise<void> {

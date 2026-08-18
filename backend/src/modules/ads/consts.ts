@@ -2,7 +2,13 @@
 // AdminAds.tsx) so migrated rows and new rows price and behave the same way.
 // Every list here is mirrored by a CHECK constraint in 20260817_800/801.
 
-export const AD_OBJECTIVES = ["awareness", "traffic", "leads", "engagement"] as const;
+/**
+ * V1's `validate_ad_campaign` trigger: `objective NOT IN ('awareness','leads')
+ * → RAISE EXCEPTION`. That trigger IS the vocabulary — there is no third value in
+ * V1 or V2, and BusinessAdCampaignEditor.tsx picks the cost model from it
+ * (awareness → cpv, else cpl).
+ */
+export const AD_OBJECTIVES = ["awareness", "leads"] as const;
 export type AdObjective = (typeof AD_OBJECTIVES)[number];
 
 export const AD_STATUSES = [
@@ -27,7 +33,18 @@ export const ADVERTISER_SETTABLE_STATUSES: readonly AdStatus[] = ["draft", "pend
 export const AD_BUDGET_TYPES = ["daily", "lifetime"] as const;
 export type AdBudgetType = (typeof AD_BUDGET_TYPES)[number];
 
-export const AD_COST_MODELS = ["cpv", "cpl", "cpc", "flat"] as const;
+/**
+ * EXACTLY the two V1 allows: `cost_model NOT IN ('cpv','cpl') → RAISE EXCEPTION`
+ * in the same trigger.
+ *
+ * An earlier draft of this file also carried `cpc` and `flat`. Both were removed
+ * rather than implemented, because neither exists in V1 or V2 and neither had a
+ * charge path — a `cpc` campaign would have served and been clicked for free
+ * forever. A click in this system is not a third cost model: it is a LEAD with
+ * `lead_type = 'click'`, which `cpl` already bills. So every value here bills, and
+ * the CHECK constraint in 20260817_800 is V1's trigger expressed as a constraint.
+ */
+export const AD_COST_MODELS = ["cpv", "cpl"] as const;
 export type AdCostModel = (typeof AD_COST_MODELS)[number];
 
 export const AD_MEDIA_TYPES = ["image", "video"] as const;
