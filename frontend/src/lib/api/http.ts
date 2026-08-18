@@ -58,18 +58,29 @@ async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Respo
 export class ApiError extends Error {
   code?: string;
   details?: unknown;
-  constructor(message: string, code?: string, details?: unknown) {
+  /**
+   * The HTTP status. Carried because `code` alone is not enough to recognise a
+   * throttle: the API answers a rate-limited route with 429 + code
+   * "FST_ERR_RATE_LIMIT", but an ingress or CDN can return a 429 whose body has no
+   * code at all, and readError's catch branch then produces a codeless ApiError.
+   */
+  status?: number;
+  constructor(message: string, code?: string, details?: unknown, status?: number) {
     super(message);
     this.code = code;
+    // Previously dropped on the floor, which silently made fieldErrorsFrom() —
+    // whose whole job is reading `details` — return {} for every caller.
+    this.details = details;
+    this.status = status;
   }
 }
 
 async function readError(res: Response): Promise<ApiError> {
   try {
     const data = (await res.json()) as { error?: string; message?: string; code?: string; details?: unknown };
-    return new ApiError(data.error || data.message || "Please try again.", data.code, data.details);
+    return new ApiError(data.error || data.message || "Please try again.", data.code, data.details, res.status);
   } catch {
-    return new ApiError("Please try again.");
+    return new ApiError("Please try again.", undefined, undefined, res.status);
   }
 }
 
