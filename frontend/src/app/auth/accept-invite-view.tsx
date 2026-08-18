@@ -15,15 +15,12 @@ export function AcceptInviteView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const [status, setStatus] = useState<Status>("loading");
-  const [message, setMessage] = useState("");
+  // A missing token is known at render time, so it is the initial state — not effect state.
+  const [status, setStatus] = useState<Status>(token ? "loading" : "error");
+  const [message, setMessage] = useState(token ? "" : "This invitation link is missing a token.");
 
   useEffect(() => {
-    if (!token) {
-      setStatus("error");
-      setMessage("This invitation link is missing a token.");
-      return;
-    }
+    if (!token) return;
     authApi
       .acceptInvite({ token })
       .then((result) => {

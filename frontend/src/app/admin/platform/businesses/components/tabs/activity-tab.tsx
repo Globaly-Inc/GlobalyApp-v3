@@ -15,15 +15,17 @@ function formatAction(action: string): string {
 export function ActivityTab({ businessId }: Readonly<{ businessId: number }>) {
   const dispatch = useAppDispatch();
   const { items: activity, status, total } = useAppSelector((state) => state.platformBusinesses.activity);
-  const [page, setPage] = useState(1);
+  // The page resets to 1 whenever the query changes — derived from the query key, not set in an effect.
+  const queryKey = String(businessId);
+  const [pager, setPager] = useState({ queryKey, page: 1 });
+  const page = pager.queryKey === queryKey ? pager.page : 1;
 
   useEffect(() => {
-    setPage(1);
     dispatch(fetchActivity({ id: businessId, params: { page: 1, limit: PAGE_SIZE } }));
   }, [dispatch, businessId]);
 
   const handlePageChange = (p: number) => {
-    setPage(p);
+    setPager({ queryKey, page: p });
     dispatch(fetchActivity({ id: businessId, params: { page: p, limit: PAGE_SIZE } }));
   };
 

@@ -175,11 +175,14 @@ export function CourseDetailPanel({
   const [addingOption, setAddingOption] = useState(false);
   const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
 
-  // Re-seed when a different course is selected, or after a save round-trips.
-  useEffect(() => {
+  // Re-seed when a different course is selected, or after a save round-trips. Comparing
+  // the previous course during render re-seeds before the stale draft is ever committed.
+  const [seededCourse, setSeededCourse] = useState(course);
+  if (seededCourse !== course) {
+    setSeededCourse(course);
     setDescription(course.description ?? "");
     setEditingDescription(false);
-  }, [course]);
+  }
 
   useEffect(() => {
     const toOptions = (rows: { name: string }[]) => rows.map((r) => ({ value: r.name, label: r.name }));

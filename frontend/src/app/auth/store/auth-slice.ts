@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { authApi } from "../apis";
 import type { AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "../apis/types";
@@ -12,10 +12,16 @@ export function toPortalCategory(value: string | null | undefined): PortalCatego
   return value === "personal" || value === "business" ? value : null;
 }
 
+// Server render and the hydrating client render must agree, so the real auth state is
+// withheld until after hydration. useSyncExternalStore is React's own way to say
+// "false on the server, true on the client" without an effect that sets state.
+const neverChanges = () => () => {};
+const onClient = () => true;
+const onServer = () => false;
+
 export function useAuthState() {
   const state = useAppSelector((s) => s.auth);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(neverChanges, onClient, onServer);
   return mounted ? state : { ...state, user: null, initializing: true };
 }
 

@@ -49,8 +49,8 @@ export function BranchForm({
 }>) {
   const [values, setValues] = useState<BranchValues>(branch ? fromBranch(branch) : empty);
   const [countries, setCountries] = useState<Country[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
-  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [fetchedCities, setFetchedCities] = useState<City[]>([]);
+  const [citiesLoadedFor, setCitiesLoadedFor] = useState<number>();
 
   const set = <K extends keyof BranchValues>(key: K, value: BranchValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
@@ -63,16 +63,16 @@ export function BranchForm({
 
   // Cities depend on the picked country; countries are stored by name on the branch row.
   const countryId = countries.find((c) => c.name === values.country)?.id;
+  // No country picked means no cities, and we are loading until the fetch for this
+  // country settles — both derived, so the effect only owns the fetch itself.
+  const cities = countryId ? fetchedCities : [];
+  const citiesLoading = !!countryId && citiesLoadedFor !== countryId;
   useEffect(() => {
-    if (!countryId) {
-      setCities([]);
-      return;
-    }
-    setCitiesLoading(true);
+    if (!countryId) return;
     geoApi.getCities(countryId)
-      .then(setCities)
+      .then(setFetchedCities)
       .catch((e: Error) => toast.error("Could not load cities", { description: e.message }))
-      .finally(() => setCitiesLoading(false));
+      .finally(() => setCitiesLoadedFor(countryId));
   }, [countryId]);
 
   const submit = () => {

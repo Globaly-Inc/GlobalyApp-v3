@@ -32,8 +32,13 @@ export function LinkBranchDialog({
   const [sharedServices, setSharedServices] = useState<SharedServices>([]);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
+  // Re-seed when the sheet opens, or when a different branch is handed in while it is
+  // open. Derived by comparing against the previous props during render — seeding from
+  // an effect would commit one render of the stale form first. Nothing is re-seeded
+  // while closing, so the form does not flash empty behind the exit animation.
+  const seedFor = open ? (editBranch ?? null) : undefined;
+  const [seededFor, setSeededFor] = useState<Branch | null | undefined>(undefined);
+  if (seedFor !== seededFor && open) {
     if (editBranch) {
       setSelectedBizId(String(editBranch.linked_business_id));
       setBranchType(editBranch.branch_type);
@@ -42,8 +47,12 @@ export function LinkBranchDialog({
       setSelectedBizId("");
       setBranchType("same_company");
       setSharedServices([]);
-      if (businesses.length === 0) dispatch(fetchBusinesses({}));
     }
+  }
+  if (seedFor !== seededFor) setSeededFor(seedFor);
+
+  useEffect(() => {
+    if (open && !editBranch && businesses.length === 0) dispatch(fetchBusinesses({}));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editBranch]);
 

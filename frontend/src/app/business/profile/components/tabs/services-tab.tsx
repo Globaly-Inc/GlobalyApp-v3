@@ -23,21 +23,23 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
   const [deletingService, setDeletingService] = useState<BusinessService | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  // The page resets to 1 whenever the query changes — derived from the query key, not set in an effect.
+  const queryKey = `${businessId}|${search}`;
+  const [pager, setPager] = useState({ queryKey, page: 1 });
+  const page = pager.queryKey === queryKey ? pager.page : 1;
 
   const fetchPage = (p: number) => {
     dispatch(fetchServices({ id: businessId, params: { search: search || undefined, page: p, limit: PAGE_SIZE } }));
   };
 
   useEffect(() => {
-    setPage(1);
     const timer = setTimeout(() => fetchPage(1), 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, businessId, search]);
 
   const handlePageChange = (p: number) => {
-    setPage(p);
+    setPager({ queryKey, page: p });
     fetchPage(p);
   };
 
