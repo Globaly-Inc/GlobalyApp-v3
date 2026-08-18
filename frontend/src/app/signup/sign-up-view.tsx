@@ -16,12 +16,15 @@ import { clearFieldErrorIfNowValid, validateSignUpDetails } from "./utils";
 import { BusinessClaimOfferCard } from "./components/business-claim-offer-card";
 import { RegistrationForm } from "./components/registration-form";
 import { OtpVerifyForm } from "./components/otp-verify-form";
+import { captureRefTokenIfAbsent, clearRefToken, getRefToken } from "@/lib/referral-token";
+import { joinApi } from "@/app/join/apis";
 
 export function SignUpView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = searchParams.get("redirect");
   const prefillEmail = searchParams.get("email");
+  const rawRef = searchParams.get("ref");
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -42,6 +45,28 @@ export function SignUpView() {
     const timer = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
     return () => clearTimeout(timer);
   }, [resendCooldown]);
+
+  // Someone may share the sign-up URL directly with ?ref=CODE instead of going through /join.
+  //
+  // The ORDER here is the whole of INV-8 and must not be rearranged: if a token is already stored,
+  // return immediately and do NOT resolve ?ref at all. Resolving first would invite an implementer to
+  // store or use the newer code, so a stored Alice would be clobbered by a URL-supplied Bob.
+  useEffect(() => {
+    if (getRefToken()) return; // first-touch already captured — short-circuit, not a preference
+    if (!rawRef) return;
+    let cancelled = false;
+    joinApi
+      .lookup(rawRef)
+      .then((res) => {
+        if (!cancelled) captureRefTokenIfAbsent(res.ref_token);
+      })
+      .catch(() => {
+        /* unknown or unusable code — a referral never blocks sign-up, and there is nothing to show */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rawRef]);
 
   const handleFirstNameChange = (value: string) => {
     setFirstName(value);
@@ -69,7 +94,9 @@ export function SignUpView() {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    const result = await dispatch(registerAndSendOtp({ firstName, lastName, email }));
+    const result = await dispatch(
+      registerAndSendOtp({ firstName, lastName, email, refToken: getRefToken() ?? undefined }),
+    );
     if (registerAndSendOtp.fulfilled.match(result)) {
       setOtpSent(true);
       setResendCooldown(60);
@@ -119,6 +146,9 @@ export function SignUpView() {
     setFieldErrors({});
     const result = await dispatch(verifySignUpOtp({ email, otp: otpCode }));
     if (verifySignUpOtp.fulfilled.match(result)) {
+      // The account now exists, so the server has consumed (or terminally rejected) the pending
+      // referral. Keeping the token would do nothing but linger.
+      clearRefToken();
       toast.success("Welcome!", { description: "Your account has been created." });
 
       const meResult = await dispatch(fetchMe());

@@ -6,6 +6,7 @@ import * as storage from "../../../shared/storage/storageService.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as userRepo from "../repositories/platform-users.repository.js";
 import { NotFoundError, ForbiddenError } from "../../../shared/errors.js";
+import { syncCompletion } from "../services/completion.js";
 
 const FileIdParam = z.object({ id: z.coerce.number().int().positive() });
 const CategoryQuery = z.object({ category: z.string().optional() });
@@ -48,6 +49,7 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
     } else if (fileCategory === "cover") {
       await userRepo.updateUser(userId, { cover_url: storagePath });
     }
+    await syncCompletion(userId);
 
     return reply.status(201).send({
       id: record.id,
@@ -119,6 +121,8 @@ export async function platformUserFileRoutes(app: FastifyInstance) {
     } else if (file.category === "cover") {
       await userRepo.updateUser(Number(req.auth.sub), { cover_url: null });
     }
+
+    await syncCompletion(Number(req.auth.sub)); // completion can go DOWN, not only up
 
     return reply.status(204).send();
   });

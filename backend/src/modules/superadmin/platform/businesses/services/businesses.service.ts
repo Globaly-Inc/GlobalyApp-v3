@@ -16,6 +16,7 @@ import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../../../platform-users/repositories/platform-users.repository.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
 import * as agentsService from "../../../../agents/services/agents.service.js";
+import { onBusinessVerified } from "../../../../referrals/services/qualification.service.js";
 import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput,
   MemberInviteInput, MemberPatchInput,
@@ -132,6 +133,14 @@ export async function updateStatus(id: number, status: BusinessStatus) {
   const updates: Record<string, unknown> = { status };
   if (status === "verified") updates.verified_at = new Date();
   await repo.updateBusiness(id, updates);
+
+  // Referral qualification: verifying a business owned by a referred user pays that user's referrer.
+  // The service re-verifies every precondition from a fresh read, so this is a trigger and not a guard.
+  // Fire-and-forget: an award must never fail an admin action.
+  if (status === "verified") {
+    onBusinessVerified(id).catch(() => { /* logged inside the service */ });
+  }
+
   return { status };
 }
 

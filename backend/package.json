@@ -13,6 +13,8 @@
     "seed:globalyapp": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp",
     "seed:superadmin": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env superadmin",
     "job:auth": "node --import tsx src/modules/auth/jobs/email.worker.ts",
+    "job:referral-codes": "node --import tsx src/modules/referrals/workers/backfill-referral-codes.worker.ts",
+    "test:referrals": "node --import tsx tests/referrals.ts",
     "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",
     "job:extraction-pages": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-page.worker.ts",
     "job:extraction-verify": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-verify.worker.ts",

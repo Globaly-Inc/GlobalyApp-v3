@@ -32,6 +32,7 @@ import scholarshipsPublicModule from "./modules/scholarships/index.js";
 import aiCounsellorModule, { publicAiCounsellorModule } from "./modules/ai-counsellor/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
 import coursesModule from "./modules/courses/index.js";
+import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
 
 const logger = createChildLogger("server");
 
@@ -60,6 +61,7 @@ export async function buildServer() {
     await protectedApp.register(aiCounsellorModule);   // AI counsellor — chat, credits, sessions, embed configs
     await protectedApp.register(enquiriesModule);      // student enquiry creation + lookup
     await protectedApp.register(coursesModule);        // student course browse (extracted courses)
+    await protectedApp.register(referralsModule);           // Earn → Referrals: own code, stats, history
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
@@ -68,6 +70,9 @@ export async function buildServer() {
   await app.register(searchModule);          // public search reads (no auth)
   await app.register(scholarshipsPublicModule); // public scholarships reads (no auth)
   await app.register(publicAiCounsellorModule); // guest + embed-widget AI chat (no auth)
+  // Reward config + the /join code lookup. Registered outside the protected scope so these two routes
+  // never acquire the auth hook — public by construction, not by an allow-list.
+  await app.register(publicReferralsModule);
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

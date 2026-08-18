@@ -31,6 +31,8 @@ export type StudentProfile = {
   expected_start_date: string | null;
   linkedin_url: string | null;
   website_url: string | null;
+  /** Server-computed. null only if an older backend response lacks it. */
+  completion: ProfileCompletion | null;
   onboarding_completed: boolean;
 };
 
@@ -55,6 +57,14 @@ export type Qualification = {
 };
 
 export type QualificationInput = Omit<Qualification, "id">;
+
+/**
+ * Profile completion, computed SERVER-side. The browser used to compute this independently in
+ * profile-completion.ts, which has been deleted: the backend needs the same figure to decide referral
+ * qualification, and two implementations of one rule would inevitably drift.
+ */
+export type CompletionItem = { label: string; met: boolean };
+export type ProfileCompletion = { percentage: number; items: CompletionItem[] };
 
 export type LanguageTest = {
   id: string;
