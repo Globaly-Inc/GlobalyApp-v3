@@ -16,10 +16,13 @@ import { createEnquiry, fetchCourseOptions, fetchEnquiries } from "../store/enqu
 import { INTAKE_MONTHS, defaultIntakeYear, INTAKE_YEAR_RANGE } from "../const";
 import type { CreateEnquiryInput } from "../apis/types";
 
+// Mirrors CreateEnquirySchema on the server, which is `.strict()` — an extra key
+// here is a 400, not an ignored field. `extraction_job_id` and `business_id` used
+// to be in this object; neither is a column on our enquiries table (the job id was
+// a concept of the removed second backend, and the only business a student can
+// name is `agent_business_id`, which this dialog has no picker for).
 const schema: z.ZodType<CreateEnquiryInput> = z.object({
   course_id: z.string().uuid("Select a course"),
-  extraction_job_id: z.string().uuid().nullable().optional(),
-  business_id: z.number().int().positive().nullable().optional(),
   message: z.string().min(10, "At least 10 characters").max(5000, "5000 characters max"),
   preferred_intake: z.string().nullable().optional(),
   preferred_year: z.number().int().nullable().optional(),
@@ -55,8 +58,10 @@ export function NewEnquiryDialog({
   const courses = useAppSelector((s) => s.enquiries.courseOptions);
   const coursesLoading = useAppSelector((s) => s.enquiries.courseOptionsStatus === "loading");
 
-  // Institution is a filter for the course list — never submitted, since the
-  // backend derives the stored institution from the chosen course.
+  // Institution is a filter for the course list — never submitted. The server
+  // stores only the course id and LEFT JOINs the institution overview for display,
+  // so there is nothing for the client to send and nothing it could send anyway
+  // (an extraction job id is not an org id).
   //
   // null means "not touched, follow the selected course". That matters for the
   // ?course_id= deep link from /personal/courses: the course arrives prefilled
