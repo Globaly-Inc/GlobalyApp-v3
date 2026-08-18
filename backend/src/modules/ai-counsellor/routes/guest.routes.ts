@@ -23,7 +23,6 @@ export async function guestRoutes(app: FastifyInstance) {
       throw new ForbiddenError("Guest limit reached. Create a free account to continue chatting.");
     }
 
-    const startMs = Date.now();
     initSSE(reply);
 
     try {

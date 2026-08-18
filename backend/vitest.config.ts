@@ -52,6 +52,8 @@ export default defineConfig({
         "src/modules/billing/**/*.ts",
         // C4 — admin observability
         "src/modules/superadmin/audit-logs/**/*.ts",
+        // C2 / C2b — public catalog, profiles, SEO (search module)
+        "src/modules/search/**/*.ts",
       ],
       thresholds: {
         lines: 80,

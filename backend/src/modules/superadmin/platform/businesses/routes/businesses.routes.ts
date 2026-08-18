@@ -30,7 +30,10 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
 
   // POST /businesses — admin creates an unclaimed business listing
   app.post("/businesses", async (req, reply) => {
-    const { allowed_service_category_ids, ...data } = req.body as Record<string, unknown>;
+    // Stripped before parse: BusinessCreateSchema does not accept it. The admin UI
+    // still sends it, so it is discarded here rather than rejected — see business_allowed_categories.
+    const { allowed_service_category_ids: _allowed_service_category_ids, ...data } =
+      req.body as Record<string, unknown>;
     const input = BusinessCreateSchema.parse(data);
     const detail = await service.createBusiness(input);
     await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_CREATED", "business", undefined, { business_id: detail!.id });
