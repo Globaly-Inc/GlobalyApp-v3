@@ -4,6 +4,7 @@ import { getCourseBySlug } from "../../search/api";
 import { CourseHero } from "./components/course-hero";
 import { CourseDescription } from "./components/course-description";
 import { CourseDetailsCard } from "./components/course-details-card";
+import { CourseWebsiteCard } from "./components/course-website-card";
 import { CourseFeesCard } from "./components/course-fees-card";
 import { CourseIntakesCard } from "./components/course-intakes-card";
 import { CourseEntryRequirementsCard } from "./components/course-entry-requirements-card";
@@ -38,6 +39,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
 
             <div className="flex flex-col gap-4">
               <CourseDetailsCard course={course} />
+              {course.source_url && <CourseWebsiteCard url={course.source_url} />}
               <CourseFeesCard course={course} />
               <CourseIntakesCard intakes={course.intakes} />
               <CourseEntryRequirementsCard eligibility={course.eligibility} englishRequirements={course.englishRequirements} />

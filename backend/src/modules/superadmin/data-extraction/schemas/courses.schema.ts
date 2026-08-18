@@ -33,6 +33,11 @@ export const PatchCourseSchema = z
   })
   .partial();
 
+export const BulkVerifyCoursesSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+  approve: z.boolean(),
+});
+
 export const CourseAccreditationLinkSchema = z.object({
   job_id: z.string().uuid(),
   accreditation_id: z.string().uuid(),

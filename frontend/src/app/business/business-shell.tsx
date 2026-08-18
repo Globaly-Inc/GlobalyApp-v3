@@ -1,26 +1,75 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, CalendarDays, LogOut, Loader2 } from "lucide-react";
+import { Bot, Building2, CalendarDays, LogOut, Loader2, Check } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { ensureBusinessContext } from "@/lib/api/http";
+import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
+import { authApi } from "@/app/auth/apis";
+import type { AuthMeBusiness } from "@/app/auth/apis";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
+import { cn } from "@/lib/utils";
+
+const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
+
+  // Tenant-scoped endpoints 403 without an `orgId` claim, and login never issues
+  // one. Establish it here rather than in each page, so children can fetch
+  // freely — and hold them back until it resolves, or their mount-time fetch
+  // races the switch and 403s.
+  const [contextReady, setContextReady] = useState(false);
+  const [businesses, setBusinesses] = useState<AuthMeBusiness[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
+  // that has since moved on (e.g. after a back/forward navigation) — `status`/`profile` in that cached
+  // HTML can genuinely disagree with the live store. Gate on `mounted` so the branch below matches
+  // whatever HTML is being hydrated against on the very first render.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    let active = true;
+    ensureBusinessContext()
+      .catch(() => false)
+      .then(() => (active ? authApi.listMyBusinesses().catch(() => []) : []))
+      .then((list) => {
+        if (!active) return;
+        setBusinesses(list);
+        setActiveOrgId(getSelectedOrgId() ?? [...list].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
+      })
+      .finally(() => {
+        if (active) setContextReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // A full reload is the honest way to re-switch: every slice already holds data
+  // fetched under the previous business, and there is no cross-slice reset.
+  const handleSwitchBusiness = async (orgId: string) => {
+    if (orgId === activeOrgId) return;
+    saveSelectedOrgId(orgId);
+    await ensureBusinessContext(true);
+    window.location.reload();
+  };
 
   const portalTarget = { label: "Business Portal", icon: Building2, href: "/business/portal" };
 
@@ -36,7 +85,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     router.push("/auth/sign-in");
   };
 
-  if (status === "failed" && !profile) {
+  if (mounted && status === "failed" && !profile) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center px-4">
         <p className="text-sm text-muted-foreground">
@@ -53,7 +102,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     );
   }
 
-  if (!profile) {
+  if (!contextReady || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -65,48 +114,71 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
-      <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 md:px-6">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="flex items-center">
-            <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
-          </Link>
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            <Building2 className="h-3.5 w-3.5" />
-            Business
-          </span>
-        </div>
+      <header className="h-16 border-b border-border bg-background">
+        <div className={cn(SHELL_WIDTH, "flex h-16 items-center justify-between")}>
+          <div className="flex items-center gap-4">
+            <Link href="/" className="flex items-center">
+              <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
+            </Link>
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              <Building2 className="h-3.5 w-3.5" />
+              Business
+            </span>
+          </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
-            }
-          >
-            <Avatar className="size-8">
-              {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
-              <AvatarFallback>{initial}</AvatarFallback>
-            </Avatar>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/profile")}>
-              <Building2 /> My Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/events")}>
-              <CalendarDays /> Events
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(portalTarget.href)}>
-              <portalTarget.icon /> {portalTarget.label}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-              <LogOut /> Sign Out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
+              }
+            >
+              <Avatar className="size-8">
+                {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
+                <AvatarFallback>{initial}</AvatarFallback>
+              </Avatar>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {businesses.length > 1 && (
+                <>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">Acting as</DropdownMenuLabel>
+                  {businesses.map((b) => (
+                    <DropdownMenuItem
+                      key={b.org_id}
+                      className="cursor-pointer"
+                      onClick={() => handleSwitchBusiness(b.org_id)}
+                    >
+                      {b.org_id === activeOrgId ? <Check /> : <span className="size-4" />}
+                      {b.business_name}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/profile")}>
+                <Building2 /> My Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/events")}>
+                <CalendarDays /> Events
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(portalTarget.href)}>
+                <portalTarget.icon /> {portalTarget.label}
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/ai-widget")}>
+                <Bot /> AI Widget
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
+                <LogOut /> Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
 
-      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 md:py-6">{children}</main>
+      <main className="flex-1 py-4 md:py-6">
+        <div className={SHELL_WIDTH}>{children}</div>
+      </main>
     </div>
   );
 }

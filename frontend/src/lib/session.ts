@@ -30,6 +30,21 @@ export function clearTokens() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(SELECTED_ORG_KEY);
+}
+
+// Which business the user is acting as. Persisted because /auth/refresh mints a
+// context-free token, so the choice has to survive being re-applied repeatedly.
+const SELECTED_ORG_KEY = "globaly_selected_org_id";
+
+export function saveSelectedOrgId(orgId: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(SELECTED_ORG_KEY, orgId);
+}
+
+export function getSelectedOrgId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(SELECTED_ORG_KEY);
 }
 
 // JWT exp is seconds since epoch; a few seconds of slop avoids racing the server's own check.

@@ -1,7 +1,8 @@
 import { categoriesMockApi } from "@/app/admin/platform/categories/apis/mock-data";
 import type {
   ActivityListParams, ActivityListResult, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
-  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, LinkExistingBranchInput, LinkExistingBranchResult,
+  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, InvitedMember,
+  LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult,
@@ -24,6 +25,13 @@ let mockMembers: Member[] = [];
 const mockRoles: MemberRole[] = [
   { id: 1, name: "owner", display_name: "Owner" },
   { id: 2, name: "member", display_name: "Member" },
+];
+let mockInvitations: InvitedMember[] = [
+  {
+    id: crypto.randomUUID(), first_name: "Sam", last_name: "Taylor", email: "sam.taylor@example.com", phone: null,
+    role: "member", admin_point_of_contact: false,
+    invited_at: new Date(2026, 7, 1).toISOString(), expires_at: new Date(2026, 7, 4).toISOString(),
+  },
 ];
 let mockRelations: BusinessRelation[] = [];
 const mockSearchableBusinesses: BusinessSearchResult[] = [
@@ -121,13 +129,13 @@ export const businessProfileDetailMockApi = {
   },
   inviteMember: async (input: MemberInviteInput): Promise<{ id: string; email: string; status: string }> => {
     await delay(300);
-    mockMembers = [...mockMembers, {
-      id: mockMembers.length + 1, platform_user_id: mockMembers.length + 1, role_id: 0, is_owner: false, account_status: 0,
-      admin_point_of_contact: input.admin_point_of_contact ?? false, created_at: new Date().toISOString(),
-      role: input.role, role_display: input.role,
-      first_name: input.first_name, last_name: input.last_name, email: input.email, phone: input.phone ?? null, photo_url: null,
-    }];
-    return { id: String(mockMembers.length), email: input.email, status: "invited" };
+    const invitation: InvitedMember = {
+      id: crypto.randomUUID(), first_name: input.first_name, last_name: input.last_name, email: input.email,
+      phone: input.phone ?? null, role: input.role, admin_point_of_contact: input.admin_point_of_contact ?? false,
+      invited_at: new Date().toISOString(), expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    };
+    mockInvitations = [...mockInvitations, invitation];
+    return { id: invitation.id, email: input.email, status: "invited" };
   },
   updateMember: async (memberId: number, patch: MemberPatch): Promise<Member> => {
     await delay(300);
@@ -137,6 +145,16 @@ export const businessProfileDetailMockApi = {
   removeMember: async (memberId: number): Promise<void> => {
     await delay(300);
     mockMembers = mockMembers.filter((m) => m.id !== memberId);
+  },
+
+  getInvitations: async (params: MemberListParams = {}): Promise<InvitationListResult> => {
+    console.log("[mock] GET /businesses/members/invitations", params);
+    await delay(300);
+    return { data: mockInvitations, total: mockInvitations.length };
+  },
+  cancelInvitation: async (invitationId: string): Promise<void> => {
+    await delay(300);
+    mockInvitations = mockInvitations.filter((i) => i.id !== invitationId);
   },
 
   getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {

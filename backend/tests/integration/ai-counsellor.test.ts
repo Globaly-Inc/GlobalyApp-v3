@@ -481,7 +481,13 @@ describeDb("ai counsellor", () => {
       await chatService.handleMessage({
         scope: scopeOf("user", userA, null),
         content: "Where should I study?",
-        reply: { raw } as unknown as Parameters<typeof chatService.handleMessage>[0]["reply"],
+        // initSSE hijacks the reply and mirrors the CORS allowlist onto the raw
+        // socket, so the stub has to answer both (staging added this in Phase 4).
+        reply: {
+          raw,
+          hijack() {},
+          request: { headers: {} },
+        } as unknown as Parameters<typeof chatService.handleMessage>[0]["reply"],
       });
 
       const row = await masterKnex("ai_usage_events")
@@ -985,8 +991,10 @@ describeDb("ai counsellor", () => {
       });
       // A course only reaches the prompt through its institution, which only exists
       // inside an extraction job — so the whole chain is seeded, not stubbed.
+      // searchCourses only recommends courses whose job was promoted and whose own
+      // review status is verified/confirmed, so the fixture has to satisfy both.
       const [job] = await masterKnex("superadmin.extraction_jobs")
-        .insert({ institution_url: `https://${keyword}.test` })
+        .insert({ institution_url: `https://${keyword}.test`, status: "exported" })
         .returning(["id"]);
       extractionJobId = job.id;
       await masterKnex("superadmin.extraction_institution_overview").insert({
@@ -1006,6 +1014,7 @@ describeDb("ai counsellor", () => {
         country_code: "ZB",
         source_url: `https://${keyword}.test/bsc`,
         description: `A computing degree in ${keyword}.`,
+        verification_status: "verified",
       });
       await masterKnex("superadmin.extraction_agents").insert({
         job_id: job.id,

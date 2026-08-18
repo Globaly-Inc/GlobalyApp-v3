@@ -10,8 +10,10 @@ import * as messagesRepo from "../repositories/messages.repository.js";
 import * as knowledgeRepo from "../repositories/knowledge.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as metering from "./metering.service.js";
+import * as embedRepo from "../repositories/embed.repository.js";
 import { estimateTokens, tokensFromChars } from "../consts.js";
 import type { ChatScope } from "./scope.js";
+import type { EmbedContext } from "./embed.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("chat-service");
@@ -23,6 +25,8 @@ export async function handleMessage(opts: {
   sessionId?: number;
   content: string;
   attachments?: string[];
+  /** Embed mode (x-embed-key): scope RAG + prompt, bill the business's monthly quota. */
+  embed?: EmbedContext;
   reply: FastifyReply;
 }): Promise<void> {
   const startMs = Date.now();
@@ -45,10 +49,26 @@ export async function handleMessage(opts: {
   try {
     // 2. Session
     const isNew = !opts.sessionId;
-    const session = await sessionService.getOrCreateSession(opts.scope, opts.sessionId);
+    const session = await sessionService.getOrCreateSession(
+      opts.scope,
+      opts.sessionId,
+      opts.embed?.config.id,
+    );
     sessionId = session.id;
 
-    writeEvent(opts.reply, "session", { id: session.id, isNew, turn_id: turnId });
+    // Provisional title from the prompt so the sidebar never shows an unnamed chat;
+    // autoTitle upgrades it to a generated summary after the first exchange.
+    const provisionalTitle = isNew ? opts.content.replace(/\s+/g, " ").trim().slice(0, 60) : undefined;
+    if (provisionalTitle) {
+      sessionsRepo.update(session.id, { title: provisionalTitle }).catch(() => {});
+    }
+
+    writeEvent(opts.reply, "session", {
+      id: session.id,
+      isNew,
+      turn_id: turnId,
+      title: provisionalTitle,
+    });
 
     // 3. Persist user message
     await messagesRepo.create({
@@ -66,6 +86,7 @@ export async function handleMessage(opts: {
     const ragOutput = await rag.searchAll({
       query: opts.content,
       userId: opts.scope.userId,
+      jobIds: opts.embed?.jobIds,
       onTrace: (step) => writeEvent(opts.reply, "trace", { step }),
     });
 
@@ -79,6 +100,7 @@ export async function handleMessage(opts: {
       profile: profileContext,
       ragContext: ragOutput.contextText,
       isFirstMessage: isNew && session.message_count === 0,
+      embedConfig: opts.embed?.config,
     });
     promptChars = system.length + opts.content.length;
 
@@ -160,20 +182,29 @@ export async function handleMessage(opts: {
       outcome: clientGone ? "interrupted" : "complete",
     });
 
+    // Embed mode additionally advances the config's own monthly counter — that is
+    // the quota resolveActiveConfig gates on, separate from the wallet debit above.
+    if (opts.embed) {
+      embedRepo.incrementMonthlyUsage(opts.embed.config.id).catch((err) => {
+        logger.warn("Embed usage increment failed", { configId: opts.embed?.config.id, err: String(err) });
+      });
+    }
+
     // 15. Usage + done
     writeEvent(opts.reply, "usage", {
       ...result.usage,
       message_id: aiMessage.id,
       credits_charged: settled.charged,
     });
-    writeDone(opts.reply);
+    writeDone(opts.reply, { message_id: aiMessage.id, session_id: session.id });
 
     // 16. Auto-title (fire-and-forget)
     if (isNew) {
       sessionService.autoTitle(session.id, opts.content, cleanText).catch(() => {});
     }
   } catch (err) {
-    logger.error("Chat stream error", { err: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("Chat stream error", { err: message });
 
     // Settle whatever reached the client. Same turn id, so a settlement that
     // already happened is a no-op and a half-answer never costs a whole one.
@@ -196,9 +227,13 @@ export async function handleMessage(opts: {
 
     // Write a friendly error to the stream so the client doesn't hang
     if (!opts.reply.raw.destroyed) {
+      // Friendly text for clients that only render deltas (embed widget)…
       writeData(opts.reply, {
         choices: [{ delta: { content: "I'm sorry, something went wrong on my end. Please try again in a moment." } }],
       });
+      // …and the real error as a named event so the main app can surface it
+      // instead of flashing-and-dropping the apology (which read as "nothing happened").
+      writeEvent(opts.reply, "error", { error: message });
       writeDone(opts.reply);
     }
   }

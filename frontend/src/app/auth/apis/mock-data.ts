@@ -1,5 +1,5 @@
 import type {
-  AcceptInviteParams, AcceptInviteResult, AuthUser, SendOtpParams,
+  AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthUser, SendOtpParams,
   SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
 } from "./types";
 
@@ -30,6 +30,23 @@ export const authMockApi = {
     }
     mockUser = { email, type: "platform_user", role: null, user_category: null, businesses: [], orgId: null };
     return mockUser;
+  },
+
+  listMyBusinesses: async (): Promise<AuthMeBusiness[]> => {
+    console.log("[mock] GET /auth/me (businesses)");
+    await delay(200);
+    return [
+      {
+        id: 1,
+        org_id: "mock-org-1",
+        business_name: "Mock Consultancy",
+        subdomain: "mock",
+        logo_url: null,
+        owner_id: 1,
+        role: "owner",
+        is_owner: true,
+      },
+    ];
   },
 
   getMe: async (): Promise<AuthUser> => {

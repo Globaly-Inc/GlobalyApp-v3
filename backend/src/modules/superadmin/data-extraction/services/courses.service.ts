@@ -46,6 +46,19 @@ export async function approveCourse(id: string, adminId: number) {
   return { updated: true };
 }
 
+export async function bulkVerifyCourses(ids: string[], approve: boolean, adminId: number) {
+  const data = approve
+    ? { verification_status: "confirmed", last_verified_at: new Date().toISOString() }
+    : { verification_status: "flagged" };
+  const updated = await repo.updateCoursesByIds(ids, data);
+  if (updated === 0) throw new NotFoundError("No courses found");
+  await logAudit(adminId, approve ? "COURSE_APPROVE" : "COURSE_REJECT", {
+    entityType: "extraction_courses",
+    details: { ids, count: updated },
+  });
+  return { updated };
+}
+
 export async function rejectCourse(id: string, adminId: number) {
   const found = await repo.updateCourse(id, { verification_status: "flagged" });
   if (!found) throw new NotFoundError("Course not found");

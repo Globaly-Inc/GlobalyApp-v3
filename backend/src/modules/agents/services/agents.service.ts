@@ -66,6 +66,38 @@ export async function getAgent(db: Knex, id: number) {
   return enriched;
 }
 
+// ── Pending invitations ("invited but not yet accepted" members) ──
+
+function toInvitedMember(row: repo.InvitationRow) {
+  const details = (row.user_details ?? {}) as Record<string, unknown>;
+  return {
+    id: row.id,
+    first_name: (details.first_name as string) ?? null,
+    last_name: (details.last_name as string) ?? null,
+    email: row.email,
+    phone: (details.phone as string) ?? null,
+    role: (details.role as string) ?? null,
+    admin_point_of_contact: Boolean(details.admin_point_of_contact),
+    invited_at: row.created_at,
+    expires_at: row.expired_at,
+  };
+}
+
+export async function listInvitations(db: Knex, pagination: PaginationInput) {
+  const { limit, offset } = paginationToOffset(pagination);
+  const [rows, total] = await Promise.all([
+    repo.listPendingInvitations(db, limit, offset),
+    repo.countPendingInvitations(db),
+  ]);
+  return buildPaginatedResponse(rows.map(toInvitedMember), total, pagination);
+}
+
+export async function cancelInvitation(db: Knex, id: string) {
+  const invitation = await repo.findPendingInvitationById(db, id);
+  if (!invitation) throw new NotFoundError("Invitation not found");
+  await repo.cancelInvitation(db, id);
+}
+
 // ── Invitations ──
 
 async function createInvitation(
@@ -112,7 +144,7 @@ async function createInvitation(
   });
 
   // Points to frontend confirmation page — the page renders a button that POSTs to the API
-  const acceptUrl = `${config.APP_URL}/invite/agent/accept?token=${token}&org_id=${business.schema_name}`;
+  const acceptUrl = `${config.WEB_APP_URL}/invite/agent/accept?token=${token}&org_id=${business.schema_name}`;
 
   // ponytail: fire-and-forget — invitation must not fail because email is down
   queueInvitationEmail({

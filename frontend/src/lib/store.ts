@@ -7,6 +7,9 @@ import { myServicesReducer } from "@/app/personal/earn/services/store/my-service
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { businessProfileDetailReducer } from "@/app/business/profile/store/business-profile-detail-slice"
 import { businessEventsReducer } from "@/app/business/events/store/business-events-slice"
+import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enquiries/store/enquiries-slice"
+import { coursesReducer } from "@/app/personal/courses/store/courses-slice"
+import { businessEnquiriesReducer } from "@/app/business/enquiries/store/business-enquiries-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
@@ -36,6 +39,7 @@ import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
 import { favoritesReducer } from "@/app/personal/favorites/store/favorites-slice"
 import { adsReducer } from "@/app/admin/marketing/ads/store/ads-slice"
 import { applicationChargesReducer } from "@/app/admin/revenue/subscriptions/application-charges/store/application-charges-slice"
+import { aiWidgetReducer } from "@/app/business/ai-widget/store/ai-widget-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
@@ -46,6 +50,9 @@ const appReducer = combineReducers({
     businessOnboarding: businessOnboardingReducer,
     businessProfileDetail: businessProfileDetailReducer,
     businessEvents: businessEventsReducer,
+    enquiries: personalEnquiriesReducer,
+    courses: coursesReducer,
+    businessEnquiries: businessEnquiriesReducer,
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,
@@ -75,6 +82,7 @@ const appReducer = combineReducers({
     favorites: favoritesReducer,
     marketingAds: adsReducer,
     revenueApplicationCharges: applicationChargesReducer,
+    aiWidget: aiWidgetReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

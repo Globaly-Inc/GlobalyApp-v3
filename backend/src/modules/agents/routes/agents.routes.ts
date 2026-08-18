@@ -6,6 +6,7 @@ import {
   InviteAgentSchema,
   AgentParamsSchema,
   AgentPatchSchema,
+  InvitationParamsSchema,
 } from "../schemas/agents.schema.js";
 import { PaginationSchema } from "../../../shared/pagination.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
@@ -41,6 +42,19 @@ export async function agentBusinessRoutes(app: FastifyInstance) {
   app.get("/roles", { preHandler: requireBusinessContext }, async (req, reply) => {
     const roles = await repo.listRoles(req.db);
     return reply.send(roles);
+  });
+
+  app.get("/invitations", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const pagination = PaginationSchema.parse(req.query);
+    const result = await service.listInvitations(req.db, pagination);
+    return reply.send(result);
+  });
+
+  app.delete("/invitations/:id", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { id } = InvitationParamsSchema.parse(req.params);
+    await service.cancelInvitation(req.db, id);
+    await activityService.logActivity(req.db, Number(req.auth.sub), "MEMBER_INVITE_CANCELLED", "member", id);
+    return reply.status(204).send();
   });
 
   app.post("/invite", { preHandler: requireBusinessContext }, async (req, reply) => {

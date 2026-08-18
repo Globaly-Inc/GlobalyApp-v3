@@ -17,13 +17,14 @@ import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { SuggestedStarters } from "./suggested-starters";
 import { CreditBanner } from "./credit-banner";
-import { CompareTray } from "./compare-tray";
+import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 
 export function AiChatView() {
   const dispatch = useAppDispatch();
   const activeSessionId = useAppSelector((s) => s.aiChat.activeSessionId);
   const messages = useAppSelector((s) => (activeSessionId ? s.aiChat.messages[activeSessionId] ?? [] : []));
   const sendStatus = useAppSelector((s) => s.aiChat.sendStatus);
+  const error = useAppSelector((s) => s.aiChat.error);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -36,11 +37,15 @@ export function AiChatView() {
   }, [dispatch]);
 
   const handleSend = useCallback(
-    (content: string) => {
+    (content: string, files?: File[]) => {
       if (activeSessionId) {
-        dispatch(addOptimisticUserMessage({ sessionId: activeSessionId, content }));
+        dispatch(addOptimisticUserMessage({
+          sessionId: activeSessionId,
+          content,
+          attachments: files?.map((f) => f.name),
+        }));
       }
-      dispatch(sendMessage({ sessionId: activeSessionId, content }));
+      dispatch(sendMessage({ sessionId: activeSessionId, content, files }));
       setDraft("");
     },
     [dispatch, activeSessionId],
@@ -94,11 +99,18 @@ export function AiChatView() {
         )}
 
         <CompareTray />
+        {/* A failed send used to be invisible — the page just sat there. Surface it. */}
+        {error && sendStatus === "failed" && (
+          <p className="border-t bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
+            {error}
+          </p>
+        )}
         <ChatInput
           value={draft}
           onChange={setDraft}
           onSend={handleSend}
           disabled={sendStatus === "loading"}
+          allowAttachments
         />
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { httpPost } from "@/lib/api/http";
 import { saveTokens } from "@/lib/session";
-import type { AuthUser, RegisterParams, SendOtpParams, VerifyOtpParams } from "./types";
+import type { AuthUser, ClaimRequestParams, RegisterParams, SendOtpParams, VerifyOtpParams } from "./types";
 
 export const signupRealApi = {
   register: ({ firstName, lastName, email }: RegisterParams): Promise<void> =>
@@ -12,6 +12,9 @@ export const signupRealApi = {
 
   sendOtp: ({ email }: SendOtpParams): Promise<void> =>
     httpPost("/auth/send-otp", { email: email.trim().toLowerCase() }),
+
+  requestBusinessClaim: ({ email }: ClaimRequestParams): Promise<void> =>
+    httpPost("/businesses/claim/request", { email: email.trim().toLowerCase() }),
 
   verifyOtp: async ({ email, otp }: VerifyOtpParams): Promise<AuthUser> => {
     const data = await httpPost<{

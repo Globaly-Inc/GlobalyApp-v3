@@ -13,7 +13,7 @@ import { config } from "../../../config.js";
 
 const logger = createChildLogger("services-booking-notify");
 
-const APP = () => config.APP_URL?.replace(/\/$/, "") ?? "";
+const APP = () => config.WEB_APP_URL?.replace(/\/$/, "") ?? "";
 
 /** Shared chrome so the three mails look like one family — and like every other mail we send. */
 function wrap(heading: string, lines: string[], cta?: { label: string; href: string }) {

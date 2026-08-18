@@ -10,6 +10,10 @@
 // tenantPlugin is what makes the business counsellor possible: it resolves and
 // validates `req.auth.orgId` into `req.business`, which services/scope.ts turns
 // into the wallet a chat spends from.
+//
+// The two open surfaces are the fingerprint-gated guest chat and the embed
+// widget's branding resolve; the embed CONFIG CRUD is owner-only and therefore
+// sits inside the secured sub-scope with everything else.
 
 import type { FastifyInstance } from "fastify";
 import { authPlugin } from "../../core/plugins/auth.plugin.js";
@@ -17,12 +21,15 @@ import { tenantPlugin } from "../../core/plugins/tenant.plugin.js";
 import { chatRoutes } from "./routes/chat.routes.js";
 import { creditsRoutes } from "./routes/credits.routes.js";
 import { guestRoutes, guestMigrateRoutes } from "./routes/guest.routes.js";
+import { embedRoutes, embedPublicRoutes } from "./routes/embed.routes.js";
 
 const PREFIX = "/api/v3/ai-chat";
 
 export default async function aiChatModule(app: FastifyInstance) {
-  // Unauthenticated: fingerprint-gated guest chat.
+  // Unauthenticated: fingerprint-gated guest chat, and the embed widget's
+  // branding lookup (which is called by third-party pages that carry no JWT).
   await app.register(guestRoutes, { prefix: PREFIX });
+  await app.register(embedPublicRoutes, { prefix: PREFIX });
 
   await app.register(async (secured) => {
     await secured.register(authPlugin);
@@ -31,5 +38,6 @@ export default async function aiChatModule(app: FastifyInstance) {
     await secured.register(chatRoutes, { prefix: PREFIX });
     await secured.register(creditsRoutes, { prefix: PREFIX });
     await secured.register(guestMigrateRoutes, { prefix: PREFIX });
+    await secured.register(embedRoutes, { prefix: PREFIX });
   });
 }

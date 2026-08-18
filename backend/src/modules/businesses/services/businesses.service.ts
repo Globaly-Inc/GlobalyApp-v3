@@ -1,16 +1,21 @@
 // Business service — registration (provisions schema + creates owner agent), profile management.
 
+import { randomBytes } from "node:crypto";
 import { NotFoundError, ConflictError } from "../../../shared/errors.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { provisionBusinessSchema } from "../../../core/business/provisioner.js";
+import { config } from "../../../config.js";
+import { claimBusinessEmail } from "../../../shared/mail/templates.js";
+import * as storage from "../../../shared/storage/storageService.js";
 import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../platform-users/repositories/platform-users.repository.js";
-import { issueScopedAccessToken } from "../../auth/auth.service.js";
+import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import type { BusinessRegisterInput, BusinessProfilePatchInput } from "../schemas/businesses.schema.js";
 
 const logger = createChildLogger("businesses-service");
+const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
 
 /**
  * Register a business — owner is the authenticated platform_user.
@@ -91,18 +96,49 @@ export async function searchBusinesses(orgId: string, search: string | undefined
   return repo.searchBusinesses(search, caller.id, limit);
 }
 
+/** Resolve stored logo/cover paths to signed, viewable URLs — mirrors the admin-side helper. */
+async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(biz: T): Promise<T> {
+  const [logo_url, cover_url] = await Promise.all([
+    storage.resolvePreviewUrl(biz.logo_url),
+    storage.resolvePreviewUrl(biz.cover_url),
+  ]);
+  return { ...biz, logo_url, cover_url };
+}
+
 /** Get full business record by schema_name (orgId from JWT). */
 export async function getProfile(orgId: string) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  return business;
+  return withImagePreviews(business);
 }
 
 /** Update business profile fields by schema_name (orgId from JWT). */
 export async function updateProfile(orgId: string, data: BusinessProfilePatchInput) {
   const existing = await repo.findBusinessByDbName(orgId);
   if (!existing) throw new NotFoundError("Business not found");
-  return repo.updateBusinessProfile(existing.id, data);
+  const updated = await repo.updateBusinessProfile(existing.id, data);
+  return withImagePreviews(updated);
+}
+
+/**
+ * Self-serve claim trigger, called from the registration page after a user is told a business
+ * profile already exists for their email. Always resolves silently (no "found"/"not found"
+ * signal) to avoid leaking account existence — same anti-enumeration stance as `registerUser`.
+ */
+export async function requestClaimByEmail(email: string): Promise<void> {
+  const owner = await userRepo.findByEmail(email);
+  if (!owner) return;
+  const business = await repo.findUnclaimedBusinessByOwnerId(owner.id);
+  if (!business) return;
+
+  const token = randomBytes(32).toString("hex");
+  await repo.setClaimPending(business.id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
+
+  const claimUrl = `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
+  const ownerName = `${owner.first_name ?? ""} ${owner.last_name ?? ""}`.trim() || "there";
+  queueEmail({ to: email, ...claimBusinessEmail({ ownerName, businessName: business.business_name, claimUrl }) }).catch((err) =>
+    logger.warn("Self-serve claim request email failed", { businessId: business.id, err: err.message }),
+  );
 }
 
 export async function acceptClaim(token: string) {

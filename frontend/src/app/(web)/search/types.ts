@@ -18,6 +18,8 @@ export type SearchCourse = {
   international_currency: string | null;
   awarding_institution: string | null;
   image_url: string | null;
+  /** The course page on the institution's own website. */
+  source_url?: string | null;
   country_name: string | null;
   next_intake_year: number | null;
   next_intake_month: number | null;

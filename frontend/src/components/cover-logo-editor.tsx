@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  * stashes the File for later (e.g. a create form that uploads on submit).
  */
 export function CoverLogoEditor({
-  coverUrl,
+  coverUrl = null,
   onCoverFile,
   coverUploading = false,
   logoUrl,
@@ -21,8 +21,8 @@ export function CoverLogoEditor({
   logoUploading = false,
   className,
 }: Readonly<{
-  coverUrl: string | null;
-  onCoverFile: (file: File) => void;
+  coverUrl?: string | null;
+  onCoverFile?: (file: File) => void;
   coverUploading?: boolean;
   logoUrl: string | null;
   logoFallback: string;
@@ -45,17 +45,21 @@ export function CoverLogoEditor({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
       )}
-      <Button
-        variant="secondary"
-        size="sm"
-        className="absolute right-4 top-4 gap-1.5"
-        disabled={coverUploading}
-        onClick={() => coverInputRef.current?.click()}
-      >
-        {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-        Edit cover
-      </Button>
-      <input ref={coverInputRef} type="file" accept="image/*" hidden onChange={handlePick(onCoverFile)} />
+      {onCoverFile && (
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="absolute right-4 top-4 gap-1.5"
+            disabled={coverUploading}
+            onClick={() => coverInputRef.current?.click()}
+          >
+            {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+            Edit cover
+          </Button>
+          <input ref={coverInputRef} type="file" accept="image/*" hidden onChange={handlePick(onCoverFile)} />
+        </>
+      )}
 
       <button
         type="button"

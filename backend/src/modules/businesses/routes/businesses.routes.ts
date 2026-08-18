@@ -1,7 +1,9 @@
 // Business routes — registration (any authenticated user) + profile management (business context required).
 
 import type { FastifyInstance } from "fastify";
-import { BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema, ClaimAcceptSchema } from "../schemas/businesses.schema.js";
+import {
+  BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema, ClaimAcceptSchema, ClaimRequestByEmailSchema,
+} from "../schemas/businesses.schema.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/businesses.service.js";
 
@@ -12,6 +14,15 @@ export async function businessRoutes(app: FastifyInstance) {
     const { token } = ClaimAcceptSchema.parse(req.body);
     const result = await service.acceptClaim(token);
     return reply.send(result);
+  });
+
+  // Self-serve: triggered from the registration page when the email matches an unclaimed pre-seeded business.
+  app.post("/claim/request", {
+    config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
+  }, async (req, reply) => {
+    const { email } = ClaimRequestByEmailSchema.parse(req.body);
+    await service.requestClaimByEmail(email);
+    return reply.send({ message: "If a business profile matches, we've sent a claim link to that email." });
   });
 
   // Auth-required: Register business (any platform user can create a business)

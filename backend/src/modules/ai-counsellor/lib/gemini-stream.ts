@@ -81,11 +81,15 @@ async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult> {
 async function generateTitle(content: string): Promise<string> {
   const model = getClient().getGenerativeModel({
     model: config.GEMINI_MODEL,
-    systemInstruction: "Generate a 3-5 word title for this chat. Return ONLY the title, no quotes or punctuation.",
-    generationConfig: { maxOutputTokens: 30, temperature: 0.3 },
+    systemInstruction:
+      "Generate a 5-9 word title summarising what this chat is about. " +
+      "Capture the specifics: study destination, program/subject, degree level, or topic (visa, scholarships, fees) when mentioned. " +
+      "Examples: 'Data Science Masters options in Canada', 'Student visa requirements for Australia', 'Comparing MBA fees at Georgia Tech'. " +
+      "Return ONLY the title — no quotes, no trailing punctuation.",
+    generationConfig: { maxOutputTokens: 40, temperature: 0.3 },
   });
   const result = await model.generateContent(content.slice(0, 500));
-  return result.response.text().trim().slice(0, 60);
+  return result.response.text().trim().slice(0, 80);
 }
 
 export const geminiProvider: AiProvider = {

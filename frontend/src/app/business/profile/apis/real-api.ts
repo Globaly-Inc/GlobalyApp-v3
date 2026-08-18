@@ -4,7 +4,7 @@ import type {
 } from "@/app/admin/platform/categories/apis/types";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
-  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, LinkExistingBranchInput, LinkExistingBranchResult,
+  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult,
@@ -108,6 +108,12 @@ export const businessProfileDetailRealApi = {
     httpPost(`${BASE}/members/invite`, input),
   updateMember: (memberId: number, patch: MemberPatch): Promise<Member> => httpPatch(`${BASE}/members/${memberId}`, patch),
   removeMember: (memberId: number): Promise<void> => httpDelete(`${BASE}/members/${memberId}`),
+
+  getInvitations: async (params: MemberListParams = {}): Promise<InvitationListResult> => {
+    const { data, meta } = await httpGet<{ data: InvitationListResult["data"]; meta: { total: number } }>(`${BASE}/members/invitations${toMemberQuery(params)}`);
+    return { data, total: meta.total };
+  },
+  cancelInvitation: (invitationId: string): Promise<void> => httpDelete(`${BASE}/members/invitations/${invitationId}`),
 
   getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {
     const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/partners${toRelationQuery(params)}`);
