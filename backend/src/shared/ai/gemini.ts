@@ -6,10 +6,21 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../../config.js";
-import { BadRequestError } from "../errors.js";
+import { AppError } from "../errors.js";
 import { createChildLogger } from "../logger.js";
 
 const logger = createChildLogger("gemini-text");
+
+/**
+ * FAIL CLOSED, the same contract as billing's StripeUnavailableError and the
+ * counsellor's AiProviderUnavailableError: a deployment with no key answers 503,
+ * never a 400 (the request was fine) and never a fabricated result.
+ */
+export class AiUnavailableError extends AppError {
+  constructor(message = "AI writing assistance is not configured") {
+    super(message, 503, "AI_UNAVAILABLE");
+  }
+}
 
 let client: GoogleGenerativeAI | null = null;
 
@@ -17,12 +28,14 @@ export function isConfigured(): boolean {
   return !!config.GEMINI_API_KEY;
 }
 
+/** Call before any DB write or credit spend a failed generation would strand. */
+export function assertConfigured(): void {
+  if (!isConfigured()) throw new AiUnavailableError();
+}
+
 function getClient(): GoogleGenerativeAI {
-  if (!config.GEMINI_API_KEY) {
-    // A 400 with a clear message, not a 500: the deployment is missing a key, the request is not malformed.
-    throw new BadRequestError("AI writing assistance is not configured");
-  }
-  client ??= new GoogleGenerativeAI(config.GEMINI_API_KEY);
+  assertConfigured();
+  client ??= new GoogleGenerativeAI(config.GEMINI_API_KEY!);
   return client;
 }
 

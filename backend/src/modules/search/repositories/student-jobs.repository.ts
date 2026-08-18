@@ -13,7 +13,9 @@ function baseQuery({ country, jobType, isRemote, search }: JobSearchFilters) {
   const q = masterKnex("student_jobs as j")
     .leftJoin("countries as c", "c.id", "j.location_country_id")
     .leftJoin("businesses as b", "b.id", "j.business_id")
-    .where("j.is_published", true)
+    // Wave G2 reshape: `is_published` became `status` (V2's vocabulary), and the
+    // public board shows exactly what V1/V2 showed — status = 'open'.
+    .where("j.status", "open")
     .whereNull("j.deleted_at");
 
   if (country) {
@@ -33,7 +35,7 @@ export async function listPublicJobs(filters: JobSearchFilters, limit: number, o
       "j.id", "j.title", "j.description", "j.job_type",
       "j.location_city", "c.name as country_name", "j.is_remote",
       "j.pay_min", "j.pay_max", "j.pay_currency", "j.pay_unit",
-      "j.closing_date", "j.created_at",
+      "j.closing_at", "j.created_at",
       "b.business_name as company_name_from_business", "j.company_name",
       "b.logo_url",
     )

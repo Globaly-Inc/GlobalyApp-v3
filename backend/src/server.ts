@@ -32,6 +32,7 @@ import messagingModule from "./modules/messaging/index.js";
 import eventsModule, { publicEventsModule } from "./modules/events/index.js";
 import notificationsModule from "./modules/notifications/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
+import jobsModule from "./modules/jobs/index.js";
 
 const logger = createChildLogger("server");
 
@@ -60,6 +61,7 @@ export async function buildServer() {
     await protectedApp.register(eventsModule);             // events, ticketing, registrations, admin monitoring
     await protectedApp.register(notificationsModule);      // per-user inbox, channel preferences, push tokens
     await protectedApp.register(enquiriesModule);          // student enquiries, distribution, credit unlock
+    await protectedApp.register(jobsModule);               // jobs board: posting, applicants, AI assist, admin oversight
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
