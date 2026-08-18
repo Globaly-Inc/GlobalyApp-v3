@@ -123,6 +123,9 @@ export default defineConfig({
         // notifications glob above, already listed by D3.)
         "src/modules/favorites/**/*.ts",
         "src/modules/waitlist/**/*.ts",
+        // E5 — SOP generator: intake questionnaire, metered draft, revision
+        // history, text/markdown export.
+        "src/modules/sop/**/*.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {

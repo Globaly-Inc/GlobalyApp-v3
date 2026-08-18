@@ -39,6 +39,7 @@ import jobsModule from "./modules/jobs/index.js";
 import ambassadorsModule, { publicAmbassadorsModule } from "./modules/ambassadors/index.js";
 import trainingModule, { publicCertificatesModule } from "./modules/training/index.js";
 import scribeModule from "./modules/scribe/index.js";
+import sopModule from "./modules/sop/index.js";
 import scholarshipsPublicModule, { businessScholarshipsModule } from "./modules/scholarships/index.js";
 import { publicVisasModule } from "./modules/visas/index.js";
 import adsModule, { publicAdsModule } from "./modules/ads/index.js";
@@ -91,6 +92,7 @@ export async function buildServer() {
     await protectedApp.register(ambassadorsModule);        // ambassador programs, engagement, earnings, payouts
     await protectedApp.register(trainingModule);           // training programs, certificates, gamification
     await protectedApp.register(scribeModule);             // counsellor transcription, coaching, session review
+    await protectedApp.register(sopModule);                // student statement-of-purpose: intake, draft, revisions, export
     await protectedApp.register(businessScholarshipsModule); // business-owned scholarship submission
     await protectedApp.register(adsModule);                // ad campaigns, engagement recording, admin moderation
     await protectedApp.register(applicationsModule);        // student applications + per-application credit charges
