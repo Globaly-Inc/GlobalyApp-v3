@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { PaginationSchema } from "../../../shared/pagination.js";
+import { webUrl } from "../../../shared/url.js";
 import {
   AI_ASSIST_TYPES,
   APPLICATION_STAGES,
@@ -41,7 +42,7 @@ const jobFields = {
   work_rights_required: z.boolean().optional(),
   visa_types_allowed: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
   apply_method: z.enum(APPLY_METHODS).optional(),
-  apply_url: z.string().url().max(2000).nullish(),
+  apply_url: webUrl({ max: 2000 }).nullish(),
   screening_questions: z.array(z.record(z.unknown())).max(20).optional(),
   is_student_friendly: z.boolean().optional(),
   closing_at: z.coerce.date().nullish(),
@@ -74,7 +75,7 @@ export type AdminJobsQueryInput = z.infer<typeof AdminJobsQuery>;
  * upload, it is a rejected one.
  */
 export const ResumeSchema = z.object({
-  url: z.string().url().max(2000),
+  url: webUrl({ max: 2000 }),
   mime_type: z.enum(RESUME_MIME_TYPES),
   size_bytes: z.coerce.number().int().positive().max(RESUME_MAX_BYTES),
 });

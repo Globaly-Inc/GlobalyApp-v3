@@ -212,6 +212,18 @@ describeDb("jobs board", () => {
       expect(res.statusCode).toBe(400);
     });
 
+    it.each(["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "vbscript:msgbox(1)"])(
+      "refuses %s as an apply_url — the frontend renders it into an href",
+      async (hostile) => {
+        const res = await post("/api/v3/business/jobs", alpha.token, {
+          ...draftBody(`XSS ${suffix}`),
+          apply_method: "external",
+          apply_url: hostile,
+        });
+        expect(res.statusCode).toBe(400);
+      },
+    );
+
     it("refuses a caller with no business context", async () => {
       const res = await post("/api/v3/business/jobs", student.token, draftBody("Nope"));
       expect(res.statusCode).toBe(403);
@@ -343,6 +355,14 @@ describeDb("jobs board", () => {
       const id = await publishedJob(alpha, `Resume check ${suffix}`);
       const res = await post(`/api/v3/jobs/${id}/applications`, student2.token, {
         resume: { url: "https://cdn.example/cv.exe", mime_type: "application/x-msdownload", size_bytes: 1024 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("refuses a javascript: resume URL", async () => {
+      const id = await publishedJob(alpha, `Resume xss ${suffix}`);
+      const res = await post(`/api/v3/jobs/${id}/applications`, student2.token, {
+        resume: { url: "javascript:alert(1)", mime_type: "application/pdf", size_bytes: 2048 },
       });
       expect(res.statusCode).toBe(400);
     });
