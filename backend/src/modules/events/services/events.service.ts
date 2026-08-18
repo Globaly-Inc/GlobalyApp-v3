@@ -30,7 +30,16 @@ export function serializeTicket(t: TicketRow) {
   };
 }
 
-export function serializeEvent(e: EventRow, host: repo.HostCard | undefined) {
+/**
+ * `contact_email` / `contact_phone` are the organiser's own details. They are
+ * returned only to the host and to admins — passing `includeContact` — never on
+ * the unauthenticated browse and detail routes, which share this serializer.
+ */
+export function serializeEvent(
+  e: EventRow,
+  host: repo.HostCard | undefined,
+  opts: { includeContact?: boolean } = {},
+) {
   return {
     id: e.id,
     title: e.title,
@@ -57,8 +66,9 @@ export function serializeEvent(e: EventRow, host: repo.HostCard | undefined) {
     registration_deadline: e.registration_deadline,
     is_featured: e.is_featured,
     tags: e.tags,
-    contact_email: e.contact_email,
-    contact_phone: e.contact_phone,
+    ...(opts.includeContact
+      ? { contact_email: e.contact_email, contact_phone: e.contact_phone }
+      : {}),
     views_count: e.views_count,
     published_at: e.published_at,
     cancelled_at: e.cancelled_at,

@@ -226,6 +226,30 @@ describeDb("events", () => {
     }
   });
 
+  // The public browse/detail routes share serializeEvent with the host and admin
+  // paths. Contact details are the organiser's own, so they must be opt-in — this
+  // fails if serializeEvent ever returns them unconditionally again.
+  it("never exposes organiser contact details on the public routes", async () => {
+    const written = { contact_email: "leak@example.test", contact_phone: "+61 400 111 222" };
+    const event = await createEvent(tokenA, written);
+
+    const asHost = await get(`/api/v3/business/events/${event.id}`, tokenA);
+    expect(asHost.json()).toMatchObject(written);
+
+    for (const url of [`/api/v3/events/${event.id}`, "/api/v3/events"]) {
+      const res = await get(url);
+      expect(res.statusCode).toBe(200);
+      const body = JSON.stringify(res.json());
+      expect({ url, leaked: body.includes("leak@example.test") }).toEqual({ url, leaked: false });
+      expect({ url, leaked: body.includes("+61 400 111 222") }).toEqual({ url, leaked: false });
+      const one = Array.isArray(res.json()?.data) ? res.json().data[0] : res.json();
+      if (one) {
+        expect(Object.keys(one)).not.toContain("contact_email");
+        expect(Object.keys(one)).not.toContain("contact_phone");
+      }
+    }
+  });
+
   it("refuses to let any path oversell, at the database level", async () => {
     const event = await createEvent(tokenA);
     const ticket = await createTicket(tokenA, event.id, { quantity: 2 });

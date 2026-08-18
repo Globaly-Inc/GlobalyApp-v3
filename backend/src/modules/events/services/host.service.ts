@@ -63,13 +63,13 @@ export async function listOwn(host: HostRef, query: HostEventsQuery) {
   const rows: EventRow[] = await base().select("events.*").orderBy("events.starts_at", "desc").limit(limit).offset(offset);
   const cards = await repo.hostCards([{ org_type: host.org_type, org_id: host.org_id }]);
   const card = cards.get(`${host.org_type}:${host.org_id}`);
-  return buildPaginatedResponse(rows.map((r) => serializeEvent(r, card)), Number(count), query);
+  return buildPaginatedResponse(rows.map((r) => serializeEvent(r, card, { includeContact: true })), Number(count), query);
 }
 
 export async function getOwn(eventId: number, host: HostRef) {
   const event = await requireOwnEvent(eventId, host);
   const cards = await repo.hostCards([{ org_type: host.org_type, org_id: host.org_id }]);
-  return serializeEvent(event, cards.get(`${host.org_type}:${host.org_id}`));
+  return serializeEvent(event, cards.get(`${host.org_type}:${host.org_id}`), { includeContact: true });
 }
 
 export async function create(input: CreateEventInput, host: HostRef, createdBy: number) {
@@ -81,7 +81,7 @@ export async function create(input: CreateEventInput, host: HostRef, createdBy: 
     published_at: input.status === "published" ? new Date() : null,
     ...toColumns(input),
   });
-  return serializeEvent(row, undefined);
+  return serializeEvent(row, undefined, { includeContact: true });
 }
 
 export async function update(eventId: number, input: UpdateEventInput, host: HostRef) {
@@ -93,7 +93,7 @@ export async function update(eventId: number, input: UpdateEventInput, host: Hos
 
   const row = await repo.updateEvent(eventId, patch);
   if (!row) throw new NotFoundError("Event not found");
-  return serializeEvent(row, undefined);
+  return serializeEvent(row, undefined, { includeContact: true });
 }
 
 export async function remove(eventId: number, host: HostRef) {

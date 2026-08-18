@@ -80,7 +80,7 @@ export async function list(query: AdminEventsQuery) {
   );
 
   const data = rows.map((r) => ({
-    ...serializeEvent(r, cards.get(`${r.host_org_type}:${r.host_org_id}`)),
+    ...serializeEvent(r, cards.get(`${r.host_org_type}:${r.host_org_id}`), { includeContact: true }),
     registrations_count: counts.get(r.id) ?? 0,
   }));
   return buildPaginatedResponse(data, Number(count), query);
@@ -115,7 +115,7 @@ export async function detail(eventId: number) {
   ]);
 
   return {
-    ...serializeEvent(event, cards.get(`${event.host_org_type}:${event.host_org_id}`)),
+    ...serializeEvent(event, cards.get(`${event.host_org_type}:${event.host_org_id}`), { includeContact: true }),
     registrations_count: counts.get(eventId) ?? 0,
     tickets: tickets.map(serializeTicket),
     updates,
