@@ -34,7 +34,6 @@ export function LinkConsultancyDialog({
   const isEdit = !!editRelation;
 
   const [results, setResults] = useState<Business[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState("");
   const [countryIds, setCountryIds] = useState<number[]>([]);
   const [validFrom, setValidFrom] = useState("");
@@ -43,21 +42,31 @@ export function LinkConsultancyDialog({
   const [applyToBranches, setApplyToBranches] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const handleQueryChange = async (query: string) => {
-    setLoading(true);
-    try {
-      const rows = await businessesApi.getBusinesses({ search: query || undefined });
-      setResults(rows.filter((b) => b.id !== businessId));
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Each search is its own request object, so `loading` is simply "the request in hand
+  // has not settled yet" — derived during render rather than flipped inside the effect.
+  const [request, setRequest] = useState<{ query: string } | null>(null);
+  const [settled, setSettled] = useState<{ query: string } | null>(null);
+  const loading = request !== null && settled !== request;
+  const handleQueryChange = (query: string) => setRequest({ query });
+
+  useEffect(() => {
+    if (request === null) return;
+    businessesApi
+      .getBusinesses({ search: request.query || undefined })
+      .then((rows) => setResults(rows.filter((b) => b.id !== businessId)))
+      .finally(() => setSettled(request));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
 
   // Base UI's Dialog.Root only invokes onOpenChange for internally-triggered
   // closes (ESC, backdrop, close button) — not when a parent flips `open` to
   // true via prop. Reacting to the prop directly is what actually fires on open.
-  useEffect(() => {
-    if (!open) return;
+  // Comparing the previous props during render does that without a second render
+  // pass; nothing is re-seeded while closing, so the form does not flash empty
+  // behind the sheet's exit animation.
+  const seedFor = open ? (editRelation ?? null) : undefined;
+  const [seededFor, setSeededFor] = useState<BusinessRelation | null | undefined>(undefined);
+  if (seedFor !== seededFor && open) {
     if (editRelation) {
       setSelected(String(editRelation.business_id));
       setCountryIds(editRelation.country_ids ?? []);
@@ -73,9 +82,13 @@ export function LinkConsultancyDialog({
       setApplyToBranches(true);
       handleQueryChange("");
     }
-    if (countries.length === 0) dispatch(fetchCountries());
+  }
+  if (seedFor !== seededFor) setSeededFor(seedFor);
+
+  useEffect(() => {
+    if (open && countries.length === 0) dispatch(fetchCountries());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editRelation]);
+  }, [open]);
 
   const handleSubmit = async () => {
     if (!selected) return;

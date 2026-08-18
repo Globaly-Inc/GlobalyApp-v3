@@ -25,23 +25,33 @@ export function LinkBranchDialog({
   const isEdit = !!editBranch;
 
   const [results, setResults] = useState<BusinessSearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selectedBizId, setSelectedBizId] = useState("");
   const [branchType, setBranchType] = useState<BranchType>("same_company");
   const [sharedServices, setSharedServices] = useState<SharedServices>([]);
   const [saving, setSaving] = useState(false);
 
-  const handleQueryChange = async (query: string) => {
-    setLoading(true);
-    try {
-      setResults(await businessProfileDetailApi.searchBusinesses({ search: query || undefined }));
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Each search is its own request object, so `loading` is simply "the request in hand
+  // has not settled yet" — derived during render rather than flipped inside the effect.
+  const [request, setRequest] = useState<{ query: string } | null>(null);
+  const [settled, setSettled] = useState<{ query: string } | null>(null);
+  const loading = request !== null && settled !== request;
+  const handleQueryChange = (query: string) => setRequest({ query });
 
   useEffect(() => {
-    if (!open) return;
+    if (request === null) return;
+    businessProfileDetailApi
+      .searchBusinesses({ search: request.query || undefined })
+      .then(setResults)
+      .finally(() => setSettled(request));
+  }, [request]);
+
+  // Re-seed when the sheet opens, or when a different branch is handed in while it is
+  // open. Derived by comparing against the previous props during render — seeding from
+  // an effect would commit one render of the stale form first. Nothing is re-seeded
+  // while closing, so the form does not flash empty behind the exit animation.
+  const seedFor = open ? (editBranch ?? null) : undefined;
+  const [seededFor, setSeededFor] = useState<Branch | null | undefined>(undefined);
+  if (seedFor !== seededFor && open) {
     if (editBranch) {
       setSelectedBizId(String(editBranch.linked_business_id));
       setBranchType(editBranch.branch_type);
@@ -52,8 +62,8 @@ export function LinkBranchDialog({
       setSharedServices([]);
       handleQueryChange("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editBranch]);
+  }
+  if (seedFor !== seededFor) setSeededFor(seedFor);
 
   const handleSubmit = async () => {
     if (!selectedBizId) return;

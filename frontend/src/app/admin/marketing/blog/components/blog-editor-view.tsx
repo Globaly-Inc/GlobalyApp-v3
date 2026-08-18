@@ -41,6 +41,8 @@ export function BlogEditorView({ postId }: Readonly<{ postId: number | null }>) 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const update = (updates: Partial<BlogPost>) => setPost((p) => ({ ...p, ...updates }));
+
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current || postId === null) return;
@@ -52,13 +54,17 @@ export function BlogEditorView({ postId }: Readonly<{ postId: number | null }>) 
       .finally(() => setLoading(false));
   }, [postId]);
 
-  // New posts default the byline to whoever's logged in; the field stays editable from there.
-  useEffect(() => {
-    if (postId === null && me?.name) update({ author_name: me.name, author_avatar_url: me.photo_url ?? null });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId, me?.name, me?.photo_url]);
-
-  const update = (updates: Partial<BlogPost>) => setPost((p) => ({ ...p, ...updates }));
+  // New posts default the byline to whoever's logged in; the field stays editable from
+  // there. `me` lands after mount, so the default is applied on the render it arrives
+  // instead of in an effect that would commit the empty byline first.
+  const [appliedByline, setAppliedByline] = useState<string | null>(null);
+  if (postId === null && me?.name) {
+    const byline = `${me.name}|${me.photo_url ?? ""}`;
+    if (byline !== appliedByline) {
+      setAppliedByline(byline);
+      update({ author_name: me.name, author_avatar_url: me.photo_url ?? null });
+    }
+  }
 
   const handleTitleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const title = e.target.value;

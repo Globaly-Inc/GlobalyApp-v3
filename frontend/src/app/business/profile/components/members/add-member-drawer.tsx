@@ -40,10 +40,13 @@ export function AddMemberDrawer({
   const [isOwner, setIsOwner] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    if (roles.length === 0) dispatch(fetchMemberRoles());
-    if (countries.length === 0) geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
+  // Re-seed when the drawer opens, or when a different member is handed in while it is
+  // open. Derived by comparing against the previous props during render — seeding from
+  // an effect would commit one render of the stale form first. Nothing is re-seeded
+  // while closing, so the form does not flash empty behind the exit animation.
+  const seedFor = open ? (editingMember ?? null) : undefined;
+  const [seededFor, setSeededFor] = useState<Member | null | undefined>(undefined);
+  if (seedFor !== seededFor && open) {
     if (editingMember) {
       setRole(editingMember.role ?? "member");
       setActive(editingMember.account_status === 1);
@@ -56,8 +59,15 @@ export function AddMemberDrawer({
       setPointOfContact(false);
       setIsOwner(false);
     }
+  }
+  if (seedFor !== seededFor) setSeededFor(seedFor);
+
+  useEffect(() => {
+    if (!open) return;
+    if (roles.length === 0) dispatch(fetchMemberRoles());
+    if (countries.length === 0) geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editingMember]);
+  }, [open]);
 
   const phoneCountryOptions = useMemo(
     () => countries

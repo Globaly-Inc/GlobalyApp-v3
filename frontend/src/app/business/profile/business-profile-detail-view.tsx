@@ -42,10 +42,15 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const { profile, status } = useAppSelector((state) => state.businessOnboarding);
   const [countries, setCountries] = useState<Country[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [contextReady, setContextReady] = useState(false);
+  const [switched, setSwitched] = useState(false);
 
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
+  const target = authUser?.businesses.find((b) => b.id === businessId);
+  // Already in the right business context means we are ready without switching —
+  // that is readable from the auth state during render, so only the switch itself
+  // needs to land in state.
+  const contextReady = (!!target && target.org_id === authUser?.orgId) || switched;
   const tab = parseTab(searchParams.get("tab"));
   const setTab = (next: Tab) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -63,21 +68,19 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const switchedRef = useRef(false);
   useEffect(() => {
     if (initializing || !isBusiness || switchedRef.current) return;
-    const target = authUser?.businesses.find((b) => b.id === businessId);
     if (!target) return;
     switchedRef.current = true;
-    if (target.org_id === authUser?.orgId) {
-      // Already in the right business context — BusinessShell has already fetched this profile.
-      setContextReady(true);
-      return;
-    }
+    // Already in the right business context — BusinessShell has already fetched this
+    // profile, and `contextReady` reads that from the auth state without a switch.
+    if (target.org_id === authUser?.orgId) return;
     dispatch(switchAccount(target.org_id))
       .unwrap()
       .then(() => {
-        setContextReady(true);
+        setSwitched(true);
         dispatch(fetchMyProfile());
       })
       .catch((e: Error) => toast.error("Couldn't switch to this business", { description: e.message }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initializing, isBusiness, authUser, businessId, dispatch]);
 
   useEffect(() => {

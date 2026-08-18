@@ -34,7 +34,6 @@ export function LinkConsultancyDialog({
 
   const [countries, setCountries] = useState<Country[]>([]);
   const [results, setResults] = useState<BusinessSearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
   const [partnerBusinessId, setPartnerBusinessId] = useState("");
   const [countryIds, setCountryIds] = useState<number[]>([]);
   const [validFrom, setValidFrom] = useState("");
@@ -42,21 +41,30 @@ export function LinkConsultancyDialog({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const handleQueryChange = async (query: string) => {
-    setLoading(true);
-    try {
-      const rows = await businessProfileDetailApi.searchBusinesses({ search: query || undefined });
-      setResults(rows);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Each search is its own request object, so `loading` is simply "the request in hand
+  // has not settled yet" — derived during render rather than flipped inside the effect.
+  const [request, setRequest] = useState<{ query: string } | null>(null);
+  const [settled, setSettled] = useState<{ query: string } | null>(null);
+  const loading = request !== null && settled !== request;
+  const handleQueryChange = (query: string) => setRequest({ query });
+
+  useEffect(() => {
+    if (request === null) return;
+    businessProfileDetailApi
+      .searchBusinesses({ search: request.query || undefined })
+      .then(setResults)
+      .finally(() => setSettled(request));
+  }, [request]);
 
   // Base UI's Dialog.Root only invokes onOpenChange for internally-triggered
   // closes (ESC, backdrop, close button) — not when a parent flips `open` to
   // true via prop. Reacting to the prop directly is what actually fires on open.
-  useEffect(() => {
-    if (!open) return;
+  // Comparing the previous props during render does that without a second render
+  // pass; nothing is re-seeded while closing, so the form does not flash empty
+  // behind the sheet's exit animation.
+  const seedFor = open ? (editRelation ?? null) : undefined;
+  const [seededFor, setSeededFor] = useState<BusinessRelation | null | undefined>(undefined);
+  if (seedFor !== seededFor && open) {
     if (editRelation) {
       setPartnerBusinessId(String(editRelation.business_id));
       setCountryIds(editRelation.country_ids ?? []);
@@ -71,9 +79,13 @@ export function LinkConsultancyDialog({
       setNotes("");
       handleQueryChange("");
     }
-    if (countries.length === 0) geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
+  }
+  if (seedFor !== seededFor) setSeededFor(seedFor);
+
+  useEffect(() => {
+    if (open && countries.length === 0) geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editRelation]);
+  }, [open]);
 
   const handleSubmit = async () => {
     if (!partnerBusinessId) return;
