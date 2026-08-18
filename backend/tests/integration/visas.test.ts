@@ -260,6 +260,66 @@ describeDb("visas + MARA directory", () => {
     });
   });
 
+  // ── staging review (the list/discard half of the admin surface) ───────────
+
+  describe("staging review", () => {
+    it("lists staged visas and filters by status", async () => {
+      const all = await immigration.listVisas({ limit: 200 });
+      expect(all.visas.some((v: { id: string }) => v.id === visaStagedId)).toBe(true);
+      const promoted = await immigration.listVisas({ status: "promoted", limit: 200 });
+      expect(promoted.visas.every((v: { status: string }) => v.status === "promoted")).toBe(true);
+    });
+
+    it("lists staged MARA agents and filters by status", async () => {
+      const all = await immigration.listMaraAgents({ limit: 200 });
+      expect(all.mara_agents.some((a: { marn: string }) => a.marn === marn)).toBe(true);
+      const pending = await immigration.listMaraAgents({ status: "pending", limit: 200 });
+      expect(pending.mara_agents.every((a: { status: string }) => a.status === "pending")).toBe(true);
+    });
+
+    it("discards a staged visa, and 404s an unknown one", async () => {
+      const [row] = await masterKnex("superadmin.extraction_visas")
+        .insert({ status: "pending", country_code: "NZ", subclass_code: `disc-${runId}` })
+        .returning(["id"]);
+      expect(await immigration.discardVisa(row.id, adminId)).toEqual({ updated: true });
+      const after = await masterKnex("superadmin.extraction_visas").where({ id: row.id }).first();
+      expect(after.status).toBe("discarded");
+      await masterKnex("superadmin.extraction_visas").where({ id: row.id }).del();
+
+      await expect(
+        immigration.discardVisa("00000000-0000-0000-0000-000000000000", adminId),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it("discards a staged MARA agent, and 404s an unknown one", async () => {
+      const [row] = await masterKnex("superadmin.extraction_mara_agents")
+        .insert({ status: "pending", marn: `MARN-disc-${runId}` })
+        .returning(["id"]);
+      expect(await immigration.discardMara(row.id, adminId)).toEqual({ updated: true });
+      await masterKnex("superadmin.extraction_mara_agents").where({ id: row.id }).del();
+
+      await expect(
+        immigration.discardMara("00000000-0000-0000-0000-000000000000", adminId),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it("refuses to promote a visa with no subclass code", async () => {
+      const [row] = await masterKnex("superadmin.extraction_visas")
+        .insert({ status: "pending", country_code: "NZ", name: `No subclass ${runId}` })
+        .returning(["id"]);
+      await expect(
+        immigration.promoteVisa(row.id, "institution", deptOrgId, adminId),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      await masterKnex("superadmin.extraction_visas").where({ id: row.id }).del();
+    });
+
+    it("404s a MARA promote for an unknown staged id", async () => {
+      await expect(
+        immigration.promoteMara("00000000-0000-0000-0000-000000000000", adminId),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
   // ── the extract launch stays fail-closed ──────────────────────────────────
 
   describe("extract launch (503 stub)", () => {

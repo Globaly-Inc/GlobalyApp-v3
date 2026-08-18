@@ -212,6 +212,37 @@ describeDb("scholarships", () => {
       expect(res.statusCode).toBe(404);
     });
 
+    it("approve defaults to publishing when no body is sent", async () => {
+      const row = await createViaAdmin();
+      const res = await app.inject({
+        method: "POST",
+        url: `${ADMIN}/${row.id}/approve`,
+        headers: auth(adminToken),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().is_published).toBe(true);
+    });
+
+    it("reject works with no note", async () => {
+      const row = await createViaAdmin();
+      const res = await app.inject({
+        method: "POST",
+        url: `${ADMIN}/${row.id}/reject`,
+        headers: auth(adminToken),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().review_status).toBe("rejected");
+      expect(res.json().review_note).toBeNull();
+    });
+
+    it("unpublishing an approved listing leaves it approved", async () => {
+      const row = await createViaAdmin();
+      await post(`${ADMIN}/${row.id}/approve`, adminToken, { publish: true });
+      const res = await patch(`${ADMIN}/${row.id}/publish`, adminToken, { is_published: false });
+      expect(res.json().is_published).toBe(false);
+      expect(res.json().review_status).toBe("approved");
+    });
+
     it("delete is a soft delete, and drops the row from the public list", async () => {
       const row = await createViaAdmin({ title: `Doomed ${runId}` });
       await post(`${ADMIN}/${row.id}/approve`, adminToken, { publish: true });
@@ -293,6 +324,33 @@ describeDb("scholarships", () => {
       const res = await patch(`${BUSINESS}/${foreign.id}`, bizToken, { title: `Hijacked ${runId}` });
       // 404, not 403 — a 403 would confirm the row exists.
       expect(res.statusCode).toBe(404);
+    });
+
+    it("a business edits its own listing", async () => {
+      const created = await post(BUSINESS, bizToken, { title: `Editable ${runId}` });
+      const id = created.json().id;
+      const res = await patch(`${BUSINESS}/${id}`, bizToken, {
+        title: `Edited ${runId}`,
+        provider_name: "New Provider",
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().title).toBe(`Edited ${runId}`);
+      expect(res.json().provider_name).toBe("New Provider");
+      // An edit must not be a way to re-parent or self-approve.
+      expect(res.json().owner_org_id).toBe(bizId);
+      expect(res.json().review_status).toBe("pending");
+    });
+
+    it("ignores an attempt to re-parent a listing through an edit", async () => {
+      const created = await post(BUSINESS, bizToken, { title: `Reparent ${runId}` });
+      const id = created.json().id;
+      const res = await patch(`${BUSINESS}/${id}`, bizToken, {
+        owner_org_type: "institution",
+        owner_org_id: 1,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().owner_org_type).toBe("business");
+      expect(res.json().owner_org_id).toBe(bizId);
     });
 
     it("rejects a javascript: URL rather than storing it for an href", async () => {

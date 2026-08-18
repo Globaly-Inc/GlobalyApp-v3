@@ -97,7 +97,7 @@ export const visasMockApi = {
     mockVisas = mockVisas.map((v) => (v.id === id ? { ...v, status: "discarded" as const } : v));
   },
 
-  promoteVisa: async (id: string, _departmentBusinessId: string): Promise<void> => {
+  promoteVisa: async (id: string, _departmentOrgId: number): Promise<void> => {
     console.log("[mock] POST /admin/data-extraction/visas/" + id + "/promote");
     await delay(200);
     mockVisas = mockVisas.map((v) => (v.id === id ? { ...v, status: "promoted" as const } : v));

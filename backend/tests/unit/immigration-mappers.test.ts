@@ -152,6 +152,118 @@ describe("mapMaraToOrg", () => {
   });
 });
 
+describe("mapVisaDetails — null handling", () => {
+  // Every optional column has to arrive as an explicit null, not as undefined:
+  // knex omits undefined keys from the INSERT, so on a re-promote the ON CONFLICT
+  // MERGE would leave the previous value in place instead of clearing it.
+  const sparse = mapVisaDetails(
+    visa({
+      visa_stream: null,
+      category: null,
+      duration_months: null,
+      work_rights: null,
+      english_requirements: null,
+      eligible_nationalities: null,
+      excluded_nationalities: null,
+      application_fee_amount: null,
+      application_fee_currency: null,
+      processing_time_min_days: null,
+      processing_time_max_days: null,
+      official_url: null,
+      source_url: null,
+      confidence_score: null,
+      is_permanent: true,
+      points_test_required: true,
+    }),
+    "44444444-4444-4444-4444-444444444444",
+    "schema-uuid",
+  );
+
+  it("nulls every absent optional column", () => {
+    for (const key of [
+      "visa_stream",
+      "category",
+      "duration_months",
+      "work_rights",
+      "english_requirements",
+      "eligible_nationalities",
+      "excluded_nationalities",
+      "application_fee_amount",
+      "application_fee_currency",
+      "processing_time_min_days",
+      "processing_time_max_days",
+      "official_url",
+      "source_url",
+      "confidence_score",
+    ]) {
+      expect(sparse[key]).toBeNull();
+    }
+  });
+
+  it("passes explicit booleans through instead of re-defaulting them", () => {
+    expect(sparse.is_permanent).toBe(true);
+    expect(sparse.points_test_required).toBe(true);
+  });
+
+  it("leaves an already-serialised jsonb string alone", () => {
+    const row = mapVisaDetails(visa({ work_rights: '{"hours":10}' }), "x", "y");
+    expect(row.work_rights).toBe('{"hours":10}');
+  });
+});
+
+describe("mapVisaToService — publish flag", () => {
+  it("honours publish: false so a promote can land unpublished", () => {
+    const { row } = mapVisaToService(visa(), { serviceCategoryId: null, publish: false });
+    expect(row!.is_published).toBe(false);
+    expect(row!.service_category_id).toBeNull();
+  });
+});
+
+describe("mapMaraToOrg — sparse rows", () => {
+  it("nulls the optional org columns rather than omitting them", () => {
+    const row = mapMaraToOrg(agent({ website: null, office_state: null, office_city: null }));
+    expect(row.website).toBeNull();
+    expect(row.state).toBeNull();
+    expect(row.city).toBeNull();
+  });
+});
+
+describe("mapMaraDetails — sparse rows", () => {
+  it("nulls every absent registration column", () => {
+    const row = mapMaraDetails(
+      agent({
+        registration_status: null,
+        registration_date: null,
+        expiry_date: null,
+        business_name: null,
+        practice_areas: null,
+        languages_spoken: null,
+        office_country: null,
+        office_state: null,
+        office_city: null,
+        source_url: null,
+      }),
+      { type: "business", id: 7 },
+    );
+    for (const key of [
+      "registration_status",
+      "registration_date",
+      "expiry_date",
+      "business_name",
+      "practice_areas",
+      "languages_spoken",
+      "office_country",
+      "office_state",
+      "office_city",
+      "source_url",
+    ]) {
+      expect(row[key]).toBeNull();
+    }
+    expect(row.org_type).toBe("business");
+    expect(row.org_id).toBe(7);
+  });
+});
+
 describe("mapMaraDetails", () => {
   const row = mapMaraDetails(agent(), { type: "institution", id: 42 });
 
