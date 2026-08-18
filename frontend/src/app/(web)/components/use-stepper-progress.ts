@@ -2,10 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * Tracks which registered step is closest to the vertical center of the viewport,
- * so a timeline UI can highlight/fill up to it as the user scrolls.
- */
 export function useStepperProgress() {
   const [activeIndex, setActiveIndex] = useState(0);
   const stepsRef = useRef<(HTMLElement | null)[]>([]);

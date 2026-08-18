@@ -1,8 +1,3 @@
-/**
- * A single smooth S-curve running down the middle of a "How It Works" timeline, bulging left/right
- * once per step. viewBox height scales with step count; preserveAspectRatio="none" stretches it to
- * fill whatever height the actual (dynamically-sized) step content ends up being.
- */
 export function WavyTimelineConnector({ steps }: Readonly<{ steps: number }>) {
   let d = "M 50 0";
   for (let i = 0; i < steps; i++) {
