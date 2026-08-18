@@ -38,7 +38,12 @@ bower_components
 build/Release
 
 # Dependency directories
+# Both spellings on purpose: `node_modules/` matches only a DIRECTORY, so a
+# SYMLINK named node_modules slips past it. One did — a self-referential symlink
+# (frontend/node_modules -> frontend/node_modules) was committed, and checking it
+# out replaced the real dependency directory with a loop.
 node_modules/
+node_modules
 jspm_packages/
 
 # Snowpack dependency directory (https://snowpack.dev/)
@@ -142,3 +147,8 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 .gstack/
+
+# A symlink named node_modules is a FILE, so the "node_modules/" pattern above
+# (directory-only, because of the trailing slash) does not match it. One got
+# committed that way: a self-referential symlink that destroyed the real tree.
+node_modules

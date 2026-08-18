@@ -11,6 +11,14 @@ export const TRANSACTION_TYPES = [
   "profile_bonus",
   "refund",
   "manual_adjustment",
+  // Wave G5. An application charge is a CREDIT debit, not a card payment: V1's
+  // `charge-application` calls deduct_credits against credit_wallets, and V2's
+  // application_charges table has no Stripe columns at all. V1 reused
+  // 'enquiry_unlock' for it because its own enum had no application value, which
+  // silently folds application revenue into every enquiry-unlock aggregate — the
+  // ledger's type column lying about what was sold. Added here, and to the DB
+  // check constraint, by 20260817_804 (defect D-G5-5).
+  "application_charge",
 ] as const;
 
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];

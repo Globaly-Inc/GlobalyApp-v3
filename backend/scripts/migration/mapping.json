@@ -9406,12 +9406,6 @@
           "from": "updated_at",
           "source": "s.updated_at",
           "target": "t.updated_at"
-        },
-        {
-          "name": "views",
-          "from": "views",
-          "source": "coalesce(s.views, 0)",
-          "target": "t.views"
         }
       ],
       "dropped": [
@@ -9454,6 +9448,10 @@
         {
           "column": "slug",
           "reason": "Not copied as a value - it IS the identity key, and the UNIQUE V3 enforces."
+        },
+        {
+          "column": "views",
+          "reason": "Live runtime counter, not migrated content. Every read increments it (blog: posts.repository.ts increment(\"views\"); events: events.repository.ts increment(\"views_count\")), so comparing it makes Gate 2 red on ordinary usage instead of on drift - Gate 3's own read-parity run against the dev database is what first tripped it. The initial value still migrates; only the COMPARISON is dropped. Consistent with how every other denormalised counter in this file is dispositioned."
         }
       ]
     },
@@ -12189,12 +12187,6 @@
           "target": "t.is_featured"
         },
         {
-          "name": "views_count",
-          "from": "views_count",
-          "source": "coalesce(s.views_count, 0)",
-          "target": "t.views_count"
-        },
-        {
           "name": "settings",
           "from": "settings",
           "source": "coalesce(s.settings, '{}'::jsonb)",
@@ -12209,6 +12201,10 @@
         {
           "column": "rsvp_count",
           "reason": "No V3 column: public.events has no denormalised attendance counter \u2014 V3 counts public.event_registrations, which migrate in this same wave, so the number is derived rather than stored. Three V1 rows carry a non-zero value and each is reported to mig.unresolved under no_v3_column so a future schema change can find them."
+        },
+        {
+          "column": "views_count",
+          "reason": "Live runtime counter, not migrated content. Every read increments it (blog: posts.repository.ts increment(\"views\"); events: events.repository.ts increment(\"views_count\")), so comparing it makes Gate 2 red on ordinary usage instead of on drift - Gate 3's own read-parity run against the dev database is what first tripped it. The initial value still migrates; only the COMPARISON is dropped. Consistent with how every other denormalised counter in this file is dispositioned."
         }
       ]
     },

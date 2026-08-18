@@ -106,6 +106,9 @@ export default defineConfig({
         "src/modules/superadmin/data-extraction/services/quality.service.ts",
         "src/modules/superadmin/data-extraction/services/schedule.service.ts",
         "src/modules/superadmin/data-extraction/routes/quality.routes.ts",
+        // G5 — ads (campaigns, impressions, leads) + applications & charges
+        "src/modules/ads/**/*.ts",
+        "src/modules/applications/**/*.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {
