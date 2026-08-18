@@ -45,12 +45,21 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
   const recent = await repo.countRecentEnquiries(studentId, ENQUIRY_RATE_WINDOW_HOURS);
   if (recent >= ENQUIRY_RATE_LIMIT) throw new EnquiryRateLimitError();
 
+  // `enquiries.course_id` has no FK behind it (20260817_961: the target is staging
+  // data the extraction tail hard-deletes), so this check is the only thing that
+  // keeps a freshly written reference resolvable. Before the insert, so a bad
+  // course does not cost the student one of their three enquiries per 24h.
+  if (input.course_id != null && !(await repo.courseExists(input.course_id))) {
+    throw new NotFoundError("Course not found");
+  }
+
   const enquiry = await repo.insertEnquiry({
     student_id: studentId,
     message: input.message,
     preferred_intake: input.preferred_intake ?? null,
     preferred_year: input.preferred_year ?? null,
     service_id: input.service_id ?? null,
+    course_id: input.course_id ?? null,
     target_org_type: input.target_org_type ?? null,
     target_org_id: input.target_org_id ?? null,
     agent_business_id: input.agent_business_id ?? null,
@@ -77,7 +86,7 @@ export async function listMyEnquiries(studentId: number, query: ListMyEnquiriesQ
 }
 
 export async function getMyEnquiry(studentId: number, enquiryId: number) {
-  const enquiry = await repo.findEnquiry(enquiryId);
+  const enquiry = await repo.findEnquiryWithCourse(enquiryId);
   if (!enquiry) throw new NotFoundError("Enquiry not found");
   // Not a 403: a student must not be able to probe which enquiry ids exist.
   if (enquiry.student_id !== studentId) throw new NotFoundError("Enquiry not found");

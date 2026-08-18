@@ -13,6 +13,12 @@ export const CreateEnquirySchema = z
     preferred_year: z.coerce.number().int().min(2000).max(2100).nullish(),
     /** uuid of a service inside the target org's tenant schema. */
     service_id: z.string().uuid().nullish(),
+    /**
+     * uuid of a `superadmin.extraction_courses` row — the catalog course the
+     * student picked in the portal. A different table in a different schema from
+     * `service_id`; see 20260817_961 for why the two are not one column.
+     */
+    course_id: z.string().uuid().nullish(),
     target_org_type: z.enum(["business", "institution"]).nullish(),
     target_org_id: z.coerce.number().int().positive().nullish(),
     /** An agent the student addressed by name — always distributed to. */

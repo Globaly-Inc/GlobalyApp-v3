@@ -46,6 +46,7 @@ describeDb("enquiries", () => {
 
   let suffix = "";
   let adminToken = "";
+  let courseSeq = 0;
 
   interface Biz {
     id: number;
@@ -209,6 +210,29 @@ describeDb("enquiries", () => {
     return res.json();
   }
 
+  /**
+   * One staged course in `superadmin.extraction_courses`, with the institution
+   * overview the student-facing join reads its name from. Built here rather than
+   * shared, so a suite that never mentions courses stages none.
+   */
+  async function makeCourse(name: string, shortName: string | null) {
+    const [job] = await masterKnex("superadmin.extraction_jobs")
+      .insert({ institution_url: `https://enq-${suffix}-${++courseSeq}.example.edu`, status: "completed" })
+      .returning(["id"]);
+    const institutionName = `Enq University ${suffix}-${courseSeq}`;
+    await masterKnex("superadmin.extraction_institution_overview").insert({
+      job_id: job.id,
+      name: institutionName,
+    });
+    const [course] = await masterKnex("superadmin.extraction_courses")
+      .insert({ job_id: job.id, name, short_name: shortName })
+      .returning(["id"]);
+    return { id: course.id as string, jobId: job.id as string, institutionName };
+  }
+
+  const courseIdOf = async (enquiryId: number) =>
+    (await masterKnex("enquiries").where({ id: enquiryId }).first("course_id")).course_id;
+
   const distributionFor = async (enquiryId: number, businessId: number) =>
     masterKnex("enquiry_distributions").where({ enquiry_id: enquiryId, business_id: businessId }).first();
 
@@ -331,6 +355,88 @@ describeDb("enquiries", () => {
       const fourth = await post("/api/v3/enquiries", student.token, { message: "one too many" });
       expect(fourth.statusCode).toBe(429);
       expect(fourth.json().code).toBe("ENQUIRY_RATE_LIMIT");
+    });
+  });
+
+  // ── the catalog course a student enquired about ───────────────────────────
+
+  describe("course reference", () => {
+    it("stores the chosen course and joins its names onto the student's own reads", async () => {
+      const student = await makeStudent();
+      const course = await makeCourse("Bachelor of Nursing", "BNurs");
+      const created = await createEnquiry(student.token, { course_id: course.id });
+
+      expect(await courseIdOf(created.id)).toBe(course.id);
+
+      const detail = (await get(`/api/v3/enquiries/${created.id}`, student.token)).json();
+      expect(detail.course_id).toBe(course.id);
+      expect(detail.course_name).toBe("Bachelor of Nursing");
+      expect(detail.course_short_name).toBe("BNurs");
+      expect(detail.institution_name).toBe(course.institutionName);
+
+      const list = (await get("/api/v3/enquiries?limit=100", student.token)).json();
+      const mine = list.data.find((e: { id: number }) => e.id === created.id);
+      expect(mine.course_name).toBe("Bachelor of Nursing");
+      expect(mine.institution_name).toBe(course.institutionName);
+    });
+
+    it("accepts an enquiry with no course at all", async () => {
+      const student = await makeStudent();
+      const created = await createEnquiry(student.token);
+      expect(await courseIdOf(created.id)).toBeNull();
+
+      const detail = (await get(`/api/v3/enquiries/${created.id}`, student.token)).json();
+      expect(detail.course_id).toBeNull();
+      expect(detail.course_name).toBeNull();
+      expect(detail.institution_name).toBeNull();
+    });
+
+    it("refuses a course that is not a uuid, and one that does not exist", async () => {
+      const student = await makeStudent();
+
+      const notUuid = await post("/api/v3/enquiries", student.token, {
+        message: "Please advise on intakes and fees for this programme.",
+        course_id: "not-a-uuid",
+      });
+      expect(notUuid.statusCode).toBe(400);
+
+      // A real uuid for a course that was never staged. Validated rather than
+      // stored blind: this is an app-level reference with no FK behind it, so the
+      // service is the only thing that can keep it resolvable.
+      const missing = await post("/api/v3/enquiries", student.token, {
+        message: "Please advise on intakes and fees for this programme.",
+        course_id: "00000000-0000-4000-8000-000000000000",
+      });
+      expect(missing.statusCode).toBe(404);
+
+      // Neither attempt left an enquiry behind, so neither burned rate limit.
+      const list = (await get("/api/v3/enquiries?limit=100", student.token)).json();
+      expect(list.data).toHaveLength(0);
+    });
+
+    it("renders a course that has since been merged away as no course", async () => {
+      const student = await makeStudent();
+      const course = await makeCourse("Diploma of Business", null);
+      const created = await createEnquiry(student.token, { course_id: course.id });
+
+      // merge.repository.ts deleteRows HARD deletes staging courses, which is
+      // exactly why there is no FK here. The enquiry must survive it.
+      await masterKnex("superadmin.extraction_courses").where({ id: course.id }).delete();
+
+      const detail = (await get(`/api/v3/enquiries/${created.id}`, student.token)).json();
+      expect(detail.course_id).toBe(course.id);
+      expect(detail.course_name).toBeNull();
+      expect(detail.institution_name).toBeNull();
+    });
+
+    it("still refuses an unknown key — the create schema is strict", async () => {
+      const student = await makeStudent();
+      // `extraction_job_id` was a field of the removed second enquiries backend.
+      const res = await post("/api/v3/enquiries", student.token, {
+        message: "Please advise on intakes and fees for this programme.",
+        extraction_job_id: "00000000-0000-4000-8000-000000000000",
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 
