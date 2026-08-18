@@ -21,6 +21,7 @@ import authModule from "./modules/auth/index.js";
 import superadminModule from "./modules/superadmin/index.js";
 import platformUsersModule from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
+import placesModule from "./modules/places/index.js";
 import agentsModule from "./modules/agents/index.js";
 import feedModule from "./modules/feed/index.js";
 import blogModule from "./modules/blog/index.js";
@@ -52,6 +53,7 @@ export async function buildServer() {
     await protectedApp.register(superadminModule);   // admin users + data extraction
     await protectedApp.register(platformUsersModule); // platform user profiles + sub-resources
     await protectedApp.register(businessesModule);   // business registration + profiles
+    await protectedApp.register(placesModule);       // address autocomplete for self-service profile forms
     await protectedApp.register(agentsModule);       // agent invitations + management (per-business DB)
     await protectedApp.register(feedModule);          // cross-portal social feed
     await protectedApp.register(otherServicesModule);      // service listings, orders, reviews

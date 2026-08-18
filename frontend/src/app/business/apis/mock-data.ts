@@ -1,8 +1,14 @@
-import type { BusinessProfile, BusinessProfilePatch, UpdateSubCategoryParams } from "./types";
+import type { BusinessProfile, BusinessProfilePatch, SelectOption, UpdateSubCategoryParams } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+const MOCK_BUSINESS_CATEGORIES: SelectOption[] = [
+  { value: "1", label: "Education Agent" },
+  { value: "2", label: "Institution" },
+  { value: "3", label: "Service Provider" },
+];
 
 let mockProfile: BusinessProfile = {
   id: 1,
@@ -10,6 +16,7 @@ let mockProfile: BusinessProfile = {
   business_name: "Mock Agency",
   subdomain: "mock-agency",
   business_type: null,
+  business_category_id: null,
   email: null,
   phone: null,
   logo_url: null,
@@ -21,6 +28,8 @@ let mockProfile: BusinessProfile = {
   city: null,
   address: null,
   postcode: null,
+  latitude: null,
+  longitude: null,
   onboarding_completed: false,
 };
 
@@ -41,5 +50,20 @@ export const businessMockApi = {
     await delay(300);
     mockProfile = { ...mockProfile, ...patch };
     return mockProfile;
+  },
+
+  uploadImage: async (category: "logo" | "cover", file: File): Promise<{ storage_path: string }> => {
+    console.log(`[mock] POST /businesses/me/files?category=${category}`, file.name);
+    await delay(400);
+    const url = URL.createObjectURL(file);
+    mockProfile = { ...mockProfile, [category === "logo" ? "logo_url" : "cover_url"]: url };
+    return { storage_path: url };
+  },
+
+  getBusinessCategories: async (search?: string): Promise<SelectOption[]> => {
+    console.log("[mock] GET /businesses/business-categories", search);
+    await delay(200);
+    if (!search) return MOCK_BUSINESS_CATEGORIES;
+    return MOCK_BUSINESS_CATEGORIES.filter((c) => c.label.toLowerCase().includes(search.toLowerCase()));
   },
 };

@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Camera, Loader2, Pencil } from "lucide-react";
+import { Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CoverLogoEditor } from "@/components/cover-logo-editor";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile, updateMyProfile } from "@/app/business/store/business-onboarding-slice";
+import { businessApi } from "@/app/business/apis";
 import type { BusinessProfilePatch } from "../apis/types";
 import { BusinessDetailsDialog } from "./business-details-dialog";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
@@ -43,6 +44,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const [countries, setCountries] = useState<Country[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [contextReady, setContextReady] = useState(false);
+  const [imageUploading, setImageUploading] = useState<"logo" | "cover" | null>(null);
 
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
@@ -106,23 +108,30 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     return true;
   };
 
+  const handleImageFile = async (category: "logo" | "cover", file: File) => {
+    setImageUploading(category);
+    try {
+      await businessApi.uploadImage(category, file);
+      await dispatch(fetchMyProfile());
+    } catch (e) {
+      toast.error("Upload failed", { description: e instanceof Error ? e.message : "Please try again." });
+    } finally {
+      setImageUploading(null);
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="space-y-4">
       <Card className="overflow-hidden">
-        <div className="relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48">
-          <Button
-            variant="secondary"
-            size="sm"
-            className="absolute right-4 top-4 gap-1.5"
-            onClick={() => toast("Coming soon", { description: "Cover photo uploads aren't available yet." })}
-          >
-            <Camera className="h-4 w-4" /> Edit cover
-          </Button>
-          <Avatar className="absolute -bottom-12 left-6 size-24 border-4 border-background">
-            {profile.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
-            <AvatarFallback className="text-2xl">{initial}</AvatarFallback>
-          </Avatar>
-        </div>
+        <CoverLogoEditor
+          coverUrl={profile.cover_url}
+          onCoverFile={(file) => handleImageFile("cover", file)}
+          coverUploading={imageUploading === "cover"}
+          logoUrl={profile.logo_url}
+          logoFallback={initial}
+          onLogoFile={(file) => handleImageFile("logo", file)}
+          logoUploading={imageUploading === "logo"}
+        />
         <CardContent className="pt-16">
           <div className="flex items-start justify-between gap-2">
             <div>

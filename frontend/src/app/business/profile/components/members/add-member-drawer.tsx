@@ -8,11 +8,12 @@ import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { FieldError } from "@/components/field-error";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
-import { isValidEmail } from "@/app/admin/platform/businesses/utils";
+import { buildPhone, isValidEmail, isValidPhoneForCountry } from "@/app/admin/platform/businesses/utils";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchMemberRoles, fetchMembers, inviteMember, updateMember } from "../../store/business-profile-detail-slice";
+import { fetchInvitations, fetchMemberRoles, fetchMembers, inviteMember, updateMember } from "../../store/business-profile-detail-slice";
 import type { Member } from "../../apis/types";
 
 const EMPTY = { firstName: "", lastName: "", email: "", phoneCountryId: "", phoneNumber: "", role: "member" };
@@ -39,6 +40,7 @@ export function AddMemberDrawer({
   const [pointOfContact, setPointOfContact] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -56,6 +58,7 @@ export function AddMemberDrawer({
       setPointOfContact(false);
       setIsOwner(false);
     }
+    setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingMember]);
 
@@ -74,8 +77,21 @@ export function AddMemberDrawer({
 
   const canSubmit = isEdit || (form.firstName.trim().length > 0 && form.lastName.trim().length > 0 && isValidEmail(form.email));
 
+  const validate = () => {
+    const nextErrors: Record<string, string | undefined> = {};
+    if (form.phoneNumber.trim()) {
+      if (!form.phoneCountryId) nextErrors.phone = "Select a country code";
+      else if (!isValidPhoneForCountry(form.phoneNumber, countries.find((c) => String(c.id) === form.phoneCountryId)?.iso2)) {
+        nextErrors.phone = "Enter a valid phone number for the selected country";
+      }
+    }
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    if (!isEdit && !validate()) return;
     setSaving(true);
     try {
       if (isEdit && editingMember) {
@@ -89,7 +105,7 @@ export function AddMemberDrawer({
         toast.success("Member updated");
       } else {
         const phoneCode = countries.find((c) => String(c.id) === form.phoneCountryId)?.phoneCode ?? "";
-        const phone = [phoneCode, form.phoneNumber].filter(Boolean).join(" ");
+        const phone = buildPhone(phoneCode, form.phoneNumber);
         await dispatch(
           inviteMember({
             id: businessId,
@@ -105,7 +121,8 @@ export function AddMemberDrawer({
         ).unwrap();
         toast.success("Invitation sent", { description: `${form.email} will appear here once they accept.` });
       }
-      dispatch(fetchMembers({ id: businessId }));
+      if (isEdit) dispatch(fetchMembers({ id: businessId }));
+      else dispatch(fetchInvitations({ id: businessId }));
       handleClose();
     } catch (e) {
       toast.error(isEdit ? "Couldn't update member" : "Couldn't send invitation", { description: (e as Error).message });
@@ -187,13 +204,26 @@ export function AddMemberDrawer({
                 <div className="grid grid-cols-[160px_1fr] gap-3">
                   <Combobox
                     value={form.phoneCountryId}
-                    onChange={(v) => setForm((f) => ({ ...f, phoneCountryId: v }))}
+                    onChange={(v) => {
+                      setForm((f) => ({ ...f, phoneCountryId: v }));
+                      setErrors((e) => (e.phone ? { ...e, phone: undefined } : e));
+                    }}
                     placeholder="Code"
                     searchPlaceholder="Search countries..."
                     options={phoneCountryOptions}
                   />
-                  <Input className="h-10" value={form.phoneNumber} onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))} placeholder="984 1234567" />
+                  <Input
+                    className="h-10"
+                    aria-invalid={!!errors.phone}
+                    value={form.phoneNumber}
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, phoneNumber: e.target.value }));
+                      setErrors((prev) => (prev.phone ? { ...prev, phone: undefined } : prev));
+                    }}
+                    placeholder="984 1234567"
+                  />
                 </div>
+                <FieldError message={errors.phone} />
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Role</Label>

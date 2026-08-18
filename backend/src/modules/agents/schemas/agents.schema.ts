@@ -17,6 +17,10 @@ export const AgentParamsSchema = z.object({
   id: z.coerce.number().int(),
 });
 
+export const InvitationParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
 export const AgentPatchSchema = z.object({
   role: z.string().min(1).optional(),
   admin_point_of_contact: z.boolean().optional(),
