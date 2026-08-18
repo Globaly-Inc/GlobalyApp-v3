@@ -142,6 +142,44 @@ describeDb("ai-knowledge recall@5 gate", () => {
     expect(text.misses.length).toBeGreaterThan(0);
   });
 
+  // ── A DOCUMENTED DEFECT, pinned so it cannot be forgotten ──
+  //
+  // This asserts what the code does today, which is NOT what it should do.
+  //
+  // websearch_to_tsquery joins every lexeme with `&`, so the text leg only matches a
+  // chunk containing the whole question. Measured against all 207 migrated documents
+  // with 20 generated natural-language questions: the text leg returned ZERO rows for
+  // 20 of 20, recall@5 0.000. On realistic input "hybrid" retrieval is therefore
+  // vector-only 100% of the time and the second arm of the RRF contributes nothing.
+  // OR-ing the same lexemes takes that arm to recall@5 0.550 on the same questions.
+  //
+  // It is pinned rather than fixed because neither obvious fix is safe on the evidence
+  // available without a full set of real embeddings:
+  //   * OR-ing unconditionally floods the pool on keyword queries — fused recall@5 on
+  //     this fixture fell 1.000 -> 0.833, below the gate. An unweighted RRF does not
+  //     let a broad arm lose politely to a precise one; it dilutes it.
+  //   * strict-first-then-loose keeps this fixture at 1.000, but makes the text leg
+  //     good enough to answer all 12 fixture questions alone, which silently disarms
+  //     two of the teeth below ("beats the text leg alone" and, worse, "fails when
+  //     nothing has been embedded"). Re-deriving a question set where lexical search
+  //     genuinely cannot win belongs in the same change as the fix, and needs the real
+  //     corpus embedded to validate.
+  //
+  // Flip this to toBeGreaterThan(0) as part of that change.
+  it("documents that the text leg cannot answer a full-sentence question (defect)", async () => {
+    const repo = await import("../../src/modules/superadmin/ai-knowledge/repositories/retrieval.repository.js");
+    const question = "How many hours per fortnight is a student visa holder allowed to work in Australia?";
+
+    const chunks = await repo.hybridSearch({
+      queryText: question,
+      queryEmbedding: null,
+      topK: RECALL_K,
+      legs: "text",
+    });
+
+    expect(chunks.length).toBe(0);
+  });
+
   it("finds each question by the leg the fixture says should find it", async () => {
     const vector = reports.get("vector")!;
     const text = reports.get("text")!;
