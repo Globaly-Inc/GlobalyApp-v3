@@ -29,7 +29,11 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { DEFAULT_VISIBILITY } from "../../src/modules/platform-users/schemas/public-profile.schema.js";
 import {
   assertTargetColumns,
   clearReport,
@@ -102,7 +106,42 @@ const PROFILE_COLUMNS = [
   "completion_percentage", "onboarding_completed", "individual_category",
   "personal_address_city", "personal_address_state", "personal_address_street", "personal_address_postcode",
   "linkedin_url", "website_url",
+  "profile_slug", "public_visibility",
 ];
+
+/**
+ * D4's visibility defaults, as a jsonb literal — imported, never re-declared, so a
+ * change to the defaults changes what this transform collapses.
+ *
+ * Booleans and fixed key names only, so the interpolation carries no injection
+ * surface; the self-check pins the shape anyway.
+ */
+const DEFAULT_VISIBILITY_JSONB = `'${JSON.stringify(DEFAULT_VISIBILITY)}'::jsonb`;
+
+/**
+ * V1's `public_visibility`, stored the way D4 means it.
+ *
+ * D4 (20260817_401_student_public_profiles.ts) makes NULL mean "the defaults,
+ * resolved at read time": "Storing the defaults would freeze them at publish time;
+ * resolving them at read time means changing the default changes every profile that
+ * never customised it." 14 of V1's 16 published profiles hold a value equal to
+ * DEFAULT_VISIBILITY, so copying the column verbatim would freeze the defaults for
+ * almost every profile it touched — a migration that looks lossless and quietly
+ * opts 14 students out of every future default change.
+ *
+ * The comparison is jsonb `=`, which is key-by-key on a parsed value. V1 writes the
+ * keys in a different order than V3 declares them, so a text compare would call
+ * every one of those 14 "customised".
+ */
+const PUBLIC_VISIBILITY = `(CASE WHEN p.public_visibility = ${DEFAULT_VISIBILITY_JSONB} THEN NULL ELSE p.public_visibility END)`;
+
+/** One mapping.json column's source expression, for the self-check's drift guard. */
+function mappingColumnSource(mappingName: string, column: string): string | undefined {
+  const manifest = JSON.parse(
+    readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "mapping.json"), "utf8"),
+  ) as { mappings: { name: string; columns: { name: string; source: string }[] }[] };
+  return manifest.mappings.find((m) => m.name === mappingName)?.columns.find((c) => c.name === column)?.source;
+}
 
 export async function transformIdentity(ctx: TransformContext, allowedCodes: ReadonlySet<string>): Promise<void> {
   await assertTargetColumns(ctx.db, "public", "platform_users", USER_COLUMNS);
@@ -218,7 +257,8 @@ export async function transformIdentity(ctx: TransformContext, allowedCodes: Rea
             coalesce(p.completion_percentage, 0), (p.onboarding_completed IS TRUE),
             ${INDIVIDUAL_CATEGORY},
             p.personal_address_city, p.personal_address_state, p.personal_address_street, p.personal_address_postcode,
-            p.linkedin_url, p.website_url
+            p.linkedin_url, p.website_url,
+            p.profile_slug, ${PUBLIC_VISIBILITY}
        FROM v1_staging.profiles p
        JOIN v1_staging.auth_users u ON u.id = p.user_id
        JOIN public.platform_users pu ON pu.uuid = u.id
@@ -307,6 +347,32 @@ export function identitySelfCheck(): void {
   assert.ok(PROFILE_COLUMNS.includes("user_id") && PROFILE_COLUMNS[0] === "user_id");
   assert.equal(new Set(PROFILE_COLUMNS).size, PROFILE_COLUMNS.length);
   assert.equal(new Set(USER_COLUMNS).size, USER_COLUMNS.length);
+
+  // D4's public profile. The slug is the publish flag, so it must be carried; the
+  // visibility must be collapsed to NULL when it equals the defaults, key-by-key.
+  assert.ok(PROFILE_COLUMNS.includes("profile_slug"), "a slug that is not carried unpublishes the profile");
+  assert.ok(PROFILE_COLUMNS.includes("public_visibility"));
+  assert.deepEqual(JSON.parse(DEFAULT_VISIBILITY_JSONB.slice(1, -"'::jsonb".length)), DEFAULT_VISIBILITY);
+  assert.equal(Object.keys(DEFAULT_VISIBILITY).length, 8, "V1's eight visibility sections");
+  assert.ok(Object.values(DEFAULT_VISIBILITY).every((v) => typeof v === "boolean"), "the literal is booleans only");
+  assert.ok(
+    PUBLIC_VISIBILITY.includes("THEN NULL"),
+    "storing the defaults would freeze them at publish time — D4 resolves them at read time",
+  );
+  assert.ok(
+    !PUBLIC_VISIBILITY.includes("::text"),
+    "the default comparison is jsonb =, key-by-key; a text compare calls 14 of V1's 16 profiles customised",
+  );
+
+  // Gate 2 compares the source through the SAME expression this transform writes.
+  // If they drift, the gate would be comparing a value nothing produces and would
+  // go green on a migration that had stopped collapsing the defaults.
+  assert.equal(
+    mappingColumnSource("platform_user_profiles", "public_visibility"),
+    PUBLIC_VISIBILITY,
+    "mapping.json's public_visibility source must be this transform's expression, character for character",
+  );
+  assert.equal(mappingColumnSource("platform_user_profiles", "profile_slug"), "p.profile_slug");
 
   console.log(`w1-identity self-check: ok — ${USER_COLUMNS.length} user columns, ${PROFILE_COLUMNS.length} profile columns`);
 }

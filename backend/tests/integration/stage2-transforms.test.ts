@@ -38,6 +38,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { dbAvailable } from "../helpers/db.js";
 import { testDatabaseUrl } from "../setup/db-url.js";
+import { DEFAULT_VISIBILITY, resolveVisibility } from "../../src/modules/platform-users/schemas/public-profile.schema.js";
 
 const execFileAsync = promisify(execFile);
 const BACKEND_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -188,10 +189,21 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
       [USER_A, USER_B, EMAILS[0], EMAILS[1]],
     );
     await db.query(
+      // Both students published a public profile in V1 (a slug IS the publish flag).
+      // A holds V1's DEFAULT_VISIBILITY — written here with scrambled key order on
+      // purpose, so a transform that compared the JSON as a STRING would pass the
+      // first assertion and fail the "stored as NULL" one. B genuinely customised it.
       `INSERT INTO v1_staging.profiles (id, user_id, first_name, last_name, nationality, country_of_residence,
-                                        portal_type, individual_category, budget_currency, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, 'Aay', 'Aayson', 'Australia', 'AU', 'business', 'student', 'AUD - Australian Dollar', ${now}, ${now}),
-              (gen_random_uuid(), $2, NULL, NULL, 'AU', NULL, 'student', 'exploring', NULL, ${now}, ${now})`,
+                                        portal_type, individual_category, budget_currency, profile_slug,
+                                        public_visibility, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, 'Aay', 'Aayson', 'Australia', 'AU', 'business', 'student', 'AUD - Australian Dollar',
+               'aay-aayson-s2t',
+               '{"contact_info":false,"social_links":true,"certifications":true,"academic_tests":true,"language_tests":true,"work_experience":true,"education":true,"about":true}'::jsonb,
+               ${now}, ${now}),
+              (gen_random_uuid(), $2, NULL, NULL, 'AU', NULL, 'student', 'exploring', NULL,
+               'bee-beeson-s2t',
+               '{"about":true,"education":false,"work_experience":false,"language_tests":true,"academic_tests":false,"certifications":true,"social_links":true,"contact_info":false}'::jsonb,
+               ${now}, ${now})`,
       [USER_A, USER_B],
     );
     await db.query(
@@ -371,6 +383,73 @@ describeDb("Stage 2 transforms (W1, W2, W3)", () => {
       [EMAILS[0]],
     );
     expect(after[0].nationality_id).toBe(correct[0].nationality_id);
+  }, 120_000);
+
+  // ── D4: the public student profile ───────────────────────────────────────────
+
+  it("carries the published profile slug across, and stores only a customised visibility", async () => {
+    // profile_slug / public_visibility were dispositioned as dropped on the reason
+    // "V3 has no public individual profile pages". Wave D4 shipped exactly those
+    // pages (20260817_401_student_public_profiles.ts), so the reason is no longer
+    // true and V1's 16 published profiles were being silently lost.
+    //
+    // The half that is easy to get wrong is public_visibility. D4's design makes
+    // NULL mean "the defaults, resolved at read time" — storing the defaults would
+    // freeze them at publish time. 14 of V1's 16 published profiles hold a value
+    // byte-identical to DEFAULT_VISIBILITY, so a verbatim copy would freeze the
+    // defaults for almost every profile it touched.
+    await runTransform("w1-identity.ts", true);
+
+    const { rows } = await db.query<{ email: string; profile_slug: string | null; public_visibility: unknown }>(
+      `SELECT u.email, p.profile_slug, p.public_visibility
+         FROM public.platform_user_profiles p
+         JOIN public.platform_users u ON u.id = p.user_id
+        WHERE u.email = ANY($1) ORDER BY u.email`,
+      [[EMAILS[0], EMAILS[1]]],
+    );
+    const byEmail = new Map(rows.map((r) => [r.email, r]));
+
+    expect(byEmail.get(EMAILS[0])?.profile_slug, "a slug IS the publish flag — losing it unpublishes the profile")
+      .toBe("aay-aayson-s2t");
+    expect(byEmail.get(EMAILS[1])?.profile_slug).toBe("bee-beeson-s2t");
+
+    expect(
+      byEmail.get(EMAILS[0])?.public_visibility,
+      "V1 stored the defaults; storing them again would freeze them at publish time",
+    ).toBeNull();
+    expect(byEmail.get(EMAILS[1])?.public_visibility, "a genuinely customised blob is the one thing worth storing")
+      .toEqual({
+        about: true, education: false, work_experience: false, language_tests: true,
+        academic_tests: false, certifications: true, social_links: true, contact_info: false,
+      });
+
+    // The claim in one number, the way the migrated database will be counted.
+    const { rows: counts } = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM public.platform_user_profiles p
+         JOIN public.platform_users u ON u.id = p.user_id
+        WHERE u.email = ANY($1) AND p.public_visibility IS NOT NULL`,
+      [[EMAILS[0], EMAILS[1]]],
+    );
+    expect(Number(counts[0].n), "exactly the customised ones are stored").toBe(1);
+  }, 120_000);
+
+  it("resolves both published profiles to the same visibility V1 rendered", async () => {
+    // The parity claim that actually matters: NULL-means-defaults is a storage
+    // decision, not a behaviour change. Resolved through the service's own helper,
+    // every migrated profile must show the sections V1 showed.
+    await runTransform("w1-identity.ts", true);
+
+    const { rows } = await db.query<{ email: string; public_visibility: unknown }>(
+      `SELECT u.email, p.public_visibility
+         FROM public.platform_user_profiles p
+         JOIN public.platform_users u ON u.id = p.user_id
+        WHERE u.email = ANY($1)`,
+      [[EMAILS[0], EMAILS[1]]],
+    );
+    const resolved = new Map(rows.map((r) => [r.email, resolveVisibility(r.public_visibility)]));
+
+    expect(resolved.get(EMAILS[0]), "a stored NULL must resolve to exactly what V1 held").toEqual(DEFAULT_VISIBILITY);
+    expect(resolved.get(EMAILS[1])).toEqual({ ...DEFAULT_VISIBILITY, education: false, work_experience: false, academic_tests: false });
   }, 120_000);
 
   // ── the geo reconcile ────────────────────────────────────────────────────────

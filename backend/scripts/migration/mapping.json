@@ -2476,6 +2476,20 @@
           "source": "p.personal_address_lng::numeric(10,7)::text",
           "target": "t.longitude::text",
           "note": "renamed personal_address_lng -> longitude"
+        },
+        {
+          "name": "profile_slug",
+          "from": "profile_slug",
+          "source": "p.profile_slug",
+          "target": "t.profile_slug",
+          "note": "RE-DISPOSITIONED 2026-08-17 (was dropped: \u201cNo V3 column \u2014 V3 has no public individual profile pages\u201d). Wave D4 shipped exactly those pages \u2014 20260817_401_student_public_profiles.ts adds platform_user_profiles.profile_slug and public_visibility \u2014 so the reason is no longer true and V1's 16 published profiles were being lost. Carried verbatim: the slug IS the publish flag (V1 has no is_public column), so dropping it unpublishes every migrated profile. The D4 unique index anticipates this import by name."
+        },
+        {
+          "name": "public_visibility",
+          "from": "public_visibility",
+          "source": "(CASE WHEN p.public_visibility = '{\"about\":true,\"education\":true,\"work_experience\":true,\"language_tests\":true,\"academic_tests\":true,\"certifications\":true,\"social_links\":true,\"contact_info\":false}'::jsonb THEN NULL ELSE p.public_visibility END)",
+          "target": "t.public_visibility",
+          "note": "See profile_slug. NOT a verbatim copy, and the source expression above is the reason: D4 makes NULL mean \u201cthe defaults, resolved at read time\u201d, because storing the defaults would freeze them at publish time. 14 of V1's 16 published profiles (and all 6 unpublished ones that carry a blob) hold a value equal to DEFAULT_VISIBILITY, so a verbatim copy would opt 14 students out of every future default change while looking lossless. The comparison is jsonb =, key-by-key: V1 writes the keys in a different order than V3 declares them, so a text compare would call all 14 customised. This expression is the same string w1-identity.ts builds from the imported DEFAULT_VISIBILITY, and its --self-check asserts they are equal."
         }
       ],
       "dropped": [
@@ -2546,14 +2560,6 @@
         {
           "column": "personal_address_google_maps_url",
           "reason": "No V3 column. Derivable from lat/lng if ever needed."
-        },
-        {
-          "column": "profile_slug",
-          "reason": "No V3 column \u2014 V3 has no public individual profile pages."
-        },
-        {
-          "column": "public_visibility",
-          "reason": "No V3 column \u2014 depends on public individual profile pages, which V3 does not have."
         },
         {
           "column": "phone_country_code",
