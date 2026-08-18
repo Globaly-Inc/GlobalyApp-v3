@@ -55,6 +55,11 @@ export const sendMessage = createAsyncThunk<
         case "chips":
           dispatch(setChips(event.chips));
           break;
+        case "usage":
+          // Per-token metering: the turn's real cost, so the banner does not have
+          // to guess or re-fetch.
+          dispatch(creditsCharged(event.credits_charged));
+          break;
         case "done":
           finalMessageId = event.message_id;
           break;
@@ -70,6 +75,22 @@ export const sendMessage = createAsyncThunk<
 
 export const fetchCreditBalance = createAsyncThunk("aiChat/fetchCreditBalance", () =>
   aiApi.getCreditBalance(),
+);
+
+/**
+ * Adopt the transcript from a chat had before signing up.
+ *
+ * Idempotent on the server, so a retry or a double-tap is harmless. Call it once
+ * after a guest completes signup, with the fingerprint hash the guest stream
+ * reported in its `guest-meta` event.
+ */
+export const migrateGuestChat = createAsyncThunk(
+  "aiChat/migrateGuestChat",
+  async (fingerprintHash: string, { dispatch }) => {
+    const result = await aiApi.migrateGuestChat(fingerprintHash);
+    if (result.migrated) await dispatch(fetchSessions());
+    return result;
+  },
 );
 
 /* ── state ── */
@@ -130,6 +151,21 @@ const aiChatSlice = createSlice({
     },
     addTrace(state, action: PayloadAction<string>) {
       state.traceSteps.push(action.payload);
+    },
+    creditsCharged(state, action: PayloadAction<number>) {
+      if (!state.credits || action.payload <= 0) return;
+      // Drain the same waterfall the server does: free, then subscription, then
+      // purchased. Keeps the banner honest until the next balance fetch.
+      let remaining = action.payload;
+      const take = (available: number) => {
+        const spent = Math.min(available, remaining);
+        remaining -= spent;
+        return available - spent;
+      };
+      const free = take(state.credits.free);
+      const subscription = take(state.credits.subscription);
+      const purchased = take(state.credits.purchased);
+      state.credits = { free, subscription, purchased, total: free + subscription + purchased };
     },
     sessionCreated(state, action: PayloadAction<ChatSession>) {
       state.sessions.unshift(action.payload);
@@ -281,6 +317,7 @@ export const {
   setCards,
   setChips,
   addTrace,
+  creditsCharged,
   sessionCreated,
   clearStreamingState,
   addOptimisticUserMessage,

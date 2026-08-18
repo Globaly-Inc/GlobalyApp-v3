@@ -10,22 +10,26 @@ import {
 import * as chatService from "../services/chat.service.js";
 import * as sessionService from "../services/session.service.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
-import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as creditService from "../services/credit.service.js";
-import { NotFoundError, ForbiddenError, PaymentRequiredError } from "../../../shared/errors.js";
+import { resolveScope } from "../services/scope.js";
+import { assertProviderConfigured } from "../services/provider.js";
+import { NotFoundError } from "../../../shared/errors.js";
 
 export async function chatRoutes(app: FastifyInstance) {
-  // POST /messages — SSE streaming chat
+  // POST /messages — SSE streaming chat.
+  //
+  // Order matters and is the fail-closed contract: auth (plugin) → zod → scope →
+  // credit gate → provider availability → only then a single SSE byte. A platform
+  // with no model key answers 503 with normal HTTP headers, never an empty stream.
   app.post("/messages", async (req, reply) => {
-    const userId = Number(req.auth.sub);
     const input = SendMessageSchema.parse(req.body ?? {});
+    const scope = resolveScope(req);
 
-    // Phase 2: credit gate
-    const hasCredits = await creditService.checkBalance(userId);
-    if (!hasCredits) throw new PaymentRequiredError();
+    await creditService.assertSpendable(scope);
+    assertProviderConfigured();
 
     await chatService.handleMessage({
-      userId,
+      scope,
       sessionId: input.session_id,
       content: input.content,
       attachments: input.attachments,
@@ -34,24 +38,17 @@ export async function chatRoutes(app: FastifyInstance) {
     // ponytail: SSE response written directly to reply.raw by chatService — do not call reply.send()
   });
 
-  // GET /sessions — list user's sessions
+  // GET /sessions — list the sessions this scope owns
   app.get("/sessions", async (req, reply) => {
     const query = ListSessionsQuerySchema.parse(req.query ?? {});
-    const sessions = await sessionService.listSessions(
-      Number(req.auth.sub),
-      query.include_archived,
-    );
+    const sessions = await sessionService.listSessions(resolveScope(req), query.include_archived);
     return reply.send({ sessions });
   });
 
   // GET /sessions/:id/messages — load messages for a session
   app.get("/sessions/:id/messages", async (req, reply) => {
     const { id } = SessionIdParamSchema.parse(req.params);
-    const userId = Number(req.auth.sub);
-
-    const session = await sessionsRepo.findById(id);
-    if (!session) throw new NotFoundError("Session not found");
-    if (session.platform_user_id !== userId) throw new ForbiddenError("Not your session");
+    await sessionService.getSession(id, resolveScope(req));
 
     const messages = await messagesRepo.findBySession(id, { limit: 100 });
     return reply.send({ messages });
@@ -61,7 +58,7 @@ export async function chatRoutes(app: FastifyInstance) {
   app.patch("/sessions/:id", async (req, reply) => {
     const { id } = SessionIdParamSchema.parse(req.params);
     const patch = UpdateSessionSchema.parse(req.body ?? {});
-    const updated = await sessionService.updateSession(id, Number(req.auth.sub), patch);
+    const updated = await sessionService.updateSession(id, resolveScope(req), patch);
     return reply.send(updated);
   });
 
@@ -69,6 +66,10 @@ export async function chatRoutes(app: FastifyInstance) {
   app.patch("/messages/:id/feedback", async (req, reply) => {
     const { id } = MessageIdParamSchema.parse(req.params);
     const { feedback } = FeedbackSchema.parse(req.body ?? {});
+    // The session guard is what stops a caller rating someone else's message.
+    const message = await messagesRepo.findById(id);
+    if (!message) throw new NotFoundError("Message not found");
+    await sessionService.getSession(message.session_id, resolveScope(req));
     await messagesRepo.updateFeedback(id, feedback);
     return reply.send({ ok: true });
   });

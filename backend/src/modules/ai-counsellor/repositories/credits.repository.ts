@@ -56,6 +56,7 @@ export interface TransactionRow {
   reason: CreditReason | null;
   reference_type: string | null;
   reference_id: string | null;
+  idempotency_key: string | null;
   created_at: Date;
 }
 
@@ -87,6 +88,11 @@ export async function createWallet(userId: number, freeBalance = 10): Promise<Wa
   );
   // If DO NOTHING fired, the row won't be in rows — fetch it
   return result.rows?.[0] ?? (await findByUserId(userId))!;
+}
+
+/** Idempotent provisioning — the AI-chat signup grant lands on first use. */
+export async function ensureUserWallet(userId: number, freeBalance = 10): Promise<WalletRow> {
+  return (await findByUserId(userId)) ?? (await createWallet(userId, freeBalance));
 }
 
 export async function getForUpdate(userId: number, trx: Knex.Transaction): Promise<WalletRow | undefined> {
@@ -144,12 +150,15 @@ export async function recordTransaction(
     balanceAfter: number;
     referenceType?: string;
     referenceId?: number;
+    /** Present for anything that can be replayed. Enforced by a UNIQUE index. */
+    idempotencyKey?: string;
   },
   trx: Knex.Transaction,
 ): Promise<TransactionRow> {
   const [row] = await trx<TransactionRow>(TXN)
     .insert({
       wallet_id: walletId,
+      idempotency_key: data.idempotencyKey ?? null,
       transaction_type: TRANSACTION_TYPE_BY_REASON[data.reason],
       amount: data.amount,
       balance_after: data.balanceAfter,

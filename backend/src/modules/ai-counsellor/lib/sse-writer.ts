@@ -15,10 +15,16 @@ export function writeEvent(reply: FastifyReply, event: string, data: unknown): v
   reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-/** Write a data-only SSE line (OpenAI-compatible delta format). */
-export function writeData(reply: FastifyReply, data: unknown): void {
-  if (reply.raw.destroyed) return;
+/**
+ * Write a data-only SSE line (OpenAI-compatible delta format).
+ *
+ * Returns whether the socket took it. Metering counts delivered tokens, so the
+ * caller has to be able to tell a written chunk from a dropped one.
+ */
+export function writeData(reply: FastifyReply, data: unknown): boolean {
+  if (reply.raw.destroyed) return false;
   reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+  return true;
 }
 
 /** Write [DONE] marker and end the stream. */

@@ -39,13 +39,19 @@ export type SendMessageInput = {
   content: string;
 };
 
-/** Server-sent event types from the streaming endpoint. */
+/**
+ * Events the store consumes. This is the view's vocabulary, not the wire's — the
+ * backend's SSE frames are translated into it inside apis/real-api.ts, which is
+ * the only file that knows the wire format.
+ */
 export type SSEEvent =
   | { type: "session_created"; session: ChatSession }
   | { type: "trace"; step: string }
   | { type: "delta"; text: string }
   | { type: "cards"; cards: CourseCard[] }
   | { type: "chips"; chips: string[] }
+  /** Emitted once per turn, carrying what the turn actually cost. */
+  | { type: "usage"; credits_charged: number }
   | { type: "done"; message_id: number }
   | { type: "error"; error: string };
 
@@ -62,3 +68,12 @@ export type CreditBalance = {
 
 /** Extended SSE event for guest mode */
 export type GuestSSEEvent = SSEEvent | { type: "guest-meta"; replies_remaining: number; fingerprint_hash: string };
+
+/**
+ * Result of adopting a pre-signup transcript. `migrated` is true only for the call
+ * that actually moved it; a repeat returns the same `session_id` with false.
+ */
+export type GuestMigrationResult = {
+  session_id: number | null;
+  migrated: boolean;
+};

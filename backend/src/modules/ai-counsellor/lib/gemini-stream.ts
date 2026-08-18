@@ -1,16 +1,19 @@
+// Live Gemini implementation of the AiProvider seam. Nothing outside
+// services/provider.ts should import this file — see that file for why.
+
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../../../config.js";
-import { BadRequestError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
+import type { AiProvider, StreamChatOpts, StreamChatResult } from "../services/provider.js";
 
 const logger = createChildLogger("gemini-stream");
 
 let client: GoogleGenerativeAI | null = null;
 
 function getClient(): GoogleGenerativeAI {
-  if (!config.GEMINI_API_KEY) {
-    throw new BadRequestError("AI counsellor is not configured");
-  }
+  // provider.ts refuses to hand this module out without a key, so reaching here
+  // without one is a programming error, not an operator misconfiguration.
+  if (!config.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY missing");
   client ??= new GoogleGenerativeAI(config.GEMINI_API_KEY);
   return client;
 }
@@ -20,27 +23,18 @@ function isTransient(err: unknown): boolean {
   return /429|503|overloaded|high demand|rate limit/i.test(message);
 }
 
-export interface StreamChatOpts {
-  system: string;
-  history: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>;
-  userMessage: string;
-  onChunk: (text: string) => void;
-  signal?: AbortSignal;
-}
-
-export interface StreamChatResult {
-  fullText: string;
-  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
-}
-
 /** Stream a multi-turn chat with Gemini. Retries transient errors up to 3 times. */
-export async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult> {
+async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult> {
   const model = getClient().getGenerativeModel({
     model: config.GEMINI_MODEL,
     systemInstruction: opts.system,
   });
 
   for (let attempt = 0; attempt < 3; attempt++) {
+    // A retry restarts the answer from the first token, so it is only safe while
+    // the client has seen nothing. Retrying after a partial answer would both
+    // duplicate text on the wire and meter the same completion twice.
+    let emitted = false;
     try {
       const result = await model.generateContentStream({
         contents: [
@@ -55,6 +49,7 @@ export async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult
         const text = chunk.text();
         if (text) {
           fullText += text;
+          emitted = true;
           opts.onChunk(text);
         }
       }
@@ -71,7 +66,7 @@ export async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult
         },
       };
     } catch (err) {
-      if (attempt < 2 && isTransient(err)) {
+      if (attempt < 2 && !emitted && isTransient(err)) {
         await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
         continue;
       }
@@ -83,7 +78,7 @@ export async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult
 }
 
 /** Quick one-shot generation for auto-titling (non-streaming). */
-export async function generateTitle(content: string): Promise<string> {
+async function generateTitle(content: string): Promise<string> {
   const model = getClient().getGenerativeModel({
     model: config.GEMINI_MODEL,
     systemInstruction: "Generate a 3-5 word title for this chat. Return ONLY the title, no quotes or punctuation.",
@@ -92,3 +87,11 @@ export async function generateTitle(content: string): Promise<string> {
   const result = await model.generateContent(content.slice(0, 500));
   return result.response.text().trim().slice(0, 60);
 }
+
+export const geminiProvider: AiProvider = {
+  get model() {
+    return config.GEMINI_MODEL;
+  },
+  streamChat,
+  generateTitle,
+};

@@ -1,4 +1,12 @@
-import type { ChatSession, CourseCard, CreditBalance, Message, SendMessageInput, SSEEvent } from "./types";
+import type {
+  ChatSession,
+  CourseCard,
+  CreditBalance,
+  GuestMigrationResult,
+  Message,
+  SendMessageInput,
+  SSEEvent,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -113,6 +121,12 @@ export const aiMockApi = {
     return { free: 7, subscription: 0, purchased: 0, total: 7 };
   },
 
+  migrateGuestChat: async (fingerprintHash: string): Promise<GuestMigrationResult> => {
+    console.log("[mock] POST /ai-chat/guest/migrate", fingerprintHash);
+    await delay(200);
+    return { session_id: mockSessions[0]?.id ?? null, migrated: true };
+  },
+
   sendMessage: async (
     input: SendMessageInput,
     onEvent: (event: SSEEvent) => void,
@@ -150,6 +164,7 @@ export const aiMockApi = {
     await delay(100);
     onEvent({ type: "chips", chips: ["Tell me more", "Compare programs", "Admission requirements"] });
     await delay(50);
+    onEvent({ type: "usage", credits_charged: 1 });
     onEvent({ type: "done", message_id: nextMessageId++ });
   },
 };
