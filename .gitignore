@@ -8,3 +8,6 @@
 # re-include anything under an excluded directory).
 .docker/storage/*
 !.docker/storage/.gitkeep
+
+# Agent worktrees — transient, created by EnterWorktree/subagents
+.claude/worktrees/
