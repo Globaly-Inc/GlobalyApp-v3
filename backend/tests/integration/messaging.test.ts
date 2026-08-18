@@ -40,12 +40,14 @@ describeDb("messaging", () => {
   let bizA = 0;
   let schemaA = "";
   let schemaB = "";
+  let schemaInst = "";
 
   let studentToken = "";
   let agentToken = ""; // business A context
   let agentNoOrgToken = "";
   let mateToken = "";
   let outsiderToken = ""; // business B context
+  let instToken = ""; // `mate`, switched to an institution-typed business
   let conversationId = 0;
 
   // ── helpers ──
@@ -126,6 +128,7 @@ describeDb("messaging", () => {
     ({ shutdownAll: shutdownPools } = await import("../../src/core/db/pool-manager.js"));
     const { config } = (await import("../../src/config.js")) as unknown as { config: Record<string, string> };
     const { provisionBusinessSchema } = await import("../../src/core/business/provisioner.js");
+    const { createSchemaKnex, schemaName } = await import("../../src/core/db/knex.js");
     const { errorHandlerPlugin } = await import("../../src/core/plugins/error-handler.plugin.js");
     const { requestContextPlugin } = await import("../../src/core/plugins/request-context.plugin.js");
     const { authPlugin } = await import("../../src/core/plugins/auth.plugin.js");
@@ -182,12 +185,14 @@ describeDb("messaging", () => {
 
     const a = await insertBusiness("a", agentId, "agency");
     const b = await insertBusiness("b", outsiderId, "agency");
+    // V1 seated an institution's staff as provider_member instead of agent_member.
+    const c = await insertBusiness("c", mateId, "institution");
     bizA = a.id;
     schemaA = a.schema_name;
     schemaB = b.schema_name;
+    schemaInst = c.schema_name;
 
     // Seat the agent and one team mate in business A's tenant schema.
-    const { createSchemaKnex, schemaName } = await import("../../src/core/db/knex.js");
     const tenantA = createSchemaKnex(schemaName(schemaA), { min: 0, max: 1 });
     try {
       const role = await tenantA("roles").first("id");
@@ -206,12 +211,21 @@ describeDb("messaging", () => {
     agentNoOrgToken = sign({ sub: String(agentId), type: "platform_user" });
     mateToken = sign({ sub: String(mateId), type: "platform_user", orgId: schemaA });
     outsiderToken = sign({ sub: String(outsiderId), type: "platform_user", orgId: schemaB });
+    instToken = sign({ sub: String(mateId), type: "platform_user", orgId: schemaInst });
+
+    const tenantInst = createSchemaKnex(schemaName(schemaInst), { min: 0, max: 1 });
+    try {
+      const role = await tenantInst("roles").first("id");
+      await tenantInst("agents").insert({ platform_user_id: mateId, role_id: role.id, is_owner: true });
+    } finally {
+      await tenantInst.destroy();
+    }
   });
 
   afterAll(async () => {
     if (masterKnex) {
       await masterKnex("conversations").whereIn("created_by", [studentId, agentId, mateId, outsiderId]).del();
-      await masterKnex("businesses").whereIn("id", [bizA]).orWhere("owner_id", outsiderId).del();
+      await masterKnex("businesses").whereIn("owner_id", [agentId, mateId, outsiderId]).del();
       await masterKnex("platform_users").whereIn("id", [studentId, agentId, mateId, outsiderId]).del();
     }
     await app?.close();
@@ -253,6 +267,20 @@ describeDb("messaging", () => {
   it("refuses to start a conversation without business context", async () => {
     const res = await post(`${BASE}/conversations`, agentNoOrgToken, { student_user_id: studentId });
     expect(res.statusCode).toBe(403);
+  });
+
+  it("seats an institution's staff as provider_member", async () => {
+    const res = await post(`${BASE}/conversations`, instToken, { student_user_id: studentId });
+    expect(res.statusCode).toBe(201);
+    const seats = await masterKnex("conversation_participants")
+      .where({ conversation_id: res.json().conversation_id })
+      .orderBy("role");
+    expect(seats.map((p) => p.role)).toEqual(["provider_member", "student"]);
+  });
+
+  it("refuses a conversation with only one person in it", async () => {
+    const res = await post(`${BASE}/conversations`, agentToken, { student_user_id: agentId });
+    expect(res.statusCode).toBe(400);
   });
 
   it("rejects an unknown student", async () => {
@@ -371,6 +399,58 @@ describeDb("messaging", () => {
     expect(await unreadFor(studentToken)).toBe(0);
   });
 
+  // ── message bodies ────────────────────────────────────────────────────────
+
+  it("accepts a file message with no text", async () => {
+    const res = await post(`${BASE}/conversations/${conversationId}/messages`, studentToken, {
+      message_type: "file",
+      file_url: "https://storage.test/offer.pdf",
+      file_name: "offer.pdf",
+      file_size: 1024,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().message).toMatchObject({
+      content: null,
+      message_type: "file",
+      file_name: "offer.pdf",
+      file_size: 1024,
+    });
+  });
+
+  it("rejects a message with neither text nor a file", async () => {
+    const res = await post(`${BASE}/conversations/${conversationId}/messages`, studentToken, { content: "   " });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("marks a conversation with no messages as read without inventing a watermark", async () => {
+    const [empty] = await masterKnex("conversations")
+      .insert({ title: "Empty", created_by: studentId })
+      .returning(["id"]);
+    await masterKnex("conversation_participants").insert({
+      conversation_id: empty.id,
+      platform_user_id: studentId,
+      role: "student",
+      business_id: null,
+    });
+    const res = await post(`${BASE}/conversations/${empty.id}/read`, studentToken);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ last_read_message_id: null, unread_count: 0 });
+  });
+
+  it("refuses to send into a closed conversation", async () => {
+    const [closed] = await masterKnex("conversations")
+      .insert({ title: "Closed", created_by: studentId, status: "closed" })
+      .returning(["id"]);
+    await masterKnex("conversation_participants").insert({
+      conversation_id: closed.id,
+      platform_user_id: studentId,
+      role: "student",
+      business_id: null,
+    });
+    const res = await post(`${BASE}/conversations/${closed.id}/messages`, studentToken, { content: "still here?" });
+    expect(res.statusCode).toBe(409);
+  });
+
   // ── invite (V1 invite-chat-participant is the behavioural spec) ────────────
 
   it("invites a team member of the caller's business", async () => {
@@ -413,6 +493,15 @@ describeDb("messaging", () => {
       invitee_user_id: studentId,
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("refuses to invite while switched to a different business than the one in the thread", async () => {
+    // `mate` sits in this conversation on business A's behalf, but is calling from the
+    // institution's context — the seat and the context must agree.
+    const res = await post(`${BASE}/conversations/${conversationId}/participants`, instToken, {
+      invitee_user_id: agentId,
+    });
+    expect(res.statusCode).toBe(403);
   });
 
   it("refuses to let a student invite anyone", async () => {
