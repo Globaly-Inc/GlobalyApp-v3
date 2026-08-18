@@ -13,11 +13,11 @@ export interface SubscriptionsNavItem {
 }
 
 export const SUBSCRIPTIONS_NAV_ITEMS: SubscriptionsNavItem[] = [
-  { href: "/admin/subscriptions", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/admin/subscriptions/plans", label: "Plans & pricing", icon: Layers },
-  { href: "/admin/subscriptions/subscribers", label: "Subscribers", icon: Users },
-  { href: "/admin/subscriptions/application-charges", label: "Application charges", icon: Receipt },
-  { href: "/admin/subscriptions/credits", label: "Credit ledger", icon: Layers },
-  { href: "/admin/subscriptions/referrals", label: "Referrals", icon: Tag },
-  { href: "/admin/subscriptions/coupons", label: "Coupons", icon: Tag },
+  { href: "/admin/revenue/subscriptions", label: "Overview", icon: LayoutDashboard, exact: true },
+  { href: "/admin/revenue/subscriptions/plans", label: "Plans & pricing", icon: Layers },
+  { href: "/admin/revenue/subscriptions/subscribers", label: "Subscribers", icon: Users },
+  { href: "/admin/revenue/subscriptions/application-charges", label: "Application charges", icon: Receipt },
+  { href: "/admin/revenue/subscriptions/credits", label: "Credit ledger", icon: Layers },
+  { href: "/admin/revenue/subscriptions/referrals", label: "Referrals", icon: Tag },
+  { href: "/admin/revenue/subscriptions/coupons", label: "Coupons", icon: Tag },
 ];
