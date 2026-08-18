@@ -1,5 +1,5 @@
 {
-  "_doc": "GATE 3 read-parity corpus. Every PUBLIC (no-JWT) endpoint registered outside server.ts's auth scope that returns migrated data: blogModule, publicServicesModule, geoModule, searchModule, publicEventsModule, publicStudentProfilesModule. Each entry states where a returned item's source row lives — `public`, `superadmin`, `v1_staging`, or a per-tenant schema resolved PER ITEM through a mig.* resolver (tenant schemas are named by the raw business UUID; they are never guessed from a prefix). `provenance` is an SQL expression that must be non-null on the source row, so a V3-native row cannot satisfy a trace by merely existing. Calibrated against the dev database loaded by waves W1-W7 (198 countries, 3228 cities, 402 catalog services across 20 tenant schemas, 22 users, 16 businesses, 39 institutions, 8 events, 9 blog posts, 17037 extraction courses). REHEARSAL-2 LESSON: `count` is only legal where `filtered` is false — read-parity.mjs REJECTS a corpus that puts an exact count on a filtered or paginated endpoint. aiCounsellorModule's public surface is POST /api/v3/ai-chat/guest/* — a write, not a read, and it serves generated text rather than migrated rows, so it is out of scope for a read gate.",
+  "_doc": "GATE 3 read-parity corpus. Every PUBLIC (no-JWT) endpoint registered outside server.ts's auth scope that returns migrated data: blogModule, publicServicesModule, geoModule, searchModule, publicEventsModule, publicStudentProfilesModule. Each entry states where a returned item's source row lives \u2014 `public`, `superadmin`, `v1_staging`, or a per-tenant schema resolved PER ITEM through a mig.* resolver (tenant schemas are named by the raw business UUID; they are never guessed from a prefix). `provenance` is an SQL expression that must be non-null on the source row, so a V3-native row cannot satisfy a trace by merely existing. Calibrated against the dev database loaded by waves W1-W7 (198 countries, 3228 cities, 402 catalog services across 20 tenant schemas, 22 users, 16 businesses, 39 institutions, 8 events, 9 blog posts, 17037 extraction courses). REHEARSAL-2 LESSON: `count` is only legal where `filtered` is false \u2014 read-parity.mjs REJECTS a corpus that puts an exact count on a filtered or paginated endpoint. aiCounsellorModule's public surface is POST /api/v3/ai-chat/guest/* \u2014 a write, not a read, and it serves generated text rather than migrated rows, so it is out of scope for a read gate.",
   "entries": [
     {
       "name": "catalog-services",
@@ -8,12 +8,20 @@
       "filtered": true,
       "idField": "service_id",
       "trace": {
-        "schemaResolver": { "table": "mig.map_services", "idColumn": "id", "schemaColumn": "schema_name" },
+        "schemaResolver": {
+          "table": "mig.map_services",
+          "idColumn": "id",
+          "schemaColumn": "schema_name"
+        },
         "table": "business_services",
         "idColumn": "id",
         "provenance": "v1_id"
       },
-      "compareFields": { "name": "name", "slug": "slug", "description": "description" },
+      "compareFields": {
+        "name": "name",
+        "slug": "slug",
+        "description": "description"
+      },
       "note": "The core Gate 3 entry. public.catalog_services is a trigger-maintained projection; the SOURCE of truth is the tenant row, so each item is traced back through mig.map_services into \"<business uuid>\".business_services and must carry a v1_id."
     },
     {
@@ -23,13 +31,20 @@
       "filtered": true,
       "idField": "service_id",
       "trace": {
-        "schemaResolver": { "table": "mig.map_services", "idColumn": "id", "schemaColumn": "schema_name" },
+        "schemaResolver": {
+          "table": "mig.map_services",
+          "idColumn": "id",
+          "schemaColumn": "schema_name"
+        },
         "table": "business_services",
         "idColumn": "id",
         "provenance": "v1_id"
       },
-      "compareFields": { "name": "name", "slug": "slug" },
-      "note": "Same surface under a country facet and a non-default sort — proves filtering and ordering do not detach an item from its tenant source row. No count: filtered."
+      "compareFields": {
+        "name": "name",
+        "slug": "slug"
+      },
+      "note": "Same surface under a country facet and a non-default sort \u2014 proves filtering and ordering do not detach an item from its tenant source row. No count: filtered."
     },
     {
       "name": "catalog-service-detail",
@@ -38,12 +53,21 @@
       "filtered": true,
       "idField": "service_id",
       "trace": {
-        "schemaResolver": { "table": "mig.map_services", "idColumn": "id", "schemaColumn": "schema_name" },
+        "schemaResolver": {
+          "table": "mig.map_services",
+          "idColumn": "id",
+          "schemaColumn": "schema_name"
+        },
         "table": "business_services",
         "idColumn": "id",
         "provenance": "v1_id"
       },
-      "compareFields": { "name": "name", "slug": "slug", "overview": "overview", "description": "description" },
+      "compareFields": {
+        "name": "name",
+        "slug": "slug",
+        "overview": "overview",
+        "description": "description"
+      },
       "note": "The one public endpoint that reads tenant child tables directly (fees, intakes, study options) by interpolating catalog_services.schema_name. The parent trace is what this entry pins."
     },
     {
@@ -58,7 +82,11 @@
         "idColumn": "id",
         "provenance": "(SELECT 1 FROM v1_staging.countries v WHERE upper(v.code) = countries.iso2)"
       },
-      "compareFields": { "id": "id", "name": "name", "iso2": "iso2" },
+      "compareFields": {
+        "id": "id",
+        "name": "name",
+        "iso2": "iso2"
+      },
       "note": "Facet countries carry ids, so they trace. The facet is scoped to live services (filtered => no count); the per-facet service counts are aggregates with no source row and are deliberately not compared."
     },
     {
@@ -73,7 +101,13 @@
         "idColumn": "slug",
         "provenance": "v1_business_id"
       },
-      "compareFields": { "slug": "slug", "name": "institution_name", "description": "description", "website": "website", "claim_status": "claim_status" },
+      "compareFields": {
+        "slug": "slug",
+        "name": "institution_name",
+        "description": "description",
+        "website": "website",
+        "claim_status": "claim_status"
+      },
       "note": "Traced by slug, not id: the orgs CTE unions businesses and institutions, whose ids collide. An unclaimed V1 institution (39 of them hold 363 of the 402 services) is the case that matters here."
     },
     {
@@ -88,7 +122,12 @@
         "idColumn": "slug",
         "provenance": "meta->>'v1_business_id'"
       },
-      "compareFields": { "slug": "slug", "name": "business_name", "description": "description", "website": "website" },
+      "compareFields": {
+        "slug": "slug",
+        "name": "business_name",
+        "description": "description",
+        "website": "website"
+      },
       "note": "The agent side of the same profile route. Provenance is the meta stamp W1 writes on every reconciled business."
     },
     {
@@ -97,7 +136,7 @@
       "itemsPath": "data",
       "filtered": true,
       "traces": false,
-      "note": "Sitemap entries carry no identifier at all — only a derived path built from WEB_APP_URL plus the org slug, so there is nothing to trace per item. The orgs behind it are traced by catalog-institution-profile and search-institutions. Kept in the corpus because a 500 here is still a read-layer failure over migrated rows.",
+      "note": "Sitemap entries carry no identifier at all \u2014 only a derived path built from WEB_APP_URL plus the org slug, so there is nothing to trace per item. The orgs behind it are traced by catalog-institution-profile and search-institutions. Kept in the corpus because a 500 here is still a read-layer failure over migrated rows.",
       "minItems": 1
     },
     {
@@ -112,8 +151,14 @@
         "idColumn": "id",
         "provenance": "meta->>'v1_business_id'"
       },
-      "compareFields": { "business_name": "business_name", "slug": "slug", "subdomain": "subdomain", "website": "website", "email": "email" },
-      "note": "The public business directory. Note this reads public.businesses filtered to the 'institutions' category — a different population from /catalog/institutions/:slug, which serves public.institutions."
+      "compareFields": {
+        "business_name": "business_name",
+        "slug": "slug",
+        "subdomain": "subdomain",
+        "website": "website",
+        "email": "email"
+      },
+      "note": "The public business directory. Note this reads public.businesses filtered to the 'institutions' category \u2014 a different population from /catalog/institutions/:slug, which serves public.institutions."
     },
     {
       "name": "search-education-agencies",
@@ -127,7 +172,11 @@
         "idColumn": "id",
         "provenance": "meta->>'v1_business_id'"
       },
-      "compareFields": { "business_name": "business_name", "slug": "slug", "description": "description" },
+      "compareFields": {
+        "business_name": "business_name",
+        "slug": "slug",
+        "description": "description"
+      },
       "note": "Second of the four category-driven directory routes; /search/visa-services and /search/migration-agents share the identical code path and have no migrated rows in those categories."
     },
     {
@@ -146,7 +195,12 @@
         "idColumn": "id",
         "provenance": "(SELECT 1 FROM v1_staging.countries v WHERE upper(v.code) = countries.iso2)"
       },
-      "compareFields": { "id": "id", "name": "name", "slug": "slug", "flag_emoji": "flag_emoji" },
+      "compareFields": {
+        "id": "id",
+        "name": "name",
+        "slug": "slug",
+        "flag_emoji": "flag_emoji"
+      },
       "note": "One of the few endpoints where an exact count is legitimate: no limit, no offset, no query params. v1_staging.countries flags 8 featured countries (Australia, UK, USA, Canada, China, New Zealand, Nepal, Singapore)."
     },
     {
@@ -161,8 +215,15 @@
         "idColumn": "id",
         "provenance": "(SELECT 1 FROM v1_staging.countries v WHERE upper(v.code) = countries.iso2)"
       },
-      "compareFields": { "id": "id", "name": "name", "iso2": "iso2", "slug": "slug", "capital": "capital", "about": "about" },
-      "note": "Bare object envelope — the country columns are spread at the top level. Filtered because the nested `cities` block is silently capped at 12. hero/thumbnail/gallery URLs are replaced by signed previews and are deliberately not compared."
+      "compareFields": {
+        "id": "id",
+        "name": "name",
+        "iso2": "iso2",
+        "slug": "slug",
+        "capital": "capital",
+        "about": "about"
+      },
+      "note": "Bare object envelope \u2014 the country columns are spread at the top level. Filtered because the nested `cities` block is silently capped at 12. hero/thumbnail/gallery URLs are replaced by signed previews and are deliberately not compared."
     },
     {
       "name": "geo-country-detail-imageless",
@@ -176,7 +237,13 @@
         "idColumn": "id",
         "provenance": "(SELECT 1 FROM v1_staging.countries v WHERE upper(v.code) = countries.iso2)"
       },
-      "compareFields": { "id": "id", "name": "name", "iso2": "iso2", "slug": "slug", "capital": "capital" },
+      "compareFields": {
+        "id": "id",
+        "name": "name",
+        "iso2": "iso2",
+        "slug": "slug",
+        "capital": "capital"
+      },
       "note": "The control for geo-country-detail: a migrated country carrying no image URLs. If this passes while geo-country-detail fails, the fault is in the image-preview path, not the geo read."
     },
     {
@@ -191,8 +258,14 @@
         "idColumn": "id",
         "provenance": "(SELECT 1 FROM v1_staging.cities v WHERE v.slug = cities.slug LIMIT 1)"
       },
-      "compareFields": { "id": "id", "name": "name", "slug": "slug", "about": "about", "timezone": "timezone" },
-      "note": "V3 holds 3228 cities against v1_staging's 2078 — the rest are seeded. The provenance subquery is what keeps a seeded city from passing as migrated."
+      "compareFields": {
+        "id": "id",
+        "name": "name",
+        "slug": "slug",
+        "about": "about",
+        "timezone": "timezone"
+      },
+      "note": "V3 holds 3228 cities against v1_staging's 2078 \u2014 the rest are seeded. The provenance subquery is what keeps a seeded city from passing as migrated."
     },
     {
       "name": "events-public",
@@ -206,7 +279,14 @@
         "idColumn": "id",
         "provenance": "v1_id"
       },
-      "compareFields": { "id": "id", "title": "title", "slug": "slug", "summary": "summary", "event_type": "event_type", "starts_at": "starts_at" },
+      "compareFields": {
+        "id": "id",
+        "title": "title",
+        "slug": "slug",
+        "summary": "summary",
+        "event_type": "event_type",
+        "starts_at": "starts_at"
+      },
       "note": "Anonymous event browse, scoped to status='published' AND visibility='public'. views_count is excluded: the detail route increments it on every GET."
     },
     {
@@ -221,7 +301,14 @@
         "idColumn": "id",
         "provenance": "v1_id"
       },
-      "compareFields": { "id": "id", "title": "title", "slug": "slug", "timezone": "timezone", "starts_at": "starts_at", "ends_at": "ends_at" },
+      "compareFields": {
+        "id": "id",
+        "title": "title",
+        "slug": "slug",
+        "timezone": "timezone",
+        "starts_at": "starts_at",
+        "ends_at": "ends_at"
+      },
       "note": "Bare object envelope, resolved by slug. This GET writes (views_count += 1), so views_count must never be compared."
     },
     {
@@ -235,8 +322,13 @@
         "table": "blog_posts",
         "idColumn": "slug"
       },
-      "compareFields": { "slug": "slug", "title": "title", "category": "category", "excerpt": "excerpt" },
-      "note": "superadmin.blog_posts carries no provenance column, so this entry traces straight through to the staged V1 row on the natural key (slug) — being present in v1_staging IS the provenance."
+      "compareFields": {
+        "slug": "slug",
+        "title": "title",
+        "category": "category",
+        "excerpt": "excerpt"
+      },
+      "note": "superadmin.blog_posts carries no provenance column, so this entry traces straight through to the staged V1 row on the natural key (slug) \u2014 being present in v1_staging IS the provenance."
     },
     {
       "name": "blog-post-detail",
@@ -249,7 +341,11 @@
         "table": "blog_posts",
         "idColumn": "slug"
       },
-      "compareFields": { "slug": "slug", "title": "title", "content": "content" },
+      "compareFields": {
+        "slug": "slug",
+        "title": "title",
+        "content": "content"
+      },
       "note": "Bare object envelope. This GET writes (views += 1), so views must never be compared."
     },
     {
@@ -273,12 +369,18 @@
         "idColumn": "id",
         "provenance": "(SELECT 1 FROM v1_staging.extraction_courses v WHERE v.id = extraction_courses.id)"
       },
-      "compareFields": { "id": "id", "name": "name", "degree_level": "degree_level", "subject_area": "subject_area" },
-      "note": "The pre-promote scraper surface (superadmin.extraction_courses), distinct from /catalog/services. Gated on verification_status='verified'; extraction rows carry no v1_id, so provenance is a join back to the staged V1 row on the preserved uuid."
+      "compareFields": {
+        "id": "id",
+        "name": "name",
+        "degree_level": "degree_level",
+        "subject_area": "subject_area"
+      },
+      "note": "The pre-promote scraper surface (superadmin.extraction_courses), distinct from /catalog/services. Gated on verification_status='verified'. minItems is 0 BY MEASUREMENT, not to make the gate pass: v1_staging.extraction_courses holds 16,909 'pending' + 128 'unverified' and ZERO 'verified', and V3 matches that exactly, so W4 carried the column faithfully and the endpoint is correctly empty. Raise this to 1 the day verification runs in V3 - an empty result then would be a real regression.",
+      "minItems": 0
     },
     {
       "name": "student-public-profile",
-      "path": "/api/v3/students/globaly-student-u1",
+      "path": "/api/v3/students/ivya-harati",
       "itemsPath": "profile",
       "filtered": true,
       "idField": "slug",
@@ -288,8 +390,12 @@
         "idColumn": "profile_slug",
         "provenance": "(SELECT 1 FROM mig.map_users m WHERE m.platform_user_id = platform_user_profiles.user_id)"
       },
-      "compareFields": { "slug": "profile_slug", "institution_attended": "institution_attended", "highest_degree_level": "highest_degree_level" },
-      "note": "A non-null platform_user_profiles.profile_slug IS the publish state — there is no is_public flag. The slug in this path follows the documented '-u<platform_user_id>' convention; recalibrate it once profiles are published."
+      "compareFields": {
+        "slug": "profile_slug",
+        "institution_attended": "institution_attended",
+        "highest_degree_level": "highest_degree_level"
+      },
+      "note": "A non-null platform_user_profiles.profile_slug IS the publish state - there is no is_public flag. RECALIBRATED 2026-08-17 after W1-identity re-ran and carried V1's 16 published slugs: the path now names a real migrated slug rather than the guessed '-u<id>' convention, which never existed in the data."
     },
     {
       "name": "student-jobs",
@@ -318,7 +424,7 @@
       "minItems": 0,
       "count": {
         "sql": "SELECT count(*) FROM public.other_service_categories WHERE is_active AND deleted_at IS NULL",
-        "description": "unfiltered, unpaginated reference list — an exact count is sound"
+        "description": "unfiltered, unpaginated reference list \u2014 an exact count is sound"
       },
       "note": "V3-only seeded reference data (other_service_categories), not migrated from V1. The count still holds the read layer to the table, which is the only assertion available without a V1 source."
     }

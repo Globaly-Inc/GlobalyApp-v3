@@ -32,6 +32,8 @@ import { notificationsReducer } from "@/app/personal/notifications/store/notific
 import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
 import { aiKnowledgeReducer } from "@/app/admin/data/ai-knowledge/store/ai-knowledge-slice"
 import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
+import { adsReducer } from "@/app/admin/marketing/ads/store/ads-slice"
+import { applicationChargesReducer } from "@/app/admin/revenue/subscriptions/application-charges/store/application-charges-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
@@ -67,6 +69,8 @@ const appReducer = combineReducers({
     aiChat: aiChatReducer,
     dataAiKnowledge: aiKnowledgeReducer,
     messages: messagesReducer,
+    marketingAds: adsReducer,
+    revenueApplicationCharges: applicationChargesReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

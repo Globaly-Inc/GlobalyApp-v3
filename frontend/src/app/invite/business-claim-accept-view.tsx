@@ -15,8 +15,13 @@ export function BusinessClaimAcceptView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const [status, setStatus] = useState<Status>("loading");
-  const [message, setMessage] = useState("");
+  // Derived at render, not set in the effect: a missing token is knowable from the
+  // first paint, and calling setState synchronously inside the effect to say so
+  // triggers a cascading render (and trips react-hooks/set-state-in-effect).
+  const [status, setStatus] = useState<Status>(token ? "loading" : "error");
+  const [message, setMessage] = useState(
+    token ? "" : "This claim link is missing required information.",
+  );
   const [email, setEmail] = useState<string | null>(null);
 
   const requestedRef = useRef(false);
@@ -24,11 +29,7 @@ export function BusinessClaimAcceptView() {
     if (requestedRef.current) return;
     requestedRef.current = true;
 
-    if (!token) {
-      setStatus("error");
-      setMessage("This claim link is missing required information.");
-      return;
-    }
+    if (!token) return; // already reflected in the initial state above
     inviteApi
       .acceptBusinessClaim(token)
       .then((result) => {
