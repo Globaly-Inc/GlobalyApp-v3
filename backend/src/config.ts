@@ -55,6 +55,10 @@ const envSchema = z.object({
   GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
   // text-embedding-004 is retired — it 404s on embedContent for current keys.
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
+  // Speech-to-text for scribe (V1 used OpenAI Realtime `gpt-4o-transcribe`).
+  // Unset in this deployment, so every transcription path fails closed with 503
+  // — see modules/scribe/services/transcription.provider.ts. Never a fake token.
+  OPENAI_API_KEY: z.string().optional(),
 
   // Web push (FCM). Both unset in this deployment, so the push channel and
   // /notifications/push-check fail closed with 503 — see
