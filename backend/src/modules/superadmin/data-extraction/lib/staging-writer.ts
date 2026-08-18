@@ -1,5 +1,7 @@
 // Writes LLM-extracted data to the staging tables with proper relationships.
 
+import type { Knex } from "knex";
+
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
@@ -68,6 +70,47 @@ function coerceInt(v: unknown): number | null {
   if (v == null) return null;
   const n = Number(v);
   return isNaN(n) ? null : Math.floor(n);
+}
+
+/**
+ * Money, kept to the cent.
+ *
+ * total_amount is NUMERIC and 971 of the 8,541 fee rows in the migrated corpus are
+ * fractional (20938.50, 16462.75). coerceInt would floor every one of them, losing
+ * up to 99c per fee silently — so amounts get their own coercion, which only rejects
+ * what is not a finite number.
+ */
+function coerceAmount(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Find a staged child row that already carries exactly this content, else insert it.
+ *
+ * The queue re-delivers: LavinMQ redelivers an unacked message, the page worker
+ * retries a blocked page, and an admin re-runs a step. Each of those calls
+ * writeCourse again with the same payload. Inserting a fresh child row every time
+ * makes the junction's UNIQUE(course_id, child_id) useless — the new id never
+ * conflicts — so the course quietly accumulates a second copy of every fee, intake
+ * and requirement, and promote carries the duplicates into the live catalog. Keying
+ * the child by its content is what makes the re-delivery a no-op (defect D8).
+ *
+ * ponytail: content match, not a stored hash. Two workers racing on the same page can
+ * still both insert; the junction's UNIQUE then collapses the pair for everything
+ * except extraction_course_campuses, which has no unique index. Add one if the race
+ * ever shows up in the review queue.
+ */
+async function findOrInsert(
+  trx: Knex,
+  table: string,
+  match: Record<string, unknown>,
+): Promise<string> {
+  const existing = await trx(table).where(match).first("id");
+  if (existing) return existing.id as string;
+  const [inserted] = await trx(table).insert(match).returning("id");
+  return inserted.id as string;
 }
 
 export interface ExtractedStudyOption {
@@ -208,11 +251,32 @@ export function normaliseCourseName(name: string): string {
  * Returns the course ID.
  */
 export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string> {
+  // One course is one unit of work. Without this, a child insert that fails (an
+  // unparseable intake date, a check constraint) leaves the course row and the
+  // children written before it committed — half a batch, and no record that the
+  // other half is missing.
+  return masterKnex.transaction((trx) => writeCourseIn(trx, jobId, course, campusIdMap));
+}
+
+async function writeCourseIn(
+  trx: Knex,
+  jobId: string,
+  course: ExtractedCourse,
+  campusIdMap: Map<string, string>,
+): Promise<string> {
   // ── Dedup: check if this course name already exists for this job ──
   const normName = normaliseCourseName(course.name);
-  const existing = await masterKnex(`${S}.extraction_courses`)
+  const existing = await trx(`${S}.extraction_courses`)
     .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
+    // The comparison has to apply the same normalisation the probe does, or the
+    // dedup only catches names that needed no normalising: "Bachelor of Nursing."
+    // and "Bachelor  of Nursing" normalise to a stored row's key but did not equal
+    // LOWER(TRIM(name)), so each re-delivery inserted another course. 5 of the 26
+    // duplicate name groups in the migrated corpus are exactly this.
+    .whereRaw(
+      "regexp_replace(regexp_replace(lower(btrim(name)), '\\s+', ' ', 'g'), '[^a-z0-9]+$', '') = ?",
+      [normName],
+    )
     .first();
 
   let courseId: string;
@@ -237,8 +301,8 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
       updates.career_paths = course.career_paths;
     }
     if (Object.keys(updates).length > 0) {
-      updates.updated_at = masterKnex.fn.now();
-      await masterKnex(`${S}.extraction_courses`).where({ id: courseId }).update(updates);
+      updates.updated_at = trx.fn.now();
+      await trx(`${S}.extraction_courses`).where({ id: courseId }).update(updates);
       logger.info("Merged duplicate course", { jobId, courseId, name: course.name, fieldsUpdated: Object.keys(updates).length - 1 });
     } else {
       logger.info("Skipped duplicate course (no new data)", { jobId, courseId, name: course.name });
@@ -264,25 +328,23 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     };
     if (course.career_paths?.length) courseInsert.career_paths = course.career_paths;
 
-    const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
+    const [courseRow] = await trx(`${S}.extraction_courses`).insert(courseInsert).returning("id");
     courseId = courseRow.id;
   }
 
   // ── Fees + assignments ──
   if (course.fees?.length) {
     for (const fee of course.fees) {
-      const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-        .insert({
-          job_id: jobId,
-          name: fee.name ?? null,
-          student_type: fee.student_type ?? "both",
-          period_type: fee.period_type ?? "Per Year",
-          currency: fee.currency ?? "AUD",
-          total_amount: coerceInt(fee.total_amount) ?? 0,
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_fee_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id })
+      const feeId = await findOrInsert(trx, `${S}.extraction_course_fees`, {
+        job_id: jobId,
+        name: fee.name ?? null,
+        student_type: fee.student_type ?? "both",
+        period_type: fee.period_type ?? "Per Year",
+        currency: fee.currency ?? "AUD",
+        total_amount: coerceAmount(fee.total_amount) ?? 0,
+      });
+      await trx(`${S}.extraction_course_fee_assignments`)
+        .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
         .onConflict(["course_id", "course_fee_id"]).ignore();
     }
   }
@@ -290,20 +352,18 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Intakes + assignments ──
   if (course.intakes?.length) {
     for (const intake of course.intakes) {
-      const [intakeRow] = await masterKnex(`${S}.extraction_intakes`)
-        .insert({
-          job_id: jobId,
-          course_id: courseId,
-          intake_name: intake.intake_name ?? null,
-          start_date: intake.start_date ?? null,
-          end_date: intake.end_date ?? null,
-          intake_month: coerceMonth(intake.intake_month),
-          intake_year: coerceInt(intake.intake_year),
-          admission_deadline: intake.admission_deadline ?? null,
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_intake_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, intake_id: intakeRow.id })
+      const intakeId = await findOrInsert(trx, `${S}.extraction_intakes`, {
+        job_id: jobId,
+        course_id: courseId,
+        intake_name: intake.intake_name ?? null,
+        start_date: intake.start_date ?? null,
+        end_date: intake.end_date ?? null,
+        intake_month: coerceMonth(intake.intake_month),
+        intake_year: coerceInt(intake.intake_year),
+        admission_deadline: intake.admission_deadline ?? null,
+      });
+      await trx(`${S}.extraction_course_intake_assignments`)
+        .insert({ job_id: jobId, course_id: courseId, intake_id: intakeId })
         .onConflict(["course_id", "intake_id"]).ignore();
     }
   }
@@ -311,18 +371,16 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Study options + assignments ──
   if (course.study_options?.length) {
     for (const opt of course.study_options) {
-      const [optRow] = await masterKnex(`${S}.extraction_study_options`)
-        .insert({
-          job_id: jobId,
-          name: opt.name ?? null,
-          study_mode: opt.study_mode ?? "on_campus",
-          study_load: opt.study_load ?? "full_time",
-          duration_value: coerceInt(opt.duration_value),
-          duration_unit: opt.duration_unit ?? "months",
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_study_option_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, study_option_id: optRow.id })
+      const optId = await findOrInsert(trx, `${S}.extraction_study_options`, {
+        job_id: jobId,
+        name: opt.name ?? null,
+        study_mode: opt.study_mode ?? "on_campus",
+        study_load: opt.study_load ?? "full_time",
+        duration_value: coerceInt(opt.duration_value),
+        duration_unit: opt.duration_unit ?? "months",
+      });
+      await trx(`${S}.extraction_course_study_option_assignments`)
+        .insert({ job_id: jobId, course_id: courseId, study_option_id: optId })
         .onConflict(["course_id", "study_option_id"]).ignore();
     }
   }
@@ -330,26 +388,26 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Eligibility requirements + assignments ──
   if (course.eligibility?.length) {
     for (const elig of course.eligibility) {
-      const [eligRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
-        .insert({
-          job_id: jobId,
-          name: elig.name ?? null,
-          applicable_to: elig.applicable_to ?? "both",
-          description: elig.description ?? null,
-          min_score_percent: coerceInt(elig.min_score_percent),
-          min_degree_level: elig.min_degree_level ?? null,
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_eligibility_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: eligRow.id })
+      const eligId = await findOrInsert(trx, `${S}.extraction_eligibility_requirements`, {
+        job_id: jobId,
+        name: elig.name ?? null,
+        applicable_to: elig.applicable_to ?? "both",
+        description: elig.description ?? null,
+        min_score_percent: coerceAmount(elig.min_score_percent),
+        min_degree_level: elig.min_degree_level ?? null,
+      });
+      await trx(`${S}.extraction_course_eligibility_assignments`)
+        .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: eligId })
         .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
     }
   }
 
   // ── English requirements ──
+  // No junction table: the row carries course_id directly, so its content match is
+  // the only thing standing between a re-delivery and a second copy of the IELTS row.
   if (course.english_requirements?.length) {
     for (const eng of course.english_requirements) {
-      await masterKnex(`${S}.extraction_english_requirements`).insert({
+      await findOrInsert(trx, `${S}.extraction_english_requirements`, {
         job_id: jobId,
         course_id: courseId,
         test_type_name: eng.test_type_name ?? null,
@@ -367,9 +425,15 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     for (const campusName of course.campus_names) {
       const campusId = campusIdMap.get(normaliseCampusName(campusName));
       if (campusId) {
-        await masterKnex(`${S}.extraction_course_campuses`)
-          .insert({ job_id: jobId, course_id: courseId, campus_id: campusId, campus_name: campusName })
-          .onConflict().ignore(); // no unique constraint here, but safe
+        // extraction_course_campuses has no unique index, so ON CONFLICT DO NOTHING
+        // had nothing to conflict on and every re-delivery added another link. The
+        // corpus already carries one such duplicated pair.
+        await findOrInsert(trx, `${S}.extraction_course_campuses`, {
+          job_id: jobId,
+          course_id: courseId,
+          campus_id: campusId,
+          campus_name: campusName,
+        });
       }
     }
   }
@@ -387,21 +451,34 @@ export async function replaceCampuses(
   jobId: string,
   campuses: ExtractedCampus[],
 ): Promise<Map<string, string>> {
+  // Transactional for the same reason writeCourse is, only sharper: this deletes
+  // every campus and every course-campus junction the job has before writing the
+  // replacements. A failure between the two halves leaves the job's courses attached
+  // to no campus at all, which reads as "this university has no campuses" rather
+  // than as an error.
+  return masterKnex.transaction((trx) => replaceCampusesIn(trx, jobId, campuses));
+}
+
+async function replaceCampusesIn(
+  trx: Knex,
+  jobId: string,
+  campuses: ExtractedCampus[],
+): Promise<Map<string, string>> {
   // Load existing junctions before deleting campuses
-  const existingJunctions = await masterKnex(`${S}.extraction_course_campuses`)
+  const existingJunctions = await trx(`${S}.extraction_course_campuses`)
     .where({ job_id: jobId })
     .select("course_id", "campus_id", "campus_name");
 
   // Build old-id → name map from existing campuses
-  const oldCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId });
+  const oldCampuses = await trx(`${S}.extraction_campuses`).where({ job_id: jobId });
   const oldIdToName = new Map<string, string>();
   for (const c of oldCampuses) {
     oldIdToName.set(c.id, normaliseCampusName(c.name));
   }
 
   // Delete existing campuses (cascade deletes junctions via DB or we re-create)
-  await masterKnex(`${S}.extraction_course_campuses`).where({ job_id: jobId }).delete();
-  await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).delete();
+  await trx(`${S}.extraction_course_campuses`).where({ job_id: jobId }).delete();
+  await trx(`${S}.extraction_campuses`).where({ job_id: jobId }).delete();
 
   // Insert new campuses, dedup by normalised name
   const idMap = new Map<string, string>();
@@ -409,7 +486,7 @@ export async function replaceCampuses(
     if (!campus.name) continue;
     const norm = normaliseCampusName(campus.name);
     if (idMap.has(norm)) continue;
-    const [row] = await masterKnex(`${S}.extraction_campuses`)
+    const [row] = await trx(`${S}.extraction_campuses`)
       .insert({ job_id: jobId, ...campus })
       .returning("id");
     idMap.set(norm, row.id);
@@ -422,14 +499,15 @@ export async function replaceCampuses(
       : oldIdToName.get(junc.campus_id) ?? "";
     const newCampusId = idMap.get(oldNorm);
     if (newCampusId) {
-      await masterKnex(`${S}.extraction_course_campuses`)
-        .insert({
-          job_id: jobId,
-          course_id: junc.course_id,
-          campus_id: newCampusId,
-          campus_name: junc.campus_name,
-        })
-        .onConflict().ignore();
+      // findOrInsert, not ON CONFLICT DO NOTHING: this table has no unique index, so
+      // a job whose junctions already carried a duplicated pair would have the
+      // duplicate faithfully re-created here.
+      await findOrInsert(trx, `${S}.extraction_course_campuses`, {
+        job_id: jobId,
+        course_id: junc.course_id,
+        campus_id: newCampusId,
+        campus_name: junc.campus_name,
+      });
     }
   }
 
