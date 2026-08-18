@@ -1,5 +1,5 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { NotificationsView } from "./components/notifications-view";
 
 export default function NotificationsPage() {
-  return <ComingSoon title="Notifications" />;
+  return <NotificationsView />;
 }
