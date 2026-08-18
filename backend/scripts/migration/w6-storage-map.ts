@@ -194,6 +194,20 @@ export function extractV1UrlsSql(expr: string): string {
   return `regexp_matches(${expr}, '(https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/${SQL_QUERY_CLASS}+)', 'g')`;
 }
 
+// The other direction: finding what the rewrite already wrote. `v1/` alone would
+// match prose, so the bucket alternation carries the specificity here too.
+const SQL_KEY_RE = `${GCS_PREFIX}/(?:${BUCKET_ALT})/${SQL_PATH_CLASS}+`;
+
+/** SQL predicate: holds a GCS key this wave produced. */
+export function rehostedKeySql(expr: string): string {
+  return `(${expr}) ~ '${SQL_KEY_RE}'`;
+}
+
+/** SQL: every GCS key in `expr`, one row each. */
+export function extractRehostedKeysSql(expr: string): string {
+  return `regexp_matches(${expr}, '(${SQL_KEY_RE})', 'g')`;
+}
+
 /**
  * Has this Gate 2 mapping expression been put through the normaliser?
  *
@@ -286,6 +300,8 @@ export function storageMapSelfCheck(): void {
   assert.ok(rehostableSql("x").includes("avatars|"));
   assert.ok(!anyV1UrlSql("x").includes("avatars|"));
   assert.ok(extractV1UrlsSql("x").startsWith("regexp_matches(x,"));
+  assert.ok(rehostedKeySql("x").includes(`${GCS_PREFIX}/(?:avatars|`), "a bare `v1/` would match prose");
+  assert.ok(extractRehostedKeysSql("x").startsWith("regexp_matches(x,"));
 }
 
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {

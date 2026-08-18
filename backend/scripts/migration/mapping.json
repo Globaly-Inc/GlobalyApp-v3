@@ -414,7 +414,11 @@
       "rows": 9,
       "targets": [
         "superadmin.blog_posts"
-      ]
+      ],
+      "storageRehost": [
+        "superadmin.blog_posts.cover_image_url"
+      ],
+      "storageRehostNote": "W6 (\u00a74) rewrites these V3 column(s) from V1's supabase.co object URLs to GCS keys, and the Gate 2 mapping normalises both sides with the same expression. The column list is DERIVED, not declared: `w6-storage.ts --inventory` sweeps every text/jsonb/array column in every non-staging schema, so a new URL-bearing column cannot go unnoticed. Until the object copy runs (blocked on the gmig_ token, \u00a77 decision 7) these keys name GCS objects that are not there yet \u2014 V1 must not be decommissioned."
     },
     "branches": {
       "disposition": "transform",
@@ -499,7 +503,11 @@
       "disposition": "blocked",
       "wave": "B2",
       "rows": 2,
-      "dependency": "\u00a76 wave B2 lists claim_requests as a table still to create. globalyapp/20260816_001_institutions_claimable.ts only ALTERs institutions (nullable owner + claim_status); there is no public.claim_requests migration on staging-mvp yet."
+      "dependency": "\u00a76 wave B2 lists claim_requests as a table still to create. globalyapp/20260816_001_institutions_claimable.ts only ALTERs institutions (nullable owner + claim_status); there is no public.claim_requests migration on staging-mvp yet.",
+      "storageRehostDeferred": [
+        "proof_document_url"
+      ],
+      "storageRehostNote": "v1_staging.business_claim_requests carries supabase.co object URLs in proof_document_url, but this table's V3 target lands in a later wave (disposition: blocked, wave B2). W6's rewrite is a SWEEP, not a list, so it will pick these up on its next run once the rows exist in V3 \u2014 re-run `migrate:w6-storage --apply` after that wave. The objects themselves are copied by W6's object half regardless: it walks the buckets, not the referring columns."
     },
     "business_contacts": {
       "disposition": "blocked",
@@ -544,7 +552,12 @@
       "targets": [
         "{tenant}.business_services"
       ],
-      "note": "C1 landed on staging-mvp (business/20260816_001_business_services.ts). Per Part 3 \u00a74 W7 a blocked mapping flips to transform the moment its target schema merges \u2014 this one has."
+      "note": "C1 landed on staging-mvp (business/20260816_001_business_services.ts). Per Part 3 \u00a74 W7 a blocked mapping flips to transform the moment its target schema merges \u2014 this one has.",
+      "storageRehostDeferred": [
+        "image_url",
+        "gallery_urls"
+      ],
+      "storageRehostNote": "v1_staging.business_services carries supabase.co object URLs in image_url, gallery_urls, but this table's V3 target lands in a later wave (disposition: transform, wave W7). W6's rewrite is a SWEEP, not a list, so it will pick these up on its next run once the rows exist in V3 \u2014 re-run `migrate:w6-storage --apply` after that wave. The objects themselves are copied by W6's object half regardless: it walks the buckets, not the referring columns."
     },
     "business_subscriptions": {
       "disposition": "transform",
@@ -570,7 +583,12 @@
         "public.institutions"
       ],
       "mapping": "businesses",
-      "note": "\u00a74 W1 SPLIT: V1 kept one table for two things. The 16 rows with an accepted, live owner become tenants in public.businesses (owner_id is NOT NULL in V3, so nothing else can); the other 39 unclaimed directory listings become claimable rows in public.institutions. 55 staged = 16 + 39, no skips. The V1 uuid is stamped into businesses.meta->>'v1_business_id' and institutions.v1_business_id, and each tenant's schema_name is DERIVED from that uuid so a re-run converges on the schema it already provisioned."
+      "note": "\u00a74 W1 SPLIT: V1 kept one table for two things. The 16 rows with an accepted, live owner become tenants in public.businesses (owner_id is NOT NULL in V3, so nothing else can); the other 39 unclaimed directory listings become claimable rows in public.institutions. 55 staged = 16 + 39, no skips. The V1 uuid is stamped into businesses.meta->>'v1_business_id' and institutions.v1_business_id, and each tenant's schema_name is DERIVED from that uuid so a re-run converges on the schema it already provisioned.",
+      "storageRehost": [
+        "public.businesses.logo_url",
+        "public.businesses.cover_url"
+      ],
+      "storageRehostNote": "W6 (\u00a74) rewrites these V3 column(s) from V1's supabase.co object URLs to GCS keys, and the Gate 2 mapping normalises both sides with the same expression. The column list is DERIVED, not declared: `w6-storage.ts --inventory` sweeps every text/jsonb/array column in every non-staging schema, so a new URL-bearing column cannot go unnoticed. Until the object copy runs (blocked on the gmig_ token, \u00a77 decision 7) these keys name GCS objects that are not there yet \u2014 V1 must not be decommissioned."
     },
     "chat_conversations": {
       "disposition": "drop",
@@ -1110,7 +1128,11 @@
       "rows": 31,
       "targets": [
         "public.issuing_organizations"
-      ]
+      ],
+      "storageRehost": [
+        "public.issuing_organizations.logo_url"
+      ],
+      "storageRehostNote": "W6 (\u00a74) rewrites these V3 column(s) from V1's supabase.co object URLs to GCS keys, and the Gate 2 mapping normalises both sides with the same expression. The column list is DERIVED, not declared: `w6-storage.ts --inventory` sweeps every text/jsonb/array column in every non-staging schema, so a new URL-bearing column cannot go unnoticed. Until the object copy runs (blocked on the gmig_ token, \u00a77 decision 7) these keys name GCS objects that are not there yet \u2014 V1 must not be decommissioned."
     },
     "job_applications": {
       "disposition": "blocked",
@@ -1137,7 +1159,11 @@
       "disposition": "blocked",
       "wave": "E4",
       "rows": 1,
-      "dependency": "\u00a73.7 LMS / training \u2014 MOCK-ONLY (personal/learning); no V3 tables. \u00a76 wave E lists lms_*/training_* as still to build."
+      "dependency": "\u00a73.7 LMS / training \u2014 MOCK-ONLY (personal/learning); no V3 tables. \u00a76 wave E lists lms_*/training_* as still to build.",
+      "storageRehostDeferred": [
+        "file_url"
+      ],
+      "storageRehostNote": "v1_staging.lms_assignment_submissions carries supabase.co object URLs in file_url, but this table's V3 target lands in a later wave (disposition: blocked, wave E4). W6's rewrite is a SWEEP, not a list, so it will pick these up on its next run once the rows exist in V3 \u2014 re-run `migrate:w6-storage --apply` after that wave. The objects themselves are copied by W6's object half regardless: it walks the buckets, not the referring columns."
     },
     "login_attempts": {
       "disposition": "drop",
@@ -1194,7 +1220,11 @@
         "public.platform_user_profiles"
       ],
       "mapping": "platform_users",
-      "note": "joined with the auth.users extra source (see extraSources). Upserts on email so it CONVERGES the 24 pre-migrated users instead of duplicating them (\u00a74 W1.2)."
+      "note": "joined with the auth.users extra source (see extraSources). Upserts on email so it CONVERGES the 24 pre-migrated users instead of duplicating them (\u00a74 W1.2).",
+      "storageRehost": [
+        "public.platform_users.photo_url"
+      ],
+      "storageRehostNote": "W6 (\u00a74) rewrites these V3 column(s) from V1's supabase.co object URLs to GCS keys, and the Gate 2 mapping normalises both sides with the same expression. The column list is DERIVED, not declared: `w6-storage.ts --inventory` sweeps every text/jsonb/array column in every non-staging schema, so a new URL-bearing column cannot go unnoticed. Until the object copy runs (blocked on the gmig_ token, \u00a77 decision 7) these keys name GCS objects that are not there yet \u2014 V1 must not be decommissioned."
     },
     "ranking_scores": {
       "disposition": "blocked",
@@ -1587,7 +1617,7 @@
       "storageRehost": [
         "public.test_provider_logos.logo_url"
       ],
-      "storageRehostNote": "logo_url carries V1's supabase.co object URLs VERBATIM, exactly as businesses.logo_url and platform_users.photo_url do. W6 walks the referring columns and rewrites them once each object has an uploaded_files row; until then these are part of the \u00a78 live-supabase-URL risk and V1's project must not be deleted."
+      "storageRehostNote": "logo_url carries V1's supabase.co object URLs VERBATIM, exactly as businesses.logo_url and platform_users.photo_url do. W6 walks the referring columns and rewrites them once each object has an uploaded_files row; until then these are part of the \u00a78 live-supabase-URL risk and V1's project must not be deleted. W6 (\u00a74) rewrites these V3 column(s) from V1's supabase.co object URLs to GCS keys, and the Gate 2 mapping normalises both sides with the same expression. The column list is DERIVED, not declared: `w6-storage.ts --inventory` sweeps every text/jsonb/array column in every non-staging schema, so a new URL-bearing column cannot go unnoticed. Until the object copy runs (blocked on the gmig_ token, \u00a77 decision 7) these keys name GCS objects that are not there yet \u2014 V1 must not be decommissioned."
     },
     "training_assessment_attempts": {
       "disposition": "blocked",
@@ -2064,9 +2094,9 @@
         {
           "name": "photo_url",
           "from": null,
-          "source": "p.avatar_url",
-          "target": "t.photo_url",
-          "note": "renamed avatar_url -> photo_url; sourced from profiles"
+          "source": "regexp_replace(p.avatar_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "target": "regexp_replace(t.photo_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "note": "renamed avatar_url -> photo_url; sourced from profiles; W6 rewrites this V3 column from V1's supabase.co object URL to the GCS key `v1/<bucket>/<path>` (scripts/migration/w6-storage.ts). Both sides are normalised with the SAME expression, so this check asserts \u201cthese point at the same object\u201d and stays green before AND after the rewrite \u2014 the alternative was a mapping that is only ever green in one of the two states and flips red on wave ordering."
         }
       ],
       "dropped": [
@@ -2629,14 +2659,16 @@
         {
           "name": "logo_url",
           "from": "logo_url",
-          "source": "b.logo_url",
-          "target": "t.logo_url"
+          "source": "regexp_replace(b.logo_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "target": "regexp_replace(t.logo_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "note": "W6 rewrites this V3 column from V1's supabase.co object URL to the GCS key `v1/<bucket>/<path>` (scripts/migration/w6-storage.ts). Both sides are normalised with the SAME expression, so this check asserts \u201cthese point at the same object\u201d and stays green before AND after the rewrite \u2014 the alternative was a mapping that is only ever green in one of the two states and flips red on wave ordering."
         },
         {
           "name": "cover_url",
           "from": "cover_url",
-          "source": "b.cover_url",
-          "target": "t.cover_url"
+          "source": "regexp_replace(b.cover_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "target": "regexp_replace(t.cover_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "note": "W6 rewrites this V3 column from V1's supabase.co object URL to the GCS key `v1/<bucket>/<path>` (scripts/migration/w6-storage.ts). Both sides are normalised with the SAME expression, so this check asserts \u201cthese point at the same object\u201d and stays green before AND after the rewrite \u2014 the alternative was a mapping that is only ever green in one of the two states and flips red on wave ordering."
         },
         {
           "name": "website",
@@ -3925,8 +3957,9 @@
         {
           "name": "logo_url",
           "from": "logo_url",
-          "source": "o.logo_url",
-          "target": "t.logo_url"
+          "source": "regexp_replace(o.logo_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "target": "regexp_replace(t.logo_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "note": "W6 rewrites this V3 column from V1's supabase.co object URL to the GCS key `v1/<bucket>/<path>` (scripts/migration/w6-storage.ts). Both sides are normalised with the SAME expression, so this check asserts \u201cthese point at the same object\u201d and stays green before AND after the rewrite \u2014 the alternative was a mapping that is only ever green in one of the two states and flips red on wave ordering."
         },
         {
           "name": "website",
@@ -4791,8 +4824,9 @@
         {
           "name": "logo_url",
           "from": "logo_url",
-          "source": "l.logo_url",
-          "target": "t.logo_url"
+          "source": "regexp_replace(l.logo_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "target": "regexp_replace(t.logo_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "note": "W6 rewrites this V3 column from V1's supabase.co object URL to the GCS key `v1/<bucket>/<path>` (scripts/migration/w6-storage.ts). Both sides are normalised with the SAME expression, so this check asserts \u201cthese point at the same object\u201d and stays green before AND after the rewrite \u2014 the alternative was a mapping that is only ever green in one of the two states and flips red on wave ordering."
         },
         {
           "name": "sort_order",
@@ -9260,8 +9294,9 @@
         {
           "name": "cover_image_url",
           "from": "cover_image_url",
-          "source": "s.cover_image_url",
-          "target": "t.cover_image_url"
+          "source": "regexp_replace(s.cover_image_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "target": "regexp_replace(t.cover_image_url, 'https?://[a-z0-9]+\\.supabase\\.co/storage/v1/object/(?:public/|sign/|authenticated/)?(avatars|blog-images|course-brochures|service-images|lms-assignments|email-assets|service-media|chat-attachments|verification-docs|extraction-documents|business-assets|student-documents|ai-attachments)/([^?#\"''[:space:]]+)(\\?[^#\"''[:space:]]*)?', 'v1/\\1/\\2', 'g')",
+          "note": "W6 rewrites this V3 column from V1's supabase.co object URL to the GCS key `v1/<bucket>/<path>` (scripts/migration/w6-storage.ts). Both sides are normalised with the SAME expression, so this check asserts \u201cthese point at the same object\u201d and stays green before AND after the rewrite \u2014 the alternative was a mapping that is only ever green in one of the two states and flips red on wave ordering."
         },
         {
           "name": "created_at",
