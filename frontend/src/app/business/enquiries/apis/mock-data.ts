@@ -1,4 +1,11 @@
-import type { CloseResult, CreditBalance, DistributionListItem, UnlockResult } from "./types";
+import type {
+  CloseResult,
+  CreditBalance,
+  InboxItem,
+  InboxItemShared,
+  PaginatedResponse,
+  UnlockResult,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -12,209 +19,187 @@ function daysAgo(n: number): string {
 
 const UNLOCK_COST = 30;
 
-/** Defaults for a locked row. Locked rows carry a teaser and no contact, mirroring
- * what the server actually sends — the real API truncates before responding, so the
- * mock must too rather than holding the full text client-side. */
-function row(over: Partial<DistributionListItem>): DistributionListItem {
+function shared(id: number, over: Partial<InboxItemShared> = {}): InboxItemShared {
   return {
-    enquiry_id: "enq",
-    distribution_id: "dist",
-    status: "distributed",
-    tier: 1,
-    match_rank: 1,
-    message: null,
-    message_truncated: false,
+    id,
+    enquiry_id: 1000 + id,
+    status: "pending",
+    enquiry_status: "pending",
+    coin_cost: UNLOCK_COST,
+    distance_km: null,
     preferred_intake: null,
     preferred_year: null,
-    course_name: null,
-    course_short_name: null,
-    institution_name: null,
     created_at: daysAgo(0),
-    accept_count: 0,
-    max_accepts: 3,
-    is_unlocked: false,
-    coin_cost: 0,
-    unlocked_at: null,
     closed_at: null,
     close_reason: null,
-    student_name: null,
-    student_email: null,
-    student_phone: null,
     ...over,
   };
 }
 
-// Covers every state a card can render — locked, unlocked with contact, closed with
-// a reason — and every summary counter.
-let mockDistributions: DistributionListItem[] = [
-  row({
-    enquiry_id: "enq-1",
-    distribution_id: "dist-1",
-    message: "I'm interested in this course — could you advise on intake dates and Eng…",
-    message_truncated: true,
+/**
+ * A locked row.
+ *
+ * The real server omits the contact KEYS rather than nulling them, so the mock
+ * must too — a mock that carries `student_email: null` would let a component
+ * read a field the real API never sends and pass in mock mode only.
+ */
+function locked(id: number, preview: string, over: Partial<InboxItemShared> = {}): InboxItem {
+  return {
+    ...shared(id, over),
+    unlocked: false,
+    message_preview: preview,
+    student: { first_name: "Priya", photo_url: null },
+  };
+}
+
+function unlocked(id: number, message: string, over: Partial<InboxItemShared> = {}): InboxItem {
+  return {
+    ...shared(id, { status: "viewed", enquiry_status: "viewed", ...over }),
+    unlocked: true,
+    unlocked_at: daysAgo(1),
+    credits_spent: UNLOCK_COST,
+    message,
+    service_id: null,
+    student: {
+      id: 42,
+      first_name: "Priya",
+      last_name: "Sharma",
+      email: "priya.sharma@example.com",
+      phone: "+61 400 111 222",
+      photo_url: null,
+      city_of_residence: "Sydney",
+      nationality_id: null,
+      country_of_residence_id: null,
+    },
+  };
+}
+
+// Covers every state a card can render — locked near/far/unmeasurable, unlocked
+// with contact, and closed with a reason — and every summary counter.
+let mockDistributions: InboxItem[] = [
+  locked(1, "I'm interested in this course — could you advise on intake dates and Eng…", {
+    distance_km: 4.2,
     preferred_intake: "January",
     preferred_year: 2027,
-    course_name: "Bachelor of Computer Science",
-    course_short_name: "BCompSc",
-    institution_name: "University of Sydney",
   }),
-  row({
-    enquiry_id: "enq-2",
-    distribution_id: "dist-2",
-    tier: 2,
-    match_rank: 3,
-    message: "Looking for a scholarship pathway into this programme. I already hold a…",
-    message_truncated: true,
+  locked(2, "Looking for a scholarship pathway into this programme. I already hold a…", {
+    distance_km: 34.8,
     preferred_intake: "July",
     preferred_year: 2027,
-    course_name: "Master of Information Technology",
-    course_short_name: "MIT",
-    institution_name: "University of Melbourne",
     created_at: daysAgo(2),
   }),
-  row({
-    enquiry_id: "enq-3",
-    distribution_id: "dist-3",
-    status: "unlocked",
-    message: "Do you handle student visa applications as well as admissions? I have already sat IELTS.",
-    course_name: "Master of Data Science",
-    course_short_name: "MDS",
-    institution_name: "University of Technology Sydney",
+  // No coordinates on one side, so no distance to show.
+  locked(3, "Do you handle student visa applications as well as admissions?", {
+    created_at: daysAgo(4),
+  }),
+  unlocked(4, "Do you handle student visa applications as well as admissions? I have already sat IELTS.", {
+    distance_km: 11.5,
     preferred_intake: "March",
     preferred_year: 2027,
     created_at: daysAgo(1),
-    accept_count: 1,
-    is_unlocked: true,
-    coin_cost: UNLOCK_COST,
-    unlocked_at: daysAgo(1),
-    student_name: "Priya Sharma",
-    student_email: "priya.sharma@example.com",
-    student_phone: "+61 400 111 222",
   }),
-  row({
-    enquiry_id: "enq-4",
-    distribution_id: "dist-4",
-    status: "converted",
-    match_rank: 2,
-    message: "Please send fee details for international students and the application checklist.",
-    course_name: "Diploma of Business Administration",
-    institution_name: "RMIT University",
+  unlocked(5, "Please send fee details for international students and the application checklist.", {
+    status: "responded",
+    enquiry_status: "responded",
+    distance_km: 22,
     preferred_intake: "October",
     preferred_year: 2026,
     created_at: daysAgo(9),
-    accept_count: 2,
-    is_unlocked: true,
-    coin_cost: UNLOCK_COST,
-    unlocked_at: daysAgo(8),
-    student_name: "Daniel Okafor",
-    student_email: "daniel.okafor@example.com",
-    student_phone: "+61 400 333 444",
   }),
-  row({
-    enquiry_id: "enq-5",
-    distribution_id: "dist-5",
+  locked(6, "No longer pursuing study abroad this year.", {
     status: "closed",
-    tier: 3,
-    match_rank: 4,
-    message: "No longer pursuing study abroad this year.",
-    course_name: "Graduate Diploma of Education",
-    institution_name: "Deakin University",
+    distance_km: 48,
     created_at: daysAgo(20),
     closed_at: daysAgo(3),
     close_reason: "Student is outside the regions we service.",
-  }),
-  row({
-    enquiry_id: "enq-6",
-    distribution_id: "dist-6",
-    status: "expired",
-    tier: 4,
-    match_rank: 5,
-    course_name: "Certificate IV in Nursing",
-    course_short_name: "CertIV",
-    created_at: daysAgo(31),
   }),
 ];
 
 let mockBalance = 500;
 
+const page = <T,>(data: T[]): PaginatedResponse<T> => ({
+  data,
+  meta: { page: 1, limit: 100, total: data.length, totalPages: 1 },
+});
+
 export const businessEnquiriesMockApi = {
-  listDistributions: async (): Promise<{ data: DistributionListItem[] }> => {
-    console.log("[mock] GET /enquiry-distributions");
+  listDistributions: async (): Promise<PaginatedResponse<InboxItem>> => {
+    console.log("[mock] GET /business/enquiries");
     await delay(200);
-    return { data: mockDistributions };
+    return page(mockDistributions);
   },
 
   getCredits: async (): Promise<CreditBalance> => {
-    console.log("[mock] GET /enquiry-distributions/credits");
+    console.log("[mock] GET /business/enquiries/credits");
     await delay(120);
     return { balance: mockBalance, unlock_cost: UNLOCK_COST };
   },
 
-  unlock: async (id: string): Promise<UnlockResult> => {
-    console.log("[mock] POST /enquiry-distributions/:id/unlock", { id });
+  unlock: async (id: number): Promise<UnlockResult> => {
+    console.log("[mock] POST /business/enquiries/:id/unlock", { id });
     await delay(300);
-    const target = mockDistributions.find((d) => d.distribution_id === id);
-    if (!target) throw new Error("Enquiry not found");
+    const target = mockDistributions.find((d) => d.id === id);
+    if (!target) throw new Error("Enquiry not found in this inbox");
 
-    if (target.is_unlocked) {
+    if (target.unlocked) {
       return {
-        distribution_id: id,
-        status: "unlocked",
+        unlocked: true,
         already_unlocked: true,
-        coin_cost: target.coin_cost,
-        credits_remaining: mockBalance,
-        student_first_name: target.student_name?.split(" ")[0] ?? null,
-        student_last_name: target.student_name?.split(" ").slice(1).join(" ") ?? null,
-        student_email: target.student_email,
-        student_phone: target.student_phone,
+        credits_spent: target.credits_spent,
+        balance: mockBalance,
+        enquiry: target,
       };
     }
-    if (target.closed_at) throw new Error("This enquiry is closed and can no longer be unlocked");
-    if (mockBalance < UNLOCK_COST) throw new Error(`Insufficient credits — unlocking costs ${UNLOCK_COST}`);
-    mockBalance -= UNLOCK_COST;
+    if (mockBalance < target.coin_cost) {
+      throw new Error(`Insufficient credits — unlocking costs ${target.coin_cost}`);
+    }
+    mockBalance -= target.coin_cost;
 
-    const student = { first: "Mock", last: "Student", email: "mock.student@example.com", phone: "+61 400 000 000" };
-    mockDistributions = mockDistributions.map((d) =>
-      d.distribution_id === id
-        ? {
-            ...d,
-            status: "unlocked",
-            is_unlocked: true,
-            accept_count: d.accept_count + 1,
-            coin_cost: UNLOCK_COST,
-            unlocked_at: new Date().toISOString(),
-            message_truncated: false,
-            student_name: `${student.first} ${student.last}`,
-            student_email: student.email,
-            student_phone: student.phone,
-          }
-        : d,
-    );
+    // Closing does not re-lock a lead, and unlocking does not un-close one:
+    // status is carried through rather than forced to 'viewed'.
+    const revealed = unlocked(target.id, "Do you handle student visa applications as well as admissions?", {
+      status: target.status === "closed" ? "closed" : "viewed",
+      distance_km: target.distance_km,
+      preferred_intake: target.preferred_intake,
+      preferred_year: target.preferred_year,
+      created_at: target.created_at,
+      closed_at: target.closed_at,
+      close_reason: target.close_reason,
+      coin_cost: target.coin_cost,
+    });
+    mockDistributions = mockDistributions.map((d) => (d.id === id ? revealed : d));
 
     return {
-      distribution_id: id,
-      status: "unlocked",
+      unlocked: true,
       already_unlocked: false,
-      coin_cost: UNLOCK_COST,
-      credits_remaining: mockBalance,
-      student_first_name: student.first,
-      student_last_name: student.last,
-      student_email: student.email,
-      student_phone: student.phone,
+      credits_spent: target.coin_cost,
+      balance: mockBalance,
+      enquiry: revealed,
     };
   },
 
-  close: async (id: string, closeReason: string): Promise<CloseResult> => {
-    console.log("[mock] POST /enquiry-distributions/:id/close", { id, closeReason });
+  close: async (id: number, closeReason: string): Promise<CloseResult> => {
+    console.log("[mock] POST /business/enquiries/:id/close", { id, closeReason });
     await delay(250);
-    const target = mockDistributions.find((d) => d.distribution_id === id);
-    if (!target) throw new Error("Enquiry not found");
-    if (target.closed_at) throw new Error("This enquiry is already closed");
+    const target = mockDistributions.find((d) => d.id === id);
+    if (!target) throw new Error("Enquiry not found in this inbox");
+
+    // Idempotent, like the server: a second close reports the first one and
+    // rewrites nothing.
+    if (target.status === "closed") {
+      return {
+        id,
+        status: "closed",
+        already_closed: true,
+        closed_at: target.closed_at,
+        close_reason: target.close_reason,
+      };
+    }
 
     const closedAt = new Date().toISOString();
     mockDistributions = mockDistributions.map((d) =>
-      d.distribution_id === id ? { ...d, status: "closed", closed_at: closedAt, close_reason: closeReason } : d,
+      d.id === id ? { ...d, status: "closed", closed_at: closedAt, close_reason: closeReason } : d,
     );
-    return { distribution_id: id, status: "closed", close_reason: closeReason, closed_at: closedAt };
+    return { id, status: "closed", already_closed: false, closed_at: closedAt, close_reason: closeReason };
   },
 };

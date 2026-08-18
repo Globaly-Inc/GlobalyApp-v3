@@ -14,7 +14,7 @@ import {
 import { ENQUIRY_STAT_STATUSES, ENQUIRY_STATUS_LABEL } from "../const";
 import { CloseEnquiryDialog } from "./close-enquiry-dialog";
 import { ConfirmUnlockDialog } from "./confirm-unlock-dialog";
-import { EnquiryInboxCard, EnquiryInboxCardSkeleton } from "./enquiry-inbox-card";
+import { EnquiryInboxCard, EnquiryInboxCardSkeleton, leadLabel } from "./enquiry-inbox-card";
 
 function StatCard({ value, label }: { value: number; label: string }) {
   return (
@@ -42,29 +42,29 @@ export function EnquiriesInboxView() {
 
   // `dialogSeq` remounts the dialog so it never shows the previous row's reason:
   // setting `open` from here does not fire the dialog's own onOpenChange.
-  const [closeTarget, setCloseTarget] = useState<string | null>(null);
-  const [unlockTarget, setUnlockTarget] = useState<string | null>(null);
+  const [closeTarget, setCloseTarget] = useState<number | null>(null);
+  const [unlockTarget, setUnlockTarget] = useState<number | null>(null);
   const [dialogSeq, setDialogSeq] = useState(0);
 
-  const targetItem = items.find((i) => i.distribution_id === closeTarget) ?? null;
-  const unlockItem = items.find((i) => i.distribution_id === unlockTarget) ?? null;
+  const targetItem = items.find((i) => i.id === closeTarget) ?? null;
+  const unlockItem = items.find((i) => i.id === unlockTarget) ?? null;
 
-  const openCloseDialog = (id: string) => {
+  const openCloseDialog = (id: number) => {
     dispatch(clearActionError());
     setCloseTarget(id);
     setDialogSeq((n) => n + 1);
   };
 
   const handleConfirmUnlock = async () => {
-    if (!unlockTarget) return;
+    if (unlockTarget == null) return;
     const result = await dispatch(unlockDistribution(unlockTarget));
-    // Close on success only — on 402/409 the banner explains why, and dismissing
+    // Close on success only — on a 402 the banner explains why, and dismissing
     // the dialog first would hide what the user just tried to do.
     if (unlockDistribution.fulfilled.match(result)) setUnlockTarget(null);
   };
 
   const handleConfirmClose = async (reason: string) => {
-    if (!closeTarget) return;
+    if (closeTarget == null) return;
     const result = await dispatch(closeDistribution({ id: closeTarget, closeReason: reason }));
     // Keep it open on failure so the typed reason isn't lost.
     if (closeDistribution.fulfilled.match(result)) setCloseTarget(null);
@@ -100,13 +100,13 @@ export function EnquiriesInboxView() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {counts.map((c) => (
           <StatCard key={c.label} value={c.value} label={c.label} />
         ))}
       </div>
 
-      {/* 402 / 409 land here with the server's own wording. */}
+      {/* A 402 from unlock lands here with the server's own wording. */}
       {actionError && (
         <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
           <p className="text-destructive">{actionError}</p>
@@ -143,16 +143,16 @@ export function EnquiriesInboxView() {
         <div className="space-y-3">
           {items.map((item) => (
             <EnquiryInboxCard
-              key={item.distribution_id}
+              key={item.id}
               item={item}
               unlockCost={unlockCost}
               credits={credits}
-              busy={actingId === item.distribution_id}
+              busy={actingId === item.id}
               onUnlock={() => {
                 dispatch(clearActionError());
-                setUnlockTarget(item.distribution_id);
+                setUnlockTarget(item.id);
               }}
-              onClose={() => openCloseDialog(item.distribution_id)}
+              onClose={() => openCloseDialog(item.id)}
             />
           ))}
         </div>
@@ -162,7 +162,7 @@ export function EnquiriesInboxView() {
         open={unlockTarget != null}
         onOpenChange={(open) => !open && setUnlockTarget(null)}
         onConfirm={handleConfirmUnlock}
-        courseName={unlockItem?.course_name ?? null}
+        leadLabel={unlockItem ? leadLabel(unlockItem) : null}
         unlockCost={unlockCost}
         credits={credits}
         submitting={actingId != null && actingId === unlockTarget}
@@ -173,7 +173,7 @@ export function EnquiriesInboxView() {
         open={closeTarget != null}
         onOpenChange={(open) => !open && setCloseTarget(null)}
         onConfirm={handleConfirmClose}
-        courseName={targetItem?.course_name ?? null}
+        leadLabel={targetItem ? leadLabel(targetItem) : null}
         submitting={actingId != null && actingId === closeTarget}
       />
     </div>

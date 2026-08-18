@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessEnquiriesApi } from "../apis";
-import type { DistributionListItem } from "../apis/types";
+import type { InboxItem } from "../apis/types";
 
 export const fetchDistributions = createAsyncThunk("businessEnquiries/fetchAll", async () => {
   const result = await businessEnquiriesApi.listDistributions();
@@ -13,9 +13,9 @@ export const fetchCredits = createAsyncThunk("businessEnquiries/fetchCredits", (
 
 export const unlockDistribution = createAsyncThunk(
   "businessEnquiries/unlock",
-  // rejectWithValue so the server's own message (402 "Insufficient credits…",
-  // 409 "already been unlocked by 3 businesses") reaches the UI verbatim.
-  async (id: string, { rejectWithValue }) => {
+  // rejectWithValue so the server's own message (402 "Insufficient credits…")
+  // reaches the UI verbatim.
+  async (id: number, { rejectWithValue }) => {
     try {
       return await businessEnquiriesApi.unlock(id);
     } catch (err) {
@@ -26,7 +26,7 @@ export const unlockDistribution = createAsyncThunk(
 
 export const closeDistribution = createAsyncThunk(
   "businessEnquiries/close",
-  async ({ id, closeReason }: { id: string; closeReason: string }, { rejectWithValue }) => {
+  async ({ id, closeReason }: { id: number; closeReason: string }, { rejectWithValue }) => {
     try {
       return await businessEnquiriesApi.close(id, closeReason);
     } catch (err) {
@@ -36,14 +36,14 @@ export const closeDistribution = createAsyncThunk(
 );
 
 type BusinessEnquiriesState = {
-  items: DistributionListItem[];
+  items: InboxItem[];
   status: "idle" | "loading" | "failed";
   error: string | null;
   credits: number | null;
   unlockCost: number;
-  /** distribution_id currently being unlocked or closed — drives per-row spinners
+  /** distribution id currently being unlocked or closed — drives per-row spinners
    * so one pending action doesn't disable every button in the list. */
-  actingId: string | null;
+  actingId: number | null;
   actionError: string | null;
 };
 
@@ -91,29 +91,14 @@ const businessEnquiriesSlice = createSlice({
       })
       .addCase(unlockDistribution.fulfilled, (state, action) => {
         state.actingId = null;
-        state.credits = action.payload.credits_remaining;
-        // Patch in place rather than refetching: the server already told us
-        // everything that changed, and a refetch would reset scroll position.
-        const name = [action.payload.student_first_name, action.payload.student_last_name]
-          .filter(Boolean)
-          .join(" ");
+        state.credits = action.payload.balance;
+        // Replace the row outright rather than patching fields onto it: unlock
+        // returns the whole re-masked item, so the server's own shape is the one
+        // that lands in the store and locked/unlocked stays a clean discriminated
+        // union instead of a half-unlocked hybrid. A refetch would work too, but
+        // it would reset scroll position to move one row.
         state.items = state.items.map((item) =>
-          item.distribution_id === action.payload.distribution_id
-            ? {
-                ...item,
-                status: "unlocked",
-                is_unlocked: true,
-                // Our own unlock counts toward the cap the card displays; the
-                // server already incremented it, so mirror that locally rather
-                // than refetching just to move one number.
-                accept_count: action.payload.already_unlocked ? item.accept_count : item.accept_count + 1,
-                coin_cost: action.payload.coin_cost,
-                unlocked_at: new Date().toISOString(),
-                student_name: name || null,
-                student_email: action.payload.student_email,
-                student_phone: action.payload.student_phone,
-              }
-            : item,
+          item.id === action.payload.enquiry.id ? action.payload.enquiry : item,
         );
       })
       .addCase(unlockDistribution.rejected, (state, action) => {
@@ -127,11 +112,14 @@ const businessEnquiriesSlice = createSlice({
       })
       .addCase(closeDistribution.fulfilled, (state, action) => {
         state.actingId = null;
+        // Close only ever touches these three columns, and the response carries
+        // nothing else — so this is a patch, not a replacement. The paywall state
+        // is untouched: closing a lead you paid for does not re-lock it.
         state.items = state.items.map((item) =>
-          item.distribution_id === action.payload.distribution_id
+          item.id === action.payload.id
             ? {
                 ...item,
-                status: "closed",
+                status: action.payload.status,
                 closed_at: action.payload.closed_at,
                 close_reason: action.payload.close_reason,
               }
