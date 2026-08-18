@@ -16,19 +16,16 @@ export function AgentAcceptInviteView() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const orgId = searchParams.get("org_id");
-  const [status, setStatus] = useState<Status>("loading");
-  const [message, setMessage] = useState("");
+  // Missing link params are known at render time, so they are the initial state — not effect state.
+  const linkComplete = !!token && !!orgId;
+  const [status, setStatus] = useState<Status>(linkComplete ? "loading" : "error");
+  const [message, setMessage] = useState(linkComplete ? "" : "This invitation link is missing required information.");
 
   const requestedRef = useRef(false);
   useEffect(() => {
-    if (requestedRef.current) return;
+    if (requestedRef.current || !token || !orgId) return;
     requestedRef.current = true;
 
-    if (!token || !orgId) {
-      setStatus("error");
-      setMessage("This invitation link is missing required information.");
-      return;
-    }
     inviteApi
       .acceptAgentInvite({ token, org_id: orgId })
       .then((result) => {
