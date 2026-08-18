@@ -54,6 +54,26 @@ export const errorHandlerPlugin = fp(async (app) => {
       });
     }
 
+    // Fastify-native errors that already carry their own 4xx status.
+    //
+    // @fastify/rate-limit is the one that matters: it throws FST_ERR_RATE_LIMIT with
+    // statusCode 429, and without this branch it fell through to the generic 500
+    // below — so EVERY throttled route in the app answered "Internal server error"
+    // instead of "Too Many Requests". A client cannot back off from a 500, and an
+    // operator reading dashboards sees an outage where there was a working limiter.
+    // Found by tests/integration/ai-embed-rate-limit.test.ts; the fix is here rather
+    // than in that module because all 13 rate-limited route files shared the bug.
+    //
+    // Scoped to 4xx on purpose: a 5xx must keep its message hidden behind the
+    // generic 500 response below, and only client-fault statuses are safe to echo.
+    const nativeStatus = typeof err.statusCode === "number" ? err.statusCode : 0;
+    if (nativeStatus >= 400 && nativeStatus < 500) {
+      return reply.status(nativeStatus).send({
+        error: error instanceof Error ? error.message : "Request rejected",
+        code: typeof err.code === "string" ? err.code : undefined,
+      });
+    }
+
     // Unexpected errors — log and return 500
     logger.error(error instanceof Error ? error.message : "Unknown error", { stack: error instanceof Error ? error.stack : undefined });
     return reply.status(500).send({ error: "Internal server error" });
