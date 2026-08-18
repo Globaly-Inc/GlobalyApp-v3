@@ -95,8 +95,16 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.schema.alterTable("application_charges", (t) => {
     t.check("credits_charged > 0", [], "application_charges_credits_check");
+    // Only `refunded_at`, NOT refund_transaction_id — and that is forced by the
+    // ordering that makes the refund non-replayable. claimVoid() flips the status
+    // FIRST (compare-and-set from 'charged') and the credit grant happens after,
+    // so the ledger id cannot exist in the same statement. Postgres CHECK
+    // constraints cannot be DEFERRABLE, so there is no way to express "by commit
+    // time" here; the link is asserted by the test instead
+    // (application-charges.test.ts: refund_transaction_id not null).
+    // Reversing the order to satisfy the constraint would reintroduce D-G5-4.
     t.check(
-      "status <> 'refunded' OR (refunded_at IS NOT NULL AND refund_transaction_id IS NOT NULL)",
+      "status <> 'refunded' OR refunded_at IS NOT NULL",
       [],
       "application_charges_refund_complete_check",
     );

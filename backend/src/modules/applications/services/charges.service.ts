@@ -247,6 +247,36 @@ const iso = (value: Date | string | null) => (value === null ? null : new Date(v
  * Nulls out rather than failing when the service has been deleted, which is what
  * V2's LEFT JOIN did.
  */
+/**
+ * Service names for the owner's charge list, read from the caller's TENANT schema.
+ *
+ * Fail-soft, and narrowly so: a business whose schema predates `business_services`
+ * (or was never provisioned) must still be able to read its own billing history —
+ * every money figure on these rows comes from master. The charge is never inferred
+ * from this call, so a failure here cannot change an amount or a status; it can
+ * only leave `service_name: null`, which is already the value for a deleted service
+ * and exactly what V2's LEFT JOIN produced.
+ *
+ * ponytail: one warn and a null. Not a retry, not a cache — if this gets hot,
+ * denormalise the name onto application_charges at charge time.
+ */
+async function serviceNames(tenantDb: repo.Db, ids: number[]): Promise<Map<number, string>> {
+  const names = new Map<number, string>();
+  if (!ids.length) return names;
+  try {
+    const rows = (await tenantDb("business_services").whereIn("id", ids).select("id", "name")) as {
+      id: number;
+      name: string;
+    }[];
+    for (const row of rows) names.set(row.id, row.name);
+  } catch (err) {
+    logger.warn("could not resolve service names for charge list", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return names;
+}
+
 export async function listOwnerCharges(
   businessId: number,
   tenantDb: repo.Db,
@@ -259,14 +289,10 @@ export async function listOwnerCharges(
     repo.countOwnerCharges(businessId, filters),
   ]);
 
-  const serviceIds = [...new Set(rows.map((r) => r.service_id).filter((id): id is number => id !== null))];
-  const names = new Map<number, string>();
-  if (serviceIds.length) {
-    const services = (await tenantDb("business_services")
-      .whereIn("id", serviceIds)
-      .select("id", "name")) as { id: number; name: string }[];
-    for (const s of services) names.set(s.id, s.name);
-  }
+  const names = await serviceNames(
+    tenantDb,
+    [...new Set(rows.map((r) => r.service_id).filter((id): id is number => id !== null))],
+  );
 
   return buildPaginatedResponse(
     rows.map((r) => ({
