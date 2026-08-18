@@ -100,6 +100,9 @@ export const SERVICE_ID = (schema: string, col: string): string =>
 export const CHILD_ID = (schema: string, table: string, col: string): string =>
   `(SELECT c.id FROM ${quoteIdent(schema)}.${quoteIdent(table)} c WHERE c.v1_id = ${col})`;
 
+/** A schema name as a SQL string literal — for the view bodies, which cannot take a parameter. */
+export const quoteLiteral = (value: string): string => `'${value.replace(/'/g, "''")}'`;
+
 /**
  * Every tenant table across every provisioned schema, as one derived table.
  *
@@ -111,6 +114,40 @@ export const unionAcrossSchemas = (schemas: readonly TenantSchema[], table: stri
   schemas.length === 0
     ? `(SELECT NULL::uuid AS id WHERE false) u`
     : `(${schemas.map((s) => `SELECT id FROM ${quoteIdent(s.schema)}.${quoteIdent(table)}`).join(" UNION ALL ")}) u`;
+
+/**
+ * The two resolver views the MASTER tables need: a tenant uuid -> its V1 uuid.
+ *
+ * public.service_branch_sharing.service_id and
+ * public.service_study_option_branches.study_option_id hold uuids V3 minted inside
+ * one tenant's schema, and no static SQL expression can chase a schema name it only
+ * learns from a column. So the union is materialised as a view — rebuilt on every
+ * run, because a new tenant schema must not leave a stale one behind — and both the
+ * master loader and mapping.json's Gate 2 comparison resolve through it.
+ *
+ * CREATE OR REPLACE keeps the column list identical, which is the only thing
+ * Postgres will let it change nothing of.
+ */
+export const SERVICE_MAP_VIEWS: Readonly<Record<string, string>> = {
+  map_services: "business_services",
+  map_study_options: "service_study_options",
+};
+
+export function serviceMapViewSql(schemas: readonly TenantSchema[], view: string, table: string): string {
+  const body = schemas.length
+    ? schemas
+        .map((s) => `SELECT id, v1_id, ${quoteLiteral(s.schema)}::text AS schema_name FROM ${quoteIdent(s.schema)}.${quoteIdent(table)}`)
+        .join(" UNION ALL ")
+    : `SELECT NULL::uuid AS id, NULL::uuid AS v1_id, NULL::text AS schema_name WHERE false`;
+  return `CREATE OR REPLACE VIEW mig.${quoteIdent(view)} AS ${body}`;
+}
+
+/** Rebuild both resolver views over the current tenant schema list. */
+export async function ensureServiceMaps(ctx: TransformContext, schemas: readonly TenantSchema[]): Promise<void> {
+  for (const [view, table] of Object.entries(SERVICE_MAP_VIEWS)) {
+    await ctx.db.query(serviceMapViewSql(schemas, view, table));
+  }
+}
 
 // ── What this wave reads ────────────────────────────────────────────────────
 
@@ -497,6 +534,7 @@ export function junctionSpecs(schema: string): TenantSpec[] {
 export async function transformServices(ctx: TransformContext, allowedCodes: ReadonlySet<string>): Promise<void> {
   await clearReport(ctx, W7_SERVICE_SOURCE_TABLES);
   const schemas = await tenantSchemas(ctx.db);
+  await ensureServiceMaps(ctx, schemas);
 
   // Anything whose owner has no provisioned tenant schema has nowhere to go. Zero
   // rows today (w7-orgs --provision mints one for all 20 owners), but the guard is

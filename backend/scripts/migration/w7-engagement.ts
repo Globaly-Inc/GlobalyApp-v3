@@ -163,6 +163,19 @@ export async function transformEngagement(ctx: TransformContext, allowedCodes: R
             FROM ${STAGING_SCHEMA}.events s
            WHERE ${ORG_ID("s.business_id")} IS NULL`,
   });
+  // rsvp_count has no V3 column: V3 counts public.event_registrations instead of
+  // keeping a denormalised counter. Three V1 rows carry a non-zero value, so each
+  // one is reported rather than quietly discarded — no_v3_column exists so a future
+  // schema change can find the rows that wanted a column V3 does not have.
+  await reportUnresolvedQuery(ctx, allowedCodes, {
+    sourceTable: "events",
+    targetTable: "public.events",
+    column: "rsvp_count",
+    reasonCode: "no_v3_column",
+    sql: `SELECT s.id::text, 'rsvp_count ' || s.rsvp_count::text || ' has no public.events column; V3 counts event_registrations'
+            FROM ${STAGING_SCHEMA}.events s
+           WHERE coalesce(s.rsvp_count, 0) <> 0`,
+  });
   await reportUnresolvedQuery(ctx, allowedCodes, {
     sourceTable: "events",
     targetTable: "public.events",

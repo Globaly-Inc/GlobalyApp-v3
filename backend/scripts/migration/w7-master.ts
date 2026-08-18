@@ -27,9 +27,11 @@
  *
  * Two of the five carry a TENANT uuid: service_branch_sharing.service_id and
  * service_study_option_branches.study_option_id point at rows inside the owner's
- * schema, which is why those two load per-schema — the uuid V3 assigned is not V1's,
- * so it has to be looked up through v1_id in the one schema that holds it. They
- * therefore depend on w7-services having run.
+ * schema, and the uuid V3 assigned is not V1's. No static SQL expression can chase a
+ * schema name it only learns from a column, so both resolve through mig.map_services
+ * / mig.map_study_options — the views w7-services rebuilds over every tenant schema
+ * on each run, and the same views mapping.json compares through. Those two therefore
+ * depend on w7-services having run.
  *
  * Usage:
  *   node --import tsx scripts/migration/w7-master.ts --self-check
@@ -40,8 +42,8 @@
 import assert from "node:assert/strict";
 
 import { SERVICE_CATEGORY_ID } from "./w4-extraction.js";
-import { CHILD_ID, SERVICE_ID, unionAcrossSchemas } from "./w7-services.js";
-import { ORGS, ORG_ID, ORG_TYPE, USER_ID, tenantSchemas } from "./w7-orgs.js";
+import { ensureServiceMaps, unionAcrossSchemas } from "./w7-services.js";
+import { ORG_ID, ORG_TYPE, USER_ID, tenantSchemas } from "./w7-orgs.js";
 import {
   assertParentCounts,
   clearReport,
@@ -121,6 +123,9 @@ const RESOLVED = (col: string): string => `${ORG_ID(col)} IS NOT NULL`;
 export async function transformMaster(ctx: TransformContext, allowedCodes: ReadonlySet<string>): Promise<void> {
   await clearReport(ctx, W7_MASTER_SOURCE_TABLES);
   const schemas = await tenantSchemas(ctx.db);
+  // Rebuilt here as well as in w7-services, so a standalone run of this wave
+  // (dry or applied) resolves tenant uuids against the schema list as it is now.
+  await ensureServiceMaps(ctx, schemas);
 
   // Every org reference that does not resolve, reported before anything loads.
   for (const ref of ORG_REFS) {
@@ -253,45 +258,44 @@ export async function transformMaster(ctx: TransformContext, allowedCodes: Reado
            WHERE s.shared_by IS NOT NULL AND ${USER_ID("s.shared_by")} IS NULL`,
   });
 
-  for (const t of schemas) {
-    // The owner is the service's own org, so the row is loaded from the schema
-    // that holds the service — which is also the only place its V3 uuid exists.
-    await loadMaster(ctx, {
-      table: "service_branch_sharing",
-      joins: `JOIN ${STAGING_SCHEMA}.business_services p ON p.id = s.service_id`,
-      where: `p.business_id = (SELECT o.v1_business_id FROM ${ORGS} o WHERE o.schema_name = $1)
-              AND ${RESOLVED("s.branch_business_id")}`,
-      params: [t.schema],
-      select: {
-        v1_id: "s.id",
-        service_id: SERVICE_ID(t.schema, "s.service_id"),
-        owner_org_type: ORG_TYPE("p.business_id"),
-        owner_org_id: ORG_ID("p.business_id"),
-        branch_org_type: ORG_TYPE("s.branch_business_id"),
-        branch_org_id: ORG_ID("s.branch_business_id"),
-        scope: "s.scope",
-        shared_by: USER_ID("s.shared_by"),
-        shared_at: "coalesce(s.shared_at, now())",
-      },
-    });
+  // The owner is the row's own service (or study option), and mig.map_services /
+  // mig.map_study_options carry that row's V3 uuid from whichever tenant schema
+  // holds it — so both load in ONE statement instead of once per schema. No static
+  // SQL expression can chase a schema name it only learns from a column, which is
+  // exactly why those views exist.
+  await loadMaster(ctx, {
+    table: "service_branch_sharing",
+    joins: `JOIN ${STAGING_SCHEMA}.business_services p ON p.id = s.service_id
+            JOIN mig.map_services ms ON ms.v1_id = s.service_id`,
+    where: RESOLVED("s.branch_business_id"),
+    select: {
+      v1_id: "s.id",
+      service_id: "ms.id",
+      owner_org_type: ORG_TYPE("p.business_id"),
+      owner_org_id: ORG_ID("p.business_id"),
+      branch_org_type: ORG_TYPE("s.branch_business_id"),
+      branch_org_id: ORG_ID("s.branch_business_id"),
+      scope: "s.scope",
+      shared_by: USER_ID("s.shared_by"),
+      shared_at: "coalesce(s.shared_at, now())",
+    },
+  });
 
-    await loadMaster(ctx, {
-      table: "service_study_option_branches",
-      joins: `JOIN ${STAGING_SCHEMA}.service_study_options o2 ON o2.id = s.study_option_id`,
-      where: `o2.business_id = (SELECT o.v1_business_id FROM ${ORGS} o WHERE o.schema_name = $1)
-              AND ${RESOLVED("s.branch_business_id")}`,
-      params: [t.schema],
-      select: {
-        v1_id: "s.id",
-        study_option_id: CHILD_ID(t.schema, "service_study_options", "s.study_option_id"),
-        owner_org_type: ORG_TYPE("o2.business_id"),
-        owner_org_id: ORG_ID("o2.business_id"),
-        branch_org_type: ORG_TYPE("s.branch_business_id"),
-        branch_org_id: ORG_ID("s.branch_business_id"),
-        created_at: "coalesce(s.created_at, now())",
-      },
-    });
-  }
+  await loadMaster(ctx, {
+    table: "service_study_option_branches",
+    joins: `JOIN ${STAGING_SCHEMA}.service_study_options o2 ON o2.id = s.study_option_id
+            JOIN mig.map_study_options mo ON mo.v1_id = s.study_option_id`,
+    where: RESOLVED("s.branch_business_id"),
+    select: {
+      v1_id: "s.id",
+      study_option_id: "mo.id",
+      owner_org_type: ORG_TYPE("o2.business_id"),
+      owner_org_id: ORG_ID("o2.business_id"),
+      branch_org_type: ORG_TYPE("s.branch_business_id"),
+      branch_org_id: ORG_ID("s.branch_business_id"),
+      created_at: "coalesce(s.created_at, now())",
+    },
+  });
 
   ctx.report.notes.push("cross-tenant graph landed in public — never in a tenant schema (§1.2, §14)");
 }
@@ -330,10 +334,11 @@ export function masterSelfCheck(): void {
   );
   assert.ok(SERVICE_CATEGORY_ID("x").includes("public.service_categories"), "§15 decision 3: the public vocabulary");
 
-  // The two tenant-uuid tables resolve through v1_id, because V3 minted its own
-  // uuids and V1's did not survive as the V3 id.
-  assert.ok(SERVICE_ID("s", "x").includes("bs.v1_id = x"), "a tenant service uuid is looked up through v1_id");
-  assert.ok(CHILD_ID("s", "service_study_options", "x").includes("c.v1_id = x"));
+  // The two tenant-uuid tables resolve through the mig views, because V3 minted its
+  // own uuids and no static SQL can chase a schema name it reads from a column.
+  assert.ok(body.includes("mig.map_services"), "service_branch_sharing resolves its tenant service uuid through mig.map_services");
+  assert.ok(body.includes("mig.map_study_options"), "service_study_option_branches resolves through mig.map_study_options");
+  assert.ok(body.includes("ms.v1_id = s.service_id"), "the join is on the V1 uuid, which is the only key both sides share");
 
   console.log("w7-master self-check: ok");
 }
