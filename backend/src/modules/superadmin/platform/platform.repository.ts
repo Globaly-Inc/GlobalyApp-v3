@@ -102,11 +102,14 @@ export async function listFeaturedCountries() {
 }
 
 export async function findPublicCountryBySlug(slug: string) {
-  return masterKnex("countries")
+  const country = await masterKnex("countries")
     .where({ is_active: true })
     .whereNull("deleted_at")
     .where((b) => b.where("slug", slug).orWhereRaw("lower(name) = lower(?)", [slug]))
     .first();
+  // `languages`/`gallery_images` are nullable columns (admin-entered, not seeded) — the public
+  // contract promises arrays, so coerce null to [] here rather than in every consumer.
+  return country && { ...country, languages: country.languages ?? [], gallery_images: country.gallery_images ?? [] };
 }
 
 export async function listPublicCitiesForCountry(countryId: number, limit = 12) {

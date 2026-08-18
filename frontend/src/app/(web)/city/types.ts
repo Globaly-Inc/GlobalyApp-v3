@@ -1,5 +1,6 @@
 export type CityDetail = {
   id: number;
+  country_id: number;
   name: string;
   slug: string;
   hero_image_url: string | null;
@@ -11,6 +12,7 @@ export type CityDetail = {
   timezone: string | null;
   highlights: string[];
   is_featured: boolean;
+  sort_order: number;
   meta_title: string | null;
   meta_description: string | null;
   country: {

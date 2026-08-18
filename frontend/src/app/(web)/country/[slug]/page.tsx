@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getCountryBySlug } from "../api";
 import { getPosts } from "../../blog/api";
+import { getCourses, getEducationAgencies, getInstitutions } from "../../search/api";
 import { CountryHero } from "../components/country-hero";
 import { CountryKeyFacts } from "../components/country-key-facts";
 import { CountryAbout } from "../components/country-about";
@@ -10,6 +11,8 @@ import { CountryWeather } from "../components/country-weather";
 import { CountryLiving } from "../components/country-living";
 import { CountryPlatformStats } from "../components/country-platform-stats";
 import { CountryInstitutions } from "../components/country-institutions";
+import { CountryServices } from "../components/country-services";
+import { CountryAgents } from "../components/country-agents";
 import { CountryBlog } from "../components/country-blog";
 import { CountryCta } from "../components/country-cta";
 
@@ -39,22 +42,37 @@ export default async function CountryPage({ params }: Readonly<{ params: Promise
     .filter((p) => p.tags.some((t) => t.toLowerCase() === nameLower) || p.title.toLowerCase().includes(nameLower))
     .slice(0, 3);
 
+  const [institutions, agents, courses] = await Promise.all([
+    getInstitutions({ country: country.name }).then((r) => r.data.slice(0, 6)).catch(() => []),
+    getEducationAgencies({ country: country.name }).then((r) => r.data.slice(0, 6)).catch(() => []),
+    getCourses({ country: country.name }).then((r) => r.data.slice(0, 6)).catch(() => []),
+  ]);
+
   return (
     <div>
-      <CountryHero country={country} />
-      <CountryKeyFacts country={country} />
+      <div className="flex h-[calc(100svh-64px)] flex-col">
+        <CountryHero country={country} />
+        <CountryKeyFacts country={country} />
+      </div>
 
-      <div className="container mx-auto space-y-20 px-4 py-16">
+      <div className="container mx-auto space-y-12 px-4 py-10 md:space-y-20 md:py-16">
         <CountryAbout country={country} />
         <CountryCities country={country} />
         <CountryWeather country={country} />
         <CountryLiving country={country} />
       </div>
 
-      <CountryPlatformStats country={country} />
+      <CountryPlatformStats
+        country={country}
+        institutionsCount={institutions.length}
+        coursesCount={courses.length}
+        agentsCount={agents.length}
+      />
 
-      <div className="container mx-auto space-y-20 px-4 py-16">
-        <CountryInstitutions countryName={country.name} />
+      <div className="container mx-auto space-y-12 px-4 py-10 md:space-y-20 md:py-16">
+        <CountryInstitutions countryName={country.name} institutions={institutions} />
+        <CountryServices countryName={country.name} courses={courses} />
+        <CountryAgents countryName={country.name} agents={agents} />
         <CountryBlog posts={relatedPosts} />
         <CountryCta countryName={country.name} />
       </div>

@@ -1,13 +1,16 @@
 import { Building2, GraduationCap, Users, UserCheck } from "lucide-react";
 import type { CountryDetail } from "../types";
 
-export function CountryPlatformStats({ country }: Readonly<{ country: CountryDetail }>) {
-  if (!country.universities_count_label && !country.student_count_label) return null;
-
+export function CountryPlatformStats({
+  country,
+  institutionsCount,
+  coursesCount,
+  agentsCount,
+}: Readonly<{ country: CountryDetail; institutionsCount: number; coursesCount: number; agentsCount: number }>) {
   const stats = [
-    { icon: Building2, label: "Institutions", value: country.universities_count_label ?? "—" },
-    { icon: GraduationCap, label: "Services", value: "—" },
-    { icon: UserCheck, label: "Agents", value: "—" },
+    { icon: Building2, label: "Institutions", value: country.universities_count_label ?? String(institutionsCount) },
+    { icon: GraduationCap, label: "Services", value: String(coursesCount) },
+    { icon: UserCheck, label: "Agents", value: String(agentsCount) },
     { icon: Users, label: "Students", value: country.student_count_label ?? "—" },
   ];
 

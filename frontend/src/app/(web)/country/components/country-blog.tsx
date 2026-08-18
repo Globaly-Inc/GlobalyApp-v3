@@ -1,15 +1,16 @@
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Reveal } from "../../components/reveal";
 import type { PublicBlogPost } from "../../blog/types";
 
 export function CountryBlog({ posts }: Readonly<{ posts: PublicBlogPost[] }>) {
   if (posts.length === 0) return null;
 
   return (
-    <div>
+    <Reveal>
       <h2 className="mb-4 text-2xl font-bold">Community News &amp; Guides</h2>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {posts.map((post) => (
           <Link key={post.id} href={`/blog/${post.id}`}>
             <Card className="h-full overflow-hidden transition-shadow hover:shadow-md">
@@ -28,6 +29,6 @@ export function CountryBlog({ posts }: Readonly<{ posts: PublicBlogPost[] }>) {
           </Link>
         ))}
       </div>
-    </div>
+    </Reveal>
   );
 }
