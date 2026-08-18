@@ -195,14 +195,28 @@ describeDb("extraction staging writer", () => {
       // "Bachelor of Nursing." and "Bachelor  of Nursing" both normalise to
       // "bachelor of nursing". 5 of the 26 duplicate name groups in the migrated
       // corpus are this exact mismatch between the probe and the comparison.
+      // The stored name is the dirty one on purpose. With the clean name written
+      // first, LOWER(TRIM(name)) happens to equal the normalised needle and the
+      // mismatch hides — a mutation run proved this direction is the only one that
+      // catches it, and the corpus agrees: the duplicated names there end in ")".
       const jobId = await newJob("dedup-normalise");
       const campuses = new Map<string, string>();
-      const first = await writer.writeCourse(jobId, { name: "Bachelor of Nursing" }, campuses);
-      const second = await writer.writeCourse(jobId, { name: "Bachelor of Nursing." }, campuses);
+      const first = await writer.writeCourse(jobId, { name: "Bachelor of Nursing." }, campuses);
+      const second = await writer.writeCourse(jobId, { name: "Bachelor of Nursing" }, campuses);
       const third = await writer.writeCourse(jobId, { name: "  Bachelor  of Nursing  " }, campuses);
 
       expect(second).toBe(first);
       expect(third).toBe(first);
+      expect(await count("extraction_courses", { job_id: jobId })).toBe(1);
+    });
+
+    it("dedups a course name ending in a bracket, the corpus's commonest shape", async () => {
+      const jobId = await newJob("dedup-bracket");
+      const campuses = new Map<string, string>();
+      const name = "Bachelor of Creative Arts (Theatre Arts)";
+      const first = await writer.writeCourse(jobId, { name }, campuses);
+      const second = await writer.writeCourse(jobId, { name }, campuses);
+      expect(second).toBe(first);
       expect(await count("extraction_courses", { job_id: jobId })).toBe(1);
     });
 
