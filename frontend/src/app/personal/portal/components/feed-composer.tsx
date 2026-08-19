@@ -21,6 +21,9 @@ export function FeedComposer() {
   const profile = useAppSelector((state) => state.profile.profile);
   const aiAvailable = useAppSelector((state) => state.home.aiAvailable);
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const [expanded, setExpanded] = useState(false);
   const [content, setContent] = useState("");
   const [postType, setPostType] = useState("social");
@@ -100,10 +103,11 @@ export function FeedComposer() {
     reset();
   };
 
-  const initial = profile?.first_name?.[0]?.toUpperCase() ?? "U";
+  const initial = mounted ? profile?.first_name?.[0]?.toUpperCase() ?? "U" : "U";
+  const avatarPhotoUrl = mounted ? profile?.photo_url : null;
   const avatar = (
     <Avatar className="size-9 shrink-0">
-      {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+      {avatarPhotoUrl && <AvatarImage src={avatarPhotoUrl} alt={profile?.first_name} />}
       <AvatarFallback>{initial}</AvatarFallback>
     </Avatar>
   );

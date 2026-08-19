@@ -28,6 +28,13 @@ export function HomeHero({ firstName }: { firstName: string | null }) {
   const [now, setNow] = useState(() => new Date());
   const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+  // `now` is real wall-clock time, so the server's render instant and the client's hydration instant
+  // are never the same millisecond — and `firstName` can already be loaded client-side (from an earlier
+  // navigation) while a fresh/cached SSR pass still has it null. Both cause a genuine hydration mismatch,
+  // so nothing derived from either renders until mounted; a stable placeholder covers the first paint.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // Both preferences survive a reload, and neither is read in an effect — see usePersistedChoice.
   const [storedWidget, chooseWidget] = usePersistedChoice<Widget>(HERO_WIDGET_KEY, "weather", isWidget);
   const [timezone, chooseTimezone] = usePersistedChoice<string>(TIMEZONE_KEY, browserZone, isTimezone);
@@ -68,12 +75,12 @@ export function HomeHero({ firstName }: { firstName: string | null }) {
       <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 space-y-1.5">
           <h1 className="text-xl font-bold text-primary-foreground md:text-2xl">
-            {greeting(now.getHours())}
-            {firstName ? `, ${firstName}` : ""} 👋
+            {mounted ? greeting(now.getHours()) : "Hello"}
+            {mounted && firstName ? `, ${firstName}` : ""} 👋
           </h1>
           <p className="text-sm text-primary-foreground/80">Your personal dashboard</p>
           <p className="text-sm font-medium text-primary-foreground">
-            {dateLabel} · {timeLabel}
+            {mounted ? `${dateLabel} · ${timeLabel}` : " "}
           </p>
           <div className="flex items-center gap-1.5 pt-0.5">
             <MapPin className="h-3.5 w-3.5 text-primary-foreground/70" />
