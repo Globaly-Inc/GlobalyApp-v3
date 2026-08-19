@@ -13,4 +13,6 @@ export const EXTRACTION_QUEUES = {
   SCHEDULE: "extraction_schedule",
   /** AgentCIS institution import — one message per institution_id */
   AGENTCIS: "extraction_agentcis",
+  /** V2 → V3 data import — one message per import run (ImportOptions payload) */
+  IMPORT_V2: "extraction_import_v2",
 } as const;

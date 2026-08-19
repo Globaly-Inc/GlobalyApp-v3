@@ -244,6 +244,24 @@ services:
     networks:
       - globalyapp
 
+  import-v2-worker:
+    container_name: globalyapp-import-v2-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-import-v2"]
+    command: npm run job:import-v2
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   lavinmq:
     container_name: globalyapp-lavinmq
     image: cloudamqp/lavinmq:2.4
