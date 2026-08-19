@@ -17,6 +17,8 @@ import * as adminRepo from "../superadmin/admin-users/repositories/admin-users.r
 import * as authRepo from "./auth.repository.js";
 import { getKnex } from "../../core/db/pool-manager.js";
 import { schemaName } from "../../core/db/knex.js";
+import { issueCode } from "../referrals/services/codes.service.js";
+import { materialiseReferral, validateRefToken } from "../referrals/services/attribution.service.js";
 
 import type { AuthClaims } from "../../core/types.js";
 
@@ -136,7 +138,12 @@ export async function queueInvitationEmail(options: {
 
 // ── public API ──
 
-export async function registerUser(firstName: string, lastName: string, email: string) {
+export async function registerUser(
+  firstName: string,
+  lastName: string,
+  email: string,
+  refToken?: string,
+) {
   const existing = await platformUserRepo.findByEmail(email);
   if (existing) {
     // A business was pre-seeded for this exact person (owner account created ahead of time by an
@@ -165,12 +172,26 @@ export async function registerUser(firstName: string, lastName: string, email: s
     return { message: "Check your email for next steps." };
   }
 
+  // W1 (click -> registration) is decided HERE and never re-evaluated: the token's own `exp` is the
+  // window. Pure jwt.verify + shape check, no DB, and it cannot throw — so a referral can never fail a
+  // registration (INV-7). A referral row is NOT created yet: this account does not exist until the OTP
+  // is verified, and attributing now would burn the one-referral-per-person slot on registrations that
+  // are abandoned.
+  const pendingReferral = validateRefToken(refToken);
+
   const user = await platformUserRepo.insert({
     first_name: firstName,
     last_name: lastName,
     email,
     account_status: 0, // inactive until OTP verified
+    meta: pendingReferral ? { pending_referral: pendingReferral } : undefined,
   });
+
+  // Referral code issuance is idempotent and never throws; a failure is repaired by
+  // `npm run job:referral-codes` rather than blocking the account (INV-10).
+  issueCode("user", user.id).catch((err) =>
+    logger.warn("Referral code issuance error", { userId: user.id, err: err.message }),
+  );
 
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -243,6 +264,20 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
   if (Object.keys(updates).length > 0) {
     await platformUserRepo.updateUser(user.id, updates);
   }
+
+  // Materialise a pending referral, on EVERY successful verification.
+  //
+  // Deliberately NOT gated on "was this the first activation". This endpoint is the shared login
+  // endpoint, and that is precisely what makes each later sign-in a free retry: if attribution hits a
+  // transient DB error, the pending token is retained and the next login picks it up. Gating on
+  // account_status === 0 would strand that token forever with nothing left to consume it.
+  //
+  // Duplication is prevented by the database (consume-once meta + referrals_referred_unique), not by
+  // the call site. The service returns immediately when nothing is pending, so a normal login costs
+  // one indexed read. Fire-and-forget: a referral must never affect the login response (INV-7).
+  materialiseReferral(user.id).catch((err) =>
+    logger.warn("Referral attribution deferred", { userId: user.id, err: err.message }),
+  );
 
   const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
 

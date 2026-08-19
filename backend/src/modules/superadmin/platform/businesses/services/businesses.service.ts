@@ -132,6 +132,7 @@ export async function updateStatus(id: number, status: BusinessStatus) {
   const updates: Record<string, unknown> = { status };
   if (status === "verified") updates.verified_at = new Date();
   await repo.updateBusiness(id, updates);
+
   return { status };
 }
 

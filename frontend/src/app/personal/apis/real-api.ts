@@ -20,6 +20,7 @@ type PlatformUserMeResponse = {
   photo_url: string | null;
   cover_url: string | null;
   user_category: string | null;
+  completion: { percentage: number; items: { label: string; met: boolean }[] } | null;
   user_sub_category: string | null;
   profile: {
     nationality_id: number | null;
@@ -85,6 +86,8 @@ function toStudentProfile(raw: PlatformUserMeResponse): StudentProfile {
     linkedin_url: profile?.linkedin_url ?? null,
     website_url: profile?.website_url ?? null,
     onboarding_completed: profile?.onboarding_completed ?? false,
+    // Straight through from the server — the browser no longer computes this.
+    completion: raw.completion ?? null,
   };
 }
 

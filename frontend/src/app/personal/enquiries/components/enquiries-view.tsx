@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CircleAlert, Lock, MessageSquare, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { computeCompletion } from "@/app/personal/profile-completion";
 import { fetchEnquiries } from "../store/enquiries-slice";
 import { REQUIRED_COMPLETION } from "../const";
 import { EnquiryCard, EnquiryCardSkeleton } from "./enquiry-card";
@@ -17,10 +16,10 @@ export function EnquiriesView() {
   const { items, status } = useAppSelector((s) => s.enquiries);
 
   // The shell already loads the full profile, so the gate needs no extra fetch.
-  // Percentage comes from the same computeCompletion() the profile page uses, so
-  // the two screens can never disagree on the number.
-  const { profile, qualifications, languageTests, status: profileStatus } = useAppSelector((s) => s.profile);
-  const completion = profile ? computeCompletion(profile, qualifications, languageTests).percentage : null;
+  // Percentage is the backend-computed figure carried on the profile — the same one that decides
+  // referral qualification, so no screen can disagree with the server.
+  const { profile, status: profileStatus } = useAppSelector((s) => s.profile);
+  const completion = profile?.completion?.percentage ?? null;
   const profileLoaded = profileStatus !== "loading" && !!profile;
   // Blocked on the percentage (v2 parity) OR the backend's own onboarding flag,
   // so the UI never lets through something POST /enquiries would 403.

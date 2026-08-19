@@ -59,9 +59,19 @@ export async function insert(data: {
   email: string;
   account_status: number;
   phone?: string;
+  /** Arbitrary jsonb. Registration uses it to stash a validated `pending_referral` for the OTP step. */
+  meta?: Record<string, unknown>;
 }, db: Knex = masterKnex) {
+  const { meta, ...rest } = data;
   const [row] = await db<PlatformUserRow>("platform_users")
-    .insert({ ...data, created_at: db.fn.now(), updated_at: db.fn.now() })
+    .insert({
+      ...rest,
+      // Only set when provided, so the column default ('{}') still applies otherwise. pg serialises a
+      // plain object into jsonb, so no manual JSON.stringify.
+      ...(meta ? { meta } : {}),
+      created_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    })
     .returning("*");
   return row;
 }

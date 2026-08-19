@@ -12,6 +12,7 @@ import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../platform-users/repositories/platform-users.repository.js";
 import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
+import { issueCode } from "../../referrals/services/codes.service.js";
 import type { BusinessRegisterInput, BusinessProfilePatchInput } from "../schemas/businesses.schema.js";
 
 const logger = createChildLogger("businesses-service");
@@ -73,6 +74,15 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   });
 
   await repo.updateBusinessStatus(business.id, 1);
+
+  // A business entity gets its OWN referral code, separate from the owner's personal code — the two
+  // credit different wallets. Idempotent and never throws; a failure is repaired by
+  // `npm run job:referral-codes` rather than rolling back a provisioned business (INV-10).
+  //
+  // Business CREATION is deliberately not a qualification trigger: only verification pays out.
+  issueCode("business", Number(business.id)).catch((err) =>
+    logger.warn("Referral code issuance error", { businessId: business.id, err: err.message }),
+  );
 
   // Mark user as a business account holder + track category
   await userRepo.updateUser(userId, { is_business_account: true });

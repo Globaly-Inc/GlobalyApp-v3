@@ -2,6 +2,7 @@
 
 import { NotFoundError, ConflictError, BadRequestError } from "../../../shared/errors.js";
 import * as storage from "../../../shared/storage/storageService.js";
+import { computeCompletion, syncCompletion } from "./completion.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as bizRepo from "../../businesses/repositories/businesses.repository.js";
 import { registerBusiness } from "../../businesses/services/businesses.service.js";
@@ -34,8 +35,12 @@ export async function getProfile(userId: number) {
     storage.resolvePreviewUrl(user.cover_url),
   ]);
 
-  return { ...user, photo_url, cover_url, user_category, profile: profile ?? null, qualifications, language_tests, work_experiences };
+  const completion = computeCompletion(user, profile ?? null, qualifications.length, language_tests.length);
+
+  return { ...user, photo_url, cover_url, user_category, profile: profile ?? null, qualifications, language_tests, work_experiences, completion };
 }
+
+
 
 /** Sets which portal the user lands in — flips is_personal_account / is_business_account. */
 export async function updateCategory(userId: number, category: "personal" | "business") {
@@ -77,6 +82,8 @@ export async function onboardPersonal(userId: number, data: OnboardingPersonalIn
   await repo.updateUser(userId, { is_personal_account: true });
   await repo.addAccountCategory(userId, { type: "personal", role: data.individual_category });
 
+  // Nationality and country of residence are completion criteria.
+  await syncCompletion(userId);
   return getProfile(userId);
 }
 
@@ -153,6 +160,7 @@ export async function updateProfile(userId: number, data: ProfilePatchInput) {
     await repo.insertProfile(userId, serialized);
   }
 
+  await syncCompletion(userId);
   return getProfile(userId);
 }
 
@@ -170,37 +178,49 @@ export async function getCitiesByCountry(countryId: number) {
 }
 
 // ── Qualifications ──
+// These three change the "Education background" completion criterion, so each syncs. Work
+// experiences deliberately do NOT: they are not one of the 8 criteria, so a sync there would be a
+// dead call.
 
 export async function addQualification(userId: number, data: QualificationInput) {
-  return repo.insertQualification(userId, data);
+  const row = await repo.insertQualification(userId, data);
+  await syncCompletion(userId);
+  return row;
 }
 
 export async function editQualification(id: string, userId: number, data: Partial<QualificationInput>) {
   const row = await repo.updateQualification(id, userId, data);
   if (!row) throw new NotFoundError("Qualification not found");
+  await syncCompletion(userId);
   return row;
 }
 
 export async function removeQualification(id: string, userId: number) {
   const deleted = await repo.deleteQualification(id, userId);
   if (!deleted) throw new NotFoundError("Qualification not found");
+  await syncCompletion(userId);
 }
 
 // ── Language Tests ──
+// These three change the "Test scores" criterion.
 
 export async function addLanguageTest(userId: number, data: LanguageTestInput) {
-  return repo.insertLanguageTest(userId, data);
+  const row = await repo.insertLanguageTest(userId, data);
+  await syncCompletion(userId);
+  return row;
 }
 
 export async function editLanguageTest(id: string, userId: number, data: Partial<LanguageTestInput>) {
   const row = await repo.updateLanguageTest(id, userId, data);
   if (!row) throw new NotFoundError("Language test not found");
+  await syncCompletion(userId);
   return row;
 }
 
 export async function removeLanguageTest(id: string, userId: number) {
   const deleted = await repo.deleteLanguageTest(id, userId);
   if (!deleted) throw new NotFoundError("Language test not found");
+  await syncCompletion(userId);
 }
 
 // ── Work Experiences ──

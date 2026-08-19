@@ -4,6 +4,8 @@ import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
 import { homeReducer } from "@/app/personal/portal/store/home-slice"
 import { myServicesReducer } from "@/app/personal/earn/services/store/my-services-slice"
+import { referralsReducer } from "@/app/personal/earn/referrals/store/referrals-slice"
+import { joinReducer } from "@/app/join/store/join-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { businessProfileDetailReducer } from "@/app/business/profile/store/business-profile-detail-slice"
 import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enquiries/store/enquiries-slice"
@@ -41,6 +43,8 @@ const appReducer = combineReducers({
     profile: profileReducer,
     home: homeReducer,
     myServices: myServicesReducer,
+    referrals: referralsReducer,
+    join: joinReducer,
     businessOnboarding: businessOnboardingReducer,
     businessProfileDetail: businessProfileDetailReducer,
     enquiries: personalEnquiriesReducer,
