@@ -127,9 +127,9 @@ async function checkAllPagesDone(jobId: string) {
 }
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
-  let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined;
+  let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined;
   try {
-    ({ jobId, queueItemId, url, forceFirecrawl } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl, mobile } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -184,7 +184,15 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
   try {
     // ── Scrape page to markdown ──
-    const page = await scrapeMarkdown(url, { onlyMainContent: true, withLinks: true, forceFirecrawl: !!forceFirecrawl });
+    const page = await scrapeMarkdown(url, {
+      onlyMainContent: true,
+      withLinks: true,
+      forceFirecrawl: !!forceFirecrawl,
+      mobile: !!mobile,
+      // Retries exist because the first pass came back empty — give the renderer
+      // time for the JS-heavy pages that produce most of those.
+      ...(forceFirecrawl ? { waitFor: 8000 } : {}),
+    });
 
     if (page.blocked || page.markdown.length < 50) {
       const reason = page.blocked ? "blocked" : "minimal_content";
@@ -195,15 +203,18 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       const retries = item?.retry_count ?? 0;
       const meta = { ...(item?.processing_meta ?? {}), last_error: reason, last_failure_class: "anti_bot" as const };
 
-      if (retries < 2 && !forceFirecrawl) {
-        // Retry with Firecrawl (JS rendering) — the page likely needs a real browser
+      // Retry 1: Firecrawl with JS rendering. Retry 2: Firecrawl emulating mobile —
+      // some anti-bot walls only serve the mobile site. The old `!forceFirecrawl`
+      // guard made retry 2 unreachable: the first retry set the flag, so every
+      // blocked page died as "after 1 retries".
+      if (retries < 2) {
         meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
           status: "pending", failure_class: "anti_bot", retry_count: retries + 1,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
         await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-          jobId, queueItemId, url, forceFirecrawl: true,
+          jobId, queueItemId, url, forceFirecrawl: true, mobile: meta.retry_strategy === "mobile",
         });
         logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1 });
       } else {
@@ -362,7 +373,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     if (nextStatus === "pending") {
       // Re-publish for retry with strategy hint
       await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-        jobId, queueItemId, url, forceFirecrawl: meta.retry_strategy !== "default",
+        jobId, queueItemId, url,
+        forceFirecrawl: meta.retry_strategy !== "default",
+        mobile: meta.retry_strategy === "mobile",
       });
       logger.info("Re-queued for retry", { jobId, queueItemId, failureClass, retries: retries + 1, strategy: meta.retry_strategy });
     } else {

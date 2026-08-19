@@ -110,18 +110,24 @@ Everything else has sensible defaults or is optional for local dev.
 
 ## 5. Run migrations & seeders
 
-Run in this order:
+Run in this order — it matters: superadmin's `admin_users` FKs into `platform_users`
+(created by globalyapp), and the cross-schema FKs on `representations`/`enquiries` are
+added by the superadmin migration `20260815_001_cross_schema_fks`, which needs the
+globalyapp tables to exist first.
 
 ```bash
-# 1. Superadmin tables (admin_users, audit logs, extraction tables)
-npm run migrate:superadmin
-
-# 2. Main app tables (businesses, platform_users, categories, countries, etc.)
+# 1. Main app tables (businesses, platform_users, categories, countries, etc.)
 npm run migrate:globalyapp
 
-# 3. Seed initial data
-npm run seed:superadmin    # creates the default super_admin user
+# 2. Superadmin tables (admin_users, audit logs, extraction tables, cross-schema FKs)
+npm run migrate:superadmin
+
+# 3. Business migrations on all existing tenant schemas (no-op on a fresh DB)
+npm run migrate:tenants
+
+# 4. Seed initial data
 npm run seed:globalyapp    # populates countries table
+npm run seed:superadmin    # creates the default super_admin user
 ```
 
 ## 6. Start the server
@@ -198,8 +204,9 @@ Requires LavinMQ running at `localhost:5672`.
 | `npm run dev` | Start dev server with hot reload |
 | `npm run start` | Start production server |
 | `npm run build` | TypeScript compile |
-| `npm run migrate:superadmin` | Run superadmin schema migrations |
-| `npm run migrate:globalyapp` | Run main app migrations |
+| `npm run migrate:globalyapp` | Run main app migrations (run first) |
+| `npm run migrate:superadmin` | Run superadmin schema migrations (run second) |
+| `npm run migrate:tenants` | Run business migrations on all tenant schemas |
 | `npm run seed:superadmin` | Seed default admin user |
 | `npm run seed:globalyapp` | Seed countries data |
 | `npm run lint` | Run ESLint |
@@ -230,20 +237,38 @@ backend/
 └── knexfile.ts                # Knex config (globalyapp + superadmin envs)
 ```
 
-## Rolling back the DB
-cd /home/user/Documents/Priansu/Globalyhub/GlobalyApp-v3/backend && node --import tsx -e "import knex from 'knex'; \
-import config from './knexfile.ts';\
-const db = knex(config.globalyapp);\
-await db.raw('DROP SCHEMA IF EXISTS public CASCADE');\
-await db.raw('DROP SCHEMA IF EXISTS superadmin CASCADE');\
-await db.raw('CREATE SCHEMA public');\
-await db.raw('CREATE SCHEMA superadmin');\
-await db.destroy();\
-console.log('done');" &&\
-node --import tsx node_modules/.bin/knex migrate:latest --knexfile knexfile.ts --env globalyapp && node --import tsx node_modules/.bin/knex migrate:latest --knexfile knexfile.ts --env superadmin &&
-npm run seed:globalyapp
+## Rolling back the DB (full reset)
 
-! sudo -u postgres psql -d globalyapp -c "CREATE EXTENSION IF NOT EXISTS vector;"
+Pre-launch workflow: no incremental down-migrations — drop everything and re-run.
+The simplest full reset is dropping the database itself (this also removes any
+`business_*` tenant schemas, which the schema-drop variant below does not):
+
+```bash
+sudo -u postgres psql <<'SQL'
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+WHERE datname = 'globalyapp' AND pid <> pg_backend_pid();
+DROP DATABASE globalyapp;
+CREATE DATABASE globalyapp OWNER master_user;
+SQL
+sudo -u postgres psql -d globalyapp <<'SQL'
+CREATE SCHEMA superadmin AUTHORIZATION master_user;
+CREATE EXTENSION IF NOT EXISTS vector;
+SQL
+```
+
+Then re-migrate and seed (see section 5 for why the order matters):
+
+```bash
+npm run migrate:globalyapp
+npm run migrate:superadmin
+npm run migrate:tenants
+npm run seed:globalyapp
+npm run seed:superadmin
+```
+
+> **Note:** the `vector` extension lives in the `public` schema, so any reset that
+> drops `public` (schema or database) removes it. Re-create it — as superuser —
+> **before** migrating, or the AI/embedding migrations fail.
 
 ## Key conventions
 

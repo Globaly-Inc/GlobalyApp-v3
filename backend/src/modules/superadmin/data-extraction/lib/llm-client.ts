@@ -22,7 +22,9 @@ const MAX_RETRIES = 3;
 
 function isTransient(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return /429|503|overloaded|high demand|rate limit/i.test(msg);
+  // "fetch failed" et al: undici's network-level failures (DNS blip, reset socket).
+  // As transient as a 503 — the SDK surfaces them with no status code at all.
+  return /429|503|overloaded|high demand|rate limit|fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network/i.test(msg);
 }
 
 // ponytail: throttle between LLM calls — 500ms for paid keys, raise if on free tier
