@@ -33,3 +33,16 @@ export type Scholarship = {
 export type ScholarshipInput = Omit<Scholarship, "id" | "view_count" | "created_at" | "updated_at">;
 
 export type Paginated<T> = { data: T[]; meta: { page: number; limit: number; total: number; totalPages: number } };
+
+export type ImportRowResult = { title: string; status: "ok" | "error"; detail?: string };
+
+export type ImportJob = {
+  id: number;
+  status: "pending" | "processing" | "completed" | "failed";
+  total_rows: number;
+  processed_rows: number;
+  created_count: number;
+  error_count: number;
+  results: ImportRowResult[];
+  failure_reason: string | null;
+};

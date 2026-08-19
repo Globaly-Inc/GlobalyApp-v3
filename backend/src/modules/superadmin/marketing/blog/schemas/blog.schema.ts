@@ -6,6 +6,10 @@ export const IdParamSchema = z.object({ id: z.coerce.number().int().positive() }
 
 const slug = z.string().trim().min(1).max(300).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase words separated by hyphens");
 
+// z.coerce.boolean() coerces via JS `Boolean(value)`, so the *string* "false" — exactly
+// what a query param carries — comes out `true`. Only "true"/"false" text is accepted here.
+const booleanQueryParam = z.enum(["true", "false"]).transform((v) => v === "true");
+
 export const PostInputSchema = z.object({
   title: z.string().trim().min(1).max(300),
   slug,
@@ -30,7 +34,7 @@ export const PostListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().trim().min(1).optional(),
   category: z.string().min(1).optional(),
-  is_published: z.coerce.boolean().optional(),
+  is_published: booleanQueryParam.optional(),
 });
 
 export const KeywordInputSchema = z.object({
@@ -41,7 +45,7 @@ export const KeywordInputSchema = z.object({
 });
 
 export const KeywordListQuery = z.object({
-  is_active: z.coerce.boolean().optional(),
+  is_active: booleanQueryParam.optional(),
 });
 
 export type PostInput = z.infer<typeof PostInputSchema>;

@@ -7,8 +7,8 @@ import * as service from "../../superadmin/monitoring/scholarships/services/scho
 
 export async function publicScholarshipRoutes(app: FastifyInstance) {
   app.get("/scholarships", async (req, reply) => {
-    const { q, country, ...pagination } = PublicScholarshipListQuery.parse(req.query);
-    const filters = { q, country };
+    const { q, country, basis, coverage_type, degree_level, coverage_min, ...pagination } = PublicScholarshipListQuery.parse(req.query);
+    const filters = { q, country, basis, coverage_type, degree_level, coverage_min };
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
       service.listPublished(limit, offset, filters),

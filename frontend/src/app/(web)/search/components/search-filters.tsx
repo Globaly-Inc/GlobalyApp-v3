@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { BudgetFilter } from "./budget-filter";
-import { DEGREE_LABEL, JOB_TYPE_LABEL, type SearchTabKey } from "../types";
+import { BASIS_LABEL, DEGREE_LABEL, JOB_TYPE_LABEL, type SearchTabKey } from "../types";
 
 function FilterSection({
   letter, title, children,
@@ -35,6 +35,19 @@ function RadioList({
   );
 }
 
+function SelectField({
+  name, options, value, anyLabel = "Any",
+}: Readonly<{ name: string; options: { value: string; label: string }[]; value?: string; anyLabel?: string }>) {
+  return (
+    <select name={name} defaultValue={value ?? ""} className={fieldClass}>
+      <option value="">{anyLabel}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
+}
+
 export function SearchFilters({
   activeTab,
   country,
@@ -49,6 +62,9 @@ export function SearchFilters({
   sort,
   intakeYear,
   intakeYears,
+  basis,
+  countryOptions,
+  cityOptions,
 }: Readonly<{
   activeTab: SearchTabKey;
   country?: string;
@@ -63,6 +79,9 @@ export function SearchFilters({
   sort?: string;
   intakeYear?: number;
   intakeYears?: number[];
+  basis?: string;
+  countryOptions?: { value: string; label: string }[];
+  cityOptions?: { value: string; label: string }[];
 }>) {
   return (
     <form method="get" action="/search" className="rounded-xl border border-border bg-card p-5">
@@ -73,13 +92,25 @@ export function SearchFilters({
 
       <p className="text-sm font-semibold text-foreground mb-1">Filter &amp; Refine</p>
       <p className="text-xs text-muted-foreground mb-4">
-        Narrow {activeTab.replace("-", " ")} by destination and {activeTab === "courses" ? "study goal, intake and budget" : activeTab === "jobs" ? "job type" : "location"}.
+        Narrow {activeTab.replace("-", " ")} by destination and{" "}
+        {activeTab === "courses" ? "study goal, intake and budget"
+          : activeTab === "jobs" ? "job type"
+          : activeTab === "scholarships" ? "basis and degree level"
+          : "location"}.
       </p>
 
       <FilterSection letter="A" title="Destination">
         <div className="flex flex-col gap-2">
-          <input type="text" name="country" defaultValue={country} placeholder="Country" className={fieldClass} />
-          <input type="text" name="city" defaultValue={city} placeholder="City" className={fieldClass} />
+          {countryOptions ? (
+            <SelectField name="country" value={country} options={countryOptions} anyLabel="Any country" />
+          ) : (
+            <input type="text" name="country" defaultValue={country} placeholder="Country" className={fieldClass} />
+          )}
+          {cityOptions ? (
+            <SelectField name="city" value={city} options={cityOptions} anyLabel="Any city" />
+          ) : (
+            <input type="text" name="city" defaultValue={city} placeholder="City" className={fieldClass} />
+          )}
         </div>
       </FilterSection>
 
@@ -123,6 +154,25 @@ export function SearchFilters({
               <input type="checkbox" name="is_remote" value="true" defaultChecked={isRemote} className="h-4 w-4 rounded border-input" />
               Remote only
             </label>
+          </FilterSection>
+        </>
+      )}
+
+      {activeTab === "scholarships" && (
+        <>
+          <FilterSection letter="B" title="Basis">
+            <SelectField
+              name="basis"
+              value={basis}
+              options={Object.entries(BASIS_LABEL).map(([value, label]) => ({ value, label }))}
+            />
+          </FilterSection>
+          <FilterSection letter="C" title="Degree Level">
+            <SelectField
+              name="degree_level"
+              value={degreeLevel}
+              options={Object.entries(DEGREE_LABEL).map(([value, label]) => ({ value, label }))}
+            />
           </FilterSection>
         </>
       )}
