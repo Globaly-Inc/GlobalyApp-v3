@@ -121,6 +121,7 @@ sudo -u postgres psql
 CREATE USER master_user WITH PASSWORD 'password' CREATEDB;
 CREATE DATABASE globalyapp OWNER master_user;
 \c globalyapp
+CREATE SCHEMA superadmin AUTHORIZATION master_user;
 CREATE EXTENSION IF NOT EXISTS vector;
 \q
 ```
@@ -171,15 +172,20 @@ MAIL_PASSWORD=your_password
 
 ### 5. Run migrations and seed
 
+Keep this order — globalyapp must run first: superadmin's `admin_users` FKs into
+`platform_users`, and superadmin's `20260815_001_cross_schema_fks` adds the FK
+constraints from `representations`/`enquiries` onto the extraction tables.
+
 ```bash
 # Create tables in public schema (businesses, students, etc.)
 npm run migrate:globalyapp
 
-# Create superadmin schema + tables (admin_users, admin_invitations)
+# Create superadmin tables (admin_users, extraction tables, cross-schema FKs)
 npm run migrate:superadmin
 
-# Seed the first super admin user
-npm run seed:superadmin
+# Seed initial data
+npm run seed:globalyapp    # countries table
+npm run seed:superadmin    # the first super admin user
 ```
 
 ### 6. Start the server and worker

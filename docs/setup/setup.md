@@ -142,11 +142,14 @@ Edit `.env`:
 
 ### 4.5 Migrations & seed
 
+Keep this order — globalyapp must migrate first (superadmin's tables FK into it,
+and its final migration adds the cross-schema FKs back onto the globalyapp tables):
+
 ```bash
-npm run migrate:superadmin
 npm run migrate:globalyapp
-npm run seed:superadmin       # creates default super_admin user
+npm run migrate:superadmin
 npm run seed:globalyapp       # populates countries table
+npm run seed:superadmin       # creates default super_admin user
 ```
 
 ### 4.6 Start the backend

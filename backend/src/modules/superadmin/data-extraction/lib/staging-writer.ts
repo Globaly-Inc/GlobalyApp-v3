@@ -64,6 +64,21 @@ function coerceMonth(v: unknown): number | null {
   return MONTH_NAMES[s] ?? null;
 }
 
+// ponytail: LLM emits "February 15" / "Feb 2026" for date columns — ISO or null, nothing else.
+// A string with no year ("February 15") is not a date; the month still survives via intake_month.
+function coerceDate(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  if (!/\d{4}/.test(s)) return null;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  // Local date parts, not toISOString(): non-ISO strings parse as local midnight,
+  // and the UTC rendering shifts them a day in any timezone ahead of UTC.
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function coerceInt(v: unknown): number | null {
   if (v == null) return null;
   const n = Number(v);
@@ -295,11 +310,11 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
           job_id: jobId,
           course_id: courseId,
           intake_name: intake.intake_name ?? null,
-          start_date: intake.start_date ?? null,
-          end_date: intake.end_date ?? null,
+          start_date: coerceDate(intake.start_date),
+          end_date: coerceDate(intake.end_date),
           intake_month: coerceMonth(intake.intake_month),
           intake_year: coerceInt(intake.intake_year),
-          admission_deadline: intake.admission_deadline ?? null,
+          admission_deadline: coerceDate(intake.admission_deadline),
         })
         .returning("id");
       await masterKnex(`${S}.extraction_course_intake_assignments`)

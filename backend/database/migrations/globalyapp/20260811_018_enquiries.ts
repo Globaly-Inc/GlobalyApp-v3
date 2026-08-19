@@ -1,21 +1,18 @@
 import type { Knex } from "knex";
 
 // course_id / extraction_job_id -> superadmin.extraction_courses/extraction_jobs.
-// Cross-schema (not cross-database) reference — see representations migration comment.
+// Cross-schema FKs added by the superadmin migration 20260815_001_cross_schema_fks —
+// see the representations migration comment for why they can't be added here.
 export async function up(knex: Knex): Promise<void> {
   await knex.schema.createTable("enquiries", (t) => {
     t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));
     t.integer("student_id").unsigned().notNullable().references("id").inTable("platform_users");
-    t.uuid("course_id").notNullable().references("id").inTable("superadmin.extraction_courses");
-    t.uuid("extraction_job_id").nullable().references("id").inTable("superadmin.extraction_jobs");
+    t.uuid("course_id").notNullable();
+    t.uuid("extraction_job_id").nullable();
     // The institution profile the enquiry is about. Derived server-side from the
     // course's job, not supplied by the client. Nullable because a job does not
     // always have an extraction_institution_overview row.
-    t.uuid("institution_id")
-      .nullable()
-      .references("id")
-      .inTable("superadmin.extraction_institution_overview")
-      .onDelete("SET NULL");
+    t.uuid("institution_id").nullable();
     t.integer("business_id").unsigned().nullable().references("id").inTable("businesses").onDelete("SET NULL");
     t.text("message").notNullable();
     t.text("preferred_intake").nullable();
