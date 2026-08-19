@@ -1,17 +1,31 @@
-// Wire types for Earn → Referrals. Phase 1 is credit-free: reward amounts and the
-// credited lifecycle return with the credits phase.
+// Wire types for Earn → Referrals.
 
-/** Phase 1 only ever returns `signed_up` rows. The other states arrive with the credits phase. */
 export type ReferralState = "signed_up" | "credited" | "expired" | "voided" | "rejected";
+
+export type ReferralActionType = "student_referral" | "business_referral";
 
 export interface ReferralRow {
   id: number;
   date: string;
   state: ReferralState;
+  /** Only present once the referral has resolved to an action (student/business). */
+  action_type?: ReferralActionType;
+  /** Only present on `credited` rows. */
+  credits_awarded?: number;
 }
 
 export interface ReferralStats {
   total_referred: number;
+  total_credits: number;
+  students_referred: number;
+  businesses_referred: number;
+}
+
+export interface ReferralConfig {
+  student_referral_reward: number;
+  business_referral_reward: number;
+  /** Window, in days, within which credits must land after signup. */
+  w2_days: number;
 }
 
 export interface MyReferrals {
@@ -21,6 +35,7 @@ export interface MyReferrals {
    * creates one (V2 silently rendered a dash and then copied a broken "https://" link).
    */
   code: string | null;
+  config: ReferralConfig;
   stats: ReferralStats;
   referrals: ReferralRow[];
 }
