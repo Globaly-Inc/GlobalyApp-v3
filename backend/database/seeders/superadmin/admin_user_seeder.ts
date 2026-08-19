@@ -1,7 +1,7 @@
 import type { Knex } from "knex";
 
 export async function seed(knex: Knex): Promise<void> {
-  const adminEmail = "admin@globalyhub.com";
+  const adminEmail = "subash.chaudhary@globalyhub.com";
 
   // Create platform_user if not exists
   let user = await knex("platform_users").where({ email: adminEmail }).first();
