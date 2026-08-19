@@ -6,6 +6,9 @@ import { computeCompletion, syncCompletion } from "./completion.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as bizRepo from "../../businesses/repositories/businesses.repository.js";
 import { registerBusiness } from "../../businesses/services/businesses.service.js";
+import { provisionInstitutionSchema } from "../../../core/business/provisioner.js";
+import { getKnex } from "../../../core/db/pool-manager.js";
+import { schemaName } from "../../../core/db/knex.js";
 import type {
   ProfilePatchInput,
   OnboardingPersonalInput, OnboardingBusinessInput, OnboardingInstitutionInput,
@@ -102,7 +105,7 @@ export async function onboardBusiness(userId: number, data: OnboardingBusinessIn
   });
 }
 
-/** Institution onboarding — inserts into institutions table, no tenant DB. */
+/** Institution onboarding — inserts into institutions table, provisions tenant schema (members, member_invitations). */
 export async function onboardInstitution(userId: number, data: OnboardingInstitutionInput) {
   // Subdomain must be unique across both businesses and institutions
   const [existingInst, existingBiz] = await Promise.all([
@@ -130,8 +133,29 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     postcode: data.postcode,
   });
 
+  try {
+    await provisionInstitutionSchema(institution.schema_name);
+  } catch (err) {
+    await repo.deleteInstitution(institution.id);
+    throw err;
+  }
+
+  // Create owner member in the institution schema.
+  // Pool key is the schema UUID — institution ids would collide with business ids in the shared pool map.
+  const db = await getKnex(institution.schema_name, schemaName(institution.schema_name));
+  await db("members").insert({
+    platform_user_id: userId,
+    role: "owner",
+    is_owner: true,
+    account_status: 1,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    email: data.email ?? user.email,
+    phone: data.phone,
+  });
+
   return {
-    institution: { id: institution.id, subdomain: institution.subdomain, institution_name: institution.institution_name },
+    institution: { id: institution.id, org_id: institution.schema_name, subdomain: institution.subdomain, institution_name: institution.institution_name },
     message: "Institution registered.",
   };
 }

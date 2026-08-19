@@ -35,6 +35,8 @@ const SCHEMA = "superadmin";
 
 /** Parent-before-child. Junctions last: they reference two parents. */
 const GROUPS: Record<string, string[]> = {
+  // Reference data first: extraction rows FK into fee_types/degree_levels/accreditations.
+  reference: ["fee_types", "degree_levels", "accreditations", "blog_posts", "blog_keywords"],
   jobs: ["extraction_jobs", "extraction_institution_overview"],
   staged: [
     "extraction_campuses",
@@ -90,6 +92,12 @@ const GROUPS: Record<string, string[]> = {
 const NEVER_COPY = new Set(["embedding"]);
 
 const INT_TYPES = new Set(["integer", "bigint", "smallint"]);
+
+/**
+ * Tables whose PK changed uuid (V2) → serial (V3): the V2 id is dropped and rows
+ * reconcile on a natural unique key instead, keeping the import rerunnable.
+ */
+const CONFLICT_KEYS: Record<string, string> = { blog_posts: "slug", blog_keywords: "keyword" };
 
 /**
  * Columns that hold a foreign key to a table whose PK changed from uuid (V2) to
@@ -197,7 +205,7 @@ interface Plan {
   hasId: boolean;
 }
 
-async function planFor(src: Knex, table: string, preferredSchema: string): Promise<Plan | null> {
+async function planFor(src: Knex, table: string, preferredSchema: string): Promise<Plan | "missing-in-v3" | null> {
   const sourceSchema = await sourceSchemaFor(src, table, preferredSchema);
   if (!sourceSchema) return null;
 
@@ -205,7 +213,7 @@ async function planFor(src: Knex, table: string, preferredSchema: string): Promi
     columnsOf(src, sourceSchema, table),
     columnsOf(masterKnex, SCHEMA, table),
   ]);
-  if (!dstCols.length) return null;
+  if (!dstCols.length) return "missing-in-v3";
 
   const dstByName = new Map(dstCols.map((c) => [c.name, c]));
   const copy: ColumnInfo[] = [];
@@ -218,6 +226,11 @@ async function planFor(src: Knex, table: string, preferredSchema: string): Promi
     if (NEVER_COPY.has(col.name)) { droppedFromSource.push(`${col.name} (vector dims differ)`); continue; }
     const dst = dstByName.get(col.name);
     if (!dst) { droppedFromSource.push(col.name); continue; }
+    // uuid PK → serial PK: let V3 assign ids; CONFLICT_KEYS keeps reruns idempotent.
+    if (col.name === "id" && col.type === "uuid" && INT_TYPES.has(dst.type)) {
+      droppedFromSource.push("id (uuid→serial)");
+      continue;
+    }
     if (col.type === "uuid" && INT_TYPES.has(dst.type)) {
       // Category FKs need slug-based lookup; all other uuid→int columns are owner refs.
       if (CATEGORY_COLUMNS.has(col.name)) categoryColumns.push(col.name);
@@ -237,7 +250,7 @@ async function planFor(src: Knex, table: string, preferredSchema: string): Promi
     categoryColumns,
     jsonWrapColumns,
     droppedFromSource,
-    hasId: dstByName.has("id") && srcCols.some((c) => c.name === "id"),
+    hasId: copy.some((c) => c.name === "id"),
   };
 }
 
@@ -266,8 +279,9 @@ async function importTable(src: Knex, plan: Plan, args: Args, catMaps: CategoryM
 
     const query = masterKnex(`${SCHEMA}.${plan.table}`).insert(chunk);
     // Rerunnable: re-importing reconciles rows rather than duplicating or failing.
-    const result = plan.hasId
-      ? await query.onConflict("id").merge()
+    const conflictKey = plan.hasId ? "id" : CONFLICT_KEYS[plan.table];
+    const result = conflictKey
+      ? await query.onConflict(conflictKey).merge()
       : await query.onConflict().ignore();
     written += chunk.length;
     void result;
@@ -302,6 +316,11 @@ async function main() {
   for (const table of tables) {
     const plan = await planFor(src, table, args.sourceSchema);
     if (!plan) { missing.push(table); console.log(`  ${table.padEnd(46)}${"—".padStart(8)}${"—".padStart(9)}  not in source`); continue; }
+    if (plan === "missing-in-v3") {
+      warnings.push(`${table}: missing in V3 superadmin schema — run \`npm run migrate:superadmin\``);
+      console.log(`  ${table.padEnd(46)}${"—".padStart(8)}${"—".padStart(9)}  MISSING IN V3 (migrate:superadmin?)`);
+      continue;
+    }
 
     try {
       const { read, written } = await importTable(src, plan, args, catMaps);

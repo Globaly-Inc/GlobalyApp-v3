@@ -247,6 +247,11 @@ export async function insertInstitution(data: Record<string, unknown>) {
   return row;
 }
 
+/** Hard delete — only used to roll back a registration whose schema provisioning failed. */
+export async function deleteInstitution(id: number) {
+  await masterKnex("institutions").where({ id }).delete();
+}
+
 // ── Countries / Cities ──
 
 export async function listCountries() {

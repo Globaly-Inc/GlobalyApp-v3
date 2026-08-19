@@ -12,6 +12,7 @@ export async function up(knex: Knex): Promise<void> {
     t.text("phone").nullable();
 
     // Identity
+    t.uuid("schema_name").unique().notNullable().defaultTo(knex.raw("gen_random_uuid()"));
     t.text("subdomain").unique().notNullable();
     t.text("institution_name").notNullable();
     t.text("institution_type").nullable();

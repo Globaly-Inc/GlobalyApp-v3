@@ -417,6 +417,7 @@ The `import:v2` script migrates extraction pipeline and AI knowledge data from a
 
 | Group | Tables |
 |-------|--------|
+| **reference** | `fee_types`, `degree_levels`, `accreditations`, `blog_posts`, `blog_keywords` — blog tables drop their V2 uuid id (V3 uses serial) and reconcile on `slug`/`keyword` |
 | **jobs** | `extraction_jobs`, `extraction_institution_overview` |
 | **staged** | `extraction_campuses`, `extraction_agents`, `extraction_agent_locations`, `extraction_courses`, `extraction_course_fees`, `extraction_intakes`, `extraction_eligibility_requirements`, `extraction_english_requirements`, `extraction_study_options`, `extraction_study_units`, `extraction_accreditations`, `extraction_additional_info` |
 | **junctions** | `extraction_course_campuses`, `extraction_course_fee_assignments`, `extraction_course_intake_assignments`, `extraction_course_eligibility_assignments`, `extraction_course_study_option_assignments`, `extraction_course_study_unit_assignments`, `extraction_course_accreditation_assignments` |
