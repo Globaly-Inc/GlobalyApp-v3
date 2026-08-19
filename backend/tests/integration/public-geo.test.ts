@@ -136,4 +136,17 @@ describeDb("public geo endpoints", () => {
     const mine = body.countries.filter((c: { slug: string }) => c.slug.startsWith(TAG));
     expect(mine.map((c: { slug: string }) => c.slug)).toEqual([`${TAG}-firstland`, `${TAG}-imageland`]);
   });
+
+  // The shelf renders a photograph per country. The projection used to stop at the flag emoji, so
+  // every card fell back to a grey placeholder no matter what the row held.
+  it("carries the hero photograph the shelf renders", async () => {
+    const { status, body } = await get("/api/v3/countries/featured");
+
+    expect(status).toBe(200);
+    const imageland = body.countries.find((c: { slug: string }) => c.slug === `${TAG}-imageland`);
+    expect(imageland.hero_image_url, "an external URL is already fetchable — nothing to sign").toBe(PEXELS);
+
+    const firstland = body.countries.find((c: { slug: string }) => c.slug === `${TAG}-firstland`);
+    expect(firstland.hero_image_url, "a country with no photo still has to reach the client").toBeNull();
+  });
 });

@@ -92,9 +92,12 @@ export async function findCountryById(id: number) {
 }
 
 // Public, unauthenticated reads — see modules/geo/routes/public-geo.routes.ts.
+// hero_image_url is the marketing photograph the home-page destination shelf renders; it is public
+// data on a public shelf. Named columns only — never widen this to select *, which would put the
+// admin-only editorial columns of a shared table on an unauthenticated route.
 export async function listFeaturedCountries() {
   return masterKnex("countries")
-    .select("id", "name", "slug", "flag_emoji")
+    .select("id", "name", "slug", "flag_emoji", "hero_image_url")
     .where({ is_active: true, is_featured: true })
     .whereNull("deleted_at")
     .orderBy("sort_order")

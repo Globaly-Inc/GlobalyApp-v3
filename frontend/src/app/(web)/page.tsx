@@ -9,9 +9,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Reveal } from "./components/reveal";
 import { AutoplayVideo } from "./components/autoplay-video";
 import { UnifiedSearchBar } from "./components/unified-search-bar";
+import { DestinationCard } from "./components/destination-card";
 import { useTypingEffect } from "./hooks/use-typing-effect";
-import { useParallax } from "./hooks/use-scroll-animation";
-import { useIsMobile } from "./hooks/use-is-mobile";
 import type { Destination } from "./data/destinations";
 import { getFeaturedCountries } from "./data/countries-api";
 import { BLOG_POSTS } from "./data/blog-posts";
@@ -25,10 +24,6 @@ import {
 
 export default function HomePage() {
   const { displayText, showCursor } = useTypingEffect(TYPING_PHRASES);
-  const { ref: parallax1Ref, transform: parallax1Transform } = useParallax(0.18);
-  const { ref: parallax2Ref, transform: parallax2Transform } = useParallax(0.18);
-  const { ref: parallax3Ref, transform: parallax3Transform } = useParallax(0.18);
-  const isMobile = useIsMobile();
   const [destinations, setDestinations] = useState<Destination[]>([]);
 
   const fetchedRef = useRef(false);
@@ -50,10 +45,13 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/60" />
         <div className="container mx-auto px-4 py-16 sm:py-20 md:py-20 relative z-10">
           <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
-            <p className="text-white/70 text-sm font-medium mb-2 tracking-wide">
+            <p className="text-white/70 text-sm font-medium mb-2 tracking-wide animate-[fade-in_0.6s_ease-out]">
               World #1 AI Integrated Education Ecosystem
             </p>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
+            {/* Leading is pinned per breakpoint (37.5 / 40 / 48px) because Tailwind v4 resolves a bare
+                `leading-tight` differently from v3: there a `md:text-5xl` variant overrode it, here it
+                does not, which stretched this headline 24px taller than the live site's. */}
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-tight sm:leading-10 md:leading-none animate-[fade-in_0.7s_ease-out]">
               Making Global Education
               <br />
               <span className="text-[hsl(var(--gold))]">
@@ -66,11 +64,13 @@ export default function HomePage() {
                 </span>
               </span>
             </h1>
-            <p className="text-white/80 mb-8 text-base sm:text-xl font-medium px-2">
+            <p className="text-white/80 mb-8 animate-[fade-in_0.85s_ease-out] text-base sm:text-xl font-medium px-2">
               Connecting Students with Domestic and International Education Providers, Education
               Agents and Service Providers
             </p>
-            <UnifiedSearchBar />
+            <div className="animate-[fade-in_1s_ease-out]">
+              <UnifiedSearchBar />
+            </div>
           </div>
         </div>
       </section>
@@ -86,22 +86,7 @@ export default function HomePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {destinations.map((dest, idx) => (
               <Reveal key={dest.id} delay={idx * 0.07}>
-                <Link
-                  href={`/country/${dest.slug}`}
-                  className="group relative overflow-hidden rounded-2xl block"
-                  style={{ aspectRatio: "4/3" }}
-                >
-                  <div className="absolute inset-0 bg-muted flex items-center justify-center text-5xl transition-transform duration-700 group-hover:scale-110">
-                    {dest.flagEmoji}
-                  </div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10 transition-opacity duration-300 group-hover:opacity-90" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-1 group-hover:translate-y-0 transition-transform duration-300">
-                    <h3 className="font-bold text-white text-base md:text-lg leading-tight">
-                      <span className="mr-1">{dest.flagEmoji}</span>
-                      {dest.name}
-                    </h3>
-                  </div>
-                </Link>
+                <DestinationCard destination={dest} />
               </Reveal>
             ))}
           </div>
@@ -152,13 +137,16 @@ export default function HomePage() {
                 </div>
               </div>
             </Reveal>
+            {/* No parallax on these three panels. The video is exactly the size of its overflow-hidden
+                box, so any translateY slid it out of frame and exposed a bare grey band along one edge —
+                up to 60px of it at 1440. The live site leaves them at translateY(0) at every scroll
+                position, which is what this matches. */}
             <Reveal direction="right" className="relative">
-              <div ref={parallax1Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
+              <div className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
                   src="/videos/students-hero.mp4"
                   poster="/videos/students-hero-poster.webp"
                   className="w-full h-full object-cover"
-                  style={{ transform: isMobile ? undefined : parallax1Transform }}
                 />
               </div>
             </Reveal>
@@ -189,13 +177,15 @@ export default function HomePage() {
             {BLOG_POSTS.map((post, i) => (
               <Reveal key={post.title} delay={i * 0.1}>
                 <Link href={post.href} className="group block h-full">
-                  <Card className="overflow-hidden h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
+                  {/* py-0 gap-0 ring-0 + rounded-lg/border/shadow-sm: the shared Card grew its own vertical
+                      padding, gap and ring in V3, which V1's card box does not have. */}
+                  <Card className="rounded-lg border shadow-sm ring-0 py-0 gap-0 overflow-hidden h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
                     <div className="w-32 shrink-0 sm:w-full aspect-square sm:aspect-[4/3] overflow-hidden bg-muted">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={post.image}
                         alt={post.title}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                        className="w-full h-full object-cover md:transition-transform md:duration-700 md:group-hover:scale-110"
                         loading="lazy"
                       />
                     </div>
@@ -231,12 +221,11 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <Reveal direction="left" className="relative">
-              <div ref={parallax2Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
+              <div className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
                   src="/videos/institutions-hero.mp4"
                   poster="/videos/institutions-hero-poster.webp"
                   className="w-full h-full object-cover"
-                  style={{ transform: isMobile ? undefined : parallax2Transform }}
                 />
               </div>
             </Reveal>
@@ -297,7 +286,7 @@ export default function HomePage() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
             {STATS.map((s, i) => (
               <Reveal key={s.label} delay={i * 0.15}>
-                <Card className="border-none shadow-none bg-muted/30 hover:bg-muted/50 transition-colors">
+                <Card className="rounded-lg border-none shadow-none ring-0 py-0 gap-0 bg-muted/30 hover:bg-muted/50 transition-colors">
                   <CardContent className="p-6 text-center">
                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                       <s.icon className="h-6 w-6 text-primary" />
@@ -355,12 +344,11 @@ export default function HomePage() {
               </div>
             </Reveal>
             <Reveal direction="right" className="relative">
-              <div ref={parallax3Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
+              <div className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
                   src="/videos/agents-hero.mp4"
                   poster="/videos/agents-hero-poster.webp"
                   className="w-full h-full object-cover"
-                  style={{ transform: isMobile ? undefined : parallax3Transform }}
                 />
               </div>
             </Reveal>

@@ -21,7 +21,7 @@ export function CookieConsent() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-[60] p-4">
+    <div className="fixed bottom-0 inset-x-0 z-[60] p-4 animate-in slide-in-from-bottom duration-500">
       <div className="mx-auto max-w-4xl rounded-lg border bg-card/95 backdrop-blur-sm shadow-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <p className="text-sm text-muted-foreground flex-1">
           We use cookies to improve your experience. By continuing, you agree to our{" "}
