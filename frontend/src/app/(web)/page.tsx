@@ -180,7 +180,9 @@ export default function HomePage() {
             {BLOG_POSTS.map((post, i) => (
               <Reveal key={post.title} delay={i * 0.1}>
                 <Link href={post.href} className="group block h-full">
-                  <Card className="overflow-hidden h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
+                  {/* py-0 gap-0 ring-0 + rounded-lg/border/shadow-sm: the shared Card grew its own vertical
+                      padding, gap and ring in V3, which V1's card box does not have. */}
+                  <Card className="rounded-lg border shadow-sm ring-0 py-0 gap-0 overflow-hidden h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
                     <div className="w-32 shrink-0 sm:w-full aspect-square sm:aspect-[4/3] overflow-hidden bg-muted">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -288,7 +290,7 @@ export default function HomePage() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
             {STATS.map((s, i) => (
               <Reveal key={s.label} delay={i * 0.15}>
-                <Card className="border-none shadow-none bg-muted/30 hover:bg-muted/50 transition-colors">
+                <Card className="rounded-lg border-none shadow-none ring-0 py-0 gap-0 bg-muted/30 hover:bg-muted/50 transition-colors">
                   <CardContent className="p-6 text-center">
                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                       <s.icon className="h-6 w-6 text-primary" />
