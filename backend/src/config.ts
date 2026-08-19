@@ -33,6 +33,11 @@ const envSchema = z.object({
   MAIL_PORT: z.coerce.number().default(587),
   MAIL_USERNAME: z.string().optional(),
   MAIL_PASSWORD: z.string().optional(),
+  // The envelope sender. Must be an address on a domain verified with the SMTP
+  // provider (Resend/Postmark reject unverified senders at submission), which is why
+  // it is configurable rather than hardcoded — dev, staging and prod verify different
+  // domains.
+  MAIL_FROM: z.string().default("support@globalyapp.com"),
   POSTMARK_SERVER_TOKEN: z.string().optional(),
   CHARGEBEE_SITE: z.string().optional(),
   CHARGEBEE_API_KEY: z.string().optional(),
