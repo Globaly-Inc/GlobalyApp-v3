@@ -19,7 +19,7 @@ export function FooterCta() {
 
       <div className="container relative mx-auto px-4 text-center z-10">
         <Reveal>
-          <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">
+          <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight md:leading-10">
             Ready to expand your global reach?
           </h2>
           <p className="text-white/70 text-lg mb-10 max-w-2xl mx-auto">
@@ -27,13 +27,13 @@ export function FooterCta() {
             network.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="btn-gold rounded-full px-10" render={<Link href="/auth/sign-up" />}>
+            <Button size="lg" className="btn-gold rounded-full px-10 h-11" render={<Link href="/auth/sign-up" />}>
               Get Started Free
             </Button>
             <Button
               variant="outline"
               size="lg"
-              className="rounded-full px-10 border-white/40 bg-transparent text-white hover:bg-white hover:text-[hsl(var(--purple-dark))]"
+              className="h-11 rounded-full px-10 border-white/40 bg-transparent text-white hover:bg-white hover:text-[hsl(var(--purple-dark))]"
               render={<Link href="/search?tab=education-agencies" />}
             >
               Explore Agents

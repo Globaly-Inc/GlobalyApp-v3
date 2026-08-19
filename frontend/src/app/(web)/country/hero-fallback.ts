@@ -1,3 +1,4 @@
+import { safeUrl } from "@/lib/safe-url";
 import type { CountryDetail } from "./types";
 
 // Per-country landmark fallback for countries an admin hasn't set a hero_image_url for yet —
@@ -13,8 +14,16 @@ const COUNTRY_HERO_FALLBACKS: Record<string, string> = {
   Singapore: "https://images.pexels.com/photos/18280158/pexels-photo-18280158.jpeg",
 };
 
+// `hero_image_url` is DB-sourced, so it goes through `safeUrl()` here — the one place both the
+// hero banner and the city tiles resolve their image. A value that fails the allowlist is not
+// renderable anyway, so it falls through to the same static fallback as a missing one.
 export function getCountryHeroImage(country: Pick<CountryDetail, "name" | "hero_image_url">): string {
-  return country.hero_image_url ?? COUNTRY_HERO_FALLBACKS[country.name] ?? GENERIC_FALLBACK_HERO;
+  return safeUrl(country.hero_image_url) ?? COUNTRY_HERO_FALLBACKS[country.name] ?? GENERIC_FALLBACK_HERO;
+}
+
+/** DB-sourced city photo if it is a renderable http(s) URL, otherwise a deterministic fallback. */
+export function getCityImage(city: Readonly<{ id: number; thumbnail_image_url?: string | null; hero_image_url?: string | null }>): string {
+  return safeUrl(city.thumbnail_image_url) ?? safeUrl(city.hero_image_url) ?? getCityFallbackImage(city.id);
 }
 
 // Curating an accurate photo per city isn't practical at the scale of "every city in every
@@ -35,6 +44,6 @@ const CITY_FALLBACK_POOL = [
   "https://images.pexels.com/photos/35134274/pexels-photo-35134274.jpeg",
 ];
 
-export function getCityFallbackImage(cityId: number): string {
+function getCityFallbackImage(cityId: number): string {
   return CITY_FALLBACK_POOL[cityId % CITY_FALLBACK_POOL.length]!;
 }

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { safeUrl } from "@/lib/safe-url";
 import { getVisaDetail } from "../../api";
 import type { VisaDetail } from "../../types";
 
@@ -24,6 +25,9 @@ export default async function VisaDetailPage({ params }: Params) {
   const { country, subclass } = await params;
   const visa = await getVisaDetail(country, decodeURIComponent(subclass));
   if (!visa) notFound();
+
+  const officialUrl = safeUrl(visa.official_url);
+  const sourceUrl = safeUrl(visa.source_url);
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -87,13 +91,13 @@ export default async function VisaDetailPage({ params }: Params) {
       <JsonFacts label="Study rights" value={visa.study_rights} />
       <JsonFacts label="English requirements" value={visa.english_requirements} />
 
-      {/* The backend rejects anything that is not http(s) (shared/url.ts), so these
-          hrefs cannot carry a javascript: payload. */}
-      {(visa.official_url ?? visa.source_url) && (
+      {/* `webUrl()` only guards the write path. Rows migrated from V1 and scraped rows never
+          passed through it, so re-check at the sink. */}
+      {(officialUrl ?? sourceUrl) && (
         <div className="mt-8 flex flex-wrap gap-2">
-          {visa.official_url && (
+          {officialUrl && (
             <a
-              href={visa.official_url}
+              href={officialUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
@@ -102,9 +106,9 @@ export default async function VisaDetailPage({ params }: Params) {
               <ExternalLink className="h-4 w-4" />
             </a>
           )}
-          {visa.source_url && visa.source_url !== visa.official_url && (
+          {sourceUrl && sourceUrl !== officialUrl && (
             <a
-              href={visa.source_url}
+              href={sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"

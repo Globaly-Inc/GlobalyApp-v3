@@ -10,7 +10,7 @@ export function HeroSection() {
   const { displayText, showCursor } = useTypingEffect(INSTITUTION_TYPING_PHRASES);
 
   return (
-    <section className="relative min-h-[calc(100svh-64px)] flex items-center overflow-hidden">
+    <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
       <AutoplayVideo
         src="/videos/institutions-hero.mp4"
         poster="/videos/institutions-hero-poster.webp"
@@ -20,10 +20,10 @@ export function HeroSection() {
       <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/80" />
       <div className="container relative mx-auto px-4 py-16 md:py-20 z-10">
         <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
-          <Badge className="mb-4 bg-[hsl(var(--gold))]/20 text-[hsl(var(--gold))] border-[hsl(var(--gold))]/30 text-xs font-semibold px-3 py-1 rounded-full">
+          <Badge className="h-auto mb-4 bg-[hsl(var(--gold))]/20 text-[hsl(var(--gold))] border-[hsl(var(--gold))]/30 text-xs font-semibold px-3 py-1 rounded-full">
             For Institutions
           </Badge>
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight md:leading-none">
             Expand Your Global
             <br />
             <span className="text-[hsl(var(--gold))] inline-block min-h-[1.2em]">

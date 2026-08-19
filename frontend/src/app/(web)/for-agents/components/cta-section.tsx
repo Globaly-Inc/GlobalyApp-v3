@@ -25,13 +25,13 @@ export function CtaSection() {
             worldwide.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="btn-gold rounded-full px-10" render={<Link href="/auth/sign-up" />}>
+            <Button size="lg" className="btn-gold rounded-full px-10 h-11" render={<Link href="/auth/sign-up" />}>
               Get Started Free
             </Button>
             <Button
               variant="outline"
               size="lg"
-              className="rounded-full px-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+              className="h-11 rounded-full px-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
               render={<Link href="/search?tab=institutions" />}
             >
               Explore Institutions

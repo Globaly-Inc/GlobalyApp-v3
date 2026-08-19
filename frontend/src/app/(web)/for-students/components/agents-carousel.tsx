@@ -3,6 +3,7 @@ import { ArrowRight, MapPin, UserCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { safeUrl } from "@/lib/safe-url";
 import { Reveal } from "../../components/reveal";
 import type { SearchBusiness } from "../../search/types";
 
@@ -26,6 +27,7 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
             ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="flex-shrink-0 w-64 h-48 rounded-xl" />)
             : agents.map((agent, idx) => {
                 const location = [agent.city, agent.country_name].filter(Boolean).join(", ");
+                const logo = safeUrl(agent.logo_url);
                 return (
                   <Reveal key={agent.id} delay={idx * 0.07} className="flex-shrink-0">
                     <Link
@@ -34,9 +36,9 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center p-1.5 border border-border/50">
-                          {agent.logo_url ? (
+                          {logo ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={agent.logo_url} alt={agent.business_name} className="w-full h-full object-contain" />
+                            <img src={logo} alt={agent.business_name} className="w-full h-full object-contain" />
                           ) : (
                             <Users className="h-6 w-6 text-muted-foreground" />
                           )}

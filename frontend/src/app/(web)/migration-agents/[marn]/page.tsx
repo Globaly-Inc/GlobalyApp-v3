@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { safeUrl } from "@/lib/safe-url";
 import { getMaraAgent } from "../api";
 
 interface Params {
@@ -23,6 +24,8 @@ export default async function MigrationAgentPage({ params }: Params) {
   const { marn } = await params;
   const agent = await getMaraAgent(decodeURIComponent(marn));
   if (!agent) notFound();
+
+  const sourceUrl = safeUrl(agent.source_url);
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8">
@@ -69,10 +72,10 @@ export default async function MigrationAgentPage({ params }: Params) {
         agent through the registrar or their own website.
       </p>
 
-      {/* The backend rejects any non-http(s) scheme (shared/url.ts). */}
-      {agent.source_url && (
+      {/* `webUrl()` only guards the write path; registrar-scraped rows never passed through it. */}
+      {sourceUrl && (
         <a
-          href={agent.source_url}
+          href={sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"

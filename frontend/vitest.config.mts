@@ -40,6 +40,10 @@ export default defineConfig({
         // flag, the pending-verification branch and the locked/unlocked lead
         // headline all live in utils/ so they are asserted without a DOM.
         "src/app/business/portal/utils/index.ts",
+        // The DB-sourced URL allowlist and the one resolver that calls it before an <img src>.
+        // Same `**` spelling reason as above — a literal `(web)` never matches.
+        "src/lib/safe-url.ts",
+        "src/app/**/country/hero-fallback.ts",
       ],
       thresholds: {
         lines: 80,

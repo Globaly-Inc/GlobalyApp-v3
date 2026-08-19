@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Globe, BookOpen, Briefcase, Home, Calendar, Clock } from "lucide-react";
+import { Globe, BookOpen, Briefcase, Home, Calendar, Clock, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { safeUrl } from "@/lib/safe-url";
 import { Button } from "@/components/ui/button";
@@ -162,7 +162,7 @@ export default async function BlogPage({
             <Globe className="h-6 w-6 text-primary" />
             <span className="text-sm font-medium text-primary uppercase tracking-widest">Globaly Blog</span>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4 leading-tight">
+          <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4 leading-tight md:leading-none">
             Insights on Studying Abroad &<br className="hidden md:block" /> International Education
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -258,6 +258,30 @@ export default async function BlogPage({
               </p>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Live closes the index with this band; V3 had dropped it, leaving the page 247px short. */}
+      <section className="bg-primary/5 border-t border-border py-14">
+        <div className="container max-w-3xl mx-auto px-4 text-center">
+          <h2 className="text-2xl font-bold text-foreground mb-3">Ready to start your journey?</h2>
+          <p className="text-muted-foreground mb-6">
+            Explore courses, find education agents, and apply to top universities — all on Globaly.app.
+          </p>
+          <div className="flex gap-3 justify-center flex-wrap">
+            <Link
+              href="/search?tab=courses"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              Search Courses <ChevronRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/search?tab=education-agencies"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border text-foreground text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Find an Agent
+            </Link>
+          </div>
         </div>
       </section>
     </div>

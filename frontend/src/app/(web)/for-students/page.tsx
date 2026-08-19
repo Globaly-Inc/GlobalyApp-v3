@@ -61,7 +61,7 @@ export default function ForStudentsPage() {
   return (
     <>
       {/* ── 1. HERO ─────────────────────────────────────────────────────── */}
-      <section className="relative min-h-[calc(100svh-64px)] flex items-center overflow-hidden">
+      <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
         <AutoplayVideo
           src="https://videos.pexels.com/video-files/7945680/7945680-hd_1920_1080_25fps.mp4"
           poster="https://images.pexels.com/photos/1205651/pexels-photo-1205651.jpeg?auto=compress&cs=tinysrgb&w=1920"
@@ -71,10 +71,10 @@ export default function ForStudentsPage() {
         <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/80" />
         <div className="relative container mx-auto px-4 py-16 md:py-20 z-10">
           <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
-            <Badge className="mb-3 bg-[hsl(var(--gold))]/20 text-[hsl(var(--gold))] border-[hsl(var(--gold))]/40 text-xs font-semibold px-3 py-1 rounded-full">
+            <Badge className="h-auto mb-3 bg-[hsl(var(--gold))]/20 text-[hsl(var(--gold))] border-[hsl(var(--gold))]/40 text-xs font-semibold px-3 py-1 rounded-full">
               For Students
             </Badge>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight md:leading-none">
               Your Education Journey
               <br />
               <span className="text-[hsl(var(--gold))] inline-block min-h-[1.2em]">
@@ -103,19 +103,19 @@ export default function ForStudentsPage() {
 
         <div className="container relative mx-auto px-4 text-center z-10">
           <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">Your Global Future Begins Today.</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight md:leading-10">Your Global Future Begins Today.</h2>
             <p className="text-white/70 text-lg mb-10 max-w-2xl mx-auto">
               Join thousands of students who have already found their perfect education path with Globaly.app. Start
               your journey for free.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="lg" className="btn-gold rounded-full px-10" render={<Link href="/auth/sign-up" />}>
+              <Button size="lg" className="btn-gold rounded-full px-10 h-11" render={<Link href="/auth/sign-up" />}>
                 Join for Free
               </Button>
               <Button
                 variant="outline"
                 size="lg"
-                className="rounded-full px-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                className="h-11 rounded-full px-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
                 render={<Link href="/search" />}
               >
                 Explore Courses

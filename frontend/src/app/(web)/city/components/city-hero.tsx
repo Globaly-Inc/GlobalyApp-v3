@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { ArrowRight, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { safeUrl } from "@/lib/safe-url";
 import type { CityDetail } from "../types";
 
 export function CityHero({ city }: Readonly<{ city: CityDetail }>) {
+  const heroImage = safeUrl(city.hero_image_url);
+
   return (
     <section className="relative h-[440px] overflow-hidden">
-      {city.hero_image_url ? (
+      {heroImage ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={city.hero_image_url} alt={city.name} className="absolute inset-0 h-full w-full object-cover" />
+        <img src={heroImage} alt={city.name} className="absolute inset-0 h-full w-full object-cover" />
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-primary/40 to-primary/10" />
       )}

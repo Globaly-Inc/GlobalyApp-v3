@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { safeUrl } from "@/lib/safe-url";
 import { Reveal } from "../../components/reveal";
 import type { SearchBusiness } from "../../search/types";
 
@@ -19,13 +20,15 @@ export function CountryInstitutions({
       </div>
       {institutions.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {institutions.map((inst) => (
+          {institutions.map((inst) => {
+            const logo = safeUrl(inst.logo_url);
+            return (
             <Card key={inst.id} className="transition-shadow hover:shadow-md">
               <CardContent className="flex items-center gap-3 p-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  {inst.logo_url ? (
+                  {logo ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={inst.logo_url} alt={inst.business_name} className="h-full w-full rounded-lg object-contain p-1" />
+                    <img src={logo} alt={inst.business_name} className="h-full w-full rounded-lg object-contain p-1" />
                   ) : (
                     <Building2 className="h-6 w-6 text-muted-foreground" />
                   )}
@@ -38,7 +41,8 @@ export function CountryInstitutions({
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">

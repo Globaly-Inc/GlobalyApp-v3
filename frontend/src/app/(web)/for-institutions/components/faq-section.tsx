@@ -14,7 +14,7 @@ export function FaqSection() {
         <Accordion className="w-full">
           {FAQS.map((faq, i) => (
             <AccordionItem key={faq.q} value={`faq-${i}`} className="border-b-border/50">
-              <AccordionTrigger className="text-left font-semibold hover:no-underline">
+              <AccordionTrigger className="items-center gap-0 text-left text-base font-semibold hover:no-underline">
                 {faq.q}
               </AccordionTrigger>
               <AccordionContent className="text-muted-foreground leading-relaxed">

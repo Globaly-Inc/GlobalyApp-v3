@@ -19,7 +19,7 @@ export function CoinsBannerSection() {
           <p className="text-sm font-semibold text-[hsl(var(--gold))] mb-2">
             🎉 Limited-Time Offer for Education Agents
           </p>
-          <p className="text-white text-lg md:text-xl font-medium mb-6 max-w-3xl mx-auto leading-relaxed">
+          <p className="text-white text-lg md:text-xl font-medium mb-6 max-w-3xl mx-auto leading-relaxed md:leading-7">
             Join Globaly.app today and get 100 FREE Globaly Coins — enough to unlock 10+ verified, course-matched
             student leads right away. No fees, no risk — just real opportunities. Plus, access free training
             programs to boost your certifications.

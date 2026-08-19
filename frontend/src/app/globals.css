@@ -149,33 +149,40 @@
     @apply font-sans;
     scroll-behavior: smooth;
   }
-  h1, h2, h3, h4 {
-    @apply font-sans tracking-[-0.01em];
+  /* V1 (index.css) applies `font-bold tracking-tight` to h1–h6. tracking-[-0.01em] was a V3 drift that
+     made every heading measurably wider than live, changing where headings wrap. */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans font-bold tracking-tight;
   }
 }
 
-/* No `padding-inline` here on purpose. This rule sits outside `@layer`, so any padding it declares beats
-   the `px-*` utility every single call site already writes — every `.container` in src carries its own
-   `px-3`/`px-4`. A hardcoded 2rem silently overrode all of them, insetting every page 16px further than
-   the live site on both edges. */
-.container {
-  width: 100%;
-  margin-inline: auto;
-}
-@media (min-width: 640px) {
-  .container { max-width: 640px; }
-}
-@media (min-width: 768px) {
-  .container { max-width: 768px; }
-}
-@media (min-width: 1024px) {
-  .container { max-width: 1024px; }
-}
-@media (min-width: 1280px) {
-  .container { max-width: 1280px; }
-}
-@media (min-width: 1536px) {
-  .container { max-width: 1280px; }
+/* No `padding-inline` here on purpose — every `.container` call site in src writes its own `px-3`/`px-4`,
+   and a hardcoded 2rem here silently overrode all of them, insetting every page 16px further than live.
+
+   It sits inside `@layer components` (which is where Tailwind v3's own container plugin put it) so that
+   `max-w-*` utilities still beat it. Outside a layer these rules outrank every utility, which is what
+   made `container … max-w-3xl` render 1248px wide instead of 736px on 23 call sites — the FAQ blocks,
+   the legal pages, the blog article body, and every detail page. */
+@layer components {
+  .container {
+    width: 100%;
+    margin-inline: auto;
+  }
+  @media (min-width: 640px) {
+    .container { max-width: 640px; }
+  }
+  @media (min-width: 768px) {
+    .container { max-width: 768px; }
+  }
+  @media (min-width: 1024px) {
+    .container { max-width: 1024px; }
+  }
+  @media (min-width: 1280px) {
+    .container { max-width: 1280px; }
+  }
+  @media (min-width: 1536px) {
+    .container { max-width: 1280px; }
+  }
 }
 
 /* ── Ported from GlobalyApp-V2 for the (web) landing page ── */
