@@ -1,10 +1,19 @@
 import Link from "next/link";
 import { Building2, MapPin, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { profileHref } from "../../profiles/api";
+import type { OrgKind } from "../../profiles/types";
 import type { SearchBusiness } from "../types";
 
-export function BusinessCard({ business }: Readonly<{ business: SearchBusiness }>) {
+export function BusinessCard({
+  business,
+  kind = null,
+}: Readonly<{ business: SearchBusiness; kind?: OrgKind | null }>) {
   const location = [business.city, business.country_name].filter(Boolean).join(", ");
+  // Only orgs the profile API actually serves get a link. Visa-service listings have no
+  // public profile kind, so their cards stay unlinked rather than pointing at a 404.
+  const href = kind && business.slug ? profileHref(kind, business.slug) : null;
+  const title = <h3 className="font-semibold text-foreground leading-snug text-[15px] line-clamp-2">{business.business_name}</h3>;
 
   return (
     <div className="bg-card border border-border rounded-xl hover:shadow-md transition-shadow overflow-hidden">
@@ -20,7 +29,7 @@ export function BusinessCard({ business }: Readonly<{ business: SearchBusiness }
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-foreground leading-snug text-[15px] line-clamp-2">{business.business_name}</h3>
+              {href ? <Link href={href} className="hover:text-primary">{title}</Link> : title}
               {location && (
                 <p className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                   <MapPin className="h-3 w-3 flex-shrink-0" />
@@ -45,9 +54,15 @@ export function BusinessCard({ business }: Readonly<{ business: SearchBusiness }
           ) : (
             <p className="text-xs text-muted-foreground italic text-center">No website listed</p>
           )}
-          <Link href="/auth/sign-up?redirect=/search">
-            <Button size="sm" className="w-full text-xs h-9">Contact</Button>
-          </Link>
+          {href ? (
+            <Link href={href}>
+              <Button size="sm" className="w-full text-xs h-9">View Profile</Button>
+            </Link>
+          ) : (
+            <Link href="/auth/sign-up?redirect=/search">
+              <Button size="sm" className="w-full text-xs h-9">Contact</Button>
+            </Link>
+          )}
         </div>
       </div>
     </div>
