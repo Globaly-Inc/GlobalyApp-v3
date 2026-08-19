@@ -7,8 +7,7 @@
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import type { OwnerType } from "../../credits/credits.repository.js";
-import { CONSTRAINTS, PG_UNIQUE_VIOLATION } from "../consts.js";
+import { CONSTRAINTS, PG_UNIQUE_VIOLATION, type ReferralOwnerType } from "../consts.js";
 import * as repo from "../repositories/referrals.repository.js";
 import { generateReferralCode } from "../utils/generate-referral-code.js";
 
@@ -22,7 +21,7 @@ const MAX_CODE_ATTEMPTS = 3;
  *
  * Returns the code on success, or null when issuance failed and the worker must repair it.
  */
-export async function issueCode(ownerType: OwnerType, ownerId: number): Promise<string | null> {
+export async function issueCode(ownerType: ReferralOwnerType, ownerId: number): Promise<string | null> {
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
     try {
       const inserted = await repo.insertCode(ownerType, ownerId, generateReferralCode());
@@ -69,7 +68,7 @@ export async function issueCode(ownerType: OwnerType, ownerId: number): Promise<
 /** The public-facing owner of a code, or null when the code is unknown OR unusable. */
 export interface CodeOwner {
   code_id: number;
-  owner_type: OwnerType;
+  owner_type: ReferralOwnerType;
   owner_id: number;
   /**
    * Full name for an individual, business name for a business — and nothing else, ever.
@@ -99,7 +98,7 @@ export async function resolveUsableCode(code: string): Promise<CodeOwner | null>
 /** Same liveness rules, entered from an already-known code id (the attribution path). */
 export async function resolveUsableCodeOwner(
   codeId: number,
-  ownerType: OwnerType,
+  ownerType: ReferralOwnerType,
   ownerId: number,
 ): Promise<CodeOwner | null> {
   if (ownerType === "user") {

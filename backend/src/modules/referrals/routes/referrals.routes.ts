@@ -1,7 +1,7 @@
 // Authenticated referral routes.
 
 import type { FastifyInstance } from "fastify";
-import { REFERRAL_CONFIG } from "../consts.js";
+import { REFERRAL_CONFIG, REWARD_BY_ACTION } from "../consts.js";
 import * as repo from "../repositories/referrals.repository.js";
 
 export async function referralsRoutes(app: FastifyInstance) {
@@ -24,10 +24,10 @@ export async function referralsRoutes(app: FastifyInstance) {
     const [code, stats, referrals] = await Promise.all([
       repo.findCodeByOwner("user", userId),
       repo.referrerStats("user", userId),
-      // Phase 1 renders CREDITED rows only, so the "Credited" badge is accurate rather than
-      // fabricated (V2 hard-coded it for every row). signed_up/expired rows exist in the table but
-      // are deliberately not surfaced until Phase 2 ships the lifecycle model and the countdowns.
-      repo.listReferralsByReferrer("user", userId, ["credited"]),
+      // Terminal rows only, so a rendered status is always accurate (V2 hard-coded "Credited" on every
+      // row). signed_up/expired rows exist in the table but are deliberately not surfaced until Phase 2
+      // ships the pending lifecycle and its countdowns.
+      repo.listReferralsByReferrer("user", userId, repo.TERMINAL_EARNED_STATES),
     ]);
 
     return reply.send({
@@ -38,7 +38,9 @@ export async function referralsRoutes(app: FastifyInstance) {
         date: r.signed_up_at,
         action_type: r.action_type,
         state: r.state,
-        credits_awarded: r.credits_awarded,
+        // The reward this referral earned, resolved from its action type. Not yet paid — credits are a
+        // separate feature — so it is deliberately described as pending rather than awarded.
+        reward_credits: r.action_type ? REWARD_BY_ACTION[r.action_type] : null,
       })),
       config: REFERRAL_CONFIG,
     });

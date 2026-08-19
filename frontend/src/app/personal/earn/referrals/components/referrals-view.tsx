@@ -177,12 +177,22 @@ export function ReferralsView() {
                   (businesses), within {data.config.w2_days} days of signing up.
                 </span>
               </p>
+
+              {/* Credits are being built as their own feature. Saying so is better than advertising a
+                  reward the platform cannot pay yet — the referral itself is fully tracked either way. */}
+              <p className="mt-2 text-xs opacity-80">
+                Your qualified referrals are tracked now and credited once the credits system launches.
+              </p>
             </CardContent>
           </Card>
 
           {/* B. Stats */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard icon={Coins} value={formatNumber(data.stats.total_credits)} label="Total credits earned" />
+            <StatCard
+              icon={Coins}
+              value={formatNumber(data.stats.pending_reward_credits)}
+              label="Credits pending"
+            />
             <StatCard icon={UserPlus} value={String(data.stats.students_referred)} label="Students referred" />
             <StatCard icon={Building2} value={String(data.stats.businesses_referred)} label="Businesses referred" />
           </div>
@@ -200,7 +210,7 @@ export function ReferralsView() {
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="pb-2 pr-4 font-medium">Date</th>
                         <th className="pb-2 pr-4 font-medium">Type</th>
-                        <th className="pb-2 pr-4 text-right font-medium">Credits</th>
+                        <th className="pb-2 pr-4 text-right font-medium">Reward</th>
                         <th className="pb-2 text-right font-medium">Status</th>
                       </tr>
                     </thead>
@@ -219,11 +229,13 @@ export function ReferralsView() {
                                 {meta?.label ?? "—"}
                               </span>
                             </td>
-                            <td className="py-2.5 pr-4 text-right font-semibold text-emerald-600">
-                              +{formatNumber(r.credits_awarded ?? 0)}
+                            <td className="py-2.5 pr-4 text-right font-semibold text-foreground">
+                              {formatNumber(r.reward_credits ?? 0)}
                             </td>
                             <td className="py-2.5 text-right">
-                              <Badge className="border-0 bg-emerald-100 text-emerald-700">Credited</Badge>
+                              <Badge className="border-0 bg-amber-100 text-amber-800">
+                                {r.state === "credited" ? "Credited" : "Qualified"}
+                              </Badge>
                             </td>
                           </tr>
                         );

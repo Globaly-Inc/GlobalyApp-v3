@@ -16,13 +16,13 @@ export const referralsMockApi = {
     await delay(300);
     return {
       code: "R4KD9M2XQP",
-      stats: { total_credits: 140, students_referred: 2, businesses_referred: 1 },
+      stats: { students_referred: 2, businesses_referred: 1, pending_reward_credits: 140 },
       // Phase 1 shows credited rows only, so the mock does too — a pending row here would invite
       // someone to build the Phase 2 lifecycle UI early.
       referrals: [
-        { id: 3, date: "2026-08-10T09:00:00Z", action_type: "business_referral", state: "credited", credits_awarded: 100 },
-        { id: 2, date: "2026-07-28T09:00:00Z", action_type: "student_referral", state: "credited", credits_awarded: 20 },
-        { id: 1, date: "2026-07-14T09:00:00Z", action_type: "student_referral", state: "credited", credits_awarded: 20 },
+        { id: 3, date: "2026-08-10T09:00:00Z", action_type: "business_referral", state: "qualified", reward_credits: 100 },
+        { id: 2, date: "2026-07-28T09:00:00Z", action_type: "student_referral", state: "qualified", reward_credits: 20 },
+        { id: 1, date: "2026-07-14T09:00:00Z", action_type: "student_referral", state: "qualified", reward_credits: 20 },
       ],
       config: CONFIG,
     };

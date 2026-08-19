@@ -23,6 +23,7 @@ import { generateReferralCode } from "../src/modules/referrals/utils/generate-re
 import { mintRefToken } from "../src/modules/referrals/services/attribution.service.js";
 import { onBusinessVerified } from "../src/modules/referrals/services/qualification.service.js";
 import { issueCode } from "../src/modules/referrals/services/codes.service.js";
+import { referrerStats } from "../src/modules/referrals/repositories/referrals.repository.js";
 import { REFERRAL_CONFIG } from "../src/modules/referrals/consts.js";
 import { addTransaction, balanceByType, spend } from "../src/modules/credits/credits.repository.js";
 import jwt from "jsonwebtoken";
@@ -161,54 +162,57 @@ const api = async (method: string, path: string, body?: unknown, token?: string)
 // ── Tests ───────────────────────────────────────────────────────────────────────────────────────
 
 async function tConcurrency() {
-  console.log("\nT-01/T-02  INV-1 — award is credited at most once");
+  console.log("\nT-01/T-02  qualification happens at most once, under any concurrency");
   const referrer = await makeUserWithCode();
   const referred = await makeUser();
   const biz = await makeBusiness(referred.id, "verified");
   const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
 
-  const before = await balanceOf("user", referrer.user.id);
-
-  // 10 genuinely concurrent awards against one signed_up row.
+  // 10 genuinely concurrent qualifications against one signed_up row.
   await Promise.all(Array.from({ length: 10 }, () => onBusinessVerified(biz.id)));
 
-  const rewards = await rewardRows(referral.id);
-  const after = await balanceOf("user", referrer.user.id);
   const row = await masterKnex("referrals").where({ id: referral.id }).first();
+  const stats = await referrerStats("user", referrer.user.id);
 
-  check("T-01a", "10 concurrent awards -> exactly 1 reward row", rewards === 1, { rewards });
-  check("T-01b", "balance delta equals exactly one reward",
-    after - before === REFERRAL_CONFIG.business_referral_reward, { before, after });
-  check("T-01c", "state credited, amount snapshotted",
-    row.state === "credited" && row.credits_awarded === REFERRAL_CONFIG.business_referral_reward, {
-      state: row.state, credits: row.credits_awarded });
-  check("T-01d", "credit_transaction_id pointer set", row.credit_transaction_id !== null);
+  check("T-01a", "10 concurrent qualifications -> state qualified once",
+    row.state === "qualified" && row.qualified_at !== null, { state: row.state });
+  // With the ledger gone the observable side effect is the referrer stats: ten transitions would
+  // inflate the count, one does not.
+  check("T-01b", "referrer stats counted exactly once, not ten times",
+    stats.businesses_referred === 1, stats);
+  check("T-01c", "action_type + qualifying business recorded",
+    row.action_type === "business_referral" && row.qualifying_business_id === biz.id,
+    { action: row.action_type, qb: row.qualifying_business_id });
+  // The whole point of the decoupling.
+  check("T-01d", "NO credit ledger row written by a referral",
+    (await rewardRows(referral.id)) === 0);
 
-  // T-02: re-run after settling.
+  // A repeat call must not re-stamp the row.
+  const firstQualifiedAt = new Date(row.qualified_at).getTime();
   await onBusinessVerified(biz.id);
-  check("T-02", "re-award after credited -> no second reward", (await rewardRows(referral.id)) === 1);
+  const after = await masterKnex("referrals").where({ id: referral.id }).first();
+  check("T-02", "re-qualify after settling -> qualified_at unchanged",
+    new Date(after.qualified_at).getTime() === firstQualifiedAt);
 
   return { referralId: referral.id, referrerId: referrer.user.id };
 }
 
 async function tLedgerConstraints(referralId: number, referrerId: number) {
-  console.log("\nT-03/T-04/T-18  ledger constraints");
+  console.log("\nT-03/T-04/T-18  ledger guarantees (credits module — kept for when payouts are linked back in)");
 
-  await expectThrow("T-03", "second referral_reward for same referral rejected", async () => {
-    await masterKnex.transaction((trx) =>
-      addTransaction(trx, {
-        owner_type: "user", owner_id: referrerId, amount: 20,
-        kind: "manual_adjustment", reference_type: "referral", reference_id: referralId,
-      }).then(() =>
-        // manual_adjustment is allowed to share the reference; force the real collision instead
-        trx.raw(
-          `INSERT INTO credit_transactions (owner_type, owner_id, amount, kind, reference_type, reference_id)
-           VALUES ('user', ?, 20, 'referral_reward', 'referral', ?)`,
-          [referrerId, referralId],
-        ),
-      ),
-    );
-  }, "23505");
+  // Referrals no longer writes these rows, so the test writes them directly. The partial unique index is
+  // what will stop a future payout step paying one referral twice.
+  await masterKnex.raw(
+    "INSERT INTO credit_transactions (owner_type, owner_id, amount, kind, reference_type, reference_id) VALUES (?, ?, 20, ?, ?, ?)",
+    ["user", referrerId, "referral_reward", "referral", referralId],
+  );
+  check("T-03a", "first referral_reward for a referral inserts", (await rewardRows(referralId)) === 1);
+
+  await expectThrow("T-03b", "second referral_reward for the same referral rejected", () =>
+    masterKnex.raw(
+      "INSERT INTO credit_transactions (owner_type, owner_id, amount, kind, reference_type, reference_id) VALUES (?, ?, 20, ?, ?, ?)",
+      ["user", referrerId, "referral_reward", "referral", referralId],
+    ), "23505");
 
   await masterKnex.transaction(async (trx) => {
     await addTransaction(trx, {
@@ -216,7 +220,7 @@ async function tLedgerConstraints(referralId: number, referrerId: number) {
       kind: "referral_reversal", reference_type: "referral", reference_id: referralId,
     });
   });
-  check("T-04", "referral_reversal with same reference_id inserts (index correctly scoped)", true);
+  check("T-04", "referral_reversal with the same reference_id inserts (index correctly scoped)", true);
 
   const anyRow = await masterKnex("credit_transactions").where({ owner_id: referrerId }).first();
   await expectThrow("T-18a", "UPDATE on credit_transactions raises", () =>
@@ -416,7 +420,7 @@ async function tRetryAfterTransientFailure() {
 }
 
 async function tMultipleBusinesses() {
-  console.log("\nT-15  INV-4 — one referred user yields at most one business reward");
+  console.log("\nT-15  one referred user yields at most one qualification");
   const referrer = await makeUserWithCode();
   const referred = await makeUser();
   const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
@@ -430,12 +434,13 @@ async function tMultipleBusinesses() {
   await onBusinessVerified(b3.id);
 
   const row = await masterKnex("referrals").where({ id: referral.id }).first();
-  check("T-15a", "3 verified businesses -> exactly 1 reward", (await rewardRows(referral.id)) === 1);
-  check("T-15b", "action_type=business_referral, qualifying_business_id = FIRST verified",
+  const stats = await referrerStats("user", referrer.user.id);
+  check("T-15a", "3 verified businesses -> counted once", stats.businesses_referred === 1, stats);
+  check("T-15b", "qualifying_business_id = the FIRST verified",
     row.action_type === "business_referral" && row.qualifying_business_id === b1.id,
     { action: row.action_type, qualifying: row.qualifying_business_id, first: b1.id });
-  check("T-15c", "credits_awarded = business amount",
-    row.credits_awarded === REFERRAL_CONFIG.business_referral_reward);
+  check("T-15c", "pending reward is the business amount",
+    stats.pending_reward_credits === REFERRAL_CONFIG.business_referral_reward, stats);
 }
 
 async function tBusinessGuards() {
@@ -461,21 +466,22 @@ async function tBusinessGuards() {
 }
 
 async function tSoftDeleteRetention() {
-  console.log("\nT-17  INV-6 — history survives deletion");
+  console.log("\nT-17  referral history survives deletion");
   const referrer = await makeUserWithCode();
   const referred = await makeUser();
   const biz = await makeBusiness(referred.id, "verified");
   const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
   await onBusinessVerified(biz.id);
-  check("T-17a", "credited before deletion", (await rewardRows(referral.id)) === 1);
+  const before = await masterKnex("referrals").where({ id: referral.id }).first();
+  check("T-17a", "qualified before deletion", before.state === "qualified");
 
   await masterKnex("platform_users").whereIn("id", [referrer.user.id, referred.id])
     .update({ deleted_at: masterKnex.fn.now() });
   await masterKnex("businesses").where({ id: biz.id }).update({ deleted_at: masterKnex.fn.now() });
 
   const row = await masterKnex("referrals").where({ id: referral.id }).first();
-  check("T-17b", "referral row still readable after soft delete", !!row && row.state === "credited");
-  check("T-17c", "ledger rows still readable", (await rewardRows(referral.id)) === 1);
+  check("T-17b", "referral row still readable after soft delete",
+    !!row && row.state === "qualified" && row.qualified_at !== null);
 
   // Name resolution must degrade, not vanish or throw.
   const joined = await masterKnex("referrals as r")
@@ -485,7 +491,7 @@ async function tSoftDeleteRetention() {
     .where("r.id", referral.id)
     .select("r.id", "u.first_name")
     .first();
-  check("T-17d", "LEFT JOIN yields the row with an unresolved name (never drops it)",
+  check("T-17c", "LEFT JOIN yields the row with an unresolved name (never drops it)",
     !!joined && joined.first_name === null, joined);
 }
 
@@ -570,25 +576,24 @@ async function tPublicEndpoints() {
 }
 
 async function tStudentPath() {
-  console.log("\nT-16  student qualification pays the student amount");
+  console.log("\nT-16  student qualification records the student reward");
   const { onIndividualQualified } = await import("../src/modules/referrals/services/qualification.service.js");
   const referrer = await makeUserWithCode();
   const referred = await makeUser();
   const referral = await makeReferral("user", referrer.user.id, referrer.codeId, referred.id);
 
-  const before = await balanceOf("user", referrer.user.id);
   await onIndividualQualified(referred.id);
   const row = await masterKnex("referrals").where({ id: referral.id }).first();
-  const after = await balanceOf("user", referrer.user.id);
+  const stats = await referrerStats("user", referrer.user.id);
 
-  check("T-16a", "student path -> exactly 1 reward", (await rewardRows(referral.id)) === 1);
-  check("T-16b", "action_type=student_referral, amount=student amount, qualifying_business_id NULL",
-    row.action_type === "student_referral" &&
-    row.credits_awarded === REFERRAL_CONFIG.student_referral_reward &&
-    row.qualifying_business_id === null,
-    { action: row.action_type, credits: row.credits_awarded, qb: row.qualifying_business_id });
-  check("T-16c", "balance delta = student amount",
-    after - before === REFERRAL_CONFIG.student_referral_reward, { before, after });
+  check("T-16a", "student path -> qualified, student action type, no qualifying business",
+    row.state === "qualified" && row.action_type === "student_referral" && row.qualifying_business_id === null,
+    { state: row.state, action: row.action_type, qb: row.qualifying_business_id });
+  check("T-16b", "counted as a student referral, pending reward is the student amount",
+    stats.students_referred === 1 && stats.pending_reward_credits === REFERRAL_CONFIG.student_referral_reward,
+    stats);
+  check("T-16c", "still no ledger row — referrals is decoupled from credits",
+    (await rewardRows(referral.id)) === 0);
 }
 
 // ── Waterfall spend ─────────────────────────────────────────────────────────────────────────────

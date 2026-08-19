@@ -10,21 +10,23 @@ export interface ReferralConfig {
 
 export type ReferralActionType = "student_referral" | "business_referral";
 
-/** Phase 1 only ever returns `credited` rows. The other states arrive with the Phase 2 lifecycle. */
-export type ReferralState = "signed_up" | "credited" | "expired" | "voided" | "rejected";
+/** Only terminal rows are returned: `qualified` now, plus `credited` for pre-decoupling rows. */
+export type ReferralState = "signed_up" | "qualified" | "credited" | "expired" | "voided" | "rejected";
 
 export interface ReferralRow {
   id: number;
   date: string;
   action_type: ReferralActionType | null;
   state: ReferralState;
-  credits_awarded: number | null;
+  /** What this referral earned. Credits are a separate feature, so it is owed, not yet paid. */
+  reward_credits: number | null;
 }
 
 export interface ReferralStats {
-  total_credits: number;
   students_referred: number;
   businesses_referred: number;
+  /** Derived from the qualified referrals and the configured amounts — pending, not a wallet balance. */
+  pending_reward_credits: number;
 }
 
 export interface MyReferrals {

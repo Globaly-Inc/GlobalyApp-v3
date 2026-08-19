@@ -14,8 +14,7 @@ import jwt from "jsonwebtoken";
 import { config } from "../../../config.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import type { OwnerType } from "../../credits/credits.repository.js";
-import { CONSTRAINTS, PG_UNIQUE_VIOLATION, REFERRAL_CONFIG } from "../consts.js";
+import { CONSTRAINTS, PG_UNIQUE_VIOLATION, REFERRAL_CONFIG, type ReferralOwnerType } from "../consts.js";
 import * as repo from "../repositories/referrals.repository.js";
 import { resolveUsableCodeOwner } from "./codes.service.js";
 
@@ -24,14 +23,14 @@ const logger = createChildLogger("referral-attribution");
 /** What the signed ref_token carries. `rcid` is referral_codes.id — never the human-readable code. */
 interface RefTokenPayload {
   rcid: number;
-  rtype: OwnerType;
+  rtype: ReferralOwnerType;
   rid: number;
 }
 
 /** What registration stashes on the user for activation to pick up. */
 export interface PendingReferral {
   rcid: number;
-  rtype: OwnerType;
+  rtype: ReferralOwnerType;
   rid: number;
   /** The token's own exp. Stored for forensics and admin display ONLY — never re-checked as a gate. */
   token_expires_at: string;
@@ -44,7 +43,7 @@ export interface PendingReferral {
  * The token carries the IMMUTABLE referral_codes.id, so if code lookup, formatting, or case-handling
  * ever changes, already-recorded referrals are untouched (INV-5). Its `exp` IS W1.
  */
-export function mintRefToken(codeId: number, ownerType: OwnerType, ownerId: number): string {
+export function mintRefToken(codeId: number, ownerType: ReferralOwnerType, ownerId: number): string {
   const payload: RefTokenPayload = { rcid: codeId, rtype: ownerType, rid: ownerId };
   return jwt.sign(payload, config.JWT_SECRET as jwt.Secret, {
     expiresIn: `${REFERRAL_CONFIG.w1_days}d`,
@@ -84,7 +83,7 @@ export function validateRefToken(token: string | undefined | null): PendingRefer
 }
 
 type Evaluation =
-  | { ok: true; codeId: number; referrerType: OwnerType; referrerId: number }
+  | { ok: true; codeId: number; referrerType: ReferralOwnerType; referrerId: number }
   | { ok: false; reason: string };
 
 /**

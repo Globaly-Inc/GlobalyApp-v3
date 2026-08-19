@@ -2,13 +2,18 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
-import type { OwnerType } from "../../credits/credits.repository.js";
-import type { ReferralActionType, ReferralState } from "../consts.js";
+import { REWARD_BY_ACTION, type ReferralActionType, type ReferralOwnerType, type ReferralState } from "../consts.js";
+
+/**
+ * States that mean "this referral earned its reward". `credited` is included for rows settled before
+ * credits became a separate feature; new rows land in `qualified`.
+ */
+export const TERMINAL_EARNED_STATES: ReferralState[] = ["qualified", "credited"];
 
 export interface ReferralCodeRow {
   id: number;
   code: string;
-  owner_type: OwnerType;
+  owner_type: ReferralOwnerType;
   owner_id: number;
   created_at: Date;
 }
@@ -16,19 +21,19 @@ export interface ReferralCodeRow {
 export interface ReferralRow {
   id: number;
   referral_code_id: number;
-  referrer_type: OwnerType;
+  referrer_type: ReferralOwnerType;
   referrer_id: number;
-  referred_type: OwnerType;
+  referred_type: ReferralOwnerType;
   referred_id: number;
   state: ReferralState;
   action_type: ReferralActionType | null;
   qualifying_business_id: number | null;
   signed_up_at: Date;
   qualified_at: Date | null;
-  credited_at: Date | null;
   expired_at: Date | null;
-  credits_awarded: number | null;
-  credit_transaction_id: number | null;
+  // credited_at / credits_awarded remain as columns but are not written while credits are a separate
+  // feature, so they are deliberately absent from this type — nothing should read them and believe them.
+  // credit_transaction_id is gone entirely (20260819_001).
   void_category: string | null;
   created_at: Date;
   updated_at: Date;
@@ -47,7 +52,7 @@ export async function findCodeById(id: number) {
   return masterKnex<ReferralCodeRow>("referral_codes").where({ id }).first();
 }
 
-export async function findCodeByOwner(ownerType: OwnerType, ownerId: number) {
+export async function findCodeByOwner(ownerType: ReferralOwnerType, ownerId: number) {
   return masterKnex<ReferralCodeRow>("referral_codes")
     .where({ owner_type: ownerType, owner_id: ownerId })
     .first();
@@ -58,7 +63,7 @@ export async function findCodeByOwner(ownerType: OwnerType, ownerId: number) {
  * 23505 so issueCode can retry with a fresh code, whereas an owner conflict means "already has one".
  * Returns undefined when the owner already had a code.
  */
-export async function insertCode(ownerType: OwnerType, ownerId: number, code: string) {
+export async function insertCode(ownerType: ReferralOwnerType, ownerId: number, code: string) {
   const result = await masterKnex.raw(
     `INSERT INTO referral_codes (owner_type, owner_id, code)
      VALUES (?, ?, ?)
@@ -71,7 +76,7 @@ export async function insertCode(ownerType: OwnerType, ownerId: number, code: st
 
 /** Entities with no referral code — drives the INV-10 reconciliation worker. */
 export async function findOwnersMissingCode(
-  ownerType: OwnerType,
+  ownerType: ReferralOwnerType,
   limit: number,
 ): Promise<number[]> {
   const table = ownerType === "user" ? "platform_users" : "businesses";
@@ -90,7 +95,7 @@ export async function findOwnersMissingCode(
 // ── referrals ──
 
 export async function findReferralByReferred(
-  referredType: OwnerType,
+  referredType: ReferralOwnerType,
   referredId: number,
   trx?: Knex.Transaction,
 ) {
@@ -103,9 +108,9 @@ export async function insertReferral(
   trx: Knex.Transaction,
   data: {
     referral_code_id: number;
-    referrer_type: OwnerType;
+    referrer_type: ReferralOwnerType;
     referrer_id: number;
-    referred_type: OwnerType;
+    referred_type: ReferralOwnerType;
     referred_id: number;
   },
 ) {
@@ -116,11 +121,12 @@ export async function insertReferral(
 }
 
 /**
- * Referrals a given entity has made. Phase 1 callers pass states: ["credited"] — pending and expired
- * rows exist in the table but are not rendered until Phase 2.
+ * Referrals a given entity has made. Callers pass the terminal states — `qualified` now, plus `credited`
+ * for rows that were credited before credits became a separate feature. `signed_up` and `expired` rows
+ * exist in the table but are not rendered until Phase 2 ships the pending lifecycle.
  */
 export async function listReferralsByReferrer(
-  referrerType: OwnerType,
+  referrerType: ReferralOwnerType,
   referrerId: number,
   states: ReferralState[],
 ) {
@@ -130,22 +136,32 @@ export async function listReferralsByReferrer(
     .orderBy("signed_up_at", "desc");
 }
 
-/** Credited totals for the stats row. Counts come from the same rows the history renders. */
-export async function referrerStats(referrerType: OwnerType, referrerId: number) {
+/**
+ * Stats row totals, counted from the same rows the history renders.
+ *
+ * `pending_reward_credits` is DERIVED from action_type and the configured amounts, never read from a
+ * stored column: nothing has been paid yet, so there is no posted total to read. Deriving it also means
+ * that when credits are linked back in, no data has to be migrated or reconciled — the figure simply
+ * becomes an awarded balance instead of a pending one.
+ */
+export async function referrerStats(referrerType: ReferralOwnerType, referrerId: number) {
   const rows = await masterKnex("referrals")
-    .where({ referrer_type: referrerType, referrer_id: referrerId, state: "credited" })
+    .where({ referrer_type: referrerType, referrer_id: referrerId })
+    .whereIn("state", TERMINAL_EARNED_STATES)
     .select("action_type")
-    .sum({ credits: "credits_awarded" })
     .count({ n: "*" })
     .groupBy("action_type");
 
-  let total_credits = 0;
   let students_referred = 0;
   let businesses_referred = 0;
-  for (const r of rows as Array<{ action_type: ReferralActionType; credits: string; n: string }>) {
-    total_credits += Number(r.credits ?? 0);
+  for (const r of rows as Array<{ action_type: ReferralActionType; n: string }>) {
     if (r.action_type === "student_referral") students_referred = Number(r.n);
     if (r.action_type === "business_referral") businesses_referred = Number(r.n);
   }
-  return { total_credits, students_referred, businesses_referred };
+
+  const pending_reward_credits =
+    students_referred * REWARD_BY_ACTION.student_referral +
+    businesses_referred * REWARD_BY_ACTION.business_referral;
+
+  return { students_referred, businesses_referred, pending_reward_credits };
 }

@@ -14,7 +14,7 @@
 import "dotenv/config";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import type { OwnerType } from "../../credits/credits.repository.js";
+import type { ReferralOwnerType } from "../consts.js";
 import { issueCode } from "../services/codes.service.js";
 import * as repo from "../repositories/referrals.repository.js";
 
@@ -22,7 +22,7 @@ const logger = createChildLogger("referral-codes-worker");
 
 const BATCH = 500;
 
-async function repair(ownerType: OwnerType): Promise<{ repaired: number; failed: number }> {
+async function repair(ownerType: ReferralOwnerType): Promise<{ repaired: number; failed: number }> {
   let repaired = 0;
   let failed = 0;
 
