@@ -12,6 +12,23 @@ export async function publicGeoRoutes(app: FastifyInstance) {
     return reply.send({ countries });
   });
 
+  // Registered before /countries/:slug so "featured" and this list are never read as
+  // slugs. Public pages with a country picker used to read the admin
+  // /platform-users/countries list, which 401s for a logged-out visitor — and the shared
+  // http client hard-redirects any 401 to /auth/sign-in, so the whole page bounced.
+  app.get("/countries", async (_req, reply) => {
+    const countries = await repo.listPublicCountries();
+    return reply.send({ countries });
+  });
+
+  // Two segments, so it never competes with /countries/:slug above. Same reason as
+  // /countries: the country→city cascade on a public picker was reading the admin list.
+  app.get("/countries/:id/cities", async (req, reply) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const cities = await repo.listPublicCitiesForCountry(id, 500);
+    return reply.send({ cities });
+  });
+
   app.get("/countries/:slug", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
     const country = await repo.findPublicCountryBySlug(slug);

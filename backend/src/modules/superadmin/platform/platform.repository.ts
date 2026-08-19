@@ -101,6 +101,19 @@ export async function listFeaturedCountries() {
     .orderBy("name");
 }
 
+/**
+ * Every active country, for the country pickers on public pages. Named columns, not
+ * `countries.*`: this is anonymous, and the table also carries admin-only editorial
+ * fields. A picker needs an id, a label, and a flag — nothing else.
+ */
+export async function listPublicCountries() {
+  return masterKnex("countries")
+    .select("id", "name", "slug", "iso2", "flag_emoji")
+    .where({ is_active: true })
+    .whereNull("deleted_at")
+    .orderBy("name");
+}
+
 export async function findPublicCountryBySlug(slug: string) {
   const country = await masterKnex("countries")
     .where({ is_active: true })
