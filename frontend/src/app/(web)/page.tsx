@@ -54,7 +54,10 @@ export default function HomePage() {
             <p className="text-white/70 text-sm font-medium mb-2 tracking-wide animate-[fade-in_0.6s_ease-out]">
               World #1 AI Integrated Education Ecosystem
             </p>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-tight animate-[fade-in_0.7s_ease-out]">
+            {/* Leading is pinned per breakpoint (37.5 / 40 / 48px) because Tailwind v4 resolves a bare
+                `leading-tight` differently from v3: there a `md:text-5xl` variant overrode it, here it
+                does not, which stretched this headline 24px taller than the live site's. */}
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-tight sm:leading-10 md:leading-none animate-[fade-in_0.7s_ease-out]">
               Making Global Education
               <br />
               <span className="text-[hsl(var(--gold))]">

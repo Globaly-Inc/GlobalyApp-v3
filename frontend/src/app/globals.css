@@ -154,10 +154,13 @@
   }
 }
 
+/* No `padding-inline` here on purpose. This rule sits outside `@layer`, so any padding it declares beats
+   the `px-*` utility every single call site already writes — every `.container` in src carries its own
+   `px-3`/`px-4`. A hardcoded 2rem silently overrode all of them, insetting every page 16px further than
+   the live site on both edges. */
 .container {
   width: 100%;
   margin-inline: auto;
-  padding-inline: 2rem;
 }
 @media (min-width: 640px) {
   .container { max-width: 640px; }

@@ -28,7 +28,9 @@ export function DestinationCard({ destination }: Readonly<{ destination: Destina
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10 transition-opacity duration-300 group-hover:opacity-90" />
       <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-1 group-hover:translate-y-0 transition-transform duration-300">
-        <h3 className="font-bold text-white text-base md:text-lg leading-tight">
+        {/* md:leading-7 for the same reason as the hero headline: v3's `md:text-lg` used to win over
+            `leading-tight`, v4's does not. See page.tsx. */}
+        <h3 className="font-bold text-white text-base md:text-lg leading-tight md:leading-7">
           <span className="mr-1">{destination.flagEmoji}</span>
           {destination.name}
         </h3>
