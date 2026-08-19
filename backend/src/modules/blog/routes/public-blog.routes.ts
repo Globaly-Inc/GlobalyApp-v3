@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { NotFoundError } from "../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
 import * as repo from "../../superadmin/marketing/blog/repositories/posts.repository.js";
-import { IdParam, PublicPostListQuery } from "../schemas/public-blog.schema.js";
+import { IdOrSlugParam, PublicPostListQuery } from "../schemas/public-blog.schema.js";
 
 export async function publicBlogRoutes(app: FastifyInstance) {
   app.get("/blog/filters", async (_req, reply) => {
@@ -22,9 +22,11 @@ export async function publicBlogRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
-  app.get("/blog/posts/:id", async (req, reply) => {
-    const { id } = IdParam.parse(req.params);
-    const post = await repo.findPublishedPostById(id);
+  app.get("/blog/posts/:idOrSlug", async (req, reply) => {
+    const { idOrSlug } = IdOrSlugParam.parse(req.params);
+    const post = /^\d+$/.test(idOrSlug)
+      ? await repo.findPublishedPostById(Number(idOrSlug))
+      : await repo.findPublishedPostBySlug(idOrSlug);
     if (!post) throw new NotFoundError("Blog post not found");
     await repo.incrementViews(post.id);
     return reply.send(post);

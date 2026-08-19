@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { safeUrl } from "@/lib/safe-url";
 import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "../../components/reveal";
@@ -16,14 +17,16 @@ export function BlogCarousel({ posts }: Readonly<{ posts: BlogCardData[] }>) {
         </Reveal>
 
         <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-          {posts.map((post, i) => (
+          {posts.map((post, i) => {
+            const cover = safeUrl(post.cover_image_url);
+            return (
             <Reveal key={post.id} delay={i * 0.1} className="flex-shrink-0">
-              <Link href={`/blog/${post.id}`} className="group block w-72 md:w-80">
+              <Link href={`/blog/${post.slug}`} className="group block w-72 md:w-80">
                 <div className="rounded-2xl overflow-hidden border border-border bg-muted/10 hover:border-primary/30 transition-all hover:shadow-md h-full">
                   <div className="aspect-[16/10] overflow-hidden bg-muted">
-                    {post.cover_image_url && (
+                    {cover && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={post.cover_image_url} alt={post.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                      <img src={cover} alt={post.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     )}
                   </div>
                   <div className="p-5">
@@ -43,7 +46,8 @@ export function BlogCarousel({ posts }: Readonly<{ posts: BlogCardData[] }>) {
                 </div>
               </Link>
             </Reveal>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

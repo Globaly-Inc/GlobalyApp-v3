@@ -81,7 +81,8 @@ describeDb("public geo endpoints", () => {
       {
         name: `Plainland ${TAG}`, slug: `${TAG}-plainland`,
         iso2: `${TAG}-2c`, iso3: `${TAG}-3c`,
-        is_active: true, is_featured: false, sort_order: 0,
+        // Inactive as well as unfeatured — it is the control for both public list routes.
+        is_active: false, is_featured: false, sort_order: 0,
       },
     ]);
 
@@ -100,6 +101,41 @@ describeDb("public geo endpoints", () => {
     await masterKnex("countries").where("iso2", "like", `${TAG}%`).del();
     await app?.close();
     await masterKnex.destroy();
+  });
+
+  // The public country/city pickers used to read the admin /platform-users/countries
+  // list, which 401s for a logged-out visitor — and the frontend's http client
+  // hard-redirects any 401 to /auth/sign-in, so /services evicted anonymous visitors
+  // instead of degrading. These two routes are the unauthenticated replacement.
+  it("lists every active country for a public picker, with no token", async () => {
+    const { status, body } = await get("/api/v3/countries");
+
+    expect(status).toBe(200);
+    const names = body.countries.map((c: { name: string }) => c.name);
+    expect(names).toContain(`Imageland ${TAG}`);
+    expect(names, "inactive countries are not offered as filters").not.toContain(`Plainland ${TAG}`);
+  });
+
+  it("projects only picker columns — never the whole admin row", async () => {
+    const { body } = await get("/api/v3/countries");
+    const row = body.countries.find((c: { name: string }) => c.name === `Imageland ${TAG}`);
+
+    // Pinned key set, not a blocklist: a column a later migration adds fails here
+    // rather than being published to anonymous callers.
+    expect(Object.keys(row).sort()).toEqual(["flag_emoji", "id", "iso2", "name", "slug"]);
+  });
+
+  it("lists a country's cities for the cascade, with no token", async () => {
+    const { status, body } = await get(`/api/v3/countries/${countryId}/cities`);
+
+    expect(status).toBe(200);
+    expect(body.cities.map((c: { name: string }) => c.name)).toContain(`Imageville ${TAG}`);
+  });
+
+  it("keeps /countries/:slug reachable — the two-segment route does not shadow it", async () => {
+    const { status } = await get(`/api/v3/countries/${TAG}-imageland`);
+
+    expect(status).toBe(200);
   });
 
   it("serves a country whose images are absolute external URLs", async () => {

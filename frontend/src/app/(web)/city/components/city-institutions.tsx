@@ -18,7 +18,7 @@ export async function CityInstitutions({ cityName }: Readonly<{ cityName: string
       {institutions.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {institutions.map((inst) => (
-            <BusinessCard key={inst.id} business={inst} />
+            <BusinessCard key={inst.id} business={inst} kind="institution" />
           ))}
         </div>
       ) : (

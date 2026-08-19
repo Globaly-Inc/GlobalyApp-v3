@@ -42,9 +42,9 @@ export function BlogSection() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {BLOG_POSTS.map((post, i) => (
             <Reveal key={post.slug} delay={i * 0.1}>
-              {/* v3's blog route resolves posts by numeric id (see blog/[id]), not slug, and these three
-                  posts are illustrative (ported verbatim from V2's hardcoded array) rather than real CMS
-                  entries — so link to the blog index instead of a slug URL that would 404. */}
+              {/* These three posts are illustrative (ported verbatim from V2's hardcoded array)
+                  rather than real CMS entries, so their slugs resolve to nothing — link to the
+                  blog index instead of a post URL that would 404. */}
               <Link href="/blog" className="group block">
                 <div className="rounded-2xl overflow-hidden border border-border bg-muted/10 hover:border-primary/30 transition-all hover:shadow-md h-full">
                   <div className="aspect-[16/10] overflow-hidden">

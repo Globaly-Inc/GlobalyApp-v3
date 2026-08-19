@@ -8,3 +8,7 @@ export const PublicPostListQuery = z.object({
 });
 
 export const IdParam = z.object({ id: z.coerce.number().int().positive() });
+
+// The public post route accepts either form: V1 linked posts by slug, V3 shipped
+// numeric-id links first, and both are now in the wild.
+export const IdOrSlugParam = z.object({ idOrSlug: z.string().min(1).max(300) });

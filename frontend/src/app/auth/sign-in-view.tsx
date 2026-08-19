@@ -143,7 +143,7 @@ export function SignInView() {
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">Welcome back</CardTitle>
             <CardDescription>
-              {otpSent ? `Enter the 6-digit code sent to ${email}` : "Sign in with a 6-digit code sent to your email"}
+              {otpSent ? `Enter the 6-digit code sent to ${email}` : "Sign in with a one-time code sent to your email"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -174,13 +174,13 @@ export function SignInView() {
                       Sending code…
                     </>
                   ) : (
-                    "Send Verification Code"
+                    "Send Sign-In Code"
                   )}
                 </Button>
                 <p className="text-center text-sm text-muted-foreground pt-2">
                   Don&apos;t have an account?{" "}
                   <Link href={signUpHref} className="text-primary font-medium hover:underline">
-                    Sign up
+                    Create account
                   </Link>
                 </p>
               </form>

@@ -4,6 +4,7 @@ import {
   getCourseFilters, getCourses, getEducationAgencies, getInstitutions, getMigrationAgents, getStudentJobs,
   getVisaServices,
 } from "./api";
+import type { OrgKind } from "../profiles/types";
 import type { SearchBusiness, SearchCourse, SearchJob, SearchTabKey } from "./types";
 import { SearchTabs } from "./components/search-tabs";
 import { SearchFilters } from "./components/search-filters";
@@ -31,6 +32,15 @@ const TAB_NAMES: Record<SearchTabKey, string> = {
 };
 
 const VALID_TABS = new Set<SearchTabKey>(Object.keys(TAB_NAMES) as SearchTabKey[]);
+
+// Which tabs have a public profile page behind them. Mirrors the backend's
+// KIND_BY_CATEGORY (institutions -> institution; education_agency and
+// migration_agents -> agent); visa services have no profile kind, so no link.
+const PROFILE_KIND_BY_TAB: Partial<Record<SearchTabKey, OrgKind>> = {
+  institutions: "institution",
+  "education-agencies": "agent",
+  "migration-agents": "agent",
+};
 
 type SearchPageProps = Readonly<{
   searchParams: Promise<{
@@ -153,7 +163,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                   {activeTab === "jobs" &&
                     (results as SearchJob[]).map((j) => <JobCard key={j.id} job={j} />)}
                   {(activeTab === "institutions" || activeTab === "education-agencies" || activeTab === "visa-services" || activeTab === "migration-agents") &&
-                    (results as SearchBusiness[]).map((b) => <BusinessCard key={b.id} business={b} />)}
+                    (results as SearchBusiness[]).map((b) => (
+                      <BusinessCard key={b.id} business={b} kind={PROFILE_KIND_BY_TAB[activeTab]} />
+                    ))}
                 </div>
               )}
 

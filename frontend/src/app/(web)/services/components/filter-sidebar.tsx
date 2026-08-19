@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
-import { geoApi, type Country } from "@/app/geo/apis";
-import { servicesApi, type City, type ServiceCategory } from "@/app/personal/earn/services/apis";
+import { servicesApi, type ServiceCategory } from "@/app/personal/earn/services/apis";
+import { getPublicCities, getPublicCountries, type PublicCity, type PublicCountry } from "../../data/public-geo-api";
 import { toMinorUnits } from "@/app/personal/earn/services/utils";
 
 export interface SidebarFilters {
@@ -40,21 +40,20 @@ export function FilterSidebar({
   value: SidebarFilters;
   onChange: (next: SidebarFilters) => void;
 }>) {
-  const [countries, setCountries] = useState<Country[]>([]);
+  const [countries, setCountries] = useState<PublicCountry[]>([]);
   // Cached against the country it belongs to, so a stale city list can never show for a new country and the
   // effect needs no synchronous setState of its own.
-  const [cityCache, setCityCache] = useState<{ countryId: string; list: City[] }>({ countryId: "", list: [] });
+  const [cityCache, setCityCache] = useState<{ countryId: string; list: PublicCity[] }>({ countryId: "", list: [] });
 
   useEffect(() => {
-    geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
+    getPublicCountries().then(setCountries).catch(() => setCountries([]));
   }, []);
 
   useEffect(() => {
     const countryId = value.countryId;
     if (!countryId || cityCache.countryId === countryId) return;
     let cancelled = false;
-    servicesApi
-      .getCities(Number(countryId))
+    getPublicCities(Number(countryId))
       .then((list) => !cancelled && setCityCache({ countryId, list }))
       .catch(() => !cancelled && setCityCache({ countryId, list: [] }));
     return () => {
