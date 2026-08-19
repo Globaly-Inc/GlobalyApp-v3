@@ -54,8 +54,33 @@ export async function deletePost(id: number) {
 
 type PublicPostFilters = { category?: string; country_focus?: string };
 
+// Allowlist, not a blocklist: `select *` here published `content`, `creator_id`,
+// `deleted_at`, `seo_score` and `focus_keyword` to anonymous callers, and any column a
+// later migration adds would join them automatically. Naming the columns means a new one
+// is private until someone adds it here on purpose.
+const PUBLIC_POST_CARD_COLUMNS = [
+  "id",
+  "title",
+  "slug",
+  "excerpt",
+  "category",
+  "country_focus",
+  "tags",
+  "author_name",
+  "author_avatar_url",
+  "cover_image_url",
+  "published_at",
+  "views",
+  "reading_time_minutes",
+  "meta_title",
+  "meta_description",
+] as const;
+
+// The detail page additionally renders the body and emits SEO tags from these.
+const PUBLIC_POST_DETAIL_COLUMNS = [...PUBLIC_POST_CARD_COLUMNS, "content", "canonical_url", "og_image_url"] as const;
+
 export async function listPublishedPosts(limit: number, offset: number, filters: PublicPostFilters) {
-  const q = masterKnex(TABLE).whereNull("deleted_at").where({ is_published: true })
+  const q = masterKnex(TABLE).select(PUBLIC_POST_CARD_COLUMNS).whereNull("deleted_at").where({ is_published: true })
     .orderBy("published_at", "desc").limit(limit).offset(offset);
   if (filters.category) q.where({ category: filters.category });
   if (filters.country_focus) q.where({ country_focus: filters.country_focus });
@@ -71,7 +96,12 @@ export async function countPublishedPosts(filters: PublicPostFilters) {
 }
 
 export async function findPublishedPostById(id: number) {
-  return masterKnex(TABLE).where({ id, is_published: true }).whereNull("deleted_at").first();
+  return masterKnex(TABLE).select(PUBLIC_POST_DETAIL_COLUMNS).where({ id, is_published: true }).whereNull("deleted_at").first();
+}
+
+// V1's post URLs were /blog/{slug}; the numeric id lookup above stays for old links.
+export async function findPublishedPostBySlug(slug: string) {
+  return masterKnex(TABLE).select(PUBLIC_POST_DETAIL_COLUMNS).where({ slug, is_published: true }).whereNull("deleted_at").first();
 }
 
 export async function incrementViews(id: number) {
