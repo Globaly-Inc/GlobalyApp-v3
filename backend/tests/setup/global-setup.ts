@@ -7,6 +7,7 @@ import path from "node:path";
 import pg from "pg";
 import {
   DB_UNREACHABLE_WARNING,
+  maintenanceDatabaseUrl,
   probeTestDatabase,
   testDatabaseUrl,
   testEnv,
@@ -35,6 +36,12 @@ function knexCli(env: NodeJS.ProcessEnv, knexEnv: string, ...args: string[]) {
  * and `v1_staging` can never match it, so this cannot delete real data even if the
  * test URL is ever pointed somewhere it should not be. Runs before migrations so a
  * dropped schema is never one the current run is using.
+ *
+ * That last sentence only holds because each checkout now owns its own database
+ * (db-url.ts). While every worktree shared `globalyapp_test` this drop reached into a
+ * concurrently-running suite and deleted the tenant schema it was mid-way through
+ * provisioning. Do not reintroduce a shared test database without also making this
+ * drop aware of live runs.
  */
 const UUID_SCHEMA = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
@@ -55,7 +62,34 @@ async function dropOrphanedTenantSchemas() {
   }
 }
 
+/**
+ * Create this checkout's database if it is not there yet.
+ *
+ * testDatabaseUrl() names a database per worktree so parallel agents stop sharing one
+ * (see db-url.ts), which means a fresh worktree has no database to connect to. Falls
+ * through silently on any failure: probeTestDatabase() runs next and produces the
+ * existing skip-with-a-warning path, so a server that is simply not running still
+ * skips the suite rather than failing it.
+ */
+async function ensureTestDatabase() {
+  if (await probeTestDatabase()) return;
+  const name = new URL(testDatabaseUrl()).pathname.replace(/^\//, "");
+  const client = new pg.Client({ connectionString: maintenanceDatabaseUrl(), connectionTimeoutMillis: 3000 });
+  try {
+    await client.connect();
+    // No parameter binding for an identifier; the name comes from our own worktree
+    // path through a [^a-zA-Z0-9] filter, never from input.
+    await client.query(`CREATE DATABASE "${name}"`);
+    console.warn(`[integration] created ${name} for this worktree`);
+  } catch {
+    // Already exists, or the server is unreachable — probeTestDatabase() decides.
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
 export default async function setup() {
+  await ensureTestDatabase();
   if (!(await probeTestDatabase())) {
     console.warn(DB_UNREACHABLE_WARNING);
     return;

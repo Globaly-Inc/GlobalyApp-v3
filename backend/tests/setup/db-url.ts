@@ -1,13 +1,48 @@
 // Single source of truth for the integration-test database connection.
 // Imported by vitest.config.ts (main process) and tests/setup/* (workers).
 
+import { fileURLToPath } from "node:url";
+
 import pg from "pg";
 
 export const DEFAULT_TEST_DATABASE_URL =
   "postgresql://test:test@localhost:5460/globalyapp_test";
 
+/**
+ * One database per checkout, so two agents can run the suite at the same time.
+ *
+ * Every worktree used to share `globalyapp_test`, and global-setup drops every
+ * UUID-named tenant schema before migrating. That is safe for one run and actively
+ * destructive for two: run A provisions tenant `c0e2a08f-…`, run B starts and drops
+ * it, and run A then fails `create table "c0e2a08f-…"."knex_migrations"` — a schema
+ * error on a file neither branch touched. Concurrent runs also deadlocked (40P01)
+ * fighting over the same rows. Deriving the name from the checkout removes the
+ * sharing instead of trying to schedule around it.
+ *
+ * The main checkout keeps the plain `globalyapp_test` name, so an existing local DB
+ * and any CI that sets TEST_DATABASE_URL are both unaffected.
+ */
+function testDatabaseName(): string {
+  const here = fileURLToPath(import.meta.url);
+  const worktree = here.match(/\/\.claude\/worktrees\/([^/]+)\//);
+  if (!worktree) return "globalyapp_test";
+  // Postgres identifiers cap at 63 bytes; agent worktree names are ~23.
+  const slug = worktree[1]!.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase();
+  return `globalyapp_test_${slug}`.slice(0, 63);
+}
+
 export function testDatabaseUrl(): string {
-  return process.env.TEST_DATABASE_URL || DEFAULT_TEST_DATABASE_URL;
+  if (process.env.TEST_DATABASE_URL) return process.env.TEST_DATABASE_URL;
+  const url = new URL(DEFAULT_TEST_DATABASE_URL);
+  url.pathname = `/${testDatabaseName()}`;
+  return url.toString();
+}
+
+/** The maintenance connection used to CREATE DATABASE — same server, `postgres` db. */
+export function maintenanceDatabaseUrl(): string {
+  const url = new URL(testDatabaseUrl());
+  url.pathname = "/postgres";
+  return url.toString();
 }
 
 /** Env vars src/config.ts needs, derived from TEST_DATABASE_URL. */
