@@ -13,13 +13,13 @@ export function PricingCta() {
           looking for.
         </p>
         <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Button size="lg" className="btn-gold rounded-full px-8" render={<Link href="/auth/sign-up" />}>
+          <Button size="lg" className="btn-gold rounded-full px-8 h-11" render={<Link href="/auth/sign-up" />}>
             Create your free account
           </Button>
           <Button
             size="lg"
             variant="outline"
-            className="rounded-full border-white/40 bg-transparent px-8 text-white hover:bg-white/10 hover:text-white"
+            className="h-11 rounded-full border-white/40 bg-transparent px-8 text-white hover:bg-white/10 hover:text-white"
             render={<a href="mailto:sales@globaly.app" />}
           >
             Talk to the team

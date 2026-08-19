@@ -1,3 +1,4 @@
+import { safeUrl } from "@/lib/safe-url";
 import type { Destination } from "./destinations";
 
 const API_BASE = `${(process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "")}/api/v3`;
@@ -19,6 +20,8 @@ export async function getFeaturedCountries(): Promise<Destination[]> {
     name: c.name,
     slug: c.slug ?? "",
     flagEmoji: c.flag_emoji ?? "🌐",
-    heroImageUrl: c.hero_image_url ?? null,
+    // DB-sourced: allowlist it here, at the one place the wire row becomes a Destination, so every
+    // card that renders `heroImageUrl` gets its src checked without repeating the guard per call site.
+    heroImageUrl: safeUrl(c.hero_image_url),
   }));
 }

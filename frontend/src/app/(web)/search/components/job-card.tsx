@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { safeUrl } from "@/lib/safe-url";
 import { JOB_TYPE_LABEL, type SearchJob } from "../types";
 
 export function JobCard({ job }: Readonly<{ job: SearchJob }>) {
   const company = job.company_name_from_business ?? job.company_name;
+  const logo = safeUrl(job.logo_url);
   const location = [job.location_city, job.country_name].filter(Boolean).join(", ") || (job.is_remote ? "Remote" : null);
   const jobTypeLabel = job.job_type ? (JOB_TYPE_LABEL[job.job_type] ?? job.job_type) : null;
   const payLabel = job.pay_min || job.pay_max
@@ -16,9 +18,9 @@ export function JobCard({ job }: Readonly<{ job: SearchJob }>) {
       <div className="flex flex-col sm:flex-row">
         <div className="flex-1 min-w-0 flex items-start gap-3 py-3.5 px-4">
           <div className="w-12 h-12 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-            {job.logo_url ? (
+            {logo ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={job.logo_url} alt={company ?? job.title} className="w-full h-full object-contain p-1" />
+              <img src={logo} alt={company ?? job.title} className="w-full h-full object-contain p-1" />
             ) : (
               <Briefcase className="h-5 w-5 text-muted-foreground" />
             )}

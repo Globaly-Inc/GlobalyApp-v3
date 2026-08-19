@@ -15,7 +15,7 @@ export function PricingHero({
           <p className="mb-4 text-xs font-medium tracking-[0.3em] text-white/60 uppercase">
             Transparent pricing — no hidden fees
           </p>
-          <h1 className="mb-4 text-4xl leading-tight font-bold md:text-5xl lg:text-6xl">
+          <h1 className="mb-4 text-4xl leading-tight font-bold md:text-5xl md:leading-none lg:text-6xl">
             Simple, transparent pricing for <em className="text-[hsl(var(--gold))] not-italic">everyone</em>.
           </h1>
           <p className="mx-auto mb-8 max-w-2xl text-lg text-white/70">

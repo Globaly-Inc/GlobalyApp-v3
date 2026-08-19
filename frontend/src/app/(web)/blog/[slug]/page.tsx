@@ -83,7 +83,7 @@ export default async function BlogPostPage({ params }: Readonly<{ params: Promis
           </div>
         )}
 
-        <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4 leading-tight">{post.title}</h1>
+        <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4 leading-tight md:leading-10">{post.title}</h1>
 
         {post.excerpt && <p className="text-lg text-muted-foreground mb-6 leading-relaxed">{post.excerpt}</p>}
 

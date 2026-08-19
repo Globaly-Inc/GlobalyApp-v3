@@ -31,17 +31,31 @@ export function DestinationsCarousel({ countries, loading }: Readonly<{ countrie
                   <Reveal key={country.id} delay={idx * 0.07} className="flex-shrink-0">
                     <Link
                       href={`/country/${country.slug}`}
-                      className="group relative rounded-2xl overflow-hidden w-[200px] md:w-[220px] cursor-pointer block border border-border"
+                      className="group relative rounded-2xl overflow-hidden w-[200px] md:w-[220px] cursor-pointer block"
                     >
-                      <div className="relative h-[200px] md:h-[220px] bg-muted flex items-center justify-center text-6xl transition-transform duration-500 group-hover:scale-105">
-                        {country.flagEmoji}
+                      {/* h-[280px]/md:h-[300px] and the country photograph, both as live renders them. V3 had
+                          shrunk the tile to 220px and dropped the photo for a flag emoji on a flat panel. */}
+                      <div className="relative h-[280px] md:h-[300px]">
+                        {country.heroImageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={country.heroImageUrl}
+                            alt={country.name}
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-muted flex items-center justify-center text-6xl">
+                            {country.flagEmoji}
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                         {fb?.code && (
                           <div className="absolute top-3 left-3">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={FLAG_URL(fb.code)} alt={country.name} className="w-8 h-5 rounded shadow" />
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
                           <p className="text-white font-semibold text-sm">{country.name}</p>
                         </div>

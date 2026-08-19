@@ -23,6 +23,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { servicesApi } from "@/app/personal/earn/services/apis";
+import { safeUrl } from "@/lib/safe-url";
 import type { PublicReview, PublicService } from "@/app/personal/earn/services/apis";
 import { formatDate, formatMoney } from "@/app/personal/earn/services/utils";
 import { ReviewForm } from "@/app/personal/earn/services/components/review-form";
@@ -39,6 +40,7 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
   const [status, setStatus] = useState<"loading" | "idle" | "missing">("loading");
   const [buying, setBuying] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
+  const providerPhoto = safeUrl(service?.provider_photo_url);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,9 +204,7 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
             <Section title="About the provider">
               <div className="flex items-start gap-4 rounded-lg border border-border p-4">
                 <Avatar className="size-12">
-                  {service.provider_photo_url && (
-                    <AvatarImage src={service.provider_photo_url} alt={service.provider_name} />
-                  )}
+                  {providerPhoto && <AvatarImage src={providerPhoto} alt={service.provider_name} />}
                   <AvatarFallback className="text-base">
                     {service.provider_name[0]?.toUpperCase() ?? "S"}
                   </AvatarFallback>

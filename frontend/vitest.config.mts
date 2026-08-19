@@ -36,6 +36,10 @@ export default defineConfig({
         // literal path silently matches nothing and the file drops out of the report.
         "src/app/personal/favorites/utils/index.ts",
         "src/app/**/waitlist/utils/index.ts",
+        // The DB-sourced URL allowlist and the one resolver that calls it before an <img src>.
+        // Same `**` spelling reason as above — a literal `(web)` never matches.
+        "src/lib/safe-url.ts",
+        "src/app/**/country/hero-fallback.ts",
       ],
       thresholds: {
         lines: 80,

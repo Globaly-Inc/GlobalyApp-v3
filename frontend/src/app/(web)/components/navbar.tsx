@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { safeUrl } from "@/lib/safe-url";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
@@ -61,6 +62,7 @@ export function Navbar() {
   };
 
   const initial = (profile?.first_name?.[0] ?? user?.email?.[0] ?? "U").toUpperCase();
+  const photoUrl = safeUrl(profile?.photo_url);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md">
@@ -112,7 +114,7 @@ export function Navbar() {
                   }
                 >
                   <Avatar className="size-7">
-                    {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+                    {photoUrl && <AvatarImage src={photoUrl} alt={profile?.first_name} />}
                     <AvatarFallback>{initial}</AvatarFallback>
                   </Avatar>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />

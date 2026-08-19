@@ -17,7 +17,10 @@ export function WhyJoinSection() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {WHY_JOIN.map((item, i) => (
             <Reveal key={item.title} delay={i * 0.1}>
-              <Card className="p-6 border border-border hover:border-primary/30 hover:shadow-md transition-all h-full">
+              {/* V1's card is `rounded-lg border bg-card shadow-sm` and nothing else. V3's shared card adds
+                  its own vertical padding, a flex gap between children, a ring and text-sm — neutralised
+                  here rather than in the shared component, which the portals style around deliberately. */}
+              <Card className="rounded-lg border border-border shadow-sm ring-0 py-0 gap-0 text-base p-6 hover:border-primary/30 hover:shadow-md transition-all h-full">
                 <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                   <item.Icon className="h-6 w-6 text-primary" />
                 </div>

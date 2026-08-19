@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { ArrowLeft, Calendar, MapPin, Award, ExternalLink, GraduationCap, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { safeUrl } from "@/lib/safe-url";
 import { getScholarshipBySlug } from "../api";
 
 export async function generateMetadata({
@@ -21,6 +22,10 @@ export default async function ScholarshipDetailPage({ params }: Readonly<{ param
   const { slug } = await params;
   const scholarship = await getScholarshipBySlug(slug);
   if (!scholarship) notFound();
+
+  // Scraped and V1-migrated rows never passed through the backend's `webUrl()`, so re-check at the sink.
+  const applicationUrl = safeUrl(scholarship.application_url);
+  const sourceUrl = safeUrl(scholarship.source_url);
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-5xl">
@@ -114,19 +119,19 @@ export default async function ScholarshipDetailPage({ params }: Readonly<{ param
               </div>
             )}
 
-            {scholarship.application_url && (
+            {applicationUrl && (
               <Button
                 className="w-full"
-                render={<a href={scholarship.application_url} target="_blank" rel="noopener noreferrer" />}
+                render={<a href={applicationUrl} target="_blank" rel="noopener noreferrer" />}
               >
                 Apply now <ExternalLink className="h-4 w-4 ml-2" />
               </Button>
             )}
-            {scholarship.source_url && (
+            {sourceUrl && (
               <Button
                 variant="outline"
                 className="w-full"
-                render={<a href={scholarship.source_url} target="_blank" rel="noopener noreferrer" />}
+                render={<a href={sourceUrl} target="_blank" rel="noopener noreferrer" />}
               >
                 Source <ExternalLink className="h-4 w-4 ml-2" />
               </Button>

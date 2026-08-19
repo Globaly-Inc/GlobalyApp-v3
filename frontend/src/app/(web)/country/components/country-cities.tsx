@@ -7,7 +7,7 @@ import Autoplay from "embla-carousel-autoplay";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "../../components/reveal";
-import { getCityFallbackImage } from "../hero-fallback";
+import { getCityImage } from "../hero-fallback";
 import type { CountryDetail } from "../types";
 
 function subscribeHoverCapability(callback: () => void) {
@@ -89,7 +89,7 @@ export function CountryCities({ country }: Readonly<{ country: CountryDetail }>)
         <div className={`overflow-hidden py-4 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`} ref={emblaRef}>
           <div className="flex items-center">
             {cities.map((city, i) => {
-              const image = city.thumbnail_image_url ?? city.hero_image_url ?? getCityFallbackImage(city.id);
+              const image = getCityImage(city);
               return (
                 <Link key={city.id} href={`/city/${country.slug}/${city.slug}`} className="min-w-0 shrink-0 grow-0 basis-auto">
                   <CityTile city={city} image={image} active={i === selectedIndex} />

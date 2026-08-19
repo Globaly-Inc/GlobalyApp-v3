@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Building, MapPin } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { safeUrl } from "@/lib/safe-url";
 import { Reveal } from "../../components/reveal";
 import type { SearchBusiness } from "../../search/types";
 
@@ -26,6 +27,7 @@ export function InstitutionsCarousel({ institutions, loading }: Readonly<{ insti
             ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="flex-shrink-0 w-48 h-56 rounded-xl" />)
             : institutions.map((inst, idx) => {
                 const location = [inst.city, inst.country_name].filter(Boolean).join(", ");
+                const logo = safeUrl(inst.logo_url);
                 return (
                   <Reveal key={inst.id} delay={idx * 0.07} className="flex-shrink-0">
                     <Link
@@ -33,9 +35,9 @@ export function InstitutionsCarousel({ institutions, loading }: Readonly<{ insti
                       className="group block w-44 md:w-48 bg-background border border-border rounded-xl p-4 hover:shadow-md transition-shadow"
                     >
                       <div className="aspect-square rounded-lg overflow-hidden bg-muted mb-3 flex items-center justify-center p-2">
-                        {inst.logo_url ? (
+                        {logo ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={inst.logo_url} alt={inst.business_name} className="w-full h-full object-contain transition-transform group-hover:scale-105" />
+                          <img src={logo} alt={inst.business_name} className="w-full h-full object-contain transition-transform group-hover:scale-105" />
                         ) : (
                           <Building className="h-8 w-8 text-muted-foreground" />
                         )}

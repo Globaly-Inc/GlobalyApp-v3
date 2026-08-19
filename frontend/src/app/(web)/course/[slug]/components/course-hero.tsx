@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { GraduationCap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { safeUrl } from "@/lib/safe-url";
 import type { CourseDetail } from "../../../search/types";
 
 export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
+  const image = safeUrl(course.image_url);
+
   return (
     <section className="bg-linear-to-br from-primary/5 via-background to-primary/10 border-b border-border">
       <div className="container max-w-6xl mx-auto px-4 py-8">
@@ -12,9 +15,9 @@ export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
         </p>
         <div className="flex items-start gap-4">
           <div className="w-16 h-16 rounded-xl border border-border bg-card shadow-sm flex items-center justify-center flex-shrink-0 overflow-hidden">
-            {course.image_url ? (
+            {image ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={course.image_url} alt={course.name} className="w-full h-full object-contain p-1" />
+              <img src={image} alt={course.name} className="w-full h-full object-contain p-1" />
             ) : (
               <span className="text-2xl font-bold text-primary">{course.name.charAt(0).toUpperCase()}</span>
             )}

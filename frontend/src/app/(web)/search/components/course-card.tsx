@@ -2,6 +2,7 @@ import Link from "next/link";
 import { GraduationCap, Clock, Calendar, BookOpen, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { safeUrl } from "@/lib/safe-url";
 import { CourseCompareButton } from "./course-compare-button";
 import { MONTH_NAMES, type SearchCourse } from "../types";
 
@@ -13,6 +14,7 @@ function formatFee(amount: string | null, currency: string | null) {
 }
 
 export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
+  const image = safeUrl(course.image_url);
   const durationLabel = course.duration_weeks ? `${course.duration_weeks} week${course.duration_weeks > 1 ? "s" : ""}` : null;
   const nextIntakeLabel = course.next_intake_year
     ? `${course.next_intake_month ? MONTH_NAMES[course.next_intake_month - 1] : ""} ${course.next_intake_year}`.trim()
@@ -29,9 +31,9 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
         <div className="flex-1 min-w-0 p-4">
           <div className="flex gap-3">
             <div className="w-14 h-14 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-              {course.image_url ? (
+              {image ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={course.image_url} alt={course.name} className="w-full h-full object-contain p-1" />
+                <img src={image} alt={course.name} className="w-full h-full object-contain p-1" />
               ) : (
                 <GraduationCap className="h-6 w-6 text-muted-foreground" />
               )}
