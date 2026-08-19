@@ -3,4 +3,4 @@ import { homeMockApi } from "./mock-data";
 import { homeRealApi } from "./real-api";
 
 export const homeApi = createApi({ mock: homeMockApi, real: homeRealApi });
-export type { FeedPost, FeedPage, CreatePostInput, ComposeWithAiInput, PostMedia, ReactionGroup } from "./types";
+export type { RecentEnquiry, RecentEnquiries } from "./types";

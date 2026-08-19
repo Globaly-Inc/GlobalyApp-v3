@@ -98,35 +98,64 @@ export async function findPostForViewer(id: number, viewerId: number) {
  * Timeline page. Keyset (not OFFSET) on the exact triple the ORDER BY uses, so a post inserted mid-
  * pagination can neither duplicate nor skip a row.
  *
- * Visibility:
- *   everyone → all authenticated users
- *   business → members of that business per user_business_index
- *   private  → the author only
+ * Visibility is two decisions, not one: WHO the post was addressed to, and WHICH portal it was written
+ * from. Owning a post is not enough to see it everywhere.
+ *
+ *   everyone → every personal-portal user, plus anyone reading a business portal they belong to. The only
+ *              audience that crosses between a user's personal and business portals.
+ *   students → personal-portal students, and only inside the personal portal
+ *   business → the business's own portal, for its members
+ *   private  → the author, and only inside the portal they wrote it from
+ *
+ * So for one user who has both portals: their students-only personal post does not appear in their
+ * business portal, and their business's students-only post does not appear in their personal portal —
+ * while either one marked "everyone" appears in both.
  */
 export async function listPosts(input: {
   viewerId: number;
+  /** Both read once per request rather than as correlated subqueries per row — see viewerAudience. */
+  viewerIsPersonal: boolean;
+  viewerIsStudent: boolean;
+  /** The portal being read: null = personal, a business id = that business's portal (membership verified). */
+  viewingAsBusinessId?: number | null;
   postType?: string;
   limit: number;
   cursor?: Cursor | null;
 }) {
-  const { viewerId, postType, limit, cursor } = input;
+  const { viewerId, viewerIsPersonal, viewerIsStudent, viewingAsBusinessId, postType, limit, cursor } = input;
 
   const rows: (FeedPostRow & Record<string, unknown>)[] = await hydratedPostQuery(viewerId)
     .modify((qb) => {
       if (postType && postType !== "all") qb.where("p.post_type", postType);
     })
     .where((qb) => {
-      qb.where("p.visibility", "everyone")
-        .orWhere((own) => own.where("p.visibility", "private").andWhere("p.author_platform_user_id", viewerId))
-        .orWhere((biz) =>
-          biz.where("p.visibility", "business").whereIn(
-            "p.business_id",
-            masterKnex("user_business_index")
-              .select("business_id")
-              .where({ platform_user_id: viewerId })
-              .whereNull("deleted_at"),
-          ),
-        );
+      qb.where((everyone) => {
+        // The one audience that ignores which portal you are reading from.
+        everyone.where("p.visibility", "everyone");
+        // Not every authenticated account: a login with neither a personal portal nor a business portal
+        // open is not an audience for it, and only ever sees its own posts back.
+        if (!viewerIsPersonal && !viewingAsBusinessId) everyone.andWhere("p.author_platform_user_id", viewerId);
+      }).orWhere((scoped) => {
+        // Everything below is context-scoped: a post addressed to anyone narrower than "everyone" stays in
+        // the portal it was written from.
+        if (viewingAsBusinessId) {
+          // Business portal: this business's own wall, whatever audience each post was written for — the
+          // business is always an audience for itself. Membership was verified before this ran. A member's
+          // private post stays private even to their colleagues.
+          scoped
+            .where("p.business_id", viewingAsBusinessId)
+            .andWhere((v) =>
+              v.whereNot("p.visibility", "private").orWhere("p.author_platform_user_id", viewerId),
+            );
+          return;
+        }
+        // Personal portal: only posts written from a personal portal (no business) reach it. The author is
+        // always an audience for their own post, so they can still see and manage what they published.
+        scoped.whereNull("p.business_id").andWhere((aud) => {
+          aud.where("p.author_platform_user_id", viewerId);
+          if (viewerIsStudent) aud.orWhere("p.visibility", "students");
+        });
+      });
     })
     .modify((qb) => {
       if (!cursor) return;
@@ -208,6 +237,73 @@ export async function isBusinessMember(platformUserId: number, businessId: numbe
     .whereNull("deleted_at")
     .first();
   return !!row;
+}
+
+/**
+ * Who is this viewer, for visibility purposes?
+ *
+ *  - isPersonal: has a personal portal (platform_users.is_personal_account, set by personal onboarding).
+ *    "everyone" means every personal-portal user — NOT every authenticated account, so a business-only or
+ *    agent login is not an audience for it.
+ *
+ *  - isStudent: a personal user who is behaving like one. `individual_category = 'student'` counts, but it
+ *    cannot be the only test: it is written solely by personal onboarding, and every profile predating
+ *    that step has it NULL — which made the "students" audience reach nobody but the post's own author.
+ *
+ *    So the behavioural signals count too, and any ONE of them is enough: they have filled in study
+ *    preferences, recorded a test score, or added an education background. These are the same three
+ *    profile sections the UI shows, and they are what a student fills in and a parent or explorer does not.
+ *
+ *    Widening this widens who receives a students-only post, so it is decided here, server-side, from the
+ *    viewer's own rows — never from anything the client sends.
+ *
+ * Still one query per request, passed into listPosts as booleans rather than correlated subqueries per row.
+ */
+export async function viewerAudience(platformUserId: number): Promise<{ isPersonal: boolean; isStudent: boolean }> {
+  const row = await masterKnex("platform_users as u")
+    .leftJoin("platform_user_profiles as p", function () {
+      this.on("p.user_id", "=", "u.id").andOnNull("p.deleted_at");
+    })
+    .where("u.id", platformUserId)
+    .whereNull("u.deleted_at")
+    .first(
+      "u.is_personal_account",
+      "p.individual_category",
+      // Study Preferences, as the profile page groups them. jsonb_typeof guards the array calls: these
+      // columns are jsonb, and jsonb_array_length() raises on a non-array rather than returning null.
+      masterKnex.raw(
+        `(
+           (jsonb_typeof(p.preferred_destinations) = 'array' AND jsonb_array_length(p.preferred_destinations) > 0)
+           OR (jsonb_typeof(p.fields_of_study) = 'array' AND jsonb_array_length(p.fields_of_study) > 0)
+           OR COALESCE(array_length(p.preferred_degree_levels, 1), 0) > 0
+           OR NULLIF(p.expected_start_date, '') IS NOT NULL
+           OR p.budget_min IS NOT NULL
+           OR p.budget_max IS NOT NULL
+         ) as has_study_preferences`,
+      ),
+      // EXISTS, not COUNT — one matching row is the whole answer.
+      masterKnex.raw(
+        `EXISTS (SELECT 1 FROM platform_user_qualifications q
+                  WHERE q.user_id = u.id AND q.deleted_at IS NULL) as has_qualifications`,
+      ),
+      masterKnex.raw(
+        `EXISTS (SELECT 1 FROM platform_user_language_tests t
+                  WHERE t.user_id = u.id AND t.deleted_at IS NULL) as has_language_tests`,
+      ),
+    );
+
+  const isPersonal = !!row?.is_personal_account;
+  return {
+    isPersonal,
+    // Gated on isPersonal: being a student is a property of a personal portal, so a business-only login
+    // with leftover profile rows is not suddenly an audience for other people's students-only posts.
+    isStudent:
+      isPersonal &&
+      (row?.individual_category === "student" ||
+        !!row?.has_study_preferences ||
+        !!row?.has_qualifications ||
+        !!row?.has_language_tests),
+  };
 }
 
 export async function findPost(id: number) {
