@@ -7,13 +7,16 @@ import type { Knex } from "knex";
  * (Platform → Categories → Other Service Categories), and a seller cannot add to it.
  */
 
+// Slugs must be hyphen-separated, not underscore — the admin edit form sends `slug` on every
+// PATCH, validated by CategoryInputSchema's `/^[a-z0-9]+(?:-[a-z0-9]+)*$/` regex, which rejects
+// underscores. An underscore slug here would 400 the moment anyone edits the row in the UI.
 const CATEGORIES = [
-  { slug: "airport_pickup", name: "Airport Pickup", icon: "Plane", sort_order: 1 },
-  { slug: "city_orientation", name: "City Orientation", icon: "Map", sort_order: 2 },
-  { slug: "rental_support", name: "Rental Support", icon: "Home", sort_order: 3 },
-  { slug: "employment_support", name: "Employment Setup & Support", icon: "Briefcase", sort_order: 4 },
-  { slug: "assignment_help", name: "Assignment Help", icon: "FileText", sort_order: 5 },
-  { slug: "private_tutoring", name: "Private Tutoring", icon: "GraduationCap", sort_order: 6 },
+  { slug: "airport-pickup", name: "Airport Pickup", icon: "Plane", sort_order: 1 },
+  { slug: "city-orientation", name: "City Orientation", icon: "Map", sort_order: 2 },
+  { slug: "rental-support", name: "Rental Support", icon: "Home", sort_order: 3 },
+  { slug: "employment-support", name: "Employment Setup & Support", icon: "Briefcase", sort_order: 4 },
+  { slug: "assignment-help", name: "Assignment Help", icon: "FileText", sort_order: 5 },
+  { slug: "private-tutoring", name: "Private Tutoring", icon: "GraduationCap", sort_order: 6 },
   { slug: "other", name: "Other", icon: "Package", sort_order: 7 },
 ];
 

@@ -242,7 +242,7 @@ export function CategoriesView() {
       <AdminSegmentedTabs options={CATEGORY_TABS} value={tab} onChange={handleTabChange} />
 
       {TAB_DESCRIPTION[tab] && (
-        <p className="mt-3 max-w-3xl text-sm text-muted-foreground">{TAB_DESCRIPTION[tab]}</p>
+        <p className="mt-3 mb-4 max-w-3xl text-sm text-muted-foreground">{TAB_DESCRIPTION[tab]}</p>
       )}
 
       {tabContent}
