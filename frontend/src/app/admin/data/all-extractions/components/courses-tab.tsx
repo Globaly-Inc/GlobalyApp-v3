@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { VERIFICATION_DOT } from "../const";
@@ -34,6 +35,7 @@ export function CoursesTab({
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -80,7 +82,19 @@ export function CoursesTab({
   };
 
   const query = search.trim().toLowerCase();
-  const visible = query ? courses.filter((c) => c.name.toLowerCase().includes(query)) : courses;
+  // Options come from the data, not a hardcoded list — the pipeline writes several
+  // statuses (unverified, verified, confirmed, mismatch, flagged, manual) and only
+  // the ones actually present are worth offering.
+  const statusCounts = new Map<string, number>();
+  for (const c of courses) {
+    const s = c.verification_status ?? "unverified";
+    statusCounts.set(s, (statusCounts.get(s) ?? 0) + 1);
+  }
+  const filtering = query !== "" || statusFilter !== "all";
+  const visible = courses.filter((c) => {
+    if (statusFilter !== "all" && (c.verification_status ?? "unverified") !== statusFilter) return false;
+    return !query || c.name.toLowerCase().includes(query);
+  });
   const selected = courses.find((c) => c.id === selectedId) ?? null;
   const allSelected = visible.length > 0 && selectedIds.length === visible.length;
 
@@ -150,6 +164,22 @@ export function CoursesTab({
                   className="h-9 pl-7 text-xs"
                 />
               </div>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
+                <SelectTrigger className="h-9 w-[160px] text-xs cursor-pointer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses ({courses.length})</SelectItem>
+                  {[...statusCounts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([status, count]) => (
+                    <SelectItem key={status} value={status}>
+                      <span className="flex items-center gap-2">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", VERIFICATION_DOT[status] ?? "bg-muted-foreground/30")} />
+                        <span className="capitalize">{status}</span> ({count})
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button className="h-9 gap-1.5 cursor-pointer" disabled={adding} onClick={() => setAdding(true)}>
                 <Plus className="h-4 w-4" />
                 Add Course
@@ -164,7 +194,7 @@ export function CoursesTab({
                   disabled={visible.length === 0}
                 />
                 {courses.length} course{courses.length === 1 ? "" : "s"}
-                {query && ` · ${visible.length} matching`}
+                {filtering && ` · ${visible.length} matching`}
               </label>
 
               {selectedIds.length > 0 && (
@@ -228,7 +258,7 @@ export function CoursesTab({
                 <Card className="border-dashed">
                   <CardContent className="py-10 text-center text-muted-foreground">
                     <BookOpen className="mx-auto mb-3 h-7 w-7 opacity-40" />
-                    <p className="text-sm">{query ? "No courses match your search" : "No courses yet"}</p>
+                    <p className="text-sm">{filtering ? "No courses match your filters" : "No courses yet"}</p>
                   </CardContent>
                 </Card>
               )}

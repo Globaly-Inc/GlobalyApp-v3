@@ -237,6 +237,21 @@ describe("withRetry", () => {
     expect(out.courses).toHaveLength(1);
   });
 
+  it("retries a network-level failure, not just an HTTP status", async () => {
+    // The SDK surfaces a dropped socket as "fetch failed" with no status code at
+    // all; it used to be classified permanent and killed the whole step. The
+    // retryDelay suffix is only here to keep the test's backoff at 0s.
+    let calls = 0;
+    const flaky: LlmGenerate = async () => {
+      calls++;
+      if (calls < 2) throw new Error('fetch failed {"retryDelay":"0s"}');
+      return { text: '{"courses":[]}', truncated: false };
+    };
+    const out = await extractJson<CoursesShape>({ system: "s", prompt: "p", generate: flaky });
+    expect(calls).toBe(2);
+    expect(out.courses).toHaveLength(0);
+  });
+
   it("gives up after 3 retries rather than hammering the provider forever", async () => {
     let calls = 0;
     const dead: LlmGenerate = async () => {

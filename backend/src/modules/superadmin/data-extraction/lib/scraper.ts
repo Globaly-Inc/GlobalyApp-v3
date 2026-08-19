@@ -14,6 +14,8 @@ export interface ScrapeOptions {
   waitFor?: number;
   withLinks?: boolean;
   forceFirecrawl?: boolean;
+  /** Firecrawl mobile emulation — some anti-bot walls only serve the mobile site. */
+  mobile?: boolean;
 }
 
 export interface ScrapeResult {
@@ -203,6 +205,7 @@ async function firecrawlScrape(
         formats,
         onlyMainContent: opts.onlyMainContent ?? true,
         waitFor: opts.waitFor ?? 2000,
+        ...(opts.mobile ? { mobile: true } : {}),
       }),
     });
     const data: any = await res.json().catch(() => ({}));

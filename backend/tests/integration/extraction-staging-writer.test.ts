@@ -465,6 +465,28 @@ describeDb("extraction staging writer", () => {
         ["Winter", null, null], // 13 is not a month; null beats a fabricated one
       ]);
     });
+
+    it("coerces LLM date strings and drops the yearless ones", async () => {
+      // "February 15" crashed the intake dedup SELECT with `invalid input syntax
+      // for type date` — the raw LLM string went straight to a date column.
+      const jobId = await newJob("date-coerce");
+      await writer.writeCourse(
+        jobId,
+        {
+          name: "Bachelor of Arts",
+          intakes: [
+            { intake_name: "Spring", admission_deadline: "February 15", intake_month: "February" },
+            { intake_name: "Fall", admission_deadline: "15 February 2026", start_date: "2026-07-01" },
+          ],
+        },
+        new Map(),
+      );
+      const rows = await db(`${S}.extraction_intakes`).where({ job_id: jobId }).orderBy("intake_name");
+      expect(rows[1].admission_deadline).toBeNull(); // Spring: no year, not a date
+      expect(rows[1].intake_month).toBe(2); // but the month survives
+      expect(String(rows[0].admission_deadline)).toContain("Feb 15 2026");
+      expect(String(rows[0].start_date)).toContain("Jul 01 2026");
+    });
   });
 
   // ── what the LLM leaves out ───────────────────────────────────────────────
