@@ -105,13 +105,30 @@ export type SearchJob = {
   logo_url: string | null;
 };
 
+export type SearchScholarship = {
+  id: number;
+  title: string;
+  slug: string;
+  provider_name: string | null;
+  country: string | null;
+  city: string | null;
+  basis: string | null;
+  degree_levels: string[];
+  coverage_type: string;
+  coverage_amount: number | null;
+  coverage_currency: string | null;
+  deadline: string | null;
+  is_featured: boolean;
+};
+
 export type SearchTabKey =
   | "courses"
   | "institutions"
   | "education-agencies"
   | "visa-services"
   | "migration-agents"
-  | "jobs";
+  | "jobs"
+  | "scholarships";
 
 export const DEGREE_LABEL: Record<string, string> = {
   certificate: "Certificate",
@@ -123,6 +140,11 @@ export const DEGREE_LABEL: Record<string, string> = {
   master: "Master's",
   doctoral: "Doctoral (PhD)",
   other: "Other",
+};
+
+export const BASIS_LABEL: Record<string, string> = {
+  merit: "Merit", need: "Need", sports: "Sports", diversity: "Diversity",
+  government: "Government", research: "Research", other: "Other",
 };
 
 export const JOB_TYPE_LABEL: Record<string, string> = {

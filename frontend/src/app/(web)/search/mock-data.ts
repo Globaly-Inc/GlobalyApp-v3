@@ -1,5 +1,5 @@
 import type {
-  CourseDetail, CourseFilterOptions, Paginated, SearchBusiness, SearchCourse, SearchJob,
+  CourseDetail, CourseFilterOptions, Paginated, SearchBusiness, SearchCourse, SearchJob, SearchScholarship,
 } from "./types";
 import type { SearchFilterParams } from "./api";
 
@@ -304,6 +304,21 @@ const MOCK_JOBS: SearchJob[] = [
   },
 ];
 
+const MOCK_SCHOLARSHIPS: SearchScholarship[] = [
+  {
+    id: 1, title: "Vice-Chancellor's Excellence Scholarship", slug: "vice-chancellors-excellence-scholarship",
+    provider_name: "University of Melbourne", country: "Australia", city: "Melbourne", basis: "merit",
+    degree_levels: ["master"], coverage_type: "partial_tuition", coverage_amount: 10000, coverage_currency: "AUD",
+    deadline: "2026-10-31", is_featured: true,
+  },
+  {
+    id: 2, title: "Global Leaders Award", slug: "global-leaders-award",
+    provider_name: "Global Foundation", country: "United Kingdom", city: null, basis: "diversity",
+    degree_levels: ["bachelor", "master"], coverage_type: "full_tuition", coverage_amount: null, coverage_currency: "GBP",
+    deadline: "2026-11-15", is_featured: false,
+  },
+];
+
 const MOCK_COURSE_FILTER_OPTIONS: CourseFilterOptions = {
   years: [2026, 2027],
   currencies: ["AUD", "USD", "CAD", "INR", "NPR"],
@@ -382,6 +397,19 @@ export function mockGetStudentJobs(params: SearchFilterParams): Paginated<Search
   }
   if (params.job_type) rows = rows.filter((j) => j.job_type === params.job_type);
   if (params.is_remote) rows = rows.filter((j) => j.is_remote);
+  return paginate(rows, params);
+}
+
+export function mockGetScholarships(params: SearchFilterParams): Paginated<SearchScholarship> {
+  console.log("[mock] getScholarships", params);
+  let rows = MOCK_SCHOLARSHIPS.filter((s) => matchesCommon({ country_name: s.country, city: s.city }, params));
+  if (params.search) {
+    const q = params.search.toLowerCase();
+    rows = rows.filter((s) => s.title.toLowerCase().includes(q) || s.provider_name?.toLowerCase().includes(q));
+  }
+  if (params.basis) rows = rows.filter((s) => s.basis === params.basis);
+  if (params.degree_level) rows = rows.filter((s) => s.degree_levels.includes(params.degree_level!));
+  if (params.fee_min != null) rows = rows.filter((s) => (s.coverage_amount ?? Infinity) >= params.fee_min!);
   return paginate(rows, params);
 }
 

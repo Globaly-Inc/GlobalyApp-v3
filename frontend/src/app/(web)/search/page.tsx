@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Search as SearchIcon } from "lucide-react";
 import {
-  getCourseFilters, getCourses, getEducationAgencies, getInstitutions, getMigrationAgents, getStudentJobs,
-  getVisaServices,
+  getCourseFilters, getCourses, getEducationAgencies, getInstitutions, getMigrationAgents, getScholarshipsSearch,
+  getStudentJobs, getVisaServices,
 } from "./api";
-import type { SearchBusiness, SearchCourse, SearchJob, SearchTabKey } from "./types";
+import type { SearchBusiness, SearchCourse, SearchJob, SearchScholarship, SearchTabKey } from "./types";
 import { SearchTabs } from "./components/search-tabs";
 import { SearchFilters } from "./components/search-filters";
 import { SearchBar } from "./components/search-bar";
@@ -13,6 +13,7 @@ import { MobileFiltersSheet } from "./components/mobile-filters-sheet";
 import { CourseCard } from "./components/course-card";
 import { BusinessCard } from "./components/business-card";
 import { JobCard } from "./components/job-card";
+import { ScholarshipSearchCard } from "./components/scholarship-search-card";
 import { SearchEmptyState } from "./components/search-empty-state";
 import { SearchPagination } from "./components/search-pagination";
 
@@ -21,6 +22,15 @@ export const metadata: Metadata = {
   description: "Search verified courses, institutions, agencies, visa services, and student jobs worldwide.",
 };
 
+function countBy<T>(items: T[], getValue: (item: T) => string | null): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const value = getValue(item);
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
 const TAB_NAMES: Record<SearchTabKey, string> = {
   courses: "Courses",
   institutions: "Institutions",
@@ -28,6 +38,7 @@ const TAB_NAMES: Record<SearchTabKey, string> = {
   "visa-services": "Visa Services",
   "migration-agents": "Migration Agents",
   jobs: "Student Jobs",
+  scholarships: "Scholarships",
 };
 
 const VALID_TABS = new Set<SearchTabKey>(Object.keys(TAB_NAMES) as SearchTabKey[]);
@@ -47,6 +58,7 @@ type SearchPageProps = Readonly<{
     intake_year?: string;
     sort?: string;
     page?: string;
+    basis?: string;
   }>;
 }>;
 
@@ -67,6 +79,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     currency: params.currency || undefined,
     intake_year: params.intake_year ? Number(params.intake_year) : undefined,
     sort: params.sort || undefined,
+    basis: params.basis || undefined,
   };
 
   const fetchers: Record<SearchTabKey, () => Promise<{ data: unknown[]; meta: { page: number; limit: number; total: number; totalPages: number } }>> = {
@@ -76,12 +89,25 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     "visa-services": () => getVisaServices(filters),
     "migration-agents": () => getMigrationAgents(filters),
     jobs: () => getStudentJobs(filters),
+    scholarships: () => getScholarshipsSearch(filters),
   };
 
-  const [{ data: results, meta }, courseFilterOptions] = await Promise.all([
+  const [{ data: results, meta }, courseFilterOptions, scholarshipSample] = await Promise.all([
     fetchers[activeTab](),
     activeTab === "courses" ? getCourseFilters() : Promise.resolve(null),
+    // Only scholarships get real dropdowns for Country/City — courses/jobs/etc. store country
+    // as unstructured free text with no shared field name to derive facets generically from.
+    activeTab === "scholarships"
+      ? getScholarshipsSearch({ search: filters.search })
+      : Promise.resolve(null),
   ]);
+
+  const scholarshipCountryOptions = scholarshipSample
+    ? countBy(scholarshipSample.data, (s) => s.country).map(([value, count]) => ({ value, label: `${value} (${count})` }))
+    : undefined;
+  const scholarshipCityOptions = scholarshipSample
+    ? countBy(scholarshipSample.data, (s) => s.city).map(([value, count]) => ({ value, label: `${value} (${count})` }))
+    : undefined;
 
   const base = { country: filters.country, city: filters.city, search: filters.search };
   const query: Record<string, string> = { tab: activeTab, ...base } as Record<string, string>;
@@ -97,9 +123,12 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     feeMin: filters.fee_min,
     feeMax: filters.fee_max,
     currency: filters.currency,
+    countryOptions: scholarshipCountryOptions,
+    cityOptions: scholarshipCityOptions,
     sort: filters.sort,
     intakeYear: filters.intake_year,
     intakeYears: courseFilterOptions?.years,
+    basis: filters.basis,
   };
 
   return (
@@ -152,6 +181,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                     (results as SearchCourse[]).map((c) => <CourseCard key={c.id} course={c} />)}
                   {activeTab === "jobs" &&
                     (results as SearchJob[]).map((j) => <JobCard key={j.id} job={j} />)}
+                  {activeTab === "scholarships" &&
+                    (results as SearchScholarship[]).map((s) => <ScholarshipSearchCard key={s.id} scholarship={s} />)}
                   {(activeTab === "institutions" || activeTab === "education-agencies" || activeTab === "visa-services" || activeTab === "migration-agents") &&
                     (results as SearchBusiness[]).map((b) => <BusinessCard key={b.id} business={b} />)}
                 </div>

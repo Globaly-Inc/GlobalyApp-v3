@@ -8,8 +8,11 @@ import * as service from "../services/scholarships.service.js";
 
 export async function scholarshipRoutes(app: FastifyInstance) {
   app.get("/", async (req, reply) => {
-    const { search, is_published, country, ...pagination } = ScholarshipListQuery.parse(req.query);
-    const filters = { search, is_published, country };
+    const {
+      search, is_published, is_featured, country, coverage_min, coverage_max, deadline_from, deadline_to,
+      ...pagination
+    } = ScholarshipListQuery.parse(req.query);
+    const filters = { search, is_published, is_featured, country, coverage_min, coverage_max, deadline_from, deadline_to };
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
       service.listAdmin(limit, offset, filters),

@@ -1,7 +1,9 @@
-import type { CourseDetail, CourseFilterOptions, Paginated, SearchBusiness, SearchCourse, SearchJob } from "./types";
+import type {
+  CourseDetail, CourseFilterOptions, Paginated, SearchBusiness, SearchCourse, SearchJob, SearchScholarship,
+} from "./types";
 import {
   mockGetCourseBySlug, mockGetCourseFilters, mockGetCourses, mockGetEducationAgencies, mockGetInstitutions,
-  mockGetMigrationAgents, mockGetStudentJobs, mockGetVisaServices,
+  mockGetMigrationAgents, mockGetScholarships, mockGetStudentJobs, mockGetVisaServices,
 } from "./mock-data";
 
 const API_BASE = `${(process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "")}/api/v3`;
@@ -21,6 +23,7 @@ export type SearchFilterParams = {
   currency?: string;
   intake_year?: number;
   sort?: string;
+  basis?: string;
 };
 
 function buildQuery(params: SearchFilterParams) {
@@ -68,6 +71,24 @@ export const getMigrationAgents = (params: SearchFilterParams): Promise<Paginate
 
 export const getStudentJobs = (params: SearchFilterParams): Promise<Paginated<SearchJob>> =>
   USE_MOCK_DATA ? Promise.resolve(mockGetStudentJobs(params)) : fetchPaginated<SearchJob>("students/jobs", params);
+
+// The dedicated scholarships endpoint (`/api/v3/scholarships`) uses its own query param
+// names (q, degree_level, coverage_min) rather than the generic search/* convention above,
+// so it gets its own query builder instead of reusing buildQuery().
+export const getScholarshipsSearch = (params: SearchFilterParams): Promise<Paginated<SearchScholarship>> => {
+  if (USE_MOCK_DATA) return Promise.resolve(mockGetScholarships(params));
+  const qs = new URLSearchParams();
+  if (params.page && params.page > 1) qs.set("page", String(params.page));
+  if (params.search) qs.set("q", params.search);
+  if (params.country) qs.set("country", params.country);
+  if (params.basis) qs.set("basis", params.basis);
+  if (params.degree_level) qs.set("degree_level", params.degree_level);
+  if (params.fee_min != null) qs.set("coverage_min", String(params.fee_min));
+  return fetch(`${API_BASE}/scholarships?${qs}`, { next: { revalidate: 30 } }).then((res) => {
+    if (!res.ok) throw new Error("Failed to load scholarships");
+    return res.json();
+  });
+};
 
 export async function getCourseFilters(): Promise<CourseFilterOptions> {
   if (USE_MOCK_DATA) return mockGetCourseFilters();

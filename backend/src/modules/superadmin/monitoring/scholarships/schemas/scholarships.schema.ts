@@ -15,6 +15,10 @@ export const CoverageTypeSchema = z.enum([
 
 const slug = z.string().trim().min(1).max(300).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase words separated by hyphens");
 
+// z.coerce.boolean() coerces via JS `Boolean(value)`, so the *string* "false" — exactly
+// what a query param carries — comes out `true`. Only "true"/"false" text is accepted here.
+const booleanQueryParam = z.enum(["true", "false"]).transform((v) => v === "true");
+
 export const ScholarshipInputSchema = z.object({
   title: z.string().trim().min(1).max(300),
   slug,
@@ -40,9 +44,15 @@ export const ScholarshipInputSchema = z.object({
 });
 
 export const ScholarshipListQuery = PaginationSchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().trim().min(1).optional(),
-  is_published: z.coerce.boolean().optional(),
+  is_published: booleanQueryParam.optional(),
+  is_featured: booleanQueryParam.optional(),
   country: z.string().min(1).optional(),
+  coverage_min: z.coerce.number().nonnegative().optional(),
+  coverage_max: z.coerce.number().nonnegative().optional(),
+  deadline_from: z.string().date().optional(),
+  deadline_to: z.string().date().optional(),
 });
 
 export const PublicScholarshipListQuery = z.object({
@@ -50,6 +60,10 @@ export const PublicScholarshipListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   q: z.string().trim().min(1).optional(),
   country: z.string().min(1).optional(),
+  basis: BasisSchema.optional(),
+  coverage_type: CoverageTypeSchema.optional(),
+  degree_level: z.string().min(1).optional(),
+  coverage_min: z.coerce.number().nonnegative().optional(),
 });
 
 export type ScholarshipInput = z.infer<typeof ScholarshipInputSchema>;
