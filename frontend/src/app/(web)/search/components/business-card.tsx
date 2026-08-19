@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Building2, MapPin, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { safeUrl } from "@/lib/safe-url";
 import { profileHref } from "../../profiles/api";
 import type { OrgKind } from "../../profiles/types";
 import type { SearchBusiness } from "../types";
@@ -13,6 +14,9 @@ export function BusinessCard({
   // Only orgs the profile API actually serves get a link. Visa-service listings have no
   // public profile kind, so their cards stay unlinked rather than pointing at a 404.
   const href = kind && business.slug ? profileHref(kind, business.slug) : null;
+  // business.website and logo_url are stored values rendered into href/src.
+  const website = safeUrl(business.website);
+  const logo = safeUrl(business.logo_url);
   const title = <h3 className="font-semibold text-foreground leading-snug text-[15px] line-clamp-2">{business.business_name}</h3>;
 
   return (
@@ -21,9 +25,9 @@ export function BusinessCard({
         <div className="flex-1 min-w-0 p-4">
           <div className="flex gap-3">
             <div className="w-14 h-14 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-              {business.logo_url ? (
+              {logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={business.logo_url} alt={business.business_name} className="w-full h-full object-contain p-1" />
+                <img src={logo} alt={business.business_name} className="w-full h-full object-contain p-1" />
               ) : (
                 <Building2 className="h-6 w-6 text-muted-foreground" />
               )}
@@ -45,8 +49,8 @@ export function BusinessCard({
         </div>
 
         <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 p-5 flex flex-col justify-center gap-2">
-          {business.website ? (
-            <Link href={business.website} target="_blank" rel="noopener noreferrer">
+          {website ? (
+            <Link href={website} target="_blank" rel="noopener noreferrer">
               <Button size="sm" variant="outline" className="w-full text-xs h-9 gap-1.5">
                 <Globe className="h-3.5 w-3.5" />Visit Website
               </Button>

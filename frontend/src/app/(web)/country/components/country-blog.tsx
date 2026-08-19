@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { safeUrl } from "@/lib/safe-url";
 import { BookOpen } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Reveal } from "../../components/reveal";
@@ -11,12 +12,14 @@ export function CountryBlog({ posts }: Readonly<{ posts: PublicBlogPost[] }>) {
     <Reveal>
       <h2 className="mb-4 text-2xl font-bold">Community News &amp; Guides</h2>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {posts.map((post) => (
+        {posts.map((post) => {
+          const cover = safeUrl(post.cover_image_url);
+          return (
           <Link key={post.id} href={`/blog/${post.slug}`}>
             <Card className="h-full overflow-hidden transition-shadow hover:shadow-md">
-              {post.cover_image_url && (
+              {cover && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={post.cover_image_url} alt={post.title} className="h-40 w-full object-cover" />
+                <img src={cover} alt={post.title} className="h-40 w-full object-cover" />
               )}
               <CardContent className="pt-4">
                 <h3 className="line-clamp-2 font-semibold">{post.title}</h3>
@@ -27,7 +30,8 @@ export function CountryBlog({ posts }: Readonly<{ posts: PublicBlogPost[] }>) {
               </CardContent>
             </Card>
           </Link>
-        ))}
+          );
+        })}
       </div>
     </Reveal>
   );

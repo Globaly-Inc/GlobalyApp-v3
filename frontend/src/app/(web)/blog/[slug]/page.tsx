@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import DOMPurify from "isomorphic-dompurify";
 import { ArrowLeft, Calendar, Clock, Globe, BookOpen, Briefcase, Home } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { safeUrl } from "@/lib/safe-url";
 import { getPost } from "../api";
 
 function topicClass(topic: string | null) {
@@ -50,6 +51,8 @@ export default async function BlogPostPage({ params }: Readonly<{ params: Promis
   if (!post) notFound();
 
   const readingTime = post.reading_time_minutes || 5;
+  const avatar = safeUrl(post.author_avatar_url);
+  const cover = safeUrl(post.cover_image_url);
 
   return (
     <div>
@@ -86,9 +89,9 @@ export default async function BlogPostPage({ params }: Readonly<{ params: Promis
 
         <div className="flex items-center gap-4 flex-wrap pb-6 border-b border-border">
           <div className="flex items-center gap-2">
-            {post.author_avatar_url ? (
+            {avatar ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={post.author_avatar_url} alt={post.author_name ?? "Author"} className="h-10 w-10 rounded-full object-cover" />
+              <img src={avatar} alt={post.author_name ?? "Author"} className="h-10 w-10 rounded-full object-cover" />
             ) : (
               <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
                 {(post.author_name ?? "G").charAt(0)}
@@ -114,10 +117,10 @@ export default async function BlogPostPage({ params }: Readonly<{ params: Promis
           </div>
         </div>
 
-        {post.cover_image_url && (
+        {cover && (
           <div className="my-8 rounded-xl overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={post.cover_image_url} alt={post.title} className="w-full object-cover" />
+            <img src={cover} alt={post.title} className="w-full object-cover" />
           </div>
         )}
 

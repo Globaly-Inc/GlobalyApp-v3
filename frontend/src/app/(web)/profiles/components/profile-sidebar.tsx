@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Globe, Mail, MapPin, Phone } from "lucide-react";
+import { safeUrl } from "@/lib/safe-url";
 import { SocialIcon, type SocialName } from "../../components/social-icon";
 import type { OrgProfile } from "../types";
 
@@ -9,7 +10,10 @@ const SOCIAL_NAMES: SocialName[] = ["linkedin", "facebook", "instagram", "twitte
 
 export function ProfileSidebar({ org }: Readonly<{ org: OrgProfile }>) {
   const address = [org.address, org.city, org.state, org.postcode, org.country?.name].filter(Boolean).join(", ");
-  const socials = SOCIAL_NAMES.map((name) => ({ name, href: org.social[name] })).filter(
+  const website = safeUrl(org.website);
+  // Every one of these is a stored value rendered into an href, so each goes through
+  // the allowlist; a link that fails it is dropped, never rendered raw.
+  const socials = SOCIAL_NAMES.map((name) => ({ name, href: safeUrl(org.social[name]) })).filter(
     (s): s is { name: SocialName; href: string } => Boolean(s.href),
   );
 
@@ -36,11 +40,11 @@ export function ProfileSidebar({ org }: Readonly<{ org: OrgProfile }>) {
               <a href={`mailto:${org.email}`} className="break-all hover:text-foreground">{org.email}</a>
             </li>
           )}
-          {org.website && (
+          {website && (
             <li className="flex gap-2 text-muted-foreground">
               <Globe className="mt-0.5 h-4 w-4 flex-shrink-0" />
-              <Link href={org.website} target="_blank" rel="noopener noreferrer" className="break-all hover:text-foreground">
-                {org.website.replace(/^https?:\/\//, "")}
+              <Link href={website} target="_blank" rel="noopener noreferrer" className="break-all hover:text-foreground">
+                {website.replace(/^https?:\/\//, "")}
               </Link>
             </li>
           )}

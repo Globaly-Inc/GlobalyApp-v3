@@ -1,4 +1,5 @@
 import type { OrgProfile } from "../types";
+import { safeUrl } from "@/lib/safe-url";
 import { ProfileHero } from "./profile-hero";
 import { ProfileServices } from "./profile-services";
 import { ProfileSidebar } from "./profile-sidebar";
@@ -13,6 +14,8 @@ const SERVICES_HEADING = {
 const jsonLd = (data: Record<string, unknown>) => JSON.stringify(data).replace(/</g, "\\u003c");
 
 export function OrgProfileView({ org }: Readonly<{ org: OrgProfile }>) {
+  const gallery = org.gallery_images.map(safeUrl).filter((src): src is string => src !== null);
+
   return (
     <div>
       <ProfileHero org={org} />
@@ -34,11 +37,11 @@ export function OrgProfileView({ org }: Readonly<{ org: OrgProfile }>) {
               </section>
             )}
 
-            {org.gallery_images.length > 0 && (
+            {gallery.length > 0 && (
               <section>
                 <h2 className="mb-3 text-lg font-semibold text-foreground">Gallery</h2>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {org.gallery_images.map((src) => (
+                  {gallery.map((src) => (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img key={src} src={src} alt="" className="aspect-video w-full rounded-lg object-cover" />
                   ))}

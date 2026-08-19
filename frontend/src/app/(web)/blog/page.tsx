@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Globe, BookOpen, Briefcase, Home, Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { safeUrl } from "@/lib/safe-url";
 import { Button } from "@/components/ui/button";
 import { getFilters, getPosts } from "./api";
 import type { PublicBlogPost } from "./types";
@@ -52,16 +53,19 @@ function filterHref(topic: string, country: string) {
 }
 
 function PostCard({ post }: Readonly<{ post: PublicBlogPost }>) {
+  const cover = safeUrl(post.cover_image_url);
+  const avatar = safeUrl(post.author_avatar_url);
+
   return (
     <Link
       href={`/blog/${post.slug}`}
       className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:shadow-lg transition-all duration-200"
     >
       <div className="aspect-video bg-muted overflow-hidden">
-        {post.cover_image_url ? (
+        {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={post.cover_image_url}
+            src={cover}
             alt={post.title}
             loading="lazy"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -105,9 +109,9 @@ function PostCard({ post }: Readonly<{ post: PublicBlogPost }>) {
 
         <div className="flex items-center justify-between mt-auto pt-3 border-t border-border">
           <div className="flex items-center gap-2">
-            {post.author_avatar_url ? (
+            {avatar ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={post.author_avatar_url} alt={post.author_name ?? "Author"} className="h-6 w-6 rounded-full object-cover" />
+              <img src={avatar} alt={post.author_name ?? "Author"} className="h-6 w-6 rounded-full object-cover" />
             ) : (
               <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
                 {(post.author_name ?? "G").charAt(0)}

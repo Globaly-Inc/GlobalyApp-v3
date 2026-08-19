@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Building2, Globe, MapPin, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { safeUrl } from "@/lib/safe-url";
 import type { OrgProfile } from "../types";
 
 const BREADCRUMB = {
@@ -9,17 +10,17 @@ const BREADCRUMB = {
   agent: { label: "Agents", href: "/search?tab=education-agencies" },
 } as const;
 
-// The profile API returns cover_url/logo_url straight out of the column, and for
-// GCS-hosted uploads that is a bare object key ("v1/avatars/covers/..."), not a URL —
-// nothing signs it on the way out. Rendering the key as a src is a guaranteed broken
-// image, so only absolute URLs are shown until the API signs them.
-const displayable = (url: string | null) => (url && /^https?:\/\//.test(url) ? url : null);
+// safeUrl doubles as the "is this even renderable" check: the profile API returns
+// cover_url/logo_url straight out of the column, and for GCS-hosted uploads that is a
+// bare object key ("v1/avatars/covers/..."), not a URL — nothing signs it on the way
+// out. A key fails the parse, so it is skipped rather than rendered as a broken image.
 
 export function ProfileHero({ org }: Readonly<{ org: OrgProfile }>) {
   const location = [org.city, org.state, org.country?.name].filter(Boolean).join(", ");
   const crumb = BREADCRUMB[org.kind];
-  const cover = displayable(org.cover_url);
-  const logo = displayable(org.logo_url);
+  const cover = safeUrl(org.cover_url);
+  const logo = safeUrl(org.logo_url);
+  const website = safeUrl(org.website);
 
   return (
     <section className="border-b border-border bg-muted/30">
@@ -73,8 +74,8 @@ export function ProfileHero({ org }: Readonly<{ org: OrgProfile }>) {
             <Button size="sm" render={<Link href={`/auth/sign-up?redirect=/${org.kind === "agent" ? "agents" : "institutions"}/${org.slug}`} />}>
               Contact
             </Button>
-            {org.website && (
-              <Button size="sm" variant="outline" className="gap-1.5" render={<Link href={org.website} target="_blank" rel="noopener noreferrer" />}>
+            {website && (
+              <Button size="sm" variant="outline" className="gap-1.5" render={<Link href={website} target="_blank" rel="noopener noreferrer" />}>
                 <Globe className="h-3.5 w-3.5" /> Visit Website
               </Button>
             )}
