@@ -29,7 +29,7 @@ export const categoriesRealApi = {
   getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toQuery(params)}`),
   getOtherServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
-    httpGet(`${BASE}/service-categories${toQuery({ limit: 10, ...params })}`),
+    httpGet(`${BASE}/other-service-categories${toQuery({ limit: 10, ...params })}`),
   createCategory: (kind: "business" | "service" | "other-service", input: CategoryInput): Promise<Category> =>
     httpPost(`${BASE}/${kind}-categories`, input),
   updateCategory: (kind: CategoryEndpoint, id: number, input: Partial<CategoryInput>): Promise<Category> =>
