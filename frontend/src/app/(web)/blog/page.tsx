@@ -54,7 +54,7 @@ function filterHref(topic: string, country: string) {
 function PostCard({ post }: Readonly<{ post: PublicBlogPost }>) {
   return (
     <Link
-      href={`/blog/${post.id}`}
+      href={`/blog/${post.slug}`}
       className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:shadow-lg transition-all duration-200"
     >
       <div className="aspect-video bg-muted overflow-hidden">

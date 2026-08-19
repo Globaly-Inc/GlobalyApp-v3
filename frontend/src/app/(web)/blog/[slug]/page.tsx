@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import DOMPurify from "isomorphic-dompurify";
 import { ArrowLeft, Calendar, Clock, Globe, BookOpen, Briefcase, Home } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getPostById } from "../api";
+import { getPost } from "../api";
 
 function topicClass(topic: string | null) {
   switch (topic) {
@@ -26,9 +26,9 @@ function topicIcon(topic: string | null) {
 
 export async function generateMetadata({
   params,
-}: Readonly<{ params: Promise<{ id: string }> }>): Promise<Metadata> {
-  const { id } = await params;
-  const post = await getPostById(Number(id));
+}: Readonly<{ params: Promise<{ slug: string }> }>): Promise<Metadata> {
+  const { slug } = await params;
+  const post = await getPost(slug);
   if (!post) return { title: "Post not found — Globaly Blog" };
   const title = `${post.meta_title ?? post.title} — Globaly Blog`;
   const description = (post.meta_description ?? post.excerpt ?? "").slice(0, 160);
@@ -44,9 +44,9 @@ export async function generateMetadata({
   };
 }
 
-export default async function BlogPostPage({ params }: Readonly<{ params: Promise<{ id: string }> }>) {
-  const { id } = await params;
-  const post = await getPostById(Number(id));
+export default async function BlogPostPage({ params }: Readonly<{ params: Promise<{ slug: string }> }>) {
+  const { slug } = await params;
+  const post = await getPost(slug);
   if (!post) notFound();
 
   const readingTime = post.reading_time_minutes || 5;

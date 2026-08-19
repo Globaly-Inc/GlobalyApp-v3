@@ -12,7 +12,7 @@ export function CountryBlog({ posts }: Readonly<{ posts: PublicBlogPost[] }>) {
       <h2 className="mb-4 text-2xl font-bold">Community News &amp; Guides</h2>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {posts.map((post) => (
-          <Link key={post.id} href={`/blog/${post.id}`}>
+          <Link key={post.id} href={`/blog/${post.slug}`}>
             <Card className="h-full overflow-hidden transition-shadow hover:shadow-md">
               {post.cover_image_url && (
                 // eslint-disable-next-line @next/next/no-img-element

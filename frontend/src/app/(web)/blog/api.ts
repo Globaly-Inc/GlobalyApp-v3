@@ -16,8 +16,10 @@ export async function getPosts(params: {
   return res.json();
 }
 
-export async function getPostById(id: number): Promise<PublicBlogPost | null> {
-  const res = await fetch(`${API_BASE}/blog/posts/${id}`, { next: { revalidate: 60 } });
+// Slug or numeric id: the canonical URL is /blog/{slug} (V1's, and what search
+// engines indexed), but the id form is still served so earlier V3 links resolve.
+export async function getPost(idOrSlug: string): Promise<PublicBlogPost | null> {
+  const res = await fetch(`${API_BASE}/blog/posts/${encodeURIComponent(idOrSlug)}`, { next: { revalidate: 60 } });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to load blog post");
   return res.json();

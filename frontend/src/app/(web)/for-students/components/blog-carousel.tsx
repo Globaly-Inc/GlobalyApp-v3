@@ -18,7 +18,7 @@ export function BlogCarousel({ posts }: Readonly<{ posts: BlogCardData[] }>) {
         <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
           {posts.map((post, i) => (
             <Reveal key={post.id} delay={i * 0.1} className="flex-shrink-0">
-              <Link href={`/blog/${post.id}`} className="group block w-72 md:w-80">
+              <Link href={`/blog/${post.slug}`} className="group block w-72 md:w-80">
                 <div className="rounded-2xl overflow-hidden border border-border bg-muted/10 hover:border-primary/30 transition-all hover:shadow-md h-full">
                   <div className="aspect-[16/10] overflow-hidden bg-muted">
                     {post.cover_image_url && (
