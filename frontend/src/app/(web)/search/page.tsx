@@ -12,6 +12,7 @@ import { SearchSortControls } from "./components/search-sort-controls";
 import { MobileFiltersSheet } from "./components/mobile-filters-sheet";
 import { CourseCard } from "./components/course-card";
 import { BusinessCard } from "./components/business-card";
+import { InstitutionCard } from "./components/institution-card";
 import { JobCard } from "./components/job-card";
 import { ScholarshipSearchCard } from "./components/scholarship-search-card";
 import { SearchEmptyState } from "./components/search-empty-state";
@@ -182,8 +183,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                   {activeTab === "jobs" &&
                     (results as SearchJob[]).map((j) => <JobCard key={j.id} job={j} />)}
                   {activeTab === "scholarships" &&
-                    (results as SearchScholarship[]).map((s) => <ScholarshipSearchCard key={s.id} scholarship={s} />)}
-                  {(activeTab === "institutions" || activeTab === "education-agencies" || activeTab === "visa-services" || activeTab === "migration-agents") &&
+                    (results as SearchScholarship[]).map((s) => <ScholarshipSearchCard key={s.id} scholarship={s} />)}                  
+                  {activeTab === "institutions" &&
+                    (results as SearchBusiness[]).map((b) => <InstitutionCard key={b.id} institution={b} />)}
+                  {(activeTab === "education-agencies" || activeTab === "visa-services" || activeTab === "migration-agents") &&
                     (results as SearchBusiness[]).map((b) => <BusinessCard key={b.id} business={b} />)}
                 </div>
               )}

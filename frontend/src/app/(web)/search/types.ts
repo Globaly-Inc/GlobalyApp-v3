@@ -75,15 +75,82 @@ export type CourseDetail = SearchCourse & {
 };
 
 export type SearchBusiness = {
-  id: number;
+  id: number | string;
   business_name: string;
-  subdomain: string;
+  subdomain?: string;
+  slug?: string;
   logo_url: string | null;
   description: string | null;
   city: string | null;
   country_name: string | null;
   website: string | null;
   email: string | null;
+  service_count?: number;
+  location_count?: number;
+  course_count?: number;
+};
+
+export type InstitutionDetail = SearchBusiness & {
+  phone: string | null;
+  address: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
+  youtube_url: string | null;
+};
+
+export type BusinessBranch = {
+  id: string;
+  name: string;
+  country: string | null;
+  state: string | null;
+  city: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  is_primary: boolean;
+  branch_type: string;
+};
+
+export type BusinessMember = {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  is_owner: boolean;
+  admin_point_of_contact: boolean;
+  role_display: string;
+};
+
+export type BusinessService = {
+  id: string;
+  name: string;
+  description: string | null;
+  price: string | null;
+};
+
+export type BusinessRepresentation = {
+  id: string;
+  partner_business_id: number;
+  partner_business_name: string;
+  partner_business_logo_url: string | null;
+  relation_type: string;
+};
+
+export type BusinessDetail = SearchBusiness & {
+  cover_url: string | null;
+  phone: string | null;
+  address: string | null;
+  category_name: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
+  youtube_url: string | null;
+  branches: BusinessBranch[];
+  members: BusinessMember[];
+  services: BusinessService[];
+  representations: BusinessRepresentation[];
 };
 
 export type SearchJob = {

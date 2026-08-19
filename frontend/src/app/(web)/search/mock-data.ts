@@ -1,5 +1,6 @@
 import type {
-  CourseDetail, CourseFilterOptions, Paginated, SearchBusiness, SearchCourse, SearchJob, SearchScholarship,
+  BusinessDetail, CourseDetail, CourseFilterOptions, InstitutionDetail, Paginated, SearchBusiness, SearchCourse, SearchScholarship
+  SearchJob,
 } from "./types";
 import type { SearchFilterParams } from "./api";
 
@@ -222,12 +223,14 @@ const MOCK_COURSE_ENGLISH_REQUIREMENTS: Record<string, CourseDetail["englishRequ
 const MOCK_BUSINESSES: Record<"institutions" | "education-agencies" | "visa-services" | "migration-agents", SearchBusiness[]> = {
   institutions: [
     {
-      id: 101, business_name: "Sydney Metropolitan University", subdomain: "demo-sydney-metro-uni", logo_url: null,
+      id: 101, business_name: "Sydney Metropolitan University", subdomain: "demo-sydney-metro-uni",
+      slug: "sydney-metropolitan-university-101", logo_url: null,
       description: "A leading public university offering business, IT, and engineering programs.",
       city: "Sydney", country_name: "Australia", website: "https://example.com/sydney-metro", email: null,
     },
     {
-      id: 102, business_name: "Melbourne Polytechnic", subdomain: "demo-melbourne-polytechnic", logo_url: null,
+      id: 102, business_name: "Melbourne Polytechnic", subdomain: "demo-melbourne-polytechnic",
+      slug: "melbourne-polytechnic-102", logo_url: null,
       description: "TAFE-style vocational college specialising in diplomas and graduate certificates.",
       city: "Melbourne", country_name: "Australia", website: "https://example.com/melbourne-polytechnic", email: null,
     },
@@ -428,4 +431,44 @@ export function mockGetCourseBySlug(slug: string): CourseDetail | null {
     eligibility: MOCK_COURSE_ELIGIBILITY[course.id] ?? [],
     englishRequirements: MOCK_COURSE_ENGLISH_REQUIREMENTS[course.id] ?? [],
   };
+}
+
+export function mockGetInstitutionBySlug(slug: string): InstitutionDetail | null {
+  console.log("[mock] getInstitutionBySlug", slug);
+  const institution = MOCK_BUSINESSES.institutions.find((b) => b.slug === slug);
+  if (!institution) return null;
+  return {
+    ...institution, phone: null, address: null,
+    facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
+  };
+}
+
+export function mockGetBusinessBySubdomain(subdomain: string): BusinessDetail | null {
+  console.log("[mock] getBusinessBySubdomain", subdomain);
+  const categories = Object.keys(MOCK_BUSINESSES) as (keyof typeof MOCK_BUSINESSES)[];
+  for (const category of categories) {
+    const business = MOCK_BUSINESSES[category].find((b) => b.subdomain === subdomain);
+    if (business) {
+      return {
+        ...business, cover_url: null, phone: null, address: null, category_name: category,
+        facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
+        branches: [], members: [], services: [], representations: [],
+      };
+    }
+  }
+  return null;
+}
+
+export function mockGetInstitutionCourses(
+  slug: string, params: Pick<SearchFilterParams, "page" | "search">,
+): Paginated<SearchCourse> {
+  console.log("[mock] getInstitutionCourses", slug, params);
+  const institution = MOCK_BUSINESSES.institutions.find((b) => b.slug === slug);
+  if (!institution) return paginate([], params);
+  let rows = MOCK_COURSES.filter((c) => c.awarding_institution === institution.business_name);
+  if (params.search) {
+    const q = params.search.toLowerCase();
+    rows = rows.filter((c) => c.name.toLowerCase().includes(q));
+  }
+  return paginate(rows, params);
 }

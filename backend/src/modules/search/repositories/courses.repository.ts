@@ -15,6 +15,7 @@ export type CourseSearchFilters = {
   feeMax?: number;
   currency?: string;
   intakeYear?: number;
+  jobId?: string;
 };
 
 export type CourseSort = "best_match" | "fee_asc" | "fee_desc" | "duration_asc";
@@ -22,9 +23,9 @@ export type CourseSort = "best_match" | "fee_asc" | "fee_desc" | "duration_asc";
 const EFFECTIVE_FEE = "coalesce(ec.domestic_fee_total, ec.international_fee_total)";
 
 // Public visibility = the course's job was promoted to a business (promote.service.ts sets
-// status 'exported'), minus courses an admin explicitly flagged in review.
+// status 'exported'), and the course itself has passed admin verification.
 const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')
-  and coalesce(ec.verification_status, '') <> 'flagged'`;
+  and ec.verification_status = 'confirmed'`;
 
 const LIST_COLUMNS = [
   "ec.id", "ec.name", "ec.short_name", "ec.degree_level", "ec.subject_area",
@@ -35,11 +36,12 @@ const LIST_COLUMNS = [
   "c.name as country_name",
 ];
 
-function baseQuery({ country, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear }: CourseSearchFilters) {
+function baseQuery({ country, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear, jobId }: CourseSearchFilters) {
   const q = masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
     .whereRaw(PUBLICLY_VISIBLE);
 
+  if (jobId) q.where("ec.job_id", jobId);
   if (country) {
     q.where((b) =>
       b.whereRaw("lower(c.name) = lower(?)", [country]).orWhereRaw("lower(c.slug) = lower(?)", [country]),
