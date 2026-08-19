@@ -40,6 +40,7 @@ import { favoritesReducer } from "@/app/personal/favorites/store/favorites-slice
 import { adsReducer } from "@/app/admin/marketing/ads/store/ads-slice"
 import { applicationChargesReducer } from "@/app/admin/revenue/subscriptions/application-charges/store/application-charges-slice"
 import { aiWidgetReducer } from "@/app/business/ai-widget/store/ai-widget-slice"
+import { businessDashboardReducer } from "@/app/business/portal/store/business-dashboard-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
@@ -83,6 +84,7 @@ const appReducer = combineReducers({
     marketingAds: adsReducer,
     revenueApplicationCharges: applicationChargesReducer,
     aiWidget: aiWidgetReducer,
+    businessDashboard: businessDashboardReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

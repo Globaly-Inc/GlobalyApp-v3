@@ -150,6 +150,11 @@ export default defineConfig({
         // E5 — SOP generator: intake questionnaire, metered draft, revision
         // history, text/markdown export.
         "src/modules/sop/**/*.ts",
+        // C-BIZ — the business portal dashboard. Two files, listed by name: the
+        // businesses module at large is older, largely untested code, and a
+        // module-wide glob would report its number against this wave's work.
+        "src/modules/businesses/services/dashboard.service.ts",
+        "src/modules/businesses/routes/dashboard.routes.ts",
       ],
       exclude: ["src/modules/ai-counsellor/lib/gemini-stream.ts"],
       thresholds: {

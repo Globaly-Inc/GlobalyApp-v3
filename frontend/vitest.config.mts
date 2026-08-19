@@ -36,6 +36,10 @@ export default defineConfig({
         // literal path silently matches nothing and the file drops out of the report.
         "src/app/personal/favorites/utils/index.ts",
         "src/app/**/waitlist/utils/index.ts",
+        // C-BIZ-FE — business portal dashboard: the greeting, the low-credit
+        // flag, the pending-verification branch and the locked/unlocked lead
+        // headline all live in utils/ so they are asserted without a DOM.
+        "src/app/business/portal/utils/index.ts",
       ],
       thresholds: {
         lines: 80,
