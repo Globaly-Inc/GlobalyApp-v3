@@ -5,7 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/** Thousands separators for credit amounts and counts: "1240" -> "1,240". */
 export function formatNumber(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return "0";
   return new Intl.NumberFormat("en-US").format(value);

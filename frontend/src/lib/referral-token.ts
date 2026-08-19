@@ -4,6 +4,8 @@
 // signed JWT minted by GET /referrals/lookup/:code; the client never parses it. It carries the
 // immutable referral_codes.id, and its `exp` IS the W1 window, so the server needs nothing else.
 
+import { siteConfig } from "@/config/site";
+
 const REF_TOKEN_KEY = "globaly_ref_token";
 
 export function getRefToken(): string | null {
@@ -44,19 +46,15 @@ export function clearRefToken() {
  * `globaly.app/join?ref=` across two files and prepended "https://" only at copy time, which is how it
  * ended up pointing at a domain the app was never served from.
  *
- * NEXT_PUBLIC_APP_URL must be set PER ENVIRONMENT. A referral link is a durable artefact — someone
- * copies it once and shares it for months — so a staging deploy that falls back to the production host
- * would mint production links from staging. The warning below makes that visible instead of silent.
- * NEXT_PUBLIC_* is inlined at build time, so this is a per-target build variable.
+ * The host comes from the live origin rather than configuration: this only ever runs in a browser that
+ * is already on the app, so localhost, staging and production each produce their own correct link with
+ * nothing to set and nothing that can be misconfigured per environment.
+ *
+ * siteConfig.url covers the server-render path only, where `window` does not exist. A link is never
+ * rendered there in practice — the code arrives from a client-side fetch — so it is a safety net, not a
+ * fallback anyone should rely on.
  */
 export function buildReferralLink(code: string): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL;
-  if (!configured && process.env.NODE_ENV !== "production") {
-    console.warn(
-      "[referrals] NEXT_PUBLIC_APP_URL is not set — falling back to siteConfig.url. Referral links " +
-        "generated here may point at the wrong environment.",
-    );
-  }
-  const host = (configured ?? "https://www.globalyapp.com").replace(/\/+$/, "");
-  return `${host}/join?ref=${encodeURIComponent(code)}`;
+  const host = typeof window === "undefined" ? siteConfig.url : window.location.origin;
+  return `${host.replace(/\/+$/, "")}/join?ref=${encodeURIComponent(code)}`;
 }
