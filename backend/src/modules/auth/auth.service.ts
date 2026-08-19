@@ -202,7 +202,16 @@ export async function sendOtp(email: string) {
     logger.warn("OTP email failed", { email, err: err.message }),
   );
 
-  logger.info("OTP sent", { userId: user.id, otp: otp });
+  // The OTP itself is dev-only. The DB stores a scrypt hash (hashOtp) precisely so a
+  // database read cannot yield a working code — logging the plaintext handed the same
+  // capability to anyone with log access, which is a wider audience in production than
+  // the database is. Kept outside production because with SMTP pointed at a local
+  // catcher it is how you read the code locally.
+  if (config.NODE_ENV !== "production") {
+    logger.info("OTP sent", { userId: user.id, otp });
+  } else {
+    logger.info("OTP sent", { userId: user.id });
+  }
   return { message: "OTP sent" };
 }
 
