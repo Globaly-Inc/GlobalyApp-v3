@@ -8,7 +8,9 @@ const SlugParam = z.object({ slug: z.string().min(1) });
 
 export async function publicGeoRoutes(app: FastifyInstance) {
   app.get("/countries/featured", async (_req, reply) => {
-    const countries = await repo.listFeaturedCountries();
+    // Same preview resolution as the country detail route: a hero set from an admin upload is a
+    // storage path, not a URL, and would render as a broken image without it.
+    const countries = await Promise.all((await repo.listFeaturedCountries()).map(withImagePreviews));
     return reply.send({ countries });
   });
 

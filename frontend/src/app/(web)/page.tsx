@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Reveal } from "./components/reveal";
 import { AutoplayVideo } from "./components/autoplay-video";
 import { UnifiedSearchBar } from "./components/unified-search-bar";
+import { DestinationCard } from "./components/destination-card";
 import { useTypingEffect } from "./hooks/use-typing-effect";
 import { useParallax } from "./hooks/use-scroll-animation";
 import { useIsMobile } from "./hooks/use-is-mobile";
@@ -50,10 +51,10 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/60" />
         <div className="container mx-auto px-4 py-16 sm:py-20 md:py-20 relative z-10">
           <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
-            <p className="text-white/70 text-sm font-medium mb-2 tracking-wide">
+            <p className="text-white/70 text-sm font-medium mb-2 tracking-wide animate-[fade-in_0.6s_ease-out]">
               World #1 AI Integrated Education Ecosystem
             </p>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-tight animate-[fade-in_0.7s_ease-out]">
               Making Global Education
               <br />
               <span className="text-[hsl(var(--gold))]">
@@ -66,11 +67,13 @@ export default function HomePage() {
                 </span>
               </span>
             </h1>
-            <p className="text-white/80 mb-8 text-base sm:text-xl font-medium px-2">
+            <p className="text-white/80 mb-8 animate-[fade-in_0.85s_ease-out] text-base sm:text-xl font-medium px-2">
               Connecting Students with Domestic and International Education Providers, Education
               Agents and Service Providers
             </p>
-            <UnifiedSearchBar />
+            <div className="animate-[fade-in_1s_ease-out]">
+              <UnifiedSearchBar />
+            </div>
           </div>
         </div>
       </section>
@@ -86,22 +89,7 @@ export default function HomePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {destinations.map((dest, idx) => (
               <Reveal key={dest.id} delay={idx * 0.07}>
-                <Link
-                  href={`/country/${dest.slug}`}
-                  className="group relative overflow-hidden rounded-2xl block"
-                  style={{ aspectRatio: "4/3" }}
-                >
-                  <div className="absolute inset-0 bg-muted flex items-center justify-center text-5xl transition-transform duration-700 group-hover:scale-110">
-                    {dest.flagEmoji}
-                  </div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10 transition-opacity duration-300 group-hover:opacity-90" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-1 group-hover:translate-y-0 transition-transform duration-300">
-                    <h3 className="font-bold text-white text-base md:text-lg leading-tight">
-                      <span className="mr-1">{dest.flagEmoji}</span>
-                      {dest.name}
-                    </h3>
-                  </div>
-                </Link>
+                <DestinationCard destination={dest} />
               </Reveal>
             ))}
           </div>
@@ -195,7 +183,7 @@ export default function HomePage() {
                       <img
                         src={post.image}
                         alt={post.title}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                        className="w-full h-full object-cover md:transition-transform md:duration-700 md:group-hover:scale-110"
                         loading="lazy"
                       />
                     </div>
