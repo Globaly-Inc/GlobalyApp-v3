@@ -197,7 +197,7 @@ interface Plan {
   hasId: boolean;
 }
 
-async function planFor(src: Knex, table: string, preferredSchema: string): Promise<Plan | null> {
+async function planFor(src: Knex, table: string, preferredSchema: string): Promise<Plan | "missing-in-v3" | null> {
   const sourceSchema = await sourceSchemaFor(src, table, preferredSchema);
   if (!sourceSchema) return null;
 
@@ -205,7 +205,7 @@ async function planFor(src: Knex, table: string, preferredSchema: string): Promi
     columnsOf(src, sourceSchema, table),
     columnsOf(masterKnex, SCHEMA, table),
   ]);
-  if (!dstCols.length) return null;
+  if (!dstCols.length) return "missing-in-v3";
 
   const dstByName = new Map(dstCols.map((c) => [c.name, c]));
   const copy: ColumnInfo[] = [];
@@ -302,6 +302,11 @@ async function main() {
   for (const table of tables) {
     const plan = await planFor(src, table, args.sourceSchema);
     if (!plan) { missing.push(table); console.log(`  ${table.padEnd(46)}${"—".padStart(8)}${"—".padStart(9)}  not in source`); continue; }
+    if (plan === "missing-in-v3") {
+      warnings.push(`${table}: missing in V3 superadmin schema — run \`npm run migrate:superadmin\``);
+      console.log(`  ${table.padEnd(46)}${"—".padStart(8)}${"—".padStart(9)}  MISSING IN V3 (migrate:superadmin?)`);
+      continue;
+    }
 
     try {
       const { read, written } = await importTable(src, plan, args, catMaps);

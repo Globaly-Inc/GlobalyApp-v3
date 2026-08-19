@@ -2,8 +2,8 @@
 // Publishes each due schedule to the STEPS queue (step: "agents"),
 // then advances next_run_at based on cadence.
 //
-// Designed as one-shot: process due schedules, then exit.
-// Run with: npm run job:extraction-schedule
+// Long-running: polls every minute. Run with: npm run job:extraction-schedule
+// One-shot (external cron): pass --once
 
 import "dotenv/config";
 import { queueService } from "../../../../shared/queue/queueService.js";
@@ -80,21 +80,22 @@ async function processDueSchedules() {
   return results;
 }
 
-// One-shot: can also be consumed via SCHEDULE queue for manual triggers
-const mode = process.argv[2];
+// Long-running: poll for due schedules so the container stays alive
+// (one-shot exit caused the container to be auto-deleted). Pass --once for cron use.
+const POLL_MS = 60_000;
 
-if (mode === "--consume") {
-  // Long-running consumer mode (for manual triggers via queue)
-  await queueService.consume(EXTRACTION_QUEUES.SCHEDULE, async () => {
-    await processDueSchedules();
-  });
-  logger.info("Listening on SCHEDULE queue");
-} else {
-  // One-shot cron mode (default)
+if (process.argv[2] === "--once") {
   try {
     await processDueSchedules();
   } finally {
     await masterKnex.destroy();
     process.exit(0);
   }
+} else {
+  logger.info(`Schedule worker started — polling every ${POLL_MS / 1000}s`);
+  await processDueSchedules();
+  // ponytail: setInterval poll, no overlap guard needed — runs take <<60s and the limit(25) query is idempotent
+  setInterval(() => {
+    processDueSchedules().catch((e) => logger.error("Poll failed", { error: e instanceof Error ? e.message : String(e) }));
+  }, POLL_MS);
 }
