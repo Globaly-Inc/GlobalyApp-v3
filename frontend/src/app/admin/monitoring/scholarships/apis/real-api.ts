@@ -1,5 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import type { Paginated, Scholarship, ScholarshipInput } from "./types";
+import type { ImportJob, Paginated, Scholarship, ScholarshipInput } from "./types";
 
 const BASE = "/admin/monitoring/scholarships";
 
@@ -38,4 +38,7 @@ export const scholarshipsRealApi = {
   updateScholarship: (id: number, input: Partial<ScholarshipInput>): Promise<Scholarship> =>
     httpPatch(`${BASE}/${id}`, input),
   deleteScholarship: (id: number): Promise<void> => httpDelete(`${BASE}/${id}`),
+  startImport: (rows: ScholarshipInput[]): Promise<ImportJob> => httpPost(`${BASE}/import`, { rows }),
+  getImportJob: (id: number): Promise<ImportJob> => httpGet(`${BASE}/import/${id}`),
+  bulkDeleteScholarships: (ids: number[]): Promise<{ queued: number }> => httpPost(`${BASE}/bulk-delete`, { ids }),
 };

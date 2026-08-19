@@ -66,4 +66,12 @@ export const PublicScholarshipListQuery = z.object({
   coverage_min: z.coerce.number().nonnegative().optional(),
 });
 
+export const ImportRowsSchema = z.object({
+  rows: z.array(ScholarshipInputSchema).min(1).max(2000),
+});
+
+export const BulkDeleteSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(500),
+});
+
 export type ScholarshipInput = z.infer<typeof ScholarshipInputSchema>;

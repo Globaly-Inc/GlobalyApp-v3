@@ -51,11 +51,14 @@ export const removeScholarship = createAsyncThunk(
   },
 );
 
+// Fire-and-forget: queues the batch on the backend and returns immediately — the actual
+// deletes happen in a worker. The reducer below removes the rows from view optimistically,
+// since waiting for a refetch would show stale rows until the worker catches up.
 export const removeScholarships = createAsyncThunk(
   "monitoringScholarships/removeMany",
-  async (ids: number[], { dispatch }) => {
-    await Promise.all(ids.map((id) => scholarshipsApi.deleteScholarship(id)));
-    await Promise.all([dispatch(fetchScholarships({})), dispatch(fetchScholarshipCounts())]);
+  async (ids: number[]) => {
+    await scholarshipsApi.bulkDeleteScholarships(ids);
+    return ids;
   },
 );
 
@@ -111,6 +114,14 @@ const scholarshipsSlice = createSlice({
       })
       .addCase(fetchScholarshipCounts.fulfilled, (state, action) => {
         state.counts = action.payload;
+      })
+      .addCase(removeScholarships.fulfilled, (state, action) => {
+        const deleted = new Set(action.payload);
+        state.scholarships = state.scholarships.filter((s) => !deleted.has(s.id));
+        state.total = Math.max(0, state.total - deleted.size);
+        state.counts.total = Math.max(0, state.counts.total - deleted.size);
+        state.totalPages = Math.max(1, Math.ceil(state.total / state.limit));
+        if (state.page > state.totalPages) state.page = state.totalPages;
       });
   },
 });

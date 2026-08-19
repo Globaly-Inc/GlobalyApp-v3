@@ -25,6 +25,8 @@
     "job:business-claim-requests": "node --import tsx src/modules/superadmin/platform/businesses/workers/claim-requests-bulk.worker.ts",
     "job:enquiry-match": "node --import tsx src/modules/enquiries/workers/enquiry-match.worker.ts",
     "job:enquiry-email": "node --import tsx src/modules/enquiries/workers/enquiry-email.worker.ts",
+    "job:scholarship-import": "node --import tsx src/modules/superadmin/monitoring/scholarships/workers/scholarship-import.worker.ts",
+    "job:scholarship-bulk-delete": "node --import tsx src/modules/superadmin/monitoring/scholarships/workers/scholarship-bulk-delete.worker.ts",
     "lint": "eslint src/"
   },
   "dependencies": {

@@ -133,8 +133,13 @@ export function ScholarshipsView() {
     deletingRef.current = true;
     setBusy(true);
     if (deleting === "selection") {
-      await dispatch(removeScholarships([...selected]));
+      const result = await dispatch(removeScholarships([...selected]));
       setSelected(new Set());
+      if (removeScholarships.fulfilled.match(result)) {
+        dispatch(fetchScholarshipCounts());
+        // Optimistic removal can empty the current page while rows remain on others — backfill it.
+        if (scholarships.length === selected.size) dispatch(fetchScholarships({}));
+      }
     } else {
       await dispatch(removeScholarship(deleting.id));
     }

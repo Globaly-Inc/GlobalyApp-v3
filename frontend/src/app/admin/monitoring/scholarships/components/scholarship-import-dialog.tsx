@@ -10,13 +10,17 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useAppDispatch } from "@/lib/hooks";
-import { createScholarship } from "../store/scholarships-slice";
+import { scholarshipsApi } from "../apis";
+import type { ScholarshipInput } from "../apis/types";
+import { fetchScholarships, fetchScholarshipCounts } from "../store/scholarships-slice";
 import { buildInputFromMapping, guessMapping, IMPORT_FIELDS, type ColumnMapping } from "../utils";
 import { ImportMappingRow } from "./import-mapping-row";
 
 type Step = "select" | "map" | "importing" | "done";
 type RowResult = { key: string; title: string; status: "ok" | "skipped" | "error"; detail?: string };
 type ParsedRow = { sheet: string; row: number; data: Record<string, unknown> };
+
+const POLL_INTERVAL_MS = 1000;
 
 export function ScholarshipImportDialog({
   open,
@@ -73,26 +77,39 @@ export function ScholarshipImportDialog({
 
   const handleImport = async () => {
     setStep("importing");
-    setProgress({ done: 0, total: rows.length });
-    const rowResults: RowResult[] = [];
 
+    // Column mapping/normalization stays client-side (it's just data shaping); only the
+    // already-clean rows are sent to the backend, which queues them for a worker to create
+    // in the background instead of the browser looping through create calls itself.
+    const skippedResults: RowResult[] = [];
+    const inputs: ScholarshipInput[] = [];
     for (const { sheet, row, data } of rows) {
-      const key = `${sheet}-${row}`;
       const mapped = buildInputFromMapping(data, mapping, defaultCountry);
       if (mapped.status === "skipped") {
-        rowResults.push({ key, title: `${sheet} row ${row}`, status: "skipped", detail: mapped.reason });
+        skippedResults.push({ key: `${sheet}-${row}`, title: `${sheet} row ${row}`, status: "skipped", detail: mapped.reason });
       } else {
-        try {
-          await dispatch(createScholarship(mapped.input)).unwrap();
-          rowResults.push({ key, title: mapped.input.title, status: "ok" });
-        } catch (err) {
-          rowResults.push({ key, title: mapped.input.title, status: "error", detail: err instanceof Error ? err.message : "Failed to create" });
-        }
+        inputs.push(mapped.input);
       }
-      setProgress((p) => ({ ...p, done: p.done + 1 }));
-      setResults([...rowResults]);
+    }
+    setResults(skippedResults);
+    setProgress({ done: skippedResults.length, total: rows.length });
+
+    if (inputs.length === 0) {
+      setStep("done");
+      return;
     }
 
+    const job = await scholarshipsApi.startImport(inputs);
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      const current = await scholarshipsApi.getImportJob(job.id);
+      const rowResults: RowResult[] = current.results.map((r, i) => ({ key: `job-${i}`, title: r.title, status: r.status, detail: r.detail }));
+      setResults([...skippedResults, ...rowResults]);
+      setProgress({ done: skippedResults.length + current.processed_rows, total: rows.length });
+      if (current.status === "completed" || current.status === "failed") break;
+    }
+
+    await Promise.all([dispatch(fetchScholarships({})), dispatch(fetchScholarshipCounts())]);
     setStep("done");
   };
 

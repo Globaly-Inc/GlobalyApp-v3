@@ -1,4 +1,4 @@
-import type { Paginated, Scholarship, ScholarshipInput } from "./types";
+import type { ImportJob, ImportRowResult, Paginated, Scholarship, ScholarshipInput } from "./types";
 import type { ScholarshipListParams } from "./real-api";
 
 function delay(ms: number) {
@@ -6,6 +6,8 @@ function delay(ms: number) {
 }
 
 let nextId = 3;
+let nextImportJobId = 1;
+const importJobs = new Map<number, { job: ImportJob; pending: ScholarshipInput[] }>();
 const mockScholarships: Scholarship[] = [
   {
     id: 1, title: "Vice-Chancellor's Excellence Scholarship", slug: "vice-chancellors-excellence-scholarship",
@@ -81,5 +83,45 @@ export const scholarshipsMockApi = {
     await delay(300);
     const index = mockScholarships.findIndex((s) => s.id === id);
     if (index !== -1) mockScholarships.splice(index, 1);
+  },
+  startImport: async (rows: ScholarshipInput[]): Promise<ImportJob> => {
+    console.log("[mock] POST /admin/monitoring/scholarships/import", rows.length);
+    await delay(200);
+    const job: ImportJob = {
+      id: nextImportJobId++, status: "processing", total_rows: rows.length,
+      processed_rows: 0, created_count: 0, error_count: 0, results: [], failure_reason: null,
+    };
+    importJobs.set(job.id, { job, pending: [...rows] });
+    return job;
+  },
+  getImportJob: async (id: number): Promise<ImportJob> => {
+    // Processes one row per poll so the mock UI shows the same incremental progress as the real worker.
+    await delay(150);
+    const entry = importJobs.get(id);
+    if (!entry) throw new Error("Import job not found");
+    const next = entry.pending.shift();
+    if (next) {
+      const now = new Date().toISOString();
+      const row: Scholarship = { ...next, id: nextId++, view_count: 0, created_at: now, updated_at: now };
+      mockScholarships.unshift(row);
+      const result: ImportRowResult = { title: next.title, status: "ok" };
+      entry.job = {
+        ...entry.job,
+        processed_rows: entry.job.processed_rows + 1,
+        created_count: entry.job.created_count + 1,
+        results: [...entry.job.results, result],
+        status: entry.pending.length === 0 ? "completed" : "processing",
+      };
+    }
+    return entry.job;
+  },
+  bulkDeleteScholarships: async (ids: number[]): Promise<{ queued: number }> => {
+    console.log("[mock] POST /admin/monitoring/scholarships/bulk-delete", ids);
+    await delay(200);
+    for (const id of ids) {
+      const index = mockScholarships.findIndex((s) => s.id === id);
+      if (index !== -1) mockScholarships.splice(index, 1);
+    }
+    return { queued: ids.length };
   },
 };
