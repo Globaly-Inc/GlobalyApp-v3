@@ -40,7 +40,7 @@ import {
   servicesSelfCheck,
   unionAcrossSchemas,
 } from "../../scripts/migration/w7-services.js";
-import { ORG_REFS, W7_MASTER_SOURCE_TABLES, masterSelfCheck } from "../../scripts/migration/w7-master.js";
+import { ORG_REFS, TARGET_TABLE, W7_MASTER_SOURCE_TABLES, masterSelfCheck } from "../../scripts/migration/w7-master.js";
 import {
   FOLDED_PLAN_COLUMNS,
   PLAN_ID,
@@ -175,14 +175,33 @@ describe("constraint 2 — the owner is an org, not a business", () => {
 });
 
 describe("§1.2 / §14 — the cross-tenant graph lands in master, never in a tenant", () => {
-  it("all five master tables target public", () => {
-    expect(W7_MASTER_SOURCE_TABLES).toHaveLength(5);
+  it("all six master tables target public", () => {
+    expect(W7_MASTER_SOURCE_TABLES).toHaveLength(6);
     for (const t of W7_MASTER_SOURCE_TABLES) {
-      const m = byName(`${t}_master`);
-      expect(m, `${t}_master mapping`).toBeDefined();
-      expect(m!.target.table).toBe(`public.${t}`);
+      // Five keep their V1 name and are mapped as `<table>_master`; eligibility_checks
+      // is the one rename (V3 prefixes the student-owned master tables), so its
+      // mapping is named for the target. TARGET_TABLE is the single declaration of it.
+      const renamed = TARGET_TABLE[t];
+      const m = byName(renamed ?? `${t}_master`);
+      expect(m, `${renamed ?? `${t}_master`} mapping`).toBeDefined();
+      expect(m!.target.table).toBe(`public.${renamed ?? t}`);
       expect(m!.target.schemaExpand).toBeUndefined();
     }
+  });
+
+  it("an eligibility check is a MASTER row — it links a platform user to a tenant service (§1.2)", () => {
+    const m = byName("student_eligibility_checks")!;
+    expect(m.target.table).toBe("public.student_eligibility_checks");
+    // Never a tenant schema, and never expanded across schemas.
+    expect(m.target.table).not.toContain("{{schema}}");
+    expect(m.target.schemaExpand).toBeUndefined();
+    // The service leg is a tenant uuid V3 minted, so it can only be compared
+    // through the cross-schema resolver view.
+    const service = m.columns.find((c: { name: string }) => c.name === "service_v1_uuid")!;
+    expect(service.target).toContain("mig.map_services");
+    // The student leg resolves back to the V1 auth.users uuid.
+    const student = m.columns.find((c: { name: string }) => c.name === "student_uuid")!;
+    expect(student.target).toContain("platform_users");
   });
 
   it("every declared org reference lands on a polymorphic org column", () => {

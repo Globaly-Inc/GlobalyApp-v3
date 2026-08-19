@@ -1,8 +1,8 @@
 /**
  * W7b — the cross-tenant graph, in master (Part 3 §4 W7, §1.2, §14).
  *
- * Five V1 tables whose whole purpose is to relate TWO different orgs, or one org's
- * service to another org. They land in `public`, never in a tenant schema, and the
+ * Six V1 tables whose whole purpose is to relate a row in MASTER to a row in a
+ * TENANT schema, or two different orgs to each other. They land in `public`, never in a tenant schema, and the
  * reason is structural rather than stylistic: a cross-tenant FK cannot live inside
  * one tenant's schema. Put service_branch_sharing in Curtin's schema and the row
  * that shares a Curtin course with APIC has one leg in a schema APIC cannot read.
@@ -15,6 +15,7 @@
  *   service_branch_sharing       169 -> public.service_branch_sharing       a service, shared to a branch org
  *   service_study_option_branches 19 -> public.service_study_option_branches
  *   business_allowed_categories   34 -> public.business_allowed_categories  which categories an org may sell
+ *   eligibility_checks             3 -> public.student_eligibility_checks   a student, checked against a service
  *
  * Every one of them went POLYMORPHIC in V3: `parent_org_type`/`parent_org_id`,
  * `owner_org_type`/`owner_org_id`, and so on. That is B2's institutions split
@@ -62,6 +63,11 @@ export const W7_MASTER_SOURCE_TABLES: readonly string[] = [
   "service_branch_sharing",
   "service_study_option_branches",
   "business_allowed_categories",
+  // §3.5's eligibility checker. Sixth table here rather than in w7-engagement
+  // because its shape is this wave's shape, not that one's: one leg in master
+  // (platform_users) and one leg pointing at a row inside a tenant schema, which
+  // only mig.map_services can resolve — the view this wave already rebuilds.
+  "eligibility_checks",
 ];
 
 /**
@@ -89,6 +95,33 @@ export const ORG_REFS: readonly { table: string; column: string; target: string;
 ];
 
 /**
+ * V1 source table -> the V3 master table it loads into, for the one that is renamed.
+ * `eligibility_checks` becomes `student_eligibility_checks`, following the naming
+ * V3 already uses for the student-owned master tables (`student_favorites`,
+ * `student_job_applications`). Declared as data so the self-check reads it rather
+ * than hard-coding the exception.
+ */
+export const TARGET_TABLE: Readonly<Record<string, string>> = {
+  eligibility_checks: "student_eligibility_checks",
+};
+
+/**
+ * Defect D8's guard for the eligibility load, declared as DATA.
+ *
+ * Both of a check's legs are NOT NULL, so it may only load once both parents have.
+ * Named here rather than inline for the reason ORG_REFS is: the self-check asserts
+ * on a value, and a transpiler is free to reshape a function body (or drop the
+ * comment above a call) in ways a scrape cannot survive.
+ *
+ * `business_services` is a TENANT table, so its target is the union across every
+ * provisioned schema — one guard, all tenants, resolved at call time.
+ */
+export const ELIGIBILITY_PARENTS: readonly { label: string; stagingTable: string; targetFilter?: string }[] = [
+  { label: "business_services", stagingTable: "business_services" },
+  { label: "platform_users", stagingTable: "auth_users", targetFilter: "deleted_at IS NULL" },
+];
+
+/**
  * One master table, loaded in a single statement, keyed on v1_id.
  *
  * v1_id carries the V1 uuid and has a UNIQUE index on all five targets, so a
@@ -99,7 +132,15 @@ export const ORG_REFS: readonly { table: string; column: string; target: string;
  */
 async function loadMaster(
   ctx: TransformContext,
-  spec: { table: string; select: Record<string, string>; joins?: string; where?: string; params?: readonly unknown[] },
+  spec: {
+    table: string;
+    /** The V1 staging table, when it is not named the same as the V3 target (see TARGET_TABLE). */
+    source?: string;
+    select: Record<string, string>;
+    joins?: string;
+    where?: string;
+    params?: readonly unknown[];
+  },
 ): Promise<number> {
   const columns = Object.keys(spec.select).sort();
   const updates = columns.filter((c) => c !== "v1_id");
@@ -108,7 +149,7 @@ async function loadMaster(
     `public.${spec.table}`,
     `INSERT INTO public.${quoteIdent(spec.table)} (${columns.map(quoteIdent).join(", ")})
      SELECT ${columns.map((c) => `${spec.select[c]} AS ${quoteIdent(c)}`).join(", ")}
-       FROM ${STAGING_SCHEMA}.${quoteIdent(spec.table)} s
+       FROM ${STAGING_SCHEMA}.${quoteIdent(spec.source ?? spec.table)} s
        ${spec.joins ?? ""}
       ${spec.where ? `WHERE ${spec.where}` : ""}
      ON CONFLICT (v1_id) DO UPDATE SET
@@ -297,7 +338,79 @@ export async function transformMaster(ctx: TransformContext, allowedCodes: Reado
     },
   });
 
+  // ── eligibility_checks -> public.student_eligibility_checks (§3.5, wave D) ──
+  // UNBLOCKED 2026-08-18. The ledger read "MISSING in V3 ... No V3 table"; wave D
+  // shipped globalyapp/20260818_350_student_eligibility_checks.ts, so per §4's
+  // closing rule the entry flips to transform and its 3 rows load here.
+  //
+  // platform_user_id and service_id are both NOT NULL, so a row whose student or
+  // service did not migrate is unloadable: reported, then skipped by the WHERE /
+  // the inner join. Defect D8 is answered by the guard below plus loadMaster's
+  // upsert-on-v1_id, NOT by conflict-swallowing: the guard refuses to run at all
+  // when the services this stands on have not landed, instead of writing orphans
+  // that no report ever names.
+  await assertParentCounts(
+    ctx,
+    "public.student_eligibility_checks",
+    ELIGIBILITY_PARENTS.map((p) => ({
+      ...p,
+      targetTable:
+        p.stagingTable === "business_services"
+          ? unionAcrossSchemas(schemas, "business_services")
+          : "public.platform_users",
+    })),
+  );
+  await reportUnresolvedQuery(ctx, allowedCodes, {
+    sourceTable: "eligibility_checks",
+    targetTable: "public.student_eligibility_checks",
+    column: "platform_user_id",
+    reasonCode: "unresolved_user",
+    sql: `SELECT s.id::text, 'student ' || s.student_id::text || ' has no public.platform_users row'
+            FROM ${STAGING_SCHEMA}.eligibility_checks s
+           WHERE ${USER_ID("s.student_id")} IS NULL`,
+  });
+  await reportUnresolvedQuery(ctx, allowedCodes, {
+    sourceTable: "eligibility_checks",
+    targetTable: "public.student_eligibility_checks",
+    column: "service_id",
+    reasonCode: "unresolved_parent",
+    sql: `SELECT s.id::text, 'service ' || s.service_id::text || ' did not migrate to any tenant business_services'
+            FROM ${STAGING_SCHEMA}.eligibility_checks s
+           WHERE NOT EXISTS (SELECT 1 FROM mig.map_services ms WHERE ms.v1_id = s.service_id)`,
+  });
+  // V1's `eligibility_result` enum values and V3's CHECK are the same three strings,
+  // so `result` copies verbatim. A fourth value would violate the CHECK and fail the
+  // wave, which is the correct outcome: NULLing a verdict would leave a row that
+  // claims nothing.
+  await loadMaster(ctx, {
+    table: "student_eligibility_checks",
+    source: "eligibility_checks",
+    joins: `JOIN mig.map_services ms ON ms.v1_id = s.service_id`,
+    where: `${USER_ID("s.student_id")} IS NOT NULL`,
+    select: {
+      v1_id: "s.id",
+      platform_user_id: USER_ID("s.student_id"),
+      service_id: "ms.id",
+      result: "s.result",
+      // jsonb on both sides, holding RENDERED SENTENCES rather than data — V1 wrote
+      // human strings ("Minimum GPA: 3 (your GPA: 2)") and the page prints each with
+      // a tick or a cross. Copied byte-for-byte; re-deriving them from V3's rule
+      // engine would change what 3 migrated rows say.
+      met_requirements: "coalesce(s.met_requirements, '[]'::jsonb)",
+      unmet_requirements: "coalesce(s.unmet_requirements, '[]'::jsonb)",
+      notes: "s.notes",
+      created_at: "s.created_at",
+      // V1 had no updated_at. Stamped from created_at, not now(), so a re-run is
+      // idempotent in VALUE as well as in row count.
+      updated_at: "s.created_at",
+    },
+  });
+
   ctx.report.notes.push("cross-tenant graph landed in public — never in a tenant schema (§1.2, §14)");
+  ctx.report.notes.push(
+    "eligibility_checks unblocked: 3 rows -> public.student_eligibility_checks (§3.5, wave D). " +
+      "Master, not tenant — the row links a platform user to a tenant-owned service (§1.2).",
+  );
 }
 
 export function masterSelfCheck(): void {
@@ -305,9 +418,13 @@ export function masterSelfCheck(): void {
   // gives the other tenant a leg it cannot read. The transpiler is free to
   // normalise quotes and whitespace, so the scrape does too.
   const body = transformMaster.toString().replace(/'/g, '"').replace(/\s+/g, " ");
-  assert.equal(W7_MASTER_SOURCE_TABLES.length, 5);
+  assert.equal(W7_MASTER_SOURCE_TABLES.length, 6);
   for (const t of W7_MASTER_SOURCE_TABLES) {
-    assert.ok(new RegExp(`table: ?"${t}"`).test(body), `${t} must be loaded by this wave`);
+    // Five of the six keep their V1 name; eligibility_checks is the one rename
+    // (V3 prefixes the student-owned master tables — student_favorites,
+    // student_job_applications), so the scrape checks the TARGET name.
+    const target = TARGET_TABLE[t] ?? t;
+    assert.ok(new RegExp(`table: ?"${target}"`).test(body), `${t} must be loaded by this wave as ${target}`);
   }
   assert.ok(
     !/\{tenant\}|\{\{schema\}\}/.test(body),
@@ -349,6 +466,42 @@ export function masterSelfCheck(): void {
   assert.ok(
     body.includes("ms.v1_id = s.service_id"),
     "the join is on the V1 uuid, which is the only key both sides share",
+  );
+
+  // §3.5's eligibility checks: master placement, and both legs resolved or skipped.
+  assert.ok(
+    W7_MASTER_SOURCE_TABLES.includes("eligibility_checks"),
+    "eligibility_checks is this wave's sixth table — its V3 target shipped, so it is no longer blocked",
+  );
+  assert.ok(
+    body.includes("public.student_eligibility_checks"),
+    "the target is the MASTER table, never a tenant one: the row's legs straddle master and a tenant schema (§1.2)",
+  );
+  assert.ok(
+    body.includes("ms.v1_id = s.service_id"),
+    "a check's service is a tenant uuid V3 minted, so it resolves through mig.map_services like the other two",
+  );
+  // Defect D8, asserted on VALUES rather than on a scraped body: whether a comment
+  // survives is a transpiler's choice, and a check a comment can flip is not a check.
+  // The guard is a call with the target table as its first argument, and the load
+  // goes through loadMaster — whose one INSERT is an upsert on v1_id, never a
+  // conflict-swallowing DO NOTHING.
+  // Defect D8, asserted on VALUES rather than on a scraped body: whether a comment
+  // or a call's spacing survives is a transpiler's choice, and a check a transpiler
+  // can flip is not a check.
+  assert.equal(ELIGIBILITY_PARENTS.length, 2, "a check has two legs and both must have landed before it loads");
+  assert.deepEqual(
+    ELIGIBILITY_PARENTS.map((p) => p.stagingTable).sort(),
+    ["auth_users", "business_services"],
+    "the guard covers the student AND the service — a row missing either is unloadable, not an orphan",
+  );
+  assert.ok(
+    body.includes("ELIGIBILITY_PARENTS"),
+    "the guard is not decorative: the load must actually call assertParentCounts with it",
+  );
+  assert.ok(
+    /updated_at: ?"s\.created_at"/.test(body),
+    "V1 has no updated_at; stamping now() would make a re-run non-idempotent in value",
   );
 
   console.log("w7-master self-check: ok");

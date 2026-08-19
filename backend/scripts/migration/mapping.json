@@ -714,10 +714,14 @@
       "dependency": "No V3 table. Child of the V1 document-generation feature; \u00a73.8 SOP generator is MISSING and its V2 path is UNVERIFIED (\u00a714)."
     },
     "eligibility_checks": {
-      "disposition": "blocked",
-      "wave": "D",
+      "disposition": "transform",
+      "wave": "W7",
       "rows": 3,
-      "dependency": "\u00a73.5 Eligibility checker \u2014 MISSING in V3, [R] rebuild, wave D. No V3 table."
+      "targets": [
+        "public.student_eligibility_checks"
+      ],
+      "mapping": "student_eligibility_checks",
+      "note": "UNBLOCKED 2026-08-18. Was blocked on \u00a73.5 \u201cEligibility checker \u2014 MISSING in V3, [R] rebuild, wave D. No V3 table.\u201d Wave D shipped globalyapp/20260818_350_student_eligibility_checks.ts, so per \u00a74's closing rule the entry flips. MASTER, not tenant (\u00a71.2): the row links a platform user to a business_services row inside one tenant's schema, and a reference that straddles master and a tenant cannot live in that tenant's schema \u2014 the same call student_favorites (20260817_820) and the cross-tenant graph (w7-master) already made. Loaded by scripts/migration/w7-master.ts, which is where mig.map_services is rebuilt: V3 minted its own uuid for every tenant service, so the V1 service uuid resolves through that view. student_id -> platform_user_id; course_id was already renamed to service_id in V1 itself (V1 migration 20260222103852)."
     },
     "enquiries": {
       "disposition": "blocked",
@@ -12885,6 +12889,87 @@
         {
           "column": "rating_comment",
           "reason": "No V3 column, for the same reason as `rating`. NULL on all 301 V1 rows."
+        }
+      ]
+    },
+    {
+      "name": "student_eligibility_checks",
+      "description": "V1 public.eligibility_checks -> V3 public.student_eligibility_checks. Two uuid legs become resolved ids: student_id -> platform_users.id (compared by resolving back to platform_users.uuid) and service_id -> the uuid V3 minted for that service inside its tenant schema (compared through mig.map_services, the view w7-services/w7-master rebuild over every tenant schema). The two requirement arrays hold RENDERED SENTENCES, not data, so they are compared as jsonb verbatim \u2014 re-deriving them from V3's rule engine would change what these 3 rows say.",
+      "source": {
+        "table": "v1_staging.eligibility_checks",
+        "alias": "ec",
+        "joins": [
+          "JOIN v1_staging.auth_users u ON u.id = ec.student_id"
+        ],
+        "filter": "u.deleted_at IS NULL AND u.email IS NOT NULL AND trim(u.email::text) <> ''"
+      },
+      "target": {
+        "table": "public.student_eligibility_checks",
+        "alias": "t",
+        "filter": null
+      },
+      "identity": {
+        "label": "V1 eligibility_checks.id (preserved in v1_id)",
+        "source": "ec.id::text",
+        "target": "t.v1_id::text"
+      },
+      "extraTargetRows": {
+        "policy": "fail"
+      },
+      "columns": [
+        {
+          "name": "student_uuid",
+          "from": "student_id",
+          "source": "ec.student_id::text",
+          "target": "(SELECT pu.uuid::text FROM public.platform_users pu WHERE pu.id = t.platform_user_id)",
+          "note": "uuid -> serial FK, compared by resolving the V3 id back to the V1 auth.users uuid it was migrated from \u2014 the same shape the accreditations mapping uses for its business FK"
+        },
+        {
+          "name": "service_v1_uuid",
+          "from": "service_id",
+          "source": "ec.service_id::text",
+          "target": "(SELECT ms.v1_id::text FROM mig.map_services ms WHERE ms.id = t.service_id)",
+          "note": "V3 minted a NEW uuid for every tenant business_services row, so the only key both sides share is the V1 uuid in that row's v1_id. mig.map_services is the union of (id, v1_id, schema_name) across every tenant schema, rebuilt on each run by w7-services/w7-master \u2014 the same view the loader joins through and service_branch_sharing already compares on."
+        },
+        {
+          "name": "result",
+          "from": "result",
+          "source": "ec.result::text",
+          "target": "t.result",
+          "note": "V1 enum eligibility_result -> V3 text + CHECK, same three values"
+        },
+        {
+          "name": "met_requirements",
+          "from": "met_requirements",
+          "source": "coalesce(ec.met_requirements, '[]'::jsonb)",
+          "target": "t.met_requirements",
+          "note": "jsonb array of rendered sentences, compared verbatim"
+        },
+        {
+          "name": "unmet_requirements",
+          "from": "unmet_requirements",
+          "source": "coalesce(ec.unmet_requirements, '[]'::jsonb)",
+          "target": "t.unmet_requirements",
+          "note": "V1 stored conditional flags in this same column and told them apart only by `result`; preserved rather than split into a third column"
+        },
+        {
+          "name": "notes",
+          "from": "notes",
+          "source": "ec.notes",
+          "target": "t.notes"
+        },
+        {
+          "name": "created_at",
+          "from": "created_at",
+          "source": "ec.created_at",
+          "target": "t.created_at",
+          "note": "carried verbatim, unlike most W7 tables: the history page orders on it and V1's three rows are dated 2026-03 to 2026-04"
+        }
+      ],
+      "dropped": [
+        {
+          "column": "id",
+          "reason": "Not copied as a value \u2014 it IS the identity key (target v1_id). V3's own PK is a serial minted at load time."
         }
       ]
     }

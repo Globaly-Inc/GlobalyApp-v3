@@ -48,6 +48,7 @@ import { publicVisasModule } from "./modules/visas/index.js";
 import adsModule, { publicAdsModule } from "./modules/ads/index.js";
 import applicationsModule from "./modules/applications/index.js";
 import favoritesModule from "./modules/favorites/index.js";
+import eligibilityModule from "./modules/eligibility/index.js";
 import { adminWaitlistModule, publicWaitlistModule } from "./modules/waitlist/index.js";
 
 const logger = createChildLogger("server");
@@ -102,6 +103,7 @@ export async function buildServer() {
     await protectedApp.register(adsModule);                // ad campaigns, engagement recording, admin moderation
     await protectedApp.register(applicationsModule);        // student applications + per-application credit charges
     await protectedApp.register(favoritesModule);          // saved items + saved list-view filters
+    await protectedApp.register(eligibilityModule);        // V1 check-eligibility: profile vs course requirements
     await protectedApp.register(adminWaitlistModule);      // the ONLY read of the pure-PII waitlist
   });
 

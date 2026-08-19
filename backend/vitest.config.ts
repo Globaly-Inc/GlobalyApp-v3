@@ -139,6 +139,8 @@ export default defineConfig({
         // notifications glob above, already listed by D3.)
         "src/modules/favorites/**/*.ts",
         "src/modules/waitlist/**/*.ts",
+        // D — eligibility checker (§3.5): V1's check-eligibility rules, rebuilt.
+        "src/modules/eligibility/**/*.ts",
         // G9 — the eight V3-only service verticals: routes, review, promote.
         "src/modules/superadmin/data-extraction/lib/service-verticals.ts",
         "src/modules/superadmin/data-extraction/repositories/service-verticals.repository.ts",
