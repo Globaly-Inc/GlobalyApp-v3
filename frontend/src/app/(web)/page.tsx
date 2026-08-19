@@ -11,8 +11,6 @@ import { AutoplayVideo } from "./components/autoplay-video";
 import { UnifiedSearchBar } from "./components/unified-search-bar";
 import { DestinationCard } from "./components/destination-card";
 import { useTypingEffect } from "./hooks/use-typing-effect";
-import { useParallax } from "./hooks/use-scroll-animation";
-import { useIsMobile } from "./hooks/use-is-mobile";
 import type { Destination } from "./data/destinations";
 import { getFeaturedCountries } from "./data/countries-api";
 import { BLOG_POSTS } from "./data/blog-posts";
@@ -26,10 +24,6 @@ import {
 
 export default function HomePage() {
   const { displayText, showCursor } = useTypingEffect(TYPING_PHRASES);
-  const { ref: parallax1Ref, transform: parallax1Transform } = useParallax(0.18);
-  const { ref: parallax2Ref, transform: parallax2Transform } = useParallax(0.18);
-  const { ref: parallax3Ref, transform: parallax3Transform } = useParallax(0.18);
-  const isMobile = useIsMobile();
   const [destinations, setDestinations] = useState<Destination[]>([]);
 
   const fetchedRef = useRef(false);
@@ -143,13 +137,16 @@ export default function HomePage() {
                 </div>
               </div>
             </Reveal>
+            {/* No parallax on these three panels. The video is exactly the size of its overflow-hidden
+                box, so any translateY slid it out of frame and exposed a bare grey band along one edge —
+                up to 60px of it at 1440. The live site leaves them at translateY(0) at every scroll
+                position, which is what this matches. */}
             <Reveal direction="right" className="relative">
-              <div ref={parallax1Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
+              <div className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
                   src="/videos/students-hero.mp4"
                   poster="/videos/students-hero-poster.webp"
                   className="w-full h-full object-cover"
-                  style={{ transform: isMobile ? undefined : parallax1Transform }}
                 />
               </div>
             </Reveal>
@@ -224,12 +221,11 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <Reveal direction="left" className="relative">
-              <div ref={parallax2Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
+              <div className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
                   src="/videos/institutions-hero.mp4"
                   poster="/videos/institutions-hero-poster.webp"
                   className="w-full h-full object-cover"
-                  style={{ transform: isMobile ? undefined : parallax2Transform }}
                 />
               </div>
             </Reveal>
@@ -348,12 +344,11 @@ export default function HomePage() {
               </div>
             </Reveal>
             <Reveal direction="right" className="relative">
-              <div ref={parallax3Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
+              <div className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
                   src="/videos/agents-hero.mp4"
                   poster="/videos/agents-hero-poster.webp"
                   className="w-full h-full object-cover"
-                  style={{ transform: isMobile ? undefined : parallax3Transform }}
                 />
               </div>
             </Reveal>
