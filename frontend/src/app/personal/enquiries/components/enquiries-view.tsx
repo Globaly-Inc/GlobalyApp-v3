@@ -26,7 +26,7 @@ export function EnquiriesView() {
   const canEnquire =
     profileLoaded && completion !== null && completion >= REQUIRED_COMPLETION && profile!.onboarding_completed;
 
-  // Arriving from /personal/courses carries ?course_id=..., so open on mount in
+  // Arriving from the course search (/search?tab=courses) carries ?course_id=, so open on mount in
   // that case — otherwise the prefilled dialog would never be shown. Derived
   // initial state; the repo lints against set-state-in-effect.
   //

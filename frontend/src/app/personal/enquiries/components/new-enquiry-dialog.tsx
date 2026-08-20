@@ -40,7 +40,7 @@ function emptyInput(courseId: string | null): CreateEnquiryInput {
  * button) never fires Dialog's onOpenChange, so a reset there would be skipped.
  *
  * `prefillCourseId` is supplied by the parent (from ?course_id= on the deep link
- * from /personal/courses) and only for the first open, so a lingering query param
+ * from the course search) and only for the first open, so a lingering query param
  * can't keep re-prefilling later opens.
  */
 export function NewEnquiryDialog({
@@ -59,7 +59,7 @@ export function NewEnquiryDialog({
   // backend derives the stored institution from the chosen course.
   //
   // null means "not touched, follow the selected course". That matters for the
-  // ?course_id= deep link from /personal/courses: the course arrives prefilled
+  // ?course_id= deep link from a search-result Enquire button: course arrives prefilled
   // before the options have loaded, so the institution can only be resolved once
   // they arrive. Deriving avoids a set-state-in-effect (which this repo lints
   // against) and keeps the field correct in that race. An explicit "" means the

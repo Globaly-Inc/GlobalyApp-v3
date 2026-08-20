@@ -1,4 +1,4 @@
-import type { CloseResult, CreditBalance, DistributionListItem, UnlockResult } from "./types";
+import type { CloseResult, CreditBalance, DistributionListItem, EnquiryMessage, UnlockResult } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -137,6 +137,29 @@ let mockDistributions: DistributionListItem[] = [
 
 let mockBalance = 500;
 
+/** Mirrors UNLOCK_GREETING in backend messages.service.ts — unlocking posts it for you. */
+const UNLOCK_GREETING =
+  "Hi! Thanks for your enquiry — we've unlocked it and we're happy to help. Ask us anything here and we'll get back to you shortly.";
+
+/** Threads keyed by distribution_id. dist-3 is the unlocked row, so it has history. */
+const mockThreads = new Map<string, EnquiryMessage[]>([
+  [
+    "dist-3",
+    [
+      {
+        id: 1,
+        body: "Do you handle student visa applications as well as admissions?",
+        created_at: new Date(Date.now() - 7200_000).toISOString(),
+        sender_id: 1,
+        sender_name: "Priya Sharma",
+        sender_avatar: null,
+        is_mine: false,
+        sender_role: "student",
+      },
+    ],
+  ],
+]);
+
 export const businessEnquiriesMockApi = {
   listDistributions: async (): Promise<{ data: DistributionListItem[] }> => {
     console.log("[mock] GET /enquiry-distributions");
@@ -191,6 +214,21 @@ export const businessEnquiriesMockApi = {
         : d,
     );
 
+    // The server seeds the thread inside the unlock transaction; mock mode does the same
+    // so the Messages toggle isn't empty right after unlocking.
+    mockThreads.set(id, [
+      {
+        id: 1,
+        body: UNLOCK_GREETING,
+        created_at: new Date().toISOString(),
+        sender_id: 42,
+        sender_name: "You",
+        sender_avatar: null,
+        is_mine: true,
+        sender_role: "business",
+      },
+    ]);
+
     return {
       distribution_id: id,
       status: "unlocked",
@@ -202,6 +240,35 @@ export const businessEnquiriesMockApi = {
       student_email: student.email,
       student_phone: student.phone,
     };
+  },
+
+  getMessages: async (id: string): Promise<{ messages: EnquiryMessage[] }> => {
+    console.log("[mock] GET /enquiry-distributions/:id/messages", { id });
+    await delay(200);
+    const row = mockDistributions.find((d) => d.distribution_id === id);
+    if (!row?.is_unlocked) throw new Error("Unlock this enquiry to start a conversation");
+    return { messages: mockThreads.get(id) ?? [] };
+  },
+
+  sendMessage: async (id: string, body: string): Promise<EnquiryMessage> => {
+    console.log("[mock] POST /enquiry-distributions/:id/messages", { id, body });
+    await delay(250);
+    const row = mockDistributions.find((d) => d.distribution_id === id);
+    if (!row?.is_unlocked) throw new Error("Unlock this enquiry to start a conversation");
+    if (row.closed_at) throw new Error("This enquiry is closed — the conversation is read-only");
+    const thread = mockThreads.get(id) ?? [];
+    const message: EnquiryMessage = {
+      id: (thread.at(-1)?.id ?? 0) + 1,
+      body,
+      created_at: new Date().toISOString(),
+      sender_id: 2,
+      sender_name: "You",
+      sender_avatar: null,
+      is_mine: true,
+      sender_role: "business",
+    };
+    mockThreads.set(id, [...thread, message]);
+    return message;
   },
 
   close: async (id: string, closeReason: string): Promise<CloseResult> => {

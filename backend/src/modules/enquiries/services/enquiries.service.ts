@@ -7,6 +7,7 @@ import { logEnquiryAudit } from "../shared/audit.js";
 import { ENQUIRY_QUEUES } from "../shared/queues.js";
 import { queueService } from "../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../shared/logger.js";
+import * as storage from "../../../shared/storage/storageService.js";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../../shared/errors.js";
 import { paginationToOffset, buildPaginatedResponse } from "../../../shared/pagination.js";
 import type { PaginationInput } from "../../../shared/pagination.js";
@@ -130,9 +131,24 @@ export async function getEnquiryById(id: string) {
   if (!enquiry) {
     throw new NotFoundError("Enquiry not found");
   }
-  // Recipients are intentionally NOT returned: the student may only see
-  // businesses that have unlocked their enquiry. Returning every matched business
-  // here would leak that list to anyone reading the API, regardless of what the
-  // UI renders. Add an "unlocked by" list here when unlocking exists.
-  return enquiry;
+  // Only UNLOCKED recipients are returned. Every matched business is deliberately
+  // withheld: that list would reveal who merely received the enquiry, which is not
+  // the student's to see and would leak regardless of what the UI renders.
+  const unlocked = await repo.listUnlockedBusinessesForEnquiry(id);
+  const unlocked_businesses = await Promise.all(
+    unlocked.map(async (b) => ({
+      distribution_id: b.distribution_id,
+      business_id: b.business_id,
+      business_name: b.business_name,
+      // Signed here because businesses.logo_url is a storage path, not a URL.
+      logo_url: await storage.resolvePreviewUrl(b.logo_url),
+      city: b.city ?? null,
+      unlocked_at: b.unlocked_at,
+      // Whether the thread is read-only. The close REASON is deliberately not
+      // exposed — it is the business's internal note about this lead.
+      is_closed: b.status === "closed",
+    })),
+  );
+
+  return { ...enquiry, unlocked_businesses };
 }

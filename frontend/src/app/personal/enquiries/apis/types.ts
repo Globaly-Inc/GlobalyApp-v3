@@ -34,6 +34,9 @@ export type Enquiry = {
   course_short_name: string | null;
   institution_name: string | null;
   institution_logo_url: string | null;
+  /** Businesses that paid to unlock. Never the full recipient list — the server
+   * only ever returns the ones who unlocked. */
+  unlocked_businesses: UnlockedBusiness[];
 };
 
 export type EnquiryListItem = {
@@ -61,3 +64,44 @@ export type CreateEnquiryInput = {
   preferred_intake?: string | null;
   preferred_year?: number | null;
 };
+
+/**
+ * Course option for the new-enquiry picker — GET /courses.
+ * Only id/job_id/name are reliably populated in extracted data; everything else is
+ * nullable in practice. `id` is extraction_courses.id, which is what an enquiry's
+ * course_id must be. Fee totals arrive as strings (pg numeric via knex).
+ *
+ * Lives here rather than in a courses feature: the picker is the only consumer.
+ */
+export interface Course {
+  id: string;
+  job_id: string;
+  name: string;
+  short_name: string | null;
+  degree_level: string | null;
+  subject_area: string | null;
+  duration_weeks: number | null;
+  study_mode: string | null;
+  country_code: string | null;
+  domestic_fee_total: string | null;
+  domestic_currency: string | null;
+  international_fee_total: string | null;
+  international_currency: string | null;
+  awarding_institution: string | null;
+  image_url: string | null;
+  institution_name: string | null;
+  institution_logo_url: string | null;
+}
+
+/** A business that paid to unlock the enquiry — the only recipients a student sees. */
+export interface UnlockedBusiness {
+  /** The chat thread is addressed by distribution, not by business. */
+  distribution_id: string;
+  business_id: number;
+  business_name: string;
+  logo_url: string | null;
+  city: string | null;
+  unlocked_at: string;
+  /** Thread is read-only once the business closes its copy. */
+  is_closed: boolean;
+}

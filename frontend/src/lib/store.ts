@@ -9,7 +9,7 @@ import { joinReducer } from "@/app/join/store/join-slice"
 import { businessOnboardingReducer } from "@/app/business/store/business-onboarding-slice"
 import { businessProfileDetailReducer } from "@/app/business/profile/store/business-profile-detail-slice"
 import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enquiries/store/enquiries-slice"
-import { coursesReducer } from "@/app/personal/courses/store/courses-slice"
+import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
 import { businessEnquiriesReducer } from "@/app/business/enquiries/store/business-enquiries-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
@@ -48,7 +48,7 @@ const appReducer = combineReducers({
     businessOnboarding: businessOnboardingReducer,
     businessProfileDetail: businessProfileDetailReducer,
     enquiries: personalEnquiriesReducer,
-    courses: coursesReducer,
+    messages: messagesReducer,
     businessEnquiries: businessEnquiriesReducer,
     admin: adminReducer,
     overview: overviewReducer,
