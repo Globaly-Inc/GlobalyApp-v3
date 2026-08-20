@@ -6,7 +6,8 @@ export function SearchPagination({
   meta,
   page,
   query,
-}: Readonly<{ meta: Paginated<unknown>["meta"]; page: number; query: Record<string, string> }>) {
+  pathname = "/search",
+}: Readonly<{ meta: Paginated<unknown>["meta"]; page: number; query: Record<string, string>; pathname?: string }>) {
   if (meta.total === 0) return null;
 
   return (
@@ -14,7 +15,7 @@ export function SearchPagination({
       {meta.totalPages > 1 && (
         <nav aria-label="Search pagination" className="flex items-center justify-center gap-2 flex-wrap">
           {page > 1 ? (
-            <Link href={{ pathname: "/search", query: { ...query, page: page - 1 } }}>
+            <Link href={{ pathname, query: { ...query, page: page - 1 } }}>
               <Button variant="outline" size="sm">← Previous</Button>
             </Link>
           ) : (
@@ -22,7 +23,7 @@ export function SearchPagination({
           )}
           <span className="text-sm text-muted-foreground px-2">Page {page} of {meta.totalPages}</span>
           {page < meta.totalPages ? (
-            <Link href={{ pathname: "/search", query: { ...query, page: page + 1 } }}>
+            <Link href={{ pathname, query: { ...query, page: page + 1 } }}>
               <Button variant="outline" size="sm">Next →</Button>
             </Link>
           ) : (

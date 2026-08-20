@@ -1,9 +1,11 @@
 import type {
-  CourseDetail, CourseFilterOptions, Paginated, SearchBusiness, SearchCourse, SearchJob, SearchScholarship,
+  BusinessDetail, CourseDetail, CourseFilterOptions, InstitutionDetail, Paginated, SearchBusiness, SearchCourse, SearchScholarship,
+  SearchJob,
 } from "./types";
 import {
-  mockGetCourseBySlug, mockGetCourseFilters, mockGetCourses, mockGetEducationAgencies, mockGetInstitutions,
-  mockGetMigrationAgents, mockGetScholarships, mockGetStudentJobs, mockGetVisaServices,
+  mockGetBusinessBySubdomain, mockGetCourseBySlug, mockGetCourseFilters, mockGetCourses, mockGetEducationAgencies,
+  mockGetInstitutionBySlug, mockGetInstitutionCourses, mockGetInstitutions, mockGetMigrationAgents,
+  mockGetStudentJobs, mockGetVisaServices, mockGetScholarships
 } from "./mock-data";
 
 const API_BASE = `${(process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "")}/api/v3`;
@@ -102,5 +104,33 @@ export async function getCourseBySlug(slug: string): Promise<CourseDetail | null
   const res = await fetch(`${API_BASE}/search/courses/${slug}`, { next: { revalidate: 30 } });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to load course");
+  return res.json();
+}
+
+export async function getInstitutionBySlug(slug: string): Promise<InstitutionDetail | null> {
+  if (USE_MOCK_DATA) return mockGetInstitutionBySlug(slug);
+  const res = await fetch(`${API_BASE}/search/institutions/${slug}`, { next: { revalidate: 30 } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to load institution");
+  return res.json();
+}
+
+export async function getInstitutionCourses(
+  slug: string, params: Pick<SearchFilterParams, "page" | "search">,
+): Promise<Paginated<SearchCourse>> {
+  if (USE_MOCK_DATA) return mockGetInstitutionCourses(slug, params);
+  const qs = new URLSearchParams();
+  if (params.page && params.page > 1) qs.set("page", String(params.page));
+  if (params.search) qs.set("search", params.search);
+  const res = await fetch(`${API_BASE}/search/institutions/${slug}/courses?${qs}`, { next: { revalidate: 30 } });
+  if (!res.ok) throw new Error("Failed to load institution courses");
+  return res.json();
+}
+
+export async function getBusinessBySubdomain(subdomain: string): Promise<BusinessDetail | null> {
+  if (USE_MOCK_DATA) return mockGetBusinessBySubdomain(subdomain);
+  const res = await fetch(`${API_BASE}/search/businesses/${subdomain}`, { next: { revalidate: 30 } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to load business");
   return res.json();
 }

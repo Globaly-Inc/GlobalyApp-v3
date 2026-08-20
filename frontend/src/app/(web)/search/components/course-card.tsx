@@ -24,8 +24,9 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
   const fee = formatFee(course.domestic_fee_total, course.domestic_currency) ?? formatFee(course.international_fee_total, course.international_currency);
 
   return (
-    <div className="bg-card border border-border rounded-xl hover:shadow-md transition-shadow overflow-hidden">
-      <div className="flex flex-col sm:flex-row">
+    <div className="group relative bg-card border border-border rounded-xl hover:shadow-md hover:border-primary/40 transition-all overflow-hidden">
+      <Link href={`/course/${course.slug}`} className="absolute inset-0 z-0" aria-label={course.name} />
+      <div className="flex flex-col sm:flex-row pointer-events-none">
         <div className="flex-1 min-w-0 p-4">
           <div className="flex gap-3">
             <div className="w-14 h-14 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -38,20 +39,20 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
-                <Link href={`/course/${course.slug}`} className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-foreground hover:text-primary transition-colors leading-snug text-[15px] line-clamp-2">
-                    {course.name}
-                  </h3>
-                </Link>
-                <CourseCompareButton
-                  course={{
-                    id: course.id, slug: course.slug, name: course.name,
-                    institutionName: course.awarding_institution ?? undefined,
-                    countryName: course.country_name ?? undefined,
-                    durationLabel, subjectArea: course.subject_area,
-                    nextIntakeLabel, annualTuition, feeCurrency,
-                  }}
-                />
+                <h3 className="flex-1 min-w-0 font-semibold text-foreground group-hover:text-primary transition-colors leading-snug text-[15px] line-clamp-2">
+                  {course.name}
+                </h3>
+                <div className="pointer-events-auto relative z-10">
+                  <CourseCompareButton
+                    course={{
+                      id: course.id, slug: course.slug, name: course.name,
+                      institutionName: course.awarding_institution ?? undefined,
+                      countryName: course.country_name ?? undefined,
+                      durationLabel, subjectArea: course.subject_area,
+                      nextIntakeLabel, annualTuition, feeCurrency,
+                    }}
+                  />
+                </div>
               </div>
               {course.awarding_institution && (
                 <p className="text-xs text-muted-foreground mt-0.5">{course.awarding_institution}</p>
@@ -106,7 +107,7 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
               <p className="text-xs text-muted-foreground italic">Fees on enquiry</p>
             )}
           </div>
-          <Link href="/auth/sign-up?redirect=/search">
+          <Link href="/auth/sign-up?redirect=/search" className="pointer-events-auto relative z-10">
             <Button size="sm" className="w-full text-xs h-9">Enquire</Button>
           </Link>
         </div>

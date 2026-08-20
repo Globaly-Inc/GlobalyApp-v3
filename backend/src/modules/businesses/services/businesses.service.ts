@@ -107,7 +107,7 @@ export async function searchBusinesses(orgId: string, search: string | undefined
 }
 
 /** Resolve stored logo/cover paths to signed, viewable URLs — mirrors the admin-side helper. */
-async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(biz: T): Promise<T> {
+export async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(biz: T): Promise<T> {
   const [logo_url, cover_url] = await Promise.all([
     storage.resolvePreviewUrl(biz.logo_url),
     storage.resolvePreviewUrl(biz.cover_url),
