@@ -7,7 +7,6 @@ on:
       - 'production'
       - 'staging'
       - 'develop'
-      - 'devops-queue-worker-setup'
 
     paths:
       - "backend/**"
