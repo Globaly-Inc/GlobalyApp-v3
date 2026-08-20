@@ -13,5 +13,5 @@ export const mailerConfig: MailerConfig = {
   port: config.MAIL_PORT,
   user: config.MAIL_USERNAME,
   pass: config.MAIL_PASSWORD,
-  defaultFrom: "noreply@globalyhub.com",
+  defaultFrom: "noreply@globalyapp.com",
 };
