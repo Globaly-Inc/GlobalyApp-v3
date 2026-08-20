@@ -20,6 +20,7 @@ import type {
   JobEvent,
   JobFull,
   JunctionSlug,
+  Paginated,
   QueueItem,
   StudyOption,
   StudyOptionParams,
@@ -149,13 +150,16 @@ export const allExtractionsMockApi = {
     return EMPTY_COURSE_LINKS;
   },
 
-  getCourses: async (jobId: string): Promise<CourseFull[]> => {
-    console.log("[mock] GET courses for job", jobId);
+  getCourses: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string; status?: string } = {},
+  ): Promise<Paginated<CourseFull>> => {
+    console.log("[mock] GET courses for job", jobId, params);
     await delay(300);
     const job = mockJobs.find((j) => j.id === jobId);
     const count = job?.courses_extracted ?? 2;
     const now = new Date().toISOString();
-    return Array.from({ length: count }, (_, i) => ({
+    const all = Array.from({ length: count }, (_, i) => ({
       id: `course-${i}`,
       name: `Course ${i + 1}`,
       short_name: null,
@@ -175,6 +179,23 @@ export const allExtractionsMockApi = {
       created_at: now,
       updated_at: now,
     }));
+    const filtered = all
+      .filter((c) => !params.search || c.name.toLowerCase().includes(params.search.toLowerCase()))
+      .filter((c) => !params.status || c.verification_status === params.status);
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    const statusCounts = Object.entries(
+      all.reduce<Record<string, number>>((acc, c) => {
+        const s = c.verification_status ?? "unverified";
+        acc[s] = (acc[s] ?? 0) + 1;
+        return acc;
+      }, {}),
+    ).map(([status, count]) => ({ status, count }));
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+      statusCounts,
+    };
   },
 
   createCourse: async (jobId: string, params: CreateCourseParams): Promise<CourseFull> => {

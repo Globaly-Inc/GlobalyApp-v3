@@ -4,8 +4,32 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
-export async function listCoursesByJob(jobId: string) {
-  return masterKnex(T).where({ job_id: jobId }).orderBy("created_at", "asc");
+export type CourseListFilters = { search?: string; status?: string };
+
+function filteredCoursesQuery(jobId: string, { search, status }: CourseListFilters) {
+  const q = masterKnex(T).where({ job_id: jobId });
+  if (search) q.whereILike("name", `%${search}%`);
+  if (status) q.where("verification_status", status);
+  return q;
+}
+
+export async function listCoursesByJob(jobId: string, limit: number, offset: number, filters: CourseListFilters = {}) {
+  return filteredCoursesQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countCoursesByJob(jobId: string, filters: CourseListFilters = {}) {
+  const [row] = await filteredCoursesQuery(jobId, filters).count("id as count");
+  return Number(row.count);
+}
+
+// Powers the status filter dropdown — counts are over the whole job, not the current page.
+export async function countCoursesByStatus(jobId: string) {
+  const rows = await masterKnex(T)
+    .where({ job_id: jobId })
+    .select("verification_status")
+    .count("id as count")
+    .groupBy("verification_status");
+  return rows.map((r) => ({ status: (r.verification_status as string | null) ?? "unverified", count: Number(r.count) }));
 }
 
 export async function findCourseById(id: string) {

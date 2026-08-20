@@ -1,21 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, CheckCircle2, ExternalLink, Flag, Loader2, Plus, Search } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { VERIFICATION_DOT } from "../const";
 import { latestTimestamp } from "../utils";
 import { CourseDetailPanel } from "./course-detail-panel";
 import { CourseForm } from "./course-form";
+import { CourseListPanel } from "./course-list-panel";
 import { StepActionBar } from "./step-action-bar";
 import type { CampusFull, CourseFull, CourseLinks, CreateCourseParams, ExtractionJob } from "../apis/types";
+
+const PAGE_SIZE = 10;
 
 export function CoursesTab({
   jobId,
@@ -29,6 +27,8 @@ export function CoursesTab({
   onJumpToContext: () => void;
 }>) {
   const [courses, setCourses] = useState<CourseFull[]>([]);
+  const [total, setTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<{ status: string; count: number }[]>([]);
   const [links, setLinks] = useState<CourseLinks | null>(null);
   const [campuses, setCampuses] = useState<CampusFull[]>([]);
   const [queuedCourseUrls, setQueuedCourseUrls] = useState(0);
@@ -36,6 +36,7 @@ export function CoursesTab({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -43,13 +44,20 @@ export function CoursesTab({
 
   const load = useCallback(async () => {
     try {
-      const [courseRows, courseLinks, campusRows, queue] = await Promise.all([
-        allExtractionsApi.getCourses(jobId),
+      const [coursesRes, courseLinks, campusRows, queue] = await Promise.all([
+        allExtractionsApi.getCourses(jobId, {
+          page,
+          limit: PAGE_SIZE,
+          search: search.trim() || undefined,
+          status: statusFilter === "all" ? undefined : statusFilter,
+        }),
         allExtractionsApi.getCourseLinks(jobId),
         allExtractionsApi.getCampuses(jobId),
         allExtractionsApi.getQueue(jobId),
       ]);
-      setCourses(courseRows);
+      setCourses(coursesRes.data);
+      setTotal(coursesRes.meta.total);
+      setStatusCounts(coursesRes.statusCounts ?? []);
       setLinks(courseLinks);
       setCampuses(campusRows);
       setQueuedCourseUrls(queue.filter((q) => q.kind === "course").length);
@@ -58,13 +66,23 @@ export function CoursesTab({
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, page, search, statusFilter]);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    load();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      load();
+      return;
+    }
+    // Debounce so typing in the search box doesn't fire a request per keystroke.
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
   }, [load]);
+
+  // Any filter change invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
 
   const handleCreate = async (values: CreateCourseParams) => {
     setSaving(true);
@@ -81,22 +99,7 @@ export function CoursesTab({
     }
   };
 
-  const query = search.trim().toLowerCase();
-  // Options come from the data, not a hardcoded list — the pipeline writes several
-  // statuses (unverified, verified, confirmed, mismatch, flagged, manual) and only
-  // the ones actually present are worth offering.
-  const statusCounts = new Map<string, number>();
-  for (const c of courses) {
-    const s = c.verification_status ?? "unverified";
-    statusCounts.set(s, (statusCounts.get(s) ?? 0) + 1);
-  }
-  const filtering = query !== "" || statusFilter !== "all";
-  const visible = courses.filter((c) => {
-    if (statusFilter !== "all" && (c.verification_status ?? "unverified") !== statusFilter) return false;
-    return !query || c.name.toLowerCase().includes(query);
-  });
   const selected = courses.find((c) => c.id === selectedId) ?? null;
-  const allSelected = visible.length > 0 && selectedIds.length === visible.length;
 
   const bulkVerify = async (approve: boolean) => {
     setSaving(true);
@@ -122,7 +125,7 @@ export function CoursesTab({
         runLabel="Run Course Discovery"
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.discovery}
         lastUpdated={latestTimestamp(courses)}
-        hasData={courses.length > 0}
+        hasData={total > 0}
         guidedUrls={job.guided_urls}
         contextKey="course_list_urls"
         contextLabel="course list URLs"
@@ -152,118 +155,28 @@ export function CoursesTab({
       ) : (
         // Full-width list until a course is picked; then it collapses to a sidebar next to the form.
         <div className={cn("gap-4", selected ? "grid md:grid-cols-[300px_1fr]" : "block")}>
-          {/* Course list */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search courses…"
-                  className="h-9 pl-7 text-xs"
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
-                <SelectTrigger className="h-9 w-[160px] text-xs cursor-pointer">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses ({courses.length})</SelectItem>
-                  {[...statusCounts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([status, count]) => (
-                    <SelectItem key={status} value={status}>
-                      <span className="flex items-center gap-2">
-                        <span className={cn("h-1.5 w-1.5 rounded-full", VERIFICATION_DOT[status] ?? "bg-muted-foreground/30")} />
-                        <span className="capitalize">{status}</span> ({count})
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button className="h-9 gap-1.5 cursor-pointer" disabled={adding} onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Add Course
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                <Checkbox
-                  checked={allSelected}
-                  onCheckedChange={() => setSelectedIds(allSelected ? [] : visible.map((c) => c.id))}
-                  disabled={visible.length === 0}
-                />
-                {courses.length} course{courses.length === 1 ? "" : "s"}
-                {filtering && ` · ${visible.length} matching`}
-              </label>
-
-              {selectedIds.length > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 gap-1.5 text-xs cursor-pointer"
-                    disabled={saving}
-                    onClick={() => bulkVerify(true)}
-                  >
-                    <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                    Approve {selectedIds.length}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 gap-1.5 text-xs text-destructive cursor-pointer"
-                    disabled={saving}
-                    onClick={() => bulkVerify(false)}
-                  >
-                    <Flag className="h-3 w-3" />
-                    Flag {selectedIds.length}
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div className={cn("space-y-2 overflow-y-auto pr-1", selected ? "max-h-[70vh]" : "max-h-[calc(100vh-22rem)]")}>
-              {visible.map((course) => (
-                <div
-                  key={course.id}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-accent",
-                    selectedId === course.id && "border-primary ring-1 ring-primary",
-                  )}
-                >
-                  <Checkbox
-                    checked={selectedIds.includes(course.id)}
-                    onCheckedChange={() =>
-                      setSelectedIds((ids) => (ids.includes(course.id) ? ids.filter((i) => i !== course.id) : [...ids, course.id]))
-                    }
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(course.id)}
-                    className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-sm cursor-pointer"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span
-                        title={course.verification_status ?? "unverified"}
-                        className={cn("h-1.5 w-1.5 shrink-0 rounded-full", VERIFICATION_DOT[course.verification_status ?? "unverified"] ?? "bg-muted-foreground/30")}
-                      />
-                      <span className="truncate">{course.name}</span>
-                    </span>
-                    {course.source_url && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                  </button>
-                </div>
-              ))}
-              {visible.length === 0 && (
-                <Card className="border-dashed">
-                  <CardContent className="py-10 text-center text-muted-foreground">
-                    <BookOpen className="mx-auto mb-3 h-7 w-7 opacity-40" />
-                    <p className="text-sm">{filtering ? "No courses match your filters" : "No courses yet"}</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </div>
+          <CourseListPanel
+            courses={courses}
+            total={total}
+            page={page}
+            limit={PAGE_SIZE}
+            statusCounts={statusCounts}
+            search={search}
+            onSearchChange={setSearch}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            onPageChange={setPage}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            selectedIds={selectedIds}
+            onToggleSelect={(id) => setSelectedIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]))}
+            onToggleSelectAll={() => setSelectedIds((ids) => (ids.length === courses.length ? [] : courses.map((c) => c.id)))}
+            adding={adding}
+            onAdd={() => setAdding(true)}
+            saving={saving}
+            onBulkVerify={bulkVerify}
+            compact={!!selected}
+          />
 
           {/* Detail — only once a course is selected */}
           {selected && links && (

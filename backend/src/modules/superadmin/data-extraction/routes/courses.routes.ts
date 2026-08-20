@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import * as service from "../services/courses.service.js";
 import { UuidParamSchema, JobIdParamSchema } from "../schemas/jobs.schema.js";
 import { CreateCourseSchema, PatchCourseSchema, CourseAccreditationLinkSchema, BulkVerifyCoursesSchema } from "../schemas/courses.schema.js";
+import { PaginationSchema, paginationToOffset } from "../../../../shared/pagination.js";
 import { z } from "zod";
 
 const CourseAccredParamSchema = z.object({
@@ -17,7 +18,10 @@ export async function coursesRoutes(app: FastifyInstance) {
   // RC1: GET /jobs/:id/courses
   app.get("/jobs/:id/courses", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
-    return reply.send(await service.listCourses(id));
+    const pagination = PaginationSchema.parse(req.query);
+    const { search, status } = z.object({ search: z.string().optional(), status: z.string().optional() }).parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    return reply.send(await service.listCourses(id, limit, offset, pagination, { search, status }));
   });
 
   // RC2: GET /jobs/:id/course-links
