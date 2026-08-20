@@ -130,6 +130,45 @@ export function otpEmail(otp: string): { subject: string; html: string; text: st
   };
 }
 
+const REGISTRANT_TYPE_LABELS: Record<string, string> = {
+  student: "Student",
+  institution: "Institution",
+  service_provider: "Service Provider",
+  other: "Other",
+};
+
+// Keep in sync with the frontend's LAUNCH_MS (frontend/src/app/coming-soon/const/index.ts)
+// — this is a marketing date, not something either side reads from the other at runtime.
+const LAUNCH_DATE_LABEL = new Date("2026-09-01T00:00:00+10:00").toLocaleDateString("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "Australia/Sydney",
+});
+
+/** The "you're on the list" mail sent right after a new coming-soon waitlist sign-up. */
+export function waitlistConfirmationEmail(
+  name: string,
+  registrantType: string,
+): { subject: string; html: string; text: string } {
+  const firstName = esc(name.trim().split(/\s+/)[0] || name);
+  const typeLabel = REGISTRANT_TYPE_LABELS[registrantType] ?? "Other";
+
+  return {
+    subject: "You're on the Globaly waitlist ✨",
+    text: `You're on the list, ${name}. Thanks for registering your interest in Globaly's AI Education Discovery agents. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore. Registered as: ${typeLabel}.`,
+    html: emailLayout({
+      heading: "You're on the list",
+      body: `<p style="margin:0 0 12px">Thanks for registering your interest, ${firstName}.</p>
+             <p style="margin:0 0 12px">We're building something new to help you find the right courses,
+             institutions and pathways — and we'll email you the moment it's ready to explore.</p>
+             <p style="margin:0 0 12px;color:${BRAND.muted}">Launching <strong>${LAUNCH_DATE_LABEL}</strong>.</p>
+             <p style="margin:0;color:${BRAND.muted}">Registered as: <strong>${esc(typeLabel)}</strong></p>`,
+      footnote: "You'll only hear from us about the launch.",
+    }),
+  };
+}
+
 /** The "claim your pre-seeded business account" mail, sent by an admin from the businesses list. */
 export function claimBusinessEmail(options: {
   ownerName: string;
