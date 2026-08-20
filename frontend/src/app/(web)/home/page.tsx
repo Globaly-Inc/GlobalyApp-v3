@@ -6,22 +6,22 @@ import { CheckCircle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Reveal } from "./components/reveal";
-import { AutoplayVideo } from "./components/autoplay-video";
-import { UnifiedSearchBar } from "./components/unified-search-bar";
-import { useTypingEffect } from "./hooks/use-typing-effect";
-import { useParallax } from "./hooks/use-scroll-animation";
-import { useIsMobile } from "./hooks/use-is-mobile";
-import type { Destination } from "./data/destinations";
-import { getFeaturedCountries } from "./data/countries-api";
-import { BLOG_POSTS } from "./data/blog-posts";
+import { Reveal } from "../components/reveal";
+import { AutoplayVideo } from "../components/autoplay-video";
+import { UnifiedSearchBar } from "../components/unified-search-bar";
+import { useTypingEffect } from "../hooks/use-typing-effect";
+import { useParallax } from "../hooks/use-scroll-animation";
+import { useIsMobile } from "../hooks/use-is-mobile";
+import type { Destination } from "../data/destinations";
+import { getFeaturedCountries } from "../data/countries-api";
+import { BLOG_POSTS } from "../data/blog-posts";
 import {
   TYPING_PHRASES,
   STUDENT_FEATURES,
   PROVIDER_FEATURES,
   AGENT_FEATURES,
   STATS,
-} from "./static/home-content";
+} from "../static/home-content";
 
 export default function HomePage() {
   const { displayText, showCursor } = useTypingEffect(TYPING_PHRASES);

@@ -1,5 +1,4 @@
-import { httpGet, httpPatch } from "@/lib/api/http";
-import { getAccessToken } from "@/lib/session";
+import { authHeaders, httpGet, httpPatch, withRefreshRetry } from "@/lib/api/http";
 import type {
   AttachmentUpload,
   ChatSession,
@@ -84,14 +83,14 @@ export const aiRealApi = {
     httpGet<CreditBalance>("/ai-chat/credits/balance"),
 
   uploadAttachment: async (file: File): Promise<AttachmentUpload> => {
-    const token = getAccessToken();
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(`${BASE_URL}/attachments`, {
+    // withRefreshRetry: raw fetch bypasses httpPost, so token expiry/refresh must be handled here too
+    const res = await withRefreshRetry(() => fetch(`${BASE_URL}/attachments`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: authHeaders(),
       body: form,
-    });
+    }));
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       throw new Error((body as { error?: string } | null)?.error ?? "Upload failed");
@@ -110,13 +109,12 @@ export const aiRealApi = {
     onEvent: (event: SSEEvent) => void,
     signal?: AbortSignal,
   ): Promise<void> => {
-    const token = getAccessToken();
-    const res = await fetch(`${BASE_URL}/messages`, {
+    // withRefreshRetry: SSE uses raw fetch (httpPost expects JSON), so an expired
+    // access token must be refreshed here too — otherwise chats older than the
+    // 15-min token lifetime end every send with the backend's "Invalid token" 401.
+    const res = await withRefreshRetry(() => fetch(`${BASE_URL}/messages`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({
         // Backend schema wants the key absent for a new chat, not null
         ...(input.session_id ? { session_id: input.session_id } : {}),
@@ -124,7 +122,7 @@ export const aiRealApi = {
         ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       }),
       signal,
-    });
+    }));
 
     if (!res.ok) {
       const body = await res.json().catch(() => null);

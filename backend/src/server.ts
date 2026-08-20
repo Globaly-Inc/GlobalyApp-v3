@@ -33,6 +33,7 @@ import aiCounsellorModule, { publicAiCounsellorModule } from "./modules/ai-couns
 import enquiriesModule from "./modules/enquiries/index.js";
 import coursesModule from "./modules/courses/index.js";
 import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
+import waitlistModule from "./modules/waitlist/index.js";
 
 const logger = createChildLogger("server");
 
@@ -73,6 +74,7 @@ export async function buildServer() {
   // Reward config + the /join code lookup. Registered outside the protected scope so these two routes
   // never acquire the auth hook — public by construction, not by an allow-list.
   await app.register(publicReferralsModule);
+  await app.register(waitlistModule);        // coming-soon page sign-up (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

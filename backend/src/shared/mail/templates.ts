@@ -20,7 +20,7 @@ const BRAND = {
 
 const FONT = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`;
 
-const logoUrl = () => `${config.WEB_APP_URL.replace(/\/$/, "")}/globaly-icon.png`;
+const logoUrl = () => `https://storage.googleapis.com/globalyapp-public-images/logos/globalyapp-logo.jpeg`;
 
 /**
  * Escape values that came from a user before they go into mail HTML. The recipient of an invitation
@@ -126,6 +126,45 @@ export function otpEmail(otp: string): { subject: string; html: string; text: st
              <div style="background-color:#fdf6ec;border:1px solid #f6e2bd;border-radius:14px;padding:18px 10px">${digits}</div>
              <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px">This code expires in <strong>10 minutes</strong>.</p>`,
       footnote: "If you didn't request this code, you can safely ignore this email.",
+    }),
+  };
+}
+
+const REGISTRANT_TYPE_LABELS: Record<string, string> = {
+  student: "Student",
+  institution: "Institution",
+  service_provider: "Service Provider",
+  other: "Other",
+};
+
+// Keep in sync with the frontend's LAUNCH_MS (frontend/src/app/coming-soon/const/index.ts)
+// — this is a marketing date, not something either side reads from the other at runtime.
+const LAUNCH_DATE_LABEL = new Date("2026-09-01T00:00:00+10:00").toLocaleDateString("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "Australia/Sydney",
+});
+
+/** The "you're on the list" mail sent right after a new coming-soon waitlist sign-up. */
+export function waitlistConfirmationEmail(
+  name: string,
+  registrantType: string,
+): { subject: string; html: string; text: string } {
+  const firstName = esc(name.trim().split(/\s+/)[0] || name);
+  const typeLabel = REGISTRANT_TYPE_LABELS[registrantType] ?? "Other";
+
+  return {
+    subject: "You're on the Globaly waitlist ✨",
+    text: `You're on the list, ${name}. Thanks for registering your interest in Globaly's AI Education Discovery agents. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore. Registered as: ${typeLabel}.`,
+    html: emailLayout({
+      heading: "You're on the list",
+      body: `<p style="margin:0 0 12px">Thanks for registering your interest, ${firstName}.</p>
+             <p style="margin:0 0 12px">We're building something new to help you find the right courses,
+             institutions and pathways — and we'll email you the moment it's ready to explore.</p>
+             <p style="margin:0 0 12px;color:${BRAND.muted}">Launching <strong>${LAUNCH_DATE_LABEL}</strong>.</p>
+             <p style="margin:0;color:${BRAND.muted}">Registered as: <strong>${esc(typeLabel)}</strong></p>`,
+      footnote: "You'll only hear from us about the launch.",
     }),
   };
 }
