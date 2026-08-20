@@ -4,7 +4,12 @@
 
 import type { FastifyInstance } from "fastify";
 import * as service from "../services/enquiries.service.js";
+import * as messagesService from "../services/messages.service.js";
 import { CreateEnquirySchema, EnquiryIdParamSchema, ListEnquiriesQuerySchema } from "../schemas/enquiries.schema.js";
+import {
+  DistributionIdParamSchema,
+  SendEnquiryMessageSchema,
+} from "../schemas/distributions.schema.js";
 import { ForbiddenError } from "../../../shared/errors.js";
 
 export async function enquiriesRoutes(app: FastifyInstance) {
@@ -29,5 +34,30 @@ export async function enquiriesRoutes(app: FastifyInstance) {
       throw new ForbiddenError("Not your enquiry");
     }
     return reply.send(enquiry);
+  });
+
+  // ── Chat (student side) ──
+  // Addressed by distribution, not enquiry: an enquiry has one thread per unlocking
+  // business. A separate prefix from /enquiry-distributions because that one is behind
+  // requireBusinessContext — the student has no org context. Ownership is checked in
+  // the service, which 404s rather than 403s for a thread that isn't theirs.
+
+  // The chat inbox — every thread this student has, across all their enquiries.
+  app.get("/enquiry-messages", async (req, reply) => {
+    const threads = await messagesService.listThreadsForStudent(Number(req.auth.sub));
+    return reply.send({ threads });
+  });
+
+  app.get("/enquiry-messages/:id", async (req, reply) => {
+    const { id } = DistributionIdParamSchema.parse(req.params);
+    const messages = await messagesService.listForStudent(id, Number(req.auth.sub));
+    return reply.send({ messages });
+  });
+
+  app.post("/enquiry-messages/:id", async (req, reply) => {
+    const { id } = DistributionIdParamSchema.parse(req.params);
+    const { body } = SendEnquiryMessageSchema.parse(req.body);
+    const message = await messagesService.sendAsStudent(id, Number(req.auth.sub), body);
+    return reply.send(message);
   });
 }

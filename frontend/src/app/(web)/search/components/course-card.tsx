@@ -107,7 +107,12 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
               <p className="text-xs text-muted-foreground italic">Fees on enquiry</p>
             )}
           </div>
-          <Link href="/auth/sign-up?redirect=/search" className="pointer-events-auto relative z-10">
+          {/* Carries the course into the enquiry dialog, which opens prefilled from
+              ?course_id= (see personal/enquiries/components/enquiries-view.tsx).
+              A plain Link keeps this card a server component — no client JS added.
+              Anonymous visitors are bounced to sign-in by PersonalShell, which
+              preserves this URL so they land back on the prefilled dialog. */}
+          <Link href={`/personal/enquiries?course_id=${course.id}`}>
             <Button size="sm" className="w-full text-xs h-9">Enquire</Button>
           </Link>
         </div>

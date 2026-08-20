@@ -30,6 +30,20 @@ export const EnquiryListItemSchema = z.object({
   course_short_name: z.string().nullable(),
   institution_name: z.string().nullable(),
   institution_logo_url: z.string().nullable(),
+
+  // Businesses that paid to unlock. Only these are exposed — never the full
+  // recipient list. See getEnquiryById.
+  unlocked_businesses: z.array(
+    z.object({
+      distribution_id: z.string().uuid(),
+      business_id: z.number(),
+      business_name: z.string(),
+      logo_url: z.string().nullable(),
+      city: z.string().nullable(),
+      unlocked_at: z.coerce.date(),
+      is_closed: z.boolean(),
+    }),
+  ),
 });
 
 // GET /enquiries/:id — full enquiry row plus the same course/institution join as the list.
@@ -47,4 +61,18 @@ export const EnquiryDetailSchema = z.object({
   course_short_name: z.string().nullable(),
   institution_name: z.string().nullable(),
   institution_logo_url: z.string().nullable(),
+
+  // Businesses that paid to unlock. Only these are exposed — never the full
+  // recipient list. See getEnquiryById.
+  unlocked_businesses: z.array(
+    z.object({
+      distribution_id: z.string().uuid(),
+      business_id: z.number(),
+      business_name: z.string(),
+      logo_url: z.string().nullable(),
+      city: z.string().nullable(),
+      unlocked_at: z.coerce.date(),
+      is_closed: z.boolean(),
+    }),
+  ),
 });

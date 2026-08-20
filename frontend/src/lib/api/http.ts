@@ -45,7 +45,16 @@ function refreshAccessToken(): Promise<boolean> {
 
 function forceSignIn(): never {
   clearTokens();
-  if (typeof window !== "undefined") window.location.href = "/auth/sign-in";
+  if (typeof window !== "undefined") {
+    // Carry where they were headed. sign-in-view.tsx already honours ?redirect=,
+    // but this was sending everyone to a bare /auth/sign-in — so a deep link like
+    // /personal/enquiries?course_id=… lost its course on the way through auth.
+    // Skip it when already under /auth, or signing out would build a redirect loop.
+    const back = `${window.location.pathname}${window.location.search}`;
+    window.location.href = back.startsWith("/auth")
+      ? "/auth/sign-in"
+      : `/auth/sign-in?redirect=${encodeURIComponent(back)}`;
+  }
   throw new Error("Your session has expired. Please sign in again.");
 }
 

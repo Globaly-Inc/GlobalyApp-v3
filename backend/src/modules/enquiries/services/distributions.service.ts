@@ -12,6 +12,7 @@ import { BadRequestError, ConflictError, NotFoundError, PaymentRequiredError } f
 import { logEnquiryAudit } from "../shared/audit.js";
 import * as distributionsRepo from "../repositories/distributions.repository.js";
 import * as creditsService from "./credits.service.js";
+import * as messagesService from "./messages.service.js";
 import { syncStatusToTenant } from "./tenant-sync.service.js";
 
 export async function listForBusiness(
@@ -82,6 +83,10 @@ export async function unlock(businessId: number, distributionId: string, userId:
           status: "unlocked",
           updated_at: trx.fn.now(),
         });
+
+      // The conversation is what the unlock buys, so it opens with a message in the same
+      // transaction rather than waiting for someone to type one.
+      await messagesService.seedOnUnlock(trx, distributionId, userId);
 
       await logEnquiryAudit(userId, "distribution.unlocked", {
         entityType: "distribution",
