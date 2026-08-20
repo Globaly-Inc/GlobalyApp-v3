@@ -7,9 +7,10 @@ on:
       - 'production'
       - 'staging'
       - 'develop'
+      - 'devops-prod-release-v1'
 
-    paths:
-      - "backend/**"
+    # paths:
+    #   - "backend/**"
 
 env:
   RED_COLOR_MESSAGE: "\e[31m"
@@ -32,7 +33,7 @@ jobs:
       - name: Resolve environment
         run: |
           printf "\n\n =======================================================================\n"
-          if [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/production") ]]; then
+          if [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/devops-prod-release-v1" || "${{ github.ref }}" == "refs/heads/production") ]]; then
             echo "env_name=production" >> $GITHUB_ENV
             echo "Selected environment: ${{ env.GREEN_COLOR_MESSAGE }} production ${{ env.RESET_COLOR_MESSAGE }}"
           elif [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/develop" || "${{ github.ref }}" == "refs/heads/staging") ]]; then
