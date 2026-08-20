@@ -288,9 +288,8 @@ export async function searchCourses(opts: {
       "i.name as institution_name", "i.country as institution_country",
     )
     .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], opts.query))
-    // Only recommend what students can actually see: course verified/confirmed by
-    // the extraction pipeline AND its job published (same gate as the search module).
-    .whereIn("c.verification_status", ["verified", "confirmed"])
+    // Any course status is fine — the gate is the institution being published
+    // (job exported, same definition as the search module).
     .whereRaw(
       `exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`,
     )
