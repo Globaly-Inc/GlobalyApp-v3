@@ -1,5 +1,6 @@
 import { combineReducers, configureStore } from "@reduxjs/toolkit"
 import { signupReducer } from "@/app/signup/store/signup-slice"
+import { comingSoonReducer } from "@/app/coming-soon/store/coming-soon-slice"
 import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
 import { homeReducer } from "@/app/personal/portal/store/home-slice"
@@ -39,6 +40,7 @@ import { enquiriesReducer as monitoringEnquiriesReducer } from "@/app/admin/moni
 
 const appReducer = combineReducers({
     signup: signupReducer,
+    comingSoon: comingSoonReducer,
     auth: authReducer,
     profile: profileReducer,
     home: homeReducer,

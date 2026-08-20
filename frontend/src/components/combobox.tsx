@@ -139,75 +139,73 @@ export function Combobox({
           </Button>
         }
       />
-      {open && (
-        <PopoverContent
-          anchor={triggerRef}
-          className={cn(contentClassName ? cn("min-w-(--anchor-width)", contentClassName) : "w-(--anchor-width)", "p-0")}
-          align="start"
-        >
-          <div className="relative border-b p-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
-            <Input
-              ref={inputRef}
-              placeholder={searchPlaceholder}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActiveIndex(0);
-                onQueryChange?.(e.target.value);
-              }}
-              onKeyDown={onKeyDown}
-              className="h-8 border-none pl-8 shadow-none focus-visible:ring-0"
-            />
-          </div>
-          <div className="max-h-[250px] overflow-y-auto p-1">
-            {filtered.length === 0 && !showCreateOption ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
-            ) : (
-              <>
-                {optionsHeading && filtered.length > 0 && (
-                  <p className="px-2 py-1 text-xs font-medium text-muted-foreground">{optionsHeading}</p>
-                )}
-                {filtered.map((option, index) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => select(option)}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    className={cn(
-                      "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden",
-                      index === activeIndex && "bg-muted text-foreground"
+      <PopoverContent
+        anchor={triggerRef}
+        className={cn(contentClassName ? cn("min-w-(--anchor-width)", contentClassName) : "w-(--anchor-width)", "p-0")}
+        align="start"
+      >
+        <div className="relative border-b p-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
+          <Input
+            ref={inputRef}
+            placeholder={searchPlaceholder}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveIndex(0);
+              onQueryChange?.(e.target.value);
+            }}
+            onKeyDown={onKeyDown}
+            className="h-8 border-none pl-8 shadow-none focus-visible:ring-0"
+          />
+        </div>
+        <div className="max-h-[250px] overflow-y-auto p-1">
+          {filtered.length === 0 && !showCreateOption ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
+          ) : (
+            <>
+              {optionsHeading && filtered.length > 0 && (
+                <p className="px-2 py-1 text-xs font-medium text-muted-foreground">{optionsHeading}</p>
+              )}
+              {filtered.map((option, index) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => select(option)}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  className={cn(
+                    "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden",
+                    index === activeIndex && "bg-muted text-foreground"
+                  )}
+                >
+                  <Check className={cn("h-4 w-4 shrink-0", value === option.value ? "opacity-100" : "opacity-0")} />
+                  {option.icon}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{option.label}</span>
+                    {option.description && (
+                      <span className="block truncate text-xs text-muted-foreground">{option.description}</span>
                     )}
-                  >
-                    <Check className={cn("h-4 w-4 shrink-0", value === option.value ? "opacity-100" : "opacity-0")} />
-                    {option.icon}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{option.label}</span>
-                      {option.description && (
-                        <span className="block truncate text-xs text-muted-foreground">{option.description}</span>
-                      )}
-                    </span>
-                  </button>
-                ))}
-                {showCreateOption && (
-                  <button
-                    type="button"
-                    onClick={createFromQuery}
-                    onMouseEnter={() => setActiveIndex(filtered.length)}
-                    className={cn(
-                      "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden",
-                      activeIndex === filtered.length && "bg-muted text-foreground"
-                    )}
-                  >
-                    <Check className="h-4 w-4 shrink-0 opacity-0" />
-                    <span className="truncate">Use &quot;{trimmedQuery}&quot;</span>
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </PopoverContent>
-      )}
+                  </span>
+                </button>
+              ))}
+              {showCreateOption && (
+                <button
+                  type="button"
+                  onClick={createFromQuery}
+                  onMouseEnter={() => setActiveIndex(filtered.length)}
+                  className={cn(
+                    "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden",
+                    activeIndex === filtered.length && "bg-muted text-foreground"
+                  )}
+                >
+                  <Check className="h-4 w-4 shrink-0 opacity-0" />
+                  <span className="truncate">Use &quot;{trimmedQuery}&quot;</span>
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </PopoverContent>
     </Popover>
   );
 }
