@@ -10,7 +10,8 @@ import {
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3`;
 
-function authHeaders(): HeadersInit {
+/** Exported for raw-fetch callers (SSE streams, multipart uploads) that can't use httpGet/httpPost. */
+export function authHeaders(): HeadersInit {
   const token = getAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -115,7 +116,8 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
   return switchPromise;
 }
 
-async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Response> {
+/** Exported for raw-fetch callers — the attempt closure MUST rebuild headers via authHeaders() so a refreshed token is picked up on retry. */
+export async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Response> {
   const token = getAccessToken();
   if (token && isTokenExpired(token)) {
     if (!(await refreshAccessToken())) forceSignIn();

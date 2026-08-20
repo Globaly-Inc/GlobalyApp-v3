@@ -71,6 +71,9 @@ export async function searchAll(opts: {
    * institution/agent sources (competitor data must not surface under a
    * business's brand). Visas stay unscoped — shared platform knowledge. */
   jobIds?: string[];
+  /** Discovery turn: skip course retrieval so the model counsels instead of
+   * recommending — it cannot list courses it never saw. */
+  skipCourses?: boolean;
   onTrace?: (step: string) => void;
 }): Promise<RagOutput> {
   const embedScoped = opts.jobIds != null;
@@ -95,9 +98,10 @@ export async function searchAll(opts: {
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
   const [courses, visas, institutions, agents, maraAgents, knowledgeVisas, faqs, guides, documents] = await Promise.all([
-    knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
-      .then(r => { trace(`Courses: ${r.length} found`); return r; })
-      .catch(err => { logger.warn("Course search failed", { err: String(err) }); trace("Course search failed"); return []; }),
+    opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
+      : knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
+        .then(r => { trace(`Courses: ${r.length} found`); return r; })
+        .catch(err => { logger.warn("Course search failed", { err: String(err) }); trace("Course search failed"); return []; }),
     knowledge.searchVisas({ query: searchQuery, limit: 5 })
       .then(r => { trace(`Visas: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Visa search failed", { err: String(err) }); trace("Visa search failed"); return []; }),
