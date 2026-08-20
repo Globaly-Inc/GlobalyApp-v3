@@ -56,11 +56,20 @@ export async function handleMessage(opts: {
     // 4. Profile context
     const profileContext = await knowledgeRepo.getProfileContext(opts.userId);
 
+    // Discovery turn: first message of a platform session gets NO course data, so
+    // the model counsels (asks about goals) instead of dumping recommendations —
+    // instructions alone don't stop it when CONTEXT is full of matching courses.
+    // Embed visitors are exempt: they come with a specific question about one
+    // institution and expect a direct answer.
+    const isFirstMessage = isNew && session.message_count === 0;
+    const discoveryTurn = isFirstMessage && !opts.embed;
+
     // 5. RAG search
     const ragOutput = await rag.searchAll({
       query: opts.content,
       userId: opts.userId,
       jobIds: opts.embed?.jobIds,
+      skipCourses: discoveryTurn,
       onTrace: (step) => writeEvent(opts.reply, "trace", { step }),
     });
 
@@ -73,7 +82,8 @@ export async function handleMessage(opts: {
     const system = buildSystemPrompt({
       profile: profileContext,
       ragContext: ragOutput.contextText,
-      isFirstMessage: isNew && session.message_count === 0,
+      isFirstMessage,
+      discoveryTurn,
       embedConfig: opts.embed?.config,
     });
 

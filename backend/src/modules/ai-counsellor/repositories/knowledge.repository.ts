@@ -288,9 +288,8 @@ export async function searchCourses(opts: {
       "i.name as institution_name", "i.country as institution_country",
     )
     .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], opts.query))
-    // Only recommend what students can actually see: course verified/confirmed by
-    // the extraction pipeline AND its job published (same gate as the search module).
-    .whereIn("c.verification_status", ["verified", "confirmed"])
+    // Any course status is fine — the gate is the institution being published
+    // (job exported, same definition as the search module).
     .whereRaw(
       `exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`,
     )
@@ -434,6 +433,7 @@ export interface KnowledgeDocumentResult {
   similarity: number;
   category_label: string;
   source_domain: string;
+  trust_tier: "gov" | "verified_institution" | "other";
 }
 
 export async function searchKnowledgeVisas(opts: { query: string; limit?: number }): Promise<KnowledgeVisaResult[]> {
@@ -467,16 +467,26 @@ export async function searchCountryGuides(opts: { query: string; limit?: number 
     .limit(opts.limit ?? DEFAULT_LIMIT);
 }
 
-/** Semantic search over the Knowledge Rack via the migration's match function. */
+/** Semantic search over the Knowledge Rack via the migration's match function.
+ * countryCode (ISO2) narrows to that country's categories; global categories always match. */
 export async function matchKnowledgeDocuments(
   embedding: number[],
   count = 4,
+  countryCode?: string | null,
 ): Promise<KnowledgeDocumentResult[]> {
   const { rows } = await masterKnex.raw(
-    `SELECT * FROM ${SA}.match_ai_knowledge_documents(?::vector, ?)`,
-    [`[${embedding.join(",")}]`, count],
+    `SELECT * FROM ${SA}.match_ai_knowledge_documents(?::vector, ?, NULL, ?)`,
+    [`[${embedding.join(",")}]`, count, countryCode ?? null],
   );
   return rows as KnowledgeDocumentResult[];
+}
+
+/** Country names + ISO2 codes, for detecting a country mention in the user's query. */
+export async function listCountryNames(): Promise<Array<{ name: string; iso2: string }>> {
+  return masterKnex("countries")
+    .select("name", "iso2")
+    .where("is_active", true)
+    .whereNull("deleted_at");
 }
 
 // ── Course detail (single course with all related data) ──
