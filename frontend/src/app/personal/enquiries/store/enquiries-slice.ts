@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { enquiriesApi } from "../apis";
-import { coursesApi, type Course } from "@/app/personal/courses/apis";
-import type { CreateEnquiryInput, Enquiry, EnquiryListItem } from "../apis/types";
+
+import type { Course, CreateEnquiryInput, Enquiry, EnquiryListItem } from "../apis/types";
 import type { RootState } from "@/lib/store";
 
 export const createEnquiry = createAsyncThunk("enquiries/create", (input: CreateEnquiryInput) =>
@@ -22,7 +22,7 @@ export const fetchEnquiry = createAsyncThunk("enquiries/fetchOne", (id: string) 
 /**
  * Course + institution options for the new-enquiry picker. Kept in this slice
  * rather than reusing the courses feature's state, so opening the dialog can't
- * clobber the /personal/courses page's own list and pagination.
+ * be confused with the enquiry list itself.
  *
  * ponytail: one generous page, filtered client-side by the Combobox — fine while
  * the catalog fits in it. Add a `q` param to GET /courses and switch to
@@ -30,7 +30,7 @@ export const fetchEnquiry = createAsyncThunk("enquiries/fetchOne", (id: string) 
  */
 export const fetchCourseOptions = createAsyncThunk(
   "enquiries/fetchCourseOptions",
-  async () => (await coursesApi.listCourses(1, 100)).data,
+  async () => (await enquiriesApi.listCourses(1, 100)).data,
   {
     condition: (_, { getState }) => {
       const s = (getState() as RootState).enquiries;

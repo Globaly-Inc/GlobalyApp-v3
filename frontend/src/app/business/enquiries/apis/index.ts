@@ -3,4 +3,10 @@ import { businessEnquiriesMockApi } from "./mock-data";
 import { businessEnquiriesRealApi } from "./real-api";
 
 export const businessEnquiriesApi = createApi({ mock: businessEnquiriesMockApi, real: businessEnquiriesRealApi });
-export type { CloseResult, CreditBalance, DistributionListItem, UnlockResult } from "./types";
+export type {
+  CloseResult,
+  CreditBalance,
+  DistributionListItem,
+  EnquiryMessage,
+  UnlockResult,
+} from "./types";

@@ -63,3 +63,21 @@ export const DistributionIdParamSchema = z.object({
 export const CloseDistributionSchema = z.object({
   close_reason: z.string().trim().min(3, "Tell us why in at least 3 characters").max(1000),
 });
+
+// Shared by both sides of the enquiry chat. The DB also enforces non-empty
+// (enquiry_messages_body_chk), so a caller that skips this schema still cannot write
+// whitespace.
+export const SendEnquiryMessageSchema = z.object({
+  body: z.string().trim().min(1, "Write a message first").max(4000),
+});
+
+export const EnquiryMessageSchema = z.object({
+  id: z.number(),
+  body: z.string(),
+  created_at: z.coerce.date(),
+  sender_id: z.number(),
+  sender_name: z.string(),
+  sender_avatar: z.string().nullable(),
+  is_mine: z.boolean(),
+  sender_role: z.enum(["student", "business"]),
+});

@@ -1,11 +1,14 @@
 "use client";
 
-import { Lock, Mail, Phone, Users } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, Lock, Mail, MessageSquare, Phone, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DistributionListItem } from "../apis/types";
+import { cn } from "@/lib/utils";
 import { ENQUIRY_STATUS_BADGE_VARIANT, ENQUIRY_STATUS_LABEL } from "../const";
+import { DistributionThread } from "./distribution-thread";
 
 /** "January 2027 • 8/14/2026" — intake on the left, matched-on date on the right. */
 function metaLine(item: DistributionListItem): string {
@@ -31,6 +34,7 @@ export function EnquiryInboxCard({
 }>) {
   const isClosed = item.closed_at != null;
   const cannotAfford = credits != null && credits < unlockCost;
+  const [chatOpen, setChatOpen] = useState(false);
 
   return (
     <div className="rounded-lg border border-border bg-background px-4 py-3">
@@ -85,6 +89,27 @@ export function EnquiryInboxCard({
         <p className="mt-3 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
           <span className="font-medium text-foreground">Closed:</span> {item.close_reason}
         </p>
+      )}
+
+      {/* Chat exists only once paid for. A closed thread stays readable, so the toggle
+          survives closure even though the composer does not. */}
+      {item.is_unlocked && (
+        <div className="mt-3">
+          <Button size="sm" variant="ghost" onClick={() => setChatOpen((o) => !o)} aria-expanded={chatOpen}>
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+            Messages
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", chatOpen && "rotate-180")} aria-hidden />
+          </Button>
+          {chatOpen && (
+            <div className="mt-2 rounded-md border border-border px-3 py-3">
+              <DistributionThread
+                distributionId={item.distribution_id}
+                studentName={item.student_name ?? "the student"}
+                isClosed={isClosed}
+              />
+            </div>
+          )}
+        </div>
       )}
 
       {/* A closed enquiry is terminal — no actions remain. */}
