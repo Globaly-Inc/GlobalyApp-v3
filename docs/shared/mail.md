@@ -21,7 +21,7 @@ backend/src/shared/mail/
 
 Config validated in `backend/src/config.ts` (lines 31-34).
 
-Default sender: `noreply@globalyhub.com`
+Default sender: `noreply@globalyapp.com`
 
 ## API
 
