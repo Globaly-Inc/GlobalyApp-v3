@@ -16,6 +16,7 @@ export function CourseListPanel({
   total,
   page,
   limit,
+  onLimitChange,
   statusCounts,
   search,
   onSearchChange,
@@ -37,6 +38,7 @@ export function CourseListPanel({
   total: number;
   page: number;
   limit: number;
+  onLimitChange: (limit: number) => void;
   statusCounts: { status: string; count: number }[];
   search: string;
   onSearchChange: (v: string) => void;
@@ -161,7 +163,9 @@ export function CourseListPanel({
         )}
       </div>
 
-      {total > limit && <Pagination page={page} total={total} limit={limit} onPageChange={onPageChange} />}
+      {total > 0 && (
+        <Pagination page={page} total={total} limit={limit} onPageChange={onPageChange} align="end" onPageSizeChange={onLimitChange} />
+      )}
     </div>
   );
 }

@@ -13,7 +13,7 @@ import { CourseListPanel } from "./course-list-panel";
 import { StepActionBar } from "./step-action-bar";
 import type { CampusFull, CourseFull, CourseLinks, CreateCourseParams, ExtractionJob } from "../apis/types";
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 10;
 
 export function CoursesTab({
   jobId,
@@ -37,6 +37,7 @@ export function CoursesTab({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -47,7 +48,7 @@ export function CoursesTab({
       const [coursesRes, courseLinks, campusRows, queue] = await Promise.all([
         allExtractionsApi.getCourses(jobId, {
           page,
-          limit: PAGE_SIZE,
+          limit,
           search: search.trim() || undefined,
           status: statusFilter === "all" ? undefined : statusFilter,
         }),
@@ -66,7 +67,7 @@ export function CoursesTab({
     } finally {
       setLoading(false);
     }
-  }, [jobId, page, search, statusFilter]);
+  }, [jobId, page, limit, search, statusFilter]);
 
   useEffect(() => {
     if (!fetchedRef.current) {
@@ -159,7 +160,8 @@ export function CoursesTab({
             courses={courses}
             total={total}
             page={page}
-            limit={PAGE_SIZE}
+            limit={limit}
+            onLimitChange={(next) => { setLimit(next); setPage(1); }}
             statusCounts={statusCounts}
             search={search}
             onSearchChange={setSearch}

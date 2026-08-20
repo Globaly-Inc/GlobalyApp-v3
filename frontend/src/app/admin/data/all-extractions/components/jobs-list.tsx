@@ -39,7 +39,7 @@ import { ExtractionJobRow } from "./extraction-job-row";
 import { NewExtractionDialog } from "./new-extraction-dialog";
 
 const POLL_MS = 8000;
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 10;
 
 /**
  * The one extraction list. `mode` picks the status filter, the wording and the
@@ -58,6 +58,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const [showNewForm, setShowNewForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
@@ -113,14 +114,14 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
     });
   }, [jobs, showDeclined, searchQuery, sortOrder, sourceFilter, isCompleted]);
 
-  // Any filter/sort/mode change invalidates the current page.
+  // Any filter/sort/mode/page-size change invalidates the current page.
   useEffect(() => {
     setPage(1);
-  }, [mode, showDeclined, searchQuery, sortOrder, sourceFilter]);
+  }, [mode, showDeclined, searchQuery, sortOrder, sourceFilter, pageSize]);
 
   const pagedJobs = useMemo(
-    () => visibleJobs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [visibleJobs, page],
+    () => visibleJobs.slice((page - 1) * pageSize, page * pageSize),
+    [visibleJobs, page, pageSize],
   );
 
   // "Select all" means all jobs matching the current filters, not just the current page.
@@ -295,8 +296,15 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
         ))}
       </div>
 
-      {visibleJobs.length > PAGE_SIZE && (
-        <Pagination page={page} total={visibleJobs.length} limit={PAGE_SIZE} onPageChange={setPage} />
+      {visibleJobs.length > 0 && (
+        <Pagination
+          page={page}
+          total={visibleJobs.length}
+          limit={pageSize}
+          onPageChange={setPage}
+          align="end"
+          onPageSizeChange={setPageSize}
+        />
       )}
 
       {selectedIds.size > 0 && (
