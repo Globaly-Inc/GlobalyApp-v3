@@ -24,6 +24,40 @@ function extractKeywords(query: string): string[] {
     .filter(w => w.length > 2 && !STOPWORDS.has(w));
 }
 
+// ── Country detection (scopes Knowledge Rack retrieval to country-specific categories) ──
+
+const COUNTRY_ALIASES: Record<string, string> = { uk: "GB", usa: "US", america: "US", uae: "AE" };
+
+const wordRe = (name: string) =>
+  new RegExp(`\\b${name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+
+// ponytail: cached forever — the countries table is effectively static pre-launch
+let countryMatchers: Array<{ re: RegExp; iso2: string }> | null = null;
+
+async function detectCountryCode(query: string): Promise<string | null> {
+  if (!countryMatchers) {
+    const rows = await knowledge.listCountryNames().catch(err => {
+      logger.warn("Country list load failed", { err: String(err) });
+      return [];
+    });
+    if (!rows.length) return null; // don't cache a failed/empty load
+    countryMatchers = [
+      ...rows.map(r => ({ re: wordRe(r.name), iso2: r.iso2 })),
+      ...Object.entries(COUNTRY_ALIASES).map(([alias, iso2]) => ({ re: wordRe(alias), iso2 })),
+    ];
+  }
+  const q = query.toLowerCase();
+  return countryMatchers.find(m => m.re.test(q))?.iso2 ?? null;
+}
+
+// Higher-trust sources lead the context so the model anchors on them (AC-09).
+const TIER_RANK: Record<string, number> = { gov: 0, verified_institution: 1, other: 2 };
+const TIER_LABEL: Record<string, string> = {
+  gov: "official government source",
+  verified_institution: "verified institution",
+  other: "general source",
+};
+
 export interface RagOutput {
   contextText: string;
   sources: Array<{ type: string; id: string; title: string }>;
@@ -54,6 +88,9 @@ export async function searchAll(opts: {
   }
 
   trace(`Keywords: ${keywords.join(", ")}`);
+
+  const countryCode = await detectCountryCode(opts.query);
+  if (countryCode) trace(`Country detected: ${countryCode}`);
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
@@ -86,7 +123,7 @@ export async function searchAll(opts: {
     // Rack documents are semantic (vector) search on the raw query. Skipped in embed
     // mode — crawled institution updates must not surface under another business's brand.
     embedScoped || !embeddingConfigured() ? none : embed(opts.query)
-      .then(v => knowledge.matchKnowledgeDocuments(v, 4))
+      .then(v => knowledge.matchKnowledgeDocuments(v, 6, countryCode))
       .then(r => { trace(`Knowledge rack: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
   ]);
@@ -259,10 +296,14 @@ export async function searchAll(opts: {
   }
 
   if (documents.length) {
-    const lines = ["--- KNOWLEDGE ARTICLES (crawled from official sources) ---"];
+    // Trust-tier first, similarity second — official sources lead the context.
+    documents.sort((a, b) =>
+      (TIER_RANK[a.trust_tier] ?? 2) - (TIER_RANK[b.trust_tier] ?? 2) || b.similarity - a.similarity,
+    );
+    const lines = ["--- KNOWLEDGE ARTICLES (crawled sources, most authoritative first) ---"];
     for (const d of documents) {
       lines.push(
-        `Article: ${d.title ?? d.url} (${d.source_domain}, ${d.category_label})`,
+        `Article: ${d.title ?? d.url} (${d.source_domain}, ${d.category_label}, ${TIER_LABEL[d.trust_tier] ?? "general source"})`,
         // Full pages run to thousands of words; cap each so four articles can't crowd out course data.
         `  ${d.markdown.slice(0, 1500)}`,
         `  Source: ${d.url}`,

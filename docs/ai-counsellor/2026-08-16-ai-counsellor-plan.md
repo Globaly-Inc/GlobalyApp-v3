@@ -1,6 +1,7 @@
 # AI Counsellor -- Implementation Plan
 
-> **Date:** 2026-08-16 | **Status:** APPROVED
+> **Date:** 2026-08-16 | **Status:** APPROVED — Phases 1–4 all shipped.
+> **Continued in:** 2026-08-20-ai-counsellor-v2-impl-plan.md (Phases 5–9: counselling behaviour, chunking + upload, tool calling, counselling context, evals + freshness)
 
 ---
 

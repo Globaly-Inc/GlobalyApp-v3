@@ -434,6 +434,7 @@ export interface KnowledgeDocumentResult {
   similarity: number;
   category_label: string;
   source_domain: string;
+  trust_tier: "gov" | "verified_institution" | "other";
 }
 
 export async function searchKnowledgeVisas(opts: { query: string; limit?: number }): Promise<KnowledgeVisaResult[]> {
@@ -467,16 +468,26 @@ export async function searchCountryGuides(opts: { query: string; limit?: number 
     .limit(opts.limit ?? DEFAULT_LIMIT);
 }
 
-/** Semantic search over the Knowledge Rack via the migration's match function. */
+/** Semantic search over the Knowledge Rack via the migration's match function.
+ * countryCode (ISO2) narrows to that country's categories; global categories always match. */
 export async function matchKnowledgeDocuments(
   embedding: number[],
   count = 4,
+  countryCode?: string | null,
 ): Promise<KnowledgeDocumentResult[]> {
   const { rows } = await masterKnex.raw(
-    `SELECT * FROM ${SA}.match_ai_knowledge_documents(?::vector, ?)`,
-    [`[${embedding.join(",")}]`, count],
+    `SELECT * FROM ${SA}.match_ai_knowledge_documents(?::vector, ?, NULL, ?)`,
+    [`[${embedding.join(",")}]`, count, countryCode ?? null],
   );
   return rows as KnowledgeDocumentResult[];
+}
+
+/** Country names + ISO2 codes, for detecting a country mention in the user's query. */
+export async function listCountryNames(): Promise<Array<{ name: string; iso2: string }>> {
+  return masterKnex("countries")
+    .select("name", "iso2")
+    .where("is_active", true)
+    .whereNull("deleted_at");
 }
 
 // ── Course detail (single course with all related data) ──
