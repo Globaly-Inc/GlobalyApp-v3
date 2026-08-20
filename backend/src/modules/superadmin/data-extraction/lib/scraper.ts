@@ -1,5 +1,5 @@
-// Scraper — Crawl4AI primary, Firecrawl fallback.
-// Direct port of V1 supabase/functions/_shared/crawl4ai.ts.
+// Scraper — Scrapling primary, Crawl4AI then Firecrawl fallback.
+// Crawl4AI/Firecrawl cascade is a direct port of V1 supabase/functions/_shared/crawl4ai.ts.
 
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
@@ -21,7 +21,7 @@ export interface ScrapeOptions {
 export interface ScrapeResult {
   markdown: string;
   links: string[];
-  scraper: "crawl4ai" | "firecrawl" | "none";
+  scraper: "scrapling" | "crawl4ai" | "firecrawl" | "none";
   blocked?: boolean;
   error?: string;
 }
@@ -133,6 +133,14 @@ function getCrawl4aiConfig() {
   return { baseUrl: normalised, apiKey: config.CRAWL4AI_API_KEY };
 }
 
+function getScraplingConfig() {
+  const baseUrlRaw = config.SCRAPLING_BASE_URL;
+  if (!baseUrlRaw) return null;
+  const baseUrl = baseUrlRaw.replace(/\/+$/, "");
+  const normalised = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return { baseUrl: normalised, apiKey: config.SCRAPLING_API_KEY };
+}
+
 function getFirecrawlKey() {
   return config.FIRECRAWL_API_KEY || null;
 }
@@ -188,6 +196,29 @@ async function crawl4aiScrape(
   }
 }
 
+// ─── Scrapling ──────────────────────────────────────────────────────────────
+
+async function scraplingScrape(
+  url: string,
+  cfg: { baseUrl: string; apiKey?: string },
+): Promise<{ markdown: string; html: string; tierUsed?: string; error?: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
+  try {
+    const res = await fetch(`${cfg.baseUrl}/scrape`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(40_000),
+    });
+    const data: any = await res.json().catch(() => ({}));
+    if (!res.ok) return { markdown: "", html: "", error: data?.error || `HTTP ${res.status}` };
+    return { markdown: data?.markdown || "", html: data?.html || "", tierUsed: data?.tier_used, error: data?.error };
+  } catch (err) {
+    return { markdown: "", html: "", error: err instanceof Error ? err.message : "scrapling network error" };
+  }
+}
+
 // ─── Firecrawl ──────────────────────────────────────────────────────────────
 
 async function firecrawlScrape(
@@ -222,6 +253,16 @@ export async function scrapeRenderedHtml(
   url: string,
   opts: { waitFor?: number } = {},
 ): Promise<{ html: string; error?: string }> {
+  const scrapling = getScraplingConfig();
+  if (scrapling) {
+    const s = await scraplingScrape(url, scrapling);
+    if (s.html.length >= MIN_CONTENT_LEN) {
+      logger.info(`scrapling OK (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.html.length} chars)`);
+      return { html: s.html };
+    }
+    logger.warn(`scrapling insufficient (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
+  }
+
   const apiKey = getFirecrawlKey();
   if (!apiKey) return { html: "", error: "firecrawl not configured" };
   try {
@@ -243,11 +284,26 @@ export async function scrapeRenderedHtml(
 
 /**
  * Scrape a URL to markdown.
- * Cascade: Crawl4AI fit → Crawl4AI raw → Firecrawl.
+ * Cascade: Scrapling → Crawl4AI fit → Crawl4AI raw → Firecrawl.
  */
 export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Promise<ScrapeResult> {
   const fcKey = getFirecrawlKey();
+  const scrapling = opts.forceFirecrawl ? null : getScraplingConfig();
   const c4 = opts.forceFirecrawl ? null : getCrawl4aiConfig();
+
+  // Path 0: Scrapling available
+  if (scrapling) {
+    const s = await scraplingScrape(url, scrapling);
+    if (s.markdown.length >= MIN_CONTENT_LEN) {
+      logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.markdown.length} chars)`);
+      return {
+        markdown: s.markdown,
+        links: opts.withLinks ? extractLinksFromMarkdown(s.markdown) : [],
+        scraper: "scrapling",
+      };
+    }
+    logger.warn(`scrapling insufficient for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
+  }
 
   // Path A: Crawl4AI available
   if (c4) {

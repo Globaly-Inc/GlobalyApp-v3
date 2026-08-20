@@ -116,6 +116,9 @@ The centralized error handler maps these to HTTP responses.
    checks on deletes).
 5. **No new features.** Extraction module is a parity port. New
    capabilities go in separate PRs after parity is confirmed.
+   Exception: Scrapling was added ahead of Crawl4AI in the scrape cascade
+   (2026-08-20) as an explicit, approved deviation from parity — not a V2
+   behavior.
 
 ## External FK columns
 

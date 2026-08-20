@@ -28,8 +28,9 @@ Crawls educational institution websites, uses AI to extract structured course da
                                               ┌──────┼──────┐
                                               │      │      │
                                               ▼      ▼      ▼
-                                         Crawl4AI  Gemini  Firecrawl
-                                        (scraper)  (LLM)  (fallback)
+                                       Scrapling  Gemini  Crawl4AI /
+                                       (scraper)  (LLM)   Firecrawl
+                                                          (fallback)
 ```
 
 **Two systems, one codebase:**
@@ -63,7 +64,7 @@ The API returns immediately with `{ id: "..." }`. The actual work happens asynch
 extraction-job.worker.ts
   │
   ├── 1. Scrape homepage
-  │      Crawl4AI /md (fit) → Crawl4AI /md (raw) → Firecrawl
+  │      Scrapling → Crawl4AI /md (fit) → Crawl4AI /md (raw) → Firecrawl
   │      Returns: markdown (not HTML)
   │
   ├── 2. Send markdown to Gemini
@@ -97,7 +98,7 @@ extraction-page.worker.ts (runs N times in parallel)
   ├── 1. Check job is still active (not paused/stopped)
   │
   ├── 2. Scrape the page to markdown
-  │      Same cascade: Crawl4AI → Firecrawl
+  │      Same cascade: Scrapling → Crawl4AI → Firecrawl
   │
   ├── 3. Send markdown to Gemini
   │      Prompt: "Extract all courses from this page with fees, intakes, study options..."
@@ -203,20 +204,26 @@ Currently a stub — marks job as exported but doesn't write to catalog tables b
 
 ## Scraping Strategy
 
-Two-tier cascade, returning **markdown** (not raw HTML):
+Three-tier cascade, returning **markdown** (not raw HTML):
 
 ```
-1. Crawl4AI (self-hosted, primary)
+1. Scrapling (self-hosted, primary)
+   POST {SCRAPLING_BASE_URL}/scrape
+   └── Own internal anti-bot escalation (plain HTTP → stealthy browser →
+       full Playwright), see devops/docker/scrapling-service/
+
+2. Crawl4AI (self-hosted, fallback)
    POST {CRAWL4AI_BASE_URL}/md
    ├── filter: "fit"  → clean main content (try first)
    └── filter: "raw"  → full page content (fallback if fit < 200 chars)
 
-2. Firecrawl (SaaS, fallback)
+3. Firecrawl (SaaS, last resort)
    POST https://api.firecrawl.dev/v1/scrape
    └── Handles: bot protection, JS rendering, PDF parsing
 ```
 
-Content threshold: if markdown < 200 characters, try next tier.
+Content threshold: if markdown < 200 characters, try next tier. Each tier is
+optional — unset its env var and the cascade skips straight to the next one.
 
 **URL discovery** cascades (Crawl4AI has no `/map` endpoint, so discovery uses different sources):
 
@@ -311,9 +318,11 @@ All LLM calls use `responseMimeType: "application/json"` for structured output.
 GEMINI_API_KEY=...                    # Google AI API key
 
 # Scrapers (at least one required for workers)
-CRAWL4AI_BASE_URL=https://...         # Self-hosted Crawl4AI instance
+SCRAPLING_BASE_URL=https://...        # Self-hosted Scrapling instance (primary)
+SCRAPLING_API_KEY=...                 # Optional auth for Scrapling
+CRAWL4AI_BASE_URL=https://...         # Self-hosted Crawl4AI instance (fallback)
 CRAWL4AI_API_KEY=...                  # Optional auth for Crawl4AI
-FIRECRAWL_API_KEY=fc-...              # Firecrawl SaaS key (fallback)
+FIRECRAWL_API_KEY=fc-...              # Firecrawl SaaS key (last resort)
 
 # Optional overrides
 GEMINI_MODEL=gemini-2.5-flash         # Default extraction model

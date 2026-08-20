@@ -51,6 +51,8 @@ const envSchema = z.object({
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
 
   // Scrapers
+  SCRAPLING_BASE_URL: z.string().optional(),  // e.g. https://your-scrapling.railway.app
+  SCRAPLING_API_KEY: z.string().optional(),
   CRAWL4AI_BASE_URL: z.string().optional(),  // e.g. https://your-crawl4ai.railway.app
   CRAWL4AI_API_KEY: z.string().optional(),
   FIRECRAWL_API_KEY: z.string().optional(),
