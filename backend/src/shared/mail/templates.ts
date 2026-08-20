@@ -20,7 +20,7 @@ const BRAND = {
 
 const FONT = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`;
 
-const logoUrl = () => `${config.WEB_APP_URL.replace(/\/$/, "")}/globaly-icon.png`;
+const logoUrl = () => `https://storage.googleapis.com/globalyapp-public-images/logos/globalyapp-logo.jpeg`;
 
 /**
  * Escape values that came from a user before they go into mail HTML. The recipient of an invitation
