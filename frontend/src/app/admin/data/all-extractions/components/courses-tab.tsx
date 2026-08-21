@@ -57,7 +57,7 @@ export function CoursesTab({
         allExtractionsApi.getQueue(jobId),
       ]);
       setCourses(coursesRes.data);
-      setTotal(coursesRes.meta.total);
+      setTotal(coursesRes.meta?.total ?? 0);
       setStatusCounts(coursesRes.statusCounts ?? []);
       setLinks(courseLinks);
       setCampuses(campusRows);
@@ -100,7 +100,7 @@ export function CoursesTab({
     }
   };
 
-  const selected = courses.find((c) => c.id === selectedId) ?? null;
+  const selected = courses?.find((c) => c.id === selectedId) ?? null;
 
   const bulkVerify = async (approve: boolean) => {
     setSaving(true);

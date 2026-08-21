@@ -11,6 +11,7 @@ import {
   Settings2, FolderOpen, Download,
 } from "lucide-react";
 import { toast } from "sonner";
+import { uuid } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { GUIDED_URL_CATEGORIES } from "../const";
 import type { ExtractionJob } from "../apis/types";
@@ -121,7 +122,7 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
   async function handleAddResource() {
     if (!newResourceUrl.trim()) return;
     const newRes: Resource = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       type: "url",
       url: newResourceUrl.trim(),
       data_types: newResourceDataType ? [newResourceDataType] : [],

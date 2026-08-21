@@ -1,3 +1,4 @@
+import { uuid } from "@/lib/utils";
 import type { CreateEmbedConfigInput, EmbedConfig } from "./types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -34,7 +35,7 @@ export const aiWidgetMockApi = {
     const config: EmbedConfig = {
       id: seq++,
       business_id: 1,
-      embed_key: crypto.randomUUID(),
+      embed_key: uuid(),
       display_name: input.display_name ?? null,
       logo_url: input.logo_url ?? null,
       brand_color: input.brand_color ?? null,

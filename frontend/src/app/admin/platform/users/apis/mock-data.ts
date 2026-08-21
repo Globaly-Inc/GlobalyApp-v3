@@ -1,3 +1,4 @@
+import { uuid } from "@/lib/utils";
 import type {
   AdminInvitation, AdminUser, InviteAdminParams, ListParams, PaginatedAdminUsers, PaginatedInvitations,
 } from "./types";
@@ -15,7 +16,7 @@ const mockAdminUsers: AdminUser[] = Array.from({ length: 14 }, (_, i) => {
   const last = LAST_NAMES[i % LAST_NAMES.length] ?? "Account";
   return {
     id: i + 1,
-    uuid: crypto.randomUUID(),
+    uuid: uuid(),
     name: `${first} ${last}`,
     email: `${first.toLowerCase()}.${last.toLowerCase()}@example.com`,
     role: ROLES[i % ROLES.length] ?? "admin",
@@ -27,19 +28,19 @@ const mockAdminUsers: AdminUser[] = Array.from({ length: 14 }, (_, i) => {
 
 let mockInvitations: AdminInvitation[] = [
   {
-    id: crypto.randomUUID(), email: "new.admin@example.com", first_name: "Jordan", last_name: "Lee",
+    id: uuid(), email: "new.admin@example.com", first_name: "Jordan", last_name: "Lee",
     role: "admin", status: "pending", invited_by: 1,
     created_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
     expired_at: new Date(Date.now() + 1 * 86_400_000).toISOString(),
   },
   {
-    id: crypto.randomUUID(), email: "data.reviewer@example.com", first_name: "Casey", last_name: "Nguyen",
+    id: uuid(), email: "data.reviewer@example.com", first_name: "Casey", last_name: "Nguyen",
     role: "data_admin", status: "pending", invited_by: 1,
     created_at: new Date(Date.now() - 5 * 86_400_000).toISOString(),
     expired_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
   },
   {
-    id: crypto.randomUUID(), email: "moderator@example.com", first_name: "Riley", last_name: "Kim",
+    id: uuid(), email: "moderator@example.com", first_name: "Riley", last_name: "Kim",
     role: "moderator", status: "accepted", invited_by: 1,
     created_at: new Date(Date.now() - 10 * 86_400_000).toISOString(),
     expired_at: new Date(Date.now() - 7 * 86_400_000).toISOString(),
@@ -82,7 +83,7 @@ export const usersMockApi = {
     await delay(300);
     mockInvitations = [
       {
-        id: crypto.randomUUID(), email: params.email, first_name: params.first_name, last_name: params.last_name,
+        id: uuid(), email: params.email, first_name: params.first_name, last_name: params.last_name,
         role: params.role, status: "pending", invited_by: 1,
         created_at: new Date().toISOString(),
         expired_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
