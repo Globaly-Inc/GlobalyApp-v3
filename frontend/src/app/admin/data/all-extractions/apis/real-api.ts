@@ -26,6 +26,7 @@ import type {
   JobEvent,
   JobFull,
   JunctionSlug,
+  Paginated,
   QueueItem,
   StudyOption,
   StudyOptionParams,
@@ -98,7 +99,7 @@ export const allExtractionsRealApi = {
       httpGet<{ job: ExtractionJob; overview: InstitutionOverview | null }>(`/admin/data-extraction/jobs/${id}`),
       httpGet<{ campuses: CampusRow[] }>(`/admin/data-extraction/jobs/${id}/campuses`),
       httpGet<{ agents: AgentRow[] }>(`/admin/data-extraction/jobs/${id}/agents`),
-      httpGet<{ courses: CourseRow[] }>(`/admin/data-extraction/jobs/${id}/courses`),
+      httpGet<Paginated<CourseRow>>(`/admin/data-extraction/jobs/${id}/courses?limit=100`),
       httpGet<CourseLinks>(`/admin/data-extraction/jobs/${id}/course-links`),
     ]);
     return {
@@ -106,7 +107,7 @@ export const allExtractionsRealApi = {
       overview: detail.overview,
       campuses: campusesRes.campuses,
       agents: agentsRes.agents,
-      courses: coursesRes.courses,
+      courses: coursesRes.data,
       courseLinks,
     };
   },
@@ -116,9 +117,16 @@ export const allExtractionsRealApi = {
   getCourseLinks: (jobId: string): Promise<CourseLinks> =>
     httpGet<CourseLinks>(`/admin/data-extraction/jobs/${jobId}/course-links`),
 
-  getCourses: async (jobId: string): Promise<CourseFull[]> => {
-    const { courses } = await httpGet<{ courses: CourseFull[] }>(`/admin/data-extraction/jobs/${jobId}/courses`);
-    return courses;
+  getCourses: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string; status?: string } = {},
+  ): Promise<Paginated<CourseFull>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    if (params.status) query.set("status", params.status);
+    return httpGet<Paginated<CourseFull>>(`/admin/data-extraction/jobs/${jobId}/courses?${query}`);
   },
 
   createCourse: async (jobId: string, params: CreateCourseParams): Promise<CourseFull> => {

@@ -1,12 +1,24 @@
 // Extraction courses service.
 
 import { NotFoundError } from "../../../../shared/errors.js";
+import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/courses.repository.js";
 import type { CreateCourseInput, PatchCourseInput } from "../schemas/courses.schema.js";
 
-export async function listCourses(jobId: string) {
-  return { courses: await repo.listCoursesByJob(jobId) };
+export async function listCourses(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string; status?: string },
+) {
+  const [courses, total, statusCounts] = await Promise.all([
+    repo.listCoursesByJob(jobId, limit, offset, filters),
+    repo.countCoursesByJob(jobId, filters),
+    repo.countCoursesByStatus(jobId),
+  ]);
+  return { ...buildPaginatedResponse(courses, total, pagination), statusCounts };
 }
 
 export async function getCourseLinks(jobId: string) {

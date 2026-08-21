@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { Pagination } from "@/components/ui/pagination";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
 import { EditableField, saveFormAndLearn, useFieldSaver } from "./editable-field";
@@ -17,6 +18,7 @@ import { useConfirmDelete } from "./use-confirm-delete";
 import type { CourseFee, CourseFeeParams, CourseFull, CourseLinks, ExtractionJob } from "../apis/types";
 
 const CHIP_LIMIT = 6;
+const DEFAULT_PAGE_SIZE = 10;
 
 function FeeCard({
   fee,
@@ -148,13 +150,15 @@ export function FeesTab({
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const fetchedRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
       const [courseLinks, courseRows] = await Promise.all([
         allExtractionsApi.getCourseLinks(jobId),
-        allExtractionsApi.getCourses(jobId),
+        allExtractionsApi.getCourses(jobId, { limit: 100 }).then((r) => r.data),
       ]);
       setLinks(courseLinks);
       setCourses(courseRows);
@@ -175,6 +179,9 @@ export function FeesTab({
   const { confirm, dialog } = useConfirmDelete();
   const fees = links?.course_fees ?? [];
   const allSelected = fees.length > 0 && selectedIds.length === fees.length;
+  const totalPages = Math.max(1, Math.ceil(fees.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedFees = fees.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setSaving(true);
@@ -277,7 +284,7 @@ export function FeesTab({
           </Card>
         )}
 
-        {fees.map((fee) =>
+        {pagedFees.map((fee) =>
           editingId === fee.id ? (
             <FeeForm
               key={fee.id}
@@ -310,6 +317,17 @@ export function FeesTab({
           ),
         )}
       </div>
+
+      {fees.length > 0 && (
+        <Pagination
+          page={currentPage}
+          total={fees.length}
+          limit={pageSize}
+          onPageChange={setPage}
+          align="end"
+          onPageSizeChange={setPageSize}
+        />
+      )}
     </div>
   );
 }

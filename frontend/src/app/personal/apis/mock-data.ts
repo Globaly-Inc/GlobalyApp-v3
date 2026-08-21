@@ -1,3 +1,4 @@
+import { uuid } from "@/lib/utils";
 import type {
   FullProfile,
   LanguageTest,
@@ -108,7 +109,7 @@ export const personalMockApi = {
 
   addQualification: async (input: QualificationInput): Promise<Qualification> => {
     await delay(200);
-    const item: Qualification = { ...input, id: crypto.randomUUID() };
+    const item: Qualification = { ...input, id: uuid() };
     mockQualifications = [...mockQualifications, item];
     return item;
   },
@@ -125,7 +126,7 @@ export const personalMockApi = {
 
   addLanguageTest: async (input: LanguageTestInput): Promise<LanguageTest> => {
     await delay(200);
-    const item: LanguageTest = { ...input, id: crypto.randomUUID() };
+    const item: LanguageTest = { ...input, id: uuid() };
     mockLanguageTests = [...mockLanguageTests, item];
     return item;
   },
@@ -142,7 +143,7 @@ export const personalMockApi = {
 
   addWorkExperience: async (input: WorkExperienceInput): Promise<WorkExperience> => {
     await delay(200);
-    const item: WorkExperience = { ...input, id: crypto.randomUUID() };
+    const item: WorkExperience = { ...input, id: uuid() };
     mockWorkExperiences = [...mockWorkExperiences, item];
     return item;
   },

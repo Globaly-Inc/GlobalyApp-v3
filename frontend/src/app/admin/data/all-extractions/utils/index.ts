@@ -40,8 +40,9 @@ export function fmtTime(iso: string | null | undefined): string {
 
 // Most-recent-first "updated" timestamp across a set of rows — falls back
 // to created_at for tables that don't carry updated_at.
-export function latestTimestamp(rows: TimestampedRow[]): string | null {
+export function latestTimestamp(rows: TimestampedRow[] | null | undefined): string | null {
   let best: string | null = null;
+  if (!rows || rows.length === 0) return null;
   for (const r of rows) {
     const t = r.updated_at || r.created_at || null;
     if (t && (!best || t > best)) best = t;

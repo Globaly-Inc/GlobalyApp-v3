@@ -1,3 +1,4 @@
+import { uuid } from "@/lib/utils";
 import type {
   Accreditation,
   AgentFull,
@@ -20,6 +21,7 @@ import type {
   JobEvent,
   JobFull,
   JunctionSlug,
+  Paginated,
   QueueItem,
   StudyOption,
   StudyOptionParams,
@@ -77,7 +79,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST /admin/data-extraction/jobs", params);
     await delay(400);
     const job: ExtractionJob = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       institution_name: null,
       institution_url: params.institution_url,
       status: "pending",
@@ -149,13 +151,16 @@ export const allExtractionsMockApi = {
     return EMPTY_COURSE_LINKS;
   },
 
-  getCourses: async (jobId: string): Promise<CourseFull[]> => {
-    console.log("[mock] GET courses for job", jobId);
+  getCourses: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string; status?: string } = {},
+  ): Promise<Paginated<CourseFull>> => {
+    console.log("[mock] GET courses for job", jobId, params);
     await delay(300);
     const job = mockJobs.find((j) => j.id === jobId);
     const count = job?.courses_extracted ?? 2;
     const now = new Date().toISOString();
-    return Array.from({ length: count }, (_, i) => ({
+    const all = Array.from({ length: count }, (_, i) => ({
       id: `course-${i}`,
       name: `Course ${i + 1}`,
       short_name: null,
@@ -175,13 +180,30 @@ export const allExtractionsMockApi = {
       created_at: now,
       updated_at: now,
     }));
+    const filtered = all
+      .filter((c) => !params.search || c.name.toLowerCase().includes(params.search.toLowerCase()))
+      .filter((c) => !params.status || c.verification_status === params.status);
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    const statusCounts = Object.entries(
+      all.reduce<Record<string, number>>((acc, c) => {
+        const s = c.verification_status ?? "unverified";
+        acc[s] = (acc[s] ?? 0) + 1;
+        return acc;
+      }, {}),
+    ).map(([status, count]) => ({ status, count }));
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+      statusCounts,
+    };
   },
 
   createCourse: async (jobId: string, params: CreateCourseParams): Promise<CourseFull> => {
     console.log("[mock] POST course for job", jobId, params);
     await delay(300);
     const now = new Date().toISOString();
-    return { id: crypto.randomUUID(), name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: now, updated_at: now };
+    return { id: uuid(), name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: now, updated_at: now };
   },
 
   updateCourse: async (id: string, params: UpdateCourseParams): Promise<void> => {
@@ -219,7 +241,7 @@ export const allExtractionsMockApi = {
     await delay(300);
     const now = new Date().toISOString();
     return {
-      id: crypto.randomUUID(), name: params.name ?? null, address: params.address ?? null,
+      id: uuid(), name: params.name ?? null, address: params.address ?? null,
       city: params.city ?? null, state: params.state ?? null, country: params.country ?? null,
       phone: params.phone ?? null, email: params.email ?? null, map_link: params.map_link ?? null,
       source_url: params.source_url ?? null, postcode: params.postcode ?? null,
@@ -266,7 +288,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST agent", params);
     await delay(300);
     const now = new Date().toISOString();
-    return { id: crypto.randomUUID(), name: params.name ?? null, country: params.country ?? null, email: params.email ?? null, phone: params.phone ?? null, website: params.website ?? null, source_url: null, external_id: null, source_status: "active", address: null, city: null, state: null, postcode: null, created_at: now, updated_at: now };
+    return { id: uuid(), name: params.name ?? null, country: params.country ?? null, email: params.email ?? null, phone: params.phone ?? null, website: params.website ?? null, source_url: null, external_id: null, source_status: "active", address: null, city: null, state: null, postcode: null, created_at: now, updated_at: now };
   },
 
   getAgentRuns: async (jobId: string): Promise<AgentRun[]> => {
@@ -354,7 +376,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST course-fee", params);
     await delay(300);
     return {
-      id: crypto.randomUUID(), name: params.name ?? null, student_type: params.student_type ?? null,
+      id: uuid(), name: params.name ?? null, student_type: params.student_type ?? null,
       period_type: params.period_type ?? null, currency: params.currency ?? null,
       total_amount: params.total_amount ?? null, installments: params.installments ?? [],
       save_for_reuse: params.save_for_reuse ?? false, created_at: new Date().toISOString(),
@@ -387,7 +409,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST intake", params);
     await delay(300);
     return {
-      id: crypto.randomUUID(), intake_name: params.intake_name ?? null, start_date: params.start_date ?? null,
+      id: uuid(), intake_name: params.intake_name ?? null, start_date: params.start_date ?? null,
       end_date: params.end_date ?? null, orientation_date: params.orientation_date ?? null,
       admission_deadline: params.admission_deadline ?? null, intake_month: params.intake_month ?? null,
       intake_year: params.intake_year ?? null, created_at: new Date().toISOString(),
@@ -415,7 +437,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST eligibility-requirement", params);
     await delay(300);
     return {
-      id: crypto.randomUUID(), name: params.name ?? null, applicable_to: params.applicable_to ?? null,
+      id: uuid(), name: params.name ?? null, applicable_to: params.applicable_to ?? null,
       min_degree_level: params.min_degree_level ?? null, score_type: params.score_type ?? null,
       min_score: params.min_score ?? null, min_score_percent: params.min_score_percent ?? null,
       description: params.description ?? null, language_tests: params.language_tests ?? [],
@@ -449,7 +471,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST study-unit", params);
     await delay(300);
     return {
-      id: crypto.randomUUID(), unit_code: params.unit_code ?? null, unit_name: params.unit_name,
+      id: uuid(), unit_code: params.unit_code ?? null, unit_name: params.unit_name,
       credit_points: params.credit_points ?? null, unit_type: params.unit_type ?? null,
       description: params.description ?? null, created_at: new Date().toISOString(),
     };
@@ -481,7 +503,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST study-option", params);
     await delay(300);
     return {
-      id: crypto.randomUUID(), name: params.name ?? null, study_mode: params.study_mode ?? null,
+      id: uuid(), name: params.name ?? null, study_mode: params.study_mode ?? null,
       study_load: params.study_load ?? null, duration_value: params.duration_value ?? null,
       duration_unit: params.duration_unit ?? null, applicable_to: params.applicable_to ?? null,
       save_for_reuse: params.save_for_reuse ?? false, created_at: new Date().toISOString(),
@@ -523,7 +545,7 @@ export const allExtractionsMockApi = {
   createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string }): Promise<Accreditation> => {
     console.log("[mock] POST accreditation", params);
     await delay(300);
-    return { id: crypto.randomUUID(), name: params.name, issuing_organization: params.issuing_organization ?? null, website: null, description: null, created_at: new Date().toISOString() };
+    return { id: uuid(), name: params.name, issuing_organization: params.issuing_organization ?? null, website: null, description: null, created_at: new Date().toISOString() };
   },
 
   deleteAccreditation: async (id: string): Promise<void> => {

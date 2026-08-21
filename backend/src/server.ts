@@ -108,6 +108,18 @@ export async function buildServer() {
     };
   });
 
+  app.get("/health/cache", async () => {
+    const { getCache } = await import("./core/cache/dragonfly.js");
+    const cache = getCache();
+    if (!cache) return { status: "disabled", details: { configured: false } };
+    try {
+      await cache.ping();
+      return { status: "ok", details: { configured: true } };
+    } catch (err) {
+      return { status: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   app.get("/health/detailed", async () => {
     const start = Date.now();
 

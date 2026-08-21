@@ -27,4 +27,5 @@ export type {
   StudyUnit,
   StudyOption,
   Accreditation,
+  Paginated,
 } from "./types";

@@ -87,6 +87,12 @@ export type InstitutionOverview = {
   updated_at?: string | null;
 };
 
+export type Paginated<T> = {
+  data: T[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+  statusCounts?: { status: string; count: number }[];
+};
+
 // Shared shape for the row types we only need to count and find the most
 // recent timestamp of, on the Overview tab's "Extraction Details by Tab" cards.
 export type TimestampedRow = { updated_at?: string | null; created_at?: string | null };

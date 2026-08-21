@@ -1,4 +1,5 @@
 import { categoriesMockApi } from "@/app/admin/platform/categories/apis/mock-data";
+import { uuid } from "@/lib/utils";
 import type {
   ActivityListParams, ActivityListResult, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, InvitedMember,
@@ -28,7 +29,7 @@ const mockRoles: MemberRole[] = [
 ];
 let mockInvitations: InvitedMember[] = [
   {
-    id: crypto.randomUUID(), first_name: "Sam", last_name: "Taylor", email: "sam.taylor@example.com", phone: null,
+    id: uuid(), first_name: "Sam", last_name: "Taylor", email: "sam.taylor@example.com", phone: null,
     role: "member", admin_point_of_contact: false,
     invited_at: new Date(2026, 7, 1).toISOString(), expires_at: new Date(2026, 7, 4).toISOString(),
   },
@@ -56,7 +57,7 @@ export const businessProfileDetailMockApi = {
   createBranch: async (input: BranchInput): Promise<Branch> => {
     await delay(300);
     const branch: Branch = {
-      id: crypto.randomUUID(), name: input.name, country: input.country ?? null, state: input.state ?? null,
+      id: uuid(), name: input.name, country: input.country ?? null, state: input.state ?? null,
       city: input.city ?? null, address: input.address ?? null, phone: input.phone ?? null, email: input.email ?? null,
       is_primary: false, linked_business_id: null, branch_type: input.branch_type ?? "same_company",
       share_description: input.share_description ?? false, shared_services: input.shared_services ?? "all",
@@ -73,7 +74,7 @@ export const businessProfileDetailMockApi = {
   linkExistingBranch: async (input: LinkExistingBranchInput): Promise<LinkExistingBranchResult> => {
     await delay(300);
     const branch: Branch = {
-      id: crypto.randomUUID(), name: "Linked business", country: null, state: null, city: null, address: null,
+      id: uuid(), name: "Linked business", country: null, state: null, city: null, address: null,
       phone: null, email: null, is_primary: false, linked_business_id: input.business_id, branch_type: input.branch_type,
       share_description: false, shared_services: input.shared_services, created_at: new Date().toISOString(),
     };
@@ -93,7 +94,7 @@ export const businessProfileDetailMockApi = {
   createService: async (input: ServiceInput): Promise<BusinessService> => {
     await delay(300);
     const service: BusinessService = {
-      id: crypto.randomUUID(), service_category_id: input.service_category_id, category_name: null, name: input.name,
+      id: uuid(), service_category_id: input.service_category_id, category_name: null, name: input.name,
       description: input.description ?? null, price: input.price != null ? String(input.price) : null,
       is_published: false, created_at: new Date().toISOString(),
     };
@@ -130,7 +131,7 @@ export const businessProfileDetailMockApi = {
   inviteMember: async (input: MemberInviteInput): Promise<{ id: string; email: string; status: string }> => {
     await delay(300);
     const invitation: InvitedMember = {
-      id: crypto.randomUUID(), first_name: input.first_name, last_name: input.last_name, email: input.email,
+      id: uuid(), first_name: input.first_name, last_name: input.last_name, email: input.email,
       phone: input.phone ?? null, role: input.role, admin_point_of_contact: input.admin_point_of_contact ?? false,
       invited_at: new Date().toISOString(), expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
     };
@@ -165,7 +166,7 @@ export const businessProfileDetailMockApi = {
   createRelation: async (input: RelationInput): Promise<BusinessRelation> => {
     await delay(300);
     const relation: BusinessRelation = {
-      id: crypto.randomUUID(), status: "active", relation_type: input.relation_type, created_at: new Date().toISOString(),
+      id: uuid(), status: "active", relation_type: input.relation_type, created_at: new Date().toISOString(),
       business_id: input.partner_business_id, business_name: `Business #${input.partner_business_id}`, logo_url: null,
       business_type: null, country_ids: input.country_ids ?? null, valid_from: input.valid_from ?? null,
       valid_until: input.valid_until ?? null, notes: input.notes ?? null,
