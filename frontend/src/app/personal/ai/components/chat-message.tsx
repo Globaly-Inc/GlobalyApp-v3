@@ -76,7 +76,7 @@ export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
 
       {/* Course cards */}
       {message.cards.length > 0 && (
-        <div className="flex max-w-[85%] flex-col gap-2">
+        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {message.cards.map((card, i) => (
             <CourseCard key={i} card={card} />
           ))}
@@ -129,8 +129,8 @@ export function StreamingMessage({
         </div>
       )}
       {cards.length > 0 && (
-        <div className="grid w-full max-w-[85%] grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-2">
-          {/* auto-fit: two cards share a row when there's room (3rd wraps), single column in narrow containers (popover) */}
+        <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2">
+          {/* auto-fit: 3+ cards share a row on wide chats, single column in narrow containers (popover) */}
           {cards.map((card, i) => (
             <CourseCard key={i} card={card} />
           ))}
