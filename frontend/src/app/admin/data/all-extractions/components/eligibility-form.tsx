@@ -1,5 +1,6 @@
 "use client";
 
+import { z } from "zod";
 import { useEffect, useState } from "react";
 import { GraduationCap, Languages, Loader2, Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,21 @@ import {
 import type { AcademicTest, EligibilityParams, EligibilityRequirement, LanguageTest } from "../apis/types";
 
 const ANY_DEGREE = "__any__";
+
+const eligibilitySchema = z.object({
+  name: z.string().trim().min(1, "Requirement name is required"),
+  score: z
+    .string()
+    .trim()
+    .refine((v) => !v || !Number.isNaN(Number(v)), {
+      message: "Score must be a valid number",
+    })
+    .transform((v) => (v ? Number(v) : null)),
+  applicableTo: z.string().default("both"),
+  degreeLevel: z.string().trim(),
+  scoreType: z.string().default("percentage"),
+  description: z.string().trim().transform((v) => v || null),
+});
 
 export function EligibilityForm({
   requirement,
@@ -56,29 +72,36 @@ export function EligibilityForm({
   const patchAcademic = (index: number, patch: Partial<AcademicTest>) =>
     setAcademicTests((list) => list.map((t, i) => (i === index ? { ...t, ...patch } : t)));
 
-  const validate = (): boolean => {
-    const errs: Record<string, string> = {};
-    if (!name.trim()) {
-      errs.name = "Requirement name is required";
-    }
-    if (score.trim() && Number.isNaN(Number(score))) {
-      errs.score = "Score must be a valid number";
-    }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   const handleSave = () => {
-    if (!validate()) return;
-    const numeric = score.trim() === "" ? null : Number(score);
+    const result = eligibilitySchema.safeParse({
+      name,
+      score,
+      applicableTo,
+      degreeLevel,
+      scoreType,
+      description,
+    });
+
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        if (!errs[key]) errs[key] = issue.message;
+      }
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
+    const d = result.data;
     onSave({
-      name: name.trim(),
-      applicable_to: applicableTo,
-      min_degree_level: degreeLevel === ANY_DEGREE ? null : degreeLevel,
-      score_type: scoreType,
-      min_score_percent: isPercentage ? numeric : null,
-      min_score: isPercentage ? null : numeric,
-      description: description.trim() || null,
+      name: d.name,
+      applicable_to: d.applicableTo,
+      min_degree_level: d.degreeLevel === ANY_DEGREE || !d.degreeLevel ? null : d.degreeLevel,
+      score_type: d.scoreType,
+      min_score_percent: isPercentage ? d.score : null,
+      min_score: isPercentage ? null : d.score,
+      description: d.description,
       language_tests: languageTests.filter((t) => t.test_type_name.trim()),
       academic_tests: academicTests.filter((t) => t.test_name.trim()),
     });

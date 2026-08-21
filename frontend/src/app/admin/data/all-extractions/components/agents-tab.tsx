@@ -23,6 +23,8 @@ import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { AgentFull, AgentRun, ExtractionJob } from "../apis/types";
 
+import { z } from "zod";
+
 type AgentValues = {
   name: string; country: string; email: string; phone: string; website: string;
   city: string; state: string; postcode: string; address: string;
@@ -31,6 +33,28 @@ const EMPTY: AgentValues = {
   name: "", country: "", email: "", phone: "", website: "",
   city: "", state: "", postcode: "", address: "",
 };
+
+const agentSchema = z.object({
+  name: z.string().trim().min(1, "Agent name is required"),
+  country: z.string(),
+  email: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
+      message: "Please enter a valid email address",
+    }),
+  phone: z.string(),
+  website: z
+    .string()
+    .trim()
+    .refine((v) => !v || (() => { try { new URL(v); return true; } catch { return false; } })(), {
+      message: "Please enter a valid URL (e.g. https://example.com)",
+    }),
+  city: z.string(),
+  state: z.string(),
+  postcode: z.string(),
+  address: z.string(),
+});
 
 function runStatusClass(status: string) {
   if (status === "completed" || status === "done") return "bg-emerald-500/15 text-emerald-700";
@@ -131,27 +155,18 @@ function AddAgentForm({
       .finally(() => setCitiesLoading(false));
   }, [countryId]);
 
-  const validate = (): boolean => {
-    const errs: Record<string, string> = {};
-    if (!values.name.trim()) {
-      errs.name = "Agent name is required";
-    }
-    if (values.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
-      errs.email = "Please enter a valid email address";
-    }
-    if (values.website.trim()) {
-      try {
-        new URL(values.website.trim());
-      } catch {
-        errs.website = "Please enter a valid URL (e.g. https://example.com)";
-      }
-    }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   const handleSave = () => {
-    if (!validate()) return;
+    const result = agentSchema.safeParse(values);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        if (!errs[key]) errs[key] = issue.message;
+      }
+      setErrors(errs);
+      return;
+    }
+    setErrors({});
     onSave(values);
   };
 

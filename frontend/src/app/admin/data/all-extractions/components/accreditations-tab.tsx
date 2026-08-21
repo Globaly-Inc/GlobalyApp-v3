@@ -124,6 +124,13 @@ export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
 
 // ── Add dialog ───────────────────────────────────────────────────
 
+import { z } from "zod";
+
+const accreditationSchema = z.object({
+  name: z.string().trim().min(1, "Accreditation name is required"),
+  issuingOrg: z.string().trim().transform((v) => v || null),
+});
+
 function AddAccreditationDialog({
   open,
   onOpenChange,
@@ -160,23 +167,26 @@ function AddAccreditationDialog({
       .finally(() => setLoadingOptions(false));
   }, [open]);
 
-  const validate = (): boolean => {
-    const errs: Record<string, string> = {};
-    if (!name.trim()) {
-      errs.name = "Accreditation name is required";
-    }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   async function handleSave() {
-    if (!validate()) return;
+    const result = accreditationSchema.safeParse({ name, issuingOrg });
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        if (!errs[key]) errs[key] = issue.message;
+      }
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
+    const d = result.data;
     setSaving(true);
     try {
       const created = await allExtractionsApi.createAccreditation({
         job_id: jobId,
-        name: name.trim(),
-        issuing_organization: issuingOrg.trim() || undefined,
+        name: d.name,
+        issuing_organization: d.issuingOrg,
       });
       toast.success("Accreditation added");
       onCreated(created);

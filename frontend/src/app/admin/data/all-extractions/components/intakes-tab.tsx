@@ -1,5 +1,6 @@
 "use client";
 
+import { z } from "zod";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarDays, Link2, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +25,14 @@ const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 
 const CHIP_LIMIT = 6;
 
+const intakeSchema = z.object({
+  name: z.string().trim().min(1, "Intake name is required"),
+  startDate: z.string().trim().transform((v) => v || null),
+  endDate: z.string().trim().transform((v) => v || null),
+  orientation: z.string().trim().transform((v) => v || null),
+  deadline: z.string().trim().transform((v) => v || null),
+});
+
 function IntakeForm({
   saving,
   onCancel,
@@ -36,25 +45,29 @@ function IntakeForm({
   const [deadline, setDeadline] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const validate = (): boolean => {
-    const errs: Record<string, string> = {};
-    if (!name.trim()) {
-      errs.name = "Intake name is required";
-    }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   const handleSave = () => {
-    if (!validate()) return;
-    const start = startDate ? new Date(startDate) : null;
+    const result = intakeSchema.safeParse({ name, startDate, endDate, orientation, deadline });
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        if (!errs[key]) errs[key] = issue.message;
+      }
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
+    const d = result.data;
+    const start = d.startDate ? new Date(d.startDate) : null;
     onSave({
-      intake_name: name.trim(),
-      ...(startDate ? { start_date: startDate } : {}),
-      ...(endDate ? { end_date: endDate } : {}),
-      ...(orientation ? { orientation_date: orientation } : {}),
-      ...(deadline ? { admission_deadline: deadline } : {}),
-      ...(start ? { intake_month: start.getMonth() + 1, intake_year: start.getFullYear() } : {}),
+      intake_name: d.name,
+      start_date: d.startDate,
+      end_date: d.endDate,
+      orientation_date: d.orientation,
+      admission_deadline: d.deadline,
+      intake_month: start ? start.getMonth() + 1 : null,
+      intake_year: start ? start.getFullYear() : null,
     });
   };
 

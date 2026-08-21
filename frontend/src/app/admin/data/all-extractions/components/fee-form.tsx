@@ -1,5 +1,6 @@
 "use client";
 
+import { z } from "zod";
 import { useEffect, useState } from "react";
 import { DollarSign, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +35,43 @@ const toInstallments = (fee?: CourseFee): Installment[] =>
     : [emptyInstallment(0)];
 
 const sumLines = (lines: Line[]) => lines.reduce((total, l) => total + (Number(l.amount) || 0), 0);
+
+const feeSchema = z.object({
+  studentType: z.string().min(1, "Please select who the fee applies to"),
+  periodType: z.string().trim().min(1, "Period type is required"),
+  currency: z.string().trim().min(1, "Currency is required"),
+  name: z.string().trim().transform((v) => v || null),
+  installments: z.array(
+    z.object({
+      label: z.string(),
+      lines: z.array(
+        z.object({
+          fee_type: z.string(),
+          amount: z.string(),
+        })
+      ),
+    })
+  ).refine((insts) => {
+    let totalLinesCount = 0;
+    let missingType = false;
+    let missingAmount = false;
+    insts.forEach((inst) => {
+      inst.lines.forEach((line) => {
+        const hasType = Boolean(line.fee_type.trim());
+        const amt = Number(line.amount);
+        const hasAmount = Boolean(line.amount.trim()) && !isNaN(amt) && amt > 0;
+        if (hasType || hasAmount) {
+          totalLinesCount++;
+          if (!hasType) missingType = true;
+          if (!hasAmount) missingAmount = true;
+        }
+      });
+    });
+    return totalLinesCount > 0 && !missingType && !missingAmount;
+  }, {
+    message: "At least one valid fee line with a fee type and amount (> 0) is required",
+  }),
+});
 
 export function FeeForm({
   fee,
@@ -79,53 +117,21 @@ export function FeeForm({
     });
   };
 
-  const validate = () => {
-    const errs: Record<string, string> = {};
-
-    if (!studentType) {
-      errs.studentType = "Please select who the fee applies to";
-    }
-    if (!periodType || !periodType.trim()) {
-      errs.periodType = "Period type is required";
-    }
-    if (!currency || !currency.trim()) {
-      errs.currency = "Currency is required";
-    }
-
-    let totalLinesCount = 0;
-    let missingType = false;
-    let missingAmount = false;
-
-    installments.forEach((inst) => {
-      inst.lines.forEach((line) => {
-        const hasType = Boolean(line.fee_type.trim());
-        const amt = Number(line.amount);
-        const hasAmount = Boolean(line.amount.trim()) && !isNaN(amt) && amt > 0;
-
-        if (hasType || hasAmount) {
-          totalLinesCount++;
-          if (!hasType) missingType = true;
-          if (!hasAmount) missingAmount = true;
-        }
-      });
-    });
-
-    if (totalLinesCount === 0) {
-      errs.installments = "At least one fee line with a fee type and amount (> 0) is required";
-    } else if (missingType) {
-      errs.installments = "Fee type is required for all entered fee lines";
-    } else if (missingAmount) {
-      errs.installments = "A valid amount greater than 0 is required for all entered fee lines";
-    }
-
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   const submit = () => {
-    if (!validate()) return;
+    const result = feeSchema.safeParse({ studentType, periodType, currency, name, installments });
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        if (!errs[key]) errs[key] = issue.message;
+      }
+      setErrors(errs);
+      return;
+    }
 
-    const payload: FeeInstallment[] = installments.map((i) => ({
+    setErrors({});
+    const d = result.data;
+    const payload: FeeInstallment[] = d.installments.map((i) => ({
       label: i.label.trim() || "Installment",
       amount: sumLines(i.lines),
       lines: i.lines
@@ -134,10 +140,10 @@ export function FeeForm({
     }));
 
     onSave({
-      ...(name.trim() ? { name: name.trim() } : fee?.name ? { name: null } : {}),
-      student_type: studentType,
-      period_type: periodType,
-      currency,
+      name: d.name,
+      student_type: d.studentType,
+      period_type: d.periodType,
+      currency: d.currency,
       total_amount: total,
       installments: payload,
       save_for_reuse: saveForReuse,

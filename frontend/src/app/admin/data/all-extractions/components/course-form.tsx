@@ -1,5 +1,6 @@
 "use client";
 
+import { z } from "zod";
 import { useEffect, useState } from "react";
 import { BookOpen, Loader2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { STUDY_MODE_OPTIONS } from "../const";
 import type { CreateCourseParams } from "../apis/types";
+
+const courseSchema = z.object({
+  name: z.string().trim().min(1, "Course name is required"),
+  sourceUrl: z
+    .string()
+    .trim()
+    .refine((v) => !v || (() => { try { new URL(v); return true; } catch { return false; } })(), {
+      message: "Please enter a valid URL (e.g. https://example.com)",
+    })
+    .transform((v) => v || null),
+  degreeLevel: z.string().trim().transform((v) => v || null),
+  studyMode: z.string().trim().transform((v) => v || null),
+  subjectArea: z.string().trim().transform((v) => v || null),
+  duration: z.string().trim().transform((v) => (v ? Number(v) || null : null)),
+  description: z.string().trim().transform((v) => v || null),
+});
 
 export function CourseForm({
   saving,
@@ -42,32 +59,37 @@ export function CourseForm({
       .catch(() => setSubjectAreas([]));
   }, []);
 
-  const validate = (): boolean => {
-    const errs: Record<string, string> = {};
-    if (!name.trim()) {
-      errs.name = "Course name is required";
-    }
-    if (sourceUrl.trim()) {
-      try {
-        new URL(sourceUrl.trim());
-      } catch {
-        errs.sourceUrl = "Please enter a valid URL (e.g. https://example.com)";
-      }
-    }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   const handleSave = () => {
-    if (!validate()) return;
+    const result = courseSchema.safeParse({
+      name,
+      sourceUrl,
+      degreeLevel,
+      studyMode,
+      subjectArea,
+      duration,
+      description,
+    });
+
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const field = String(issue.path[0]);
+        if (!errs[field]) errs[field] = issue.message;
+      }
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
+    const d = result.data;
     onSave({
-      name: name.trim(),
-      ...(sourceUrl.trim() ? { source_url: sourceUrl.trim() } : {}),
-      ...(degreeLevel ? { degree_level: degreeLevel } : {}),
-      ...(studyMode ? { study_mode: studyMode } : {}),
-      ...(subjectArea.trim() ? { subject_area: subjectArea.trim() } : {}),
-      ...(duration.trim() ? { duration_weeks: Number(duration) } : {}),
-      ...(description.trim() ? { description: description.trim() } : {}),
+      name: d.name,
+      ...(d.sourceUrl ? { source_url: d.sourceUrl } : { source_url: null }),
+      ...(d.degreeLevel ? { degree_level: d.degreeLevel } : { degree_level: null }),
+      ...(d.studyMode ? { study_mode: d.studyMode } : { study_mode: null }),
+      ...(d.subjectArea ? { subject_area: d.subjectArea } : { subject_area: null }),
+      ...(d.duration ? { duration_weeks: d.duration } : { duration_weeks: null }),
+      ...(d.description ? { description: d.description } : { description: null }),
     });
   };
 

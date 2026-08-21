@@ -1,5 +1,6 @@
 "use client";
 
+import { z } from "zod";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookMarked, Link2, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -23,6 +24,20 @@ import type { CourseFull, CourseLinks, ExtractionJob, StudyUnit, StudyUnitParams
 
 const CHIP_LIMIT = 6;
 
+const studyUnitSchema = z.object({
+  name: z.string().trim().min(1, "Unit name is required"),
+  code: z.string().trim().transform((v) => v || null),
+  points: z
+    .string()
+    .trim()
+    .refine((v) => !v || (!Number.isNaN(Number(v)) && Number(v) >= 0), {
+      message: "Credit points must be a positive number",
+    })
+    .transform((v) => (v ? Number(v) : null)),
+  type: z.string().trim().default("compulsory"),
+  description: z.string().trim().transform((v) => v || null),
+});
+
 function StudyUnitForm({
   unit,
   saving,
@@ -41,26 +56,26 @@ function StudyUnitForm({
   const [description, setDescription] = useState(unit?.description ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const validate = (): boolean => {
-    const errs: Record<string, string> = {};
-    if (!name.trim()) {
-      errs.name = "Unit name is required";
-    }
-    if (points.trim() && (Number.isNaN(Number(points)) || Number(points) < 0)) {
-      errs.points = "Credit points must be a positive number";
-    }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   const handleSave = () => {
-    if (!validate()) return;
+    const result = studyUnitSchema.safeParse({ name, code, points, type, description });
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        if (!errs[key]) errs[key] = issue.message;
+      }
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
+    const d = result.data;
     onSave({
-      unit_name: name.trim(),
-      unit_code: code.trim() || null,
-      credit_points: points.trim() === "" ? null : Number(points),
-      unit_type: type,
-      description: description.trim() || null,
+      unit_name: d.name,
+      unit_code: d.code,
+      credit_points: d.points,
+      unit_type: d.type,
+      description: d.description,
     });
   };
 

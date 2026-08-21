@@ -1,5 +1,6 @@
 "use client";
 
+import { z } from "zod";
 import { useEffect, useState } from "react";
 import { Building2, Loader2, Save, X } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +28,34 @@ export type BranchValues = {
   address: string;
   source_url: string;
 };
+
+const branchSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  email: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
+      message: "Enter a valid email address",
+    }),
+  phone: z.string(),
+  country: z.string(),
+  city: z.string(),
+  state: z.string(),
+  postcode: z.string(),
+  map_link: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^https?:\/\//i.test(v), {
+      message: "Map link must start with http:// or https://",
+    }),
+  address: z.string(),
+  source_url: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^https?:\/\//i.test(v), {
+      message: "Source URL must start with http:// or https://",
+    }),
+});
 
 const empty: BranchValues = {
   name: "", email: "", phone: "", country: "", city: "",
@@ -58,7 +87,6 @@ export function BranchForm({
 
   const set = <K extends keyof BranchValues>(key: K, value: BranchValues[K]) => {
     setValues((v) => ({ ...v, [key]: value }));
-    // Clear the field error as the user types
     if (errors[key]) setErrors((e) => { const next = { ...e }; delete next[key]; return next; });
   };
 
@@ -68,7 +96,6 @@ export function BranchForm({
       .catch((e: Error) => toast.error("Could not load countries", { description: e.message }));
   }, []);
 
-  // Cities depend on the picked country; countries are stored by name on the branch row.
   const countryId = countries.find((c) => c.name === values.country)?.id;
   useEffect(() => {
     if (!countryId) {
@@ -82,21 +109,18 @@ export function BranchForm({
       .finally(() => setCitiesLoading(false));
   }, [countryId]);
 
-  const validate = () => {
-    const next: Record<string, string> = {};
-    if (!values.name.trim()) next.name = "Name is required";
-    if (values.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim()))
-      next.email = "Enter a valid email address";
-    if (values.map_link.trim() && !/^https?:\/\//i.test(values.map_link.trim()))
-      next.map_link = "Map link must start with http:// or https://";
-    if (values.source_url.trim() && !/^https?:\/\//i.test(values.source_url.trim()))
-      next.source_url = "Source URL must start with http:// or https://";
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  };
-
   const submit = () => {
-    if (!validate()) return;
+    const result = branchSchema.safeParse(values);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        if (!errs[key]) errs[key] = issue.message;
+      }
+      setErrors(errs);
+      return;
+    }
+    setErrors({});
     onSave(values);
   };
 
