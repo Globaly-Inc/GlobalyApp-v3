@@ -236,6 +236,17 @@ export const allExtractionsMockApi = {
     await delay(200);
   },
 
+  deleteCourse: async (id: string): Promise<void> => {
+    console.log("[mock] DELETE course", id);
+    await delay(200);
+  },
+
+  bulkDeleteCourses: async (ids: string[]): Promise<{ queued: number }> => {
+    console.log("[mock] POST bulk-delete courses (queued)", ids);
+    await delay(200);
+    return { queued: ids.length };
+  },
+
   getCampuses: async (jobId: string): Promise<CampusFull[]> => {
     console.log("[mock] GET campuses for job", jobId);
     await delay(250);
@@ -552,7 +563,7 @@ export const allExtractionsMockApi = {
     ];
   },
 
-  createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string }): Promise<Accreditation> => {
+  createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string | null }): Promise<Accreditation> => {
     console.log("[mock] POST accreditation", params);
     await delay(300);
     return { id: uuid(), name: params.name, issuing_organization: params.issuing_organization ?? null, website: null, description: null, created_at: new Date().toISOString() };

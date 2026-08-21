@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DollarSign, Link2, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Clock, DollarSign, Link2, Loader2, Pencil, Plus, Trash2, Type, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Pagination } from "@/components/ui/pagination";
+import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
-import { EditableField, saveFormAndLearn, useFieldSaver } from "./editable-field";
+import { EditableField, saveFormAndLearn, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { FeeForm } from "./fee-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
@@ -20,6 +22,19 @@ import type { CourseFee, CourseFeeParams, CourseFull, CourseLinks, ExtractionJob
 
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
+
+// EditableField keeps its own click-to-edit affordance — this just gives each
+// field a visual anchor (icon tile), matching the Institution/Branches tabs' treatment.
+function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
+  return (
+    <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <EditableField {...field} className="flex-1" />
+    </div>
+  );
+}
 
 function FeeCard({
   fee,
@@ -53,32 +68,39 @@ function FeeCard({
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
-            {fee.student_type && <Badge className="text-xs capitalize">{fee.student_type}</Badge>}
-            {fee.period_type && <Badge variant="outline" className="text-xs">{fee.period_type}</Badge>}
+    <Card className="group overflow-hidden">
+      <div className="-mt-4 flex items-center justify-between gap-2 rounded-t-xl border-b bg-primary/5 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <DollarSign className="h-4 w-4" />
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="font-semibold">{fee.currency} {fee.total_amount ?? 0}</span>
-            <Button variant="ghost" size="icon-sm" className="cursor-pointer" title="Edit fee" disabled={busy} onClick={onEdit}>
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive"
-              title="Delete fee" disabled={busy} onClick={onDelete}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+          <span className="text-sm font-semibold text-foreground">{fee.name || "Unnamed fee"}</span>
+          {fee.student_type && <Badge className="text-xs capitalize">{fee.student_type}</Badge>}
+          {fee.period_type && <Badge variant="outline" className="text-xs">{fee.period_type}</Badge>}
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">{fee.currency} {fee.total_amount ?? 0}</span>
+          <Button
+            variant="ghost" size="icon-sm" className="cursor-pointer opacity-0 transition-opacity group-hover:opacity-100"
+            title="Edit fee" disabled={busy} onClick={onEdit}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive"
+            title="Delete fee" disabled={busy} onClick={onDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
 
-        <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-          <EditableField label="Fee Name" value={fee.name} onSave={(v) => onSaveField("name", v)} multiline />
-          <EditableField label="Currency" value={fee.currency} onSave={(v) => onSaveField("currency", v)} />
-          <EditableField label="Period Type" value={fee.period_type} onSave={(v) => onSaveField("period_type", v)} />
+      <CardContent className="flex flex-col gap-3 p-4">
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+          <Field icon={Type} label="Fee Name" value={fee.name} onSave={(v) => onSaveField("name", v)} multiline />
+          <Field icon={DollarSign} label="Currency" value={fee.currency} onSave={(v) => onSaveField("currency", v)} />
+          <Field icon={Clock} label="Period Type" value={fee.period_type} onSave={(v) => onSaveField("period_type", v)} />
         </div>
 
         {fee.installments && fee.installments.length > 0 && (

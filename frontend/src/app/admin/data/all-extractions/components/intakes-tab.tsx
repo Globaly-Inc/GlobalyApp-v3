@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CalendarDays, Link2, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { Calendar, CalendarClock, CalendarDays, Link2, Loader2, Pencil, Plus, Save, Trash2, Type, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,9 +14,10 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
-import { EditableField, useFieldSaver } from "./editable-field";
+import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { CourseFull, CourseLinks, ExtractionJob, Intake, IntakeParams } from "../apis/types";
@@ -27,11 +29,24 @@ const CHIP_LIMIT = 6;
 
 const intakeSchema = z.object({
   name: z.string().trim().min(1, "Intake name is required"),
-  startDate: z.string().trim().transform((v) => v || null),
-  endDate: z.string().trim().transform((v) => v || null),
-  orientation: z.string().trim().transform((v) => v || null),
-  deadline: z.string().trim().transform((v) => v || null),
+  startDate: z.string(),
+  endDate: z.string(),
+  orientation: z.string(),
+  deadline: z.string(),
 });
+
+// EditableField keeps its own click-to-edit affordance — this just gives each
+// field a visual anchor (icon tile), matching the Institution/Branches tabs' treatment.
+function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
+  return (
+    <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <EditableField {...field} className="flex-1" />
+    </div>
+  );
+}
 
 function IntakeForm({
   saving,
@@ -44,32 +59,6 @@ function IntakeForm({
   const [orientation, setOrientation] = useState("");
   const [deadline, setDeadline] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const handleSave = () => {
-    const result = intakeSchema.safeParse({ name, startDate, endDate, orientation, deadline });
-    if (!result.success) {
-      const errs: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const key = String(issue.path[0]);
-        if (!errs[key]) errs[key] = issue.message;
-      }
-      setErrors(errs);
-      return;
-    }
-
-    setErrors({});
-    const d = result.data;
-    const start = d.startDate ? new Date(d.startDate) : null;
-    onSave({
-      intake_name: d.name,
-      start_date: d.startDate,
-      end_date: d.endDate,
-      orientation_date: d.orientation,
-      admission_deadline: d.deadline,
-      intake_month: start ? start.getMonth() + 1 : null,
-      intake_year: start ? start.getFullYear() : null,
-    });
-  };
 
   return (
     <Card className="border-primary/40">
@@ -123,7 +112,34 @@ function IntakeForm({
           <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button className="gap-1.5 cursor-pointer" disabled={saving} onClick={handleSave}>
+          <Button
+            className="gap-1.5 cursor-pointer"
+            disabled={saving}
+            onClick={() => {
+              const result = intakeSchema.safeParse({ name, startDate, endDate, orientation, deadline });
+              if (!result.success) {
+                const errs: Record<string, string> = {};
+                for (const issue of result.error.issues) {
+                  const key = String(issue.path[0]);
+                  if (!errs[key]) errs[key] = issue.message;
+                }
+                setErrors(errs);
+                return;
+              }
+              setErrors({});
+              const d = result.data;
+              const start = d.startDate ? new Date(d.startDate) : null;
+              onSave({
+                intake_name: d.name,
+                ...(d.startDate ? { start_date: d.startDate } : {}),
+                ...(d.endDate ? { end_date: d.endDate } : {}),
+                ...(d.orientation ? { orientation_date: d.orientation } : {}),
+                ...(d.deadline ? { admission_deadline: d.deadline } : {}),
+                // Month/year mirror the start date so the list can group by intake year.
+                ...(start ? { intake_month: start.getMonth() + 1, intake_year: start.getFullYear() } : {}),
+              });
+            }}
+          >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save
           </Button>
@@ -165,30 +181,34 @@ function IntakeCard({
   const year = intake.intake_year ?? (intake.start_date ? new Date(intake.start_date).getFullYear() : null);
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
-            {year && <Badge variant="outline" className="text-xs">{year}</Badge>}
-            <Badge className="bg-primary/10 text-xs text-primary">
-              {linked.length} course{linked.length === 1 ? "" : "s"}
-            </Badge>
+    <Card className="group overflow-hidden">
+      <div className="-mt-4 flex items-center justify-between gap-2 rounded-t-xl border-b bg-primary/5 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Calendar className="h-4 w-4" />
           </div>
-          <Button
-            variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive"
-            title="Delete intake" disabled={busy} onClick={onDelete}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <span className="text-sm font-semibold text-foreground">{intake.intake_name || "Unnamed intake"}</span>
+          {year && <Badge variant="outline" className="text-xs">{year}</Badge>}
+          <Badge className="bg-primary/10 text-xs text-primary">
+            {linked.length} course{linked.length === 1 ? "" : "s"}
+          </Badge>
         </div>
+        <Button
+          variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive"
+          title="Delete intake" disabled={busy} onClick={onDelete}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
 
-        <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-          <EditableField label="Intake Name" value={intake.intake_name} onSave={(v) => onSaveField("intake_name", v)} />
-          <EditableField label="Start Date" value={toDateInput(intake.start_date)} onSave={(v) => onSaveField("start_date", v)} />
-          <EditableField label="End Date" value={toDateInput(intake.end_date)} onSave={(v) => onSaveField("end_date", v)} />
-          <EditableField label="Admission Deadline" value={toDateInput(intake.admission_deadline)} onSave={(v) => onSaveField("admission_deadline", v)} />
-          <EditableField label="Orientation" value={toDateInput(intake.orientation_date)} onSave={(v) => onSaveField("orientation_date", v)} />
+      <CardContent className="flex flex-col gap-3 p-4">
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+          <Field icon={Type} label="Intake Name" value={intake.intake_name} onSave={(v) => onSaveField("intake_name", v)} />
+          <Field icon={Calendar} label="Start Date" value={toDateInput(intake.start_date)} onSave={(v) => onSaveField("start_date", v)} />
+          <Field icon={Calendar} label="End Date" value={toDateInput(intake.end_date)} onSave={(v) => onSaveField("end_date", v)} />
+          <Field icon={CalendarClock} label="Admission Deadline" value={toDateInput(intake.admission_deadline)} onSave={(v) => onSaveField("admission_deadline", v)} />
+          <Field icon={CalendarDays} label="Orientation" value={toDateInput(intake.orientation_date)} onSave={(v) => onSaveField("orientation_date", v)} />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -347,7 +367,7 @@ export function IntakesTab({
 
       <div className="space-y-3">
         <Dialog open={creating} onOpenChange={setCreating}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl p-0 border-0 bg-transparent shadow-none">
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
             <IntakeForm
               saving={saving}
               onCancel={() => setCreating(false)}

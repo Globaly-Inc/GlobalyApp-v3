@@ -250,7 +250,15 @@ export type CreateCampusParams = { job_id: string } & Partial<
 >;
 
 export type UpdateCourseParams = Partial<Omit<CourseFull, "id" | "created_at" | "updated_at" | "verification_status">>;
-export type CreateCourseParams = { name: string; source_url?: string; degree_level?: string; subject_area?: string; duration_weeks?: number; study_mode?: string; description?: string };
+export type CreateCourseParams = {
+  name: string;
+  source_url?: string | null;
+  degree_level?: string | null;
+  subject_area?: string | null;
+  duration_weeks?: number | null;
+  study_mode?: string | null;
+  description?: string | null;
+};
 /** Tables the backend's save-and-learn endpoint accepts a patch for. */
 export type EditableTable =
   | "extraction_courses"

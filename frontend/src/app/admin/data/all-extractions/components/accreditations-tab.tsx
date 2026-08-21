@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
-import { Award, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { Award, FileText, Globe, Link2, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -16,10 +16,25 @@ import {
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/combobox";
 import { FieldError } from "@/components/field-error";
+import { cn } from "@/lib/utils";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { allExtractionsApi } from "../apis";
+import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { Accreditation } from "../apis/types";
+
+// EditableField keeps its own click-to-edit affordance — this just gives each
+// field a visual anchor (icon tile), matching the Institution/Branches tabs' treatment.
+function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
+  return (
+    <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <EditableField {...field} className="flex-1" />
+    </div>
+  );
+}
 
 export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
   const [accreditations, setAccreditations] = useState<Accreditation[]>([]);
@@ -55,6 +70,8 @@ export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
     }
   }
 
+  const saveField = useFieldSaver(jobId, load);
+
   if (loading) {
     return <p className="py-12 text-center text-sm text-muted-foreground">Loading accreditations...</p>;
   }
@@ -78,30 +95,40 @@ export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {accreditations.map((acc) => (
-            <Card key={acc.id}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <span className="text-sm font-medium">{acc.name}</span>
-                    {acc.issuing_organization && (
-                      <p className="text-xs text-muted-foreground">{acc.issuing_organization}</p>
-                    )}
-                    {acc.website && (
-                      <a
-                        href={acc.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <ExternalLink className="h-3 w-3" /> {acc.website}
-                      </a>
-                    )}
+            <Card key={acc.id} className="group overflow-hidden">
+              <div className="-mt-4 flex items-center justify-between gap-2 rounded-t-xl border-b bg-primary/5 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <ShieldCheck className="h-4 w-4" />
                   </div>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0 cursor-pointer text-destructive hover:text-destructive" onClick={() => handleDelete(acc.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <span className="text-sm font-semibold text-foreground">{acc.name || "Unnamed accreditation"}</span>
+                </div>
+                <Button
+                  variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive"
+                  title="Delete accreditation" onClick={() => handleDelete(acc.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                  <Field icon={Award} label="Name" value={acc.name} onSave={(v) => saveField("extraction_accreditations", acc.id, "name", v)} />
+                  <Field
+                    icon={Globe} label="Issuing organization" value={acc.issuing_organization}
+                    onSave={(v) => saveField("extraction_accreditations", acc.id, "issuing_organization", v)}
+                  />
+                  <Field
+                    icon={Link2} label="Website" value={acc.website}
+                    onSave={(v) => saveField("extraction_accreditations", acc.id, "website", v)}
+                  />
+                  <Field
+                    icon={FileText} label="Description" value={acc.description} multiline
+                    onSave={(v) => saveField("extraction_accreditations", acc.id, "description", v)}
+                    className="md:col-span-2"
+                  />
                 </div>
               </CardContent>
             </Card>

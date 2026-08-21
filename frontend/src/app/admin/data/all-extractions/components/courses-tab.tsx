@@ -12,6 +12,7 @@ import { CourseDetailPanel } from "./course-detail-panel";
 import { CourseForm } from "./course-form";
 import { CourseListPanel } from "./course-list-panel";
 import { StepActionBar } from "./step-action-bar";
+import { useConfirmDelete } from "./use-confirm-delete";
 import type { CampusFull, CourseFull, CourseLinks, CreateCourseParams, ExtractionJob } from "../apis/types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -44,14 +45,18 @@ export function CoursesTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  // Accepts overrides so callers that also reset page/search/statusFilter (e.g. after a
+  // delete) can force this fetch to use the new values immediately — setState is async,
+  // so reading the state variables here right after calling their setters would still
+  // see the pre-reset values from this render's closure.
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string }) => {
     try {
       const [coursesRes, courseLinks, campusRows, queue] = await Promise.all([
         allExtractionsApi.getCourses(jobId, {
-          page,
-          limit,
-          search: search.trim() || undefined,
-          status: statusFilter === "all" ? undefined : statusFilter,
+          page: overrides?.page ?? page,
+          limit: overrides?.limit ?? limit,
+          search: (overrides?.search ?? search).trim() || undefined,
+          status: (overrides?.status ?? statusFilter) === "all" ? undefined : (overrides?.status ?? statusFilter),
         }),
         allExtractionsApi.getCourseLinks(jobId),
         allExtractionsApi.getCampuses(jobId),
@@ -102,6 +107,59 @@ export function CoursesTab({
   };
 
   const selected = courses?.find((c) => c.id === selectedId) ?? null;
+  const { confirm, dialog: confirmDialog } = useConfirmDelete();
+
+  // Clears every list-level UI control back to defaults — used after a delete so the
+  // view doesn't sit on a stale filter/page/selection pointing at rows that are gone.
+  const resetListState = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setPage(1);
+    setLimit(DEFAULT_PAGE_SIZE);
+    setSelectedIds([]);
+    setSelectedId(null);
+  };
+
+  const deleteCourse = async (id: string) => {
+    if (!(await confirm("Delete course?", "This will permanently delete the course and its linked fees, intakes, and other data."))) return;
+    setSaving(true);
+    try {
+      await allExtractionsApi.deleteCourse(id);
+      toast.success("Course deleted");
+      resetListState();
+      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all" });
+      onReload();
+    } catch (e) {
+      toast.error("Delete failed", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    const many = selectedIds.length > 1;
+    if (!(await confirm(many ? `Delete ${selectedIds.length} courses?` : "Delete course?", "This will permanently delete the selected courses and their linked fees, intakes, and other data."))) return;
+    setSaving(true);
+    try {
+      const { queued } = await allExtractionsApi.bulkDeleteCourses(selectedIds);
+      toast.success(`${queued} course${many ? "s" : ""} queued for deletion`);
+      // Fire-and-forget — a background worker does the actual deletes. Remove the rows
+      // optimistically first (the server hasn't caught up yet), then reset every other
+      // list control back to defaults and force a reload with those defaults explicitly
+      // (resetListState's setState calls haven't committed yet, so `load()` alone would
+      // still read the pre-reset page/search/status from this render's closure).
+      const deletedIds = new Set(selectedIds);
+      setCourses((prev) => prev.filter((c) => !deletedIds.has(c.id)));
+      setTotal((prev) => Math.max(0, prev - deletedIds.size));
+      resetListState();
+      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all" });
+      onReload();
+    } catch (e) {
+      toast.error("Delete failed", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const bulkVerify = async (approve: boolean) => {
     setSaving(true);
@@ -178,6 +236,8 @@ export function CoursesTab({
             onAdd={() => setAdding(true)}
             saving={saving}
             onBulkVerify={bulkVerify}
+            onDelete={deleteCourse}
+            onBulkDelete={bulkDelete}
             compact={!!selected}
           />
 
@@ -197,6 +257,7 @@ export function CoursesTab({
         </div>
       )}
 
+      {confirmDialog}
     </div>
   );
 }

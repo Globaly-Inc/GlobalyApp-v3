@@ -40,6 +40,10 @@ export const BulkVerifyCoursesSchema = z.object({
   approve: z.boolean(),
 });
 
+export const BulkDeleteCoursesSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+});
+
 export const CourseAccreditationLinkSchema = z.object({
   job_id: z.string().uuid(),
   accreditation_id: z.string().uuid(),

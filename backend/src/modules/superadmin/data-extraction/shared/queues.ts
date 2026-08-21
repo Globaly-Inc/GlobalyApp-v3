@@ -15,4 +15,6 @@ export const EXTRACTION_QUEUES = {
   AGENTCIS: "extraction_agentcis",
   /** V2 → V3 data import — one message per import run (ImportOptions payload) */
   IMPORT_V2: "extraction_import_v2",
+  /** Admin bulk-deletes courses — fire-and-forget, same pattern as scholarship-bulk-delete */
+  COURSE_BULK_DELETE: "extraction_course_bulk_delete",
 } as const;

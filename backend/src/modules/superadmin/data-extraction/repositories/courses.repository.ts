@@ -54,6 +54,15 @@ export async function updateCoursesByIds(ids: string[], data: Record<string, unk
     .update({ ...data, updated_at: masterKnex.fn.now() });
 }
 
+export async function deleteCourse(id: string) {
+  const count = await masterKnex(T).where({ id }).delete();
+  return count > 0;
+}
+
+export async function deleteCoursesByIds(ids: string[]) {
+  return masterKnex(T).whereIn("id", ids).delete();
+}
+
 // ── Course links (13-key bundle for RC2) ──
 
 export async function getCourseLinks(jobId: string) {

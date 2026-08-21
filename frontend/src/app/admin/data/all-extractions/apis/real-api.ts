@@ -155,6 +155,15 @@ export const allExtractionsRealApi = {
     await httpPost(`/admin/data-extraction/courses/${id}/reject`, {});
   },
 
+  deleteCourse: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/courses/${id}`);
+  },
+
+  // Fire-and-forget — the backend queues the batch for a worker, so the UI removes
+  // the rows optimistically rather than waiting for the actual deletes to finish.
+  bulkDeleteCourses: (ids: string[]): Promise<{ queued: number }> =>
+    httpPost(`/admin/data-extraction/courses/bulk-delete`, { ids }),
+
   getCampuses: async (jobId: string): Promise<CampusFull[]> => {
     const { campuses } = await httpGet<{ campuses: CampusFull[] }>(`/admin/data-extraction/jobs/${jobId}/campuses`);
     return campuses;
@@ -373,7 +382,7 @@ export const allExtractionsRealApi = {
     return [] as Accreditation[];
   },
 
-  createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string }): Promise<Accreditation> => {
+  createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string | null }): Promise<Accreditation> => {
     const res = await httpPost<{ id: string; created_at: string }>("/admin/data-extraction/staged-accreditations", params);
     return { id: res.id, name: params.name, issuing_organization: params.issuing_organization ?? null, website: null, description: null, created_at: res.created_at };
   },
