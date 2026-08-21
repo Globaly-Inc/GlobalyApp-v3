@@ -19,18 +19,20 @@ import {
  * if (!(await confirm("Delete branch?"))) return;
  * ... render {dialog} once in the tab.
  */
+type ConfirmOptions = { confirmLabel?: string; variant?: "destructive" | "default" };
+
 export function useConfirmDelete() {
-  const [state, setState] = useState<{ open: boolean; title: string; description?: string }>({
+  const [state, setState] = useState<{ open: boolean; title: string; description?: string } & ConfirmOptions>({
     open: false,
     title: "",
   });
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
 
   const confirm = useCallback(
-    (title: string, description?: string) =>
+    (title: string, description?: string, options?: ConfirmOptions) =>
       new Promise<boolean>((resolve) => {
         resolveRef.current = resolve;
-        setState({ open: true, title, description });
+        setState({ open: true, title, description, ...options });
       }),
     [],
   );
@@ -54,8 +56,8 @@ export function useConfirmDelete() {
           <Button variant="outline" className="cursor-pointer" onClick={() => settle(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" className="cursor-pointer" onClick={() => settle(true)}>
-            Delete
+          <Button variant={state.variant ?? "destructive"} className="cursor-pointer" onClick={() => settle(true)}>
+            {state.confirmLabel ?? "Delete"}
           </Button>
         </DialogFooter>
       </DialogContent>

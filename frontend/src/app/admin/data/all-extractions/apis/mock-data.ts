@@ -143,6 +143,16 @@ export const allExtractionsMockApi = {
     );
   },
 
+  rerunJob: async (id: string): Promise<void> => {
+    console.log("[mock] POST /admin/data-extraction/jobs/" + id + "/rerun");
+    await delay(200);
+    mockJobs = mockJobs.map((j) =>
+      j.id === id
+        ? { ...j, status: "processing", total_pages_found: 0, courses_extracted: 0, pages_scraped: 0, pages_failed: 0 }
+        : j,
+    );
+  },
+
   // ── Tab data endpoints ──────────────────────────────────────────
 
   getCourseLinks: async (jobId: string): Promise<CourseLinks> => {

@@ -68,7 +68,7 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
 
   return (
     <div className="space-y-6">
-      <JobHeader job={full.job} />
+      <JobHeader job={full.job} onReload={reload} />
       <JobStats job={full.job} courses={full.courses} />
       <JobTabsBar active={activeTab} onChange={setTab} />
       {activeTab === "overview" ? (
