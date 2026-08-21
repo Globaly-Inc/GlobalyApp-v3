@@ -59,7 +59,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     // ponytail: negative temp ids — the widget has no persisted messages, feedback stays hidden
     setMessages((prev) => [
       ...prev,
-      { id: -prev.length - 1, session_id: 0, role: "user", content, cards: [], chips: [], feedback: null, created_at: new Date().toISOString() },
+      { id: -prev.length - 1, session_id: 0, role: "user", content, cards: [], chips: [], blocks: [], feedback: null, created_at: new Date().toISOString() },
     ]);
 
     let text = "";
@@ -77,7 +77,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       );
       setMessages((prev) => [
         ...prev,
-        { id: -prev.length - 1, session_id: 0, role: "assistant", content: text, cards, chips, feedback: null, created_at: new Date().toISOString() },
+        { id: -prev.length - 1, session_id: 0, role: "assistant", content: text, cards, chips, blocks: [], feedback: null, created_at: new Date().toISOString() },
       ]);
     } catch (e) {
       setError((e as Error).message);
