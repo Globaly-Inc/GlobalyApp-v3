@@ -10,8 +10,20 @@ export async function listPosts(viewerId: number, query: ListPostsQuery) {
   const cursor = query.cursor ? repo.decodeCursor(query.cursor) : null;
   if (query.cursor && !cursor) throw new BadRequestError("Invalid cursor");
 
+  // Decided server-side from the viewer's own account — a client cannot claim to be personal or a student.
+  const audience = await repo.viewerAudience(viewerId);
+
+  // Reading a business portal is a claim about context, and it widens what the query returns — so it is
+  // authorized here, exactly as posting into a business feed is.
+  if (query.businessId != null && !(await repo.isBusinessMember(viewerId, query.businessId))) {
+    throw new ForbiddenError("You are not a member of that business");
+  }
+
   const page = await repo.listPosts({
     viewerId,
+    viewerIsPersonal: audience.isPersonal,
+    viewerIsStudent: audience.isStudent,
+    viewingAsBusinessId: query.businessId ?? null,
     postType: query.postType,
     limit: query.limit,
     cursor,
