@@ -1,62 +1,45 @@
-import { CheckCircle2, XCircle } from "lucide-react";
+import { Activity, BookOpen, FileSearch, Files } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { ExtractionStatusBadge } from "./status-badge";
 import type { CourseRow, ExtractionJob } from "../apis/types";
 
+const STAT_STYLES = {
+  blue: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
+  violet: "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400",
+  emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
+  amber: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400",
+} as const;
+
+function StatCard({
+  icon: Icon,
+  color,
+  value,
+  label,
+}: Readonly<{ icon: typeof Files; color: keyof typeof STAT_STYLES; value: React.ReactNode; label: string }>) {
+  return (
+    <Card className="transition-shadow hover:shadow-md">
+      <CardContent className="flex items-center gap-4 py-5">
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${STAT_STYLES[color]}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-2xl font-bold leading-tight">{value}</div>
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function JobStats({ job, courses }: Readonly<{ job: ExtractionJob; courses: CourseRow[] }>) {
-  const verified = courses.filter((c) => c.verification_status === "confirmed" || c.verification_status === "verified").length;
-  const mismatch = courses.filter((c) => c.verification_status === "mismatch" || c.verification_status === "flagged").length;
-  const pending = courses.filter((c) => !c.verification_status || c.verification_status === "pending").length;
   const total = courses.length || job.verification_total || 0;
-  const checked = verified + mismatch;
-  const pct = total > 0 ? Math.round((checked / total) * 100) : 0;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <Card>
-        <CardContent className="pt-5 pb-4 text-center">
-          <p className="text-2xl font-bold">{job.total_pages_found || "—"}</p>
-          <p className="text-xs text-muted-foreground mt-1">Pages Found</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-5 pb-4 text-center">
-          <p className="text-2xl font-bold">{job.pages_scraped || 0}</p>
-          <p className="text-xs text-muted-foreground mt-1">Scraped</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-5 pb-4">
-          <div className="text-center mb-2">
-            <p className="text-2xl font-bold">
-              {verified}
-              <span className="text-base font-normal text-muted-foreground">/{total}</span>
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">Courses Verified</p>
-          </div>
-          <Progress value={pct} className="h-1.5" />
-          <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-              {verified}
-            </span>
-            {mismatch > 0 && (
-              <span className="flex items-center gap-1 text-destructive">
-                <XCircle className="h-3 w-3" />
-                {mismatch}
-              </span>
-            )}
-            <span className="text-muted-foreground/70">{pending} pending</span>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-5 pb-4 text-center">
-          <ExtractionStatusBadge status={job.status} />
-          <p className="text-xs text-muted-foreground mt-1">Status</p>
-        </CardContent>
-      </Card>
+      <StatCard icon={Files} color="blue" value={job.total_pages_found || "—"} label="Pages Found" />
+      <StatCard icon={FileSearch} color="violet" value={job.pages_scraped || 0} label="Scraped" />
+      <StatCard icon={BookOpen} color="emerald" value={total} label="Courses" />
+      <StatCard icon={Activity} color="amber" value={<ExtractionStatusBadge status={job.status} />} label="Status" />
     </div>
   );
 }

@@ -161,7 +161,7 @@ export function EligibilityTab({
     try {
       const [courseLinks, courseRows] = await Promise.all([
         allExtractionsApi.getCourseLinks(jobId),
-        allExtractionsApi.getCourses(jobId),
+        allExtractionsApi.getCourses(jobId, { limit: 100 }).then((r) => r.data),
       ]);
       setLinks(courseLinks);
       setCourses(courseRows);

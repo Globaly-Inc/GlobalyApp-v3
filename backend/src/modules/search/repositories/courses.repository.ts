@@ -23,9 +23,8 @@ export type CourseSort = "best_match" | "fee_asc" | "fee_desc" | "duration_asc";
 const EFFECTIVE_FEE = "coalesce(ec.domestic_fee_total, ec.international_fee_total)";
 
 // Public visibility = the course's job was promoted to a business (promote.service.ts sets
-// status 'exported'), and the course itself has passed admin verification.
-const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')
-  and ec.verification_status = 'confirmed'`;
+// status 'exported'). Verification status is not used to gate visibility.
+const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')`;
 
 const LIST_COLUMNS = [
   "ec.id", "ec.name", "ec.short_name", "ec.degree_level", "ec.subject_area",

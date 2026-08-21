@@ -2,6 +2,9 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 /** Build a compact page list with `null` gaps, e.g. [1, null, 4, 5, 6, null, 10]. */
 function buildPageList(current: number, total: number): (number | null)[] {
@@ -23,11 +26,19 @@ export function Pagination({
   total,
   limit,
   onPageChange,
+  align = "between",
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  onPageSizeChange,
 }: Readonly<{
   page: number;
   total: number;
   limit: number;
   onPageChange: (page: number) => void;
+  /** "between" (default) keeps the existing layout everywhere else in the app; "end" right-aligns everything. */
+  align?: "between" | "end";
+  pageSizeOptions?: number[];
+  /** When provided, renders a "Rows per page" selector — omit to keep the page size fixed. */
+  onPageSizeChange?: (limit: number) => void;
 }>) {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -36,7 +47,22 @@ export function Pagination({
   const to = Math.min(page * limit, total);
 
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <div className={`mt-4 flex flex-wrap items-center gap-3 ${align === "end" ? "justify-end" : "justify-between"}`}>
+      {onPageSizeChange && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Rows per page</span>
+          <Select value={String(limit)} onValueChange={(v) => v && onPageSizeChange(Number(v))}>
+            <SelectTrigger className="h-8 w-17.5 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {pageSizeOptions.map((size) => (
+                <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">
         Showing {from}–{to} of {total}
       </p>

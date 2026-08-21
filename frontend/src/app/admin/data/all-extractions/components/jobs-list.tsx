@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import { Combobox } from "@/components/combobox";
 import {
   Dialog,
@@ -38,6 +39,7 @@ import { ExtractionJobRow } from "./extraction-job-row";
 import { NewExtractionDialog } from "./new-extraction-dialog";
 
 const POLL_MS = 8000;
+const DEFAULT_PAGE_SIZE = 10;
 
 /**
  * The one extraction list. `mode` picks the status filter, the wording and the
@@ -55,6 +57,8 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const [showDeclined, setShowDeclined] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
@@ -110,6 +114,17 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
     });
   }, [jobs, showDeclined, searchQuery, sortOrder, sourceFilter, isCompleted]);
 
+  // Any filter/sort/mode/page-size change invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [mode, showDeclined, searchQuery, sortOrder, sourceFilter, pageSize]);
+
+  const pagedJobs = useMemo(
+    () => visibleJobs.slice((page - 1) * pageSize, page * pageSize),
+    [visibleJobs, page, pageSize],
+  );
+
+  // "Select all" means all jobs matching the current filters, not just the current page.
   const allVisibleSelected = visibleJobs.length > 0 && visibleJobs.every((j) => selectedIds.has(j.id));
   const selectablePublishCount = [...selectedIds].filter((id) => {
     const job = jobs.find((j) => j.id === id);
@@ -265,7 +280,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
       )}
 
       <div className="space-y-3">
-        {visibleJobs.map((job) => (
+        {pagedJobs.map((job) => (
           <ExtractionJobRow
             key={job.id}
             job={job}
@@ -280,6 +295,17 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
           />
         ))}
       </div>
+
+      {visibleJobs.length > 0 && (
+        <Pagination
+          page={page}
+          total={visibleJobs.length}
+          limit={pageSize}
+          onPageChange={setPage}
+          align="end"
+          onPageSizeChange={setPageSize}
+        />
+      )}
 
       {selectedIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-background border border-border shadow-lg rounded-full px-4 py-2 flex items-center gap-3">
