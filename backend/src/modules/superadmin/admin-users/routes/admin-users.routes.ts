@@ -42,6 +42,12 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
+  app.post("/users/invitations/:id/resend", { preHandler: requireAdmin }, async (req, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const result = await service.resendInvitation(id, req.auth.role!);
+    return reply.send(result);
+  });
+
   app.get("/users/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = AdminParamsSchema.parse(req.params);
     const result = await service.getAdmin(id);
@@ -51,7 +57,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   app.patch("/users/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = AdminParamsSchema.parse(req.params);
     const data = UpdateAdminSchema.parse(req.body);
-    const result = await service.updateAdmin(id, data);
+    const result = await service.updateAdmin(id, data, req.auth.role!);
     return reply.send(result);
   });
 

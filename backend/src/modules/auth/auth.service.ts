@@ -6,7 +6,7 @@ import { randomInt, randomBytes, createHash, scryptSync, timingSafeEqual, random
 import jwt from "jsonwebtoken";
 import { config } from "../../config.js";
 import { createChildLogger } from "../../shared/logger.js";
-import { AppError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
+import { AppError, ForbiddenError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
 import { queueService } from "../../shared/queue/queueService.js";
 import { mailerService } from "../../shared/mail/mailerService.js";
 import { emailLayout, otpEmail, esc } from "../../shared/mail/templates.js";
@@ -279,7 +279,11 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     logger.warn("Referral attribution deferred", { userId: user.id, err: err.message }),
   );
 
-  const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
+  const adminRecordAny = await adminRepo.findAdminByPlatformUserIdIncludingInactive(user.id);
+  if (adminRecordAny && !adminRecordAny.is_active) {
+    throw new ForbiddenError("This user is not active. Please contact administrator.");
+  }
+  const adminRecord = adminRecordAny;
 
   // Create a new session (multi-device — doesn't kill other sessions)
   const { raw: rawRefresh, hashed: hashedRefresh } = encodeRefreshToken(user.id);

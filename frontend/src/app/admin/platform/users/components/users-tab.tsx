@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Pagination } from "@/components/ui/pagination";
-import { ROLE_DISPLAY } from "../../../consts";
+import { useAppSelector } from "@/lib/hooks";
+import { EditUserRoleDialog } from "./edit-user-role-dialog";
+import { SuspendUserDialog } from "./suspend-user-dialog";
+import { UserRow } from "./user-row";
+import { UserViewDialog } from "./user-view-dialog";
 import type { AdminUser } from "../apis/types";
 
 type PaginatedList<T> = { data: T[]; page: number; limit: number; total: number; totalPages: number };
@@ -20,6 +23,12 @@ export function UsersTab({
   loading: boolean;
   onPageChange: (page: number) => void;
 }>) {
+  const { me } = useAppSelector((state) => state.admin);
+  const canManage = me?.role === "super_admin";
+  const [viewingUser, setViewingUser] = useState<AdminUser | null>(null);
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [suspendingUser, setSuspendingUser] = useState<AdminUser | null>(null);
+
   return (
     <div>
       <div className="relative mb-4 max-w-sm">
@@ -40,28 +49,24 @@ export function UsersTab({
           {loading && users.data.length === 0 && <p className="text-sm text-muted-foreground">Loading…</p>}
           {!loading && users.data.length === 0 && <p className="text-sm text-muted-foreground">No users found.</p>}
           {users.data.map((user) => (
-            <div key={user.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <Avatar className="size-8">
-                  {user.photo_url && <AvatarImage src={user.photo_url} alt={user.name} />}
-                  <AvatarFallback>{user.name?.[0]?.toUpperCase() ?? "U"}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {user.account_status === 0 && <Badge variant="outline">Suspended</Badge>}
-                {!user.is_email_verified && <Badge variant="outline">Unverified</Badge>}
-                <Badge variant="secondary">{ROLE_DISPLAY[user.role]}</Badge>
-              </div>
-            </div>
+            <UserRow
+              key={user.id}
+              user={user}
+              canManage={canManage}
+              isSelf={me?.id === user.id}
+              onView={() => setViewingUser(user)}
+              onEdit={() => setEditingUser(user)}
+              onToggleActive={() => setSuspendingUser(user)}
+            />
           ))}
         </CardContent>
       </Card>
 
       <Pagination page={users.page} limit={users.limit} total={users.total} onPageChange={onPageChange} />
+
+      <UserViewDialog user={viewingUser} onClose={() => setViewingUser(null)} />
+      <EditUserRoleDialog key={editingUser?.id ?? "none"} user={editingUser} onClose={() => setEditingUser(null)} />
+      <SuspendUserDialog user={suspendingUser} onClose={() => setSuspendingUser(null)} />
     </div>
   );
 }

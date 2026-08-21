@@ -9,10 +9,13 @@ export const mockMe: AdminUser = {
   uuid: "mock-admin-uuid",
   name: "Super Admin",
   email: "admin@example.com",
+  phone: null,
   role: "super_admin",
   photo_url: null,
   account_status: 1,
   is_email_verified: true,
+  is_active: true,
+  created_at: new Date(Date.now() - 30 * 86_400_000).toISOString(),
 };
 
 export const adminMockApi = {

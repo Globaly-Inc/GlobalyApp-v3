@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { Search, UserPlus } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { useAppSelector } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ROLE_DISPLAY } from "../../../consts";
+import { resendInvitation } from "../store/users-slice";
 import type { AdminInvitation } from "../apis/types";
 import { InviteUserDialog } from "./invite-user-dialog";
 
@@ -29,9 +31,22 @@ export function InvitationsTab({
   loading: boolean;
   onPageChange: (page: number) => void;
 }>) {
+  const dispatch = useAppDispatch();
   const { me } = useAppSelector((state) => state.admin);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const canInvite = me?.role === "super_admin";
+
+  const handleResend = async (invitation: AdminInvitation) => {
+    setResendingId(invitation.id);
+    const result = await dispatch(resendInvitation(invitation.id));
+    setResendingId(null);
+    if (resendInvitation.rejected.match(result)) {
+      toast.error("Couldn't resend invitation", { description: result.error.message ?? "Please try again." });
+      return;
+    }
+    toast.success(`Invitation resent to ${invitation.email}`);
+  };
 
   return (
     <div>
@@ -72,6 +87,17 @@ export function InvitationsTab({
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge variant={status.variant}>{status.label}</Badge>
                   <Badge variant="secondary">{ROLE_DISPLAY[invitation.role]}</Badge>
+                  {invitation.status === "pending" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="cursor-pointer"
+                      disabled={resendingId === invitation.id}
+                      onClick={() => handleResend(invitation)}
+                    >
+                      {resendingId === invitation.id ? "Resending…" : "Resend"}
+                    </Button>
+                  )}
                 </div>
               </div>
             );
