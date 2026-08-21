@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/combobox";
 import {
-  Globe, FileText, Link2, Plus, ExternalLink, Trash2, Loader2,
-  Settings2, FolderOpen, Download,
+  Globe, FileText, Link2, Plus, Trash2, Loader2,
+  FolderOpen, Download, Inbox,
 } from "lucide-react";
 import { toast } from "sonner";
 import { allExtractionsApi } from "../apis";
 import { GUIDED_URL_CATEGORIES } from "../const";
+import { SourceInformationCard } from "./source-information-card";
 import type { ExtractionJob } from "../apis/types";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -38,41 +39,14 @@ export type ContextTabProps = Readonly<{
   onReload: () => void;
 }>;
 
-function SourceField({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
-  return (
-    <div>
-      <span className="text-muted-foreground">{label}</span>
-      <p className="mt-0.5">{children}</p>
-    </div>
-  );
-}
-
-// Name when the category row resolves, the raw id when it doesn't, dash when unset.
-function categoryValue(name: string | null | undefined, id: number | null | undefined) {
-  if (name) return name;
-  return id == null ? "—" : `#${id}`;
-}
-
-function SourceLink({ href }: Readonly<{ href: string }>) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-1 text-primary hover:underline"
-    >
-      <span className="truncate">{href}</span>
-      <ExternalLink className="h-3 w-3 shrink-0" />
-    </a>
-  );
-}
-
 const URL_CATEGORIES = GUIDED_URL_CATEGORIES;
 
 const DATA_TYPE_OPTIONS = [
   "Fee Information", "Intake Dates", "Eligibility", "Course Details",
   "Accreditations", "Study Units", "Campus Information", "Scholarships", "Other",
 ];
+
+const CARD_HEADER = "-mt-4 rounded-t-xl border-b bg-primary/5 px-4 py-4";
 
 export function ContextTab({ job, onReload }: ContextTabProps) {
   const jobId = job.id;
@@ -139,42 +113,12 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Source Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Settings2 className="w-4 h-4" />
-            Source Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <SourceField label="Institution URL">
-              <SourceLink href={job.institution_url} />
-            </SourceField>
-            <SourceField label="Source Type">
-              <span className="capitalize">{job.source_type || "—"}</span>
-            </SourceField>
-            <SourceField label="Aggregator">{job.aggregator_name || "—"}</SourceField>
-            <SourceField label="Business Category">
-              {categoryValue(job.business_category_name, job.business_category_id)}
-            </SourceField>
-            <SourceField label="Service Category">
-              {categoryValue(job.service_category_name, job.service_category_id)}
-            </SourceField>
-            {job.sample_course_url && (
-              <SourceField label="Sample Course URL">
-                <SourceLink href={job.sample_course_url} />
-              </SourceField>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <SourceInformationCard job={job} />
 
       {/* Extract Fields */}
       {extractFields.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Extract Fields</CardTitle></CardHeader>
+          <CardHeader className={CARD_HEADER}><CardTitle className="text-base">Extract Fields</CardTitle></CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
               {extractFields.map((f) => (
@@ -187,7 +131,7 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
 
       {/* Guided URLs */}
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Globe className="w-4 h-4" />Guided URLs</CardTitle></CardHeader>
+        <CardHeader className={CARD_HEADER}><CardTitle className="text-base flex items-center gap-2"><Globe className="w-4 h-4 text-primary" />Guided URLs</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-5">
           {URL_CATEGORIES.map(({ key, label }) => {
             const items = (urls[key] as string[] | undefined) ?? [];
@@ -197,7 +141,7 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{label}</p>
                 <div className="space-y-1">
                   {items.map((url, idx) => (
-                    <div key={idx} className="flex items-center gap-2 group">
+                    <div key={idx} className="flex items-center gap-2 group rounded-md px-2 py-1.5 -mx-2 hover:bg-muted/50 transition-colors">
                       <Link2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline truncate flex-1">{url}</a>
                       <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" onClick={() => handleRemoveGuidedUrl(key, idx)} disabled={saving}>
@@ -218,7 +162,7 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
                 options={URL_CATEGORIES.map((c) => ({ value: c.key, label: c.label }))}
                 value={newGuidedCategory}
                 onChange={setNewGuidedCategory}
-                className="h-9 w-40 text-xs"
+                className="h-9 flex-1 text-xs"
               />
               <Input placeholder="https://..." value={newGuidedUrl} onChange={(e) => setNewGuidedUrl(e.target.value)} className="flex-1 h-9" />
               <Button size="sm" onClick={handleAddGuidedUrl} disabled={saving || !newGuidedUrl.trim()} className="gap-1 h-9">
@@ -231,14 +175,17 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
 
       {/* Resources & Documents */}
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><FolderOpen className="w-4 h-4" />Resources & Documents</CardTitle></CardHeader>
+        <CardHeader className={CARD_HEADER}><CardTitle className="text-base flex items-center gap-2"><FolderOpen className="w-4 h-4 text-primary" />Resources & Documents</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-4">
           {resources.length === 0 && docs.length === 0 && (
-            <p className="text-sm text-muted-foreground">No resources or documents added yet</p>
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <Inbox className="w-8 h-8 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">No resources or documents added yet</p>
+            </div>
           )}
 
           {resources.map((res) => (
-            <div key={res.id} className="flex items-start gap-3 p-3 rounded-lg border group">
+            <div key={res.id} className="flex items-start gap-3 p-3 rounded-lg border group hover:bg-muted/30 transition-colors">
               {res.type === "file" ? <FileText className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" /> : <Link2 className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />}
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
