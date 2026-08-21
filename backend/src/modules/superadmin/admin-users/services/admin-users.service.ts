@@ -12,7 +12,6 @@ import {
 } from "../../../../shared/errors.js";
 import { queueInvitationEmail } from "../../../auth/auth.service.js";
 import { ROLE_DISPLAY } from "../../consts.js";
-import { queueService } from "../../../../shared/queue/queueService.js";
 import {
   paginationToOffset,
   buildPaginatedResponse,
@@ -133,25 +132,17 @@ export async function acceptInvitation(token: string) {
     });
   }
 
-  // Create admin role-link — fallback to direct insert when queue unavailable
-  try {
-    await queueService.publish("admin_invitation_accept", {
-      invitation_id: invitation.id,
-      platform_user_id: platformUser.id,
-      role: invitation.role,
-      invited_by: invitation.invited_by,
-    });
-    logger.info("Invitation accept queued", { email: invitation.email });
-  } catch {
-    // ponytail: direct create when queue is unavailable (local dev)
-    logger.warn("Queue unavailable, creating admin directly", { email: invitation.email });
+  // Create admin role-link synchronously — one cheap insert, no queue needed
+  const existingAdmin = await repo.findAdminByPlatformUserId(platformUser.id);
+  if (!existingAdmin) {
     await repo.insertAdmin({
       platform_user_id: platformUser.id,
       role: invitation.role,
       added_by: invitation.invited_by,
     });
-    await repo.markInvitationAccepted(invitation.id);
   }
+  await repo.markInvitationAccepted(invitation.id);
 
-  return { message: "Invitation accepted. Your account is being set up." };
+  logger.info("Admin invitation accepted", { email: invitation.email });
+  return { message: "Invitation accepted." };
 }
