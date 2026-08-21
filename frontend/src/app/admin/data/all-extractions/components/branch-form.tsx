@@ -6,10 +6,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
+import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { geoApi, type City, type Country } from "@/app/geo/apis";
+import { geoApi, type Country } from "@/app/geo/apis";
+import { countriesApi, type City } from "@/app/admin/platform/countries/apis";
 import type { CampusFull } from "../apis/types";
 
 export type BranchValues = {
@@ -48,12 +51,16 @@ export function BranchForm({
   onSave: (values: BranchValues) => void;
 }>) {
   const [values, setValues] = useState<BranchValues>(branch ? fromBranch(branch) : empty);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [countries, setCountries] = useState<Country[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
-  const set = <K extends keyof BranchValues>(key: K, value: BranchValues[K]) =>
+  const set = <K extends keyof BranchValues>(key: K, value: BranchValues[K]) => {
     setValues((v) => ({ ...v, [key]: value }));
+    // Clear the field error as the user types
+    if (errors[key]) setErrors((e) => { const next = { ...e }; delete next[key]; return next; });
+  };
 
   useEffect(() => {
     geoApi.getCountries()
@@ -69,17 +76,27 @@ export function BranchForm({
       return;
     }
     setCitiesLoading(true);
-    geoApi.getCities(countryId)
+    countriesApi.getCitiesByCountry(countryId)
       .then(setCities)
       .catch((e: Error) => toast.error("Could not load cities", { description: e.message }))
       .finally(() => setCitiesLoading(false));
   }, [countryId]);
 
+  const validate = () => {
+    const next: Record<string, string> = {};
+    if (!values.name.trim()) next.name = "Name is required";
+    if (values.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim()))
+      next.email = "Enter a valid email address";
+    if (values.map_link.trim() && !/^https?:\/\//i.test(values.map_link.trim()))
+      next.map_link = "Map link must start with http:// or https://";
+    if (values.source_url.trim() && !/^https?:\/\//i.test(values.source_url.trim()))
+      next.source_url = "Source URL must start with http:// or https://";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
   const submit = () => {
-    if (!values.name.trim()) {
-      toast.error("Name is required");
-      return;
-    }
+    if (!validate()) return;
     onSave(values);
   };
 
@@ -94,17 +111,39 @@ export function BranchForm({
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="branch-name">Name *</Label>
-            <Input id="branch-name" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="Branch / campus name" />
+            <Label htmlFor="branch-name">
+              Name <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="branch-name"
+              value={values.name}
+              onChange={(e) => set("name", e.target.value)}
+              placeholder="Branch / campus name"
+              aria-invalid={!!errors.name}
+            />
+            <FieldError message={errors.name} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="branch-email">Email</Label>
-            <Input id="branch-email" type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
+            <Input
+              id="branch-email"
+              type="email"
+              value={values.email}
+              onChange={(e) => set("email", e.target.value)}
+              aria-invalid={!!errors.email}
+            />
+            <FieldError message={errors.email} />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="branch-phone">Phone</Label>
-            <Input id="branch-phone" value={values.phone} onChange={(e) => set("phone", e.target.value)} />
+            <PhoneInput
+              id="branch-phone"
+              value={values.phone}
+              onChange={(v) => set("phone", v)}
+              preferredCountryName={values.country}
+              placeholder="Phone number"
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="branch-country">Country</Label>
@@ -127,7 +166,7 @@ export function BranchForm({
               onChange={(v) => {
                 // Cities carry their state — fill it in unless one was typed already.
                 const picked = cities.find((c) => c.name === v);
-                setValues((prev) => ({ ...prev, city: v, state: prev.state || picked?.stateName || "" }));
+                setValues((prev) => ({ ...prev, city: v, state: prev.state || picked?.state_name || "" }));
               }}
               placeholder={countryId ? "Select city" : "Select a country first"}
               disabled={!countryId}
@@ -146,7 +185,14 @@ export function BranchForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="branch-map">Map link</Label>
-            <Input id="branch-map" value={values.map_link} onChange={(e) => set("map_link", e.target.value)} placeholder="https://maps..." />
+            <Input
+              id="branch-map"
+              value={values.map_link}
+              onChange={(e) => set("map_link", e.target.value)}
+              placeholder="https://maps..."
+              aria-invalid={!!errors.map_link}
+            />
+            <FieldError message={errors.map_link} />
           </div>
         </div>
 
@@ -157,7 +203,14 @@ export function BranchForm({
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="branch-source">Source URL</Label>
-          <Input id="branch-source" value={values.source_url} onChange={(e) => set("source_url", e.target.value)} placeholder="Optional reference URL" />
+          <Input
+            id="branch-source"
+            value={values.source_url}
+            onChange={(e) => set("source_url", e.target.value)}
+            placeholder="Optional reference URL"
+            aria-invalid={!!errors.source_url}
+          />
+          <FieldError message={errors.source_url} />
         </div>
 
         <div className="flex justify-end gap-2">

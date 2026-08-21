@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { geoApi, type City, type Country } from "@/app/geo/apis";
+import { geoApi, type Country } from "@/app/geo/apis";
+import { countriesApi, type City } from "@/app/admin/platform/countries/apis";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
 import { EditableField, useFieldSaver } from "./editable-field";
@@ -117,7 +119,7 @@ function AddAgentForm({
       return;
     }
     setCitiesLoading(true);
-    geoApi.getCities(countryId)
+    countriesApi.getCitiesByCountry(countryId)
       .then(setCities)
       .catch((e: Error) => toast.error("Could not load cities", { description: e.message }))
       .finally(() => setCitiesLoading(false));
@@ -154,7 +156,13 @@ function AddAgentForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-phone">Phone</Label>
-            <Input id="agent-phone" value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+61 ..." />
+            <PhoneInput
+              id="agent-phone"
+              value={values.phone}
+              onChange={(v) => set("phone", v)}
+              preferredCountryName={values.country}
+              placeholder="Phone number"
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -165,7 +173,7 @@ function AddAgentForm({
               value={values.city}
               onChange={(v) => {
                 const picked = cities.find((c) => c.name === v);
-                setValues((prev) => ({ ...prev, city: v, state: prev.state || picked?.stateName || "" }));
+                setValues((prev) => ({ ...prev, city: v, state: prev.state || picked?.state_name || "" }));
               }}
               placeholder={countryId ? "Select city" : "Select a country first"}
               disabled={!countryId}

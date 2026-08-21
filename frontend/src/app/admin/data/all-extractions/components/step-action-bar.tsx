@@ -90,7 +90,7 @@ export function StepActionBar({
   };
 
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card p-3">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/15 bg-primary/5 p-3">
       <div className="flex min-w-0 flex-wrap items-center gap-3">
         <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", badge.className)}>
           <badge.icon className={cn("h-3 w-3", badge.spin && "animate-spin")} />

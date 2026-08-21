@@ -8,7 +8,9 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
+import { geoApi } from "@/app/geo/apis";
 import { allExtractionsApi } from "../apis";
 import { EditableField, type EditableFieldProps } from "./editable-field";
 import type { InstitutionOverview } from "../apis/types";
@@ -40,6 +42,93 @@ function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps 
         <Icon className="h-3.5 w-3.5" />
       </div>
       <EditableField {...field} className="flex-1" />
+    </div>
+  );
+}
+
+/**
+ * Variant of Field specifically for Country — shows a searchable Combobox
+ * (populated from the platform countries list) when editing, instead of a raw text input.
+ */
+function EditableCountryField({
+  value,
+  onSave,
+  className,
+}: Readonly<{ value: string | null | undefined; onSave: (next: string | null) => Promise<unknown>; className?: string }>) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+  const [countries, setCountries] = useState<{ value: string; label: string }[]>([]);
+  const [loadingCountries, setLoadingCountries] = useState(false);
+
+  const startEdit = () => {
+    setDraft(value ?? "");
+    setEditing(true);
+    if (countries.length === 0) {
+      setLoadingCountries(true);
+      geoApi.getCountries()
+        .then((list) => setCountries(list.map((c) => ({ value: c.name, label: c.name }))))
+        .catch((e: Error) => toast.error("Could not load countries", { description: e.message }))
+        .finally(() => setLoadingCountries(false));
+    }
+  };
+
+  const commit = async (next: string) => {
+    const val = next.trim() || null;
+    if (val === (value ?? null)) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      await onSave(val);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Globe className="h-3.5 w-3.5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Country</p>
+            <div className="flex items-center gap-1">
+              <Combobox
+                options={countries}
+                value={draft}
+                onChange={(v) => { setDraft(v); commit(v); }}
+                placeholder="Select country"
+                loading={loadingCountries}
+                disabled={saving}
+                className="flex-1 h-9"
+              />
+              <Button
+                variant="ghost" size="icon-sm"
+                className="cursor-pointer shrink-0"
+                title="Cancel"
+                disabled={saving}
+                onClick={() => setEditing(false)}
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="text-xs">✕</span>}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="group/field w-full rounded-md p-1 text-left transition-colors cursor-pointer hover:bg-muted/60"
+          >
+            <p className="text-xs text-muted-foreground">Country</p>
+            <span className="mt-0.5 flex items-start justify-between gap-2">
+              <span className={cn("text-sm break-words", !value && "text-muted-foreground")}>{value || "—"}</span>
+              <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/field:opacity-100" />
+            </span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -128,7 +217,7 @@ export function InstitutionTab({ overview, jobId, onReload }: InstitutionTabProp
         </Section>
 
         <Section icon={MapPin} title="Location">
-          <Field icon={Globe} label="Country" value={overview.country} onSave={(v) => saveField("country", v)} />
+          <EditableCountryField value={overview.country} onSave={(v) => saveField("country", v)} />
           <Field icon={Building2} label="City" value={overview.city} onSave={(v) => saveField("city", v)} />
           <Field icon={MapPin} label="State" value={overview.state} onSave={(v) => saveField("state", v)} />
           <Field icon={Hash} label="Zip / Postcode" value={overview.zip_code} onSave={(v) => saveField("zip_code", v)} />
