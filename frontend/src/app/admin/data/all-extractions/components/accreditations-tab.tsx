@@ -14,6 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Combobox } from "@/components/combobox";
+import { FieldError } from "@/components/field-error";
+import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { allExtractionsApi } from "../apis";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { Accreditation } from "../apis/types";
@@ -62,7 +65,7 @@ export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
         <p className="text-sm text-muted-foreground">
           {accreditations.length} accreditation{accreditations.length !== 1 ? "s" : ""}
         </p>
-        <Button size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
+        <Button size="sm" className="gap-1.5 cursor-pointer" onClick={() => setDialogOpen(true)}>
           <Plus className="h-3.5 w-3.5" /> Add Accreditation
         </Button>
       </div>
@@ -96,8 +99,8 @@ export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
                       </a>
                     )}
                   </div>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0" onClick={() => handleDelete(acc.id)}>
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  <Button variant="ghost" size="icon-sm" className="shrink-0 cursor-pointer text-destructive hover:text-destructive" onClick={() => handleDelete(acc.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </CardContent>
@@ -135,9 +138,39 @@ function AddAccreditationDialog({
   const [name, setName] = useState("");
   const [issuingOrg, setIssuingOrg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [accreditationOptions, setAccreditationOptions] = useState<{ value: string; label: string }[]>([]);
+  const [issuingOrgOptions, setIssuingOrgOptions] = useState<{ value: string; label: string }[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    setErrors({});
+    setName("");
+    setIssuingOrg("");
+    setLoadingOptions(true);
+    Promise.all([
+      categoriesApi.getAccreditations({ limit: 100 }).catch(() => ({ data: [] })),
+      categoriesApi.getIssuingOrganizations({ limit: 100 }).catch(() => ({ data: [] })),
+    ])
+      .then(([accRes, orgRes]) => {
+        setAccreditationOptions(accRes.data.map((a) => ({ value: a.name, label: a.name })));
+        setIssuingOrgOptions(orgRes.data.map((o) => ({ value: o.name, label: o.name })));
+      })
+      .finally(() => setLoadingOptions(false));
+  }, [open]);
+
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) {
+      errs.name = "Accreditation name is required";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
 
   async function handleSave() {
-    if (!name.trim()) { toast.error("Name is required"); return; }
+    if (!validate()) return;
     setSaving(true);
     try {
       const created = await allExtractionsApi.createAccreditation({
@@ -163,17 +196,37 @@ function AddAccreditationDialog({
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Name *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. AACSB" />
+            <Label className="text-xs">
+              Name <span className="text-destructive">*</span>
+            </Label>
+            <Combobox
+              options={accreditationOptions}
+              value={name}
+              onChange={(v) => {
+                setName(v);
+                if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
+              }}
+              placeholder="Select or type accreditation name..."
+              loading={loadingOptions}
+              creatable
+            />
+            <FieldError message={errors.name} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Issuing Organization</Label>
-            <Input value={issuingOrg} onChange={(e) => setIssuingOrg(e.target.value)} placeholder="e.g. Association to Advance Collegiate Schools of Business" />
+            <Combobox
+              options={issuingOrgOptions}
+              value={issuingOrg}
+              onChange={setIssuingOrg}
+              placeholder="Select or type issuing organization..."
+              loading={loadingOptions}
+              creatable
+            />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+          <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" className="cursor-pointer" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { allExtractionsApi } from "../apis";
@@ -32,6 +34,29 @@ function IntakeForm({
   const [endDate, setEndDate] = useState("");
   const [orientation, setOrientation] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) {
+      errs.name = "Intake name is required";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    const start = startDate ? new Date(startDate) : null;
+    onSave({
+      intake_name: name.trim(),
+      ...(startDate ? { start_date: startDate } : {}),
+      ...(endDate ? { end_date: endDate } : {}),
+      ...(orientation ? { orientation_date: orientation } : {}),
+      ...(deadline ? { admission_deadline: deadline } : {}),
+      ...(start ? { intake_month: start.getMonth() + 1, intake_year: start.getFullYear() } : {}),
+    });
+  };
 
   return (
     <Card className="border-primary/40">
@@ -46,7 +71,17 @@ function IntakeForm({
           <Label htmlFor="intake-name">
             Intake Name <span className="text-destructive">*</span>
           </Label>
-          <Input id="intake-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Semester 1 2025" />
+          <Input
+            id="intake-name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
+            }}
+            placeholder="e.g. Semester 1 2025"
+            aria-invalid={Boolean(errors.name)}
+          />
+          <FieldError message={errors.name} />
         </div>
 
         <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
@@ -75,26 +110,7 @@ function IntakeForm({
           <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button
-            className="gap-1.5 cursor-pointer"
-            disabled={saving}
-            onClick={() => {
-              if (!name.trim()) {
-                toast.error("Intake name is required");
-                return;
-              }
-              const start = startDate ? new Date(startDate) : null;
-              onSave({
-                intake_name: name.trim(),
-                ...(startDate ? { start_date: startDate } : {}),
-                ...(endDate ? { end_date: endDate } : {}),
-                ...(orientation ? { orientation_date: orientation } : {}),
-                ...(deadline ? { admission_deadline: deadline } : {}),
-                // Month/year mirror the start date so the list can group by intake year.
-                ...(start ? { intake_month: start.getMonth() + 1, intake_year: start.getFullYear() } : {}),
-              });
-            }}
-          >
+          <Button className="gap-1.5 cursor-pointer" disabled={saving} onClick={handleSave}>
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save
           </Button>
@@ -317,18 +333,20 @@ export function IntakesTab({
       </div>
 
       <div className="space-y-3">
-        {creating && (
-          <IntakeForm
-            saving={saving}
-            onCancel={() => setCreating(false)}
-            onSave={(values) =>
-              run(async () => {
-                await allExtractionsApi.createIntake({ job_id: jobId, ...values });
-                setCreating(false);
-              }, "Intake created")
-            }
-          />
-        )}
+        <Dialog open={creating} onOpenChange={setCreating}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl p-0 border-0 bg-transparent shadow-none">
+            <IntakeForm
+              saving={saving}
+              onCancel={() => setCreating(false)}
+              onSave={(values) =>
+                run(async () => {
+                  await allExtractionsApi.createIntake({ job_id: jobId, ...values });
+                  setCreating(false);
+                }, "Intake created")
+              }
+            />
+          </DialogContent>
+        </Dialog>
 
         {loading && (
           <div className="flex justify-center py-12">

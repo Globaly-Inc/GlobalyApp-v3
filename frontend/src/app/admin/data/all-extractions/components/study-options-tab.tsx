@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { allExtractionsApi } from "../apis";
 import { saveFormAndLearn } from "./editable-field";
 import { latestTimestamp } from "../utils";
@@ -239,18 +240,20 @@ export function StudyOptionsTab({
       </div>
 
       <div className="space-y-3">
-        {adding && (
-          <StudyOptionForm
-            saving={saving}
-            onCancel={() => setAdding(false)}
-            onSave={(values) =>
-              run(async () => {
-                await allExtractionsApi.createStudyOption({ job_id: jobId, ...values });
-                setAdding(false);
-              }, "Study option created")
-            }
-          />
-        )}
+        <Dialog open={adding} onOpenChange={setAdding}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl p-0 border-0 bg-transparent shadow-none">
+            <StudyOptionForm
+              saving={saving}
+              onCancel={() => setAdding(false)}
+              onSave={(values) =>
+                run(async () => {
+                  await allExtractionsApi.createStudyOption({ job_id: jobId, ...values });
+                  setAdding(false);
+                }, "Study option created")
+              }
+            />
+          </DialogContent>
+        </Dialog>
 
         {loading && (
           <div className="flex justify-center py-12">

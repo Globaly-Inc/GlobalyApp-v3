@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { allExtractionsApi } from "../apis";
 import { saveFormAndLearn } from "./editable-field";
 import { latestTimestamp } from "../utils";
@@ -251,18 +252,20 @@ export function EligibilityTab({
       </div>
 
       <div className="space-y-3">
-        {adding && (
-          <EligibilityForm
-            saving={saving}
-            onCancel={() => setAdding(false)}
-            onSave={(values: EligibilityParams) =>
-              run(async () => {
-                await allExtractionsApi.createEligibilityRequirement({ job_id: jobId, ...values });
-                setAdding(false);
-              }, "Requirement created")
-            }
-          />
-        )}
+        <Dialog open={adding} onOpenChange={setAdding}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
+            <EligibilityForm
+              saving={saving}
+              onCancel={() => setAdding(false)}
+              onSave={(values: EligibilityParams) =>
+                run(async () => {
+                  await allExtractionsApi.createEligibilityRequirement({ job_id: jobId, ...values });
+                  setAdding(false);
+                }, "Requirement created")
+              }
+            />
+          </DialogContent>
+        </Dialog>
 
         {loading && (
           <div className="flex justify-center py-12">

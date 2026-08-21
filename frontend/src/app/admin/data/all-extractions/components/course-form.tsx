@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { BookOpen, Loader2, Save, X } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
+import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,12 +30,46 @@ export function CourseForm({
   const [duration, setDuration] = useState("");
   const [description, setDescription] = useState("");
   const [degreeLevels, setDegreeLevels] = useState<{ value: string; label: string }[]>([]);
+  const [subjectAreas, setSubjectAreas] = useState<{ value: string; label: string }[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     categoriesApi.getLookups("degree-levels", { limit: 100 })
       .then((res) => setDegreeLevels(res.data.map((d) => ({ value: d.name, label: d.name }))))
       .catch(() => setDegreeLevels([]));
+    categoriesApi.getLookups("areas-of-study", { limit: 100 })
+      .then((res) => setSubjectAreas(res.data.map((a) => ({ value: a.name, label: a.name }))))
+      .catch(() => setSubjectAreas([]));
   }, []);
+
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) {
+      errs.name = "Course name is required";
+    }
+    if (sourceUrl.trim()) {
+      try {
+        new URL(sourceUrl.trim());
+      } catch {
+        errs.sourceUrl = "Please enter a valid URL (e.g. https://example.com)";
+      }
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    onSave({
+      name: name.trim(),
+      ...(sourceUrl.trim() ? { source_url: sourceUrl.trim() } : {}),
+      ...(degreeLevel ? { degree_level: degreeLevel } : {}),
+      ...(studyMode ? { study_mode: studyMode } : {}),
+      ...(subjectArea.trim() ? { subject_area: subjectArea.trim() } : {}),
+      ...(duration.trim() ? { duration_weeks: Number(duration) } : {}),
+      ...(description.trim() ? { description: description.trim() } : {}),
+    });
+  };
 
   return (
     <Card className="border-primary/40">
@@ -50,12 +84,32 @@ export function CourseForm({
           <Label htmlFor="course-form-name">
             Name <span className="text-destructive">*</span>
           </Label>
-          <Input id="course-form-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Course name" />
+          <Input
+            id="course-form-name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
+            }}
+            placeholder="Course name"
+            aria-invalid={Boolean(errors.name)}
+          />
+          <FieldError message={errors.name} />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="course-form-source">Source URL</Label>
-          <Input id="course-form-source" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://..." />
+          <Input
+            id="course-form-source"
+            value={sourceUrl}
+            onChange={(e) => {
+              setSourceUrl(e.target.value);
+              if (errors.sourceUrl) setErrors((prev) => ({ ...prev, sourceUrl: "" }));
+            }}
+            placeholder="https://..."
+            aria-invalid={Boolean(errors.sourceUrl)}
+          />
+          <FieldError message={errors.sourceUrl} />
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -76,8 +130,15 @@ export function CourseForm({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="course-form-subject">Subject area</Label>
-            <Input id="course-form-subject" value={subjectArea} onChange={(e) => setSubjectArea(e.target.value)} />
+            <Label>Subject area</Label>
+            <Combobox
+              options={subjectAreas}
+              value={subjectArea}
+              onChange={setSubjectArea}
+              placeholder="Select or type subject area"
+              loading={subjectAreas.length === 0}
+              creatable
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="course-form-duration">Duration (weeks)</Label>
@@ -105,25 +166,7 @@ export function CourseForm({
             <X className="h-3.5 w-3.5" />
             Cancel
           </Button>
-          <Button
-            className="gap-1.5 cursor-pointer"
-            disabled={saving}
-            onClick={() => {
-              if (!name.trim()) {
-                toast.error("Course name is required");
-                return;
-              }
-              onSave({
-                name: name.trim(),
-                ...(sourceUrl.trim() ? { source_url: sourceUrl.trim() } : {}),
-                ...(degreeLevel ? { degree_level: degreeLevel } : {}),
-                ...(studyMode ? { study_mode: studyMode } : {}),
-                ...(subjectArea.trim() ? { subject_area: subjectArea.trim() } : {}),
-                ...(duration.trim() ? { duration_weeks: Number(duration) } : {}),
-                ...(description.trim() ? { description: description.trim() } : {}),
-              });
-            }}
-          >
+          <Button className="gap-1.5 cursor-pointer" disabled={saving} onClick={handleSave}>
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save Course
           </Button>

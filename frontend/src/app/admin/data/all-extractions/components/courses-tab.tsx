@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { CourseDetailPanel } from "./course-detail-panel";
 import { CourseForm } from "./course-form";
 import { CourseListPanel } from "./course-list-panel";
@@ -143,11 +144,11 @@ export function CoursesTab({
         </Card>
       )}
 
-      {adding && (
-        <div className="mb-3">
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
           <CourseForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {loading ? (
         <div className="flex justify-center py-16">

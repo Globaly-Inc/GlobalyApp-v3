@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,6 +39,30 @@ function StudyUnitForm({
   const [name, setName] = useState(unit?.unit_name ?? "");
   const [type, setType] = useState(unit?.unit_type ?? "compulsory");
   const [description, setDescription] = useState(unit?.description ?? "");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) {
+      errs.name = "Unit name is required";
+    }
+    if (points.trim() && (Number.isNaN(Number(points)) || Number(points) < 0)) {
+      errs.points = "Credit points must be a positive number";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    onSave({
+      unit_name: name.trim(),
+      unit_code: code.trim() || null,
+      credit_points: points.trim() === "" ? null : Number(points),
+      unit_type: type,
+      description: description.trim() || null,
+    });
+  };
 
   return (
     <Card className="border-primary/40">
@@ -54,7 +80,18 @@ function StudyUnitForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="unit-points">Credit Points</Label>
-            <Input id="unit-points" value={points} onChange={(e) => setPoints(e.target.value)} inputMode="numeric" placeholder="e.g. 6" />
+            <Input
+              id="unit-points"
+              value={points}
+              onChange={(e) => {
+                setPoints(e.target.value);
+                if (errors.points) setErrors((prev) => ({ ...prev, points: "" }));
+              }}
+              inputMode="numeric"
+              placeholder="e.g. 6"
+              aria-invalid={Boolean(errors.points)}
+            />
+            <FieldError message={errors.points} />
           </div>
         </div>
 
@@ -65,9 +102,14 @@ function StudyUnitForm({
           <Input
             id="unit-name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
+            }}
             placeholder="e.g. Introduction to Computer Science"
+            aria-invalid={Boolean(errors.name)}
           />
+          <FieldError message={errors.name} />
         </div>
 
         <div className="flex flex-col gap-2">
@@ -103,23 +145,7 @@ function StudyUnitForm({
           <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button
-            className="gap-1.5 cursor-pointer"
-            disabled={saving}
-            onClick={() => {
-              if (!name.trim()) {
-                toast.error("Unit name is required");
-                return;
-              }
-              onSave({
-                unit_name: name.trim(),
-                unit_code: code.trim() || null,
-                credit_points: points.trim() === "" ? null : Number(points),
-                unit_type: type,
-                description: description.trim() || null,
-              });
-            }}
-          >
+          <Button className="gap-1.5 cursor-pointer" disabled={saving} onClick={handleSave}>
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             {unit ? "Save" : "Add"}
           </Button>
@@ -365,18 +391,20 @@ export function StudyUnitsTab({
       </div>
 
       <div className="space-y-3">
-        {adding && (
-          <StudyUnitForm
-            saving={saving}
-            onCancel={() => setAdding(false)}
-            onSave={(values) =>
-              run(async () => {
-                await allExtractionsApi.createStudyUnit({ job_id: jobId, ...values });
-                setAdding(false);
-              }, "Study unit added")
-            }
-          />
-        )}
+        <Dialog open={adding} onOpenChange={setAdding}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl p-0 border-0 bg-transparent shadow-none">
+            <StudyUnitForm
+              saving={saving}
+              onCancel={() => setAdding(false)}
+              onSave={(values) =>
+                run(async () => {
+                  await allExtractionsApi.createStudyUnit({ job_id: jobId, ...values });
+                  setAdding(false);
+                }, "Study unit added")
+              }
+            />
+          </DialogContent>
+        </Dialog>
 
         {loading && (
           <div className="flex justify-center py-12">

@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { BranchForm, type BranchValues } from "./branch-form";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { StepActionBar } from "./step-action-bar";
@@ -242,7 +243,11 @@ export function BranchesTab({
       </div>
 
       <div className="space-y-3">
-        {adding && <BranchForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />}
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
+          <BranchForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
+        </DialogContent>
+      </Dialog>
 
         {loading && (
           <div className="flex justify-center py-12">

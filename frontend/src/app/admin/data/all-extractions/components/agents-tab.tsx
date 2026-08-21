@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { countriesApi, type City } from "@/app/admin/platform/countries/apis";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
@@ -102,8 +104,12 @@ function AddAgentForm({
   const [countries, setCountries] = useState<Country[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const set = (key: keyof AgentValues, value: string) => setValues((v) => ({ ...v, [key]: value }));
+  const set = (key: keyof AgentValues, value: string) => {
+    setValues((v) => ({ ...v, [key]: value }));
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: "" }));
+  };
 
   useEffect(() => {
     geoApi.getCountries()
@@ -125,6 +131,30 @@ function AddAgentForm({
       .finally(() => setCitiesLoading(false));
   }, [countryId]);
 
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!values.name.trim()) {
+      errs.name = "Agent name is required";
+    }
+    if (values.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
+      errs.email = "Please enter a valid email address";
+    }
+    if (values.website.trim()) {
+      try {
+        new URL(values.website.trim());
+      } catch {
+        errs.website = "Please enter a valid URL (e.g. https://example.com)";
+      }
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    onSave(values);
+  };
+
   return (
     <Card className="border-primary/40">
       <CardHeader>
@@ -136,8 +166,17 @@ function AddAgentForm({
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="agent-name">Agent / Agency Name</Label>
-            <Input id="agent-name" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. AECC Global" />
+            <Label htmlFor="agent-name">
+              Agent / Agency Name <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="agent-name"
+              value={values.name}
+              onChange={(e) => set("name", e.target.value)}
+              placeholder="e.g. AECC Global"
+              aria-invalid={Boolean(errors.name)}
+            />
+            <FieldError message={errors.name} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-country">Country</Label>
@@ -152,7 +191,15 @@ function AddAgentForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-email">Email</Label>
-            <Input id="agent-email" type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="contact@..." />
+            <Input
+              id="agent-email"
+              type="email"
+              value={values.email}
+              onChange={(e) => set("email", e.target.value)}
+              placeholder="contact@..."
+              aria-invalid={Boolean(errors.email)}
+            />
+            <FieldError message={errors.email} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-phone">Phone</Label>
@@ -192,7 +239,14 @@ function AddAgentForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-website">Website</Label>
-            <Input id="agent-website" value={values.website} onChange={(e) => set("website", e.target.value)} placeholder="https://..." />
+            <Input
+              id="agent-website"
+              value={values.website}
+              onChange={(e) => set("website", e.target.value)}
+              placeholder="https://..."
+              aria-invalid={Boolean(errors.website)}
+            />
+            <FieldError message={errors.website} />
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -203,17 +257,7 @@ function AddAgentForm({
           <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button
-            className="gap-1.5 cursor-pointer"
-            disabled={saving}
-            onClick={() => {
-              if (!values.name.trim()) {
-                toast.error("Agent name is required");
-                return;
-              }
-              onSave(values);
-            }}
-          >
+          <Button className="gap-1.5 cursor-pointer" disabled={saving} onClick={handleSave}>
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save
           </Button>
@@ -442,7 +486,11 @@ export function AgentsTab({
           </div>
         </div>
 
-        {adding && <AddAgentForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />}
+        <Dialog open={adding} onOpenChange={setAdding}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
+            <AddAgentForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
+          </DialogContent>
+        </Dialog>
 
         {loading && (
           <div className="flex justify-center py-12">

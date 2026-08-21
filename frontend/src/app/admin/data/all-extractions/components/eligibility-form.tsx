@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { GraduationCap, Languages, Loader2, Plus, Save, X } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
+import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,6 +39,7 @@ export function EligibilityForm({
   const [languageTests, setLanguageTests] = useState<LanguageTest[]>(requirement?.language_tests ?? []);
   const [academicTests, setAcademicTests] = useState<AcademicTest[]>(requirement?.academic_tests ?? []);
   const [degreeLevels, setDegreeLevels] = useState<{ value: string; label: string }[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     categoriesApi.getLookups("degree-levels", { limit: 100 })
@@ -54,6 +55,34 @@ export function EligibilityForm({
 
   const patchAcademic = (index: number, patch: Partial<AcademicTest>) =>
     setAcademicTests((list) => list.map((t, i) => (i === index ? { ...t, ...patch } : t)));
+
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) {
+      errs.name = "Requirement name is required";
+    }
+    if (score.trim() && Number.isNaN(Number(score))) {
+      errs.score = "Score must be a valid number";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    const numeric = score.trim() === "" ? null : Number(score);
+    onSave({
+      name: name.trim(),
+      applicable_to: applicableTo,
+      min_degree_level: degreeLevel === ANY_DEGREE ? null : degreeLevel,
+      score_type: scoreType,
+      min_score_percent: isPercentage ? numeric : null,
+      min_score: isPercentage ? null : numeric,
+      description: description.trim() || null,
+      language_tests: languageTests.filter((t) => t.test_type_name.trim()),
+      academic_tests: academicTests.filter((t) => t.test_name.trim()),
+    });
+  };
 
   return (
     <Card className="border-primary/40">
@@ -84,13 +113,20 @@ export function EligibilityForm({
 
         <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="eligibility-name">Requirement Name</Label>
+            <Label htmlFor="eligibility-name">
+              Requirement Name <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="eligibility-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
+              }}
               placeholder="e.g. Standard Academic Entry"
+              aria-invalid={Boolean(errors.name)}
             />
+            <FieldError message={errors.name} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -112,155 +148,143 @@ export function EligibilityForm({
               <Input
                 id="eligibility-score"
                 value={score}
-                onChange={(e) => setScore(e.target.value)}
+                onChange={(e) => {
+                  setScore(e.target.value);
+                  if (errors.score) setErrors((prev) => ({ ...prev, score: "" }));
+                }}
                 inputMode="decimal"
                 placeholder={isPercentage ? "e.g. 65" : "e.g. 3.0"}
+                aria-invalid={Boolean(errors.score)}
               />
+              <FieldError message={errors.score} />
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="eligibility-description">Description</Label>
+            <Label htmlFor="eligibility-description">Notes / Remarks</Label>
             <Textarea
               id="eligibility-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={3}
+              rows={2}
+              placeholder="Internal notes or special conditions…"
             />
           </div>
         </div>
 
         <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <Languages className="h-3.5 w-3.5 text-primary" />
-              English language tests
-            </p>
+          <div className="flex items-center justify-between">
+            <h4 className="flex items-center gap-1.5 text-sm font-semibold">
+              <Languages className="h-4 w-4 text-primary" /> English Tests
+            </h4>
             <Button
-              variant="outline" size="sm" className="h-7 gap-1.5 text-xs cursor-pointer"
-              onClick={() => setLanguageTests((list) => [...list, { test_type_name: "", overall_score: "" }])}
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs cursor-pointer"
+              onClick={() =>
+                setLanguageTests((list) => [
+                  ...list,
+                  { test_type_name: "IELTS", overall_score: "6.5" },
+                ])
+              }
             >
-              <Plus className="h-3 w-3" />
-              Add Test
+              <Plus className="mr-1 h-3 w-3" /> Add Test
             </Button>
           </div>
-          {languageTests.length === 0 ? (
-            <p className="text-xs italic text-muted-foreground">No English test requirements added.</p>
-          ) : (
-            languageTests.map((test, index) => (
-              <div key={index} className="flex flex-col gap-3 rounded-lg border border-border p-3">
-                <div className="flex items-center gap-2">
+          {languageTests.map((test, index) => (
+            <div key={index} className="flex flex-col gap-2 rounded-md bg-muted/30 p-3">
+              <div className="flex items-center gap-3">
+                <div className="w-48">
                   <Combobox
                     options={ENGLISH_TEST_OPTIONS}
                     value={test.test_type_name}
                     onChange={(v) => patchLanguage(index, { test_type_name: v })}
                     placeholder="Select test"
-                    className="h-9 flex-1"
                     creatable
                   />
-                  <Label className="shrink-0 text-xs text-muted-foreground">Overall</Label>
-                  <Input
-                    value={test.overall_score}
-                    onChange={(e) => patchLanguage(index, { overall_score: e.target.value })}
-                    placeholder="6.5"
-                    className="h-9 w-24"
-                  />
-                  <Button
-                    variant="ghost" size="icon-sm" className="shrink-0 cursor-pointer"
-                    title="Remove test" onClick={() => setLanguageTests((list) => list.filter((_, i) => i !== index))}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
                 </div>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  {ENGLISH_SUBSCORES.map(({ key, label }) => (
-                    <div key={key} className="flex flex-col gap-1">
-                      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</Label>
-                      <Input
-                        value={test[key] ?? ""}
-                        onChange={(e) => patchLanguage(index, { [key]: e.target.value })}
-                        placeholder="—"
-                        className="h-9"
-                      />
-                    </div>
-                  ))}
-                </div>
+                <Input
+                  value={test.overall_score ?? ""}
+                  onChange={(e) => patchLanguage(index, { overall_score: e.target.value })}
+                  placeholder="Overall score"
+                  className="h-10 w-32"
+                  inputMode="decimal"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="ml-auto cursor-pointer"
+                  title="Remove test"
+                  onClick={() => setLanguageTests((list) => list.filter((_, i) => i !== index))}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
               </div>
-            ))
-          )}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {ENGLISH_SUBSCORES.map(({ key }) => (
+                  <Input
+                    key={key}
+                    value={(test as any)[key]?.toString() ?? ""}
+                    onChange={(e) => patchLanguage(index, { [key]: e.target.value ? Number(e.target.value) : null })}
+                    placeholder={key.charAt(0).toUpperCase() + key.slice(1)}
+                    className="h-8 text-xs"
+                    inputMode="decimal"
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <GraduationCap className="h-3.5 w-3.5 text-primary" />
-              Standardized academic tests
-            </p>
+          <div className="flex items-center justify-between">
+            <h4 className="flex items-center gap-1.5 text-sm font-semibold">
+              <GraduationCap className="h-4 w-4 text-primary" /> Academic Tests
+            </h4>
             <Button
-              variant="outline" size="sm" className="h-7 gap-1.5 text-xs cursor-pointer"
-              onClick={() => setAcademicTests((list) => [...list, { test_name: "", score: "" }])}
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs cursor-pointer"
+              onClick={() => setAcademicTests((list) => [...list, { test_name: "SAT", score: "1200" }])}
             >
-              <Plus className="h-3 w-3" />
-              Add Test
+              <Plus className="mr-1 h-3 w-3" /> Add Test
             </Button>
           </div>
-          {academicTests.length === 0 ? (
-            <p className="text-xs italic text-muted-foreground">No standardized test requirements added.</p>
-          ) : (
-            academicTests.map((test, index) => (
-              <div key={index} className="flex items-center gap-2">
+          {academicTests.map((test, index) => (
+            <div key={index} className="flex items-center gap-3">
+              <div className="w-48">
                 <Combobox
                   options={ACADEMIC_TEST_OPTIONS}
                   value={test.test_name}
                   onChange={(v) => patchAcademic(index, { test_name: v })}
                   placeholder="Select test"
-                  className="h-9 flex-1"
                   creatable
                 />
-                <Input
-                  value={test.score}
-                  onChange={(e) => patchAcademic(index, { score: e.target.value })}
-                  placeholder="Min score"
-                  className="h-9 w-40"
-                />
-                <Button
-                  variant="ghost" size="icon-sm" className="shrink-0 cursor-pointer"
-                  title="Remove test" onClick={() => setAcademicTests((list) => list.filter((_, i) => i !== index))}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
               </div>
-            ))
-          )}
+              <Input
+                value={test.score}
+                onChange={(e) => patchAcademic(index, { score: e.target.value })}
+                placeholder="Min score"
+                className="h-10 w-40"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 cursor-pointer"
+                title="Remove test"
+                onClick={() => setAcademicTests((list) => list.filter((_, i) => i !== index))}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
         </div>
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button
-            className="gap-1.5 cursor-pointer"
-            disabled={saving}
-            onClick={() => {
-              if (!name.trim()) {
-                toast.error("Requirement name is required");
-                return;
-              }
-              const numeric = score.trim() === "" ? null : Number(score);
-              onSave({
-                name: name.trim(),
-                applicable_to: applicableTo,
-                min_degree_level: degreeLevel === ANY_DEGREE ? null : degreeLevel,
-                score_type: scoreType,
-                // percentage lands in its own column; anything else in min_score
-                min_score_percent: isPercentage ? numeric : null,
-                min_score: isPercentage ? null : numeric,
-                description: description.trim() || null,
-                language_tests: languageTests.filter((t) => t.test_type_name.trim()),
-                academic_tests: academicTests.filter((t) => t.test_name.trim()),
-              });
-            }}
-          >
+          <Button className="gap-1.5 cursor-pointer" disabled={saving} onClick={handleSave}>
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             {requirement ? "Save" : "Create"}
           </Button>
