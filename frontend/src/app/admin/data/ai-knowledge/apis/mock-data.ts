@@ -85,7 +85,7 @@ const sources: RackSource[] = [
     doc_count: 12, active: true, added_via: "manual", max_pages: 25,
     crawl_summary: {
       discovered: 14, discovery_method: "sitemap", discovery_error: null, scraped: 12,
-      added: 3, updated: 2, unchanged: 7, failed: 2, embedded: 5, chunks: 63, max_pages: 25, finished_at: now,
+      added: 3, updated: 2, unchanged: 7, failed: 2, embedded: 5, max_pages: 25, finished_at: now,
     },
     created_at: now, updated_at: now,
   },
@@ -110,13 +110,13 @@ const documents: RackDocument[] = [
     id: "doc-1", source_id: "src-1", category_id: "cat-1",
     url: "https://immi.homeaffairs.gov.au/visas/student", title: "Student visa (subclass 500)",
     content_hash: "a1b2c3", word_count: 842, crawled_at: now, active: true, is_embedded: true,
-    chunk_count: 4, created_at: now, updated_at: now,
+    created_at: now, updated_at: now,
   },
   {
     id: "doc-2", source_id: "src-1", category_id: "cat-1",
     url: "https://immi.homeaffairs.gov.au/visas/student/work", title: "Work conditions",
     content_hash: "d4e5f6", word_count: 431, crawled_at: now, active: true, is_embedded: false,
-    chunk_count: 2, created_at: now, updated_at: now,
+    created_at: now, updated_at: now,
   },
 ];
 
@@ -155,7 +155,7 @@ export const aiKnowledgeMockApi = {
   getRackCounts: async (): Promise<RackCounts> => {
     console.log("[mock] getRackCounts");
     await delay();
-    return { categories: categories.length, sources: sources.length, documents: documents.length, chunks: documents.reduce((n, d) => n + d.chunk_count, 0), embedded_documents: documents.filter((d) => d.is_embedded).length };
+    return { categories: categories.length, sources: sources.length, documents: documents.length, embedded_documents: documents.filter((d) => d.is_embedded).length };
   },
   getCategories: async () => { console.log("[mock] getCategories"); await delay(); return categories; },
   createCategory: async (params: CategoryParams) => { console.log("[mock] createCategory"); await delay(); return { ...categories[0], ...params, id: uid() } as RackCategory; },
