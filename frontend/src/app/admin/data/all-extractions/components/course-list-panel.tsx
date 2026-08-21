@@ -57,7 +57,7 @@ export function CourseListPanel({
   compact: boolean;
 }>) {
   const filtering = search.trim() !== "" || statusFilter !== "all";
-  const allSelected = courses.length > 0 && selectedIds.length === courses.length;
+  const allSelected = courses?.length > 0 && selectedIds?.length === courses?.length;
   const overallTotal = statusCounts.reduce((sum, s) => sum + s.count, 0);
 
   return (
@@ -96,7 +96,7 @@ export function CourseListPanel({
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-          <Checkbox checked={allSelected} onCheckedChange={onToggleSelectAll} disabled={courses.length === 0} />
+          <Checkbox checked={allSelected} onCheckedChange={onToggleSelectAll} disabled={courses?.length === 0} />
           {total} course{total === 1 ? "" : "s"}
           {filtering && ` · ${courses.length} on this page`}
         </label>
@@ -128,7 +128,7 @@ export function CourseListPanel({
       </div>
 
       <div className={cn("space-y-2 overflow-y-auto pr-1", compact ? "max-h-[70vh]" : "max-h-[calc(100vh-22rem)]")}>
-        {courses.map((course) => (
+        {courses?.map((course) => (
           <div
             key={course.id}
             className={cn(
@@ -153,7 +153,7 @@ export function CourseListPanel({
             </button>
           </div>
         ))}
-        {courses.length === 0 && (
+        {courses?.length === 0 && (
           <Card className="border-dashed">
             <CardContent className="py-10 text-center text-muted-foreground">
               <BookOpen className="mx-auto mb-3 h-7 w-7 opacity-40" />

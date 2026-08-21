@@ -31,8 +31,8 @@ function StatCard({
   );
 }
 
-export function JobStats({ job, courses }: Readonly<{ job: ExtractionJob; courses: CourseRow[] }>) {
-  const total = courses.length || job.verification_total || 0;
+export function JobStats({ job, courses = [] }: Readonly<{ job: ExtractionJob; courses?: CourseRow[] }>) {
+  const total = courses?.length || job.verification_total || 0;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

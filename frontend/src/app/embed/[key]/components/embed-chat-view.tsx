@@ -8,13 +8,14 @@ import { ThinkingIndicator } from "@/app/personal/ai/components/thinking-indicat
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 import type { CourseCard, Message } from "@/app/personal/ai/apis/types";
 import { embedApi, type EmbedPublicConfig } from "../apis";
+import { uuid } from "@/lib/utils";
 
 const FINGERPRINT_KEY = "globaly_embed_fp";
 
 function getFingerprint(): string {
   let fp = localStorage.getItem(FINGERPRINT_KEY);
   if (!fp) {
-    fp = crypto.randomUUID();
+    fp = uuid();
     localStorage.setItem(FINGERPRINT_KEY, fp);
   }
   return fp;

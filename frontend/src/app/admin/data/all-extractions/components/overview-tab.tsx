@@ -170,7 +170,7 @@ export function OverviewTab({
   ];
 
   const courseCards: TabCard[] = [
-    { key: "courses", label: "Courses", icon: BookOpen, count: courses.length, updated: latestTimestamp(courses), tab: "courses", contextKey: "course_list_urls", contextLabel: "course list URLs" },
+    { key: "courses", label: "Courses", icon: BookOpen, count: courses?.length, updated: latestTimestamp(courses), tab: "courses", contextKey: "course_list_urls", contextLabel: "course list URLs" },
     { key: "fees", label: "Fees", icon: DollarSign, count: courseLinks.course_fees.length, updated: latestTimestamp(courseLinks.course_fees), tab: "fees", runBlockedReason: PER_COURSE_ONLY, contextKey: "extract_fields", contextLabel: "extract fields" },
     { key: "intakes", label: "Intakes", icon: Calendar, count: courseLinks.intakes.length, updated: latestTimestamp(courseLinks.intakes), tab: "intakes", runBlockedReason: PER_COURSE_ONLY, contextKey: "extract_fields", contextLabel: "extract fields" },
     { key: "eligibility", label: "Eligibility", icon: GraduationCap, count: courseLinks.eligibility_requirements.length, updated: latestTimestamp(courseLinks.eligibility_requirements), tab: "eligibility", runBlockedReason: PER_COURSE_ONLY, contextKey: "extract_fields", contextLabel: "extract fields" },

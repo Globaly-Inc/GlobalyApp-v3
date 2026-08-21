@@ -5,6 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** crypto.randomUUID() only exists in secure contexts (HTTPS/localhost) — falls back to Math.random for plain-HTTP dev/LAN access. */
+export function uuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = Math.trunc(Math.random() * 16);
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 /** Thousands separators for credit amounts and counts: "1240" -> "1,240". */
 export function formatNumber(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return "0";
