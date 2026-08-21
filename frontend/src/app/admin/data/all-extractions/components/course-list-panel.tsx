@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, CheckCircle2, ExternalLink, Flag, Plus, Search } from "lucide-react";
+import { BookOpen, CheckCircle2, ExternalLink, Flag, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,6 +32,8 @@ export function CourseListPanel({
   onAdd,
   saving,
   onBulkVerify,
+  onDelete,
+  onBulkDelete,
   compact,
 }: Readonly<{
   courses: CourseFull[];
@@ -54,6 +56,8 @@ export function CourseListPanel({
   onAdd: () => void;
   saving: boolean;
   onBulkVerify: (approve: boolean) => void;
+  onDelete: (id: string) => void;
+  onBulkDelete: () => void;
   compact: boolean;
 }>) {
   const filtering = search.trim() !== "" || statusFilter !== "all";
@@ -94,7 +98,7 @@ export function CourseListPanel({
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border-b bg-primary/5 px-3 py-2">
         <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
           <Checkbox checked={allSelected} onCheckedChange={onToggleSelectAll} disabled={courses?.length === 0} />
           {total} course{total === 1 ? "" : "s"}
@@ -123,6 +127,16 @@ export function CourseListPanel({
               <Flag className="h-3 w-3" />
               Flag {selectedIds.length}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-destructive cursor-pointer"
+              disabled={saving}
+              onClick={onBulkDelete}
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete {selectedIds.length}
+            </Button>
           </div>
         )}
       </div>
@@ -132,11 +146,14 @@ export function CourseListPanel({
           <div
             key={course.id}
             className={cn(
-              "flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-accent",
+              "group flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-accent",
               selectedId === course.id && "border-primary ring-1 ring-primary",
             )}
           >
             <Checkbox checked={selectedIds.includes(course.id)} onCheckedChange={() => onToggleSelect(course.id)} />
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <BookOpen className="h-3.5 w-3.5" />
+            </div>
             <button
               type="button"
               onClick={() => onSelect(course.id)}
@@ -151,6 +168,15 @@ export function CourseListPanel({
               </span>
               {course.source_url && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
             </button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 cursor-pointer text-destructive opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+              title="Delete course"
+              onClick={() => onDelete(course.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
           </div>
         ))}
         {courses?.length === 0 && (

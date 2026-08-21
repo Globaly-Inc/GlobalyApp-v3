@@ -38,7 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ACTIVE_STATUSES, PAUSABLE_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
+import { ACTIVE_STATUSES, FINISHED_STATUSES, PAUSABLE_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { ExtractionStatusBadge, NeedsAttentionBadge } from "./status-badge";
 import { useRerunJob } from "./rerun-extraction-button";
 import { PipelineProgressPanel } from "./pipeline-progress-panel";
@@ -57,6 +57,9 @@ function StatPill({ icon: Icon, children }: Readonly<{ icon: React.ElementType; 
 // done/total ratio (or half-credit with no counts yet) so the bar isn't stuck between steps.
 function overallProgressPct(job: ExtractionJob, progress: PipelineProgress | null) {
   if (job.status === "failed" || job.status === "declined") return 0;
+  // A finished/published job is 100% done regardless of how many discovered pages
+  // actually got scraped — not every discovered URL needs scraping to complete.
+  if (FINISHED_STATUSES.includes(job.status) || job.status === "review") return 100;
   if (progress) {
     const known = PIPELINE_STAGES.map((s) => progress[s.key]).filter(Boolean);
     if (known.length > 0) {

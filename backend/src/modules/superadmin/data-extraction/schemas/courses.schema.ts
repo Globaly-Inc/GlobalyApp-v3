@@ -2,14 +2,16 @@
 
 import { z } from "zod";
 
+// .nullish() (not .optional()) — the create form sends `null` for blank optional
+// fields (same reasoning as PatchCourseSchema below), not just omitting the key.
 export const CreateCourseSchema = z.object({
   name: z.string().min(1),
-  source_url: z.string().optional(),
-  degree_level: z.string().optional(),
-  subject_area: z.string().optional(),
-  duration_weeks: z.number().int().optional(),
-  study_mode: z.string().optional(),
-  description: z.string().optional(),
+  source_url: z.string().nullish(),
+  degree_level: z.string().nullish(),
+  subject_area: z.string().nullish(),
+  duration_weeks: z.number().int().nullish(),
+  study_mode: z.string().nullish(),
+  description: z.string().nullish(),
 });
 
 // Every optional column is nullable: clearing a field in the review UI has to be able
@@ -36,6 +38,10 @@ export const PatchCourseSchema = z
 export const BulkVerifyCoursesSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
   approve: z.boolean(),
+});
+
+export const BulkDeleteCoursesSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
 });
 
 export const CourseAccreditationLinkSchema = z.object({

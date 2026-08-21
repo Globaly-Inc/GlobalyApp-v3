@@ -1,12 +1,19 @@
 "use client";
 
+import { z } from "zod";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { History, Loader2, Plus, RefreshCw, Save, Search, Trash2, Users, X } from "lucide-react";
+import {
+  Building2, Globe, Hash, History, Loader2, Mail, MapPin, Phone, Plus, RefreshCw, Save,
+  Search, Trash2, Type, Users, X,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { geoApi, type City, type Country } from "@/app/geo/apis";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
-import { EditableField, useFieldSaver } from "./editable-field";
+import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { AgentFull, AgentRun, ExtractionJob } from "../apis/types";
@@ -27,6 +34,24 @@ const EMPTY: AgentValues = {
   name: "", country: "", email: "", phone: "", website: "",
   city: "", state: "", postcode: "", address: "",
 };
+
+const agentSchema = z.object({
+  name: z.string().trim().min(1, "Agent / Agency name is required"),
+  country: z.string(),
+  email: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: "Enter a valid email address" }),
+  phone: z.string(),
+  website: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^https?:\/\//i.test(v), { message: "Website must start with http:// or https://" }),
+  city: z.string(),
+  state: z.string(),
+  postcode: z.string(),
+  address: z.string(),
+});
 
 function runStatusClass(status: string) {
   if (status === "completed" || status === "done") return "bg-emerald-500/15 text-emerald-700";
@@ -97,11 +122,15 @@ function AddAgentForm({
   onSave,
 }: Readonly<{ saving: boolean; onCancel: () => void; onSave: (v: AgentValues) => void }>) {
   const [values, setValues] = useState<AgentValues>(EMPTY);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [countries, setCountries] = useState<Country[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
-  const set = (key: keyof AgentValues, value: string) => setValues((v) => ({ ...v, [key]: value }));
+  const set = (key: keyof AgentValues, value: string) => {
+    setValues((v) => ({ ...v, [key]: value }));
+    if (errors[key]) setErrors((e) => { const next = { ...e }; delete next[key]; return next; });
+  };
 
   useEffect(() => {
     geoApi.getCountries()
@@ -134,8 +163,17 @@ function AddAgentForm({
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="agent-name">Agent / Agency Name</Label>
-            <Input id="agent-name" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. AECC Global" />
+            <Label htmlFor="agent-name">
+              Agent / Agency Name <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="agent-name"
+              value={values.name}
+              onChange={(e) => set("name", e.target.value)}
+              placeholder="e.g. AECC Global"
+              aria-invalid={!!errors.name}
+            />
+            <FieldError message={errors.name} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-country">Country</Label>
@@ -150,7 +188,15 @@ function AddAgentForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-email">Email</Label>
-            <Input id="agent-email" type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="contact@..." />
+            <Input
+              id="agent-email"
+              type="email"
+              value={values.email}
+              onChange={(e) => set("email", e.target.value)}
+              placeholder="contact@..."
+              aria-invalid={!!errors.email}
+            />
+            <FieldError message={errors.email} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-phone">Phone</Label>
@@ -184,7 +230,14 @@ function AddAgentForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-website">Website</Label>
-            <Input id="agent-website" value={values.website} onChange={(e) => set("website", e.target.value)} placeholder="https://..." />
+            <Input
+              id="agent-website"
+              value={values.website}
+              onChange={(e) => set("website", e.target.value)}
+              placeholder="https://..."
+              aria-invalid={!!errors.website}
+            />
+            <FieldError message={errors.website} />
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -199,10 +252,17 @@ function AddAgentForm({
             className="gap-1.5 cursor-pointer"
             disabled={saving}
             onClick={() => {
-              if (!values.name.trim()) {
-                toast.error("Agent name is required");
+              const result = agentSchema.safeParse(values);
+              if (!result.success) {
+                const errs: Record<string, string> = {};
+                for (const issue of result.error.issues) {
+                  const key = String(issue.path[0]);
+                  if (!errs[key]) errs[key] = issue.message;
+                }
+                setErrors(errs);
                 return;
               }
+              setErrors({});
               onSave(values);
             }}
           >
@@ -212,6 +272,19 @@ function AddAgentForm({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// EditableField keeps its own click-to-edit affordance — this just gives each
+// field a visual anchor (icon tile), matching Branches/Institution tabs' treatment.
+function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
+  return (
+    <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <EditableField {...field} className="flex-1" />
+    </div>
   );
 }
 
@@ -228,8 +301,9 @@ function AgentCard({
   onDelete: () => void;
   onSaveField: (column: string, next: string | null) => Promise<unknown>;
 }>) {
-  const field = (label: string, column: keyof AgentFull, span?: string, multiline = false) => (
-    <EditableField
+  const field = (icon: LucideIcon, label: string, column: keyof AgentFull, span: string, multiline = false) => (
+    <Field
+      icon={icon}
       label={label}
       value={agent[column] as string | null}
       onSave={(v) => onSaveField(column, v)}
@@ -238,34 +312,38 @@ function AgentCard({
     />
   );
   return (
-    <Card>
-      <CardContent className="flex items-start gap-4 p-4">
-        <Checkbox checked={selected} onCheckedChange={onToggleSelect} className="mt-1 shrink-0" />
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <Users className="h-4 w-4 text-muted-foreground" />
+    <Card className="group overflow-hidden">
+      <div className="-mt-4 flex items-center justify-between gap-2 rounded-t-xl border-b bg-primary/5 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Users className="h-4 w-4" />
+          </div>
+          <span className="text-sm font-semibold text-foreground">{agent.name || agent.country || "Unnamed agent"}</span>
         </div>
-
-        <div className="grid flex-1 grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-          {field("Agent / Agency Name", "name")}
-          {field("Country", "country")}
-          {field("Email", "email")}
-          {field("Phone", "phone")}
-          {field("Website", "website", "md:col-span-2")}
-          {field("Address", "address", "md:col-span-2", true)}
-          {field("City", "city")}
-          {field("State / Region", "state")}
-          {field("Postcode", "postcode")}
-        </div>
-
         <Button
           variant="ghost"
           size="icon-sm"
-          className="shrink-0 cursor-pointer text-destructive hover:text-destructive"
+          className="cursor-pointer text-destructive hover:text-destructive"
           title="Delete agent"
           onClick={onDelete}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
+      </div>
+
+      <CardContent className="p-4">
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-6">
+          {field(Type, "Agent / Agency Name", "name", "col-span-2 md:col-span-3")}
+          {field(Mail, "Email", "email", "col-span-2 md:col-span-3")}
+          {field(Phone, "Phone", "phone", "col-span-2 md:col-span-3")}
+          {field(Globe, "Country", "country", "col-span-2 md:col-span-3")}
+          {field(Globe, "Website", "website", "col-span-2 md:col-span-3")}
+          {field(Building2, "City", "city", "col-span-2 md:col-span-2")}
+          {field(MapPin, "State / Region", "state", "col-span-2 md:col-span-2")}
+          {field(Hash, "Postcode", "postcode", "col-span-2 md:col-span-2")}
+          {field(MapPin, "Address", "address", "col-span-2 md:col-span-6", true)}
+        </div>
       </CardContent>
     </Card>
   );
@@ -434,7 +512,11 @@ export function AgentsTab({
           </div>
         </div>
 
-        {adding && <AddAgentForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />}
+        <Dialog open={adding} onOpenChange={setAdding}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
+            <AddAgentForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
+          </DialogContent>
+        </Dialog>
 
         {loading && (
           <div className="flex justify-center py-12">

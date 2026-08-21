@@ -3,8 +3,10 @@
 import type { FastifyInstance } from "fastify";
 import * as service from "../services/courses.service.js";
 import { UuidParamSchema, JobIdParamSchema } from "../schemas/jobs.schema.js";
-import { CreateCourseSchema, PatchCourseSchema, CourseAccreditationLinkSchema, BulkVerifyCoursesSchema } from "../schemas/courses.schema.js";
+import { CreateCourseSchema, PatchCourseSchema, CourseAccreditationLinkSchema, BulkVerifyCoursesSchema, BulkDeleteCoursesSchema } from "../schemas/courses.schema.js";
 import { PaginationSchema, paginationToOffset } from "../../../../shared/pagination.js";
+import { queueService } from "../../../../shared/queue/queueService.js";
+import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { z } from "zod";
 
 const CourseAccredParamSchema = z.object({
@@ -60,6 +62,20 @@ export async function coursesRoutes(app: FastifyInstance) {
   app.post("/courses/:id/reject", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     return reply.send(await service.rejectCourse(id, adminId(req)));
+  });
+
+  // DELETE /courses/:id
+  app.delete("/courses/:id", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.deleteCourse(id, adminId(req)));
+  });
+
+  // Bulk delete — fire-and-forget queue, same pattern as scholarship-bulk-delete:
+  // the request just queues the batch and returns immediately; extraction-course-bulk-delete.worker.ts does the actual deletes.
+  app.post("/courses/bulk-delete", async (req, reply) => {
+    const { ids } = BulkDeleteCoursesSchema.parse(req.body);
+    await queueService.publish(EXTRACTION_QUEUES.COURSE_BULK_DELETE, { ids, deletedBy: adminId(req) });
+    return reply.status(202).send({ queued: ids.length });
   });
 
   // E5: GET /courses/:courseId/accreditation-links

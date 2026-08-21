@@ -45,22 +45,25 @@ export function AllExtractionsView() {
 
       <div className="mb-4 w-full overflow-x-auto border-b border-border">
         <div className="inline-flex w-max gap-1 pb-px">
-          {TABS.map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => setTab(tab.value)}
-              className={cn(
-                "-mb-px flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-t-lg border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-                active === tab.value
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <tab.icon className="h-3.5 w-3.5" />
-              {tab.label}
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            const isActive = active === tab.value;
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setTab(tab.value)}
+                className={cn(
+                  "-mb-px flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-t-lg border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "border-primary bg-primary/5 text-primary font-semibold"
+                    : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                )}
+              >
+                <tab.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 

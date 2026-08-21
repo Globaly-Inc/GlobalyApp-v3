@@ -78,6 +78,20 @@ export async function rejectCourse(id: string, adminId: number) {
   return { updated: true };
 }
 
+export async function deleteCourse(id: string, adminId: number) {
+  const found = await repo.deleteCourse(id);
+  if (!found) throw new NotFoundError("Course not found");
+  await logAudit(adminId, "COURSE_DELETE", { entityType: "extraction_courses", entityId: id });
+  return { deleted: true };
+}
+
+export async function bulkDeleteCourses(ids: string[], adminId: number) {
+  const deleted = await repo.deleteCoursesByIds(ids);
+  if (deleted === 0) throw new NotFoundError("No courses found");
+  await logAudit(adminId, "COURSE_DELETE", { entityType: "extraction_courses", details: { ids, count: deleted } });
+  return { deleted };
+}
+
 // ── Accreditation links ──
 
 export async function getAccreditationLinks(courseId: string) {
