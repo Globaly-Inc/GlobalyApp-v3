@@ -15,9 +15,13 @@ const CATEGORIES = [
 ];
 
 export async function seed(knex: Knex): Promise<void> {
+  // Upsert by id, not by slug: id is this table's stable identity (other schemas' FKs point at
+  // it), while the slug/name/etc a given id maps to has changed as this taxonomy evolved. A
+  // slug-keyed existence check would miss a row whose slug changed and then re-insert its id,
+  // hitting the primary key. Keying on id instead makes this safe to re-run in any environment
+  // regardless of which past version of this list it was last seeded with.
   for (const c of CATEGORIES) {
-    const exists = await knex("service_categories").where({ slug: c.slug }).first();
-    if (!exists) await knex("service_categories").insert({ ...c, is_active: true });
+    await knex("service_categories").insert({ ...c, is_active: true }).onConflict("id").merge();
   }
   // Explicit ids bypass the id sequence — sync it so the next auto-generated
   // insert (e.g. an admin creating a new category) doesn't collide with these.
