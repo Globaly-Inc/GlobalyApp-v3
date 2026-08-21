@@ -1,7 +1,7 @@
 import type { FastifyReply } from "fastify";
 import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
 import { streamChat } from "../lib/gemini-stream.js";
-import { parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
+import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { buildSystemPrompt } from "./prompt.service.js";
 import * as rag from "./rag.service.js";
 import * as sessionService from "./session.service.js";
@@ -64,6 +64,11 @@ export async function handleMessage(opts: {
     const isFirstMessage = isNew && session.message_count === 0;
     const discoveryTurn = isFirstMessage && !opts.embed;
 
+    // Returning student: this fresh session is not their first ever (the count
+    // includes the one just created). Platform only — embed visitors are anonymous.
+    const returning =
+      isFirstMessage && !opts.embed && (await sessionsRepo.countByUser(opts.userId)) > 1;
+
     // 5. RAG search
     const ragOutput = await rag.searchAll({
       query: opts.content,
@@ -84,6 +89,7 @@ export async function handleMessage(opts: {
       ragContext: ragOutput.contextText,
       isFirstMessage,
       discoveryTurn,
+      returning,
       embedConfig: opts.embed?.config,
     });
 
@@ -114,11 +120,13 @@ export async function handleMessage(opts: {
     // 10. Parse structured blocks
     const cards = parseCards(result.fullText);
     const chips = parseChips(result.fullText);
+    const blocks = parseBlocks(result.fullText);
     const cleanText = stripBlocks(result.fullText);
 
-    // 11. Emit cards + chips
+    // 11. Emit cards + chips + blocks
     if (cards.length) writeEvent(opts.reply, "cards", cards);
     if (chips.length) writeEvent(opts.reply, "chips", chips);
+    if (blocks.length) writeEvent(opts.reply, "blocks", blocks);
 
     // 12. Persist assistant message
     const latencyMs = Date.now() - startMs;
@@ -129,6 +137,7 @@ export async function handleMessage(opts: {
       sources: ragOutput.sources,
       cards,
       chips,
+      blocks,
       prompt_tokens: result.usage.promptTokens,
       completion_tokens: result.usage.completionTokens,
       total_tokens: result.usage.totalTokens,

@@ -1,7 +1,7 @@
 import type {
   CategoryParams, CountryGuide, Faq, FaqParams, GuideParams, KnowledgeCounts,
   QueueItem, RackCategory, RackCounts, RackDocument, RackDocumentDetail,
-  RackSource, SourceParams, VisaEntry, VisaParams,
+  RackSource, SourceParams, UploadSourceOptions, UploadSourceResult, VisaEntry, VisaParams,
 } from "./types";
 
 const delay = (ms = 220) => new Promise((r) => setTimeout(r, ms));
@@ -79,21 +79,28 @@ const categories: RackCategory[] = [
 
 const sources: RackSource[] = [
   {
-    id: "src-1", category_id: "cat-1", url: "https://immi.homeaffairs.gov.au/visas/student",
-    domain: "immi.homeaffairs.gov.au", title: "Student visa hub", trust_tier: "gov",
+    id: "src-1", category_id: "cat-1", source_type: "url", url: "https://immi.homeaffairs.gov.au/visas/student",
+    file_name: null, domain: "immi.homeaffairs.gov.au", title: "Student visa hub", trust_tier: "gov",
     crawl_frequency: "weekly", last_crawled_at: now, last_status: "ok", last_error: null,
     doc_count: 12, active: true, added_via: "manual", max_pages: 25,
     crawl_summary: {
       discovered: 14, discovery_method: "sitemap", discovery_error: null, scraped: 12,
-      added: 3, updated: 2, unchanged: 7, failed: 2, embedded: 5, max_pages: 25, finished_at: now,
+      added: 3, updated: 2, unchanged: 7, failed: 2, embedded: 5, chunks: 63, max_pages: 25, finished_at: now,
     },
     created_at: now, updated_at: now,
   },
   {
-    id: "src-2", category_id: "cat-1", url: "https://www.studyaustralia.gov.au/apply",
-    domain: "studyaustralia.gov.au", title: null, trust_tier: "gov",
+    id: "src-2", category_id: "cat-1", source_type: "url", url: "https://www.studyaustralia.gov.au/apply",
+    file_name: null, domain: "studyaustralia.gov.au", title: null, trust_tier: "gov",
     crawl_frequency: "monthly", last_crawled_at: null, last_status: null, last_error: null,
     doc_count: 0, active: true, added_via: "manual", max_pages: null, crawl_summary: null,
+    created_at: now, updated_at: now,
+  },
+  {
+    id: "src-3", category_id: "cat-1", source_type: "file", url: null,
+    file_name: "gte-checklist.pdf", domain: "upload", title: "GTE checklist", trust_tier: "gov",
+    crawl_frequency: "off", last_crawled_at: now, last_status: "ok", last_error: null,
+    doc_count: 1, active: true, added_via: "manual", max_pages: null, crawl_summary: null,
     created_at: now, updated_at: now,
   },
 ];
@@ -103,13 +110,13 @@ const documents: RackDocument[] = [
     id: "doc-1", source_id: "src-1", category_id: "cat-1",
     url: "https://immi.homeaffairs.gov.au/visas/student", title: "Student visa (subclass 500)",
     content_hash: "a1b2c3", word_count: 842, crawled_at: now, active: true, is_embedded: true,
-    created_at: now, updated_at: now,
+    chunk_count: 4, created_at: now, updated_at: now,
   },
   {
     id: "doc-2", source_id: "src-1", category_id: "cat-1",
     url: "https://immi.homeaffairs.gov.au/visas/student/work", title: "Work conditions",
     content_hash: "d4e5f6", word_count: 431, crawled_at: now, active: true, is_embedded: false,
-    created_at: now, updated_at: now,
+    chunk_count: 2, created_at: now, updated_at: now,
   },
 ];
 
@@ -148,7 +155,7 @@ export const aiKnowledgeMockApi = {
   getRackCounts: async (): Promise<RackCounts> => {
     console.log("[mock] getRackCounts");
     await delay();
-    return { categories: categories.length, sources: sources.length, documents: documents.length, embedded_documents: documents.filter((d) => d.is_embedded).length };
+    return { categories: categories.length, sources: sources.length, documents: documents.length, chunks: documents.reduce((n, d) => n + d.chunk_count, 0), embedded_documents: documents.filter((d) => d.is_embedded).length };
   },
   getCategories: async () => { console.log("[mock] getCategories"); await delay(); return categories; },
   createCategory: async (params: CategoryParams) => { console.log("[mock] createCategory"); await delay(); return { ...categories[0], ...params, id: uid() } as RackCategory; },
@@ -164,6 +171,15 @@ export const aiKnowledgeMockApi = {
   updateSource: async (id: string, params: SourceParams) => { console.log("[mock] updateSource", id); await delay(); return { ...sources[0], ...params, id } as RackSource; },
   deleteSource: async (id: string) => { console.log("[mock] deleteSource", id); await delay(); },
   crawlSource: async (id: string, maxPages?: number) => { console.log("[mock] crawlSource", id, maxPages); await delay(); return { dispatched: true }; },
+  uploadSource: async (categoryId: string, file: File, opts?: UploadSourceOptions): Promise<UploadSourceResult> => {
+    console.log("[mock] uploadSource", categoryId, file.name, opts);
+    await delay();
+    const source = {
+      ...sources[2], id: uid(), category_id: categoryId, file_name: file.name,
+      title: opts?.title ?? file.name, trust_tier: opts?.trust_tier ?? "other",
+    } as RackSource;
+    return { source, document_id: uid(), chunks: 3, embedded: 3 };
+  },
 
   getDocuments: async (sourceId: string, q?: string) => {
     console.log("[mock] getDocuments", sourceId, q);

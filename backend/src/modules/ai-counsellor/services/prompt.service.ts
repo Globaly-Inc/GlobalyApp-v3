@@ -25,6 +25,8 @@ export function buildSystemPrompt(opts: {
   isFirstMessage: boolean;
   /** First platform turn: course retrieval was skipped — counsel, don't recommend. */
   discoveryTurn?: boolean;
+  /** New session for a student who has chatted before — greet with "welcome back". */
+  returning?: boolean;
   /** Embed mode: brand the counsellor and scope it to this business. */
   embedConfig?: { display_name: string | null; custom_instructions: string | null };
 }): string {
@@ -191,12 +193,47 @@ export function buildSystemPrompt(opts: {
     '```chips\n["question1", "question2"]\n```',
   );
 
+  // ── Interactive UI blocks ──
+  sections.push(
+    "INTERACTIVE BLOCKS: The app renders structured blocks as interactive UI components. " +
+    "Emit a block as a fenced code block tagged `block` containing exactly ONE JSON object, " +
+    "placed after the related prose. Available types:\n" +
+    '- Comparison table (2-4 options across factors like fees, duration, career growth):\n' +
+    '```block\n{"type":"comparison","title":"...","columns":["Option A","Option B"],"rows":[{"label":"Factor","values":["...","..."]}]}\n```\n' +
+    '- Step-by-step breakdown, pros & cons, or cost breakdown (expandable sections):\n' +
+    '```block\n{"type":"breakdown","title":"...","items":[{"title":"Step or aspect","description":"..."}]}\n```\n' +
+    '- Career path / study roadmap (ordered stages):\n' +
+    '```block\n{"type":"timeline","title":"...","steps":[{"title":"Bachelor\'s degree","description":"..."}]}\n```\n' +
+    '- Career or field recommendation (NOT for specific courses — those use course-card):\n' +
+    '```block\n{"type":"recommendation","title":"Data Science","subtitle":"...","description":"why it fits THIS student","tags":["..."],"actions":[{"label":"Explore this career","value":"Tell me more about a career in data science"}]}\n```\n' +
+    '- Question with tappable answer options (use whenever YOU ask the student a question with discrete likely answers — the tapped value is sent as their reply, so write values as first-person answers):\n' +
+    '```block\n{"type":"quick_replies","question":"What matters most to you?","options":[{"label":"💰 Salary","value":"Salary matters most to me"},{"label":"🌍 Migration","value":"Migration opportunities matter most to me"}]}\n```\n' +
+    '- Image (ONLY with a URL copied verbatim from CONTEXT — NEVER invent or guess image URLs):\n' +
+    '```block\n{"type":"image","url":"https://...","title":"...","caption":"..."}\n```\n' +
+    "Rules: use blocks to make counselling interactive — comparisons when the student weighs options, " +
+    "a timeline when explaining a path, quick_replies instead of leaving your questions open-ended. " +
+    "Max 3 blocks per reply. Prose stays primary: never send blocks without a conversational message around them.",
+  );
+
   // ── RAG context ──
   if (opts.ragContext) {
     sections.push("CONTEXT:\n" + opts.ragContext);
   }
 
   // ── First message greeting ──
+  if (opts.isFirstMessage && !opts.embedConfig) {
+    const today = new Date().toLocaleDateString("en-US", {
+      weekday: "long", month: "long", day: "numeric", year: "numeric",
+    });
+    sections.push(
+      opts.returning
+        ? `GREETING: This student has chatted with you before — this is a fresh session. Open with a brief, ` +
+          `warm 'Welcome back' that naturally mentions today's date (${today}) before addressing their message. ` +
+          `One line — don't make the greeting the whole reply.`
+        : "GREETING: This is the student's first-ever conversation with you. Open by warmly welcoming them " +
+          "to GlobalyApp before addressing their message.",
+    );
+  }
   if (opts.discoveryTurn) {
     sections.push(
       "THIS IS A DISCOVERY TURN — the first message of the conversation. Course data was deliberately " +
@@ -205,9 +242,9 @@ export function buildSystemPrompt(opts: {
       "they shared (if they love a subject, share their excitement — 'a maths lover — excellent taste!'), " +
       "and ask 2-3 questions that help you counsel them: what draws them to it, what career or life " +
       "they imagine, and one practical constraint (destination, budget, or start date). " +
-      "Make the chips follow-up suggestions the student's likely ANSWERS to your questions " +
-      "(e.g. [\"Pure maths and problem solving\", \"I want to work in AI/data\", \"Not sure yet — show me options\"]), " +
-      "so they can tap instead of type. Course recommendations begin on the next turn.",
+      "Ask your main question through a quick_replies block so the student can tap an answer " +
+      "(e.g. options like \"Pure maths and problem solving\", \"I want to work in AI/data\", \"Not sure yet — show me options\") " +
+      "and keep chips for broader follow-ups. Course recommendations begin on the next turn.",
     );
   } else if (opts.isFirstMessage) {
     sections.push(

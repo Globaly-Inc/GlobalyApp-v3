@@ -8,6 +8,7 @@ export interface MessageRow {
   sources: unknown[];
   cards: unknown[];
   chips: unknown[];
+  blocks: unknown[];
   attachments: unknown[];
   feedback: "positive" | "negative" | null;
   prompt_tokens: number | null;
@@ -26,6 +27,7 @@ export async function create(data: {
   sources?: unknown[];
   cards?: unknown[];
   chips?: unknown[];
+  blocks?: unknown[];
   attachments?: unknown[];
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -40,6 +42,7 @@ export async function create(data: {
       sources: JSON.stringify(data.sources ?? []),
       cards: JSON.stringify(data.cards ?? []),
       chips: JSON.stringify(data.chips ?? []),
+      blocks: JSON.stringify(data.blocks ?? []),
       attachments: JSON.stringify(data.attachments ?? []),
       prompt_tokens: data.prompt_tokens ?? null,
       completion_tokens: data.completion_tokens ?? null,

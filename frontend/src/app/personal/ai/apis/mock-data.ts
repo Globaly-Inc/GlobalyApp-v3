@@ -33,6 +33,7 @@ const mockMessages: Record<number, Message[]> = {
       content: "What MBA programs are available in Melbourne?",
       cards: [],
       chips: [],
+      blocks: [],
       feedback: null,
       created_at: new Date(Date.now() - 3600 * 1000).toISOString(),
     },
@@ -57,6 +58,17 @@ const mockMessages: Record<number, Message[]> = {
         },
       ],
       chips: ["Compare with Sydney MBA", "Scholarship options?", "What are the entry requirements?"],
+      blocks: [
+        {
+          type: "comparison",
+          title: "Melbourne MBA options",
+          columns: ["Uni of Melbourne", "Monash"],
+          rows: [
+            { label: "Duration", values: ["2 years", "18 months"] },
+            { label: "Annual fee", values: ["AUD 52,000", "AUD 49,500"] },
+          ],
+        },
+      ],
       feedback: null,
       created_at: new Date(Date.now() - 3500 * 1000).toISOString(),
     },
@@ -165,6 +177,31 @@ export const aiMockApi = {
 
     await delay(200);
     onEvent({ type: "cards", cards: mockStreamCards });
+    await delay(100);
+    onEvent({
+      type: "blocks",
+      blocks: [
+        {
+          type: "timeline",
+          title: "Path to an MBA career",
+          steps: [
+            { title: "Bachelor's degree", description: "Any discipline, strong GPA" },
+            { title: "Work experience", description: "2-3 years preferred" },
+            { title: "MBA", description: "18-24 months" },
+            { title: "Management role" },
+          ],
+        },
+        {
+          type: "quick_replies",
+          question: "What matters most to you?",
+          options: [
+            { label: "💰 Salary", value: "Salary matters most to me" },
+            { label: "📚 Study cost", value: "Study cost matters most to me" },
+            { label: "🌍 Migration", value: "Migration opportunities matter most to me" },
+          ],
+        },
+      ],
+    });
     await delay(100);
     onEvent({ type: "chips", chips: ["Tell me more", "Compare programs", "Admission requirements"] });
     await delay(50);

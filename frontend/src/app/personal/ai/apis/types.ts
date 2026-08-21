@@ -27,6 +27,22 @@ export type CourseCard = {
   source_url: string | null;
 };
 
+/** Clickable option — the value is sent as the user's next message. */
+export type BlockAction = { label: string; value: string };
+
+/**
+ * Structured UI blocks the counsellor emits alongside prose. Discriminated by
+ * `type`; unknown types are ignored by the renderer so new ones can ship
+ * backend-first. Mirrors backend ai-counsellor/lib/card-parser.ts.
+ */
+export type ResponseBlock =
+  | { type: "comparison"; title?: string; columns: string[]; rows: { label: string; values: string[] }[] }
+  | { type: "breakdown"; title?: string; items: { title: string; description?: string }[] }
+  | { type: "timeline"; title?: string; steps: { title: string; description?: string }[] }
+  | { type: "recommendation"; title: string; subtitle?: string; description?: string; image_url?: string; tags?: string[]; actions?: BlockAction[] }
+  | { type: "image"; url: string; title?: string; caption?: string }
+  | { type: "quick_replies"; question?: string; options: BlockAction[] };
+
 export type Message = {
   id: number;
   session_id: number;
@@ -34,6 +50,7 @@ export type Message = {
   content: string;
   cards: CourseCard[];
   chips: string[];
+  blocks: ResponseBlock[];
   feedback: "up" | "down" | null;
   /** Storage paths (or, for optimistic messages, filenames) of files sent with the message. */
   attachments?: string[];
@@ -76,6 +93,7 @@ export type SSEEvent =
   | { type: "delta"; text: string }
   | { type: "cards"; cards: CourseCard[] }
   | { type: "chips"; chips: string[] }
+  | { type: "blocks"; blocks: ResponseBlock[] }
   | { type: "done"; message_id: number }
   | { type: "error"; error: string };
 

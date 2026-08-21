@@ -102,7 +102,9 @@ export type CrawlSummary = {
 export type RackSource = {
   id: string;
   category_id: string;
-  url: string;
+  source_type: "url" | "file";
+  url: string | null;
+  file_name: string | null;
   domain: string;
   title: string | null;
   trust_tier: TrustTier;
@@ -168,4 +170,16 @@ export type SourceParams = {
   crawl_frequency?: CrawlFrequency;
   max_pages?: number | null;
   active?: boolean;
+};
+
+export type UploadSourceOptions = {
+  title?: string;
+  trust_tier?: TrustTier;
+};
+
+export type UploadSourceResult = {
+  source: RackSource;
+  document_id: string;
+  chunks: number;
+  embedded: number;
 };

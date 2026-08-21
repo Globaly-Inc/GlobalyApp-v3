@@ -26,6 +26,16 @@ export async function findById(id: number): Promise<SessionRow | undefined> {
   return masterKnex(TABLE).where({ id }).whereNull("deleted_at").first();
 }
 
+/** Sessions this user has ever had (archived included) — drives the returning-user greeting. */
+export async function countByUser(userId: number): Promise<number> {
+  const row = await masterKnex(TABLE)
+    .where({ platform_user_id: userId })
+    .whereNull("deleted_at")
+    .count("* as c")
+    .first();
+  return Number(row?.c ?? 0);
+}
+
 export async function findByUser(userId: number, includeArchived: boolean): Promise<SessionRow[]> {
   const q = masterKnex(TABLE)
     .where({ platform_user_id: userId })

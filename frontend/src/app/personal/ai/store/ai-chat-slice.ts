@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { aiApi } from "../apis";
 import { stripStructuredBlocks } from "../utils";
-import type { ChatSession, CourseCard, CreditBalance, Message, SSEEvent } from "../apis/types";
+import type { ChatSession, CourseCard, CreditBalance, Message, ResponseBlock, SSEEvent } from "../apis/types";
 import type { AppDispatch } from "@/lib/store";
 
 /* ── thunks ── */
@@ -75,6 +75,9 @@ export const sendMessage = createAsyncThunk<
         case "chips":
           dispatch(setChips(event.chips));
           break;
+        case "blocks":
+          dispatch(setBlocks(event.blocks));
+          break;
         case "done":
           finalMessageId = event.message_id;
           break;
@@ -114,7 +117,10 @@ type AiChatState = {
   streamingContent: string;
   streamingCards: CourseCard[];
   streamingChips: string[];
+  streamingBlocks: ResponseBlock[];
   traceSteps: string[];
+  /** Block shown large in the Preview/Canvas panel (right column / bottom sheet). */
+  previewBlock: ResponseBlock | null;
   error: string | null;
 };
 
@@ -130,9 +136,14 @@ const initialState: AiChatState = {
   streamingContent: "",
   streamingCards: [],
   streamingChips: [],
+  streamingBlocks: [],
   traceSteps: [],
+  previewBlock: null,
   error: null,
 };
+
+/** Block types worth showing large in the preview panel (quick_replies stays inline). */
+const PREVIEWABLE = new Set(["comparison", "breakdown", "timeline", "recommendation", "image"]);
 
 /* ── slice ── */
 
@@ -152,6 +163,15 @@ const aiChatSlice = createSlice({
     setChips(state, action: PayloadAction<string[]>) {
       state.streamingChips = action.payload;
     },
+    setBlocks(state, action: PayloadAction<ResponseBlock[]>) {
+      state.streamingBlocks = action.payload;
+      // Preview follows the conversation: the newest previewable block takes the canvas.
+      const latest = action.payload.filter((b) => PREVIEWABLE.has(b.type)).at(-1);
+      if (latest) state.previewBlock = latest;
+    },
+    setPreviewBlock(state, action: PayloadAction<ResponseBlock | null>) {
+      state.previewBlock = action.payload;
+    },
     addTrace(state, action: PayloadAction<string>) {
       state.traceSteps.push(action.payload);
     },
@@ -163,6 +183,7 @@ const aiChatSlice = createSlice({
       state.streamingContent = "";
       state.streamingCards = [];
       state.streamingChips = [];
+      state.streamingBlocks = [];
       state.traceSteps = [];
     },
     // compare moved to the shared useCompareTray store (search feature) — one list app-wide
@@ -175,6 +196,7 @@ const aiChatSlice = createSlice({
         content,
         cards: [],
         chips: [],
+        blocks: [],
         feedback: null,
         attachments,
         created_at: new Date().toISOString(),
@@ -219,6 +241,7 @@ const aiChatSlice = createSlice({
         state.streamingContent = "";
         state.streamingCards = [];
         state.streamingChips = [];
+        state.streamingBlocks = [];
         state.traceSteps = [];
         state.error = null;
       })
@@ -235,6 +258,7 @@ const aiChatSlice = createSlice({
             content: stripStructuredBlocks(state.streamingContent),
             cards: state.streamingCards,
             chips: state.streamingChips,
+            blocks: state.streamingBlocks,
             feedback: null,
             created_at: new Date().toISOString(),
           };
@@ -244,6 +268,7 @@ const aiChatSlice = createSlice({
         state.streamingContent = "";
         state.streamingCards = [];
         state.streamingChips = [];
+        state.streamingBlocks = [];
         state.traceSteps = [];
       })
       .addCase(sendMessage.rejected, (state, action) => {
@@ -252,6 +277,7 @@ const aiChatSlice = createSlice({
         state.streamingContent = "";
         state.streamingCards = [];
         state.streamingChips = [];
+        state.streamingBlocks = [];
         state.traceSteps = [];
       })
 
@@ -301,6 +327,8 @@ export const {
   appendDelta,
   setCards,
   setChips,
+  setBlocks,
+  setPreviewBlock,
   addTrace,
   sessionCreated,
   clearStreamingState,
