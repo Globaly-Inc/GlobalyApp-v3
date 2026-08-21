@@ -28,10 +28,12 @@ function formatFee(amount: number | null, currency: string): string | null {
 function DetailRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <div className="flex items-start gap-2">
-      <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="size-3.5" />
+      </span>
       <div className="min-w-0">
         <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className="truncate text-xs text-foreground" title={value}>{value}</p>
+        <p className="truncate text-xs font-medium text-foreground" title={value}>{value}</p>
       </div>
     </div>
   );
@@ -62,15 +64,28 @@ export function CourseCard({ card }: CourseCardProps) {
   const hasDetails = Boolean(card.duration || fee || card.intakes.length > 0 || modes);
 
   return (
-    <Card size="sm" className="w-full gap-0 overflow-hidden py-0">
+    <Card
+      size="sm"
+      className="h-full w-full gap-0 overflow-hidden py-0 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/30"
+    >
+      {/* Accent bar */}
+      <div className="h-1 shrink-0 bg-gradient-to-r from-primary via-primary/60 to-primary/20" />
+
       {/* Header */}
-      <div className="border-b bg-muted/40 px-4 py-3">
+      <div className="border-b bg-gradient-to-b from-muted/60 to-muted/20 px-4 py-3">
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <GraduationCap className="size-3.5" /> {card.institution_name}
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <GraduationCap className="size-3" />
+          </span>
+          <span className="truncate" title={card.institution_name}>{card.institution_name}</span>
         </p>
-        <p className="mt-0.5 font-medium leading-snug">{card.course_name}</p>
+        <p className="mt-1.5 font-semibold leading-snug">{card.course_name}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {card.degree_level && <Badge variant="secondary">{prettify(card.degree_level)}</Badge>}
+          {card.degree_level && (
+            <Badge variant="secondary" className="border-0 bg-primary/10 text-primary">
+              {prettify(card.degree_level)}
+            </Badge>
+          )}
           {card.country && (
             <Badge variant="outline">
               <MapPin className="size-3" /> {card.country}
@@ -92,8 +107,9 @@ export function CourseCard({ card }: CourseCardProps) {
         </CardContent>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center justify-between border-t px-4 py-2">
+      {/* Actions — mt-auto pins this row to the card bottom so cards without
+          details stay the same height as their row-mates, buttons aligned. */}
+      <div className="mt-auto flex items-center justify-between border-t px-4 py-2">
         {card.slug ? (
           <Button
             variant="link"

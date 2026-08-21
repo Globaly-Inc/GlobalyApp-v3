@@ -108,6 +108,12 @@ export async function buildServer() {
     };
   });
 
+  app.get("/health/cache", async () => {
+    const [dragonflycache] = await Promise.allSettled([
+      masterKnex.raw("SELECT 1 AS ok").then(() => ({ status: "ok" as const })),
+    ]);
+
+
   app.get("/health/detailed", async () => {
     const start = Date.now();
 
