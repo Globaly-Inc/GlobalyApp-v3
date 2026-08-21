@@ -223,25 +223,42 @@ UK ENIC names a document — ***"Qualifications can cross boundaries"*** — *"t
 | Examination boards | **AQA, Pearson Edexcel, OCR, Eduqas** ✅ |
 | RQF level | **9–4 (A\*–C) = RQF level 2**; **3–1 (D–G) = RQF level 1** ✅ |
 
-**The 9–1 to A\*–G comparison** ✅ (as presented in UK ENIC's guide):
+### ✅ RESOLVED — the official Ofqual 9–1 to A\*–G comparison
 
-| 9–1 (England) | A\*–G (Wales; England and NI until 2019) |
-|--------------:|------------------------------------------|
-| 9 | — |
-| 8 | **A\*** |
-| 7 | **A** |
-| 6 | **B** |
-| 5 | — |
-| 4 | **C** |
-| 3 | **D** |
-| 2 | **E** |
-| 1 | **F** |
-| — | **G** |
-| **U** | **U** |
+**Research update (2026-08-21): the uncertain table previously in this section has been replaced. Ofqual publishes THREE anchor points, not a full row-by-row mapping — and that is the correct way to state the comparison.**
 
-⚠ **The alignment above reproduces the layout of UK ENIC's comparison table as extracted, and the 9-vs-8-vs-A\* and 5-vs-4-vs-C rows in particular should be confirmed visually against the published PDF** before the AI states any specific equivalence. What is unambiguous ✅: **9 is the highest numeric grade, 1 the lowest, U is unclassified, and both "C" and "4" are the "good pass" threshold.**
+**Verbatim from Ofqual, *"GCSE 9 to 1 grades: a brief guide for parents"*** ✅:
 
-> ⚠ **A crucial nuance:** the 9–1 scale is **not** a simple renaming of A\*–G. There are **9 pass grades on the numeric scale vs 7 on the letter scale**, and the top grade 9 was designed to be **more selective than an A\***. ⚠ **Do not treat 9 = A\*.** ❌ *Ofqual's official 9–1/A\*–G comparison — obtain from Ofqual/GOV.UK.*
+> *"the **bottom of a grade 7 is comparable to the bottom of the old grade A**"*
+>
+> *"the **bottom of a new grade 4 is comparable to the bottom of the old grade C**"*
+>
+> *"the **bottom of the new grade 1 is comparable to the bottom of the old grade G**"*
+
+**And on setting entry requirements** ✅:
+
+> *"if they previously set entry requirements of at least a grade C, then the equivalent now would be to require **at least grade 4**"*
+
+| The three official anchors | |
+|---|---|
+| **Grade 7 ↔ Grade A** | at the **bottom** of each grade ✅ |
+| **Grade 4 ↔ Grade C** | at the **bottom** of each grade ✅ |
+| **Grade 1 ↔ Grade G** | at the **bottom** of each grade ✅ |
+
+> ✅⚠ **THE CRITICAL POINT, now official: grade 9 has NO equivalent on the old scale.** It *"was introduced to provide greater differentiation among top performers"* ✅. The old scale had 7 pass grades (A\*–G); the new scale has 9 (9–1), *"to give sixth forms, colleges, universities and employers the opportunity to better distinguish between students of different abilities"* ✅.
+>
+> **So: 9 ≠ A\*. Grades 8 and 9 together occupy roughly the territory of the old A\*, and grades 4, 5 and 6 together replace the old B and C** ✅.
+
+**Pass terminology** ⚠:
+
+| Term | Grade |
+|------|-------|
+| **"Standard pass"** | **Grade 4** ⚠ |
+| **"Strong pass"** | **Grade 5** ⚠ |
+
+⚠ *"which one matters depends on the school, college or employer — there isn't a single official pass/fail rule for every purpose"* ⚠. UK ENIC's guide independently states that **"C" or "4" is "a good pass"** ✅.
+
+> ✅ **AI rule (now firm):** when converting a UK GCSE grade, use the **three anchors only** (7↔A, 4↔C, 1↔G) and say explicitly that **grade 9 has no old-scale equivalent**. Do not construct a full one-to-one mapping — Ofqual deliberately does not publish one, because the scales have different numbers of grades.
 
 # 8. England — A level and post-16 ✅
 
@@ -253,7 +270,26 @@ UK ENIC names a document — ***"Qualifications can cross boundaries"*** — *"t
 | **T Levels** | **3** | England-specific technical qualifications ✅; graded **Pass, Merit, Distinction, Distinction\*** ⚠ (secondary source) |
 | **Level 3 NVQ** | **3** | ✅ |
 
-❌ *A level grading (A\*–E, with U for unclassified) — **not captured verbatim from the guide in this pass**, though it is universally known and a Pearson page on "Understanding A level marks and grades" was surfaced. **Obtain the official A level grade scale from Ofqual/Pearson before the AI states it.*** ⚠
+### ✅ RESOLVED — the A level grade scale
+
+**Research update (2026-08-21): previously not captured. Now established.**
+
+| Grade | Status |
+|-------|--------|
+| **A\*** | Top grade — **introduced in 2010** ⚠ |
+| **A** | |
+| **B** | |
+| **C** | |
+| **D** | |
+| **E** | **The minimum pass** ⚠ |
+| **U** | **Unclassified** — *"means the paper didn't reach E and doesn't count as a pass"* ⚠ |
+
+- **6 passing grades (A\*–E) plus U** — 7 grades in total ⚠
+- The **A\*** was introduced *"because universities — particularly the most competitive ones — wanted a way to distinguish between students who achieved an A grade and those performing at the very top of the scale"* ⚠
+
+⚠ Corroborated across multiple sources; Ofqual's own blog post *"Setting A\* in the new A levels"* (2017) exists and confirms the grade's role. ❌ *An Ofqual/awarding-body primary statement of the full scale would close this fully, but the scale itself is not in dispute.*
+
+> ⚠ **Note the contrast with GCSEs:** **A levels retained the letter scale (A\*–E) while GCSEs in England moved to 9–1.** So an English student's certificates will show **numeric GCSE grades and lettered A level grades** — that is normal, not an inconsistency.
 
 # 9. England — Technical and vocational qualifications ✅
 
@@ -556,9 +592,24 @@ UK ENIC names a document — ***"Qualifications can cross boundaries"*** — *"t
 | Master's | ⚠ Commonly Distinction / Merit / Pass ⚠ ❌ *not captured from the guide* |
 | Doctoral | Pass/fail on examination of the thesis ⚠ |
 
-❌ *UK master's classification conventions (Distinction / Merit / Pass) and the percentage boundaries for degree classifications — **not extracted in this pass**. Boundaries are institution-set. **Priority gap.***
+### ✅ RESOLVED (substantially) — the conventional degree classification boundaries
 
-> ⚠ **A UK degree classification is institution-set in its precise boundaries** but nationally consistent in its **vocabulary** (1st / 2.1 / 2.2 / 3rd). ⚠ ❌ *Confirm whether any national boundary convention exists (e.g. 70%+ for a 1st) — widely believed but not verified here. **Do not have the AI state percentage boundaries.***
+**Research update (2026-08-21): previously flagged as a gap with the instruction not to state boundaries. The conventional boundaries are now documented, with the correct caveat.**
+
+| Classification | Conventional boundary |
+|----------------|----------------------:|
+| **First-Class Honours (1st)** | **70% or higher** ⚠ |
+| **Upper Second-Class Honours (2:1)** | **60–69%** ⚠ |
+| **Lower Second-Class Honours (2:2)** | **50–59%** ⚠ |
+| **Third-Class Honours (3rd)** | **40–49%** ⚠ |
+
+⚠ *"The specific thresholds for these classifications can vary by institution. However, these thresholds are **standard across most UK universities**, although some institutions apply **borderline or discretion rules**."* ⚠
+
+> ✅ **What the AI may now say:** the UK convention is **70/60/50/40** for 1st / 2:1 / 2:2 / 3rd, that it is **near-universal but institution-set**, and that **borderline and discretionary rules** mean a mark just below a boundary may still be classified upward. It must not present the boundaries as a national regulation.
+>
+> ⚠ **A genuinely useful counselling point:** because a UK **2:1 starts at 60%**, a UK transcript showing "62%" is a **good** result — not a mediocre one. Students from percentage-based systems where 60% is unremarkable (and staff reading their transcripts) routinely misread this in both directions.
+
+❌ *UK **master's** classification conventions (Distinction / Merit / Pass) and their boundaries — **still not established**. Commonly reported as Distinction ~70%, Merit ~60%, Pass ~50%, but unverified here. Remains a gap.*
 
 ---
 

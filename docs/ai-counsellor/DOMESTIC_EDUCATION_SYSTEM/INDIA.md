@@ -711,18 +711,58 @@ Many Indian universities report — or additionally report — **percentage mark
 | CGPA | Averaged grade points across **five main subjects** ⚠ |
 | CGPA → percentage | **CGPA × 9.5** ⚠ |
 
-### ⚠⚠ A documented source conflict on CBSE grading
+### ✅ RESOLVED — the CBSE grading conflict, settled from CBSE's own documents
 
-| Claim | Statement |
-|-------|-----------|
-| **Claim A (positional)** | Grades are assigned by **national rank in octiles** among passers — A1 = top eighth |
-| **Claim B (absolute)** | **A1 = 91–100 marks**, A2 = 81–90, etc. — fixed mark bands |
+**Research update (2026-08-21): this was previously logged as a documented conflict. It is now resolved from official CBSE sources, and the earlier hypothesised reconciliation was WRONG.**
 
-**Both claims appear in current secondary sources.** The most likely reconciliation is that **CBSE Class 12 uses positional/relative grading**, while the **absolute 91–100 = A1 bands belong to CBSE Class 10** (and to the CGPA era). But this was **not resolved from a CBSE primary source**, and the two produce very different readings of the same letter grade.
+**Verbatim from CBSE, *"Grading System in CBSE For 10th & 12th"*** (`cbse.gov.in/cbsenew/correction//grading.pdf`) ✅ and repeated in CBSE's *"Scheme of Examinations and Pass Criteria"* (`cbse.gov.in/cbsenew/Exambylaws_archive/`) ✅:
 
-❌ *Authoritative CBSE grading rules for Class 10 and Class 12 separately — requires reading CBSE's official examination bye-laws / result-processing documents. **This is a priority gap.***
+> *"For awarding the grades, the Board shall put all the passed students in a **rank order** and will award grades as follows:"*
+>
+> | Grade | Assignment |
+> |-------|-----------|
+> | **A-1** | *Top 1/8th of the passed candidates* |
+> | **A-2** | *Next 1/8th of the passed candidates* |
+> | **B-1** | *Next 1/8th of the passed candidates* |
+> | **B-2** | *Next 1/8th of the passed candidates* |
+> | **C-1** | *Next 1/8th of the passed candidates* |
+> | **C-2** | *Next 1/8th of the passed candidates* |
+> | **D-1** | *Next 1/8th of the passed candidates* |
+> | **D-2** | *Next 1/8th of the passed candidates* |
+> | **E** | *Failed candidates* |
 
-> ⚠ **AI rule:** if a CBSE Class 12 grade is **positional**, then **"A1" means "top eighth of the national cohort in that subject", not "91%+"**. The AI must not convert a CBSE Class 12 letter grade into a percentage. **Use the marks, which CBSE also reports.**
+**Official notes accompanying the table** ✅:
+- *"Minor variations in proportion of candidates to adjust ties will be made."*
+- *"In case of a tie, all the students getting the same score, will get the same grade. If the number of students at a score point need to be divided into two segments, the smaller segment will go with the larger."*
+- *"Method of grading will be used in subjects where the number of candidates who have passed is **more than 500**."*
+- *"In respect of subjects where total number of candidates passing in a subject is **less than 500**, the grading would be adopted on the pattern of grading and distribution in other similar subjects."*
+
+**From CBSE's Scheme of Examinations and Pass Criteria** ✅:
+- *"Letter grades on a **nine-point scale** shall be used for subjects of external examination."*
+- *"The grades shall be **derived from scores**."*
+- *"The qualifying marks in each subject of external examination shall be **33%**."*
+- For subjects involving practical work: *"33% marks in the theory and 33% marks in the practical **separately** in addition to 33% marks in **aggregate**."*
+- Pass: *"a candidate shall obtain a grade **higher than E** (i.e. atleast 33% marks) in all the five subjects of external examination in the main or at the compartmental examinations."*
+- **Internal assessment** subjects are graded on a **five-point scale (A, B, C, D, E)** ✅ — a *different* scale from the nine-point external scale.
+
+### What this settles ✅
+
+| Question | Answer |
+|----------|--------|
+| Is CBSE grading positional or absolute? | **Positional** — rank order, eight equal segments of *passed* candidates |
+| Does it apply to Class 10 or Class 12? | **BOTH** — the CBSE document is titled *"Grading System in CBSE For 10th & 12th"* |
+| What are the grade labels? | **A-1, A-2, B-1, B-2, C-1, C-2, D-1, D-2, E** (with hyphens) |
+| Is "A1 = 91–100 marks" correct? | **No.** For subjects of external examination this claim is **wrong**. It appears in many secondary sources and should be disregarded |
+| Is "E1/E2" correct? | **No.** CBSE's official scale has a single **E** for failed candidates |
+| Pass mark | **33%** per subject; separately in theory and practical where applicable, plus 33% aggregate |
+
+> ⚠⚠ **Two corrections to earlier drafts of this document:**
+> 1. The hypothesis that Class 10 uses absolute bands while Class 12 is positional was **wrong**. CBSE's own document covers **both** and is positional for both.
+> 2. The grade labels are **A-1 … D-2 plus E**, not "A1 … D2 with E1/E2".
+
+> ✅ **AI rule (now firm):** a CBSE letter grade in an externally examined subject is a **rank position among passed candidates nationally**, not a mark band. **"A-1" means "top eighth of the passed candidates in that subject."** The AI must **never** convert a CBSE letter grade into a percentage. **Use the marks, which CBSE also reports** on the marksheet.
+>
+> ⚠ Note the corollary: because grades are assigned among *passed* candidates, **the meaning of a CBSE grade shifts with the cohort each year**, and a grade from one subject is not comparable to a grade from another subject with a different candidate distribution.
 
 ## 12.4 CBSE Class 10 — three eras ⚠
 
@@ -747,17 +787,43 @@ Many Indian universities report — or additionally report — **percentage mark
 
 ⚠ **Note the different pass thresholds:** ICSE and ISC appear to use **different** pass marks (33/35% vs 40%), and sources conflict on ICSE. ❌ *Authoritative CISCE pass criteria and grading tables — requires reading CISCE's official regulations at cisce.org. **Priority gap.***
 
-## 12.6 State boards ⚠
+## 12.6 State boards — five major boards now documented ⚠
+
+**Research update (2026-08-21): this section previously had no board-level detail. Five of India's largest boards are now documented, and the picture they reveal is more important than any single board's table: pass marks, grade labels and grading *models* all differ.**
+
+| Board | Class 12 grading | Pass mark |
+|-------|-----------------|-----------|
+| **Maharashtra (MSBSHSE) — HSC** | **Percentage with Division bands**: Distinction **≥75%**; First Division **60–74%**; Second Division **45–59%**; Pass **35–44%**; Fail **<35%** | **35%** in each subject (theory and practical) **and** in aggregate. Practicals: 7/20 or 10.5/30 ⚠ |
+| **Uttar Pradesh (UPMSP) — Intermediate** | Grades **A1 to E2** for theory papers; **A to E** for practicals ⚠ | **33%** in each subject ⚠ |
+| **West Bengal (WBCHSE) — HS** | Grades **AA, A+, A, B+, B, C, D**: AA **90–100**; A+ **75–89**; A **60–74**; B+ **50–59**; B **40–49**; C **30–39**; D **below 30** ⚠ | **30%** in each subject ⚠ |
+| **Tamil Nadu (DGE) — HSC** | Grades **A1 91–100; A2 81–90; B1 71–80; B2 61–70; C1 51–60; C2 41–50; D 35–40; E 21–34** ⚠ | **35** marks in each subject ⚠ |
+| **Karnataka (DPUE) — 2nd PUC** | **Nine grades: A1, A2, B1, B2, C1, C2, D1, D2, F** ⚠; Distinction **≥75%** ⚠ | **30%** per subject **and 33% aggregate** ⚠ |
+
+⚠ All rows are from secondary Indian education sources. **Each board's own regulations remain the authority.**
+
+### ⚠⚠ What this table actually proves — and it is the operative fact for the AI
+
+| Dimension | The variation |
+|-----------|--------------|
+| **Pass marks differ** | **30%** (West Bengal, Karnataka per-subject), **33%** (CBSE, UP), **35%** (Maharashtra, Tamil Nadu) |
+| **Grade models differ** | **Positional rank order** (CBSE) · **absolute mark bands** (Tamil Nadu, West Bengal) · **percentage + Division** (Maharashtra) · **inverted 1–9** (CISCE) |
+| **Grade labels collide** | **"A1"** means *top eighth of passed candidates nationally* at CBSE but *91–100 marks* at Tamil Nadu. **The same label means completely different things.** |
+| **Grade ladders differ in length** | 9 grades (CBSE, Karnataka, Tamil Nadu) · 7 grades (West Bengal) · 5 Division bands (Maharashtra) · 9 inverted points (CISCE) |
+| **Some boards report no percentage at all** | Boards that issue only grades leave no mark for the AI to fall back on ⚠ |
+
+> ⚠⚠ **AI rule, now evidence-backed:** **an Indian letter grade is uninterpretable without the board.** "A1" from CBSE and "A1" from Tamil Nadu are not the same achievement and are not on the same kind of scale. The AI must:
+> 1. **Establish the board first**, every time.
+> 2. **Prefer the percentage/marks** over the letter grade wherever both are printed.
+> 3. **Refuse to compare** grades across Indian boards, and say why.
+> 4. Never assume 33% is the pass mark — it ranges from **30% to 35%** among the boards documented here.
 
 | Item | Status |
 |------|--------|
-| Dominant reporting form | **Percentage marks per subject** ⚠ |
+| Dominant reporting form | **Percentage marks per subject**, with board-specific grades alongside ⚠ |
 | Aggregate practice | Universities commonly use **"best of four"** or **"best of five"** subject averages for admission ✅ (existing Globaly knowledge base) |
-| Pass marks | Vary by board (commonly around 33–35%) ⚠ |
-| Grading scales | Vary by board; some boards issue grades alongside marks ⚠ |
 | Marking severity | **Materially different across boards** — a 90% from one board is not the same achievement as 90% from another ⚠ |
 
-❌ **This is the single largest grading gap for India: a board-by-board table of grading scales, pass marks and mark distributions.** Requires per-board research.
+❌ *Remaining: Bihar, Kerala (DHSE), Gujarat, Madhya Pradesh, Rajasthan, Telangana, Andhra Pradesh and the other ~20 boards. **Reduced from a total blocker to a coverage gap** — the five largest boards plus CBSE, CISCE and NIOS now give the AI a working basis and, more importantly, proof that the variation is real.*
 
 ## 12.7 Summary — grading systems the AI may encounter from one Indian student
 
