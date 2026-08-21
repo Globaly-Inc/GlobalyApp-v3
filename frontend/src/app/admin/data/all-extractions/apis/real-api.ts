@@ -91,6 +91,9 @@ export const allExtractionsRealApi = {
   resetPipeline: (id: string): Promise<void> =>
     httpPost(`/admin/data-extraction/jobs/${id}/reset-pipeline`, {}),
 
+  rerunJob: (id: string): Promise<void> =>
+    httpPost(`/admin/data-extraction/jobs/${id}/rerun`, {}),
+
   // Combines the job-detail endpoint with the four tables the Overview tab's
   // "Extraction Details by Tab" cards summarize — one round trip per card group,
   // same shape V2's OverviewTab.loadSummary() fetched.

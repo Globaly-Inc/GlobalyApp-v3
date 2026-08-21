@@ -1,8 +1,13 @@
 // Extraction queue service.
 
 import { NotFoundError } from "../../../../shared/errors.js";
+import { createChildLogger } from "../../../../shared/logger.js";
+import { queueService as pipelineQueue } from "../../../../shared/queue/queueService.js";
+import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/queue.repository.js";
+
+const logger = createChildLogger("extraction-queue-service");
 
 export async function listQueue(jobId: string, status?: string) {
   return { queue: await repo.listQueueByJob(jobId, status) };
@@ -69,5 +74,21 @@ export async function resetPipeline(jobId: string, adminId: number) {
   const found = await repo.resetPipeline(jobId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, "JOB_RESET_PIPELINE", { entityType: "extraction_jobs", entityId: jobId });
+  return { updated: true };
+}
+
+// Resets progress/queue like resetPipeline, then re-dispatches to the job worker
+// so a failed job re-crawls from scratch instead of sitting at "pending".
+export async function rerunJob(jobId: string, adminId: number) {
+  const found = await repo.resetPipeline(jobId);
+  if (!found) throw new NotFoundError("Extraction job not found");
+  await logAudit(adminId, "JOB_RERUN", { entityType: "extraction_jobs", entityId: jobId });
+
+  try {
+    await pipelineQueue.publish(EXTRACTION_QUEUES.JOBS, { jobId, resumed: true });
+  } catch {
+    logger.warn("Queue unavailable on rerun, worker will poll", { jobId });
+  }
+
   return { updated: true };
 }

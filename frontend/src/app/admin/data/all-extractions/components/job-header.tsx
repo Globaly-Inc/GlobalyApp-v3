@@ -9,12 +9,13 @@ import { useAppDispatch } from "@/lib/hooks";
 import { ACTIVE_STATUSES } from "../const";
 import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RerunExtractionButton } from "./rerun-extraction-button";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
 const PUBLISH_ROW_STATUSES = ["review", "verified", "done", "approved", "exported"];
 
-export function JobHeader({ job }: Readonly<{ job: ExtractionJob }>) {
+export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onReload: () => void }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const [busy, setBusy] = useState<"stop" | "reset" | "decline" | "publish" | null>(null);
@@ -59,6 +60,8 @@ export function JobHeader({ job }: Readonly<{ job: ExtractionJob }>) {
       </div>
 
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+        <RerunExtractionButton jobId={job.id} status={job.status} onReload={onReload} />
+
         {ACTIVE_STATUSES.includes(job.status) && (
           <Button
             variant="destructive"
@@ -80,6 +83,7 @@ export function JobHeader({ job }: Readonly<{ job: ExtractionJob }>) {
               const ok = await confirm(
                 "Reset Pipeline?",
                 "This will delete all queued URLs and reset progress counters. Extracted courses, campuses, and other data will be kept. The job will return to pending status.",
+                { confirmLabel: "Reset", variant: "default" },
               );
               if (!ok) return;
               run("reset", resetPipeline(job.id), "Pipeline reset");

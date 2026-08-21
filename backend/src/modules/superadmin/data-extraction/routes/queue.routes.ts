@@ -67,4 +67,10 @@ export async function queueRoutes(app: FastifyInstance) {
     const { id } = QueueJobParamSchema.parse(req.params);
     return reply.send(await service.resetPipeline(id, adminId(req)));
   });
+
+  // POST /jobs/:id/rerun — reset + re-dispatch to the job worker
+  app.post("/jobs/:id/rerun", async (req, reply) => {
+    const { id } = QueueJobParamSchema.parse(req.params);
+    return reply.send(await service.rerunJob(id, adminId(req)));
+  });
 }
