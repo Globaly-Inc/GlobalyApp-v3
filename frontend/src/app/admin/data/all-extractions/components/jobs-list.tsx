@@ -291,6 +291,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
             onDecline={() => runAction(declineJob(job.id), "Extraction declined")}
             onDelete={() => runAction(deleteJob(job.id), "Deleted")}
             onPublish={canPublish ? () => handlePublish(job.id) : undefined}
+            onReload={() => dispatch(fetchAllExtractions(mode))}
             publishing={publishingId === job.id}
           />
         ))}

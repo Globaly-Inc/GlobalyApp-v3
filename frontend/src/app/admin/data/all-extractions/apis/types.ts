@@ -41,6 +41,8 @@ export type ExtractionJob = {
   guidance_notes?: string | null;
   pipeline_progress?: Record<string, unknown> | null;
   supporting_documents?: SupportingDoc[] | null;
+  error_message?: string | null;
+  processing_heartbeat_at?: string | null;
   created_at: string;
   updated_at: string;
 };
