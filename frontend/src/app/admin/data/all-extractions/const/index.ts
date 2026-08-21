@@ -1,13 +1,16 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Clock,
+  EyeOff,
   Globe,
   ListOrdered,
   Loader2,
   AlertCircle,
   CheckCircle2,
+  PauseCircle,
   ShieldCheck,
   Sparkles,
+  Square,
   XCircle,
   Pause,
 } from "lucide-react";
@@ -105,14 +108,14 @@ export const PIPELINE_STAGES: { key: string; label: string; icon: LucideIcon }[]
 
 // Queue item statuses, in the order the counter row shows them. "completed" is what
 // the V3 page worker writes — V2 called the same state "done".
-export const QUEUE_STATS: { status: string; label: string; color: string }[] = [
-  { status: "pending", label: "Pending", color: "text-muted-foreground" },
-  { status: "processing", label: "Processing", color: "text-primary" },
-  { status: "paused", label: "Paused", color: "text-amber-600" },
-  { status: "stopped", label: "Stopped", color: "text-destructive" },
-  { status: "completed", label: "Done", color: "text-emerald-600" },
-  { status: "failed", label: "Failed", color: "text-destructive" },
-  { status: "ignored", label: "Ignored", color: "text-muted-foreground" },
+export const QUEUE_STATS: { status: string; label: string; color: string; tint: string; icon: LucideIcon }[] = [
+  { status: "pending", label: "Pending", color: "text-muted-foreground", tint: "bg-muted", icon: Clock },
+  { status: "processing", label: "Processing", color: "text-primary", tint: "bg-primary/10", icon: Loader2 },
+  { status: "paused", label: "Paused", color: "text-amber-600", tint: "bg-amber-100", icon: PauseCircle },
+  { status: "stopped", label: "Stopped", color: "text-destructive", tint: "bg-red-100", icon: Square },
+  { status: "completed", label: "Done", color: "text-emerald-600", tint: "bg-emerald-100", icon: CheckCircle2 },
+  { status: "failed", label: "Failed", color: "text-destructive", tint: "bg-red-100", icon: XCircle },
+  { status: "ignored", label: "Ignored", color: "text-muted-foreground", tint: "bg-muted", icon: EyeOff },
 ];
 
 export const QUEUE_FILTERS: { value: string; label: string }[] = [

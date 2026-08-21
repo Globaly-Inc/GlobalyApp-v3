@@ -56,6 +56,15 @@ export function useFieldSaver(jobId: string, reload: () => Promise<unknown> | vo
  * A labelled value that turns into an input on click. The pencil only appears on
  * hover; ✓ / ✕ (or Enter / Escape) commit or discard.
  */
+export type EditableFieldProps = Readonly<{
+  label: string;
+  value: string | null | undefined;
+  onSave: (next: string | null) => Promise<unknown>;
+  multiline?: boolean;
+  className?: string;
+  placeholder?: string;
+}>;
+
 export function EditableField({
   label,
   value,
@@ -63,14 +72,7 @@ export function EditableField({
   multiline = false,
   className,
   placeholder = "—",
-}: Readonly<{
-  label: string;
-  value: string | null | undefined;
-  onSave: (next: string | null) => Promise<unknown>;
-  multiline?: boolean;
-  className?: string;
-  placeholder?: string;
-}>) {
+}: EditableFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [saving, setSaving] = useState(false);

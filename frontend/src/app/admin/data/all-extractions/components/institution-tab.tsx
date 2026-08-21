@@ -1,12 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Loader2, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Building2, FileText, Globe, Hash, Image, Link2, Loader2, Mail, MapPin, Phone, Share2, Sparkles, Type,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { EditableField } from "./editable-field";
+import { EditableField, type EditableFieldProps } from "./editable-field";
 import type { InstitutionOverview } from "../apis/types";
 
 export type InstitutionTabProps = Readonly<{
@@ -15,11 +19,28 @@ export type InstitutionTabProps = Readonly<{
   onReload: () => void;
 }>;
 
-function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
+function Section({ icon: Icon, title, children }: Readonly<{ icon: LucideIcon; title: string; children: React.ReactNode }>) {
   return (
-    <p className="md:col-span-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-      {children}
-    </p>
+    <div className="rounded-lg border border-border p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Icon className="h-4 w-4 text-primary" />
+        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+      </div>
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">{children}</div>
+    </div>
+  );
+}
+
+// EditableField already handles its own click-to-edit affordance — this just gives
+// each field a visual anchor (icon tile) so the section doesn't read as bare text rows.
+function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
+  return (
+    <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <EditableField {...field} className="flex-1" />
+    </div>
   );
 }
 
@@ -58,68 +79,71 @@ export function InstitutionTab({ overview, jobId, onReload }: InstitutionTabProp
     }
   };
 
+  if (!overview) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="py-12 text-center text-muted-foreground">
+          <Building2 className="mx-auto mb-3 h-8 w-8 opacity-40" />
+          <p className="text-sm">No institution data extracted yet</p>
+          <p className="mt-1 text-xs">Run the extraction below, or wait for the pipeline to populate it</p>
+          <Button variant="outline" className="mt-4 gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            Run Institution Extraction
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button variant="outline" className="gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          Re-run Institution Extraction
-        </Button>
-      </div>
+    <Card>
+      <CardHeader className="-mt-4 rounded-t-xl border-b bg-primary/5 px-4 py-4">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Building2 className="h-4 w-4 text-primary" />
+          Institution Details
+        </CardTitle>
+        <CardAction>
+          <Button variant="outline" size="sm" className="gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            Re-run
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-start gap-4">
+          {overview.logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element -- extracted logos are arbitrary remote hosts
+            <img src={overview.logo_url} alt="" className="h-16 w-16 shrink-0 rounded-xl border object-contain p-1" />
+          )}
+          <div className="grid flex-1 grid-cols-1 gap-2.5 md:grid-cols-2">
+            <Field icon={Type} label="Name" value={overview.name} onSave={(v) => saveField("name", v)} />
+            <Field icon={Globe} label="Website" value={overview.website} onSave={(v) => saveField("website", v)} />
+            <Field icon={Image} label="Logo URL" value={overview.logo_url} onSave={(v) => saveField("logo_url", v)} className="md:col-span-2" />
+          </div>
+        </div>
 
-      {overview ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Institution Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="flex items-start gap-4">
-              {overview.logo_url && (
-                // eslint-disable-next-line @next/next/no-img-element -- extracted logos are arbitrary remote hosts
-                <img src={overview.logo_url} alt="" className="h-16 w-16 shrink-0 rounded-xl border object-contain p-1" />
-              )}
-              <div className="grid flex-1 grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-                <EditableField label="Name" value={overview.name} onSave={(v) => saveField("name", v)} />
-                <EditableField label="Website" value={overview.website} onSave={(v) => saveField("website", v)} />
-                <EditableField label="Logo URL" value={overview.logo_url} onSave={(v) => saveField("logo_url", v)} className="md:col-span-2" />
-              </div>
-            </div>
+        <Section icon={Mail} title="Contact">
+          <Field icon={Mail} label="Email" value={overview.email} onSave={(v) => saveField("email", v)} />
+          <Field icon={Phone} label="Phone" value={overview.phone} onSave={(v) => saveField("phone", v)} />
+        </Section>
 
-            <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-              <SectionLabel>Contact</SectionLabel>
-              <EditableField label="Email" value={overview.email} onSave={(v) => saveField("email", v)} />
-              <EditableField label="Phone" value={overview.phone} onSave={(v) => saveField("phone", v)} />
-            </div>
+        <Section icon={MapPin} title="Location">
+          <Field icon={Globe} label="Country" value={overview.country} onSave={(v) => saveField("country", v)} />
+          <Field icon={Building2} label="City" value={overview.city} onSave={(v) => saveField("city", v)} />
+          <Field icon={MapPin} label="State" value={overview.state} onSave={(v) => saveField("state", v)} />
+          <Field icon={Hash} label="Zip / Postcode" value={overview.zip_code} onSave={(v) => saveField("zip_code", v)} />
+          <Field icon={MapPin} label="Address" value={overview.address} onSave={(v) => saveField("address", v)} multiline className="md:col-span-2" />
+          <Field icon={FileText} label="Description" value={overview.description} onSave={(v) => saveField("description", v)} multiline className="md:col-span-2" />
+        </Section>
 
-            <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-              <SectionLabel>Location</SectionLabel>
-              <EditableField label="Country" value={overview.country} onSave={(v) => saveField("country", v)} />
-              <EditableField label="City" value={overview.city} onSave={(v) => saveField("city", v)} />
-              <EditableField label="State" value={overview.state} onSave={(v) => saveField("state", v)} />
-              <EditableField label="Zip / Postcode" value={overview.zip_code} onSave={(v) => saveField("zip_code", v)} />
-              <EditableField label="Address" value={overview.address} onSave={(v) => saveField("address", v)} multiline className="md:col-span-2" />
-              <EditableField label="Description" value={overview.description} onSave={(v) => saveField("description", v)} multiline className="md:col-span-2" />
-            </div>
-
-            <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-              <SectionLabel>Social Media</SectionLabel>
-              <EditableField label="Facebook" value={overview.facebook_url} onSave={(v) => saveField("facebook_url", v)} />
-              <EditableField label="Instagram" value={overview.instagram_url} onSave={(v) => saveField("instagram_url", v)} />
-              <EditableField label="Twitter" value={overview.twitter_url} onSave={(v) => saveField("twitter_url", v)} />
-              <EditableField label="LinkedIn" value={overview.linkedin_url} onSave={(v) => saveField("linkedin_url", v)} />
-              <EditableField label="YouTube" value={overview.youtube_url} onSave={(v) => saveField("youtube_url", v)} />
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Building2 className="mx-auto mb-3 h-8 w-8 opacity-40" />
-            <p className="text-sm">No institution data extracted yet</p>
-            <p className="mt-1 text-xs">Run the extraction above, or wait for the pipeline to populate it</p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+        <Section icon={Share2} title="Social Media">
+          <Field icon={Link2} label="Facebook" value={overview.facebook_url} onSave={(v) => saveField("facebook_url", v)} />
+          <Field icon={Link2} label="Instagram" value={overview.instagram_url} onSave={(v) => saveField("instagram_url", v)} />
+          <Field icon={Link2} label="Twitter" value={overview.twitter_url} onSave={(v) => saveField("twitter_url", v)} />
+          <Field icon={Link2} label="LinkedIn" value={overview.linkedin_url} onSave={(v) => saveField("linkedin_url", v)} />
+          <Field icon={Link2} label="YouTube" value={overview.youtube_url} onSave={(v) => saveField("youtube_url", v)} />
+        </Section>
+      </CardContent>
+    </Card>
   );
 }

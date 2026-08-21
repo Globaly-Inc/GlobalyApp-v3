@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RotateCcw, Square, Upload, XCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Landmark, RotateCcw, Square, Upload, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useAppDispatch } from "@/lib/hooks";
-import { ACTIVE_STATUSES } from "../const";
+import { ACTIVE_STATUSES, STATUS_CONFIG } from "../const";
 import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
@@ -53,6 +54,9 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
         </Button>
+        <div className={cn("flex h-16 w-16 shrink-0 items-center justify-center rounded-md", (STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending).className)}>
+          <Landmark className="h-8 w-8" />
+        </div>
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-foreground truncate">{job.institution_name || "Extraction Review"}</h1>
           <p className="text-xs text-muted-foreground truncate">{job.institution_url}</p>

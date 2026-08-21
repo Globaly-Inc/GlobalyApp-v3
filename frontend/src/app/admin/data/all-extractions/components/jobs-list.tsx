@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Building2, Plus, Search, Trash2, Upload } from "lucide-react";
+import { Building2, ListFilter, Plus, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -197,11 +197,16 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
       {showNewForm && <NewExtractionDialog open={showNewForm} onOpenChange={setShowNewForm} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div>
-          <p className="font-semibold text-foreground">{MODE_HEADINGS[mode].title}</p>
-          <p className="text-sm text-muted-foreground">
-            {visibleJobs.length} job{visibleJobs.length === 1 ? "" : "s"}
-          </p>
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <ListFilter className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="font-semibold text-foreground">{MODE_HEADINGS[mode].title}</p>
+            <p className="text-sm text-muted-foreground">
+              {visibleJobs.length} job{visibleJobs.length === 1 ? "" : "s"}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
