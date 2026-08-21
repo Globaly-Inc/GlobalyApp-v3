@@ -27,7 +27,7 @@ const logFormat = format.combine(
   format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
   traceFormat,
   format.errors({ stack: true }),
-  format.metadata(),
+  format.metadata({ fillExcept: ["message", "level", "timestamp", "trace_id", "span_id", "request_id"] }),
   isDevelopment ? format.colorize() : format.uncolorize(),
   format.printf(({ timestamp, level, message, metadata, trace_id, span_id, request_id }) => {
     const meta = isObject(metadata) && Object.keys(metadata).length ? JSON.stringify(metadata) : "";

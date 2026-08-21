@@ -36,3 +36,8 @@ export type InviteAdminParams = {
   email: string;
   role: AdminRole;
 };
+
+export type UpdateAdminParams = {
+  role?: AdminRole;
+  is_active?: boolean;
+};

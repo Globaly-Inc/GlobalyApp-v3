@@ -7,8 +7,11 @@ export type AdminUser = {
   uuid: string;
   name: string;
   email: string;
+  phone: string | null;
   role: AdminRole;
   photo_url: string | null;
   account_status: number;
   is_email_verified: boolean;
+  is_active: boolean;
+  created_at: string;
 };

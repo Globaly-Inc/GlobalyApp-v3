@@ -62,6 +62,14 @@ export async function findAdminByPlatformUserId(platformUserId: number) {
     .first();
 }
 
+/** Unlike findAdminByPlatformUserId, includes suspended (is_active=false) rows — used at login to distinguish "not an admin" from "suspended admin". */
+export async function findAdminByPlatformUserIdIncludingInactive(platformUserId: number) {
+  return masterKnex<AdminUserRow>("superadmin.admin_users")
+    .where({ platform_user_id: platformUserId })
+    .whereNull("deleted_at")
+    .first();
+}
+
 export async function findAdminById(id: number) {
   return withUser(masterKnex<AdminUserRow>("superadmin.admin_users"))
     .select(ADMIN_WITH_USER_COLUMNS as unknown as string[])
@@ -156,7 +164,7 @@ export async function markInvitationAccepted(id: string) {
 }
 
 function invitationListQuery(search?: string) {
-  const q = masterKnex("superadmin.admin_invitations").whereNull("deleted_at");
+  const q = masterKnex("superadmin.admin_invitations").whereNull("deleted_at").where({ status: "pending" });
   if (search) {
     q.where((b) =>
       b.whereILike("first_name", `%${search}%`).orWhereILike("last_name", `%${search}%`).orWhereILike("email", `%${search}%`),
@@ -176,4 +184,17 @@ export async function listInvitations(limit: number, offset: number, search?: st
 export async function countInvitations(search?: string): Promise<number> {
   const [{ count }] = await invitationListQuery(search).count("id as count");
   return Number(count);
+}
+
+export async function findInvitationById(id: string) {
+  return masterKnex<AdminInvitationRow>("superadmin.admin_invitations")
+    .where({ id })
+    .whereNull("deleted_at")
+    .first();
+}
+
+export async function resendInvitationToken(id: string, token: string, expiredAt: Date) {
+  await masterKnex("superadmin.admin_invitations")
+    .where({ id })
+    .update({ invite_token: token, expired_at: expiredAt });
 }

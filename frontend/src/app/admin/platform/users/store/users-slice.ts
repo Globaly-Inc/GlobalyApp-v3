@@ -1,9 +1,14 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { usersApi } from "../apis";
-import type { AdminInvitation, AdminUser, InviteAdminParams, ListParams } from "../apis/types";
+import type { AdminInvitation, AdminUser, InviteAdminParams, ListParams, UpdateAdminParams } from "../apis/types";
 
 export const fetchUsers = createAsyncThunk("adminUsers/fetchUsers", (params: ListParams = {}) =>
   usersApi.listUsers(params),
+);
+
+export const updateAdmin = createAsyncThunk(
+  "adminUsers/updateAdmin",
+  ({ id, patch }: { id: number; patch: UpdateAdminParams }) => usersApi.updateAdmin(id, patch),
 );
 
 export const fetchInvitations = createAsyncThunk("adminUsers/fetchInvitations", (params: ListParams = {}) =>
@@ -12,6 +17,10 @@ export const fetchInvitations = createAsyncThunk("adminUsers/fetchInvitations", 
 
 export const inviteAdmin = createAsyncThunk("adminUsers/inviteAdmin", (params: InviteAdminParams) =>
   usersApi.inviteAdmin(params),
+);
+
+export const resendInvitation = createAsyncThunk("adminUsers/resendInvitation", (id: string) =>
+  usersApi.resendInvitation(id),
 );
 
 type PaginatedList<T> = { data: T[]; page: number; limit: number; total: number; totalPages: number };

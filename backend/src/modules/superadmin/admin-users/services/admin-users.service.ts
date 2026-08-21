@@ -50,7 +50,10 @@ export async function getAdminByPlatformUserId(platformUserId: number) {
   return repo.findAdminById(admin.id);
 }
 
-export async function updateAdmin(id: number, data: UpdateAdminInput) {
+export async function updateAdmin(id: number, data: UpdateAdminInput, callerRole: string) {
+  if (callerRole !== "super_admin") {
+    throw new ForbiddenError("Only super_admin can edit admin roles or status");
+  }
   const admin = await repo.findAdminById(id);
   if (!admin) throw new NotFoundError("Admin not found");
   return repo.updateAdmin(id, data);
@@ -111,6 +114,31 @@ export async function inviteAdmin(
 
   logger.info("Admin invitation queued", { email: input.email, invitedBy: invitedByPlatformUserId });
   return invitation;
+}
+
+export async function resendInvitation(id: string, inviterRole: string) {
+  if (inviterRole !== "super_admin") {
+    throw new ForbiddenError("Only super_admin can resend invitations");
+  }
+
+  const invitation = await repo.findInvitationById(id);
+  if (!invitation) throw new NotFoundError("Invitation not found");
+  if (invitation.status !== "pending") throw new ConflictError("Only pending invitations can be resent");
+
+  const token = randomBytes(32).toString("hex");
+  const expiredAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+  await repo.resendInvitationToken(id, token, expiredAt);
+
+  const acceptUrl = `${config.CORS_ORIGINS}/auth/accept-invite?token=${token}`;
+  await queueInvitationEmail({
+    to: invitation.email,
+    name: invitation.first_name,
+    role: roleDisplayName(invitation.role),
+    acceptUrl,
+  });
+
+  logger.info("Admin invitation resent", { email: invitation.email });
+  return { message: "Invitation resent." };
 }
 
 export async function acceptInvitation(token: string) {

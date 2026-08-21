@@ -1,6 +1,6 @@
 import { uuid } from "@/lib/utils";
 import type {
-  AdminInvitation, AdminUser, InviteAdminParams, ListParams, PaginatedAdminUsers, PaginatedInvitations,
+  AdminInvitation, AdminUser, InviteAdminParams, ListParams, PaginatedAdminUsers, PaginatedInvitations, UpdateAdminParams,
 } from "./types";
 
 function delay(ms: number) {
@@ -19,10 +19,13 @@ const mockAdminUsers: AdminUser[] = Array.from({ length: 14 }, (_, i) => {
     uuid: uuid(),
     name: `${first} ${last}`,
     email: `${first.toLowerCase()}.${last.toLowerCase()}@example.com`,
+    phone: null,
     role: ROLES[i % ROLES.length] ?? "admin",
     photo_url: null,
     account_status: i % 7 === 0 ? 0 : 1,
     is_email_verified: i % 5 !== 0,
+    is_active: i % 6 !== 0,
+    created_at: new Date(Date.now() - (i + 1) * 4 * 86_400_000).toISOString(),
   };
 });
 
@@ -74,8 +77,26 @@ export const usersMockApi = {
   listInvitations: async (params: ListParams = {}): Promise<PaginatedInvitations> => {
     console.log("[mock] GET /admin/users/invitations", params);
     await delay(300);
-    const filtered = mockInvitations.filter((i) => matches(params.search, i.first_name, i.last_name, i.email));
+    const filtered = mockInvitations
+      .filter((i) => i.status === "pending")
+      .filter((i) => matches(params.search, i.first_name, i.last_name, i.email));
     return paginate(filtered, params);
+  },
+
+  resendInvitation: async (id: string): Promise<void> => {
+    console.log("[mock] POST /admin/users/invitations/:id/resend", id);
+    await delay(300);
+    const invitation = mockInvitations.find((i) => i.id === id);
+    if (!invitation) throw new Error("Invitation not found");
+    invitation.expired_at = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  },
+
+  updateAdmin: async (id: number, patch: UpdateAdminParams): Promise<void> => {
+    console.log("[mock] PATCH /admin/users/" + id, patch);
+    await delay(300);
+    const user = mockAdminUsers.find((u) => u.id === id);
+    if (!user) throw new Error("Admin not found");
+    Object.assign(user, patch);
   },
 
   inviteAdmin: async (params: InviteAdminParams): Promise<void> => {
