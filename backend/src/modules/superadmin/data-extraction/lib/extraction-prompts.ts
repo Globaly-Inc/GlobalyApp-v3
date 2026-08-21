@@ -156,7 +156,14 @@ Extract this JSON:
           "speaking_score": null
         }
       ],
-      "campus_names": ["campus names where this course is offered"]
+      "campus_names": ["campus names where this course is offered"],
+      "study_units": [
+        {
+          "unit_code": "code or null",
+          "unit_name": "unit/subject name as it appears in the curriculum",
+          "credit_points": null
+        }
+      ]
     }
   ],
   "campuses_found": [
@@ -180,7 +187,8 @@ Rules:
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If fees link to an external PDF or schedule page, include that URL in the fee name (e.g. "See fee schedule: <url>")
-- Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")`;
+- Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")
+- study_units are the individual subjects/units taught within THIS course's curriculum (e.g. a listed core/elective unit with its own code or name) — only include units explicitly listed as part of this course's structure, not unrelated courses mentioned elsewhere on the page`;
 }
 
 // ── Phase 2b: Institution extraction (step worker) ──

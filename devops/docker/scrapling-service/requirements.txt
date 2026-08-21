@@ -1,4 +1,0 @@
-scrapling[fetchers]==0.4.14
-markdownify==1.2.0
-fastapi==0.115.6
-uvicorn[standard]==0.34.0

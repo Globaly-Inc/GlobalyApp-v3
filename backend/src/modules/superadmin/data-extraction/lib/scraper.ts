@@ -1,6 +1,8 @@
-// Scraper — Scrapling primary, Crawl4AI then Firecrawl fallback.
+// Scraper — Scrapling (via its own MCP server) primary, Crawl4AI then Firecrawl fallback.
 // Crawl4AI/Firecrawl cascade is a direct port of V1 supabase/functions/_shared/crawl4ai.ts.
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { siteOf } from "./html-utils.js";
@@ -196,27 +198,89 @@ async function crawl4aiScrape(
   }
 }
 
-// ─── Scrapling ──────────────────────────────────────────────────────────────
+// ─── Scrapling (via its own MCP server) ────────────────────────────────────
+//
+// Scrapling has no REST contract of its own — its only built-in "service mode"
+// is an MCP server (`scrapling mcp --http`, see devops's scrapling-mcp compose
+// service). Its `get`/`stealthy_fetch`/`fetch` tools are exactly the three
+// cheapest-first tiers our old self-hosted wrapper used to implement by hand
+// (plain HTTP+impersonation → Cloudflare-solving headless browser → full
+// Playwright), so this cascades across those tools directly over MCP instead.
+
+let mcpClient: Client | null = null;
+let mcpClientBaseUrl: string | null = null;
+
+async function getMcpClient(cfg: { baseUrl: string; apiKey?: string }): Promise<Client> {
+  if (mcpClient && mcpClientBaseUrl === cfg.baseUrl) return mcpClient;
+  const transport = new StreamableHTTPClientTransport(new URL(`${cfg.baseUrl}/mcp`), {
+    requestInit: cfg.apiKey ? { headers: { Authorization: `Bearer ${cfg.apiKey}` } } : undefined,
+  });
+  const client = new Client({ name: "globalyapp-backend", version: "1.0.0" });
+  await client.connect(transport);
+  logger.info(`scrapling mcp connected at ${cfg.baseUrl}/mcp`);
+  mcpClient = client;
+  mcpClientBaseUrl = cfg.baseUrl;
+  return client;
+}
+
+type ScraplingExtractionType = "markdown" | "html";
+
+interface ScraplingToolResult {
+  status?: number;
+  content?: string[];
+  url?: string;
+}
+
+// Cheapest-first, matching the old wrapper's internal escalation.
+const SCRAPLING_TIERS: { tool: string; timeoutMs: number; args: Record<string, unknown> }[] = [
+  { tool: "get", timeoutMs: 15_000, args: { timeout: 10 } },
+  { tool: "stealthy_fetch", timeoutMs: 30_000, args: { timeout: 25_000, network_idle: true, solve_cloudflare: true } },
+  { tool: "fetch", timeoutMs: 35_000, args: { timeout: 30_000, network_idle: true } },
+];
 
 async function scraplingScrape(
   url: string,
   cfg: { baseUrl: string; apiKey?: string },
-): Promise<{ markdown: string; html: string; tierUsed?: string; error?: string }> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
+  extractionType: ScraplingExtractionType,
+): Promise<{ content: string; tierUsed?: string; error?: string }> {
+  let client: Client;
   try {
-    const res = await fetch(`${cfg.baseUrl}/scrape`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ url }),
-      signal: AbortSignal.timeout(40_000),
-    });
-    const data: any = await res.json().catch(() => ({}));
-    if (!res.ok) return { markdown: "", html: "", error: data?.error || `HTTP ${res.status}` };
-    return { markdown: data?.markdown || "", html: data?.html || "", tierUsed: data?.tier_used, error: data?.error };
+    client = await getMcpClient(cfg);
   } catch (err) {
-    return { markdown: "", html: "", error: err instanceof Error ? err.message : "scrapling network error" };
+    // Connection-level failure (server down/unreachable) — drop the cached client so the next call retries fresh.
+    mcpClient = null;
+    mcpClientBaseUrl = null;
+    return { content: "", error: err instanceof Error ? err.message : "scrapling mcp connection error" };
   }
+
+  let lastError: string | undefined;
+  for (const tier of SCRAPLING_TIERS) {
+    logger.info(`scrapling mcp: calling tool "${tier.tool}" for ${url}`);
+    try {
+      const result = await client.callTool(
+        { name: tier.tool, arguments: { url, extraction_type: extractionType, ...tier.args } },
+        undefined,
+        { timeout: tier.timeoutMs },
+      );
+      if (result.isError) {
+        lastError = `${tier.tool}: ${JSON.stringify(result.content)}`;
+        logger.warn(`scrapling mcp: tool "${tier.tool}" errored for ${url} — ${lastError}`);
+        continue;
+      }
+      const structured = result.structuredContent as ScraplingToolResult | undefined;
+      const content = structured?.content?.join("\n") ?? "";
+      if (content.length >= MIN_CONTENT_LEN) {
+        logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars)`);
+        return { content, tierUsed: tier.tool };
+      }
+      lastError = `${tier.tool} returned ${content.length} chars`;
+      logger.info(`scrapling mcp: tool "${tier.tool}" insufficient for ${url} (${content.length} chars) — escalating`);
+    } catch (err) {
+      lastError = err instanceof Error ? `${tier.tool}: ${err.message}` : `${tier.tool} error`;
+      logger.warn(`scrapling mcp: tool "${tier.tool}" threw for ${url} — ${lastError}`);
+    }
+  }
+  return { content: "", error: lastError ?? "all scrapling tiers exhausted" };
 }
 
 // ─── Firecrawl ──────────────────────────────────────────────────────────────
@@ -255,10 +319,10 @@ export async function scrapeRenderedHtml(
 ): Promise<{ html: string; error?: string }> {
   const scrapling = getScraplingConfig();
   if (scrapling) {
-    const s = await scraplingScrape(url, scrapling);
-    if (s.html.length >= MIN_CONTENT_LEN) {
-      logger.info(`scrapling OK (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.html.length} chars)`);
-      return { html: s.html };
+    const s = await scraplingScrape(url, scrapling, "html");
+    if (s.content.length >= MIN_CONTENT_LEN) {
+      logger.info(`scrapling OK (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
+      return { html: s.content };
     }
     logger.warn(`scrapling insufficient (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
   }
@@ -293,12 +357,12 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
 
   // Path 0: Scrapling available
   if (scrapling) {
-    const s = await scraplingScrape(url, scrapling);
-    if (s.markdown.length >= MIN_CONTENT_LEN) {
-      logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.markdown.length} chars)`);
+    const s = await scraplingScrape(url, scrapling, "markdown");
+    if (s.content.length >= MIN_CONTENT_LEN) {
+      logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return {
-        markdown: s.markdown,
-        links: opts.withLinks ? extractLinksFromMarkdown(s.markdown) : [],
+        markdown: s.content,
+        links: opts.withLinks ? extractLinksFromMarkdown(s.content) : [],
         scraper: "scrapling",
       };
     }

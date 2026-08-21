@@ -51,8 +51,8 @@ const envSchema = z.object({
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
 
   // Scrapers
-  SCRAPLING_BASE_URL: z.string().optional(),  // e.g. https://your-scrapling.railway.app
-  SCRAPLING_API_KEY: z.string().optional(),
+  SCRAPLING_BASE_URL: z.string().optional(),  // base URL of Scrapling's own MCP server (e.g. http://localhost:8123) — /mcp is appended by scraper.ts
+  SCRAPLING_API_KEY: z.string().optional(),   // sent as the MCP server's Bearer auth token — must match its SCRAPLING_MCP_AUTH_TOKEN
   CRAWL4AI_BASE_URL: z.string().optional(),  // e.g. https://your-crawl4ai.railway.app
   CRAWL4AI_API_KEY: z.string().optional(),
   FIRECRAWL_API_KEY: z.string().optional(),

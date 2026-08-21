@@ -29,6 +29,13 @@ export interface ExtractedCourse {
   eligibility?: ExtractedEligibility[];
   english_requirements?: ExtractedEnglishReq[];
   campus_names?: string[];
+  study_units?: ExtractedStudyUnit[];
+}
+
+export interface ExtractedStudyUnit {
+  unit_code?: string | null;
+  unit_name: string;
+  credit_points?: number | null;
 }
 
 export interface ExtractedFee {
@@ -374,6 +381,24 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
         writing_score: eng.writing_score ?? null,
         speaking_score: eng.speaking_score ?? null,
       });
+    }
+  }
+
+  // ── Study units + assignments ──
+  if (course.study_units?.length) {
+    for (const unit of course.study_units) {
+      if (!unit.unit_name) continue;
+      const [unitRow] = await masterKnex(`${S}.extraction_study_units`)
+        .insert({
+          job_id: jobId,
+          unit_code: unit.unit_code ?? null,
+          unit_name: unit.unit_name,
+          credit_points: coerceInt(unit.credit_points),
+        })
+        .returning("id");
+      await masterKnex(`${S}.extraction_course_study_unit_assignments`)
+        .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitRow.id })
+        .onConflict(["course_id", "study_unit_id"]).ignore();
     }
   }
 

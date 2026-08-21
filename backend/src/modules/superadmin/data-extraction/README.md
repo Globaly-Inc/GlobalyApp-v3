@@ -207,10 +207,12 @@ Currently a stub — marks job as exported but doesn't write to catalog tables b
 Three-tier cascade, returning **markdown** (not raw HTML):
 
 ```
-1. Scrapling (self-hosted, primary)
-   POST {SCRAPLING_BASE_URL}/scrape
-   └── Own internal anti-bot escalation (plain HTTP → stealthy browser →
-       full Playwright), see devops/docker/scrapling-service/
+1. Scrapling (self-hosted, primary — via its own MCP server, not REST)
+   MCP tools at {SCRAPLING_BASE_URL}/mcp: get → stealthy_fetch → fetch
+   └── Same cheapest-first anti-bot escalation (plain HTTP → Cloudflare-
+       solving stealthy browser → full Playwright), now driven by
+       scraper.ts's MCP client instead of a custom wrapper service.
+       Compose service: scrapling-mcp (pyd4vinci/scrapling image).
 
 2. Crawl4AI (self-hosted, fallback)
    POST {CRAWL4AI_BASE_URL}/md
@@ -318,8 +320,8 @@ All LLM calls use `responseMimeType: "application/json"` for structured output.
 GEMINI_API_KEY=...                    # Google AI API key
 
 # Scrapers (at least one required for workers)
-SCRAPLING_BASE_URL=https://...        # Self-hosted Scrapling instance (primary)
-SCRAPLING_API_KEY=...                 # Optional auth for Scrapling
+SCRAPLING_BASE_URL=https://...        # Scrapling's own MCP server base URL (primary) — /mcp appended automatically
+SCRAPLING_API_KEY=...                 # Bearer token, must match the MCP server's SCRAPLING_MCP_AUTH_TOKEN
 CRAWL4AI_BASE_URL=https://...         # Self-hosted Crawl4AI instance (fallback)
 CRAWL4AI_API_KEY=...                  # Optional auth for Crawl4AI
 FIRECRAWL_API_KEY=fc-...              # Firecrawl SaaS key (last resort)

@@ -4,9 +4,13 @@
  * Run: node --import tsx tests/scraper-cascade.ts   (or: npm run test:scraper-cascade)
  *
  * Style matches tests/referrals.ts/auth.ts: plain tsx script, manual counters, no framework.
- * Mocks global.fetch instead of hitting real services — this is pure branch logic, not
- * an integration test.
+ * Scrapling now goes over MCP (StreamableHTTPClientTransport, JSON-RPC/SSE) instead of a
+ * plain REST call, so it's mocked one level up — patching Client.prototype.connect/callTool
+ * directly — rather than hand-simulating the MCP wire protocol via fetch. Crawl4AI/Firecrawl
+ * are still plain REST, so those stay mocked via global.fetch.
  */
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
 process.env.SCRAPLING_BASE_URL = "https://scrapling.test";
 process.env.CRAWL4AI_BASE_URL = "https://crawl4ai.test";
@@ -43,26 +47,36 @@ function mockFetch(responses: Record<string, string>) {
   }) as typeof fetch;
 }
 
+function mockScrapling(markdown: string | null) {
+  (Client.prototype as any).connect = async function () {};
+  (Client.prototype as any).callTool = async function () {
+    return { structuredContent: { status: 200, content: [markdown ?? ""], url: "https://example.com" } };
+  };
+}
+
 async function main() {
   const { scrapeMarkdown } = await import("../src/modules/superadmin/data-extraction/lib/scraper.js");
 
   // 1. Scrapling succeeds first — nothing else should even matter.
-  mockFetch({ "scrapling.test": LONG });
+  mockScrapling(LONG);
   let r = await scrapeMarkdown("https://example.com");
   assertEqual(r.scraper, "scrapling", "picks scrapling when it clears the threshold");
 
   // 2. Scrapling short → falls through to Crawl4AI.
-  mockFetch({ "scrapling.test": SHORT, "crawl4ai.test": LONG });
+  mockScrapling(SHORT);
+  mockFetch({ "crawl4ai.test": LONG });
   r = await scrapeMarkdown("https://example.com");
   assertEqual(r.scraper, "crawl4ai", "falls through to crawl4ai when scrapling is short");
 
   // 3. Scrapling + Crawl4AI both short → falls through to Firecrawl.
-  mockFetch({ "scrapling.test": SHORT, "crawl4ai.test": SHORT, "firecrawl.dev": LONG });
+  mockScrapling(SHORT);
+  mockFetch({ "crawl4ai.test": SHORT, "firecrawl.dev": LONG });
   r = await scrapeMarkdown("https://example.com");
   assertEqual(r.scraper, "firecrawl", "falls through to firecrawl when scrapling and crawl4ai are short");
 
   // 4. forceFirecrawl skips both scrapling and crawl4ai even though they'd succeed.
-  mockFetch({ "scrapling.test": LONG, "crawl4ai.test": LONG, "firecrawl.dev": LONG });
+  mockScrapling(LONG);
+  mockFetch({ "crawl4ai.test": LONG, "firecrawl.dev": LONG });
   r = await scrapeMarkdown("https://example.com", { forceFirecrawl: true });
   assertEqual(r.scraper, "firecrawl", "forceFirecrawl skips scrapling and crawl4ai");
 

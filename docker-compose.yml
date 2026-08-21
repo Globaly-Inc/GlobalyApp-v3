@@ -320,6 +320,50 @@ services:
         limits:
           memory: 256m
 
+  scrapling-mcp:
+    image: pyd4vinci/scrapling:latest
+    container_name: scrapling-mcp
+    restart: unless-stopped
+    command:
+      - mcp
+      - --http
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --allowed-host
+      - "localhost:8000"
+      - --allowed-host
+      - "localhost:8123"
+      # Add every hostname/port clients will use to reach this server, e.g.:
+      # - --allowed-host
+      # - "scrapling.internal.example.com:8000"
+    ports:
+      - "8123:8000"
+    environment:
+      # Hardcoded auth token for HTTP transport (ignored on stdio).
+      # Replace with your own generated value, e.g. `openssl rand -hex 32`.
+      SCRAPLING_MCP_AUTH_TOKEN: "devkey"
+      # Optional: only needed if you want a non-bundled Chromium build
+      # SCRAPLING_EXECUTABLE_PATH: /path/to/chromium
+    # Chromium needs more than Docker's default 64MB /dev/shm or it crashes
+    # under load (dynamic/stealthy fetch tools spawn real browser tabs).
+    shm_size: "1gb"
+    # Alternative to shm_size on older compose versions:
+    # tmpfs:
+    #   - /dev/shm:size=1g
+    mem_limit: 2g
+    cpus: 1.5
+    healthcheck:
+      # Scrapling's docs don't document a /health route, so this just
+      # checks the port is accepting connections rather than assuming
+      # an endpoint exists. Swap for a real check if one turns out to exist.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8000' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 networks:
   globalyapp:
     name: globalyapp
