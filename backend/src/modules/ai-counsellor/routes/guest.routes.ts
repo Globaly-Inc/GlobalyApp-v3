@@ -7,7 +7,7 @@ import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js"
 import { streamChat } from "../lib/gemini-stream.js";
 import { buildSystemPrompt } from "../services/prompt.service.js";
 import * as rag from "../services/rag.service.js";
-import { parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
+import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { ForbiddenError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
@@ -69,10 +69,12 @@ export async function guestRoutes(app: FastifyInstance) {
 
       const cards = parseCards(result.fullText);
       const chips = parseChips(result.fullText);
+      const blocks = parseBlocks(result.fullText);
       const cleanText = stripBlocks(result.fullText);
 
       if (cards.length) writeEvent(reply, "cards", cards);
       if (chips.length) writeEvent(reply, "chips", chips);
+      if (blocks.length) writeEvent(reply, "blocks", blocks);
 
       writeEvent(reply, "usage", result.usage);
       writeDone(reply);

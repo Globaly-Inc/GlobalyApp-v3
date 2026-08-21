@@ -5,6 +5,7 @@ import type {
   CourseCard,
   CreditBalance,
   Message,
+  ResponseBlock,
   SendMessageInput,
   SSEEvent,
   WireCourseCard,
@@ -40,8 +41,9 @@ const toSession = (s: WireSession): ChatSession => ({ ...s, title: s.title ?? "N
 const toUiFeedback = { positive: "up", negative: "down" } as const;
 const toWireFeedback = { up: "positive", down: "negative" } as const;
 
-type WireMessage = Omit<Message, "cards" | "feedback"> & {
+type WireMessage = Omit<Message, "cards" | "feedback" | "blocks"> & {
   cards: WireCourseCard[];
+  blocks?: ResponseBlock[];
   feedback: "positive" | "negative" | null;
 };
 
@@ -49,6 +51,8 @@ function toMessage(m: WireMessage): Message {
   return {
     ...m,
     cards: (m.cards ?? []).map(toCourseCard),
+    // Backend validates block shapes before persisting; rows predating blocks return []
+    blocks: m.blocks ?? [],
     feedback: m.feedback ? toUiFeedback[m.feedback] : null,
   };
 }
@@ -164,6 +168,8 @@ export const aiRealApi = {
         onEvent({ type: "cards", cards: (parsed as WireCourseCard[]).map(toCourseCard) });
       } else if (eventType === "chips") {
         onEvent({ type: "chips", chips: parsed as string[] });
+      } else if (eventType === "blocks") {
+        onEvent({ type: "blocks", blocks: parsed as ResponseBlock[] });
       } else if (eventType === "done") {
         onEvent({ type: "done", message_id: (parsed as { message_id: number }).message_id });
       } else if (eventType === "error") {

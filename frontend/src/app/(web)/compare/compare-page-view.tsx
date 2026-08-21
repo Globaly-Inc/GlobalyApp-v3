@@ -4,19 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, X, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCompareTray } from "../search/use-compare-tray";
-import type { CompareCourseItem } from "../search/types";
-
-const ROWS: { label: string; get: (i: CompareCourseItem) => string }[] = [
-  { label: "Institution", get: (i) => i.institutionName ?? "—" },
-  { label: "Country", get: (i) => i.countryName ?? "—" },
-  { label: "Subject Area", get: (i) => i.subjectArea ?? "—" },
-  { label: "Duration", get: (i) => i.durationLabel ?? "—" },
-  { label: "Next Intake", get: (i) => i.nextIntakeLabel ?? "Intake TBC" },
-  {
-    label: "Annual Tuition",
-    get: (i) => (i.annualTuition != null ? `${i.feeCurrency ?? "AUD"} ${i.annualTuition.toLocaleString()}` : "Fees on enquiry"),
-  },
-];
+import { COMPARE_ROWS as ROWS } from "../search/compare-rows";
 
 export function ComparePageView() {
   const { items, remove, clear } = useCompareTray();

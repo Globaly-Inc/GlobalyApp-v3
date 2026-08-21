@@ -1,8 +1,8 @@
-import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm } from "@/lib/api/http";
 import type {
   CategoryParams, CountryGuide, Faq, GuideParams, FaqParams, KnowledgeCounts,
   QueueItem, RackCategory, RackCounts, RackDocument, RackDocumentDetail,
-  RackSource, SourceParams, VisaEntry, VisaParams,
+  RackSource, SourceParams, UploadSourceOptions, UploadSourceResult, VisaEntry, VisaParams,
 } from "./types";
 
 const BASE = "/admin/ai-knowledge";
@@ -113,6 +113,14 @@ export const aiKnowledgeRealApi = {
   deleteSource: (id: string): Promise<void> => httpDelete(`${BASE}/sources/${id}`),
   crawlSource: (id: string, maxPages?: number): Promise<{ dispatched: boolean }> =>
     httpPost(`${BASE}/sources/${id}/crawl`, maxPages ? { max_pages: maxPages } : {}),
+  uploadSource: (categoryId: string, file: File, opts?: UploadSourceOptions): Promise<UploadSourceResult> => {
+    const form = new FormData();
+    form.set("category_id", categoryId);
+    if (opts?.title) form.set("title", opts.title);
+    if (opts?.trust_tier) form.set("trust_tier", opts.trust_tier);
+    form.set("file", file);
+    return httpPostForm<UploadSourceResult>(`${BASE}/sources/upload`, form);
+  },
 
   getDocuments: async (sourceId: string, q?: string): Promise<RackDocument[]> => {
     const { documents } = await httpGet<{ documents: RackDocument[] }>(

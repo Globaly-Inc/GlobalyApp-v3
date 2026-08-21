@@ -6,7 +6,7 @@
  */
 export function stripStructuredBlocks(text: string): string {
   return text
-    .replace(/```(?:course-card|chips)\n[\s\S]*?\n```/g, "")
-    .replace(/```(?:course-card|chips)[\s\S]*$/, "")
+    .replace(/```(?:course-card|chips|block)\n[\s\S]*?\n```/g, "")
+    .replace(/```(?:course-card|chips|block)[\s\S]*$/, "")
     .trim();
 }
