@@ -1,6 +1,6 @@
 # Phase 6 — Chunked Embeddings + Admin File Upload — Implementation Plan
 
-> **Status:** DRAFT — awaiting approval | **App:** GlobalyApp-v3
+> **Status:** SUPERSEDED — built 2026-08-22 from the ingestion plan's Phases 1–2 (see its *As built* table). Kept for the rationale; do not implement from this file. | **App:** GlobalyApp-v3
 > **Parent plan:** docs/ai-counsellor/2026-08-20-ai-counsellor-v2-impl-plan.md (Phase 6 section)
 > **Base branch:** `dev-feat-ai-counsellor-p5` (Phase 5 is NOT merged to staging yet — see Open Questions)
 

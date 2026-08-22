@@ -4,11 +4,11 @@
  * Gemini 3072). Rerunnable: only touches rows where embedding IS NULL, so an
  * interrupted run just resumes.
  *
- *   npm run embed:backfill              # both tables
- *   npm run embed:backfill -- --tables ai_knowledge_documents
+ *   npm run embed:backfill
+ *   npm run embed:backfill -- --tables extraction_memory
  *
- * Only two tables carry vectors: ai_knowledge_documents (counsellor Knowledge
- * Rack semantic search) and extraction_memory (pipeline example recall).
+ * Rack documents are NOT here any more: 20260822_001 moved their vectors onto
+ * ai_knowledge_chunks, so `npm run chunk:backfill` is what re-embeds the rack.
  */
 
 import "dotenv/config";
@@ -25,12 +25,6 @@ interface Target {
 }
 
 const TARGETS: Target[] = [
-  {
-    table: "ai_knowledge_documents",
-    columns: ["id", "title", "markdown"],
-    // Mirrors knowledge-crawl.worker.ts embedDocument()
-    textOf: (r) => (r.markdown ? `${r.title ?? ""}\n\n${r.markdown}`.slice(0, 8000) : null),
-  },
   {
     table: "extraction_memory",
     columns: ["id", "source_excerpt"],

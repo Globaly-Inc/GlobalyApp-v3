@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-WORKER_PROFILES := globalyapp-extraction globalyapp-extraction-pages globalyapp-extraction-verify globalyapp-extraction-step globalyapp-extraction-schedule globalyapp-extraction-agentcis
+WORKER_PROFILES := globalyapp-extraction globalyapp-extraction-pages globalyapp-extraction-verify globalyapp-extraction-step globalyapp-extraction-schedule globalyapp-extraction-agentcis globalyapp-ai-knowledge-crawl
 WORKER_PROFILE_FLAGS := $(foreach p,$(WORKER_PROFILES),--profile $(p))
 
 build:
@@ -32,6 +32,9 @@ up-extraction-step:
 up-extraction-schedule:
 	docker compose --profile globalyapp-extraction-schedule up -d extraction-schedule-worker
 
+up-ai-knowledge-crawl:
+	docker compose --profile globalyapp-ai-knowledge-crawl up -d ai-knowledge-crawl-worker
+
 up-extraction-agentcis:
 	docker compose --profile globalyapp-extraction-agentcis up -d extraction-agentcis-worker
 
@@ -55,6 +58,9 @@ down-extraction-step:
 
 down-extraction-schedule:
 	docker compose --profile globalyapp-extraction-schedule stop extraction-schedule-worker
+
+down-ai-knowledge-crawl:
+	docker compose --profile globalyapp-ai-knowledge-crawl stop ai-knowledge-crawl-worker
 
 down-extraction-agentcis:
 	docker compose --profile globalyapp-extraction-agentcis stop extraction-agentcis-worker
@@ -84,7 +90,7 @@ logs-backend:
 	docker compose logs -f backend
 
 logs-workers:
-	docker compose $(WORKER_PROFILE_FLAGS) logs -f auth-worker extraction-worker extraction-pages-worker extraction-verify-worker extraction-step-worker extraction-schedule-worker extraction-agentcis-worker
+	docker compose $(WORKER_PROFILE_FLAGS) logs -f auth-worker extraction-worker extraction-pages-worker extraction-verify-worker extraction-step-worker extraction-schedule-worker extraction-agentcis-worker ai-knowledge-crawl-worker
 
 logs-extraction:
 	docker compose --profile globalyapp-extraction logs -f extraction-worker
@@ -100,6 +106,9 @@ logs-extraction-step:
 
 logs-extraction-schedule:
 	docker compose --profile globalyapp-extraction-schedule logs -f extraction-schedule-worker
+
+logs-ai-knowledge-crawl:
+	docker compose --profile globalyapp-ai-knowledge-crawl logs -f ai-knowledge-crawl-worker
 
 logs-extraction-agentcis:
 	docker compose --profile globalyapp-extraction-agentcis logs -f extraction-agentcis-worker
@@ -118,6 +127,7 @@ help:
 	@echo "  up-extraction-verify        Start only the extraction-verify-worker (profile: globalyapp-extraction-verify)"
 	@echo "  up-extraction-step          Start only the extraction-step-worker (profile: globalyapp-extraction-step)"
 	@echo "  up-extraction-schedule      Start only the extraction-schedule-worker (profile: globalyapp-extraction-schedule)"
+	@echo "  up-ai-knowledge-crawl       Start only the ai-knowledge-crawl-worker (profile: globalyapp-ai-knowledge-crawl)"
 	@echo "  up-extraction-agentcis      Start only the extraction-agentcis-worker (profile: globalyapp-extraction-agentcis)"
 	@echo "  down                        Stop and remove core services"
 	@echo "  down-workers                Stop all extraction workers"
@@ -126,6 +136,7 @@ help:
 	@echo "  down-extraction-verify      Stop only the extraction-verify-worker"
 	@echo "  down-extraction-step        Stop only the extraction-step-worker"
 	@echo "  down-extraction-schedule    Stop only the extraction-schedule-worker"
+	@echo "  down-ai-knowledge-crawl     Stop only the ai-knowledge-crawl-worker"
 	@echo "  down-extraction-agentcis    Stop only the extraction-agentcis-worker"
 	@echo "  restart                     Restart running services"
 	@echo "  migrate-globalyapp          Run globalyapp DB migrations"
@@ -141,14 +152,15 @@ help:
 	@echo "  logs-extraction-verify      Tail extraction-verify-worker logs"
 	@echo "  logs-extraction-step        Tail extraction-step-worker logs"
 	@echo "  logs-extraction-schedule    Tail extraction-schedule-worker logs"
+	@echo "  logs-ai-knowledge-crawl     Tail ai-knowledge-crawl-worker logs"
 	@echo "  logs-extraction-agentcis    Tail extraction-agentcis-worker logs"
 	@echo "  ps                          List running services"
 
 .PHONY: build build-no-cache up up-workers \
-	up-extraction up-extraction-pages up-extraction-verify up-extraction-step up-extraction-schedule up-extraction-agentcis \
+	up-extraction up-extraction-pages up-extraction-verify up-extraction-step up-extraction-schedule up-extraction-agentcis up-ai-knowledge-crawl \
 	down down-workers \
-	down-extraction down-extraction-pages down-extraction-verify down-extraction-step down-extraction-schedule down-extraction-agentcis \
+	down-extraction down-extraction-pages down-extraction-verify down-extraction-step down-extraction-schedule down-extraction-agentcis down-ai-knowledge-crawl \
 	restart migrate-globalyapp migrate-superadmin migrate-tenants seed-globalyapp seed-superadmin \
 	logs-frontend logs-backend logs-workers \
-	logs-extraction logs-extraction-pages logs-extraction-verify logs-extraction-step logs-extraction-schedule logs-extraction-agentcis \
+	logs-extraction logs-extraction-pages logs-extraction-verify logs-extraction-step logs-extraction-schedule logs-extraction-agentcis logs-ai-knowledge-crawl \
 	ps help
