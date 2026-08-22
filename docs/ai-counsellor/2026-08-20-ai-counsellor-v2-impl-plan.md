@@ -60,7 +60,7 @@ MODIFY
 CONFIRM BEFORE CREATING (path tentative)
 - `frontend/src/app/admin/data/ai-knowledge/components/upload-source-dialog.tsx` — only if the existing source dialog can't absorb a file input
 
-### Phase 7 — Tool calling
+### Phase 7 — Tool calling — ✅ BUILT 2026-08-22
 
 CREATE
 - `backend/src/modules/ai-counsellor/lib/tools.ts` — Gemini function declarations + dispatcher mapping tool name → existing `knowledge.repository` functions
@@ -69,6 +69,30 @@ MODIFY
 - `backend/src/modules/ai-counsellor/lib/gemini-stream.ts` — accept `tools`, run function-calling rounds (cap 4), stream the final turn
 - `backend/src/modules/ai-counsellor/services/chat.service.ts` — agent loop path; `rag.searchAll` kept as fallback (embed mode stays on searchAll — scoping rules already live there)
 - `backend/src/modules/ai-counsellor/services/prompt.service.ts` — tool-use guidance (search only when needed; asking a follow-up instead is valid)
+
+#### As built (2026-08-22)
+
+Six tools, all wrapping existing `knowledge.repository` calls: `search_courses`, `get_course_details`,
+`search_knowledge` (chunks + curated visa/FAQ/guide rows in one call), `search_visas`,
+`search_institutions`, `search_service_providers` (education agents + MARA).
+
+| Decision | Choice |
+|---|---|
+| Tool results | **JSON**, not the pasted text format. Function responses are JSON natively, and `search_courses` returns a `card` object per course so the model copies card fields verbatim instead of parsing a `CARD_FIELDS` line. `courseCardFields()` in `lib/tools.ts` is now the single mapping both paths use. |
+| `update_student_context` | **Deferred to Phase 8** with the `counselling_context` column it writes to. |
+| Discovery turn | Course tools are **withheld from the declaration list** rather than forbidden in the prompt — the model cannot list courses it has no tool to fetch. |
+| Round cap | 4. On exhaustion the conversation continues in a **tool-free session** (`startChat` with the accumulated history) so the model must answer from what it retrieved. |
+| Embed mode | Stays on `searchAll`. Its `jobIds` scoping is what stops one business's widget surfacing a competitor's courses, and a tool the model calls with its own arguments would route around it. |
+| Fallback | Tool-loop failure falls back to `searchAll` **only if nothing has streamed yet**; a mid-stream failure surfaces as an error rather than stitching one reply out of two runs. |
+| Preamble text | Streamed as it arrives, even on a round that also calls a tool. Buffering to find out whether the round was a tool round would deliver the real answer in one lump. The prompt tells the model not to narrate its searching, so preambles are rare. |
+| Kill switch | None. Reverting is a one-line change in `chat.service` (`useTools = false`), and tool failures already fall back automatically. |
+
+Test: `npm run test:ai-tool-loop` — 25 assertions over a mocked SDK (dispatch, `functionResponse`
+round-trip, parallel calls in one round, cap + forced answer with tools disabled, usage
+accumulation, discovery-turn withholding).
+
+**Cost note:** a tool turn is 2–5 model calls where the old path was always 1, while credits still
+deduct 1 per message. Watch token spend per message before turning this loose on a large user base.
 
 ### Phase 8 — Counselling context
 

@@ -54,6 +54,9 @@ function DocumentBody({ documentId }: Readonly<{ documentId: string }>) {
         </Badge>
         <Badge variant="outline" className="text-[10px]">{document.word_count} words</Badge>
         <Badge variant="outline" className="text-[10px]">
+          {document.chunk_count} chunk{document.chunk_count === 1 ? "" : "s"}
+        </Badge>
+        <Badge variant="outline" className="text-[10px]">
           Crawled {new Date(document.crawled_at).toLocaleString()}
         </Badge>
       </div>

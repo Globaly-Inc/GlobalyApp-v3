@@ -7,6 +7,7 @@ import type { DocumentQuery, SourceQuery } from "../schemas/rack.schema.js";
 const CATEGORIES = `${S}.ai_knowledge_categories`;
 const SOURCES = `${S}.ai_knowledge_sources`;
 const DOCUMENTS = `${S}.ai_knowledge_documents`;
+const CHUNKS = `${S}.ai_knowledge_chunks`;
 
 // ── Categories ──
 
@@ -74,15 +75,14 @@ export async function deleteSource(id: string) {
 // list only renders titles. Fetch the body through findDocument.
 const DOC_LIST_COLUMNS = [
   "id", "source_id", "category_id", "url", "title", "content_hash",
-  "word_count", "crawled_at", "active", "created_at", "updated_at",
+  "word_count", "chunk_count", "crawled_at", "active", "created_at", "updated_at",
 ];
 
 export async function listDocuments(opts: DocumentQuery) {
   const query = masterKnex(DOCUMENTS)
     .select(DOC_LIST_COLUMNS)
-    // Whether a row is embedded drives the "in brain" badge, but the vector itself
-    // is far too large to ship to the browser.
-    .select(masterKnex.raw("(embedding IS NOT NULL) as is_embedded"))
+    // Drives the "in brain" badge — a document is retrievable exactly when it has chunks.
+    .select(masterKnex.raw("(chunk_count > 0) as is_embedded"))
     .orderBy("crawled_at", "desc")
     .limit(opts.limit);
   if (opts.source_id) query.where("source_id", opts.source_id);
@@ -98,6 +98,11 @@ export async function findDocument(id: string) {
   return masterKnex(DOCUMENTS).where({ id }).first();
 }
 
+export async function insertDocument(data: Record<string, unknown>) {
+  const [row] = await masterKnex(DOCUMENTS).insert(data).returning("*");
+  return row;
+}
+
 export async function deleteDocument(id: string) {
   return masterKnex(DOCUMENTS).where({ id }).delete();
 }
@@ -109,16 +114,18 @@ export async function syncDocCount(sourceId: string) {
 }
 
 export async function rackCounts() {
-  const [categories, sources, documents, embedded] = await Promise.all([
+  const [categories, sources, documents, embedded, chunks] = await Promise.all([
     masterKnex(CATEGORIES).count("* as c").first(),
     masterKnex(SOURCES).count("* as c").first(),
     masterKnex(DOCUMENTS).count("* as c").first(),
-    masterKnex(DOCUMENTS).whereNotNull("embedding").count("* as c").first(),
+    masterKnex(DOCUMENTS).where("chunk_count", ">", 0).count("* as c").first(),
+    masterKnex(CHUNKS).whereNotNull("embedding").count("* as c").first(),
   ]);
   return {
     categories: Number(categories?.c ?? 0),
     sources: Number(sources?.c ?? 0),
     documents: Number(documents?.c ?? 0),
     embedded_documents: Number(embedded?.c ?? 0),
+    embedded_chunks: Number(chunks?.c ?? 0),
   };
 }
