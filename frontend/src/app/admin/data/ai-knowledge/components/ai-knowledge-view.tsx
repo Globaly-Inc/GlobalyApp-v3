@@ -156,7 +156,7 @@ export function AiKnowledgeView() {
           {rackCounts && (
             <p className="mb-3 text-xs text-muted-foreground">
               {rackCounts.categories} categories · {rackCounts.sources} sources · {rackCounts.documents} documents ·{" "}
-              {rackCounts.embedded_documents} embedded
+              {rackCounts.embedded_documents} retrievable · {rackCounts.embedded_chunks} chunks in brain
             </p>
           )}
           <RackTab
