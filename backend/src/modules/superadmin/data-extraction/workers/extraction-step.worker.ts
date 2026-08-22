@@ -29,6 +29,7 @@ import {
   insertQueueItem,
   writeJobEvent,
   normaliseCampusName,
+  upsertStudyUnit,
   type ExtractedCampus,
   type InstitutionOverview,
 } from "../lib/staging-writer.js";
@@ -953,21 +954,20 @@ async function handleCourseDataStep(
     }
 
     case "units": {
-      // Delete existing unit assignments for this course
+      // Delete existing unit assignments for this course — the units themselves are
+      // shared per job (upsertStudyUnit dedups by name), so only the link is reset.
       await masterKnex(`${S}.extraction_course_study_unit_assignments`).where({ course_id: courseId }).delete();
       const units = (extracted.study_units as Array<Record<string, unknown>>) || [];
       for (const unit of units) {
-        if (!unit.unit_name) continue;
-        const [unitRow] = await masterKnex(`${S}.extraction_study_units`)
-          .insert({
-            job_id: jobId,
-            unit_code: unit.unit_code ?? null,
-            unit_name: unit.unit_name,
-            credit_points: unit.credit_points ?? null,
-          })
-          .returning("id");
+        if (!unit.unit_name || typeof unit.unit_name !== "string") continue;
+        const unitId = await upsertStudyUnit(jobId, {
+          unit_code: (unit.unit_code as string) ?? null,
+          unit_name: unit.unit_name,
+          credit_points: unit.credit_points as number ?? null,
+        });
         await masterKnex(`${S}.extraction_course_study_unit_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitRow.id });
+          .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitId })
+          .onConflict(["course_id", "study_unit_id"]).ignore();
         count++;
       }
       break;

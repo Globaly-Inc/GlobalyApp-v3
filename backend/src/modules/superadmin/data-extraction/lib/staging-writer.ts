@@ -30,6 +30,8 @@ export interface ExtractedCourse {
   english_requirements?: ExtractedEnglishReq[];
   campus_names?: string[];
   study_units?: ExtractedStudyUnit[];
+  /** LLM-flagged link to this course's own curriculum page — routing only, not persisted. */
+  curriculum_page_url?: string | null;
 }
 
 export interface ExtractedStudyUnit {
@@ -211,6 +213,36 @@ export async function upsertCampus(jobId: string, campus: ExtractedCampus): Prom
   return row.id;
 }
 
+// ponytail: same shape as normaliseCampusName — LLM re-extracts the same unit with
+// slightly different casing/whitespace across course pages and job re-runs
+export function normaliseUnitName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Upsert a study unit for a job — deduplicates by normalised unit_name within the same
+ * job, mirroring upsertCampus. Without this, every course extraction (including re-runs)
+ * inserted a fresh extraction_study_units row for the same unit shared across courses.
+ */
+export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): Promise<string> {
+  const norm = normaliseUnitName(unit.unit_name);
+  const existing = await masterKnex(`${S}.extraction_study_units`)
+    .where({ job_id: jobId })
+    .whereRaw("LOWER(TRIM(unit_name)) = ?", [norm])
+    .first();
+  if (existing) return existing.id;
+
+  const [row] = await masterKnex(`${S}.extraction_study_units`)
+    .insert({
+      job_id: jobId,
+      unit_code: unit.unit_code ?? null,
+      unit_name: unit.unit_name,
+      credit_points: coerceInt(unit.credit_points),
+    })
+    .returning("id");
+  return row.id;
+}
+
 /**
  * Normalise a course name for dedup: lowercase, collapse whitespace, strip degree
  * prefixes that the LLM sometimes includes inconsistently.
@@ -388,16 +420,9 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   if (course.study_units?.length) {
     for (const unit of course.study_units) {
       if (!unit.unit_name) continue;
-      const [unitRow] = await masterKnex(`${S}.extraction_study_units`)
-        .insert({
-          job_id: jobId,
-          unit_code: unit.unit_code ?? null,
-          unit_name: unit.unit_name,
-          credit_points: coerceInt(unit.credit_points),
-        })
-        .returning("id");
+      const unitId = await upsertStudyUnit(jobId, unit);
       await masterKnex(`${S}.extraction_course_study_unit_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitRow.id })
+        .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitId })
         .onConflict(["course_id", "study_unit_id"]).ignore();
     }
   }

@@ -119,6 +119,13 @@ The centralized error handler maps these to HTTP responses.
    Exception: Scrapling was added ahead of Crawl4AI in the scrape cascade
    (2026-08-20) as an explicit, approved deviation from parity — not a V2
    behavior.
+   Exception: secondary curriculum-page discovery for study_units
+   (2026-08-22) — the page worker now follows an LLM-flagged
+   `curriculum_page_url` when a course's primary page yields no units, per
+   `docs/data-extraction/2026-08-21-study-units-discovery-design.md`. Not a
+   V2 behavior; approved to fix a real data-quality gap (study units either
+   missing entirely or, on some national sites, individually miscategorized
+   as standalone courses).
 
 ## External FK columns
 

@@ -14,8 +14,8 @@ import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown } from "../lib/scraper.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
-import { courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM } from "../lib/extraction-prompts.js";
-import { writeCourse, upsertCampus, normaliseCampusName, insertQueueItem, writeJobEvent, type ExtractedCourse, type ExtractedCampus } from "../lib/staging-writer.js";
+import { courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM } from "../lib/extraction-prompts.js";
+import { writeCourse, upsertCampus, normaliseCampusName, insertQueueItem, writeJobEvent, type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit } from "../lib/staging-writer.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { domainOf } from "../lib/html-utils.js";
 
@@ -90,6 +90,43 @@ async function deduplicateCampuses(jobId: string) {
   }
 }
 
+// ponytail: bound worst-case secondary-fetch cost per page scrape (a listing page can
+// yield many courses); see docs/data-extraction/2026-08-21-study-units-discovery-design.md
+const SECONDARY_FETCH_CAP = 20;
+
+/**
+ * Narrow follow-up fetch for a course's own curriculum page, when the primary page's
+ * extraction came back with no study_units but flagged a link to one. Every failure
+ * mode here logs and returns empty — it must never fail the course write.
+ */
+async function fetchCurriculumUnits(curriculumUrl: string, primaryUrl: string, jobId: string): Promise<ExtractedStudyUnit[]> {
+  let resolved: URL;
+  try {
+    resolved = new URL(curriculumUrl, primaryUrl);
+  } catch {
+    logger.warn("Invalid curriculum_page_url, skipping secondary fetch", { jobId, primaryUrl, curriculumUrl });
+    return [];
+  }
+
+  try {
+    const page = await scrapeMarkdown(resolved.toString(), { onlyMainContent: true });
+    if (page.blocked || page.markdown.length < 50) {
+      logger.warn("Curriculum page blocked or empty, skipping secondary fetch", { jobId, curriculumUrl: resolved.toString() });
+      return [];
+    }
+    const result = await extractJson<{ study_units: ExtractedStudyUnit[] }>({
+      system: STUDY_UNITS_SYSTEM,
+      prompt: studyUnitsFromPagePrompt(resolved.toString(), truncateMarkdown(page.markdown)),
+    });
+    return result.study_units ?? [];
+  } catch (err) {
+    logger.warn("Curriculum page extraction failed, skipping", {
+      jobId, curriculumUrl: resolved.toString(), error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
 /**
  * Check if all queue items are done and trigger verification if so.
  * "Done" = no items in a state that could still produce work (pending, processing).
@@ -127,9 +164,10 @@ async function checkAllPagesDone(jobId: string) {
 }
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
-  let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined;
+  let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
+    proxy: "stealth" | "auto" | undefined;
   try {
-    ({ jobId, queueItemId, url, forceFirecrawl, mobile } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -192,6 +230,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // Retries exist because the first pass came back empty — give the renderer
       // time for the JS-heavy pages that produce most of those.
       ...(forceFirecrawl ? { waitFor: 8000 } : {}),
+      ...(proxy ? { proxy } : {}),
     });
 
     if (page.blocked || page.markdown.length < 50) {
@@ -203,20 +242,24 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       const retries = item?.retry_count ?? 0;
       const meta = { ...(item?.processing_meta ?? {}), last_error: reason, last_failure_class: "anti_bot" as const };
 
-      // Retry 1: Firecrawl with JS rendering. Retry 2: Firecrawl emulating mobile —
-      // some anti-bot walls only serve the mobile site. The old `!forceFirecrawl`
-      // guard made retry 2 unreachable: the first retry set the flag, so every
-      // blocked page died as "after 1 retries".
+      // Retry 1: Firecrawl with JS rendering + auto proxy escalation (Firecrawl only
+      // pays for its stealth/residential proxy tier if the basic datacenter IP
+      // actually gets blocked — free insurance). Retry 2: same, but forced to
+      // stealth + mobile emulation — some university-wide WAFs (Akamai/Cloudflare)
+      // blackhole datacenter IPs outright and only serve the mobile site.
+      // The old `!forceFirecrawl` guard made retry 2 unreachable: the first retry
+      // set the flag, so every blocked page died as "after 1 retries".
       if (retries < 2) {
         meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
+        const retryProxy = retries === 0 ? "auto" : "stealth";
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
           status: "pending", failure_class: "anti_bot", retry_count: retries + 1,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
         await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-          jobId, queueItemId, url, forceFirecrawl: true, mobile: meta.retry_strategy === "mobile",
+          jobId, queueItemId, url, forceFirecrawl: true, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
         });
-        logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1 });
+        logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1, proxy: retryProxy });
       } else {
         // Exhausted retries — mark failed so it's visible in the admin queue panel
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
@@ -288,6 +331,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
     // ── Write each course with child entities ──
     let coursesWritten = 0;
+    let secondaryFetches = 0;
 
     if (extracted.courses?.length) {
       for (const course of extracted.courses) {
@@ -300,6 +344,25 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
               const cid = await upsertCampus(jobId, { name: cn });
               if (cid) campusIdMap.set(normaliseCampusName(cn), cid);
             }
+          }
+        }
+
+        // Curriculum usually lives off-page — follow the flagged link whenever one's
+        // present, not only when the primary page found zero units: an admissions/
+        // overview page often names 1-2 example courses while the dedicated
+        // curriculum page lists the full set (seen live: an admissions page named 2
+        // of a ~15-course program). Merge rather than replace — writeCourse's
+        // upsertStudyUnit already dedups by name, so overlap between the two lists
+        // collapses instead of duplicating. Bounded per page scrape, logged when hit.
+        if (course.curriculum_page_url) {
+          if (secondaryFetches >= SECONDARY_FETCH_CAP) {
+            logger.warn("Secondary curriculum-page fetch cap reached, skipping remaining courses", {
+              jobId, url, cap: SECONDARY_FETCH_CAP,
+            });
+          } else {
+            secondaryFetches++;
+            const units = await fetchCurriculumUnits(course.curriculum_page_url, url, jobId);
+            if (units.length) course.study_units = [...(course.study_units ?? []), ...units];
           }
         }
 

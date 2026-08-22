@@ -1,6 +1,6 @@
 # Study Units Auto-Discovery — Design
 
-> Status: Draft for review · Date: 2026-08-21 · Stage: fuzzy plan → resolved · Tone: Relentless (real cost/production-risk tradeoffs) · Scope mode: Hold Scope
+> Status: Implemented 2026-08-22 · Date: 2026-08-21 · Stage: fuzzy plan → resolved → shipped · Tone: Relentless (real cost/production-risk tradeoffs) · Scope mode: Hold Scope
 
 ## 1. Problem
 

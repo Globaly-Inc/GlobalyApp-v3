@@ -3,10 +3,9 @@
 
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
-  const lower = url.toLowerCase();
   const signals = [
     "/course", "/program", "/degree", "/bachelor", "/master",
-    "/diploma", "/certificate", "/study", "/undergraduate",
+    "/diploma", "/certificate", "/undergraduate",
     "/postgraduate", "/phd", "/mba", "/faculty", "/school-of",
     "/departments", "/subjects", "/units",
     // Universities publish their catalogue under these just as often, and without
@@ -22,10 +21,29 @@ export function looksLikeCourseUrl(url: string): boolean {
   // course search, but its path carries no signal.
   // School/faculty subdomains (som.ku.edu.np, soe.ku.edu.np) are programme hosts too
   const catalogueHost = /^(explorecourses|bulletin|catalog|catalogue|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
+
+  let path: string;
   try {
-    if (catalogueHost.test(new URL(url).hostname)) return true;
-  } catch { /* fall through to path signals */ }
-  return signals.some((s) => lower.includes(s));
+    const u = new URL(url);
+    if (catalogueHost.test(u.hostname)) return true;
+    // Path only, never the full href: matching the whole URL string let a signal
+    // like "/admission" match by pure string coincidence against a HOSTNAME
+    // ("https://admission.example.edu/..." contains "/admission" right after
+    // "://"), turning an institution's entire admissions subdomain into "course
+    // pages" regardless of what was actually on them (seen live on
+    // admission.universityofcalifornia.edu — every page matched, none were courses).
+    path = u.pathname.toLowerCase();
+  } catch {
+    path = url.toLowerCase();
+  }
+
+  // "/study" alone is too common an English word to substring-match anywhere in a
+  // URL — it also matches unrelated slugs like "/news/study-finds-x-causes-y" (a
+  // research-study headline, not a program of study). Require it to end a path
+  // segment ("/study/", "/study.html", or end of path), not just start one.
+  if (/\/study(?:[/?.]|$)/.test(path)) return true;
+
+  return signals.some((s) => path.includes(s));
 }
 
 /** Global asset extensions to exclude from URL discovery */
@@ -101,8 +119,13 @@ export function filterUrls(urls: string[], base: string): string[] {
       // Skip common non-course paths. `search` is deliberately absent: course
       // catalogues are routinely served from /search (explorecourses.stanford.edu),
       // and the course heuristic is what narrows the list afterwards.
+      // news/press-room/blog/media are excluded outright, not left to the heuristic:
+      // a headline like "UC graduate programs and schools among nation's best" trips
+      // the "-programs" course signal, and the LLM then fabricates a distinct "course"
+      // per program merely named in passing (seen live: one ranking article produced
+      // 17 invented "Graduate X Programs" courses across job b290bd10-...-3bcccb).
       const path = u.pathname.toLowerCase();
-      if (/\/(login|signin|register|cart|checkout|privacy|cookie|terms|sitemap|feed|api)\b/.test(path)) continue;
+      if (/\/(login|signin|register|cart|checkout|privacy|cookie|terms|sitemap|feed|api|news|press-room|media|blog)\b/.test(path)) continue;
 
       u.hash = "";
       const normalized = u.href.replace(/\/+$/, "");
