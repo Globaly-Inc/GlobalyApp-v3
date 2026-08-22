@@ -1,5 +1,6 @@
 import { httpGet, httpPost, httpDelete } from "@/lib/api/http";
-import type { AgentCISResult, AgentcisJob, ImportResult } from "./types";
+import { AGENTCIS_JOB_STATUSES } from "../const";
+import type { AgentCISResult, AgentcisJob, BulkCrawlResult, ImportResult } from "./types";
 
 export const agentcisImportRealApi = {
   search: async (query: string): Promise<AgentCISResult[]> => {
@@ -16,10 +17,17 @@ export const agentcisImportRealApi = {
     });
   },
 
+  bulkCrawl: async (startPage: number, maxPages: number): Promise<BulkCrawlResult> => {
+    return httpPost<BulkCrawlResult>("/admin/data-extraction/agentcis/bulk-crawl", {
+      start_page: startPage,
+      max_pages: maxPages,
+    });
+  },
+
   getJobs: async (): Promise<AgentcisJob[]> => {
     const params = new URLSearchParams({
       source_type: "agentcis",
-      statuses: "pending,processing,failed,done",
+      statuses: AGENTCIS_JOB_STATUSES,
       limit: "100",
     });
     const { jobs } = await httpGet<{ jobs: AgentcisJob[] }>(

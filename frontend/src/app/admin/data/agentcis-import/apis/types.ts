@@ -11,6 +11,12 @@ export type ImportResult = {
   job_count: number;
 };
 
+export type BulkCrawlResult = {
+  dispatched: boolean;
+  job_count: number;
+  pages_scanned: number;
+};
+
 export type AgentcisJob = {
   id: string;
   institution_name: string | null;
