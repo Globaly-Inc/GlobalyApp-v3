@@ -20,6 +20,8 @@
     "test:scraper-cascade": "node --import tsx tests/scraper-cascade.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",
     "test:ai-tool-loop": "node --import tsx tests/ai-tool-loop.ts",
+    "test:counselling-context": "node --import tsx tests/counselling-context.ts",
+    "test:ai-counsellor-flow": "node --import tsx tests/ai-counsellor-flow.ts",
     "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",
     "job:extraction-pages": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-page.worker.ts",
     "job:extraction-verify": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-verify.worker.ts",

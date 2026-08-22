@@ -1,4 +1,5 @@
 import type { ProfileContext } from "../repositories/knowledge.repository.js";
+import type { CounsellingContext } from "../repositories/sessions.repository.js";
 import { sanitizeCustomInstructions } from "./embed.service.js";
 
 /** Profile fields a student must have before recommendations feel grounded.
@@ -19,12 +20,35 @@ function missingProfileFields(ctx: ProfileContext): string[] {
   return missing;
 }
 
+const CONTEXT_LABELS: Array<[keyof CounsellingContext, string]> = [
+  ["goals", "Goals"],
+  ["interests", "Interests"],
+  ["strengths", "Strengths"],
+  ["constraints", "Constraints"],
+  ["preferred_countries", "Preferred countries"],
+  ["notes", "Notes"],
+];
+
+/** The session's counselling context as prompt lines, or null when nothing is known yet. */
+function renderCounsellingContext(ctx: CounsellingContext | null | undefined): string | null {
+  if (!ctx) return null;
+  const lines: string[] = [];
+  for (const [key, label] of CONTEXT_LABELS) {
+    const values = ctx[key];
+    if (Array.isArray(values) && values.length) lines.push(`  ${label}: ${values.join("; ")}`);
+  }
+  if (ctx.stage) lines.push(`  Journey stage: ${ctx.stage}`);
+  return lines.length ? lines.join("\n") : null;
+}
+
 export function buildSystemPrompt(opts: {
   profile: ProfileContext | null;
   ragContext: string;
   isFirstMessage: boolean;
   /** Phase 7: the model retrieves through tools instead of being handed a CONTEXT block. */
   toolMode?: boolean;
+  /** Phase 8: what earlier turns of this session established about the student. */
+  counsellingContext?: CounsellingContext | null;
   /** First platform turn: course retrieval was skipped — counsel, don't recommend. */
   discoveryTurn?: boolean;
   /** New session for a student who has chatted before — greet with "welcome back". */
@@ -185,6 +209,43 @@ export function buildSystemPrompt(opts: {
         "grades, budget, and preferred destination. General guidance and encouragement are always fine.",
       );
     }
+  }
+
+  // ── Counselling context (this session) ──
+  const learned = renderCounsellingContext(opts.counsellingContext);
+  if (learned) {
+    sections.push(
+      "WHAT THIS CONVERSATION HAS ESTABLISHED (from earlier turns — treat as known, never re-ask):\n" +
+      learned,
+    );
+  }
+
+  if (opts.counsellingContext?.stage) {
+    sections.push(
+      "STAGE: " + {
+        exploring: "They are still exploring. Widen the field, ask about goals, do not push a shortlist.",
+        narrowing: "They are narrowing down. Compare two or three concrete options on the trade-offs that matter to them.",
+        applying: "They are applying. Be practical: deadlines, documents, entry requirements, next actions.",
+        post_offer: "They have an offer. Focus on visa, funding, accommodation and arrival.",
+      }[opts.counsellingContext.stage],
+    );
+  }
+
+  if (opts.toolMode) {
+    sections.push(
+      "REMEMBERING:\n" +
+      "- Call update_student_context whenever the student tells you something durable about " +
+      "themselves — a goal, an interest, a constraint, a destination, or a shift in stage. " +
+      "Record it in their words, not your paraphrase.\n" +
+      "- What you record lives in THIS conversation only. It is not saved to their profile.\n" +
+      "- If something belongs in their permanent profile (a firm destination, a budget, a test " +
+      "score), offer it: 'want me to note Australia as your preferred destination on your profile?' " +
+      "Then tell them they can update it in their profile settings. Never claim to have saved it " +
+      "there yourself.\n" +
+      "- Never record health, financial hardship, immigration difficulties, family problems or " +
+      "anything else sensitive, even if the student volunteers it. Acknowledge it in conversation " +
+      "and move on.",
+    );
   }
 
   // ── Response rules ──

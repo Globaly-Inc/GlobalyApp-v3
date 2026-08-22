@@ -115,6 +115,9 @@ export async function handleMessage(opts: {
             ragContext: "",
             isFirstMessage,
             toolMode: true,
+            // What earlier turns of this session established. Read once here; the
+            // update_student_context tool writes the merged version back mid-turn.
+            counsellingContext: session.counselling_context,
             discoveryTurn,
             returning,
           }),
@@ -124,7 +127,7 @@ export async function handleMessage(opts: {
           onChunk,
           onToolCall: (name) => trace(`${toolLabel(name)}…`),
           runTool: async (name, args) => {
-            const run = await runTool(name, args);
+            const run = await runTool(name, args, { sessionId: session.id });
             trace(run.trace);
             const fresh = run.sources.filter(s => !seen.has(`${s.type}:${s.id}`));
             for (const s of fresh) seen.add(`${s.type}:${s.id}`);
@@ -164,6 +167,9 @@ export async function handleMessage(opts: {
           profile: profileContext,
           ragContext: ragOutput.contextText,
           isFirstMessage,
+          // Carried into the fallback too, so a failed tool loop doesn't read as
+          // the counsellor forgetting everything it was told this session.
+          counsellingContext: session.counselling_context,
           discoveryTurn,
           returning,
           embedConfig: opts.embed?.config,

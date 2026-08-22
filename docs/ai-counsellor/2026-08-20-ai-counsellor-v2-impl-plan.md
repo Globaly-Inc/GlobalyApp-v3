@@ -94,13 +94,33 @@ accumulation, discovery-turn withholding).
 **Cost note:** a tool turn is 2–5 model calls where the old path was always 1, while credits still
 deduct 1 per message. Watch token spend per message before turning this loose on a large user base.
 
-### Phase 8 — Counselling context
+### Phase 8 — Counselling context — ✅ BUILT 2026-08-22
 
 MODIFY
 - `backend/database/migrations/globalyapp/20260816_002_ai_counselor_sessions.ts` — add `counselling_context JSONB NOT NULL DEFAULT '{}'`
 - `backend/src/modules/ai-counsellor/lib/tools.ts` — `update_student_context` tool (writes session.counselling_context)
 - `backend/src/modules/ai-counsellor/repositories/sessions.repository.ts` — context read/merge-write
 - `backend/src/modules/ai-counsellor/services/prompt.service.ts` — inject counselling context; opt-in promotion instruction ("offer to remember, never auto-persist")
+
+#### As built (2026-08-22)
+
+New migration `globalyapp/20260822_001_ai_counsellor_context.ts` — **not** an edit to `20260816_002`,
+which is already applied on staging (append-only rule).
+
+| Decision | Choice |
+|---|---|
+| Context shape | A **fixed key set**: `goals`, `interests`, `strengths`, `constraints`, `preferred_countries`, `notes` (lists) and `stage` (one of exploring / narrowing / applying / post_offer). An open-ended JSONB would drift into whatever the model felt like writing and nothing downstream could read it. |
+| Merge semantics | Lists union, case-insensitively deduped, capped at 8 per key (oldest age out — the context rides in every prompt). `stage` overwrites. Nothing is deleted by a merge. |
+| Promotion to the permanent profile | **Not built as a write.** The prompt makes the model *offer* and then point the student at their profile settings; it is explicitly told never to claim it saved anything there. An LLM mutating `platform_user_profiles` on its own read of a conversation deserves its own decision and probably a UI confirmation, not a tool call. |
+| Sensitive data | The prompt forbids recording health, financial hardship, immigration difficulty or family problems, even when volunteered (PRD §22). Enforced by instruction only — nothing scans the payload. |
+| Scope | **Session-scoped**, per the gap doc. A new session starts fresh; the durable facts live in the static profile. Carrying context across sessions is the same question as profile promotion, and lands with it. |
+| Stage | Injected as behavioural guidance, not just a label — exploring widens, narrowing compares, applying gets practical, post_offer covers visa and arrival. |
+| Discovery turn | Keeps `update_student_context` (the first message is exactly when a student says what they want) while still withholding the course tools. |
+| Fallback path | Context is injected into the `searchAll` fallback prompt too, so a failed tool loop doesn't read as the counsellor forgetting the conversation. |
+| Session list payload | `findByUser` now selects explicit columns, excluding the context — the sidebar renders titles and does not need a growing JSONB on every refresh. |
+
+Test: `npm run test:counselling-context` — 15 assertions (union without duplicates, blank rejection,
+cap and ageing, stage overwrite, no input mutation, discovery-turn tool availability).
 
 ### Phase 9 — Evals + freshness
 

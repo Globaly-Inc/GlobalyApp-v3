@@ -16,7 +16,10 @@ export async function getOrCreateSession(userId: number, sessionId?: number, emb
   return sessionsRepo.create(userId, embedConfigId);
 }
 
-export async function listSessions(userId: number, includeArchived: boolean): Promise<SessionRow[]> {
+export async function listSessions(
+  userId: number,
+  includeArchived: boolean,
+): Promise<Array<Omit<SessionRow, "counselling_context">>> {
   return sessionsRepo.findByUser(userId, includeArchived);
 }
 
