@@ -3,6 +3,7 @@ import { requireSuperAdmin } from "./shared/require-super-admin.js";
 import { jobsRoutes } from "./routes/jobs.routes.js";
 import { queueRoutes } from "./routes/queue.routes.js";
 import { coursesRoutes } from "./routes/courses.routes.js";
+import { visaServicesRoutes } from "./routes/visa-services.routes.js";
 import { stagedRoutes } from "./routes/staged.routes.js";
 import { reviewRoutes } from "./routes/review.routes.js";
 import { immigrationRoutes } from "./routes/immigration.routes.js";
@@ -18,6 +19,7 @@ export default async function dataExtractionModule(app: FastifyInstance) {
   app.register(jobsRoutes);
   app.register(queueRoutes);
   app.register(coursesRoutes);
+  app.register(visaServicesRoutes);
   app.register(stagedRoutes);
   app.register(reviewRoutes);
   app.register(immigrationRoutes);

@@ -34,6 +34,7 @@ import type {
   StudyUnitParams,
   UpdateContextParams,
   UpdateCourseParams,
+  VisaService,
 } from "./types";
 
 export const allExtractionsRealApi = {
@@ -98,12 +99,13 @@ export const allExtractionsRealApi = {
   // "Extraction Details by Tab" cards summarize — one round trip per card group,
   // same shape V2's OverviewTab.loadSummary() fetched.
   getJobFull: async (id: string): Promise<JobFull> => {
-    const [detail, campusesRes, agentsRes, coursesRes, courseLinks] = await Promise.all([
+    const [detail, campusesRes, agentsRes, coursesRes, courseLinks, visaServices] = await Promise.all([
       httpGet<{ job: ExtractionJob; overview: InstitutionOverview | null }>(`/admin/data-extraction/jobs/${id}`),
       httpGet<{ campuses: CampusRow[] }>(`/admin/data-extraction/jobs/${id}/campuses`),
       httpGet<{ agents: AgentRow[] }>(`/admin/data-extraction/jobs/${id}/agents`),
       httpGet<Paginated<CourseRow>>(`/admin/data-extraction/jobs/${id}/courses?limit=100`),
       httpGet<CourseLinks>(`/admin/data-extraction/jobs/${id}/course-links`),
+      httpGet<{ visa_services: VisaService[] }>(`/admin/data-extraction/jobs/${id}/visa-services`).then((r) => r.visa_services),
     ]);
     return {
       job: detail.job,
@@ -112,6 +114,7 @@ export const allExtractionsRealApi = {
       agents: agentsRes.agents,
       courses: coursesRes.data,
       courseLinks,
+      visaServices,
     };
   },
 
@@ -236,8 +239,11 @@ export const allExtractionsRealApi = {
     await httpDelete(`/admin/data-extraction/queue/${id}`);
   },
 
+  // RunStepSchema on the backend expects course_id/data_type/visa_service_id at the top
+  // level of the body, not nested — this previously sent { step, params: {...} } and would
+  // have failed Zod validation the first time any caller actually passed extra params.
   runStep: async (jobId: string, step: string, params?: Record<string, unknown>): Promise<void> => {
-    await httpPost(`/admin/data-extraction/jobs/${jobId}/run-step`, { step, params });
+    await httpPost(`/admin/data-extraction/jobs/${jobId}/run-step`, { step, ...params });
   },
 
   // ── Course Fees ────────────────────────────────────────────────
@@ -389,5 +395,27 @@ export const allExtractionsRealApi = {
 
   deleteAccreditation: async (id: string): Promise<void> => {
     await httpDelete(`/admin/data-extraction/staged-accreditations/${id}`);
+  },
+
+  // ── Visa services (source_type: "visa_service") ───────────────────
+
+  getVisaServices: async (jobId: string, status?: string): Promise<VisaService[]> => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const { visa_services } = await httpGet<{ visa_services: VisaService[] }>(
+      `/admin/data-extraction/jobs/${jobId}/visa-services${query}`,
+    );
+    return visa_services;
+  },
+
+  approveVisaService: async (id: string): Promise<void> => {
+    await httpPost(`/admin/data-extraction/visa-services/${id}/approve`, {});
+  },
+
+  discardVisaService: async (id: string): Promise<void> => {
+    await httpPost(`/admin/data-extraction/visa-services/${id}/discard`, {});
+  },
+
+  deleteVisaService: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/visa-services/${id}`);
   },
 };

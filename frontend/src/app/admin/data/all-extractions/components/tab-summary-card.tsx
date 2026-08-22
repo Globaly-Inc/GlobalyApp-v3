@@ -13,7 +13,7 @@ import { useConfirmDelete } from "./use-confirm-delete";
 import type { JobTab } from "./job-tabs-bar";
 import type { ExtractionJob } from "../apis/types";
 
-export type ContextKey = "branches_urls" | "agents_urls" | "course_list_urls" | "extract_fields";
+export type ContextKey = "branches_urls" | "agents_urls" | "course_list_urls" | "extract_fields" | "services_urls";
 
 export type TabCard = {
   key: string;

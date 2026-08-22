@@ -14,8 +14,14 @@ import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown } from "../lib/scraper.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
-import { courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM } from "../lib/extraction-prompts.js";
-import { writeCourse, upsertCampus, normaliseCampusName, insertQueueItem, writeJobEvent, type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit } from "../lib/staging-writer.js";
+import {
+  courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
+  visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
+} from "../lib/extraction-prompts.js";
+import {
+  writeCourse, upsertCampus, normaliseCampusName, writeVisaService, insertQueueItem, writeJobEvent,
+  type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedVisaService,
+} from "../lib/staging-writer.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { domainOf } from "../lib/html-utils.js";
 
@@ -63,6 +69,10 @@ function classifyFailure(error: string): FailureClass {
 interface ExtractionResult {
   courses: ExtractedCourse[];
   campuses_found: ExtractedCampus[];
+}
+
+interface VisaServiceExtractionResult {
+  visa_services: ExtractedVisaService[];
 }
 
 // ponytail: merge duplicate campuses created by parallel workers (race condition)
@@ -177,7 +187,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   // Check job is still active + load site intelligence hints
   const [job, siteIntel] = await Promise.all([
     masterKnex(`${S}.extraction_jobs`)
-      .select("status", "stop_requested", "guidance_notes")
+      .select("status", "stop_requested", "guidance_notes", "source_type")
       .where({ id: jobId })
       .first(),
     masterKnex(`${S}.extraction_site_intelligence`)
@@ -306,100 +316,129 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     }
 
     // ── LLM extraction with memory-augmented prompt ──
+    // Same page-worker shape for both source types — only the prompt/system, the shape
+    // of what's extracted, and the staging table written to differ. See "Visa service
+    // extraction" in extraction-prompts.ts.
     const domain = domainOf(url);
-    const recalled = await recallMemory(domain, "course_extraction", markdown.slice(0, 500));
+    const isVisaService = job.source_type === "visa_service";
+    const memoryStep = isVisaService ? "visa_service_extraction" : "course_extraction";
+    const recalled = await recallMemory(domain, memoryStep, markdown.slice(0, 500));
     const addendum = buildSystemAddendum(recalled);
-    const system = addendum ? `${COURSE_EXTRACTION_SYSTEM}\n\n${addendum}` : COURSE_EXTRACTION_SYSTEM;
 
-    // ponytail: 65536 tokens — listing pages with 50+ courses need room
-    const extracted = await extractJson<ExtractionResult>({
-      system,
-      prompt: courseExtractionPrompt(url, markdown, job.guidance_notes, siteIntel),
-      maxTokens: 65536,
-    });
+    let entitiesWritten = 0;
+    let campusCount = 0;
+    let extractedForMemory: unknown;
 
-    // ── Write campuses first (courses reference them) ──
-    const campusIdMap = new Map<string, string>();
+    if (isVisaService) {
+      const system = addendum ? `${VISA_SERVICE_EXTRACTION_SYSTEM}\n\n${addendum}` : VISA_SERVICE_EXTRACTION_SYSTEM;
+      const extracted = await extractJson<VisaServiceExtractionResult>({
+        system,
+        prompt: visaServiceExtractionPrompt(url, markdown, job.guidance_notes, siteIntel),
+        maxTokens: 65536,
+      });
+      extractedForMemory = extracted;
 
-    if (extracted.campuses_found?.length) {
-      for (const campus of extracted.campuses_found) {
-        if (!campus.name) continue;
-        const campusId = await upsertCampus(jobId, campus);
-        if (campusId) campusIdMap.set(normaliseCampusName(campus.name), campusId);
+      // Flat table, no child/junction tables — writeVisaService dedups by name per job.
+      if (extracted.visa_services?.length) {
+        for (const service of extracted.visa_services) {
+          if (!service.name) continue;
+          await writeVisaService(jobId, { ...service, source_url: service.source_url ?? url });
+          entitiesWritten++;
+        }
       }
-    }
+    } else {
+      const system = addendum ? `${COURSE_EXTRACTION_SYSTEM}\n\n${addendum}` : COURSE_EXTRACTION_SYSTEM;
+      // ponytail: 65536 tokens — listing pages with 50+ courses need room
+      const extracted = await extractJson<ExtractionResult>({
+        system,
+        prompt: courseExtractionPrompt(url, markdown, job.guidance_notes, siteIntel),
+        maxTokens: 65536,
+      });
+      extractedForMemory = extracted;
 
-    // ── Write each course with child entities ──
-    let coursesWritten = 0;
-    let secondaryFetches = 0;
+      // ── Write campuses first (courses reference them) ──
+      const campusIdMap = new Map<string, string>();
 
-    if (extracted.courses?.length) {
-      for (const course of extracted.courses) {
-        if (!course.name) continue;
+      if (extracted.campuses_found?.length) {
+        for (const campus of extracted.campuses_found) {
+          if (!campus.name) continue;
+          const campusId = await upsertCampus(jobId, campus);
+          if (campusId) campusIdMap.set(normaliseCampusName(campus.name), campusId);
+        }
+      }
 
-        // Upsert campuses mentioned in this course
-        if (course.campus_names?.length) {
-          for (const cn of course.campus_names) {
-            if (!campusIdMap.has(normaliseCampusName(cn))) {
-              const cid = await upsertCampus(jobId, { name: cn });
-              if (cid) campusIdMap.set(normaliseCampusName(cn), cid);
+      // ── Write each course with child entities ──
+      let secondaryFetches = 0;
+
+      if (extracted.courses?.length) {
+        for (const course of extracted.courses) {
+          if (!course.name) continue;
+
+          // Upsert campuses mentioned in this course
+          if (course.campus_names?.length) {
+            for (const cn of course.campus_names) {
+              if (!campusIdMap.has(normaliseCampusName(cn))) {
+                const cid = await upsertCampus(jobId, { name: cn });
+                if (cid) campusIdMap.set(normaliseCampusName(cn), cid);
+              }
             }
           }
-        }
 
-        // Curriculum usually lives off-page — follow the flagged link whenever one's
-        // present, not only when the primary page found zero units: an admissions/
-        // overview page often names 1-2 example courses while the dedicated
-        // curriculum page lists the full set (seen live: an admissions page named 2
-        // of a ~15-course program). Merge rather than replace — writeCourse's
-        // upsertStudyUnit already dedups by name, so overlap between the two lists
-        // collapses instead of duplicating. Bounded per page scrape, logged when hit.
-        if (course.curriculum_page_url) {
-          if (secondaryFetches >= SECONDARY_FETCH_CAP) {
-            logger.warn("Secondary curriculum-page fetch cap reached, skipping remaining courses", {
-              jobId, url, cap: SECONDARY_FETCH_CAP,
-            });
-          } else {
-            secondaryFetches++;
-            const units = await fetchCurriculumUnits(course.curriculum_page_url, url, jobId);
-            if (units.length) course.study_units = [...(course.study_units ?? []), ...units];
+          // Curriculum usually lives off-page — follow the flagged link whenever one's
+          // present, not only when the primary page found zero units: an admissions/
+          // overview page often names 1-2 example courses while the dedicated
+          // curriculum page lists the full set (seen live: an admissions page named 2
+          // of a ~15-course program). Merge rather than replace — writeCourse's
+          // upsertStudyUnit already dedups by name, so overlap between the two lists
+          // collapses instead of duplicating. Bounded per page scrape, logged when hit.
+          if (course.curriculum_page_url) {
+            if (secondaryFetches >= SECONDARY_FETCH_CAP) {
+              logger.warn("Secondary curriculum-page fetch cap reached, skipping remaining courses", {
+                jobId, url, cap: SECONDARY_FETCH_CAP,
+              });
+            } else {
+              secondaryFetches++;
+              const units = await fetchCurriculumUnits(course.curriculum_page_url, url, jobId);
+              if (units.length) course.study_units = [...(course.study_units ?? []), ...units];
+            }
           }
-        }
 
-        await writeCourse(jobId, { ...course, source_url: course.source_url ?? url }, campusIdMap);
-        coursesWritten++;
+          await writeCourse(jobId, { ...course, source_url: course.source_url ?? url }, campusIdMap);
+          entitiesWritten++;
+        }
       }
+      campusCount = campusIdMap.size;
     }
 
     // ── Mark complete + update counters ──
     await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
       status: "completed",
-      extracted_data: JSON.stringify({ courses_found: coursesWritten, campuses_found: campusIdMap.size, scraper: page.scraper }),
+      extracted_data: JSON.stringify({ courses_found: entitiesWritten, campuses_found: campusCount, scraper: page.scraper }),
       updated_at: masterKnex.fn.now(),
     });
 
-    if (coursesWritten > 0) {
-      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("courses_extracted", coursesWritten);
+    if (entitiesWritten > 0) {
+      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("courses_extracted", entitiesWritten);
     }
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_scraped", 1);
 
     await writeJobEvent(jobId, "page_extracted", {
       phase: "data_extraction",
-      message: `Extracted ${coursesWritten} courses from ${url}`,
-      data: { url, courses: coursesWritten, campuses: campusIdMap.size, scraper: page.scraper },
+      message: `Extracted ${entitiesWritten} ${isVisaService ? "visa services" : "courses"} from ${url}`,
+      data: { url, courses: entitiesWritten, campuses: campusCount, scraper: page.scraper },
     });
 
     // ponytail: feed the learning loop — non-blocking, best-effort
-    if (coursesWritten > 0) {
+    if (entitiesWritten > 0) {
       rememberMemory({
-        job_id: jobId, domain, step: "course_extraction",
-        entity_type: "course", source_url: url,
+        job_id: jobId, domain, step: memoryStep,
+        entity_type: isVisaService ? "visa_service" : "course", source_url: url,
         source_excerpt: markdown.slice(0, 500),
-        ai_output: extracted,
+        ai_output: extractedForMemory,
       }).catch(() => {}); // fire-and-forget
     }
 
-    logger.info("Page processed", { jobId, url, coursesWritten, scraper: page.scraper });
+    logger.info("Page processed", { jobId, url, entitiesWritten, scraper: page.scraper });
 
     await checkAllPagesDone(jobId);
 

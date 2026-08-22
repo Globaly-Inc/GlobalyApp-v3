@@ -139,6 +139,8 @@ export type JobFull = {
   agents: AgentRow[];
   courses: CourseRow[];
   courseLinks: CourseLinks;
+  /** Only populated for source_type: "visa_service" jobs — empty array otherwise. */
+  visaServices: VisaService[];
 };
 
 // ── Full entity types for tab views ──────────────────────────────
@@ -270,7 +272,8 @@ export type EditableTable =
   | "extraction_eligibility_requirements"
   | "extraction_study_units"
   | "extraction_accreditations"
-  | "extraction_study_options";
+  | "extraction_study_options"
+  | "extraction_visa_services";
 
 // guided_urls values are URL arrays and resource objects, not strings — matches the
 // backend's `z.record(z.unknown())`.
@@ -377,6 +380,55 @@ export type StudyUnitParams = {
   description?: string | null;
 };
 export type StudyOption = { id: string; name: string | null; study_mode: string | null; study_load: string | null; duration_value: number | null; duration_unit: string | null; applicable_to: string | null; save_for_reuse?: boolean; created_at: string; updated_at?: string };
+
+// ── Visa services (source_type: "visa_service") ──────────────────
+
+export type VisaServiceStatus = "pending" | "approved" | "discarded";
+
+/** One row of extraction_visa_services — flat table, no child/junction entities. */
+export type VisaService = {
+  id: string;
+  job_id: string;
+  status: VisaServiceStatus | string;
+  name: string;
+  provider_name: string | null;
+  type: string | null;
+  description: string | null;
+  registration_number: string | null;
+  registration_body: string | null;
+  registration_status: string | null;
+  registration_level: string | null;
+  visa_types_handled: string[] | null;
+  services_offered: string[] | null;
+  specializations: string[] | null;
+  fee_amount: number | null;
+  fee_currency: string | null;
+  fee_type: string | null;
+  consultation_fee: number | null;
+  consultation_free: boolean | null;
+  success_rate: number | null;
+  cases_handled: number | null;
+  years_experience: number | null;
+  team_size: number | null;
+  qualified_agents_count: number | null;
+  countries_serviced: string[] | null;
+  nationalities_serviced: string[] | null;
+  languages_spoken: string[] | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  website: string | null;
+  booking_url: string | null;
+  average_rating: number | null;
+  review_count: number | null;
+  source_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export type StudyOptionParams = {
   name?: string | null;

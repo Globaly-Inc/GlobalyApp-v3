@@ -20,6 +20,7 @@ import {
   courseListPrompt, COURSE_LIST_SYSTEM,
   bulkFeePrompt, BULK_FEE_SYSTEM,
   courseDataPrompt, COURSE_DATA_SYSTEM,
+  visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
   writeInstitutionOverview,
@@ -30,8 +31,12 @@ import {
   writeJobEvent,
   normaliseCampusName,
   upsertStudyUnit,
+  writeVisaService,
+  updateVisaServiceById,
+  normaliseVisaServiceName,
   type ExtractedCampus,
   type InstitutionOverview,
+  type ExtractedVisaService,
 } from "../lib/staging-writer.js";
 import { parseAddress } from "../lib/address-parser.js";
 import { normalizeAgentRow } from "../lib/agent-normalizers.js";
@@ -1052,28 +1057,155 @@ async function handleCourseDataStep(
   });
 }
 
+/**
+ * Whole-job visa-service re-scan — admin-triggered, mirrors handleAgentsStep's shape
+ * (iterate guided URLs, extract, write) but reuses the exact prompt/writer the automatic
+ * page-worker pipeline already uses for source_type: "visa_service" jobs, since there's no
+ * agent-detection/table-parsing complexity here — just scrape, extract, upsert-by-name.
+ */
+async function handleVisaServicesStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+
+  const guided = parseGuidedUrls(job);
+  const servicesUrls: string[] = (guided.services_urls as string[]) || [];
+  if (servicesUrls.length === 0) throw new Error("No services_urls provided in guided_urls");
+
+  await writeJobEvent(jobId, "step_start", { phase: "visa_services", message: `Extracting visa services from ${servicesUrls.length} URLs` });
+
+  const domain = domainOf(job.institution_url);
+  const recalled = await recallMemory(domain, "visa_service_extraction");
+  const addendum = buildSystemAddendum(recalled);
+  const system = addendum ? `${VISA_SERVICE_EXTRACTION_SYSTEM}\n\n${addendum}` : VISA_SERVICE_EXTRACTION_SYSTEM;
+
+  const siteIntel = await masterKnex(`${S}.extraction_site_intelligence`)
+    .select("fee_structure", "extraction_hints").where({ job_id: jobId }).first();
+
+  let servicesWritten = 0;
+  for (const url of servicesUrls) {
+    const sc = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
+    if (sc?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
+    await heartbeat(jobId);
+
+    const markdown = await scrapeUrl(url);
+    if (!markdown) continue;
+
+    const extracted = await extractJson<{ visa_services: ExtractedVisaService[] }>({
+      system,
+      prompt: visaServiceExtractionPrompt(url, truncateMarkdown(markdown), job.guidance_notes, siteIntel),
+      maxTokens: 65536,
+    });
+
+    for (const service of extracted.visa_services || []) {
+      if (!service.name) continue;
+      await writeVisaService(jobId, { ...service, source_url: service.source_url ?? url });
+      servicesWritten++;
+    }
+  }
+
+  await rememberMemory({
+    job_id: jobId, domain, step: "visa_service_extraction",
+    entity_type: "visa_service",
+    ai_output: { total: servicesWritten, pages: servicesUrls.length },
+  });
+
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "visa_services",
+    message: `${servicesWritten} visa services extracted from ${servicesUrls.length} pages`,
+    data: { count: servicesWritten, pages: servicesUrls.length },
+  });
+}
+
+/**
+ * Re-extract ONE known visa service by re-scraping its own source_url — the visa-service
+ * analog of handleCourseDataStep, for the "re-run this one" action on a single card.
+ * Overwrites via updateVisaServiceById rather than the dedup-by-name writer, since we
+ * already know exactly which row to update.
+ */
+async function handleVisaServiceDataStep(jobId: string, visaServiceId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+
+  const visaService = await masterKnex(`${S}.extraction_visa_services`)
+    .where({ id: visaServiceId, job_id: jobId }).first();
+  if (!visaService) throw new Error(`Visa service ${visaServiceId} not found for job ${jobId}`);
+
+  const sourceUrl = visaService.source_url;
+  if (!sourceUrl) throw new Error(`Visa service ${visaServiceId} has no source_url to re-scrape`);
+
+  await writeJobEvent(jobId, "step_start", {
+    phase: "visa_service_data",
+    message: `Re-extracting "${visaService.name}"`,
+    data: { visa_service_id: visaServiceId },
+  });
+
+  const scVs = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
+  if (scVs?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
+
+  const markdown = await scrapeUrl(sourceUrl);
+  if (!markdown) throw new Error(`Failed to scrape visa service page: ${sourceUrl}`);
+
+  const domain = domainOf(job.institution_url);
+  const recalled = await recallMemory(domain, "visa_service_extraction");
+  const addendum = buildSystemAddendum(recalled);
+  const system = addendum ? `${VISA_SERVICE_EXTRACTION_SYSTEM}\n\n${addendum}` : VISA_SERVICE_EXTRACTION_SYSTEM;
+
+  const extracted = await extractJson<{ visa_services: ExtractedVisaService[] }>({
+    system,
+    prompt: visaServiceExtractionPrompt(sourceUrl, truncateMarkdown(markdown), job.guidance_notes),
+    maxTokens: 65536,
+  });
+
+  // The page may describe more than one service — prefer the one matching this row's
+  // existing name (re-scraping the same page shouldn't switch to a different service);
+  // fall back to the first result if the name no longer appears.
+  const existingNorm = normaliseVisaServiceName(visaService.name);
+  const match = (extracted.visa_services || []).find((s) => s.name && normaliseVisaServiceName(s.name) === existingNorm)
+    ?? extracted.visa_services?.[0];
+
+  if (!match) throw new Error(`No visa service found on re-scrape of ${sourceUrl}`);
+
+  await updateVisaServiceById(visaServiceId, match);
+
+  await rememberMemory({
+    job_id: jobId, domain, step: "visa_service_extraction",
+    entity_type: "visa_service", entity_ref: visaServiceId,
+    source_url: sourceUrl,
+    source_excerpt: markdown.slice(0, 500),
+    ai_output: match,
+  });
+
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "visa_service_data",
+    message: `Re-extracted "${visaService.name}"`,
+    data: { visa_service_id: visaServiceId },
+  });
+}
+
 // ── Main consumer ───────────────────────────────────────────────────────────
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
-  let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined;
+  let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined;
   try {
-    ({ jobId, step, courseId, dataType } = JSON.parse(msg!.content.toString()));
+    ({ jobId, step, courseId, dataType, visaServiceId } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
   }
-  logger.info("Received step", { jobId, step, courseId, dataType });
+  logger.info("Received step", { jobId, step, courseId, dataType, visaServiceId });
 
   try {
     switch (step as PipelineStep) {
-      case "institution":   await handleInstitutionStep(jobId); break;
-      case "branches":      await handleBranchesStep(jobId); break;
-      case "agents":        await handleAgentsStep(jobId); break;
-      case "discovery":     await handleDiscoveryStep(jobId); break;
-      case "courses":       await handleCoursesStep(jobId); break;
-      case "enrichment":    await handleEnrichmentStep(jobId); break;
-      case "verification":  await handleVerificationStep(jobId); break;
-      case "course_data":   await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
+      case "institution":       await handleInstitutionStep(jobId); break;
+      case "branches":          await handleBranchesStep(jobId); break;
+      case "agents":            await handleAgentsStep(jobId); break;
+      case "discovery":         await handleDiscoveryStep(jobId); break;
+      case "courses":           await handleCoursesStep(jobId); break;
+      case "enrichment":        await handleEnrichmentStep(jobId); break;
+      case "verification":      await handleVerificationStep(jobId); break;
+      case "course_data":       await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
+      case "visa_services":     await handleVisaServicesStep(jobId); break;
+      case "visa_service_data": await handleVisaServiceDataStep(jobId, visaServiceId!); break;
       default:
         logger.warn("Unknown step", { step });
     }
@@ -1086,7 +1218,7 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
     await writeJobEvent(jobId, "step_error", {
       level: "error", phase: step,
       message: `Step "${step}" failed: ${errMsg}`,
-      data: { step, courseId, dataType },
+      data: { step, courseId, dataType, visaServiceId },
     });
   }
 });

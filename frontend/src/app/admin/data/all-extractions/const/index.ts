@@ -60,6 +60,17 @@ export const GUIDED_URL_CATEGORIES = [
   { key: "accreditations_urls", label: "Accreditations" },
 ] as const;
 
+// Same `*_urls` suffix contract as GUIDED_URL_CATEGORIES, just pointed at a visa/migration
+// consultancy site's own page structure instead of a university's.
+export const VISA_SERVICE_GUIDED_URL_CATEGORIES = [
+  { key: "services_urls", label: "Services & Visa Types Offered", hint: "Where the AI can find the full list of services this provider offers" },
+  { key: "fees_urls", label: "Fees / Pricing" },
+  { key: "registration_urls", label: "Registration / Accreditation", hint: "MARA, OISC, ICCRC or equivalent registration/licensing page" },
+  { key: "team_urls", label: "Team / Registered Agents" },
+  { key: "contact_urls", label: "Contact / Office Locations" },
+  { key: "testimonials_urls", label: "Reviews / Testimonials" },
+] as const;
+
 // Per-course verification_status → list dot colour. "verified"/"mismatch" come from the
 // verify worker, "confirmed"/"flagged" from a human, "manual" from a hand-added course.
 export const VERIFICATION_DOT: Record<string, string> = {
@@ -73,6 +84,16 @@ export const VERIFICATION_DOT: Record<string, string> = {
 export const SOURCE_TYPE_OPTIONS = [
   { value: "institution", label: "Institution Website" },
 ];
+
+// Offered instead of SOURCE_TYPE_OPTIONS when the chosen business + service category are
+// both "Visa Services" — see isVisaServiceCategory in new-extraction-dialog.tsx.
+export const VISA_SERVICE_SOURCE_TYPE_OPTIONS = [
+  { value: "visa_service", label: "Visa Service Website" },
+];
+
+export type GuidedUrlCategory =
+  | (typeof GUIDED_URL_CATEGORIES)[number]
+  | (typeof VISA_SERVICE_GUIDED_URL_CATEGORIES)[number];
 
 /** One list component, three pages — the mode picks the data and the wording. Ported from V2's ExtractionDashboard. */
 export type DashboardMode = "all" | "completed" | "ai-ongoing";

@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Clock,
   ShieldCheck,
+  Globe2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +29,8 @@ export type JobTab =
   | "eligibility"
   | "units"
   | "study_options"
-  | "accreditations";
+  | "accreditations"
+  | "visa_services";
 
 const TABS: { value: JobTab; label: string; icon: LucideIcon }[] = [
   { value: "overview", label: "Overview", icon: ListOrdered },
@@ -43,13 +45,29 @@ const TABS: { value: JobTab; label: string; icon: LucideIcon }[] = [
   { value: "units", label: "Study Units", icon: BookOpen },
   { value: "study_options", label: "Study Options", icon: Clock },
   { value: "accreditations", label: "Accreditations", icon: ShieldCheck },
+  { value: "visa_services", label: "Visa Services", icon: Globe2 },
 ];
 
-export function JobTabsBar({ active, onChange }: Readonly<{ active: JobTab; onChange: (tab: JobTab) => void }>) {
+/**
+ * `tabs` restricts which tabs render — e.g. a visa_service job has no courses/campuses.
+ * `institutionLabel` relabels the "institution" tab — it's the same extraction_institution_overview
+ * table/tab for every job type (there's one generic identity record per job, not a separate
+ * one per source_type), so a visa-service job showing "Institution" read as if visa data had
+ * leaked into the wrong place. It hasn't; the label was just wrong for what's actually shown.
+ */
+export function JobTabsBar({
+  active,
+  onChange,
+  tabs,
+  institutionLabel,
+}: Readonly<{ active: JobTab; onChange: (tab: JobTab) => void; tabs?: JobTab[]; institutionLabel?: string }>) {
+  const visibleTabs = (tabs ? TABS.filter((t) => tabs.includes(t.value)) : TABS).map((t) =>
+    t.value === "institution" && institutionLabel ? { ...t, label: institutionLabel } : t,
+  );
   return (
     <div className="w-full overflow-x-auto border-b border-border">
       <div className="inline-flex w-max gap-1 pb-px">
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const isActive = active === tab.value;
           return (
             <button

@@ -20,11 +20,16 @@ import { EligibilityTab } from "./eligibility-tab";
 import { StudyUnitsTab } from "./study-units-tab";
 import { StudyOptionsTab } from "./study-options-tab";
 import { AccreditationsTab } from "./accreditations-tab";
+import { VisaServicesTab } from "./visa-services-tab";
 
-const VALID_TABS: JobTab[] = [
+const COURSE_JOB_TABS: JobTab[] = [
   "overview", "context", "institution", "branches", "agents",
   "courses", "fees", "intakes", "eligibility", "units", "study_options", "accreditations",
 ];
+// A visa_service job never populates courses/campuses/agents/fees/etc. — those tabs would
+// only ever show "no data" for it, so show its own review tab instead.
+const VISA_SERVICE_JOB_TABS: JobTab[] = ["overview", "context", "institution", "visa_services"];
+const VALID_TABS: JobTab[] = [...new Set([...COURSE_JOB_TABS, ...VISA_SERVICE_JOB_TABS])];
 
 function parseTab(raw: string | null): JobTab {
   if (raw === "progress") return "overview"; // legacy V2 alias
@@ -56,6 +61,8 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
   };
 
   const full = jobFull?.job.id === jobId ? jobFull : null;
+  const isVisaServiceJob = full?.job.source_type === "visa_service";
+  const visibleTabs = isVisaServiceJob ? VISA_SERVICE_JOB_TABS : COURSE_JOB_TABS;
 
   if (!full) {
     if (jobFullStatus === "failed") return <p className="text-sm text-muted-foreground">Job not found.</p>;
@@ -70,13 +77,18 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
     <div className="space-y-6">
       <JobHeader job={full.job} onReload={reload} />
       <JobStats job={full.job} courses={full.courses} />
-      <JobTabsBar active={activeTab} onChange={setTab} />
+      <JobTabsBar
+        active={activeTab}
+        onChange={setTab}
+        tabs={visibleTabs}
+        institutionLabel={isVisaServiceJob ? "Business" : undefined}
+      />
       {activeTab === "overview" ? (
         <OverviewTab full={full} onJumpToTab={setTab} onReload={reload} />
       ) : activeTab === "context" ? (
         <ContextTab job={full.job} onReload={reload} />
       ) : activeTab === "institution" ? (
-        <InstitutionTab overview={full.overview} jobId={jobId} onReload={reload} />
+        <InstitutionTab overview={full.overview} jobId={jobId} onReload={reload} isVisaServiceJob={isVisaServiceJob} />
       ) : activeTab === "courses" ? (
         <CoursesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
       ) : activeTab === "branches" ? (
@@ -95,6 +107,8 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
         <StudyOptionsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
       ) : activeTab === "accreditations" ? (
         <AccreditationsTab jobId={jobId} />
+      ) : activeTab === "visa_services" ? (
+        <VisaServicesTab jobId={jobId} />
       ) : (
         <p className="text-sm text-muted-foreground py-12 text-center">
           This tab hasn&apos;t been migrated from V2 yet.
