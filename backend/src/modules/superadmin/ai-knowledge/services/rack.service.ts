@@ -48,7 +48,7 @@ export async function updateCategory(id: string, patch: Record<string, unknown>,
 
 // Sources and documents cascade, so this can remove a lot at once — say how much.
 export async function deleteCategory(id: string, adminId: number) {
-  const sources = await repo.listSources({ category_id: id, limit: 200 });
+  const sources = await repo.listSources({ category_id: id, limit: 200, sort: "recent" });
   const deleted = await repo.deleteCategory(id);
   if (!deleted) throw new NotFoundError("Category not found");
   await logAudit(adminId, "AI_KNOWLEDGE_CATEGORY_DELETE", {
@@ -254,6 +254,22 @@ export async function uploadSource(
     await rollback();
     throw e;
   }
+}
+
+/**
+ * Stamp a source as checked by a human. Distinct from last_crawled_at: a crawl proves
+ * we fetched the page, not that anyone confirmed what we stored is still true.
+ */
+export async function verifySource(id: string, adminId: number) {
+  const source = await repo.findSource(id);
+  if (!source) throw new NotFoundError("Source not found");
+
+  const row = await repo.updateSource(id, { last_verified_at: new Date() });
+  await logAudit(adminId, "AI_KNOWLEDGE_SOURCE_VERIFY", {
+    entityType: "ai_knowledge_sources",
+    entityId: id,
+  });
+  return { source: row };
 }
 
 // ── Documents ──

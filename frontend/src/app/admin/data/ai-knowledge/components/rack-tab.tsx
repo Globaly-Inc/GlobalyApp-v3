@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Brain, FileText, Library, Link2, Loader2, Pencil, Plus, RefreshCw, Trash2, Upload,
+  Brain, CalendarClock, FileText, Library, Link2, Loader2, Pencil, Plus, RefreshCw, ShieldCheck,
+  Trash2, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +72,28 @@ function CategoryForm({
       </div>
     </div>
   );
+}
+
+const SIX_MONTHS_MS = 182 * 24 * 60 * 60 * 1000;
+
+/**
+ * Verification state of a source. Red beats amber: a figure past its stated validity
+ * is wrong now, where an unverified one is only unconfirmed.
+ */
+function freshness(source: RackSource): { label: string; tone: string } | null {
+  if (source.effective_until && new Date(source.effective_until) < new Date()) {
+    return { label: `Expired ${source.effective_until}`, tone: "bg-red-100 text-red-800" };
+  }
+  if (!source.last_verified_at) {
+    return { label: "Never verified", tone: "bg-amber-100 text-amber-900" };
+  }
+  if (Date.now() - new Date(source.last_verified_at).getTime() > SIX_MONTHS_MS) {
+    return {
+      label: `Verified ${new Date(source.last_verified_at).toLocaleDateString()}`,
+      tone: "bg-amber-100 text-amber-900",
+    };
+  }
+  return null;
 }
 
 export function RackTab({
@@ -282,6 +305,15 @@ export function RackTab({
                               {CRAWL_STATUS_TONE[source.last_status]?.label ?? source.last_status}
                             </Badge>
                           )}
+                          {(() => {
+                            const stale = freshness(source);
+                            return stale ? (
+                              <Badge className={`gap-1 text-[10px] ${stale.tone}`}>
+                                <CalendarClock className="h-3 w-3" />
+                                {stale.label}
+                              </Badge>
+                            ) : null;
+                          })()}
                           {source.source_type === "file" && (
                             <Badge variant="outline" className="gap-1 text-[10px]">
                               <Upload className="h-3 w-3" />
@@ -322,6 +354,19 @@ export function RackTab({
                       </div>
 
                       <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost" size="icon-sm" className="cursor-pointer"
+                          title={source.last_verified_at
+                            ? `Last verified ${new Date(source.last_verified_at).toLocaleString()} — confirm again`
+                            : "Mark as verified — you have confirmed this content is still true"}
+                          disabled={saving}
+                          onClick={() => run(
+                            () => aiKnowledgeApi.verifySource(source.id),
+                            "Marked as verified", () => onReloadSources(selected.id),
+                          )}
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                        </Button>
                         {source.source_type !== "file" && (
                         <Button
                           variant="outline" className="gap-1.5 px-3 cursor-pointer"

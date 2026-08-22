@@ -122,7 +122,7 @@ which is already applied on staging (append-only rule).
 Test: `npm run test:counselling-context` — 15 assertions (union without duplicates, blank rejection,
 cap and ageing, stage overwrite, no input mutation, discovery-turn tool availability).
 
-### Phase 9 — Evals + freshness
+### Phase 9 — Evals + freshness — ✅ BUILT 2026-08-22
 
 CREATE
 - `backend/scripts/ai-evals/questions.json` — ~30 fixed questions (one per PRD §25 response type + PRD §1 examples)
@@ -134,6 +134,38 @@ MODIFY
 - `backend/src/modules/superadmin/ai-knowledge/routes/rack.routes.ts` + `rack.repository.ts` — staleness sort/filter on source list; verify action (stamps `last_verified_at`)
 - `frontend/src/app/admin/data/ai-knowledge/components/rack-tab.tsx` — staleness badge + verify button
 - `backend/package.json` — `job:ai-knowledge-recrawl` script entry (matches existing `job:ai-knowledge-crawl` pattern)
+
+#### As built (2026-08-22)
+
+New migration `superadmin/20260822_002_ai_knowledge_freshness.ts` — append-only, not an edit to `20260814_001`.
+
+**Evals.** `scripts/ai-evals/questions.json` — 30 questions, each tagged with the acceptance criteria
+it covers, 28 carrying structural expectations. `npm run ai:evals -- --token <jwt>` posts each at a
+running backend over the real SSE endpoint and writes a dated report to `docs/ai-counsellor/evals/`.
+
+| Decision | Choice |
+|---|---|
+| What is checked | **Structure only** — asked a question, cited a source, emitted a card, hedged, admitted a gap, did not diagnose, did not re-ask a known budget. Answer quality is a human read, and the report prints every reply in full for it. An LLM judge would be a second thing to trust. |
+| Multi-turn questions | `setup` / `setup2` send earlier turns in the same session first, because memory, stage and the counsel-before-recommend gate only exist on a second turn. |
+| Exit code | Non-zero on **transport** errors only. A failed structural check is a finding to read and diff between runs, not a broken build. |
+| Corpus-dependent checks | `cites` and `card` are expected on the knowledge and course questions and **will fail until the rack and course data are seeded**. That gap is the signal — run the same set before and after loading the 8 country docs. |
+| Auth | Takes `--token <jwt>`; each question burns a credit on that account. |
+
+**Freshness.** `last_verified_at` (a human confirmed it) and `effective_until` (a known expiry) on
+`ai_knowledge_sources`, both distinct from `last_crawled_at` (a machine fetched it).
+
+| Decision | Choice |
+|---|---|
+| Reaching the student | `match_ai_knowledge_chunks()` is recreated to return both, so retrieval carries them into the context and the tool payload. The prompt tells the model to say when a figure was last confirmed and to flag one past its validity date instead of asserting it (AC-10). |
+| Admin surface | `POST /sources/:id/verify` stamps the date; the rack list sorts by staleness (`NULLS FIRST` — never verified is the stalest state); the UI shows amber past six months or never-verified, red past `effective_until`. |
+| Re-crawl | `knowledge-recrawl-dispatch.worker.ts` polls hourly, publishes due `url` sources (weekly = 7 days, monthly = 30) to the existing crawl queue, marks them `queued` so a repeat pass is a no-op, caps 25 per run. Uploaded files are excluded — there is no page to re-fetch. Container + Makefile targets added. |
+| Not built | `rule_class` ("this is a provincial rule, not national law") from the ingestion plan. It needs region metadata that has no source of truth yet. |
+
+Test: `npm run test:ai-evals-checks` — 34 assertions over the SSE frame parser and every check
+(including that no documented check goes unused, which caught three dead entries).
+
+**Inert until there is a corpus:** with zero crawled sources the dispatcher has nothing to dispatch
+and the staleness badges have nothing to colour. Both start working the moment a URL source is added.
 
 ---
 

@@ -408,6 +408,10 @@ async function dispatch(
             authority: c.trust_tier,
             source: c.source_type === "file" ? c.file_name : c.url,
             page: c.page_number,
+            // Freshness travels with the passage so a stale figure can be qualified
+            // rather than asserted.
+            last_verified: c.last_verified_at ? String(c.last_verified_at).slice(0, 10) : null,
+            valid_until: c.effective_until ? String(c.effective_until).slice(0, 10) : null,
           })),
           visa_rules: visaRules,
           faqs: faqs.map((f) => ({ question: f.question, answer: f.answer })),

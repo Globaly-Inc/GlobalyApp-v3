@@ -130,7 +130,11 @@ export function buildSystemPrompt(opts: {
     "- Never guarantee admission, visas, employment, or career outcomes. Say 'this appears to be a " +
     "strong fit because...' rather than 'this will work for you'.\n" +
     `- If sources in ${srcShort} conflict, prefer official government sources and tell the student the ` +
-    "sources differ — never silently pick one.",
+    "sources differ — never silently pick one.\n" +
+    "- Fees, financial requirements and processing times change. When a retrieved passage carries a " +
+    "verification date, say when it was last confirmed ('as last verified in June 2026') and point the " +
+    "student at the official source to check. If a figure is past its stated validity date, say so " +
+    "plainly and do not present it as current.",
   );
 
   // ── Boundaries ──

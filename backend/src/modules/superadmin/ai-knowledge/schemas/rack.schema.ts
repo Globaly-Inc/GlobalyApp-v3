@@ -44,6 +44,8 @@ export const CreateSourceSchema = z.object({
   max_pages: z.number().int().min(1).max(500).nullish(),
   added_via: z.enum(ADDED_VIA).default("manual"),
   active: z.boolean().default(true),
+  /** Known expiry for a temporary figure — a fee schedule, a cap, a concession. */
+  effective_until: z.string().date().nullish(),
 });
 
 // domain is derived from url server-side, so it is not patchable on its own.
@@ -60,6 +62,8 @@ export const UploadSourceSchema = z.object({
 export const SourceQuerySchema = z.object({
   category_id: z.string().uuid().optional(),
   q: z.string().trim().min(1).optional(),
+  /** "staleness" surfaces never-verified and longest-unverified sources first. */
+  sort: z.enum(["recent", "staleness"]).default("recent"),
   limit: z.coerce.number().int().min(1).max(200).default(200),
 });
 

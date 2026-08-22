@@ -439,6 +439,10 @@ export interface KnowledgeChunkResult {
   category_label: string;
   source_domain: string;
   trust_tier: "gov" | "verified_institution" | "other";
+  /** When a human last confirmed this source, as opposed to when it was crawled. */
+  last_verified_at: string | null;
+  /** Known expiry for a temporary figure (fee schedule, cap, concession). */
+  effective_until: string | null;
 }
 
 export async function searchKnowledgeVisas(opts: { query: string; limit?: number }): Promise<KnowledgeVisaResult[]> {

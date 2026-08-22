@@ -244,6 +244,26 @@ services:
     networks:
       - globalyapp
 
+  ai-knowledge-recrawl-worker:
+    container_name: globalyapp-ai-knowledge-recrawl-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-ai-knowledge-recrawl"]
+    command: npm run job:ai-knowledge-recrawl
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   extraction-agentcis-worker:
     container_name: globalyapp-extraction-agentcis-worker
     image: globalyapp-backend:local

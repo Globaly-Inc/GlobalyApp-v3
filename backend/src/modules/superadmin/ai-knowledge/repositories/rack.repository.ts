@@ -39,7 +39,13 @@ export async function deleteCategory(id: string) {
 // ── Sources ──
 
 export async function listSources(opts: SourceQuery) {
-  const query = masterKnex(SOURCES).orderBy("created_at", "desc").limit(opts.limit);
+  const query = masterKnex(SOURCES).limit(opts.limit);
+  if (opts.sort === "staleness") {
+    // Never verified is the stalest state there is, so NULLs lead.
+    query.orderByRaw("last_verified_at ASC NULLS FIRST").orderBy("created_at", "asc");
+  } else {
+    query.orderBy("created_at", "desc");
+  }
   if (opts.category_id) query.where("category_id", opts.category_id);
   if (opts.q) {
     const like = `%${opts.q}%`;
@@ -111,6 +117,16 @@ export async function deleteDocument(id: string) {
 export async function syncDocCount(sourceId: string) {
   const row = await masterKnex(DOCUMENTS).where({ source_id: sourceId, active: true }).count("* as c").first();
   await masterKnex(SOURCES).where({ id: sourceId }).update({ doc_count: Number(row?.c ?? 0) });
+}
+
+/** Sources due a human check: never verified, or verified longer ago than the cutoff. */
+export async function countStaleSources(cutoff: Date) {
+  const row = await masterKnex(SOURCES)
+    .where({ active: true })
+    .where((b) => b.whereNull("last_verified_at").orWhere("last_verified_at", "<", cutoff))
+    .count("* as c")
+    .first();
+  return Number(row?.c ?? 0);
 }
 
 export async function rackCounts() {
