@@ -18,6 +18,13 @@ export interface ScrapeOptions {
   forceFirecrawl?: boolean;
   /** Firecrawl mobile emulation — some anti-bot walls only serve the mobile site. */
   mobile?: boolean;
+  /**
+   * Firecrawl proxy tier. "basic" (default) is a datacenter IP — the first thing a
+   * university-wide WAF (Akamai/Cloudflare) blackholes. "auto" retries through
+   * Firecrawl's residential/stealth proxy only if basic gets blocked (no extra
+   * credit cost otherwise); "stealth" forces it. Unset = Firecrawl's own default.
+   */
+  proxy?: "basic" | "stealth" | "auto";
 }
 
 export interface ScrapeResult {
@@ -301,6 +308,7 @@ async function firecrawlScrape(
         onlyMainContent: opts.onlyMainContent ?? true,
         waitFor: opts.waitFor ?? 2000,
         ...(opts.mobile ? { mobile: true } : {}),
+        ...(opts.proxy ? { proxy: opts.proxy } : {}),
       }),
     });
     const data: any = await res.json().catch(() => ({}));

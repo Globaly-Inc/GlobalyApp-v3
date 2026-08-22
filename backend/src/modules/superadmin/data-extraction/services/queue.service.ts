@@ -29,13 +29,29 @@ export function ignoreQueueItem(id: string, adminId: number) {
   return setQueueStatus(id, { status: "ignored" }, adminId, "QUEUE_IGNORE");
 }
 
-export function retryQueueItem(id: string, adminId: number) {
-  return setQueueStatus(
+// This is a push queue (LavinMQ), not a polled one — flipping the DB row to "pending"
+// does nothing on its own, nothing consumes it until a message is published. V2's
+// retry/resume only touched the DB row (fine for its polling model); porting that
+// as-is to V3 left retry/resume silently stuck forever with no re-scrape.
+async function dispatchQueueItem(id: string) {
+  const item = await repo.findQueueItem(id);
+  if (!item) return;
+  try {
+    await pipelineQueue.publish(EXTRACTION_QUEUES.PAGES, { jobId: item.job_id, queueItemId: item.id, url: item.url });
+  } catch {
+    logger.warn("Queue unavailable dispatching retried item, worker will need a manual re-trigger", { queueItemId: id });
+  }
+}
+
+export async function retryQueueItem(id: string, adminId: number) {
+  const result = await setQueueStatus(
     id,
     { status: "pending", error: null, extracted_data: null, failure_class: null, retry_count: 0 },
     adminId,
     "QUEUE_RETRY",
   );
+  await dispatchQueueItem(id);
+  return result;
 }
 
 export function pauseQueueItem(id: string, adminId: number) {
@@ -46,8 +62,10 @@ export function stopQueueItem(id: string, adminId: number) {
   return setQueueStatus(id, { status: "stopped" }, adminId, "QUEUE_STOP");
 }
 
-export function resumeQueueItem(id: string, adminId: number) {
-  return setQueueStatus(id, { status: "pending", error: null }, adminId, "QUEUE_RESUME");
+export async function resumeQueueItem(id: string, adminId: number) {
+  const result = await setQueueStatus(id, { status: "pending", error: null }, adminId, "QUEUE_RESUME");
+  await dispatchQueueItem(id);
+  return result;
 }
 
 export async function deleteQueueItem(id: string, adminId: number) {

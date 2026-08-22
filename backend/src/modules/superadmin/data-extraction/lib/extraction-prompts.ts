@@ -163,7 +163,8 @@ Extract this JSON:
           "unit_name": "unit/subject name as it appears in the curriculum",
           "credit_points": null
         }
-      ]
+      ],
+      "curriculum_page_url": "URL to this course's dedicated curriculum/course-structure/programs-of-study page, if linked from this page — else null"
     }
   ],
   "campuses_found": [
@@ -183,12 +184,45 @@ Rules:
 - Extract ALL courses visible on this page
 - If the page is a single course detail page, return exactly 1 course
 - If it's a listing page with multiple courses, extract all of them
+- Do NOT extract a page as a course if it describes a single SUBJECT/UNIT/MODULE that sits inside a larger qualification — e.g. a page titled "Introduction to Databases" or "COMP101 — Introduction to Databases", with a short code (2-4 letters + 2-3 digits) and content describing one subject rather than an entire degree/diploma/certificate. These belong in study_units under their parent course, never as a standalone course. If this page IS such a unit/subject page, return an empty courses array.
+- Do NOT extract a page as a course if it describes the ADMISSIONS PROCESS in general — e.g. "How to Apply as a First-Year Student", "Transfer Pathways", "Application Requirements", "Dates and Deadlines" — rather than one specific named qualification. These pages talk about applying, deadlines, or eligibility across many/all programs at once, and never name one degree with its own curriculum. Never invent a degree_level (e.g. "Bachelor") for a page like this just because it mentions undergraduate/first-year admission — if the page does not name one specific qualification, return an empty courses array.
+- Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
 - Never invent fees or dates — only extract what's explicitly stated
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If fees link to an external PDF or schedule page, include that URL in the fee name (e.g. "See fee schedule: <url>")
 - Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")
-- study_units are the individual subjects/units taught within THIS course's curriculum (e.g. a listed core/elective unit with its own code or name) — only include units explicitly listed as part of this course's structure, not unrelated courses mentioned elsewhere on the page`;
+- study_units are the individual subjects/units taught within THIS course's curriculum (e.g. a listed core/elective unit with its own code or name) — only include units explicitly listed as part of this course's structure, not unrelated courses mentioned elsewhere on the page
+- Set curriculum_page_url whenever a link on this page plausibly leads to THIS course's own detailed curriculum/program-structure page (e.g. "View Degree Program Website", "Course Structure", "Programs of Study", or a "Curriculum" link within a program-specific site) — not a generic institution-wide "Programs" or "Courses" catalog link. Set it EVEN IF you already found some study_units on this page: an admissions or overview page often names only a few example courses, while the dedicated curriculum page lists the full set — more complete data always wins.`;
+}
+
+// ── Phase 2h: Study units from a course's secondary curriculum page (page worker) ──
+// See docs/data-extraction/2026-08-21-study-units-discovery-design.md — most course
+// overview pages don't carry unit-level curriculum; it lives on a separate,
+// course-specific page flagged above as curriculum_page_url.
+
+export const STUDY_UNITS_SYSTEM = `You are a strict data extraction assistant for an education platform.
+Your ONLY job is to extract the study units/subjects explicitly listed on this page.
+ONLY extract units EXPLICITLY listed on the page. NEVER infer or guess.
+Respond in valid JSON only.`;
+
+export function studyUnitsFromPagePrompt(url: string, pageText: string) {
+  return `Extract the study units/subjects listed on this curriculum/course-structure page.
+Source URL: ${url}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "study_units": [
+    {
+      "unit_code": "code or null",
+      "unit_name": "unit/subject name as it appears in the curriculum",
+      "credit_points": null
+    }
+  ]
+}`;
 }
 
 // ── Phase 2b: Institution extraction (step worker) ──

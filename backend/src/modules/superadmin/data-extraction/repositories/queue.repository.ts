@@ -18,6 +18,10 @@ export async function updateQueueItem(id: string, data: Record<string, unknown>)
   return count > 0;
 }
 
+export async function findQueueItem(id: string) {
+  return masterKnex(T).where({ id }).select("id", "job_id", "url").first();
+}
+
 export async function deleteQueueItem(id: string) {
   const [row] = await masterKnex(T).where({ id }).delete().returning("id");
   return !!row;
