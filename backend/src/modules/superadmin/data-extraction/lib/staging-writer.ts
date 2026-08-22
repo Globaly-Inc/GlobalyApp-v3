@@ -560,6 +560,201 @@ export async function writeAgentLocations(
   await masterKnex(`${S}.extraction_agent_locations`).insert(rows);
 }
 
+// ── Visa services (source_type: "visa_service") ──
+
+export interface ExtractedVisaService {
+  name: string;
+  provider_name?: string | null;
+  type?: string | null;
+  description?: string | null;
+  registration_number?: string | null;
+  registration_body?: string | null;
+  registration_status?: string | null;
+  registration_level?: string | null;
+  visa_types_handled?: string[] | null;
+  services_offered?: string[] | null;
+  specializations?: string[] | null;
+  fee_amount?: number | null;
+  fee_currency?: string | null;
+  fee_type?: string | null;
+  fee_from?: number | null;
+  fee_to?: number | null;
+  consultation_fee?: number | null;
+  consultation_free?: boolean | null;
+  success_rate?: number | null;
+  cases_handled?: number | null;
+  years_experience?: number | null;
+  team_size?: number | null;
+  qualified_agents_count?: number | null;
+  countries_serviced?: string[] | null;
+  nationalities_serviced?: string[] | null;
+  languages_spoken?: string[] | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  website?: string | null;
+  booking_url?: string | null;
+  average_rating?: number | null;
+  review_count?: number | null;
+  source_url?: string | null;
+}
+
+// ponytail: same shape as normaliseCourseName/normaliseUnitName — dedup key for re-runs
+// and services mentioned on more than one page of the same site.
+export function normaliseVisaServiceName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// text[] columns — knex/pg serialize a plain JS array correctly on its own.
+const VISA_SERVICE_ARRAY_FIELDS: Array<keyof ExtractedVisaService> = [
+  "visa_types_handled", "specializations",
+  "countries_serviced", "nationalities_serviced", "languages_spoken",
+];
+
+// services_offered is jsonb, not text[] (see 20260812_004_extraction_visa_services.ts) — a
+// plain JS array needs JSON.stringify first, same as writeSiteIntelligence's fee_structure.
+// Passing it through the text[] path threw "invalid input syntax for type json".
+const VISA_SERVICE_JSON_ARRAY_FIELDS: Array<keyof ExtractedVisaService> = ["services_offered"];
+
+// Plain text/boolean columns — pass through as-is.
+const VISA_SERVICE_SCALAR_FIELDS: Array<keyof ExtractedVisaService> = [
+  "provider_name", "type", "description", "registration_number", "registration_body",
+  "registration_status", "registration_level", "fee_currency", "fee_type", "consultation_free",
+  "address", "city", "state", "country", "contact_name", "contact_email", "contact_phone",
+  "website", "booking_url",
+];
+
+// decimal/integer columns — Gemini routinely writes these as human-formatted strings
+// ("97%", "$3,500", "4.8/5 stars", "10 years"), which Postgres rejects outright
+// ("invalid input syntax for type numeric"). Every numeric visa-service field gets the
+// same defensive coercion, not just the one that happened to be reported — same failure
+// mode, same fix, everywhere it can occur. Scoped to visa-service fields only; the
+// course pipeline's own coerceInt/coerceDate above are untouched.
+const VISA_SERVICE_NUMERIC_FIELDS: Array<keyof ExtractedVisaService> = [
+  "fee_amount", "fee_from", "fee_to", "consultation_fee", "success_rate",
+  "cases_handled", "years_experience", "team_size", "qualified_agents_count",
+  "average_rating", "review_count",
+];
+
+function coerceVisaNumber(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return isNaN(v) ? null : v;
+  const match = String(v).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * Write a visa service, deduped by normalised name within the job — mirrors writeCourse's
+ * dedup-and-merge (fills nulls on the existing row, never overwrites a value already found).
+ * No child/junction tables: extraction_visa_services is flat, one row per distinct service.
+ */
+export async function writeVisaService(jobId: string, service: ExtractedVisaService): Promise<string> {
+  const normName = normaliseVisaServiceName(service.name);
+  const existing = await masterKnex(`${S}.extraction_visa_services`)
+    .where({ job_id: jobId })
+    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
+    .first();
+
+  if (existing) {
+    const updates: Record<string, unknown> = {};
+    for (const field of VISA_SERVICE_SCALAR_FIELDS) {
+      const newVal = service[field];
+      if (newVal != null && newVal !== "" && (existing[field] == null || existing[field] === "")) {
+        updates[field] = newVal;
+      }
+    }
+    for (const field of VISA_SERVICE_NUMERIC_FIELDS) {
+      const newVal = coerceVisaNumber(service[field]);
+      if (newVal != null && existing[field] == null) {
+        updates[field] = newVal;
+      }
+    }
+    for (const field of VISA_SERVICE_ARRAY_FIELDS) {
+      const newVal = service[field] as string[] | undefined;
+      if (newVal?.length && (!existing[field] || existing[field].length === 0)) {
+        updates[field] = newVal;
+      }
+    }
+    for (const field of VISA_SERVICE_JSON_ARRAY_FIELDS) {
+      const newVal = service[field] as string[] | undefined;
+      if (newVal?.length && (!existing[field] || existing[field].length === 0)) {
+        updates[field] = JSON.stringify(newVal);
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = masterKnex.fn.now();
+      await masterKnex(`${S}.extraction_visa_services`).where({ id: existing.id }).update(updates);
+      logger.info("Merged duplicate visa service", { jobId, id: existing.id, name: service.name });
+    }
+    return existing.id;
+  }
+
+  const insert: Record<string, unknown> = {
+    job_id: jobId,
+    name: service.name,
+    status: "pending",
+  };
+  for (const field of VISA_SERVICE_SCALAR_FIELDS) {
+    const val = service[field];
+    if (val != null && val !== "") insert[field] = val;
+  }
+  for (const field of VISA_SERVICE_NUMERIC_FIELDS) {
+    const val = coerceVisaNumber(service[field]);
+    if (val != null) insert[field] = val;
+  }
+  for (const field of VISA_SERVICE_ARRAY_FIELDS) {
+    const val = service[field] as string[] | undefined;
+    if (val?.length) insert[field] = val;
+  }
+  for (const field of VISA_SERVICE_JSON_ARRAY_FIELDS) {
+    const val = service[field] as string[] | undefined;
+    if (val?.length) insert[field] = JSON.stringify(val);
+  }
+  if (service.source_url) insert.source_url = service.source_url;
+
+  const [row] = await masterKnex(`${S}.extraction_visa_services`).insert(insert).returning("id");
+  logger.info("Wrote visa service", { jobId, id: row.id, name: service.name });
+  return row.id;
+}
+
+/**
+ * Overwrite a specific, already-known visa service row with fresh extraction results —
+ * for the admin-triggered "re-extract this one" action, not the automatic per-page pipeline.
+ * Unlike writeVisaService's merge branch (fills nulls only, for incidental multi-page
+ * aggregation), this overwrites unconditionally: a deliberate manual re-run should trust the
+ * new extraction, matching handleCourseDataStep's per-course re-extraction semantics.
+ */
+export async function updateVisaServiceById(id: string, service: Partial<ExtractedVisaService>): Promise<void> {
+  const updates: Record<string, unknown> = {};
+  if (service.name) updates.name = service.name;
+  for (const field of VISA_SERVICE_SCALAR_FIELDS) {
+    const val = service[field];
+    if (val != null && val !== "") updates[field] = val;
+  }
+  for (const field of VISA_SERVICE_NUMERIC_FIELDS) {
+    const val = coerceVisaNumber(service[field]);
+    if (val != null) updates[field] = val;
+  }
+  for (const field of VISA_SERVICE_ARRAY_FIELDS) {
+    const val = service[field] as string[] | undefined;
+    if (val?.length) updates[field] = val;
+  }
+  for (const field of VISA_SERVICE_JSON_ARRAY_FIELDS) {
+    const val = service[field] as string[] | undefined;
+    if (val?.length) updates[field] = JSON.stringify(val);
+  }
+  if (Object.keys(updates).length === 0) return;
+  updates.updated_at = masterKnex.fn.now();
+  await masterKnex(`${S}.extraction_visa_services`).where({ id }).update(updates);
+  logger.info("Re-extracted visa service", { id, name: service.name });
+}
+
 /** Insert a queue item for a discovered URL */
 export async function insertQueueItem(jobId: string, url: string) {
   const [row] = await masterKnex(`${S}.extraction_queue`)

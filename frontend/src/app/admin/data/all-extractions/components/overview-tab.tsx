@@ -11,6 +11,7 @@ import {
   GraduationCap,
   Clock,
   ShieldCheck,
+  Globe2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,9 +45,10 @@ export function OverviewTab({
   onJumpToTab,
   onReload,
 }: Readonly<{ full: JobFull; onJumpToTab: (tab: JobTab) => void; onReload: () => void }>) {
-  const { job, overview, campuses, agents, courses, courseLinks } = full;
+  const { job, overview, campuses, agents, courses, courseLinks, visaServices } = full;
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const jobActive = ACTIVE_STATUSES.includes(job.status);
+  const isVisaServiceJob = job.source_type === "visa_service";
 
   const guided = (job.guided_urls ?? {}) as Record<string, unknown>;
   const hasContext = (key?: ContextKey) => {
@@ -75,6 +77,10 @@ export function OverviewTab({
     { key: "institution", label: "Institution", icon: Building2, count: overview ? 1 : 0, updated: overview?.updated_at ?? null, tab: "institution", step: "institution" },
     { key: "branches", label: "Branches", icon: MapPin, count: campuses.length, updated: latestTimestamp(campuses), tab: "branches", step: "branches", contextKey: "branches_urls", contextLabel: "branches URLs" },
     { key: "agents", label: "Agents", icon: Users, count: agents.length, updated: latestTimestamp(agents), tab: "agents", step: "agents", contextKey: "agents_urls", contextLabel: "agents URLs" },
+  ];
+
+  const visaServiceCards: TabCard[] = [
+    { key: "visa_services", label: "Visa Services", icon: Globe2, count: visaServices.length, updated: latestTimestamp(visaServices), tab: "visa_services", step: "visa_services", contextKey: "services_urls", contextLabel: "services URLs" },
   ];
 
   const courseCards: TabCard[] = [
@@ -108,18 +114,31 @@ export function OverviewTab({
         </CardHeader>
         <CardContent className="space-y-6">
           <section>
-            <SectionHeader title="Institution Data" description="Overview, branches, and agents for this institution." cards={institutionCards} />
+            <SectionHeader
+              title={isVisaServiceJob ? "Business Data" : "Institution Data"}
+              description={isVisaServiceJob ? "Overview, branches, and agents for this business." : "Overview, branches, and agents for this institution."}
+              cards={institutionCards}
+            />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {institutionCards.map(renderCard)}
             </div>
           </section>
 
-          <section className="border-t border-border pt-6">
-            <SectionHeader title="Course Data" description="Courses and their linked fees, intakes, and requirements." cards={courseCards} />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {courseCards.map(renderCard)}
-            </div>
-          </section>
+          {isVisaServiceJob ? (
+            <section className="border-t border-border pt-6">
+              <SectionHeader title="Visa Service Data" description="Individual visa/migration services offered by this provider." cards={visaServiceCards} />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {visaServiceCards.map(renderCard)}
+              </div>
+            </section>
+          ) : (
+            <section className="border-t border-border pt-6">
+              <SectionHeader title="Course Data" description="Courses and their linked fees, intakes, and requirements." cards={courseCards} />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {courseCards.map(renderCard)}
+              </div>
+            </section>
+          )}
         </CardContent>
       </Card>
 

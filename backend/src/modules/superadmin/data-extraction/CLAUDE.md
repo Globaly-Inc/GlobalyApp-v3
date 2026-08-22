@@ -126,6 +126,14 @@ The centralized error handler maps these to HTTP responses.
    V2 behavior; approved to fix a real data-quality gap (study units either
    missing entirely or, on some national sites, individually miscategorized
    as standalone courses).
+   Exception: visa-service extraction pipeline (2026-08-22) — a full
+   `source_type: "visa_service"` branch through the SAME job/page workers
+   (own site-analysis prompt, own URL heuristic `looksLikeVisaServiceUrl`,
+   own entity prompt, writes `extraction_visa_services` via
+   `writeVisaService`). `extraction_visa_services` existed in the schema
+   since 2026-08-12 with zero code path writing to it — this is a genuinely
+   new capability, explicitly requested and scoped by the team, not a V2
+   port (V2 never had this table).
 
 ## External FK columns
 

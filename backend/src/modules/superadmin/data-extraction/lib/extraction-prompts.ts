@@ -225,6 +225,147 @@ Return JSON:
 }`;
 }
 
+// ── Visa service extraction (source_type: "visa_service") ──
+// Mirrors Phase 1 / Phase 1b / Phase 2 above, but for a visa/migration consultancy's own
+// website instead of an educational institution — populates extraction_visa_services
+// instead of extraction_courses. See docs/data-extraction (visa-services-extraction-plan).
+
+export function visaServiceSiteAnalysisPrompt(url: string, pageText: string, guidanceNotes?: string | null) {
+  return `Analyze this visa/migration consultancy's homepage and extract overview information.
+
+URL: ${url}
+${guidanceNotes ? `\nAdmin notes: ${guidanceNotes}` : ""}
+
+Page content:
+${pageText}
+
+Extract this JSON structure:
+{
+  "institution": {
+    "name": "full provider/business name",
+    "website": "${url}",
+    "phone": "main phone or null",
+    "email": "main contact email or null",
+    "address": "street address or null",
+    "city": "city or null",
+    "state": "state/province or null",
+    "country": "country or null",
+    "zip_code": "postal code or null",
+    "description": "brief description of the provider",
+    "logo_url": "logo image URL or null",
+    "facebook_url": "null if not found",
+    "instagram_url": "null if not found",
+    "twitter_url": "null if not found",
+    "linkedin_url": "null if not found",
+    "youtube_url": "null if not found"
+  },
+  "site_intelligence": {
+    "institution_type": "visa_service_provider",
+    "country": "country code like AU, US, UK",
+    "currency": "primary currency code like AUD, USD",
+    "extraction_hints": ["array of observations about site structure that help extraction"],
+    "fee_structure": { "format": "flat|hourly|per_application|from", "notes": "any observations" }
+  },
+  "course_page_patterns": ["URL patterns that indicate a services or pricing page, e.g. /services/, /visas/"]
+}`;
+}
+
+export function visaServiceUrlDiscoveryPrompt(links: string[], patterns: string[]) {
+  return `From these URLs found on a visa/migration consultancy website, identify which ones are likely to describe the services this provider offers (visa applications, migration advice, sponsorship, appeals, skills assessments) or their fees/team/registration.
+
+Known service-page URL patterns for this site: ${patterns?.join(", ") || "none identified yet"}
+
+URLs found (${links.length}):
+${links.slice(0, 500).join("\n")}
+
+Return JSON:
+{
+  "course_urls": ["array of URLs that likely describe a specific service, its fees, the team, or registration/accreditation"],
+  "listing_urls": ["array of URLs that list/link to multiple services, to crawl further"]
+}
+
+Rules:
+- Include only URLs that relate to the provider's own services, fees, team, or registration
+- Exclude general pages (blog, news, careers, privacy, login)
+- Prefer detail pages over listing pages
+- If unsure, include it — false positives are better than missing a service`;
+}
+
+export const VISA_SERVICE_EXTRACTION_SYSTEM = `You are a data extraction specialist. Extract structured visa/migration service data from a consultancy's web pages.
+Always respond in valid JSON. Extract everything you can find — fees, registration, coverage, contact details.
+If a field is not found on the page, use null. Never invent data.`;
+
+export function visaServiceExtractionPrompt(
+  url: string, pageText: string,
+  guidanceNotes?: string | null,
+  siteHints?: { fee_structure?: unknown; extraction_hints?: string[] } | null,
+) {
+  const hints: string[] = [];
+  if (guidanceNotes) hints.push(`Admin guidance: ${guidanceNotes}`);
+  if (siteHints?.extraction_hints?.length) hints.push(`Site hints: ${siteHints.extraction_hints.join("; ")}`);
+  if (siteHints?.fee_structure) hints.push(`Fee info: ${JSON.stringify(siteHints.fee_structure)}`);
+
+  return `Extract all distinct visa/migration services offered by this provider from this page.
+
+URL: ${url}
+${hints.length ? "\n" + hints.join("\n") : ""}
+
+Page content:
+${pageText}
+
+Extract this JSON:
+{
+  "visa_services": [
+    {
+      "name": "full service name, e.g. 'Skilled Independent Visa (Subclass 189) Lodgement'",
+      "provider_name": "the consultancy's own business name",
+      "type": "visa_application|migration_advice|appeal|sponsorship|skills_assessment|citizenship|other",
+      "description": "service description or null",
+      "registration_number": "MARN, OISC or equivalent registration number, or null",
+      "registration_body": "e.g. MARA, OISC, ICCRC, or null",
+      "registration_status": "active|suspended|expired, or null",
+      "registration_level": "e.g. OISC Level 1/2/3, or null",
+      "visa_types_handled": ["visa subclass codes or names this service covers, e.g. '189', '482', 'Partner Visa'"],
+      "services_offered": ["e.g. visa_lodgement, sponsorship, appeal, skills_assessment"],
+      "specializations": ["e.g. student_visas, employer_sponsored, family_visas"],
+      "fee_amount": null,
+      "fee_currency": "AUD",
+      "fee_type": "flat|hourly|per_application|from",
+      "fee_from": null,
+      "fee_to": null,
+      "consultation_fee": null,
+      "consultation_free": null,
+      "success_rate": null,
+      "cases_handled": null,
+      "years_experience": null,
+      "team_size": null,
+      "qualified_agents_count": null,
+      "countries_serviced": ["countries this provider operates in or serves clients from"],
+      "nationalities_serviced": ["nationalities explicitly mentioned as served"],
+      "languages_spoken": ["languages the team speaks"],
+      "address": "full street address or null",
+      "city": "city or null",
+      "state": "state/province or null",
+      "country": "country or null",
+      "contact_name": "named contact person or null",
+      "contact_email": "email or null",
+      "contact_phone": "phone or null",
+      "website": "${url}",
+      "booking_url": "consultation booking link or null",
+      "average_rating": null,
+      "review_count": null
+    }
+  ]
+}
+
+Rules:
+- Extract ALL distinct services visible on this page — a page can describe more than one
+- If the page is a single service detail page, return exactly 1 service
+- Never invent fees, registration numbers, or ratings — only extract what's explicitly stated
+- Do NOT extract a page as a service if it's a blog post, news article, or general "about migration" educational content with no specific service being offered by THIS provider
+- Distinguish this provider's own registration/MARN from a visa subclass code — they are never the same field`;
+}
+
 // ── Phase 2b: Institution extraction (step worker) ──
 
 export const INSTITUTION_EXTRACTION_SYSTEM = `You are a strict data extraction assistant for an education platform.

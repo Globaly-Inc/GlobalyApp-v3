@@ -19,6 +19,9 @@ export type InstitutionTabProps = Readonly<{
   overview: InstitutionOverview | null;
   jobId: string;
   onReload: () => void;
+  /** Same extraction_institution_overview record for every job type — only the wording
+   * changes here, since "Institution" read as if visa data had leaked into the wrong tab. */
+  isVisaServiceJob?: boolean;
 }>;
 
 function Section({ icon: Icon, title, children }: Readonly<{ icon: LucideIcon; title: string; children: React.ReactNode }>) {
@@ -133,8 +136,9 @@ function EditableCountryField({
   );
 }
 
-export function InstitutionTab({ overview, jobId, onReload }: InstitutionTabProps) {
+export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: InstitutionTabProps) {
   const [busy, setBusy] = useState(false);
+  const noun = isVisaServiceJob ? "business" : "institution";
 
   // Inline edits go through save-and-learn so corrections also train the extractor.
   const saveField = async (column: string, next: string | null) => {
@@ -157,7 +161,7 @@ export function InstitutionTab({ overview, jobId, onReload }: InstitutionTabProp
     setBusy(true);
     try {
       await allExtractionsApi.runStep(jobId, "institution");
-      toast.success("Institution re-extraction started", {
+      toast.success(`${isVisaServiceJob ? "Business" : "Institution"} re-extraction started`, {
         description: "Running in the background — you can switch tabs.",
       });
       onReload();
@@ -173,11 +177,11 @@ export function InstitutionTab({ overview, jobId, onReload }: InstitutionTabProp
       <Card className="border-dashed">
         <CardContent className="py-12 text-center text-muted-foreground">
           <Building2 className="mx-auto mb-3 h-8 w-8 opacity-40" />
-          <p className="text-sm">No institution data extracted yet</p>
+          <p className="text-sm">No {noun} data extracted yet</p>
           <p className="mt-1 text-xs">Run the extraction below, or wait for the pipeline to populate it</p>
           <Button variant="outline" className="mt-4 gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            Run Institution Extraction
+            Run {isVisaServiceJob ? "Business" : "Institution"} Extraction
           </Button>
         </CardContent>
       </Card>
@@ -189,7 +193,7 @@ export function InstitutionTab({ overview, jobId, onReload }: InstitutionTabProp
       <CardHeader className="-mt-4 rounded-t-xl border-b bg-primary/5 px-4 py-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <Building2 className="h-4 w-4 text-primary" />
-          Institution Details
+          {isVisaServiceJob ? "Business" : "Institution"} Details
         </CardTitle>
         <CardAction>
           <Button variant="outline" size="sm" className="gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>

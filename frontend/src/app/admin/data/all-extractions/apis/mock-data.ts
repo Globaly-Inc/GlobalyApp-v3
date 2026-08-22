@@ -29,6 +29,7 @@ import type {
   StudyUnitParams,
   UpdateContextParams,
   UpdateCourseParams,
+  VisaService,
 } from "./types";
 
 import { MODE_STATUS_FILTER, type DashboardMode } from "../const";
@@ -613,6 +614,61 @@ export const allExtractionsMockApi = {
         updated_at: now,
       })),
       courseLinks: EMPTY_COURSE_LINKS,
+      visaServices: [],
     };
+  },
+
+  // ── Visa services (source_type: "visa_service") ───────────────────
+
+  getVisaServices: async (jobId: string, status?: string): Promise<VisaService[]> => {
+    console.log("[mock] GET visa services for job", jobId, status);
+    await delay(250);
+    const now = new Date().toISOString();
+    const services: VisaService[] = [
+      {
+        id: "vs-1", job_id: jobId, status: "pending",
+        name: "Skilled Independent Visa (189) Lodgement", provider_name: "Sample Migration Co",
+        type: "visa_application", description: "End-to-end lodgement support for the points-tested skilled visa.",
+        registration_number: "MARN1234567", registration_body: "MARA", registration_status: "active", registration_level: null,
+        visa_types_handled: ["189", "190"], services_offered: ["visa_lodgement", "skills_assessment"], specializations: ["skilled_migration"],
+        fee_amount: 3500, fee_currency: "AUD", fee_type: "flat", consultation_fee: 150, consultation_free: false,
+        success_rate: 92, cases_handled: 480, years_experience: 12, team_size: 6, qualified_agents_count: 3,
+        countries_serviced: ["Australia"], nationalities_serviced: ["India", "Philippines", "Nepal"], languages_spoken: ["English", "Hindi"],
+        address: "Level 4, 123 Collins St", city: "Melbourne", state: "VIC", country: "Australia",
+        contact_name: "Jane Smith", contact_email: "info@samplemigration.example", contact_phone: "+61 3 5555 0100",
+        website: "https://samplemigration.example", booking_url: null, average_rating: 4.8, review_count: 214,
+        source_url: "https://samplemigration.example/services/189", created_at: now, updated_at: now,
+      },
+      {
+        id: "vs-2", job_id: jobId, status: "pending",
+        name: "Partner Visa Application (820/801)", provider_name: "Sample Migration Co",
+        type: "visa_application", description: null,
+        registration_number: "MARN1234567", registration_body: "MARA", registration_status: "active", registration_level: null,
+        visa_types_handled: ["820", "801"], services_offered: ["visa_lodgement"], specializations: ["family_visas"],
+        fee_amount: null, fee_currency: "AUD", fee_type: "from", consultation_fee: null, consultation_free: true,
+        success_rate: null, cases_handled: null, years_experience: null, team_size: null, qualified_agents_count: null,
+        countries_serviced: ["Australia"], nationalities_serviced: null, languages_spoken: null,
+        address: null, city: null, state: null, country: "Australia",
+        contact_name: null, contact_email: "info@samplemigration.example", contact_phone: null,
+        website: "https://samplemigration.example", booking_url: null, average_rating: null, review_count: null,
+        source_url: "https://samplemigration.example/services/partner-visa", created_at: now, updated_at: now,
+      },
+    ];
+    return status ? services.filter((s) => s.status === status) : services;
+  },
+
+  approveVisaService: async (id: string): Promise<void> => {
+    console.log("[mock] POST approve visa service", id);
+    await delay(200);
+  },
+
+  discardVisaService: async (id: string): Promise<void> => {
+    console.log("[mock] POST discard visa service", id);
+    await delay(200);
+  },
+
+  deleteVisaService: async (id: string): Promise<void> => {
+    console.log("[mock] DELETE visa service", id);
+    await delay(200);
   },
 };

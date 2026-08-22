@@ -46,6 +46,28 @@ export function looksLikeCourseUrl(url: string): boolean {
   return signals.some((s) => path.includes(s));
 }
 
+/**
+ * Heuristic: does this URL look like a page describing a visa/migration consultancy's own
+ * service, fees, team, or registration? Path-only from the start (never the full href) —
+ * looksLikeCourseUrl above learned that lesson live (a signal matching the HOSTNAME by pure
+ * string coincidence turned an institution's whole admissions subdomain into "course pages").
+ */
+export function looksLikeVisaServiceUrl(url: string): boolean {
+  const signals = [
+    "/service", "/visa", "/migration", "/immigration", "/registration",
+    "/accreditation", "/team", "/agent", "/fee", "/pricing", "/cost",
+    "/eligibility", "/appeal", "/sponsorship", "/citizenship", "/skills-assessment",
+    "/testimonial", "/review", "/about", "/contact",
+  ];
+  let path: string;
+  try {
+    path = new URL(url).pathname.toLowerCase();
+  } catch {
+    path = url.toLowerCase();
+  }
+  return signals.some((s) => path.includes(s));
+}
+
 /** Global asset extensions to exclude from URL discovery */
 const ASSET_EXTS = new Set([
   ".pdf", ".zip", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp",
