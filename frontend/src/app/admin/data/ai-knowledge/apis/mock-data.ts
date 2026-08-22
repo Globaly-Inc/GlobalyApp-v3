@@ -81,7 +81,8 @@ const sources: RackSource[] = [
   {
     id: "src-1", category_id: "cat-1", source_type: "url", url: "https://immi.homeaffairs.gov.au/visas/student",
     file_name: null, domain: "immi.homeaffairs.gov.au", title: "Student visa hub", trust_tier: "gov",
-    crawl_frequency: "weekly", last_crawled_at: now, last_status: "ok", last_error: null,
+    crawl_frequency: "weekly", last_crawled_at: now, last_verified_at: now,
+    effective_until: null, last_status: "ok", last_error: null,
     doc_count: 12, active: true, added_via: "manual", max_pages: 25,
     crawl_summary: {
       discovered: 14, discovery_method: "sitemap", discovery_error: null, scraped: 12,
@@ -92,14 +93,19 @@ const sources: RackSource[] = [
   {
     id: "src-2", category_id: "cat-1", source_type: "url", url: "https://www.studyaustralia.gov.au/apply",
     file_name: null, domain: "studyaustralia.gov.au", title: null, trust_tier: "gov",
-    crawl_frequency: "monthly", last_crawled_at: null, last_status: null, last_error: null,
+    crawl_frequency: "monthly", last_crawled_at: null, last_verified_at: null,
+    effective_until: null, last_status: null, last_error: null,
     doc_count: 0, active: true, added_via: "manual", max_pages: null, crawl_summary: null,
     created_at: now, updated_at: now,
   },
   {
     id: "src-3", category_id: "cat-1", source_type: "file", url: null,
     file_name: "gte-checklist.pdf", domain: "upload", title: "GTE checklist", trust_tier: "gov",
-    crawl_frequency: "off", last_crawled_at: now, last_status: "ok", last_error: null,
+    crawl_frequency: "off", last_crawled_at: now,
+    // Verified eight months ago and past its stated validity — the amber and red states.
+    last_verified_at: new Date(Date.now() - 240 * 86_400_000).toISOString(),
+    effective_until: new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10),
+    last_status: "ok", last_error: null,
     doc_count: 1, active: true, added_via: "manual", max_pages: null, crawl_summary: null,
     created_at: now, updated_at: now,
   },
@@ -109,13 +115,13 @@ const documents: RackDocument[] = [
   {
     id: "doc-1", source_id: "src-1", category_id: "cat-1",
     url: "https://immi.homeaffairs.gov.au/visas/student", title: "Student visa (subclass 500)",
-    content_hash: "a1b2c3", word_count: 842, crawled_at: now, active: true, is_embedded: true,
+    content_hash: "a1b2c3", word_count: 842, chunk_count: 6, crawled_at: now, active: true, is_embedded: true,
     created_at: now, updated_at: now,
   },
   {
     id: "doc-2", source_id: "src-1", category_id: "cat-1",
     url: "https://immi.homeaffairs.gov.au/visas/student/work", title: "Work conditions",
-    content_hash: "d4e5f6", word_count: 431, crawled_at: now, active: true, is_embedded: false,
+    content_hash: "d4e5f6", word_count: 431, chunk_count: 0, crawled_at: now, active: true, is_embedded: false,
     created_at: now, updated_at: now,
   },
 ];
@@ -155,7 +161,11 @@ export const aiKnowledgeMockApi = {
   getRackCounts: async (): Promise<RackCounts> => {
     console.log("[mock] getRackCounts");
     await delay();
-    return { categories: categories.length, sources: sources.length, documents: documents.length, embedded_documents: documents.filter((d) => d.is_embedded).length };
+    return {
+      categories: categories.length, sources: sources.length, documents: documents.length,
+      embedded_documents: documents.filter((d) => d.is_embedded).length,
+      embedded_chunks: documents.reduce((sum, d) => sum + d.chunk_count, 0),
+    };
   },
   getCategories: async () => { console.log("[mock] getCategories"); await delay(); return categories; },
   createCategory: async (params: CategoryParams) => { console.log("[mock] createCategory"); await delay(); return { ...categories[0], ...params, id: uid() } as RackCategory; },
@@ -171,6 +181,12 @@ export const aiKnowledgeMockApi = {
   updateSource: async (id: string, params: SourceParams) => { console.log("[mock] updateSource", id); await delay(); return { ...sources[0], ...params, id } as RackSource; },
   deleteSource: async (id: string) => { console.log("[mock] deleteSource", id); await delay(); },
   crawlSource: async (id: string, maxPages?: number) => { console.log("[mock] crawlSource", id, maxPages); await delay(); return { dispatched: true }; },
+  verifySource: async (id: string): Promise<RackSource> => {
+    console.log("[mock] verifySource", id);
+    const source = sources.find((s) => s.id === id)!;
+    source.last_verified_at = new Date().toISOString();
+    return source;
+  },
   uploadSource: async (categoryId: string, file: File, opts?: UploadSourceOptions): Promise<UploadSourceResult> => {
     console.log("[mock] uploadSource", categoryId, file.name, opts);
     await delay();

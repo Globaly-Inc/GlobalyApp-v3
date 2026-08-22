@@ -425,15 +425,24 @@ export interface CountryGuideResult {
   climate: string | null;
 }
 
-export interface KnowledgeDocumentResult {
+export interface KnowledgeChunkResult {
   id: string;
-  url: string;
-  title: string | null;
-  markdown: string;
+  document_id: string;
+  content: string;
+  heading_path: string | null;
+  page_number: number | null;
   similarity: number;
+  title: string | null;
+  url: string | null;
+  file_name: string | null;
+  source_type: "url" | "file";
   category_label: string;
   source_domain: string;
   trust_tier: "gov" | "verified_institution" | "other";
+  /** When a human last confirmed this source, as opposed to when it was crawled. */
+  last_verified_at: string | null;
+  /** Known expiry for a temporary figure (fee schedule, cap, concession). */
+  effective_until: string | null;
 }
 
 export async function searchKnowledgeVisas(opts: { query: string; limit?: number }): Promise<KnowledgeVisaResult[]> {
@@ -469,16 +478,21 @@ export async function searchCountryGuides(opts: { query: string; limit?: number 
 
 /** Semantic search over the Knowledge Rack via the migration's match function.
  * countryCode (ISO2) narrows to that country's categories; global categories always match. */
-export async function matchKnowledgeDocuments(
+/**
+ * Chunk-level retrieval — the primary path since Phase 6. A section-sized chunk
+ * matches the question far better than a whole-page vector, and the full chunk
+ * fits in the prompt where a whole page had to be truncated.
+ */
+export async function matchKnowledgeChunks(
   embedding: number[],
-  count = 4,
+  count = 8,
   countryCode?: string | null,
-): Promise<KnowledgeDocumentResult[]> {
+): Promise<KnowledgeChunkResult[]> {
   const { rows } = await masterKnex.raw(
-    `SELECT * FROM ${SA}.match_ai_knowledge_documents(?::vector, ?, NULL, ?)`,
+    `SELECT * FROM ${SA}.match_ai_knowledge_chunks(?::vector, ?, NULL, ?)`,
     [`[${embedding.join(",")}]`, count, countryCode ?? null],
   );
-  return rows as KnowledgeDocumentResult[];
+  return rows as KnowledgeChunkResult[];
 }
 
 /** Country names + ISO2 codes, for detecting a country mention in the user's query. */

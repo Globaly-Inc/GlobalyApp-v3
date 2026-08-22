@@ -113,6 +113,10 @@ export const aiKnowledgeRealApi = {
   deleteSource: (id: string): Promise<void> => httpDelete(`${BASE}/sources/${id}`),
   crawlSource: (id: string, maxPages?: number): Promise<{ dispatched: boolean }> =>
     httpPost(`${BASE}/sources/${id}/crawl`, maxPages ? { max_pages: maxPages } : {}),
+  verifySource: async (id: string): Promise<RackSource> => {
+    const { source } = await httpPost<{ source: RackSource }>(`${BASE}/sources/${id}/verify`, {});
+    return source;
+  },
   uploadSource: (categoryId: string, file: File, opts?: UploadSourceOptions): Promise<UploadSourceResult> => {
     const form = new FormData();
     form.set("category_id", categoryId);
