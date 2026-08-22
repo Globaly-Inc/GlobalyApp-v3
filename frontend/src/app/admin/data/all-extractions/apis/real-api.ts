@@ -41,7 +41,7 @@ export const allExtractionsRealApi = {
   // jobs-filtered (not /jobs) for every mode — it's the only list endpoint that
   // attaches campus_count/agent_count, which the row shows.
   getJobs: async (mode: DashboardMode): Promise<ExtractionJob[]> => {
-    const params = new URLSearchParams({ limit: "500" });
+    const params = new URLSearchParams({ limit: "10" });
     const statuses = MODE_STATUS_FILTER[mode];
     if (statuses) params.set("statuses", statuses.join(","));
     if (mode === "ai-ongoing") params.set("exclude_source_type", "agentcis");
