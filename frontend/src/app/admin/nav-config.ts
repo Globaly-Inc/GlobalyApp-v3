@@ -10,7 +10,6 @@ import {
   Database,
   FileCheck,
   Upload,
-  Sparkles,
   Brain,
   Bot,
   Shield,
@@ -64,8 +63,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { icon: Upload, label: "AgentCIS Import", href: "/admin/data/agentcis-import" },
       { icon: Brain, label: "AI Memory", href: "/admin/data/ai-memory" },
       { icon: Bot, label: "AI Knowledge", href: "/admin/data/ai-knowledge" },
-      { icon: Sparkles, label: "Visas", href: "/admin/data/visas" },
-      { icon: Sparkles, label: "MARA Agents", href: "/admin/data/mara-agents" },
     ],
   },
   {

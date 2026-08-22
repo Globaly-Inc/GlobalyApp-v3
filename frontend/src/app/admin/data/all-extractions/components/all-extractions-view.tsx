@@ -1,19 +1,20 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FileCheck, ListOrdered, Sparkles, type LucideIcon } from "lucide-react";
+import { ListOrdered, ShieldCheck, Stamp, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { DashboardMode } from "../const";
 import { JobsList } from "./jobs-list";
+import { MaraAgentsView } from "../../mara-agents/components/mara-agents-view";
+import { VisasView } from "../../visas/components/visas-view";
 
-type ListTab = "all" | "ai" | "extracted";
+type ListTab = "all" | "mara" | "visas";
 
-// The three screens V2 shipped as separate nav items — same list, different
-// status filter — so they live here as sub-tabs instead of top-level pages.
-const TABS: { value: ListTab; label: string; icon: LucideIcon; mode: DashboardMode }[] = [
-  { value: "all", label: "All", icon: ListOrdered, mode: "all" },
-  { value: "ai", label: "AI Extraction", icon: Sparkles, mode: "ai-ongoing" },
-  { value: "extracted", label: "Extracted Data", icon: FileCheck, mode: "completed" },
+// MARA Agents and Visas moved here from their own top-level nav items — same page,
+// own Redux slice/API each, rendered inline so the tab bar stays put across sub-tabs.
+const TABS: { value: ListTab; label: string; icon: LucideIcon }[] = [
+  { value: "all", label: "All", icon: ListOrdered },
+  { value: "mara", label: "MARA Agents", icon: ShieldCheck },
+  { value: "visas", label: "Visas", icon: Stamp },
 ];
 
 function parseTab(raw: string | null): ListTab {
@@ -26,7 +27,6 @@ export function AllExtractionsView() {
   const searchParams = useSearchParams();
 
   const active = parseTab(searchParams.get("tab"));
-  const mode = TABS.find((t) => t.value === active)!.mode;
 
   const setTab = (tab: ListTab) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -67,7 +67,9 @@ export function AllExtractionsView() {
         </div>
       </div>
 
-      <JobsList mode={mode} />
+      {active === "all" && <JobsList mode="all" />}
+      {active === "mara" && <MaraAgentsView />}
+      {active === "visas" && <VisasView />}
     </div>
   );
 }

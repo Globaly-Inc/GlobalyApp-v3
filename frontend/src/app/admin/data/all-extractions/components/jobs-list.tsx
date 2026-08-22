@@ -24,9 +24,18 @@ import {
   PUBLISHABLE_STATUSES,
   SORT_OPTIONS,
   SOURCE_FILTER_OPTIONS,
+  STATUS_CONFIG,
   type DashboardMode,
   type SortOrder,
 } from "../const";
+
+// Several raw statuses share one display label (done/completed → "Completed",
+// verified/approved → "Approved", exported/pushed → "Published") — filter by label,
+// not raw key, so picking "Completed" matches every status that reads that way.
+const STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  ...[...new Set(Object.values(STATUS_CONFIG).map((c) => c.label))].map((label) => ({ value: label, label })),
+];
 import {
   declineJob,
   deleteJob,
@@ -54,6 +63,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [showDeclined, setShowDeclined] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -93,12 +103,14 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
       isCompleted && sourceFilter !== "all"
         ? base.filter((j) => (sourceFilter === "agentcis" ? j.source_type === "agentcis" : j.source_type !== "agentcis"))
         : base;
+    const byStatus =
+      statusFilter === "all" ? bySource : bySource.filter((j) => STATUS_CONFIG[j.status]?.label === statusFilter);
     const q = searchQuery.trim().toLowerCase();
     const searched = q
-      ? bySource.filter(
+      ? byStatus.filter(
           (j) => (j.institution_name || "").toLowerCase().includes(q) || j.institution_url.toLowerCase().includes(q),
         )
-      : bySource;
+      : byStatus;
     return [...searched].sort((a, b) => {
       switch (sortOrder) {
         case "oldest":
@@ -112,7 +124,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       }
     });
-  }, [jobs, showDeclined, searchQuery, sortOrder, sourceFilter, isCompleted]);
+  }, [jobs, showDeclined, searchQuery, sortOrder, sourceFilter, statusFilter, isCompleted]);
 
   // Any filter/sort/mode/page-size change invalidates the current page.
   useEffect(() => {
@@ -219,6 +231,13 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
               className="h-8 w-56 pl-7 text-xs"
             />
           </div>
+
+          <Combobox
+            options={STATUS_FILTER_OPTIONS}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            className="h-8 w-40 text-xs cursor-pointer"
+          />
 
           <Combobox
             options={SORT_OPTIONS}

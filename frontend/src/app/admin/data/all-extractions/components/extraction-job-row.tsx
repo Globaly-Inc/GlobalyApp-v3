@@ -65,14 +65,18 @@ function overallProgressPct(job: ExtractionJob, progress: PipelineProgress | nul
     if (known.length > 0) {
       const sum = known.reduce((acc, stage) => {
         if (stage!.status === "done") return acc + 1;
-        if (stage!.status === "processing") return acc + (stage!.total ? (stage!.done || 0) / stage!.total : 0.5);
+        // Clamp to 1 — a stage's own done/total can exceed 1 mid-run (e.g. discovery
+        // finds more pages than the initial estimate), but it's still just "in progress".
+        if (stage!.status === "processing") return acc + Math.min(1, stage!.total ? (stage!.done || 0) / stage!.total : 0.5);
         return acc;
       }, 0);
-      return Math.round((sum / PIPELINE_STAGES.length) * 100);
+      return Math.min(100, Math.round((sum / PIPELINE_STAGES.length) * 100));
     }
   }
-  if (job.total_pages_found) return Math.round((job.pages_scraped / job.total_pages_found) * 100);
-  if (job.verification_total) return Math.round((job.verification_score / job.verification_total) * 100);
+  // total_pages_found is an early site-mapping estimate; pages_scraped can legitimately
+  // grow past it as pagination discovers more pages during the actual crawl.
+  if (job.total_pages_found) return Math.min(100, Math.round((job.pages_scraped / job.total_pages_found) * 100));
+  if (job.verification_total) return Math.min(100, Math.round((job.verification_score / job.verification_total) * 100));
   return 0;
 }
 
