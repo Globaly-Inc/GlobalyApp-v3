@@ -1,4 +1,4 @@
-import type { AgentCISResult, AgentcisJob, ImportResult } from "./types";
+import type { AgentCISResult, AgentcisJob, BulkCrawlResult, ImportResult } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -14,8 +14,24 @@ const mockResults: AgentCISResult[] = [
 
 const now = new Date().toISOString();
 let mockJobs: AgentcisJob[] = [
-  { id: "mock-1", institution_name: "University of Melbourne", institution_url: "https://unimelb.edu.au", status: "done", source_type: "agentcis", courses_extracted: 42, pipeline_progress: { phase: "done" }, created_at: now, updated_at: now },
-  { id: "mock-2", institution_name: "Sheridan College", institution_url: "https://sheridancollege.ca", status: "processing", source_type: "agentcis", courses_extracted: 0, pipeline_progress: { phase: "courses", current: 12, total: 30 }, created_at: now, updated_at: now },
+  {
+    id: "mock-1", institution_name: "University of Melbourne", institution_url: "https://unimelb.edu.au",
+    status: "done", source_type: "agentcis", courses_extracted: 42,
+    pipeline_progress: { phase: "done", agentcis_id: "101", branches_extracted: 3, intakes_extracted: 60, fees_extracted: 42 },
+    created_at: now, updated_at: now,
+  },
+  {
+    id: "mock-2", institution_name: "Sheridan College", institution_url: "https://sheridancollege.ca",
+    status: "processing", source_type: "agentcis", courses_extracted: 0,
+    pipeline_progress: { phase: "courses", current: 12, total: 30, agentcis_id: "102", branches_extracted: 2, intakes_extracted: 18, fees_extracted: 12 },
+    created_at: now, updated_at: now,
+  },
+  {
+    id: "mock-3", institution_name: "Concordia University", institution_url: "https://concordia.ca",
+    status: "failed", source_type: "agentcis", courses_extracted: 0,
+    pipeline_progress: { phase: "failed", agentcis_id: "104", error: "AgentCIS 500: internal error while fetching product list\nRetried 3 times" },
+    created_at: now, updated_at: now,
+  },
 ];
 
 export const agentcisImportMockApi = {
@@ -41,12 +57,32 @@ export const agentcisImportMockApi = {
         status: "pending",
         source_type: "agentcis",
         courses_extracted: 0,
-        pipeline_progress: { phase: "queued" },
+        pipeline_progress: { phase: "queued", agentcis_id: id },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
     }
     return { dispatched: true, job_count: ids.length };
+  },
+
+  bulkCrawl: async (startPage: number, maxPages: number): Promise<BulkCrawlResult> => {
+    console.log("[mock] POST /admin/data-extraction/agentcis/bulk-crawl", { startPage, maxPages });
+    await delay(800);
+    const count = mockResults.length;
+    for (const r of mockResults) {
+      mockJobs.unshift({
+        id: `mock-crawl-${Date.now()}-${r.id}`,
+        institution_name: r.name,
+        institution_url: r.website,
+        status: "pending",
+        source_type: "agentcis",
+        courses_extracted: 0,
+        pipeline_progress: { phase: "queued", agentcis_id: String(r.id) },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+    return { dispatched: true, job_count: count, pages_scanned: maxPages };
   },
 
   getJobs: async (): Promise<AgentcisJob[]> => {
