@@ -757,7 +757,7 @@ convention.
 Each phase is a separate PR. Phase 1 is the tracer bullet: it proves chunk retrieval end to end
 on real data before anything else depends on it.
 
-### Phase 1 — Chunking + retrieval cutover
+### Phase 1 — Chunking + retrieval cutover — ✅ BUILT 2026-08-22 (with Phase 2, one PR)
 - **Goal:** replace whole-page embeddings with chunks; end the 1,500-char truncation.
 - **Files:** `lib/chunker.ts` + selfcheck, `lib/ingest.ts`, `knowledge-crawl.worker.ts`, `knowledge.repository.ts`, `rag.service.ts`, `scripts/chunk-backfill.ts`
 - **DB:** `20260821_001` — `ai_knowledge_chunks`, HNSW index, `match_ai_knowledge_chunks()`, `documents.ingest_*` + `chunk_count`
@@ -766,13 +766,32 @@ on real data before anything else depends on it.
 - **Testing:** `chunker.selfcheck.ts` (heading split, overlap, tiny-section merge, paragraph fallback, `heading_path` correctness) exits non-zero on failure; `npm run chunk:backfill` over existing documents; SQL smoke of `match_ai_knowledge_chunks` with and without filters; one live counsellor question comparing the retrieved passage against the old 1,500-char slice.
 - **Depends on:** nothing.
 
-### Phase 2 — File upload (MD / PDF / CSV)
+### Phase 2 — File upload (MD / PDF / CSV) — ✅ BUILT 2026-08-22 as MD/PDF/TXT, no CSV
 - **Goal:** admins can upload the three research docs and any CSV dataset.
 - **Files:** `lib/csv-to-blocks.ts` + selfcheck, `workers/knowledge-ingest.worker.ts`, `rack.service.ts`, `rack.routes.ts`, `rack.schema.ts`, `document-extractor.ts`
 - **DB:** `sources.source_type/file_path/file_name/mime_type` + CHECK + `UNIQUE(category_id, file_path)`
 - **API:** `POST /sources/upload`, `POST /documents/:id/reingest`
 - **Frontend:** `upload-source-dialog.tsx`, `source_type` badge, ingest status + Re-ingest
 - **Testing:** `csv-to-blocks.selfcheck.ts` (quoted fields, embedded commas/newlines, ragged rows); upload one of each type and assert chunk counts, `heading_path` on the MD, `page_number` on the PDF, row integrity on the CSV; assert a corrupt PDF lands `ingest_status='failed'` with `ingest_stage='parse'` and nothing half-written.
+
+#### As built (2026-08-22) — deviations from Phases 1–2 as written
+
+Phase 5's cutover safety (§5.2, `matchKnowledgeChunks` falling back to `matchKnowledgeDocuments`) was **not built**: it presumed existing documents, and there were none. Retrieval is chunk-only.
+
+Migration `superadmin/20260822_001_ai_knowledge_chunks.ts` (not `20260821_001`), append-only per the repo rule.
+
+| Planned | Built | Why |
+|---|---|---|
+| `knowledge-ingest.worker.ts` + `ai_knowledge_ingest` queue | **Inline in `rack.service.uploadSource()`** | The frontend contract already shipped (`upload-source-form.tsx` → `{ chunks, embedded }` in the response) and expects a synchronous count. A 130KB doc is ~60 chunks ≈ 12s at `EMBED_CONCURRENCY=5`. No new queue, worker, container or npm script. Move it to the crawl queue if a book-sized PDF ever times out. |
+| `documents.ingest_status/_error/_stage/_attempts` | **Not added** | Those columns exist because a queued failure is invisible. Inline upload returns the error to the admin and rolls back (source row + GCS object deleted), so there is no half-ingested row to describe. Re-add with the worker if upload ever goes async. |
+| CSV upload + `lib/csv-to-blocks.ts` | **Dropped** | Nothing in the current dataset is CSV. |
+| `POST /documents/:id/reingest` | **Dropped** | Re-crawl re-chunks automatically; an upload is replaced by delete + re-upload. |
+| `GET /chunks?document_id=` + chunk list UI | **Dropped** | `chunk_count` on the document row answers "did it chunk". Add the endpoint when tuning retrieval needs chunk-level inspection. |
+| `sources.ingestion_class` / `rule_class` / `region` / `last_verified_at` / `effective_until` | **Not added** (only `country_code`) | Copyright gate and freshness are Phase 3/5. `country_code` came early because `match_ai_knowledge_chunks()` COALESCEs it, and adding it later would mean dropping and recreating the function. |
+| Drop `documents.embedding` | **Dropped in the same migration**, with `match_ai_knowledge_documents()` and its HNSW index | `ai_knowledge_documents` held 0 rows, so a fallback had nothing to serve and there was no backfill window to protect. Keeping it would have cost a second vector query on every turn that matched no chunk — which, with an empty rack, is every turn. `down()` restores column, index and function as 20260820_001 left them. `embed:backfill` lost its rack target; `chunk:backfill` replaces it. |
+| `chunker.selfcheck.ts` | **`backend/tests/chunker.ts`** (`npm run test:chunker`) | Repo convention: standalone tsx scripts under `tests/`, no selfcheck files exist. |
+
+Added beyond the plan: markdown-table integrity in the chunker (a table is never split without repeating its header row — the country docs are table-dense), and the missing `ai-knowledge-crawl-worker` docker-compose service plus Makefile targets, since chunking on re-crawl now depends on that worker actually running.
 - **Depends on:** Phase 1 (`lib/ingest.ts`).
 
 ### Phase 3 — Metadata, copyright gate, structured cleanup

@@ -109,13 +109,13 @@ const documents: RackDocument[] = [
   {
     id: "doc-1", source_id: "src-1", category_id: "cat-1",
     url: "https://immi.homeaffairs.gov.au/visas/student", title: "Student visa (subclass 500)",
-    content_hash: "a1b2c3", word_count: 842, crawled_at: now, active: true, is_embedded: true,
+    content_hash: "a1b2c3", word_count: 842, chunk_count: 6, crawled_at: now, active: true, is_embedded: true,
     created_at: now, updated_at: now,
   },
   {
     id: "doc-2", source_id: "src-1", category_id: "cat-1",
     url: "https://immi.homeaffairs.gov.au/visas/student/work", title: "Work conditions",
-    content_hash: "d4e5f6", word_count: 431, crawled_at: now, active: true, is_embedded: false,
+    content_hash: "d4e5f6", word_count: 431, chunk_count: 0, crawled_at: now, active: true, is_embedded: false,
     created_at: now, updated_at: now,
   },
 ];
@@ -155,7 +155,11 @@ export const aiKnowledgeMockApi = {
   getRackCounts: async (): Promise<RackCounts> => {
     console.log("[mock] getRackCounts");
     await delay();
-    return { categories: categories.length, sources: sources.length, documents: documents.length, embedded_documents: documents.filter((d) => d.is_embedded).length };
+    return {
+      categories: categories.length, sources: sources.length, documents: documents.length,
+      embedded_documents: documents.filter((d) => d.is_embedded).length,
+      embedded_chunks: documents.reduce((sum, d) => sum + d.chunk_count, 0),
+    };
   },
   getCategories: async () => { console.log("[mock] getCategories"); await delay(); return categories; },
   createCategory: async (params: CategoryParams) => { console.log("[mock] createCategory"); await delay(); return { ...categories[0], ...params, id: uid() } as RackCategory; },

@@ -94,6 +94,8 @@ export type CrawlSummary = {
   updated: number;
   unchanged: number;
   failed: number;
+  /** Absent on runs recorded before chunking shipped. */
+  chunks?: number;
   embedded: number;
   max_pages: number;
   finished_at: string;
@@ -130,6 +132,7 @@ export type RackDocument = {
   title: string | null;
   content_hash: string;
   word_count: number;
+  chunk_count: number;
   crawled_at: string;
   active: boolean;
   is_embedded: boolean;
@@ -143,7 +146,9 @@ export type RackCounts = {
   categories: number;
   sources: number;
   documents: number;
+  /** Documents reachable by retrieval — chunked, or still on the legacy whole-page vector. */
   embedded_documents: number;
+  embedded_chunks: number;
 };
 
 // ── Create / patch payloads ──

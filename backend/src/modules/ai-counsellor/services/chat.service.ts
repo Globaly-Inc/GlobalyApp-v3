@@ -1,6 +1,7 @@
 import type { FastifyReply } from "fastify";
 import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
-import { streamChat } from "../lib/gemini-stream.js";
+import { streamChat, streamChatWithTools, type StreamChatResult } from "../lib/gemini-stream.js";
+import { runTool, toolLabel, toolsFor, type ToolSource } from "../lib/tools.js";
 import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { buildSystemPrompt } from "./prompt.service.js";
 import * as rag from "./rag.service.js";
@@ -69,72 +70,134 @@ export async function handleMessage(opts: {
     const returning =
       isFirstMessage && !opts.embed && (await sessionsRepo.countByUser(opts.userId)) > 1;
 
-    // 5. RAG search
-    const ragOutput = await rag.searchAll({
-      query: opts.content,
-      userId: opts.userId,
-      jobIds: opts.embed?.jobIds,
-      skipCourses: discoveryTurn,
-      onTrace: (step) => writeEvent(opts.reply, "trace", { step }),
-    });
-
-    // 6. Sources
-    if (ragOutput.sources.length) {
-      writeEvent(opts.reply, "sources", ragOutput.sources);
-    }
-
-    // 7. System prompt
-    const system = buildSystemPrompt({
-      profile: profileContext,
-      ragContext: ragOutput.contextText,
-      isFirstMessage,
-      discoveryTurn,
-      returning,
-      embedConfig: opts.embed?.config,
-    });
-
-    // 8. Conversation history
+    // 5. Conversation history.
+    // Text turns only — past tool calls and their results are not replayed. Cheaper,
+    // and the model re-searches when it actually needs the data again.
     const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
-    // Exclude the user message we just persisted (it's the last one) — it goes as userMessage to streamChat
+    // Exclude the user message we just persisted (it's the last one) — it goes as userMessage
     const historyMessages = prevMessages.slice(0, -1);
     const history = historyMessages.map(m => ({
       role: (m.role === "user" ? "user" : "model") as "user" | "model",
       parts: [{ text: m.content }],
     }));
 
-    // 9. Stream
     if (opts.reply.raw.destroyed) {
       logger.info("Client disconnected before streaming", { sessionId: session.id });
       return;
     }
 
-    const result = await streamChat({
-      system,
-      history,
-      userMessage: opts.content,
-      onChunk: (chunk) => {
-        writeData(opts.reply, { choices: [{ delta: { content: chunk } }] });
-      },
-    });
+    const trace = (step: string) => writeEvent(opts.reply, "trace", { step });
+    let emitted = false;
+    const onChunk = (chunk: string) => {
+      emitted = true;
+      writeData(opts.reply, { choices: [{ delta: { content: chunk } }] });
+    };
 
-    // 10. Parse structured blocks
+    // 6. Retrieval + stream.
+    //
+    // Platform sessions run the tool loop: the model decides what to search, and
+    // deciding NOT to search — asking the student a question instead — is the
+    // behaviour Phase 5 could only ask for in the prompt.
+    //
+    // Embed mode stays on searchAll: its business scoping (jobIds, skipped
+    // institution/agent sources) lives inside that function, and a tool the model
+    // could call with its own arguments would route around the scope.
+    const useTools = !opts.embed;
+    let sources: ToolSource[] = [];
+    let result: StreamChatResult | null = null;
+
+    if (useTools) {
+      const seen = new Set<string>();
+      try {
+        result = await streamChatWithTools({
+          system: buildSystemPrompt({
+            profile: profileContext,
+            ragContext: "",
+            isFirstMessage,
+            toolMode: true,
+            // What earlier turns of this session established. Read once here; the
+            // update_student_context tool writes the merged version back mid-turn.
+            counsellingContext: session.counselling_context,
+            discoveryTurn,
+            returning,
+          }),
+          history,
+          userMessage: opts.content,
+          tools: toolsFor({ discoveryTurn }),
+          onChunk,
+          onToolCall: (name) => trace(`${toolLabel(name)}…`),
+          runTool: async (name, args) => {
+            const run = await runTool(name, args, { sessionId: session.id });
+            trace(run.trace);
+            const fresh = run.sources.filter(s => !seen.has(`${s.type}:${s.id}`));
+            for (const s of fresh) seen.add(`${s.type}:${s.id}`);
+            if (fresh.length) {
+              sources = [...sources, ...fresh];
+              writeEvent(opts.reply, "sources", fresh);
+            }
+            return run.result;
+          },
+        });
+      } catch (err) {
+        // Nothing streamed yet → the student loses nothing by retrying the old way.
+        // Mid-stream failures fall through to the outer catch instead of producing
+        // one reply built from two different runs.
+        if (emitted) throw err;
+        logger.warn("Tool loop failed, falling back to searchAll", {
+          sessionId: session.id, err: err instanceof Error ? err.message : String(err),
+        });
+        trace("Retrying without tools");
+        sources = [];
+      }
+    }
+
+    if (!result) {
+      const ragOutput = await rag.searchAll({
+        query: opts.content,
+        userId: opts.userId,
+        jobIds: opts.embed?.jobIds,
+        skipCourses: discoveryTurn,
+        onTrace: trace,
+      });
+      sources = ragOutput.sources;
+      if (sources.length) writeEvent(opts.reply, "sources", sources);
+
+      result = await streamChat({
+        system: buildSystemPrompt({
+          profile: profileContext,
+          ragContext: ragOutput.contextText,
+          isFirstMessage,
+          // Carried into the fallback too, so a failed tool loop doesn't read as
+          // the counsellor forgetting everything it was told this session.
+          counsellingContext: session.counselling_context,
+          discoveryTurn,
+          returning,
+          embedConfig: opts.embed?.config,
+        }),
+        history,
+        userMessage: opts.content,
+        onChunk,
+      });
+    }
+
+    // 7. Parse structured blocks
     const cards = parseCards(result.fullText);
     const chips = parseChips(result.fullText);
     const blocks = parseBlocks(result.fullText);
     const cleanText = stripBlocks(result.fullText);
 
-    // 11. Emit cards + chips + blocks
+    // 8. Emit cards + chips + blocks
     if (cards.length) writeEvent(opts.reply, "cards", cards);
     if (chips.length) writeEvent(opts.reply, "chips", chips);
     if (blocks.length) writeEvent(opts.reply, "blocks", blocks);
 
-    // 12. Persist assistant message
+    // 9. Persist assistant message
     const latencyMs = Date.now() - startMs;
     const aiMessage = await messagesRepo.create({
       session_id: session.id,
       role: "assistant",
       content: cleanText,
-      sources: ragOutput.sources,
+      sources,
       cards,
       chips,
       blocks,
@@ -144,10 +207,10 @@ export async function handleMessage(opts: {
       latency_ms: latencyMs,
     });
 
-    // 13. Increment message count
+    // 10. Increment message count
     await sessionsRepo.incrementMessageCount(session.id);
 
-    // 14. Credit deduction — after successful response, never on failure.
+    // 11. Credit deduction — after successful response, never on failure.
     // Embed mode bills the business's monthly quota, not the user's wallet.
     if (opts.embed) {
       embedRepo.incrementMonthlyUsage(opts.embed.config.id).catch((err) => {
@@ -159,11 +222,11 @@ export async function handleMessage(opts: {
       });
     }
 
-    // 15. Usage + done
+    // 12. Usage + done
     writeEvent(opts.reply, "usage", result.usage);
     writeDone(opts.reply, { message_id: aiMessage.id, session_id: session.id });
 
-    // 16. Auto-title (fire-and-forget)
+    // 13. Auto-title (fire-and-forget)
     if (isNew) {
       sessionService.autoTitle(session.id, opts.content, cleanText).catch(() => {});
     }
