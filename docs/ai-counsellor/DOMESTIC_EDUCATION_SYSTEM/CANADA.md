@@ -249,9 +249,45 @@ UNIVERSITY — bachelor's typically 3 years after a DEC ⚠
 
 > ✅ **The "30-level" convention is worth knowing:** Alberta courses are numbered by level, and **"30-level"** courses (e.g. English 30-1, Mathematics 30-1) are the **Grade 12 / university-preparatory** level. An Alberta transcript showing "30-1" courses indicates university-stream Grade 12 work; "30-2" indicates a different (typically non-university-stream) route. ⚠ ❌ *The 30-1 vs 30-2 distinction — not verified in this pass but frequently decisive for Alberta admissions.*
 
-### Other jurisdictions
+### ✅ RESOLVED — all 13 jurisdictions
 
-❌ **Not researched.** Saskatchewan, Manitoba, New Brunswick, Nova Scotia, Prince Edward Island, Newfoundland and Labrador, Yukon, Northwest Territories and Nunavut each issue their own secondary school diploma with its own requirements. ❌ **Priority gap — this is the largest single hole in the Canada document.**
+**Research update (2026-08-21): this was the largest hole in the Canada document. All 13 jurisdictions now have a credit total. A key discovery in the process: CMEC publishes a per-jurisdiction *Student Transfer Guide* series (`cmec.ca/docs/transferguide/`) covering grade structures, graduation credentials, requirements, issuing authorities and grading — the single best source class for Canadian provincial detail.**
+
+| Jurisdiction | Credential | Credits required | Notes | Verification |
+|--------------|-----------|-----------------:|-------|--------------|
+| **Ontario** | OSSD | **30** | 18/12 or (2024-25 entry) 17/13 compulsory/optional; OSSLT; 40 hrs community involvement | ✅ |
+| **British Columbia** | B.C. Certificate of Graduation ("Dogwood") | **80** | 52 required (incl. 8 Career Education) + min 28 elective; provincial numeracy and literacy assessments | ✅ |
+| **Alberta** | Alberta High School Diploma | **100** | *"40 credits from Grade 10, 35 from Grade 11 and 30 from Grade 12"* ⚠; mainly "30"-level courses | ⚠ |
+| **Québec** | DES → then CEGEP (DEC) | n/a (course-based) | Secondary I–V = 11 years; CEGEP follows | ✅ |
+| **Saskatchewan** | Grade 12 standing | **24** | *"at least 24 credits (courses) in various subject areas from Grades 10 to 12"* ⚠ | ⚠ |
+| **Manitoba** | Manitoba High School Diploma | **30** | *"a minimum of 30 credits from a combination of compulsory and optional courses"*. **Four programme pathways**: Senior Years English, Français, French Immersion, and Technology Education. French Immersion students starting Grade 9 must earn *"a minimum of 15 credits from courses taught in French"* (from September 2024) | ✅ |
+| **New Brunswick** | New Brunswick High School Diploma | **100 credit-hours** | **From September 2023 a credit-HOUR system.** *"80 credit-hours is required from the core clusters"* + *"20 credit-hours … from the flexible options"*. Accumulated in **Grades 10–12**; *"Grade 9 courses will not receive credit-hours"*. Prescribed courses = **90 hours instructional time = 4 credit-hours**. **Pass mark 60%** — *"Assessment, and grading are the responsibility of the school. A minimum achievement of 60% is required for a pass."* Issued by **EECD**, with schools acting on its behalf. Governed by **Policy 316A**; requirements change again for students graduating **2026 and after** | ✅ CMEC Student Transfer Guide 2023–24 |
+| **Nova Scotia** | Nova Scotia High School Graduation Diploma | **18** | *"no more than seven of the 18 credits for grade 10 courses, and at least five must be for grade 12 courses"* ⚠ | ⚠ |
+| **Prince Edward Island** | **Provincial Senior High Graduation Diploma** | **20** | *"Students must successfully complete 20 credits"*; **12 credits are compulsory** (3 language incl. one at grade 12/600 level, 2 mathematics, 2 science, …). **Pass mark 50%** — *"The pass mark is 50 percent in all courses."* Three pathways: the **20 Credit Pathway**, an **Essential Skills Pathway**, or the **International Baccalaureate Diploma Program**. Issued by the PEI **Department of Education and Early Years** | ✅ CMEC Student Transfer Guide 2023–24 |
+| **Newfoundland and Labrador** | High school graduation diploma | **36** | English Language Arts 6 · Optional Language Arts 2 · Mathematics 4 · Science 4 · Social Studies 4 · Career Education 2 · Fine Arts 2 · Physical Education 2 · Other Required Credits 6. French Immersion students must additionally attain six French credits ⚠ | ✅ CMEC Student Transfer Guide 2023–24 |
+| **Yukon** | Yukon secondary school graduation certificate (also called a "Dogwood Diploma") | **80** | ⚠⚠ **Yukon follows British Columbia's curriculum and graduation programme** — *"Yukon students must meet the British Columbia requirements in order to graduate"* | ⚠ |
+| **Northwest Territories** | NWT High School Graduation Diploma | **100** | ⚠⚠ **In transition**: the NWT is *"moving from a 5-credit to 4-credit system"* and *"switching curriculum from Alberta to British Columbia"* — new graduation requirements are being phased in | ⚠ **[VOLATILE]** |
+| **Nunavut** | High School Graduation Diploma | **100** (minimum) | Junior high 3 years + senior high 3 years. *"There is no maximum number of credits that a student can achieve overall."* NWT and Nunavut have historically used **the same course names as Alberta** ⚠ | ⚠ |
+
+### ⚠⚠ What this table proves — and it is the operative fact for the AI
+
+**Complete Canadian secondary diplomas require anywhere from 18 to 100 credits:**
+
+| Credits for a complete diploma | Jurisdictions |
+|-------------------------------:|---------------|
+| **18** | Nova Scotia |
+| **20** | Prince Edward Island |
+| **24** | Saskatchewan |
+| **30** | Ontario, Manitoba |
+| **36** | Newfoundland and Labrador |
+| **80** | British Columbia, Yukon |
+| **100** | Alberta, New Brunswick (credit-*hours*), Northwest Territories, Nunavut |
+
+**And pass marks differ too:** **50%** (PEI) · **60%** (New Brunswick) · others school- or course-determined ⚠.
+
+> ⚠⚠ **AI rule, now evidence-backed across all 13 jurisdictions:** a Canadian secondary credit total is **meaningless without the jurisdiction**. **18 credits (Nova Scotia) and 100 credits (Alberta) are both complete diplomas.** The AI must never treat a lower credit count as a lesser achievement, never compare Canadian credit totals across jurisdictions, and never infer a pass mark.
+>
+> ✅ **Two useful simplifications discovered:** **Yukon uses British Columbia's programme** (so a Yukon graduate can be read on BC's rules), and **NWT and Nunavut have used Alberta's course naming** (though the NWT is mid-transition to BC's curriculum) ⚠.
 
 **Adult / alternative routes identified** ⚠:
 
@@ -337,9 +373,40 @@ UNIVERSITY — bachelor's typically 3 years after a DEC ⚠
 > - CEGEP DECs
 > - apprenticeship and trade qualifications
 >
-> **So Canada has no single ladder placing a college diploma relative to a bachelor's degree**, in the way the AQF (Australia), BNQF (Bangladesh) or NQF (Nepal) do. This is a genuine structural difference and the AI should state it rather than inventing a level.
+> **So there is no single PAN-CANADIAN ladder placing a college diploma relative to a bachelor's degree**, in the way the AQF (Australia), BNQF (Bangladesh) or NQF (Nepal) do. This is a genuine structural difference and the AI should state it rather than inventing a national level.
+
+### ✅ RESOLVED (partially) — but PROVINCIAL frameworks exist: the Ontario Qualifications Framework
+
+**Research update (2026-08-21): the earlier statement that Canada has nothing covering sub-degree qualifications was too strong. Ontario has a full 13-level qualifications framework.**
+
+**The Ontario Qualifications Framework (OQF)** ✅ — `ontario.ca/page/ontario-qualifications-framework`:
+
+| OQF level | Qualification |
+|----------:|---------------|
+| **1** | Certificate I — entry-level career college certificates |
+| **2** | Certificate II — career college and CAAT certificates |
+| **3** | **Certificate of Apprenticeship** |
+| **4** | **Certificate of Qualification** (trade qualification) |
+| **5** | Certificate III — **Ontario College Certificate** (CAAT) |
+| **6** | Diploma I — career college diplomas |
+| **7** | Diploma II — **Ontario College Diploma** (CAAT) |
+| **8** | **Ontario College Advanced Diploma** |
+| **9** | Post-Diploma Certificate — **Ontario College Graduate Certificate** |
+| **10** | **Baccalaureate/Bachelor's Degree** |
+| **11** | **Baccalaureate/Bachelor's Degree: Honours** |
+| **12** | **Master's Degree** |
+| **13** | **Doctoral Degree** |
+
+**Scope:** *"all non-religious postsecondary certificate, diploma and degree programs"* — including apprenticeship certificates, career college qualifications, public college (CAAT) credentials, and university degrees from both public institutions and those authorised by ministerial consent. ✅
+
+> ✅ **Three things this changes:**
+> 1. **Canada does have numbered qualification frameworks — at the provincial level.** The correct statement is: *there is no pan-Canadian framework covering sub-degree qualifications, but at least one province (Ontario) operates a 13-level framework that does.*
+> 2. **The OQF places apprenticeship and trade credentials on the same ladder as degrees** (levels 3–4 alongside college and university credentials) — something the CDQF does not do.
+> 3. **The OQF distinguishes Bachelor's (level 10) from Bachelor's Honours (level 11)** as separate levels — mirroring Australia's AQF 7/8 split rather than the UK's single FHEQ 6.
 >
-> ❌ *Whether any pan-Canadian framework covers sub-degree qualifications — not established. **Priority gap.***
+> ⚠ **But note the trap:** OQF levels are **Ontario's own numbering** and are **not comparable with the AQF, SCQF, RQF, BNQF, NHEQF or NCrF**. An "OQF level 8 Advanced Diploma" is not an "AQF level 8 Bachelor Honours Degree". **The AI must always name the framework alongside the level.**
+
+❌ *Whether the other 12 jurisdictions operate comparable frameworks — **not established**. Ontario's is confirmed; the rest remain unresearched. Reduced from a blocker to a coverage gap.*
 
 ## 8.2 The six dimensions of the degree-level standards ✅
 
@@ -415,7 +482,25 @@ UNIVERSITY — bachelor's typically 3 years after a DEC ⚠
 > 1. Is the institution in **CICIC's Directory of Educational Institutions in Canada**? ✅
 > 2. For an international student: is it on **IRCC's designated learning institutions list**? ✅ *"You need a letter of acceptance (LOA) from a DLI to apply for a study permit."* ✅
 
-❌ *A verified taxonomy of Canadian college/polytechnic credentials (certificate vs diploma vs advanced diploma vs applied degree) with durations, by province — **priority gap**. This is the single largest structural hole in the Canada document after the provincial diplomas.*
+### ✅ RESOLVED (Ontario) — the college credential taxonomy
+
+**Research update (2026-08-21): previously logged as a blocker. Ontario's college credentials are now documented with durations and OQF levels. Ontario is by far the largest college sector in Canada, so this covers the most common case.**
+
+| Credential | Duration | OQF level | Notes |
+|------------|----------|----------:|-------|
+| **Ontario College Certificate** | *"two semesters (or one year) of study"* ⚠ | **5** | Approved by the Ministry of Colleges, Universities, Research Excellence and Security (MCURES) ⚠ |
+| **Ontario College Diploma** | *"at least four semesters (or two years)"* ⚠ | **7** | The standard college diploma |
+| **Ontario College Advanced Diploma** | *"six semesters (three years)"* ⚠ | **8** | ⚠ **Three years — longer than most people assume of a "diploma"** |
+| **Ontario College Graduate Certificate** | *"one year or less of full-time study"* ⚠ | **9** | A **post-diploma/post-degree** credential — despite the word "certificate", it sits **above** the Advanced Diploma |
+| **Degree** (college or university) | *"4 years with broader depth compared to an advanced diploma"* ⚠ | **10–11** | Some Ontario colleges award degrees by ministerial consent ⚠ |
+
+> ⚠⚠ **Two Ontario college traps:**
+> 1. **An "Ontario College Graduate Certificate" is a POST-credential qualification (OQF 9)**, entered after a diploma or degree — not an entry-level certificate. The word "certificate" is misleading, and it sits **above** the three-year Advanced Diploma on the OQF.
+> 2. **An "Ontario College Advanced Diploma" is a three-year qualification at OQF level 8** — above the two-year Ontario College Diploma (level 7) and above the one-year Ontario College Certificate (level 5). "Diploma" alone does not identify the credential; the **full title matters**.
+>
+> ✅ **Useful resource:** **ONTransfer** (`ontransfer.ca`) publishes Ontario's postsecondary credential explanations and transfer information.
+
+❌ *The equivalent taxonomies for the other 12 jurisdictions — **still unresearched**. Reduced from a blocker to a coverage gap. Note that terminology is province-specific: Québec uses **AEC/DEC** at college level, Alberta and BC use their own certificate/diploma naming.*
 
 ❌ *Whether "Universities Canada" membership functions as a de facto recognition marker — not researched.*
 

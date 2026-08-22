@@ -480,9 +480,32 @@ A source surfaced in this research is titled *"Associate's or (Incomplete) Bache
 
 China operates several **non-standard routes** to higher-education qualifications alongside the regular full-time route: adult higher education (成人高等教育), the self-study examination system (自学考试 / 自考), online/distance education (网络教育), and the Open University of China. ⚠
 
-> ⚠ **Why this matters:** these routes produce **real, CHSI-verifiable Chinese qualifications**, but the certificates typically **indicate the study mode**, and their treatment by employers and foreign institutions can differ from full-time regular qualifications.
+### ✅ RESOLVED — the three certificate categories and the four adult routes
+
+**Research update (2026-08-21): previously logged as a significant unresearched area. Now established, including the key fact that the certificate itself distinguishes the route.**
+
+**China issues THREE categories of Higher Education Qualification Certificate (HEQC)** ⚠:
+
+| # | Category | Route |
+|--:|----------|-------|
+| 1 | **Regular higher education certificate** | Full-time, gaokao-entry (普通高等教育) |
+| 2 | **Adult higher education certificate** | *"Its admission examination is uniformly organized by provincial and municipal education departments and its graduates receive nationally recognized unified adult education certificates"* (成人高等教育) |
+| 3 | **Self-taught examination certificate** | The self-study examination route (自考) |
+
+> ⚠⚠ **THE OPERATIVE FACT:** *"The different study modes are **indicated on the certificates themselves**, allowing institutions and employers to distinguish between regular, adult, and self-taught education pathways."* ⚠
 >
-> ❌ **This is a significant unresearched area.** *The structure, documentation and status of China's adult/self-study/online higher-education routes — requires further research at MOE/CHSI. **Priority gap**: an AI that cannot distinguish a 自考 bachelor's from a full-time benke bachelor's is missing a real distinction that appears on the certificate itself.*
+> **So the AI does not have to guess** — a Chinese higher-education certificate states which of the three routes produced it. **The AI should ask the student to read the certificate's own wording**, and should recognise that all three are CHSI-verifiable but are treated differently by Chinese employers and by foreign institutions.
+
+**The four forms of adult continuing education** ⚠ — *"There are four major forms of adult continuing education: the **adult university entrance exam**, **self-taught higher education examinations**, **TV university modern open distance education** and **online education**, each of which has its own characteristics."*
+
+**The self-taught examination (自考) in detail** ⚠:
+- *"a national academic examination for self-learners"*
+- *"an **entirely open enrollment policy** that accepts applications from all backgrounds and academic levels"*
+- Applicants *"register with the **provincial Self-taught Higher Education Examinations Committee** and complete the program **at their own pace**"*
+
+> ⚠ **Counselling relevance:** the 自考 route has **no entry requirement at all** and no fixed duration. A 自考 bachelor's therefore carries a materially different selection signal from a gaokao-entry benke degree — while still being a genuine, nationally recognised, CHSI-verifiable Chinese qualification. **The AI should describe the route neutrally and accurately, not rank it.**
+
+❌ *Remaining: the relative volumes of each route, and how foreign institutions typically treat 自考 and adult-education certificates. CHSI publishes English pages on this (`chsi.com.cn/en/aboutus/01.shtml` and `chsi.com.cn/en/news/201203/20120315/290797198.html`) — see the access note in §13.2.*
 
 ## 9.5 Institutional tiering
 
@@ -630,17 +653,47 @@ A widely circulated third-party mapping (90–100% → 3.7–4.0; 80–89% → 3
 >
 > **AI behaviour:** where a Chinese student's credential needs confirming, point them to **CHSI verification reports** — and note that **two separate reports** may be needed (graduation and degree).
 
-❌ *The exact CHSI report types, their names, and turnaround/cost — not researched. `chsi.com.cn/en/` is the authority.*
+### ⚠ ACCESS NOTE — chsi.com.cn is blocked to automated retrieval (confirmed 2026-08-21)
+
+**Four separate retrieval attempts were made against the CHSI domain and all returned HTTP 412 Precondition Failed:**
+
+| Attempt | Target | Result |
+|---------|--------|--------|
+| 1 | The dual-credential article (`/en/news/201312/20131202/663878204.html`) | **412** |
+| 2 | Same URL with full browser headers (User-Agent, Accept, Accept-Language, Referer) | **412** |
+| 3 | *"Higher Education Qualification Certificates in China"* (`/en/aboutus/01.shtml`) | **412** |
+| 4 | *"Introduction to Qualification Certificates in China"* (`/en/news/201203/20120315/290797198.html`) | **412** |
+
+Plus a text-extraction proxy attempt, which returned an empty document.
+
+> ⚠ **Conclusion: the CHSI domain rejects automated access at the domain level**, not just on one page. **These pages must be retrieved manually in a browser.** They are worth retrieving — they are the MOE-authorised primary source for the dual-credential system and the three HEQC categories.
+>
+> ✅ **However, the substance is NOT unverified.** The dual-credential facts used in this document are independently corroborated by multiple credential-evaluation sources that quote CHSI directly, including **ACEI**, **Transcript Research**, **Nuffic**, **IQAS Alberta** and **Kayee Meck Translation**. The AI can rely on the substance; the citation should note that the CHSI original requires manual retrieval.
+
+❌ *The exact CHSI report types, their names, and turnaround/cost — still not researched, and blocked to automated access. Requires a manual browser session at `chsi.com.cn/en/`.*
 
 ---
 
 # 14. Credit System
 
-❌ **China's higher-education credit system was not established in this research pass. This is a priority gap.**
+**Research update (2026-08-21): partially resolved. China does specify credit-hours nationally — but at the level of per-discipline teaching standards, not as a single cross-system formula.**
 
-What is known:
-- Chinese university transcripts commonly show **credits (学分)** per course alongside percentage marks. ⚠
-- Neither the Degrees Law nor any national instrument read in this pass specifies a **national credit definition** (notional hours per credit, credits per year, or credit minima per qualification). ⚠
+| Finding | Detail | Verification |
+|---------|--------|--------------|
+| **National teaching quality standards DO specify credit-hours** | China's **Ministry of Education** announced *"national teaching quality standards for bachelor's degree programmes"* on **30 January 2018**, covering **92 broad subject areas encompassing 587 disciplines**. They include *"Specifications for the knowledge and skills that should be taught on the programme, along with **credit-hours, degrees awarded and other requirements**"* | ✅ (British Council) |
+| **Typical bachelor's credit range** | Per MOE statistics (2023), *"the standard four-year academic system accounts for **87.5% of all national undergraduate programs**, and students must complete **160–180 credits** to graduate"* | ⚠ |
+| **Credit-to-hours conversion** | **Institution-specific.** Example: *"One credit equals to one class hour (45 mins) per week for one semester about 18 weeks"* at Xiamen University ⚠ | ⚠ |
+| **What a credit represents** | *"One credit unit requires students to have workload of a certain number of hours spent on face-to-face lectures, major-related researches, surveys, experiments, graduation projects, internship and etc."* | ⚠ |
+| **MOE position** | *"Chinese Ministry of Education encourages the employment of credit system"* — i.e. it is **encouraged, not mandated uniformly** | ⚠ |
+
+> ⚠ **The corrected statement:** it is **wrong** to say China has no national credit specification. It is **right** to say China has **no single national credit-to-notional-hours formula** comparable to India's 30 hours or Bangladesh's 40 hours. Instead:
+> - **Credit-hours are specified per discipline** in the MOE's 2018 national teaching quality standards (587 disciplines) ✅
+> - **The hours-per-credit conversion is set by each institution** (~45 minutes × ~18 weeks is one reported convention) ⚠
+> - **A Chinese bachelor's typically requires 160–180 credits** ⚠ — a much higher count than a US 120-credit or Indian 120-credit degree, because the unit is smaller
+>
+> ⚠⚠ **This makes the cross-country credit warning sharper, not weaker.** A Chinese **160–180 credit** bachelor's, a US **120 credit** bachelor's, a UK **360 credit** bachelor's and an Indian **120 credit** bachelor's are all first degrees. **The numbers differ by a factor of three in both directions because the units are entirely different.** Never compare them.
+
+❌ *Remaining: the MOE's 2018 national teaching quality standards themselves (587 disciplines, each with credit-hour specifications) — not obtained. And whether any national hours-per-credit rule exists. Reduced from a total blocker to a partially-answered gap.*
 
 > ⚠ **Contrast with India and Bangladesh**, both of which publish explicit credit arithmetic (India: 1 credit = 30 notional hours, 40 credits/year; Bangladesh: 1 credit = 40 notional hours for lecture-based learning). **No comparable Chinese national definition was found.**
 >

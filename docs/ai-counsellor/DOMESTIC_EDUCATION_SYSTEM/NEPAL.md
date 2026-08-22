@@ -633,11 +633,48 @@ Also referenced on the page: **Vidushi Yogmaya Himalayan Ayurveda University** a
 | Claim C (SEE) | Each SEE student must obtain **35 in theory** out of 100 full marks to be qualified for higher studies |
 | Claim D (Grade 12) | Students must obtain **overall D grade in each subject**, theory and practical/internal assessment **taken together** |
 
-⚠ **The conflict:** Claim B references a **"D+" grade that does not appear in the reported grade table** (which runs …C, D, NG). Claims C and D also differ on whether the 35% threshold applies to **theory alone** or to **theory + practical combined** — an operationally significant difference.
+**Research update (2026-08-21):** a **fourth** variant emerged, and it contradicts Claim A directly:
 
-**Documented, not resolved.** ❌ *Authoritative pass criteria for SEE and NEB Grade 12 — requires reading the Letter Grading Directive 2078 and NEB's current examination regulations.*
+| Source claim | Stated requirement |
+|--------------|--------------------|
+| **Claim E (new)** | *"You must score at least **Grade D which is 35 percent or GPA 1.6 in every individual subject**, **AND have an overall GPA of 2.0 or 50 percent to pass**, meaning you must both pass every individual subject and have a decent overall average."* ⚠ |
 
-**What is safe for the AI to say:** Nepal's school grading requires a **per-subject minimum** (there is no simple aggregate pass), the threshold is around **35%**, and results below threshold are reported as **NG (Non-Graded)** rather than "fail". Anything more precise must be verified.
+⚠ **The conflict is now wider, not narrower:**
+- Claim B references a **"D+" grade that does not appear in the grade table** (which runs …C, D, NG).
+- Claims C and D differ on whether the 35% threshold applies to **theory alone** or **theory + practical combined**.
+- **Claim A says there is NO aggregate minimum; Claim E says there IS one (overall GPA 2.0).** These are directly contradictory and both come from Nepali education sources.
+
+**Still not resolved.** ❌ *Authoritative pass criteria for SEE and NEB Grade 12 — requires the Letter Grading Directive 2078 text and NEB's current examination regulations. **This remains a blocker** and the additional variant makes it more urgent, not less.*
+
+**What is safe for the AI to say:** Nepal's school grading requires a **per-subject minimum of around 35% (grade D / GPA 1.6)**; results below threshold are reported as **NG (Non-Graded)** rather than "fail"; and **whether an additional overall-GPA minimum applies is disputed among sources**. The AI must **not** state a specific aggregate requirement, and should ask the student what their grade sheet shows.
+
+### ✅ What the research update DID establish about the directive
+
+**The Letter Grading Directive 2078's contents are now documented** ⚠ (from Nepali education sources describing the directive itself, not merely quoting numbers from it):
+
+- Issued by **MoEST**, covering **Classes 1 to 12**
+- Developed *"in line with the **National Curriculum Framework for School Education, 2076**"*
+- Stated aim: to make student evaluation *"more relevant, transparent, objective, and reliable"*
+- **It defines** *"key terms such as **credit hour, letter grading, and grade point**"*
+- **It specifies** *"how marks obtained in **internal, practical, and theoretical assessments** are converted into letter grades"*
+- **It covers** *"grade categories, achievement levels, **grade improvement examinations**, certification requirements, and the roles of concerned bodies including the Ministry, Curriculum Development Center, National Examination Board, Education Development and Coordination Units, and schools"*
+
+> ✅ **This confirms the directive is the correct authority** for: the grade boundaries, the internal/practical/theory conversion, credit hours, and grade-improvement rules — i.e. everything currently marked ⚠ in this section. It is the single highest-value acquisition remaining for Nepal.
+
+### ⚠⚠ A NEW operational finding — NEB results show letter grades, not marks
+
+> *"NEB results only show **letter grades** and **numerical marks are not included** in official results."* ⚠
+
+**If correct, this is operationally important and partly contradicts the theory/practical marks discussion in §6.2:**
+
+| Consequence | Detail |
+|-------------|--------|
+| The AI cannot ask for "marks" | A Nepali NEB grade sheet may show **only letter grades and a GPA** |
+| No percentage is recoverable | Unlike an Indian CBSE marksheet (which shows both), an NEB result may offer **no numeric mark** to fall back on |
+| The GPA is the primary datum | Which makes the **unverified grade boundaries** (§12.1) more consequential, not less |
+| GPA is credit-weighted | *"The GPA is calculated by multiplying each subject's grade point by its credit hours, adding up all the weighted values, and then dividing by the total credit hours."* ⚠ |
+
+⚠ **Flagged rather than asserted:** this claim comes from a Nepali GPA-calculator site and **conflicts with** the 75-theory/25-internal marks structure described in §6.2. Both cannot be fully true unless the marks exist internally but are not printed on the result. ❌ **Confirm at NEB what an official Grade 12 grade sheet actually displays.** This is now a priority question, because it determines whether the AI can ever ask a Nepali student for a percentage.
 
 ## 12.3 School level — legacy percentage/Division era (pre-2016)
 

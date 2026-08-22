@@ -375,21 +375,45 @@ And *"All are nationally recognised and used to generate an ATAR for university 
 
 ## 10.2 Higher-education qualifications on the AQF ✅
 
-| Qualification | AQF level | Typical volume of learning |
-|---------------|----------:|----------------------------|
-| **Diploma** | **5** | 1–2 years ⚠ |
-| **Advanced Diploma** | **6** | 1.5–2 years ⚠ |
-| **Associate Degree** | **6** | **2 years** ⚠ |
-| **Bachelor Degree** | **7** | **3–4 years** ⚠ |
-| **Bachelor Honours Degree** | **8** | **4 years**, or **1 year** following a bachelor's ⚠ |
-| **Graduate Certificate** | **8** | 0.5–1 year ⚠ |
-| **Graduate Diploma** | **8** | 1–2 years ⚠ |
-| **Masters Degree (Research)** | **9** | 1–2 years ⚠ |
-| **Masters Degree (Coursework)** | **9** | 1–2 years ⚠ |
-| **Masters Degree (Extended)** | **9** | **3–4 years** ⚠ |
-| **Doctoral Degree** | **10** | **3–4 years** ⚠ |
+### ✅ RESOLVED — official volumes of learning, read directly from the AQF Second Edition
 
-✅ **AQF level assignments are confirmed** (from the AQF as reproduced by the University of Wollongong, plus the AQF website's own description). ⚠ **Volumes of learning are marked ⚠**: the figures above are the conventionally cited AQF volumes, but a secondary source in this research gave **conflicting** figures for two of them (Diploma as "1.5 to 2 years" and Advanced Diploma as "2 to 3 years"). ❌ *The authoritative volumes of learning are in the **AQF Second Edition (January 2013)** and the **"Explanation on the Volume of Learning" updated May 2014** ✅ — neither of which could be downloaded during this research (aqf.edu.au timed out). **Priority gap: obtain the AQF PDF and confirm every volume of learning.***
+**Research update (2026-08-21): the AQF Second Edition (January 2013) PDF was obtained (via the Internet Archive, after direct downloads from aqf.edu.au failed) and read. Every volume of learning below is now VERBATIM from the AQF itself. The conflicting secondary figures are refuted.**
+
+| Qualification | AQF level | **Official volume of learning (verbatim)** |
+|---------------|----------:|--------------------------------------------|
+| **Senior Secondary Certificate of Education** | (SSCE) | *"typically **2 years**"* ✅ |
+| **Certificate I** | **1** | *"typically **0.5 – 1 year**"* ✅ |
+| **Certificate II** | **2** | *"typically **0.5 – 1 year**"* ✅ |
+| **Certificate III** | **3** | *"typically **1 – 2 years**. Up to 4 years may be required to achieve the learning outcomes through a program of indentured training/employment"* ✅ |
+| **Certificate IV** | **4** | *"typically **0.5 – 2 years**. There may be variations between short duration specialist qualifications that build on knowledge and skills already acquired and longer duration qualifications that are designed as entry level requirements for work"* ✅ |
+| **Diploma** | **5** | *"typically **1 – 2 years**"* ✅ |
+| **Advanced Diploma** | **6** | *"typically **1.5 – 2 years**"* ✅ |
+| **Associate Degree** | **6** | *"typically **2 years**"* ✅ |
+| **Bachelor Degree** | **7** | *"typically **3 – 4 years**"* ✅ |
+| **Bachelor Honours Degree** | **8** | *"typically **1 year following a Bachelor Degree**. A Bachelor Honours Degree may also be **embedded in a Bachelor Degree, typically as an additional year**"* ✅ |
+| **Graduate Certificate** | **8** | *"typically **0.5 – 1 year**"* ✅ |
+| **Graduate Diploma** | **8** | *"typically **1 – 2 years**"* ✅ |
+| **Masters Degree (Research)** | **9** | *"typically **1 – 2 years**; in the same discipline **1.5 years following a level 7 qualification** or **1 year following a level 8 qualification**; in a different discipline **2 years following a level 7 qualification** or **1.5 years**"* [following a level 8 qualification] ✅ |
+| **Masters Degree (Coursework)** | **9** | Same formulation as Masters (Research) ✅ |
+| **Masters Degree (Extended)** | **9** | *"typically **3 – 4 years following completion of a minimum of a 3 year level 7 qualification**"* ✅ |
+| **Doctoral Degree** | **10** | *"typically **3 – 4 years**"* ✅ |
+| **Higher Doctoral Degree** | **10** | — see below ✅ |
+
+**The AQF's own definition of volume of learning** ✅ — verbatim:
+
+> *"The volume of learning is a dimension of the complexity of a qualification. It is used with the level criteria and qualification type descriptor to determine the depth and breadth of the learning outcomes of a qualification. The volume of learning identifies the **notional duration of all activities required for the achievement of the learning outcomes** specified for a particular AQF qualification type. It is expressed in **equivalent full-time years**."*
+
+> ✅ **Three corrections and additions from the official document:**
+> 1. **The conflicting secondary figures are refuted.** Diploma is **1–2 years** (not "1.5–2") and Advanced Diploma is **1.5–2 years** (not "2–3"). The figures previously marked ⚠ in this document were correct.
+> 2. **Bachelor Honours is defined primarily as "1 year following a Bachelor Degree"**, with the embedded 4-year form given as the alternative — the reverse emphasis from most secondary descriptions.
+> 3. **The Masters volumes are conditional on the entry qualification's level**, not a flat range: 1.5 years after AQF 7 in the same discipline, 1 year after AQF 8, 2 years after AQF 7 in a different discipline. This is materially more precise than "1–2 years" and directly relevant to counselling.
+> 4. **A "Higher Doctoral Degree" exists at AQF level 10** — a qualification type absent from earlier drafts of this document.
+
+**The Higher Doctorate** ✅ — verbatim:
+
+> *"An additional kind of Doctoral Degree, the **Higher Doctorate**, may be awarded by an issuing organisation on the basis of an **internationally recognised original contribution to knowledge rather than through the process of supervised independent study**."*
+
+⚠ **Note:** an **Addendum to the AQF Second Edition January 2013** exists, amending the **Masters Degree** qualification type (`aqf.edu.au/download/420/...`). ❌ *Addendum not obtained — confirm whether it changes the Masters volumes above.*
 
 ## 10.3 ⚠⚠ Bachelor Honours is AQF Level 8 — a level above Bachelor
 
@@ -424,7 +448,47 @@ The AQF recognises **three** distinct Masters types, all at **Level 9**:
 | **Masters Degree (Coursework)** | Predominantly coursework ⚠ | 1–2 yr ⚠ |
 | **Masters Degree (Extended)** | Longer, typically professional-entry (e.g. Juris Doctor, Doctor of Medicine) ⚠ | **3–4 yr** ⚠ |
 
-> ⚠ **The "Extended" Masters is an Australian peculiarity worth knowing.** Australia's **Juris Doctor** and **Doctor of Medicine** are **AQF Level 9 Masters Degrees (Extended)**, *not* doctorates, despite the "Doctor" in the name. ⚠ (⚠ this specific mapping is from general knowledge and was not verified in this pass — but the existence of the "Extended" Masters type at Level 9 with a 3–4 year volume **is** confirmed ✅.) ❌ *Confirm which Australian professional qualifications are classified as Masters (Extended) — priority for medicine/law counselling.*
+### ✅ RESOLVED — exactly which qualifications may be titled "Doctor" at AQF level 9
+
+**Research update (2026-08-21): now confirmed verbatim from the AQF Second Edition's Qualifications Issuance Policy. This was previously flagged as unverified general knowledge.**
+
+The AQF's qualification-title table lists the permitted titles by level, then states these **exceptions** ✅:
+
+> *"**i** The use of the qualification title **'Juris Doctor' is permitted for a Masters Degree (Extended) for legal practice**."*
+>
+> *"**ii** The use of the qualification title **'Doctor of ...' is permitted for a Masters Degree (Extended) for five professions: medical practice; physiotherapy; dentistry; optometry and veterinary practice**."*
+>
+> *"**iii** Further exceptions may be permitted in accordance with the AQF Qualification Type Addition and Removal Policy."*
+
+*(Footnoted to the Ministerial Council for Tertiary Education and Employment (MCTEE), 19 November 2010.)* ✅
+
+**And the mechanism for adding more** ✅ — from the AQF Qualification Type Addition and Removal Policy, §2.3:
+
+> *"The use of the qualification title 'Doctor of ...' is permitted for level 9 Masters Degree (Extended) qualifications **if there is a clear industry, professional or community need and a sound educational rationale**."* Requests go to the AQF Council *"following comprehensive consultation with and support from the relevant industry, professional, provider and government stakeholders."*
+
+**The purposes of the three Masters types** ✅ — verbatim:
+
+| Type | Purpose |
+|------|---------|
+| **Masters Degree (Research)** | *"to qualify individuals who apply an advanced body of knowledge in a range of contexts **for research and scholarship** and as a pathway for further learning"* |
+| **Masters Degree (Coursework)** | *"to qualify individuals who apply an advanced body of knowledge in a range of contexts **for professional practice or scholarship** and as a pathway for further learning"* |
+| **Masters Degree (Extended)** | *"to qualify individuals who apply an advanced body of knowledge in a range of contexts **for professional practice** and as a pathway for further learning"* |
+
+> ✅⚠ **THE AUSTRALIAN NAMING TRAP, NOW DEFINITIVELY ESTABLISHED.** In Australia:
+> - A **Juris Doctor** is an **AQF Level 9 Masters Degree (Extended)** — *not* a doctorate.
+> - A **"Doctor of ..."** title at Level 9 is permitted for exactly **five professions: medical practice, physiotherapy, dentistry, optometry and veterinary practice** — so an Australian **Doctor of Medicine, Doctor of Physiotherapy, Doctor of Dental Medicine, Doctor of Optometry** or **Doctor of Veterinary Medicine** is a **Masters Degree (Extended) at AQF 9**, not an AQF 10 doctorate.
+> - Its volume of learning is **3–4 years following at least a 3-year AQF level 7 qualification** ✅ — i.e. a second-entry professional programme.
+>
+> **This is now the third distinct national placement of the same professional qualifications documented in this research:**
+>
+> | Country | MD / JD placement |
+> |---------|-------------------|
+> | **Australia** | **AQF level 9 — Masters Degree (Extended)** ✅ |
+> | **Canada** | *"bachelor's programs in academic standing"* per the CDQF ✅ |
+> | **United Kingdom** | **FHEQ level 7 / SCQF 11 — master's level** ✅ |
+> | **United States** | **no framework level exists to state** ⚠ |
+>
+> Australia and the UK agree (master's level); Canada differs (bachelor's level); the US has no answer. **The AI must state the country's own placement and never generalise.**
 
 ## 10.5 The AQF 2007 Edition — for older Australian qualifications
 

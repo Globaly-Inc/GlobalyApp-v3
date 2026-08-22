@@ -660,7 +660,34 @@ High school + AP examinations / IB Diploma / dual enrolment
 | **Credit for prior learning, CLEP, portfolio assessment** | ⚠ | ❌ *not researched* |
 | **Applied associate (AAS) → bachelor's** | ⚠ Often transfers **less** readily than an AA/AS ⚠ | ❌ *not verified* |
 
-> ❌ **This is the largest gap in the US document relative to its counselling importance.** The community-college transfer route is central to US higher education and to the value proposition for many international students. **Priority gap.**
+### ✅ RESOLVED (substantially) — statewide guaranteed transfer
+
+**Research update (2026-08-21): previously the largest gap in the US document. Now established at the policy level.**
+
+| Finding | Detail | Verification |
+|---------|--------|--------------|
+| **How widespread is statewide transfer?** | **"At least 31 states"** have policies requiring *"a transferable core of lower-division courses **and statewide guaranteed transfer of an associate degree**"* | ✅ Education Commission of the States, 50-State Comparison |
+| Direction of travel | *"While many articulation agreements exist at the institution- or system-level, **states are increasingly setting statewide credit transfer requirements**"* | ✅ |
+| Purpose | *"to provide seamless transitions between and across technical or community colleges and four-year institutions"* | ✅ |
+
+**Documented state examples** ✅:
+
+| State | Mechanism |
+|-------|-----------|
+| **North Carolina** | The **Comprehensive Articulation Agreement (CAA)** — *"a statewide agreement governing the transfer of credits between the North Carolina Community College System and the UNC System"* |
+| **Florida** | *"Florida's statewide articulation agreement means that completing an **Associate in Arts degree at any Florida state college guarantees admission to one of Florida's 12 public universities**"* |
+| **Colorado** | **GT Pathways** (Guaranteed Transfer Pathways) for general education, plus statewide transfer articulation agreements known as **"Degrees with Designation"** |
+| **Hawaii** | Associate-degree holders from the seven University of Hawaiʻi community colleges *"may qualify for the university's **Automatic Admission** program"* |
+
+> ✅⚠ **What the AI can now say — and it is genuinely useful for counselling:**
+> 1. **In a majority of US states (at least 31), completing an associate degree at a community college carries a statewide guarantee of transfer.** This is policy, not luck.
+> 2. **In some states the guarantee extends to admission itself** — Florida's AA guarantees admission to one of 12 public universities.
+> 3. **But the guarantee is state-specific and usually attaches to a particular degree type** — typically the **Associate in Arts (AA)**, not the applied **AAS**. The AI must ask **which state** and **which associate degree**.
+> 4. **19 or more states have no such statewide policy**, so transfer there is institution-by-institution.
+>
+> ✅ **The authoritative resource is the Education Commission of the States' *50-State Comparison: Transfer and Articulation Policies*** (`ecs.org/50-state-comparison-transfer-and-articulation/`) — a single source covering all 50 states.
+
+❌ *Remaining: the per-state detail (which 31 states, and what each guarantees), and AA vs AS vs AAS transferability by state. Reduced from a blocker to a coverage gap with a named single source that would close it.*
 
 ---
 

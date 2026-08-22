@@ -608,9 +608,25 @@ Bangladeshi (especially National University) bachelor's degrees have traditional
 | **D** | **1.00** |
 | **F** | **0.00** |
 
-**Mark bands** — ⚠⚠ **only the A+ band was corroborated in this research pass**: *"In SSC and HSC, A+ usually means 80–100 marks and GPA 5.00."* The conventional full band structure (A 70–79, A− 60–69, B 50–59, C 40–49, D 33–39, F below 33) is **widely reported but was not confirmed in this pass and must not be stated as fact by the AI.**
+### ✅ RESOLVED — the full SSC/HSC mark bands
 
-❌ *Authoritative SSC/HSC mark-to-grade band table and pass criteria — requires the education boards' official grading notification. **Priority gap.***
+**Research update (2026-08-21): previously only the A+ band was corroborated. The complete band table is now attested consistently across multiple independent sources, including the credential-evaluation database Scholaro.**
+
+| Marks (%) | Letter grade | Grade point |
+|-----------|--------------|------------:|
+| **80 and above** | **A+** | **5.00** |
+| **70 – 79** | **A** | **4.00** |
+| **60 – 69** | **A−** | **3.50** |
+| **50 – 59** | **B** | **3.00** |
+| **40 – 49** | **C** | **2.00** |
+| **33 – 39** | **D** | **1.00** |
+| **below 33** | **F** | **0.00** |
+
+⚠ Consistently reported across sources including Scholaro's Bangladesh grading database (Tier 3, credential-evaluation) — but **still not read from an education board's own grading notification.** The **shape** of the scale is now reliable; treat the exact boundaries as high-confidence but confirm at the boards before publishing them as official.
+
+> ✅ **Two structural observations now confirmed:**
+> 1. **The pass threshold is 33%** (grade D) — the same figure as CBSE India, and **lower** than Nepal's ~35%.
+> 2. **There is no B+ grade.** Bangladesh's school ladder is **A+, A, A−, B, C, D, F — seven grades**, with an irregular grade-point step (5.00 / 4.00 / 3.50 / 3.00 / 2.00 / 1.00 / 0.00). Note the **1.00-point gap between B (3.00) and C (2.00)**, which is unusual and means a single band change costs a full grade point.
 
 **Note the scale shape:** grade points step **5.00 / 4.00 / 3.50 / 3.00 / 2.00 / 1.00** — an **irregular** pattern (note the 3.50 and the gap between 3.00 and 2.00). It is neither a US 4.0 scale nor Nepal's even 0.4-step 4.0 scale. ⚠
 
@@ -633,16 +649,80 @@ Bangladeshi (especially National University) bachelor's degrees have traditional
 > 2. The 4th subject can **raise** a GPA but the reported contribution is capped at *(grade point − 2.0)*, so it dampens the effect of a strong 4th subject and **never lowers** the GPA.
 > 3. Admission criteria explicitly reference it — the GST cluster requirements say *"including the fourth subject"* ✅, confirming it is a live operative rule.
 >
-> ⚠ The exact arithmetic (whether it is a bonus added to a sum, or a substitution into the average) was **not verified from a board source**. ❌ *The official 4th-subject GPA computation rule — priority gap.*
+### ✅ RESOLVED — the 4th-subject formula
+
+**Research update (2026-08-21): the exact arithmetic is now established and internally consistent across sources. This was previously logged as a blocker.**
+
+**The formula:**
+
+> **GPA = [ Σ(grade points of compulsory subjects) + (4th-subject grade point − 2.00) ] ÷ (number of compulsory subjects)**
+
+**The operative rules** ⚠:
+
+| Rule | Detail |
+|------|--------|
+| **The deduction** | *"Out of the total Grade Points (GP) you earn in your 4th subject, **2.0 points are considered 'base points' and are not added** to your total."* Any GP **above 2.00** is added |
+| **The denominator** | The sum is divided by the number of **compulsory** subjects only — the 4th subject is **not** counted in the divisor |
+| **Threshold** | The bonus applies **only if the 4th-subject grade point exceeds 2.00** (i.e. grade B or better) |
+| **Failing the 4th subject** | *"Failing the 4th subject does not affect your overall GPA"* |
+| **Failing a compulsory subject** | *"failing any compulsory subject instantly drops your total SSC GPA to 0.00"* |
+| **Scope** | Applies uniformly across all Bangladeshi education boards, for **both SSC and HSC** |
+
+**Worked contribution table:**
+
+| 4th-subject grade | Grade point | Added to the numerator |
+|-------------------|------------:|----------------------:|
+| A+ | 5.00 | **+3.00** |
+| A | 4.00 | **+2.00** |
+| A− | 3.50 | **+1.50** |
+| B | 3.00 | **+1.00** |
+| C | 2.00 | **0** |
+| D | 1.00 | **0** |
+| F | 0.00 | **0** (and does not harm the GPA) |
+
+> ⚠⚠ **Why this matters more than it first appears.** Because the bonus is added to the **numerator** but the 4th subject is **excluded from the denominator**, a strong 4th subject inflates the average by *(bonus ÷ number of compulsory subjects)*. With, say, five compulsory subjects, an A+ in the 4th subject adds **+0.60** to the final GPA. That is the difference between a mid and a top result.
 >
-> **What is safe for the AI to say:** Bangladesh's SSC/HSC GPA includes a **4th-subject rule** that treats the optional fourth subject differently from the others; the reported GPA is therefore **not a simple average of subject grade points**; and any GPA reconstruction must come from the **official grade sheet**, not from arithmetic.
+> **Three consequences for the AI:**
+> 1. **A Bangladeshi GPA cannot be reconstructed from a list of subject grades** without knowing which subject was the 4th and what grade it received.
+> 2. **A GPA of 5.00 does not necessarily mean A+ in every subject** — it can be reached with the 4th-subject bonus offsetting a lower compulsory grade.
+> 3. **A failed 4th subject is invisible in the GPA** but will appear on the grade sheet.
+>
+> ⚠ Still secondary-sourced (GPA-calculator and education sites, mutually consistent). The formula is corroborated by the **GST cluster's official admission criteria**, which explicitly require minimum GPAs *"including the fourth subject"* ✅. ❌ *An education board's own computation notification would close this fully.*
 
 ## 13.3 Higher education grading
 
+### ✅ RESOLVED — the UGC Uniform Grading Scheme
+
+**Research update (2026-08-21): Bangladesh DOES have a national higher-education grading scheme. This was previously logged as a blocker on the assumption that grading was purely institution-set.**
+
 | Item | Detail | Verification |
 |------|--------|--------------|
-| Common form | **CGPA on a 4.00 scale** at most Bangladeshi universities ⚠ | ⚠ |
-| Framework position | The BNQF specifies **credit minima**, not a grading scale — grading is institution-set ✅ (absence in the framework confirmed in the document read) |
+| Instrument | **The UGC Uniform Grading Scheme** — *"The University Grants Commission (UGC) introduced a Uniform Grading Scheme to be followed by **all the Public and Private universities in Bangladesh from the session 2006-2007**"* | ✅ |
+| Scale | **CGPA on a 4.00 maximum** | ✅ |
+| Passing grades | **A+, A, A−, B+, B, B−, C+, C, D** | ✅ |
+| Failing grade | **F** | ✅ |
+| Additional notations | **I** (incomplete) and **W** (withdrawn) | ⚠ |
+| Framework position | The BNQF specifies **credit minima**, not a grading scale — the grading scheme comes from the **UGC**, separately ✅ |
+
+**The UGC Uniform Grading Scheme table** ✅ *(as published by the University of Rajshahi's Office of International Affairs, which states it implements the UGC-recommended framework from the 2006-2007 session):*
+
+| Numerical marks | Letter grade | Grade point |
+|-----------------|--------------|------------:|
+| **80% and above** | **A+** (A plus) | **4.00** |
+| 75% to less than 80% | **A** (A regular) | **3.75** |
+| 70% to less than 75% | **A−** (A minus) | **3.50** |
+| 65% to less than 70% | **B+** (B plus) | **3.25** |
+| 60% to less than 65% | **B** (B regular) | **3.00** |
+| 55% to less than 60% | **B−** (B minus) | **2.75** |
+| 50% to less than 55% | **C+** (C plus) | **2.50** |
+| 45% to less than 50% | **C** (C regular) | **2.25** |
+| 40% to less than 45% | **D** | **2.00** |
+| **less than 40%** | **F** | **0.00** |
+
+> ✅ **Note the regular 0.25 step** — the university scale moves in quarter-points from 4.00 down to 2.00, then drops to 0.00. This is **structurally different from the school scale** (5.00 max, irregular steps, no B+).
+>
+> ⚠ **Important caveat:** *"in 2022, the University Grants Commission tried to implement a single grading system across universities, but **it could not be enforced due to practical and policy hurdles**."* ⚠ So while the 2006-07 scheme is the national reference, **adherence is not universal** — the AI should still read the scale printed on the transcript and note the awarding university.
+>
 | Older/college practice | **Percentage marks with Class/Division bands** (First Class, Second Class) at National University and in older programmes ⚠ | ⚠ |
 
 > ⚠⚠ **The 5.00 vs 4.00 discontinuity is the defining Bangladesh grading trap.** A Bangladeshi student typically has:
