@@ -8,19 +8,13 @@ import {
   FolderOpen,
   UserPlus,
   Users,
-  type LucideIcon,
 } from "lucide-react";
-
-export type NavItem = {
-  label: string;
-  icon: LucideIcon;
-  href: string;
-  /** Second-level nav, rendered as the sidebar's submenu column when this module is the active one. */
-  items?: { label: string; icon: LucideIcon; href: string }[];
-};
+import type { PortalNavGroup } from "@/components/portal-sidebar";
 
 /** Shared by the desktop rail, its submenu column, and the mobile drawer, so the three can't drift apart. */
-export const NAV_ITEMS: NavItem[] = [
+// `href` is required here (unlike PortalNavGroup, where it can fall back to the first item), because the
+// mobile drawer links every top-level entry directly.
+export const NAV_ITEMS: (PortalNavGroup & { href: string })[] = [
   { label: "Home", icon: Home, href: "/personal/portal" },
   { label: "Explore", icon: Compass, href: "/personal/explore" },
   {
@@ -37,10 +31,3 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Enquiries", icon: Inbox, href: "/personal/enquiries" },
   { label: "Messages", icon: MessageSquare, href: "/personal/messages" },
 ];
-
-/**
- * Prefix match, not equality: Earn owns sub-routes (/personal/earn/services and its pages), and an equality
- * check would leave the item dark the moment you opened one.
- */
-export const isNavActive = (pathname: string | null, href: string) =>
-  pathname === href || !!pathname?.startsWith(`${href}/`);

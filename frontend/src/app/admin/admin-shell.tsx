@@ -18,9 +18,8 @@ import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMe } from "./store/admin-slice";
 import { ROLE_DISPLAY } from "./consts";
 import { getVisibleNavGroups, isNavPathActive } from "./nav-config";
-import { AdminGroupNav } from "./components/admin-group-nav";
-import { AdminSubNav } from "./components/admin-sub-nav";
 import { AdminMobileNav } from "./components/admin-mobile-nav";
+import { PortalSidebar } from "@/components/portal-sidebar";
 
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
@@ -96,17 +95,22 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   const initial = me.email?.charAt(0).toUpperCase() ?? "A";
 
   return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
-      <header className="sticky top-0 z-50 h-16 w-full border-b border-border bg-background/95 backdrop-blur-md flex items-center justify-between px-4 md:px-6">
-        <div className="flex items-center gap-4 min-w-0">
-          <Link href="/" className="flex items-center flex-shrink-0">
-            <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
-          </Link>
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground flex-shrink-0">
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* Full-width bar above the rail, matching the personal and business portals: the mark sits over the
+          rail (hence the w-20 box), navigation lives in the sidebar, and this keeps identity only. */}
+      <header className="sticky top-0 z-50 h-16 w-full border-b border-border bg-card/95 backdrop-blur-md supports-[backdrop-filter]:bg-card/60 flex items-center justify-between pr-4 md:pr-6">
+        <div className="flex items-center min-w-0">
+          <div className="flex h-16 shrink-0 items-center px-4 md:w-20 md:justify-center md:px-0">
+            <Link href="/" className="flex items-center flex-shrink-0">
+              <Image src="/globaly-red-icon.png" alt="Globaly" width={283} height={283} className="size-9 rounded-[10px]" />
+            </Link>
+          </div>
+          {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
+          <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
+          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground flex-shrink-0 ml-3 md:ml-4">
             <ShieldCheck className="h-3.5 w-3.5" />
             {ROLE_DISPLAY[me.role]}
           </span>
-          <AdminGroupNav />
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -161,9 +165,11 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
         </div>
       </header>
 
-      <AdminSubNav />
+      <div className="flex flex-1">
+        <PortalSidebar groups={getVisibleNavGroups(authUser.role)} />
 
-      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 md:py-6">{children}</main>
+        <main className="min-w-0 flex-1 px-3 sm:px-4 md:px-6 py-4 md:py-6">{children}</main>
+      </div>
     </div>
   );
 }

@@ -26,7 +26,8 @@ import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
-import { PersonalSidebar } from "./components/personal-sidebar";
+import { PortalSidebar } from "@/components/portal-sidebar";
+import { NAV_ITEMS } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
 
 /**
@@ -204,7 +205,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
         {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}
       </main>
       <div className="flex flex-1">
-        <PersonalSidebar />
+        <PortalSidebar groups={NAV_ITEMS} />
 
         {/* overflow-x-clip lets a page render a full-bleed band without the 100vw box adding the scrollbar's
             width to the page as horizontal scroll. `clip` rather than `hidden`: it creates no scroll

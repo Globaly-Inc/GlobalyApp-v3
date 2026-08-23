@@ -67,7 +67,12 @@ export function PersonalMobileNav({
           <SheetHeader>
             <SheetTitle>Personal Portal</SheetTitle>
           </SheetHeader>
-          <nav className="flex flex-col gap-1 px-2">
+          {/* The sheet is a fixed-height flex column, so this region has to own the overflow: on a short
+              phone viewport the expanded list plus the sign-out footer exceed the sheet, and without a
+              scroll container here the bottom links and Sign Out were simply unreachable. `min-h-0` is
+              required — a flex child won't shrink below its content without it, so `overflow-y-auto`
+              alone would never engage. */}
+          <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2">
             {NAV_ITEMS.map((item) => (
               <div key={item.href} className="flex flex-col gap-1">
                 <Link
@@ -123,7 +128,8 @@ export function PersonalMobileNav({
               </Link>
             )}
           </nav>
-          <div className="mt-auto p-2">
+          {/* `shrink-0` keeps Sign Out pinned and visible while the nav above it scrolls. */}
+          <div className="mt-auto shrink-0 p-2">
             <Button variant="outline" className="w-full justify-start gap-2" onClick={onSignOut}>
               <LogOut className="h-4 w-4" /> Sign Out
             </Button>

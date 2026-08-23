@@ -22,9 +22,7 @@ import { logout } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { BUSINESS_NAV_GROUPS } from "./const";
 import { BusinessSwitcher } from "./components/business-switcher";
-import { BusinessGroupTabs } from "./components/business-group-tabs";
-import { BusinessSubNav } from "./components/business-sub-nav";
-import { cn } from "@/lib/utils";
+import { PortalSidebar } from "@/components/portal-sidebar";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
@@ -144,24 +142,28 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const initial = profile?.business_name?.[0]?.toUpperCase() ?? "B";
 
   return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
-      <header className="border-b border-border bg-background">
-        <div className={cn(SHELL_WIDTH, "flex h-16 items-center gap-1")}>
-          <div className="flex items-center gap-3 shrink-0 border-r border-border pr-3 mr-1">
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* Full-width bar above the rail, matching the personal portal and GlobalyOS: the mark sits over the
+          rail (hence the w-20 box), navigation lives in the sidebar, and this keeps identity only. */}
+      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+        <div className="flex h-16 items-center">
+          <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center">
-              <Image src="/globaly-red-icon.png" alt="Globaly" width={64} height={64} className="size-8 rounded-lg" />
+              <Image src="/globaly-red-icon.png" alt="Globaly" width={64} height={64} className="size-9 rounded-[10px]" />
             </Link>
+          </div>
+          {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
+          <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
+          <div className="flex min-w-0 items-center pl-3 md:pl-4">
             <BusinessSwitcher businesses={businesses} activeOrgId={activeOrgId} onSwitch={handleSwitchBusiness} />
           </div>
-
-          <BusinessGroupTabs groups={BUSINESS_NAV_GROUPS} />
 
           {/* Account menu carries identity actions only — business switching lives in
               BusinessSwitcher above, matching V1's split between the two menus. */}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <button className="ml-auto flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
+                <button className="ml-auto mr-3 sm:mr-4 md:mr-6 flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
               }
             >
               <Avatar className="size-8">
@@ -186,11 +188,13 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         </div>
       </header>
 
-      <BusinessSubNav groups={BUSINESS_NAV_GROUPS} />
+      <div className="flex flex-1">
+        <PortalSidebar groups={BUSINESS_NAV_GROUPS} />
 
-      <main className="flex-1 py-4 md:py-6">
-        <div className={SHELL_WIDTH}>{children}</div>
-      </main>
+        <main className="min-w-0 flex-1 py-4 md:py-6">
+          <div className={SHELL_WIDTH}>{children}</div>
+        </main>
+      </div>
     </div>
   );
 }
