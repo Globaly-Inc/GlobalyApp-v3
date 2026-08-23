@@ -102,7 +102,8 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
     const res = await fetch(`${BASE_URL}/auth/switch-account`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ org_id: orgId }),
+      // Recorded on the session so /refresh keeps honoring it (see auth.service.ts).
+      body: JSON.stringify({ org_id: orgId, refresh_token: refreshToken }),
     });
     if (!res.ok) return false;
 

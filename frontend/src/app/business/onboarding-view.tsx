@@ -1,37 +1,41 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Combobox } from "@/components/combobox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { saveAccessToken, saveSelectedOrgId } from "@/lib/session";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "../geo/apis";
-import { updateMyProfile, updateSubCategory } from "./store/business-onboarding-slice";
+import { registerBusiness, updateMyProfile, updateSubCategory } from "./store/business-onboarding-slice";
 import { BUSINESS_TYPES } from "./static/onboarding-content";
 import { slugify, validateBusinessDetails, validateBusinessField } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
+import { BusinessDetailsStep } from "./components/business-details-step";
 import type { BusinessProfile, BusinessType } from "./apis/types";
 
 const TOTAL_STEPS = 2;
 
 export function OnboardingView() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
+  const searchParams = useSearchParams();
   const { profile, status } = useAppSelector((state) => state.businessOnboarding);
+  // Zero-business users never get a profile fetched (BusinessShell skips it — there's
+  // nothing to load yet), and "Create New Business" forces a fresh registration even
+  // though the active business's profile is still sitting in Redux. Either signal means
+  // this is a brand-new registration, not resuming an incomplete one.
+  const isNew = searchParams.get("new") === "1" || !profile;
 
   useEffect(() => {
-    if (profile?.onboarding_completed) router.replace("/business");
-  }, [profile, router]);
+    if (!isNew && profile?.onboarding_completed) router.replace("/business/profile");
+  }, [isNew, profile, router]);
 
-  if (!profile || status === "loading") {
+  if (!isNew && status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -39,33 +43,36 @@ export function OnboardingView() {
     );
   }
 
-  if (profile.onboarding_completed) return null;
+  if (!isNew && profile?.onboarding_completed) return null;
 
-  return <OnboardingForm initialProfile={profile} />;
+  return <OnboardingForm initialProfile={isNew ? null : profile} isNew={isNew} />;
 }
 
 function resumeStep(profile: BusinessProfile): number {
   return profile.business_type ? 2 : 1;
 }
 
-function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: BusinessProfile }>) {
+function OnboardingForm({
+  initialProfile,
+  isNew,
+}: Readonly<{ initialProfile: BusinessProfile | null; isNew: boolean }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((state) => state.businessOnboarding);
   const saving = status === "saving";
 
   const [countries, setCountries] = useState<Country[]>([]);
-  const [step, setStep] = useState(() => resumeStep(initialProfile));
-  const [businessType, setBusinessType] = useState<BusinessType | null>(initialProfile.business_type);
-  const [businessName, setBusinessName] = useState(initialProfile.business_name ?? "");
-  const [subdomain, setSubdomain] = useState(initialProfile.subdomain ?? "");
+  const [step, setStep] = useState(() => (initialProfile ? resumeStep(initialProfile) : 1));
+  const [businessType, setBusinessType] = useState<BusinessType | null>(initialProfile?.business_type ?? null);
+  const [businessName, setBusinessName] = useState(initialProfile?.business_name ?? "");
+  const [subdomain, setSubdomain] = useState(initialProfile?.subdomain ?? "");
   const [subdomainTouched, setSubdomainTouched] = useState(false);
-  const [phone, setPhone] = useState(initialProfile.phone ?? "");
-  const [countryId, setCountryId] = useState(initialProfile.country_id ? String(initialProfile.country_id) : "");
-  const [state, setState] = useState(initialProfile.state ?? "");
-  const [city, setCity] = useState(initialProfile.city ?? "");
-  const [address, setAddress] = useState(initialProfile.address ?? "");
-  const [postcode, setPostcode] = useState(initialProfile.postcode ?? "");
+  const [phone, setPhone] = useState(initialProfile?.phone ?? "");
+  const [countryId, setCountryId] = useState(initialProfile?.country_id ? String(initialProfile.country_id) : "");
+  const [state, setState] = useState(initialProfile?.state ?? "");
+  const [city, setCity] = useState(initialProfile?.city ?? "");
+  const [address, setAddress] = useState(initialProfile?.address ?? "");
+  const [postcode, setPostcode] = useState(initialProfile?.postcode ?? "");
   const [companyRegistrationFile, setCompanyRegistrationFile] = useState<File | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -116,7 +123,9 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: BusinessP
 
   const handleContinueFromType = async () => {
     if (!businessType) return;
-    if (!(await save({ business_type: businessType }))) return;
+    // No business row exists yet in `isNew` mode — there's nothing to PATCH until
+    // registration on the final step.
+    if (!isNew && !(await save({ business_type: businessType }))) return;
     dispatch(updateSubCategory({ sub_category: businessType }));
     setStep(2);
   };
@@ -129,6 +138,34 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: BusinessP
       return;
     }
     setFieldErrors({});
+
+    if (isNew) {
+      const outcome = await dispatch(
+        registerBusiness({
+          subdomain,
+          business_name: businessName,
+          business_type: businessType!,
+          phone,
+          country_id: Number(countryId),
+          address,
+          state: state || undefined,
+          city: city || undefined,
+          postcode: postcode || undefined,
+        }),
+      );
+      if (registerBusiness.rejected.match(outcome)) {
+        toast.error("Couldn't create business", { description: outcome.error.message ?? "Please try again." });
+        return;
+      }
+      // Full reload, matching the switcher's own re-fetch rationale — every slice
+      // needs a clean re-fetch under the newly created tenant context.
+      saveAccessToken(outcome.payload.access_token);
+      saveSelectedOrgId(outcome.payload.org.org_id);
+      toast.success("Business created!");
+      window.location.assign("/business/profile");
+      return;
+    }
+
     const ok = await save({
       phone,
       country_id: Number(countryId),
@@ -140,7 +177,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: BusinessP
     });
     if (!ok) return;
     toast.success("Business details saved!");
-    router.replace("/business");
+    router.replace("/business/profile");
   };
 
   let content: React.ReactNode;
@@ -184,113 +221,32 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: BusinessP
     );
   } else {
     content = (
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Business Details</h1>
-          <p className="text-muted-foreground mt-1">Tell us about your organisation.</p>
-        </div>
-        <Card>
-          <CardContent className="p-6 space-y-4">
-            <div className="space-y-2">
-              <Label>
-                {businessType === "institution" ? "Institution Name *" : "Business Name"}
-              </Label>
-              <Input
-                className="h-10"
-                value={businessName}
-                onChange={(e) => handleBusinessNameChange(e.target.value)}
-                placeholder={businessType === "institution" ? "e.g. Global State University" : "e.g. Global Education Agency"}
-                aria-invalid={!!fieldErrors.businessName}
-              />
-              {fieldErrors.businessName && <p className="text-sm text-destructive">{fieldErrors.businessName}</p>}
-            </div>
-            {businessType !== "institution" && (
-              <div className="space-y-2">
-                <Label>Subdomain *</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    className="h-10"
-                    value={subdomain}
-                    onChange={(e) => handleSubdomainChange(e.target.value.toLowerCase())}
-                    placeholder="your-agency"
-                    aria-invalid={!!fieldErrors.subdomain}
-                  />
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">.globalyhub.com</span>
-                </div>
-                {fieldErrors.subdomain && <p className="text-sm text-destructive">{fieldErrors.subdomain}</p>}
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Phone *</Label>
-                <Input
-                  className="h-10"
-                  value={phone}
-                  onChange={(e) => handlePhoneChange(e.target.value)}
-                  aria-invalid={!!fieldErrors.phone}
-                />
-                {fieldErrors.phone && <p className="text-sm text-destructive">{fieldErrors.phone}</p>}
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Country *</Label>
-                <Combobox
-                  value={countryId}
-                  onChange={handleCountryChange}
-                  placeholder="Select country"
-                  searchPlaceholder="Search countries..."
-                  options={countryOptions}
-                  aria-invalid={!!fieldErrors.countryId}
-                />
-                {fieldErrors.countryId && <p className="text-sm text-destructive">{fieldErrors.countryId}</p>}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Address *</Label>
-              <Input
-                className="h-10"
-                value={address}
-                onChange={(e) => handleAddressChange(e.target.value)}
-                aria-invalid={!!fieldErrors.address}
-              />
-              {fieldErrors.address && <p className="text-sm text-destructive">{fieldErrors.address}</p>}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>State</Label>
-                <Input className="h-10" value={state} onChange={(e) => setState(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>City</Label>
-                <Input className="h-10" value={city} onChange={(e) => setCity(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Postcode</Label>
-              <Input className="h-10" value={postcode} onChange={(e) => setPostcode(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Company Registration Document</Label>
-              <Input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) => setCompanyRegistrationFile(e.target.files?.[0] ?? null)}
-              />
-              {companyRegistrationFile && (
-                <p className="text-sm text-muted-foreground">Selected: {companyRegistrationFile.name}</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        <div className="flex gap-3">
-          <Button type="button" variant="outline" onClick={() => setStep(1)} className="h-10 flex-1 cursor-pointer">
-            Back
-          </Button>
-          <Button type="submit" disabled={saving} className="h-10 flex-1 cursor-pointer">
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Finish
-          </Button>
-        </div>
-      </form>
+      <BusinessDetailsStep
+        businessType={businessType}
+        businessName={businessName}
+        onBusinessNameChange={handleBusinessNameChange}
+        subdomain={subdomain}
+        onSubdomainChange={handleSubdomainChange}
+        phone={phone}
+        onPhoneChange={handlePhoneChange}
+        countryId={countryId}
+        onCountryChange={handleCountryChange}
+        countryOptions={countryOptions}
+        address={address}
+        onAddressChange={handleAddressChange}
+        state={state}
+        onStateChange={setState}
+        city={city}
+        onCityChange={setCity}
+        postcode={postcode}
+        onPostcodeChange={setPostcode}
+        companyRegistrationFile={companyRegistrationFile}
+        onCompanyRegistrationFileChange={setCompanyRegistrationFile}
+        fieldErrors={fieldErrors}
+        saving={saving}
+        onBack={() => setStep(1)}
+        onSubmit={handleSubmit}
+      />
     );
   }
 

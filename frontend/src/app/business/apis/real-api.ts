@@ -1,8 +1,14 @@
 import { httpGet, httpPatch, httpPost, httpPostForm } from "@/lib/api/http";
-import type { BusinessProfile, BusinessProfilePatch, SelectOption, UpdateSubCategoryParams } from "./types";
+import type {
+  BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, RegisterBusinessResult, SelectOption,
+  UpdateSubCategoryParams,
+} from "./types";
 
 export const businessRealApi = {
   updateSubCategory: (params: UpdateSubCategoryParams): Promise<void> => httpPost("/user/update", params),
+
+  registerBusiness: (input: BusinessRegisterInput): Promise<RegisterBusinessResult> =>
+    httpPost("/businesses/register", input),
 
   getMyProfile: (): Promise<BusinessProfile> => httpGet("/businesses/me"),
   updateMyProfile: (patch: BusinessProfilePatch): Promise<BusinessProfile> => httpPatch("/businesses/me", patch),

@@ -39,6 +39,12 @@ export async function agentBusinessRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
+  app.get("/:id/offices", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { id } = AgentParamsSchema.parse(req.params);
+    const result = await service.getAgentOffices(req.db, id);
+    return reply.send(result);
+  });
+
   app.get("/roles", { preHandler: requireBusinessContext }, async (req, reply) => {
     const roles = await repo.listRoles(req.db);
     return reply.send(roles);
@@ -54,6 +60,13 @@ export async function agentBusinessRoutes(app: FastifyInstance) {
     const { id } = InvitationParamsSchema.parse(req.params);
     await service.cancelInvitation(req.db, id);
     await activityService.logActivity(req.db, Number(req.auth.sub), "MEMBER_INVITE_CANCELLED", "member", id);
+    return reply.status(204).send();
+  });
+
+  app.post("/invitations/:id/resend", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { id } = InvitationParamsSchema.parse(req.params);
+    await service.resendInvitation(req.db, id, req.auth.orgId!);
+    await activityService.logActivity(req.db, Number(req.auth.sub), "MEMBER_INVITE_RESENT", "member", id);
     return reply.status(204).send();
   });
 

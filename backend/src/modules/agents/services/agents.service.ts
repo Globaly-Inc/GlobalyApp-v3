@@ -22,6 +22,7 @@ import { schemaName } from "../../../core/db/knex.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import * as repo from "../repositories/agents.repository.js";
 import * as platformUserRepo from "../../platform-users/repositories/platform-users.repository.js";
+import * as businessRepo from "../../businesses/repositories/businesses.repository.js";
 import type { AgentPatchInput, InviteAgentInput } from "../schemas/agents.schema.js";
 
 const logger = createChildLogger("agents-service");
@@ -66,6 +67,34 @@ export async function getAgent(db: Knex, id: number) {
   return enriched;
 }
 
+/**
+ * Which other branches (registered as their own businesses, linked via business_branches)
+ * this agent's platform_user also belongs to — only meaningful called from the head office,
+ * since a branch's own business_branches table is empty.
+ */
+export async function getAgentOffices(db: Knex, agentId: number) {
+  const agent = await repo.findAgentById(db, agentId);
+  if (!agent) throw new NotFoundError("Agent not found");
+
+  const branches: { linked_business_id: number; name: string }[] = await db("business_branches")
+    .whereNotNull("linked_business_id")
+    .whereNull("deleted_at")
+    .select("linked_business_id", "name");
+
+  const offices: { business_id: string; name: string }[] = [];
+  for (const branch of branches) {
+    const linkedBusiness = await businessRepo.findBusinessById(String(branch.linked_business_id));
+    if (!linkedBusiness) continue;
+    const branchDb = await getKnex(linkedBusiness.id, schemaName(linkedBusiness.schema_name));
+    const match = await branchDb("agents")
+      .where({ platform_user_id: agent.platform_user_id })
+      .whereNull("deleted_at")
+      .first();
+    if (match) offices.push({ business_id: linkedBusiness.id, name: branch.name });
+  }
+  return { offices };
+}
+
 // ── Pending invitations ("invited but not yet accepted" members) ──
 
 function toInvitedMember(row: repo.InvitationRow) {
@@ -78,6 +107,7 @@ function toInvitedMember(row: repo.InvitationRow) {
     phone: (details.phone as string) ?? null,
     role: (details.role as string) ?? null,
     admin_point_of_contact: Boolean(details.admin_point_of_contact),
+    position: (details.position as string) ?? null,
     invited_at: row.created_at,
     expires_at: row.expired_at,
   };
@@ -96,6 +126,34 @@ export async function cancelInvitation(db: Knex, id: string) {
   const invitation = await repo.findPendingInvitationById(db, id);
   if (!invitation) throw new NotFoundError("Invitation not found");
   await repo.cancelInvitation(db, id);
+}
+
+/** Rotates the invite token/expiry and re-sends the invite email — works even on an
+ * already-expired invitation, since that's exactly when a resend is needed. */
+export async function resendInvitation(db: Knex, id: string, orgId: string) {
+  const invitation = await repo.findInvitationById(db, id);
+  if (!invitation) throw new NotFoundError("Invitation not found");
+
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Organization not found");
+
+  const details = (invitation.user_details ?? {}) as Record<string, unknown>;
+  const roleName = (details.role as string) ?? "member";
+  const role = await repo.findRoleByName(db, roleName);
+
+  const token = randomBytes(32).toString("hex");
+  const expiredAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  await repo.refreshInvitationToken(db, id, token, expiredAt);
+
+  const acceptUrl = `${config.WEB_APP_URL}/invite/agent/accept?token=${token}&org_id=${business.schema_name}`;
+  queueInvitationEmail({
+    to: invitation.email,
+    name: (details.first_name as string) ?? "",
+    role: role?.display_name ?? roleName,
+    acceptUrl,
+  }).catch((err) => logger.warn("Resend invitation email failed", { email: invitation.email, err: err.message }));
+
+  logger.info("Agent invitation resent", { invitationId: id, orgId });
 }
 
 // ── Invitations ──
@@ -135,6 +193,7 @@ async function createInvitation(
       phone: input.phone ?? null,
       role: input.role,
       admin_point_of_contact: input.admin_point_of_contact ?? false,
+      position: input.position ?? null,
       addedby_admin_id: addedbyAdminId,
     },
     invite_token: token,
@@ -218,6 +277,7 @@ export async function acceptInvitation(orgId: string, token: string) {
     last_name: platformUser.last_name,
     email: platformUser.email,
     phone: platformUser.phone,
+    position: (details.position as string) ?? null,
   });
 
   // Write to master DB index so getMe/verifyOtp can list this business
@@ -277,6 +337,8 @@ export async function updateAgent(db: Knex, id: number, patch: AgentPatchInput) 
     ...(patch.admin_point_of_contact !== undefined ? { admin_point_of_contact: patch.admin_point_of_contact } : {}),
     ...(patch.account_status !== undefined ? { account_status: patch.account_status } : {}),
     ...(patch.is_owner !== undefined ? { is_owner: patch.is_owner } : {}),
+    ...(patch.position !== undefined ? { position: patch.position } : {}),
+    ...(patch.is_public !== undefined ? { is_public: patch.is_public } : {}),
   });
   const [enriched] = await enrichAgents([updated]);
   return enriched;

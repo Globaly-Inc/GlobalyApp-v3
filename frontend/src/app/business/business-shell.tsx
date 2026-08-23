@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Bot, Building2, LogOut, Loader2, Check } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { GraduationCap, LogOut, Loader2, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -21,12 +20,18 @@ import { authApi } from "@/app/auth/apis";
 import type { AuthMeBusiness } from "@/app/auth/apis";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
+import { BUSINESS_NAV_GROUPS } from "./const";
+import { BusinessSwitcher } from "./components/business-switcher";
+import { BusinessGroupTabs } from "./components/business-group-tabs";
+import { BusinessSubNav } from "./components/business-sub-nav";
 import { cn } from "@/lib/utils";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
 
@@ -53,6 +58,9 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         if (!active) return;
         setBusinesses(list);
         setActiveOrgId(getSelectedOrgId() ?? [...list].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
+        // A zero-business user has nothing for /businesses/me to return — fetching
+        // it would just 403. onboarding-view.tsx handles the empty case itself.
+        if (list.length > 0) dispatch(fetchMyProfile());
       })
       .finally(() => {
         if (active) setContextReady(true);
@@ -60,30 +68,53 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     return () => {
       active = false;
     };
-  }, []);
+  }, [dispatch]);
 
   // A full reload is the honest way to re-switch: every slice already holds data
   // fetched under the previous business, and there is no cross-slice reset.
+  //
+  // /business/profile/[businessId] is an exception: it owns its own org-reconciliation
+  // effect, switching context to whatever business the URL names (needed for deep links).
+  // Reloading the SAME url there would leave it pointed at the OLD business id, and that
+  // effect would immediately switch back — silently undoing this switch. Navigate to the
+  // new business's own profile url instead and let that page do the (now-agreeing) switch.
   const handleSwitchBusiness = async (orgId: string) => {
     if (orgId === activeOrgId) return;
     saveSelectedOrgId(orgId);
+    if (pathname?.startsWith("/business/profile")) {
+      const target = businesses.find((b) => b.org_id === orgId);
+      if (target) {
+        window.location.assign(`/business/profile/${target.id}`);
+        return;
+      }
+    }
     await ensureBusinessContext(true);
     window.location.reload();
   };
-
-  const portalTarget = { label: "Business Portal", icon: Building2, href: "/business/portal" };
-
-  const fetchedRef = useRef(false);
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    dispatch(fetchMyProfile());
-  }, [dispatch]);
 
   const handleSignOut = () => {
     dispatch(logout());
     router.push("/auth/sign-in");
   };
+
+  // Fresh business-track users (zero businesses) and an explicit "create another"
+  // request both need to reach the onboarding form with no chrome and no profile
+  // dependency — render it bare rather than gating on a fetch that never happens.
+  const wantsNewBusiness = searchParams.get("new") === "1";
+  const bareOnboarding = pathname === "/business/onboarding" && (businesses.length === 0 || wantsNewBusiness);
+  const needsOnboardingRedirect = contextReady && businesses.length === 0 && pathname !== "/business/onboarding";
+
+  useEffect(() => {
+    if (needsOnboardingRedirect) router.replace("/business/onboarding");
+  }, [needsOnboardingRedirect, router]);
+
+  if (bareOnboarding) {
+    return contextReady ? <>{children}</> : (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (mounted && status === "failed" && !profile) {
     return (
@@ -114,22 +145,23 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
-      <header className="h-16 border-b border-border bg-background">
-        <div className={cn(SHELL_WIDTH, "flex h-16 items-center justify-between")}>
-          <div className="flex items-center gap-4">
-            <Link href="/" className="flex items-center">
-              <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-7 w-auto" />
+      <header className="border-b border-border bg-background">
+        <div className={cn(SHELL_WIDTH, "flex h-16 items-center gap-1")}>
+          <div className="flex items-center gap-3 shrink-0 border-r border-border pr-3 mr-1">
+            <Link href="/" className="flex shrink-0 items-center">
+              <Image src="/globaly-red-icon.png" alt="Globaly" width={64} height={64} className="size-8 rounded-lg" />
             </Link>
-            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-              <Building2 className="h-3.5 w-3.5" />
-              Business
-            </span>
+            <BusinessSwitcher businesses={businesses} activeOrgId={activeOrgId} onSwitch={handleSwitchBusiness} />
           </div>
 
+          <BusinessGroupTabs groups={BUSINESS_NAV_GROUPS} />
+
+          {/* Account menu carries identity actions only — business switching lives in
+              BusinessSwitcher above, matching V1's split between the two menus. */}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <button className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
+                <button className="ml-auto flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
               }
             >
               <Avatar className="size-8">
@@ -138,31 +170,12 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
               </Avatar>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {businesses.length > 1 && (
-                <>
-                  <DropdownMenuLabel className="text-xs text-muted-foreground">Acting as</DropdownMenuLabel>
-                  {businesses.map((b) => (
-                    <DropdownMenuItem
-                      key={b.org_id}
-                      className="cursor-pointer"
-                      onClick={() => handleSwitchBusiness(b.org_id)}
-                    >
-                      {b.org_id === activeOrgId ? <Check /> : <span className="size-4" />}
-                      {b.business_name}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                </>
-              )}
               <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/profile")}>
-                <Building2 /> My Profile
+                <User /> My Profile
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(portalTarget.href)}>
-                <portalTarget.icon /> {portalTarget.label}
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/ai-widget")}>
-                <Bot /> AI Widget
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/portal")}>
+                <GraduationCap /> Personal Portal
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
@@ -172,6 +185,8 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
           </DropdownMenu>
         </div>
       </header>
+
+      <BusinessSubNav groups={BUSINESS_NAV_GROUPS} />
 
       <main className="flex-1 py-4 md:py-6">
         <div className={SHELL_WIDTH}>{children}</div>

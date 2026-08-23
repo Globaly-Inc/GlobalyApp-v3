@@ -36,3 +36,21 @@ export type UpdateSubCategoryParams = {
 };
 
 export type SelectOption = { value: string; label: string };
+
+export type BusinessRegisterInput = {
+  subdomain: string;
+  business_name: string;
+  business_type: BusinessType;
+  phone: string;
+  country_id: number;
+  address: string;
+  state?: string;
+  city?: string;
+  postcode?: string;
+};
+
+export type RegisterBusinessResult = {
+  org: { id: number; org_id: string; subdomain: string; business_name: string };
+  access_token: string;
+  message: string;
+};

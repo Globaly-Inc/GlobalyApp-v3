@@ -41,11 +41,22 @@ export const BusinessProfilePatchSchema = z.object({
   twitter_url: z.string().url().nullable(),
   youtube_url: z.string().url().nullable(),
   whatsapp_url: z.string().url().nullable(),
+  tiktok_url: z.string().url().nullable(),
+  threads_url: z.string().url().nullable(),
+  messenger_url: z.string().url().nullable(),
+  telegram_url: z.string().url().nullable(),
+  line_url: z.string().url().nullable(),
+  viber_url: z.string().url().nullable(),
   gallery_images: z.array(z.string()).nullable(),
   video_urls: z.array(z.string()).nullable(),
   registration_licenses: z.record(z.unknown()).nullable(),
   is_published: z.boolean(),
   onboarding_completed: z.boolean(),
+  cover_position: z.object({ x: z.number(), y: z.number(), zoom: z.number() }).nullable(),
+  show_team_public: z.boolean(),
+  // Per-section public/private map, e.g. { contact: true, registration: false }.
+  public_visibility: z.record(z.string(), z.boolean()).nullable(),
+  currency: z.string().max(10).nullable(), // business's default currency for its own listings/fees
 }).partial().strict();
 
 export const BusinessSearchQuerySchema = z.object({
@@ -61,8 +72,16 @@ export const ClaimRequestByEmailSchema = z.object({
   email: z.string().email(),
 });
 
+export const AiAssistSchema = z.object({
+  field: z.enum(["description"]),
+  business_name: z.string().max(200).optional(),
+  business_type: z.string().max(50).optional(),
+  hint: z.string().max(500).optional(),
+});
+
 export type BusinessRegisterInput = z.infer<typeof BusinessRegisterSchema>;
 export type BusinessProfilePatchInput = z.infer<typeof BusinessProfilePatchSchema>;
 export type BusinessSearchQueryInput = z.infer<typeof BusinessSearchQuerySchema>;
 export type ClaimAcceptInput = z.infer<typeof ClaimAcceptSchema>;
 export type ClaimRequestByEmailInput = z.infer<typeof ClaimRequestByEmailSchema>;
+export type AiAssistInput = z.infer<typeof AiAssistSchema>;

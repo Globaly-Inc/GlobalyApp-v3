@@ -1,4 +1,7 @@
-import type { BusinessProfile, BusinessProfilePatch, SelectOption, UpdateSubCategoryParams } from "./types";
+import type {
+  BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, RegisterBusinessResult, SelectOption,
+  UpdateSubCategoryParams,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -37,6 +40,17 @@ export const businessMockApi = {
   updateSubCategory: async (params: UpdateSubCategoryParams): Promise<void> => {
     console.log("[mock] POST /user/update", params);
     await delay(300);
+  },
+
+  registerBusiness: async (input: BusinessRegisterInput): Promise<RegisterBusinessResult> => {
+    console.log("[mock] POST /businesses/register", input);
+    await delay(500);
+    mockProfile = { ...mockProfile, ...input, onboarding_completed: true };
+    return {
+      org: { id: mockProfile.id, org_id: mockProfile.schema_name, subdomain: input.subdomain, business_name: input.business_name },
+      access_token: "mock-access-token",
+      message: "Business created.",
+    };
   },
 
   getMyProfile: async (): Promise<BusinessProfile> => {
