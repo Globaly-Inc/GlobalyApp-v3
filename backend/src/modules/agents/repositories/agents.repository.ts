@@ -20,6 +20,8 @@ export interface AgentRow {
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  position: string | null;
+  is_public: boolean;
   meta: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
@@ -60,6 +62,8 @@ const AGENT_COLUMNS = [
   "agents.last_name",
   "agents.email",
   "agents.phone",
+  "agents.position",
+  "agents.is_public",
   "agents.meta",
   "agents.created_at",
   "agents.updated_at",
@@ -131,6 +135,7 @@ export async function insertAgent(db: Knex, data: {
   last_name?: string | null;
   email?: string | null;
   phone?: string | null;
+  position?: string | null;
 }) {
   const [row] = await db("agents")
     .insert({ ...data, created_at: db.fn.now(), updated_at: db.fn.now() })
@@ -144,6 +149,8 @@ export async function updateAgent(db: Knex, id: number, data: {
   admin_point_of_contact?: boolean;
   account_status?: number;
   is_owner?: boolean;
+  position?: string | null;
+  is_public?: boolean;
 }) {
   const [row] = await db("agents")
     .where({ id })
@@ -232,6 +239,19 @@ export async function findPendingInvitationById(db: Knex, id: string) {
     .where("expired_at", ">", db.fn.now())
     .whereNull("deleted_at")
     .first();
+}
+
+/** Unlike findPendingInvitationById, doesn't require the invite to still be unexpired —
+ * resending is exactly what you'd do to fix an invite that's about to or already did expire. */
+export async function findInvitationById(db: Knex, id: string) {
+  return db<InvitationRow>("agent_invitations")
+    .where({ id, status: "pending" })
+    .whereNull("deleted_at")
+    .first();
+}
+
+export async function refreshInvitationToken(db: Knex, id: string, token: string, expiredAt: Date) {
+  await db("agent_invitations").where({ id }).update({ invite_token: token, expired_at: expiredAt });
 }
 
 export async function cancelInvitation(db: Knex, id: string) {

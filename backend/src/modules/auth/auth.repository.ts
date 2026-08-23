@@ -46,11 +46,19 @@ export async function createSession(data: {
   user_agent?: string | null;
   device_label?: string | null;
   expires_at: Date;
+  org_id?: string | null;
 }) {
   const [row] = await masterKnex("auth_sessions")
     .insert(data)
     .returning("*");
   return row;
+}
+
+/** Remembers which business this session last switched to, so /refresh can honor it. */
+export async function updateSessionOrgId(sessionId: string, orgId: string) {
+  await masterKnex("auth_sessions")
+    .where({ id: sessionId })
+    .update({ org_id: orgId, last_used_at: masterKnex.fn.now() });
 }
 
 export async function findSessionByRefreshToken(hash: string) {

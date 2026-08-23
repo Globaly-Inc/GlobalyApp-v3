@@ -46,11 +46,17 @@ export function validateBusinessDetails(values: {
   return Object.keys(fieldErrors).length ? fieldErrors : null;
 }
 
+// Capped at 20 chars to match BusinessRegisterSchema's subdomain max — for institutions
+// this field is auto-generated and never shown, so an overflow here would otherwise
+// surface as a confusing "Couldn't create business" error pointing at a field the user
+// never saw.
 export function slugify(value: string): string {
   return value
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-/, "")
+    .replace(/-$/, "")
+    .slice(0, 20)
     .replace(/-$/, "");
 }

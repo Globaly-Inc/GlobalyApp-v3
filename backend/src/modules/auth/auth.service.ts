@@ -290,6 +290,12 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
   const family = randomUUID();
   const sessionExpiry = new Date(Date.now() + config.SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
+  // A platform_user can own several businesses; login has no "which one did they pick last"
+  // signal of its own (that lives on the session, updated by switchAccount), so a fresh login
+  // starts on the first one. This session's org_id is what /refresh will honor from here on.
+  const businesses = await platformUserRepo.listUserBusinesses(user.id);
+  const primaryBusiness = businesses[0];
+
   await authRepo.createSession({
     platform_user_id: user.id,
     refresh_token_hash: hashedRefresh,
@@ -298,12 +304,8 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     user_agent: meta?.userAgent ?? null,
     device_label: deriveDeviceLabel(meta?.userAgent),
     expires_at: sessionExpiry,
+    org_id: primaryBusiness?.org_id ?? null,
   });
-
-  // Business accounts have exactly one business today (no multi-business picker), so scope the
-  // token to it right away instead of making the client round-trip through a separate switch call.
-  const businesses = await platformUserRepo.listUserBusinesses(user.id);
-  const primaryBusiness = businesses[0];
 
   const accessToken = signAccessToken({
     id: user.id,
@@ -355,14 +357,20 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
     // Token valid — rotate
     const adminRecord = await adminRepo.findAdminByPlatformUserId(userId);
     const businesses = await platformUserRepo.listUserBusinesses(userId);
-    const primaryBusiness = businesses[0];
+    // Honor whichever business this session last switched to (switchAccount records it),
+    // falling back to the first one if none was recorded or membership no longer holds —
+    // e.g. the user was removed from it since. Without this, every refresh (which happens
+    // silently in the background) would reset an owner with multiple businesses back to
+    // whichever one happens to sort first, undoing any switch they'd made.
+    const activeBusiness =
+      businesses.find((b) => b.org_id === session.org_id) ?? businesses[0];
 
     const accessToken = signAccessToken({
       id: userId,
       email: user.email,
       adminRole: adminRecord?.role,
-      orgId: primaryBusiness?.org_id,
-      orgRole: primaryBusiness?.role,
+      orgId: activeBusiness?.org_id,
+      orgRole: activeBusiness?.role,
     });
 
     const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(userId);
@@ -397,11 +405,13 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
 }
 
 /**
- * Kept as a backend capability for future multi-business use (an agent belonging to more than
- * one business, or an explicit account picker) even though today's frontend doesn't call it —
- * business accounts are auto-scoped to their one business at login/registration time instead.
+ * Switches the caller's active business — used both by the header switcher (a platform_user
+ * owning more than one business) and by /business/profile/:id (reconciling context to whatever
+ * business a deep link names). When the caller's refresh token is supplied, this also records
+ * the choice on that session so /refresh keeps honoring it instead of resetting to the default
+ * business on the next silent refresh.
  */
-export async function switchAccount(userId: number, orgId: string) {
+export async function switchAccount(userId: number, orgId: string, refreshToken?: string) {
   const user = await platformUserRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
@@ -416,6 +426,13 @@ export async function switchAccount(userId: number, orgId: string) {
     .first();
 
   if (!agent) throw new UnauthorizedError("Not a member of this business");
+
+  if (refreshToken) {
+    const session = await authRepo.findSessionByRefreshToken(hashToken(refreshToken));
+    if (session && session.platform_user_id === userId) {
+      await authRepo.updateSessionOrgId(session.id, orgId);
+    }
+  }
 
   const accessToken = issueScopedAccessToken({ id: user.id, email: user.email }, orgId, agent.role);
 

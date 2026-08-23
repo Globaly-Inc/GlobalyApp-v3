@@ -3,6 +3,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema, ClaimAcceptSchema, ClaimRequestByEmailSchema,
+  AiAssistSchema,
 } from "../schemas/businesses.schema.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/businesses.service.js";
@@ -51,6 +52,16 @@ export async function businessRoutes(app: FastifyInstance) {
   app.patch("/me", { preHandler: requireBusinessContext }, async (req, reply) => {
     const data = BusinessProfilePatchSchema.parse(req.body);
     const result = await service.updateProfile(req.auth.orgId!, data);
+    return reply.send(result);
+  });
+
+  // Business context required: AI-assisted profile copy — a draft to review, not to publish verbatim.
+  app.post("/me/ai-assist", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const input = AiAssistSchema.parse(req.body);
+    const result = await service.generateProfileText(input);
     return reply.send(result);
   });
 }

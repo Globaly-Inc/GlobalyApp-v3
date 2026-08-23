@@ -2,6 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import { NotFoundError, ConflictError } from "../../../shared/errors.js";
+import { generateText } from "../../../shared/ai/gemini.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { provisionBusinessSchema } from "../../../core/business/provisioner.js";
@@ -13,7 +14,7 @@ import * as userRepo from "../../platform-users/repositories/platform-users.repo
 import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
-import type { BusinessRegisterInput, BusinessProfilePatchInput } from "../schemas/businesses.schema.js";
+import type { BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput } from "../schemas/businesses.schema.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
@@ -106,13 +107,22 @@ export async function searchBusinesses(orgId: string, search: string | undefined
   return repo.searchBusinesses(search, caller.id, limit);
 }
 
-/** Resolve stored logo/cover paths to signed, viewable URLs — mirrors the admin-side helper. */
-export async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(biz: T): Promise<T> {
-  const [logo_url, cover_url] = await Promise.all([
+/**
+ * Resolve stored logo/cover paths to signed, viewable URLs — mirrors the admin-side helper.
+ * `gallery_images` itself is left untouched (raw storage paths) since the gallery editor reads,
+ * modifies, and PATCHes that array back — resolving it in place would mean a save-without-editing
+ * silently persists temporary signed URLs instead of the paths. A parallel `gallery_image_urls`
+ * carries the resolved, display-only URLs instead; it's never sent back on PATCH.
+ */
+export async function withImagePreviews<
+  T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null },
+>(biz: T): Promise<T & { gallery_image_urls?: (string | null)[] }> {
+  const [logo_url, cover_url, gallery_image_urls] = await Promise.all([
     storage.resolvePreviewUrl(biz.logo_url),
     storage.resolvePreviewUrl(biz.cover_url),
+    biz.gallery_images ? Promise.all(biz.gallery_images.map((p) => storage.resolvePreviewUrl(p))) : undefined,
   ]);
-  return { ...biz, logo_url, cover_url };
+  return { ...biz, logo_url, cover_url, ...(gallery_image_urls ? { gallery_image_urls } : {}) };
 }
 
 /** Get full business record by schema_name (orgId from JWT). */
@@ -149,6 +159,22 @@ export async function requestClaimByEmail(email: string): Promise<void> {
   queueEmail({ to: email, ...claimBusinessEmail({ ownerName, businessName: business.business_name, claimUrl }) }).catch((err) =>
     logger.warn("Self-serve claim request email failed", { businessId: business.id, err: err.message }),
   );
+}
+
+/** Drafts profile copy for the caller to review/edit, not to publish verbatim. */
+export async function generateProfileText(input: AiAssistInput) {
+  const system =
+    "You write concise, factual business descriptions for education agents, institutions, and " +
+    "migration/service providers listed on a study-abroad platform. No emojis, no marketing fluff, " +
+    "no unverifiable superlatives — 2 to 3 sentences a real prospective student or partner would trust.";
+  const prompt = [
+    `Write a business description for "${input.business_name ?? "this business"}"`,
+    input.business_type ? ` (a ${input.business_type})` : "",
+    input.hint ? `. Additional context: ${input.hint}` : ".",
+  ].join("");
+
+  const text = await generateText({ system, prompt, maxTokens: 300 });
+  return { text };
 }
 
 export async function acceptClaim(token: string) {

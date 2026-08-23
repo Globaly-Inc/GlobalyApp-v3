@@ -67,12 +67,13 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const portalTarget =
-    mounted && profile?.user_category === "business"
+  // A personal-only account has nowhere to go from here but onboarding — pointing this at
+  // "/personal/portal" (the page this shell already renders) was a dead link.
+  const portalTarget = !mounted
+    ? null
+    : profile?.user_category === "business"
       ? { label: "Business Portal", icon: Building2, href: "/business/profile" }
-      : mounted && profile?.user_category === "personal"
-        ? { label: "Personal Portal", icon: UserIcon, href: "/personal/portal" }
-        : null;
+      : { label: "Switch to Business", icon: Building2, href: "/business/onboarding" };
 
   useEffect(() => {
     if (!profile) dispatch(fetchFullProfile());

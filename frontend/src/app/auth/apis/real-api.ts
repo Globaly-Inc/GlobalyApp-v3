@@ -1,5 +1,5 @@
 import { httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { saveAccessToken, saveTokens } from "@/lib/session";
+import { getRefreshToken, saveAccessToken, saveTokens } from "@/lib/session";
 import type {
   AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthMeUser, AuthUser, SendOtpParams,
   SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
@@ -47,7 +47,12 @@ export const authRealApi = {
   },
 
   switchAccount: async ({ org_id }: SwitchAccountParams): Promise<SwitchAccountResult> => {
-    const data = await httpPost<{ access_token: string }>("/auth/switch-account", { org_id });
+    // Sending the refresh token lets the backend remember this choice on the session, so the
+    // next silent /refresh doesn't reset back to the default business (see auth.service.ts).
+    const data = await httpPost<{ access_token: string }>("/auth/switch-account", {
+      org_id,
+      refresh_token: getRefreshToken() ?? undefined,
+    });
     saveAccessToken(data.access_token);
     return { access_token: data.access_token };
   },
