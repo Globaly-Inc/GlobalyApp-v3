@@ -206,7 +206,7 @@ export async function handleMessage(opts: {
     }
 
     // 7. Parse structured blocks
-    const cards = parseCards(result.fullText);
+    const cards = await withInstitutionMedia(parseCards(result.fullText));
     const chips = parseChips(result.fullText);
     const blocks = parseBlocks(result.fullText);
     const cleanText = stripBlocks(result.fullText);
