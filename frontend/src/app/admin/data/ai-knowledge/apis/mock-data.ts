@@ -194,7 +194,7 @@ export const aiKnowledgeMockApi = {
       ...sources[2], id: uid(), category_id: categoryId, file_name: file.name,
       title: opts?.title ?? file.name, trust_tier: opts?.trust_tier ?? "other",
     } as RackSource;
-    return { source, document_id: uid(), chunks: 3, embedded: 3 };
+    return { source, document_id: uid(), replaced: false, unchanged: false, chunks: 3, embedded: 3 };
   },
 
   getDocuments: async (sourceId: string, q?: string) => {

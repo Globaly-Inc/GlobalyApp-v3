@@ -58,6 +58,17 @@ export async function findSource(id: string) {
   return masterKnex(SOURCES).where({ id }).first();
 }
 
+/**
+ * The existing upload of this filename in this category, if any. Re-uploading a file
+ * is an update, not a second source — two copies of one document would both be
+ * retrievable and compete in the same vector search.
+ */
+export async function findSourceByFileName(categoryId: string, fileName: string) {
+  return masterKnex(SOURCES)
+    .where({ category_id: categoryId, source_type: "file", file_name: fileName })
+    .first();
+}
+
 export async function insertSource(data: Record<string, unknown>) {
   const [row] = await masterKnex(SOURCES).insert(data).returning("*");
   return row;
@@ -102,6 +113,19 @@ export async function listDocuments(opts: DocumentQuery) {
 
 export async function findDocument(id: string) {
   return masterKnex(DOCUMENTS).where({ id }).first();
+}
+
+/** A file source holds exactly one document — the file itself. */
+export async function findDocumentBySource(sourceId: string) {
+  return masterKnex(DOCUMENTS).where({ source_id: sourceId }).orderBy("created_at", "asc").first();
+}
+
+export async function updateDocument(id: string, patch: Record<string, unknown>) {
+  const [row] = await masterKnex(DOCUMENTS)
+    .where({ id })
+    .update({ ...patch, updated_at: masterKnex.fn.now() })
+    .returning("*");
+  return row;
 }
 
 export async function insertDocument(data: Record<string, unknown>) {
