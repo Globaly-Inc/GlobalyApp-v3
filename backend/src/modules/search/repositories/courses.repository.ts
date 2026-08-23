@@ -104,7 +104,7 @@ export async function countPublicCourses(filters: CourseSearchFilters) {
 }
 
 export async function listCourseFilterOptions() {
-  const [years, currencies] = await Promise.all([
+  const [years, currencies, degreeLevels] = await Promise.all([
     masterKnex(`${S}.extraction_intakes`)
       .distinct("intake_year")
       .whereNotNull("intake_year")
@@ -112,10 +112,15 @@ export async function listCourseFilterOptions() {
     masterKnex(`${S}.extraction_courses`)
       .select(masterKnex.raw("unnest(array[domestic_currency, international_currency]) as currency"))
       .whereRaw("domestic_currency is not null or international_currency is not null"),
+    masterKnex(`${S}.extraction_courses`)
+      .distinct("degree_level")
+      .whereNotNull("degree_level")
+      .orderBy("degree_level"),
   ]);
   return {
     years: years.map((r: { intake_year: number }) => r.intake_year),
     currencies: [...new Set(currencies.map((r: { currency: string | null }) => r.currency).filter(Boolean))] as string[],
+    degree_levels: degreeLevels.map((r: { degree_level: string }) => r.degree_level),
   };
 }
 

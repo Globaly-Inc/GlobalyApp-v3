@@ -7,7 +7,7 @@ export const SEARCH_TABS: { key: SearchTabKey; label: string; icon: typeof Gradu
   { key: "courses", label: "Courses", icon: GraduationCap },
   { key: "institutions", label: "Institutions", icon: Building2 },
   { key: "education-agencies", label: "Education Agents", icon: Users },
-  // { key: "visa-services", label: "Visa Services", icon: FileCheck },
+  { key: "visa-services", label: "Visa Services", icon: FileCheck },
   // { key: "migration-agents", label: "Migration Agents", icon: Globe },
   // { key: "jobs", label: "Student Jobs", icon: Briefcase },
   { key: "scholarships", label: "Scholarships", icon: Award },

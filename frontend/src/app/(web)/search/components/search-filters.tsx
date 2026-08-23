@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { BudgetFilter } from "./budget-filter";
+import { ComboFilterField } from "./combo-filter-field";
 import { BASIS_LABEL, DEGREE_LABEL, JOB_TYPE_LABEL, type SearchTabKey } from "../types";
 
 function FilterSection({
@@ -54,6 +55,8 @@ export function SearchFilters({
   city,
   search,
   degreeLevel,
+  degreeLevels,
+  subjectArea,
   jobType,
   isRemote,
   feeMin,
@@ -71,6 +74,8 @@ export function SearchFilters({
   city?: string;
   search?: string;
   degreeLevel?: string;
+  degreeLevels?: string[];
+  subjectArea?: string;
   jobType?: string;
   isRemote?: boolean;
   feeMin?: number;
@@ -118,19 +123,29 @@ export function SearchFilters({
         <>
           <FilterSection letter="B" title="Study Goal">
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-2">Degree Level</p>
-            <RadioList
+            <ComboFilterField
               name="degree_level"
               value={degreeLevel}
-              options={Object.entries(DEGREE_LABEL).map(([value, label]) => ({ value, label }))}
+              options={degreeLevels ?? []}
+              anyLabel="Any degree"
+            />
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide mt-4 mb-2">Field of Study</p>
+            <input
+              type="text"
+              name="subject_area"
+              defaultValue={subjectArea}
+              placeholder="e.g. Computer Science"
+              className={fieldClass}
             />
           </FilterSection>
           {intakeYears && intakeYears.length > 0 && (
             <FilterSection letter="C" title="Intake">
               <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-2">Year</p>
-              <RadioList
+              <ComboFilterField
                 name="intake_year"
                 value={intakeYear != null ? String(intakeYear) : undefined}
-                options={intakeYears.map((y) => ({ value: String(y), label: String(y) }))}
+                options={intakeYears.map(String)}
+                anyLabel="Any year"
               />
             </FilterSection>
           )}

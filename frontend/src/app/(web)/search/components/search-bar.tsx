@@ -3,13 +3,14 @@ import { Button } from "@/components/ui/button";
 import type { SearchTabKey } from "../types";
 
 export function SearchBar({
-  activeTab, search, country, city, degreeLevel, jobType, isRemote, feeMin, feeMax, currency, sort, intakeYear, basis,
+  activeTab, search, country, city, degreeLevel, subjectArea, jobType, isRemote, feeMin, feeMax, currency, sort, intakeYear, basis,
 }: Readonly<{
   activeTab: SearchTabKey;
   search?: string;
   country?: string;
   city?: string;
   degreeLevel?: string;
+  subjectArea?: string;
   jobType?: string;
   isRemote?: boolean;
   feeMin?: number;
@@ -25,6 +26,7 @@ export function SearchBar({
       {country && <input type="hidden" name="country" value={country} />}
       {city && <input type="hidden" name="city" value={city} />}
       {degreeLevel && <input type="hidden" name="degree_level" value={degreeLevel} />}
+      {subjectArea && <input type="hidden" name="subject_area" value={subjectArea} />}
       {jobType && <input type="hidden" name="job_type" value={jobType} />}
       {isRemote && <input type="hidden" name="is_remote" value="true" />}
       {feeMin != null && <input type="hidden" name="fee_min" value={feeMin} />}

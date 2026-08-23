@@ -17,12 +17,8 @@ async function withRepresentationPreviews(reps: Awaited<ReturnType<typeof repo.l
 const SlugParam = z.object({ slug: z.string().min(1) });
 const SubdomainParam = z.object({ subdomain: z.string().min(1) });
 
-// One tab per business_categories slug — education agencies, visa services,
-// and migration agents are all the same `businesses` shape. Institutions are
-// handled separately below (sourced from extraction data, not this table).
 const TABS = [
   { path: "/search/education-agencies", categorySlug: "education_agency" },
-  { path: "/search/visa-services", categorySlug: "visa_services" },
   { path: "/search/migration-agents", categorySlug: "migration_agents" },
 ];
 
@@ -58,6 +54,17 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     const [rows, total] = await Promise.all([
       coursesRepo.listPublicCourses(filters, undefined, limit, offset),
       coursesRepo.countPublicCourses(filters),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.get("/search/visa-services", async (req, reply) => {
+    const { country, city, search, ...pagination } = SearchListQuery.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const filters = { country, city, search };
+    const [rows, total] = await Promise.all([
+      repo.listPublicVisaServiceProviders(filters, limit, offset),
+      repo.countPublicVisaServiceProviders(filters),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
