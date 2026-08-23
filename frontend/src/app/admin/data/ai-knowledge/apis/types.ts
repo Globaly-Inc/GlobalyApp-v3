@@ -112,6 +112,10 @@ export type RackSource = {
   trust_tier: TrustTier;
   crawl_frequency: CrawlFrequency;
   last_crawled_at: string | null;
+  /** When an admin last confirmed the content is still true (not the same as crawling). */
+  last_verified_at: string | null;
+  /** Known expiry for a temporary figure — past this, the counsellor flags it. */
+  effective_until: string | null;
   last_status: string | null;
   last_error: string | null;
   doc_count: number;
@@ -175,6 +179,7 @@ export type SourceParams = {
   crawl_frequency?: CrawlFrequency;
   max_pages?: number | null;
   active?: boolean;
+  effective_until?: string | null;
 };
 
 export type UploadSourceOptions = {

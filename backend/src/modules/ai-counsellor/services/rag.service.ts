@@ -60,6 +60,17 @@ const TIER_LABEL: Record<string, string> = {
   other: "general source",
 };
 
+/**
+ * Verification and expiry, stated inline so the model can qualify a figure instead of
+ * asserting it. Silent when a source carries neither.
+ */
+function freshnessOf(row: { last_verified_at: string | null; effective_until: string | null }): string {
+  const parts: string[] = [];
+  if (row.last_verified_at) parts.push(`verified ${String(row.last_verified_at).slice(0, 10)}`);
+  if (row.effective_until) parts.push(`stated valid until ${String(row.effective_until).slice(0, 10)}`);
+  return parts.length ? `, ${parts.join(", ")}` : "";
+}
+
 /** At most this many chunks from one document, so a long page can't fill every slot. */
 const MAX_CHUNKS_PER_DOCUMENT = 2;
 
@@ -334,7 +345,7 @@ export async function searchAll(opts: {
       // The whole chunk goes in: it is section-sized by construction, which is the
       // point of chunking — no truncation, so the answer can't be cut off.
       lines.push(
-        `Passage: ${where || origin} (${origin}, ${d.category_label}, ${tier})`,
+        `Passage: ${where || origin} (${origin}, ${d.category_label}, ${tier}${freshnessOf(d)})`,
         ...d.content.split("\n").map((line) => `  ${line}`),
         `  Source: ${d.url ?? d.file_name ?? origin}${d.page_number ? ` (page ${d.page_number})` : ""}`,
         "",

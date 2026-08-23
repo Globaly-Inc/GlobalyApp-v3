@@ -75,6 +75,11 @@ export async function rackRoutes(app: FastifyInstance) {
     );
   });
 
+  app.post("/sources/:id/verify", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.verifySource(id, adminId(req)));
+  });
+
   app.post("/sources/:id/crawl", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const { max_pages } = CrawlSourceSchema.parse(req.body ?? {});
