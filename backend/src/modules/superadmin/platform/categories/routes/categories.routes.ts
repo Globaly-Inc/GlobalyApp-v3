@@ -5,7 +5,7 @@ import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../../../shared/pagination.js";
 import {
   CategoryInputSchema, DefaultServicesInputSchema, IdParamSchema,
-  SchemaFieldEntityTypeSchema, SchemaFieldInputSchema, SchemaFieldUpdateSchema,
+  SchemaFieldEntityTypeSchema, SchemaFieldInputSchema, SchemaFieldOrderSchema, SchemaFieldUpdateSchema,
 } from "../schemas/categories.schema.js";
 import * as service from "../services/categories.service.js";
 
@@ -33,6 +33,15 @@ export async function categoryRoutes(app: FastifyInstance) {
     const data = SchemaFieldInputSchema.parse(req.body);
     const row = await service.createSchemaField(entityType, entityId, data);
     return reply.status(201).send(row);
+  });
+
+  // Reordering the whole list at once, rather than a per-field display_order patch: the order only
+  // means anything relative to its siblings, and one request cannot leave two fields sharing a slot.
+  app.put("/:entityType/:entityId/schema-fields/order", async (req, reply) => {
+    const { entityType, entityId } = SchemaFieldParentParams.parse(req.params);
+    const { field_ids } = SchemaFieldOrderSchema.parse(req.body);
+    const rows = await service.reorderSchemaFields(entityType, entityId, field_ids);
+    return reply.send({ schema_fields: rows });
   });
 
   app.patch("/schema-fields/:id", async (req, reply) => {
@@ -135,5 +144,13 @@ export async function categoryRoutes(app: FastifyInstance) {
     const data = CategoryInputSchema.partial().parse(req.body);
     const row = await service.updateOtherServiceCategory(id, data);
     return reply.send(row);
+  });
+
+  // Soft delete, and refused with a 409 while listings still sell under it. Only this taxonomy has one:
+  // business and service categories are referenced by approved businesses and cannot simply go away.
+  app.delete("/other-service-categories/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    await service.deleteOtherServiceCategory(id);
+    return reply.status(204).send();
   });
 }

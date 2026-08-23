@@ -14,39 +14,83 @@ const schemaFieldsFor = (entityType: SchemaFieldEntityType) => masterKnex.raw(
   `COALESCE((
     SELECT json_agg(json_build_object(
       'id', sf.id, 'label', sf.label, 'key', sf.key, 'type', sf.type,
-      'is_required', sf.is_required, 'filterable', sf.filterable, 'is_default', sf.is_default, 'options', sf.options
-    ) ORDER BY sf.id)
+      'is_required', sf.is_required, 'filterable', sf.filterable, 'is_default', sf.is_default, 'options', sf.options,
+      'display_order', sf.display_order, 'placeholder', sf.placeholder, 'help_text', sf.help_text,
+      'default_value', sf.default_value, 'validation', sf.validation
+    ) ORDER BY sf.display_order, sf.id)
     FROM schema_fields sf WHERE sf.entity_id = "${entityType}".id AND sf.entity_type = ?
   ), '[]'::json) as schema_fields`,
   [entityType],
 );
 
+// display_order first, id as the tiebreak. Backfilled to id by 20260823_001, so this is the order
+// every reader used before that migration.
 export async function listSchemaFields(entityType: SchemaFieldEntityType, entityId: number) {
-  return masterKnex("schema_fields").where({ entity_id: entityId, entity_type: entityType }).orderBy("id");
+  return masterKnex("schema_fields")
+    .where({ entity_id: entityId, entity_type: entityType })
+    .orderBy("display_order")
+    .orderBy("id");
 }
 
 export async function findSchemaFieldById(id: number) {
   return masterKnex("schema_fields").where({ id }).first();
 }
 
-// pg serializes plain JS arrays as Postgres array literals, not JSON — stringify explicitly for the json column.
-const serializeOptions = (data: Record<string, unknown>) =>
-  "options" in data ? { ...data, options: data.options == null ? null : JSON.stringify(data.options) } : data;
+// pg serializes plain JS arrays as Postgres array literals, not JSON — stringify explicitly for json columns.
+const serializeJson = (data: Record<string, unknown>) => {
+  const out = { ...data };
+  for (const key of ["options", "validation"] as const) {
+    if (key in out) out[key] = out[key] == null ? null : JSON.stringify(out[key]);
+  }
+  return out;
+};
 
 export async function insertSchemaField(entityType: SchemaFieldEntityType, entityId: number, data: Record<string, unknown>) {
   const [row] = await masterKnex("schema_fields")
-    .insert({ ...serializeOptions(data), entity_id: entityId, entity_type: entityType })
+    .insert({
+      // A new field lands at the end of its category's list, not on top of the first one.
+      display_order: masterKnex.raw(
+        "COALESCE((SELECT MAX(display_order) + 1 FROM schema_fields WHERE entity_type = ? AND entity_id = ?), 0)",
+        [entityType, entityId],
+      ),
+      ...serializeJson(data),
+      entity_id: entityId,
+      entity_type: entityType,
+    })
     .returning("*");
   return row;
 }
 
 export async function updateSchemaField(id: number, data: Record<string, unknown>) {
-  const [row] = await masterKnex("schema_fields").where({ id }).update({ ...serializeOptions(data), updated_at: now() }).returning("*");
+  const [row] = await masterKnex("schema_fields").where({ id }).update({ ...serializeJson(data), updated_at: now() }).returning("*");
   return row;
 }
 
 export async function deleteSchemaField(id: number) {
   return masterKnex("schema_fields").where({ id }).delete();
+}
+
+/**
+ * Rewrite the display order of one category's fields.
+ *
+ * Every update is scoped to `(entity_type, entity_id)` as well as the id, so an id belonging to another
+ * category — or to another entity type entirely — matches nothing and is silently skipped rather than
+ * being dragged into this category's ordering.
+ */
+export async function reorderSchemaFields(
+  entityType: SchemaFieldEntityType,
+  entityId: number,
+  fieldIds: number[],
+): Promise<number> {
+  return masterKnex.transaction(async (trx) => {
+    let moved = 0;
+    for (const [index, id] of fieldIds.entries()) {
+      moved += await trx("schema_fields")
+        .where({ id, entity_type: entityType, entity_id: entityId })
+        .update({ display_order: index, updated_at: trx.fn.now() });
+    }
+    return moved;
+  });
 }
 
 // ─── Business Categories ───────────────────────────────────────────────────
@@ -145,6 +189,36 @@ export async function insertOtherServiceCategory(data: Record<string, unknown>) 
 export async function updateOtherServiceCategory(id: number, data: Record<string, unknown>) {
   const [row] = await masterKnex("other_service_categories").where({ id }).update({ ...data, updated_at: now() }).returning("*");
   return row;
+}
+
+export async function findOtherServiceCategory(id: number) {
+  return masterKnex("other_service_categories").where({ id }).whereNull("deleted_at").first();
+}
+
+/**
+ * How many listings still sell under this category — including soft-deleted ones, whose orders are
+ * financial records that still have to render their category name.
+ *
+ * `other_service_listings.other_category_id` is a RESTRICT foreign key, so a hard delete would fail at
+ * the database anyway. This turns that into a sentence an admin can act on.
+ */
+export async function countListingsInOtherServiceCategory(id: number) {
+  const [row] = await masterKnex("other_service_listings").where({ other_category_id: id }).count("* as count");
+  return Number(row.count);
+}
+
+/**
+ * Soft delete. The category drops out of every list, including the picker a seller chooses from
+ * (`other-services/services.repository.ts::listCategories` filters `deleted_at`).
+ *
+ * Its booking requirements are deliberately left in `schema_fields`: a past booking's stored answers are
+ * keyed by field, and deleting the definitions would leave those answers unlabelled forever.
+ */
+export async function softDeleteOtherServiceCategory(id: number) {
+  return masterKnex("other_service_categories")
+    .where({ id })
+    .whereNull("deleted_at")
+    .update({ deleted_at: now(), updated_at: now() });
 }
 
 // ─── Lookups (degree_levels, areas_of_study) ───────────────────────────────

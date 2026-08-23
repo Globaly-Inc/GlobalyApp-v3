@@ -5,53 +5,22 @@ import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { FieldError } from "@/components/field-error";
-import { IconPicker } from "@/components/icon-picker";
 import { useValidatedForm } from "@/lib/use-validated-form";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { categoriesApi } from "../apis";
-import type { Category } from "../apis/types";
+import type { Category, SchemaField } from "../apis/types";
 import { fetchBusinessCategories, fetchOtherServiceCategories, fetchServiceCategories } from "../store/categories-slice";
 import type { CategoriesState, CategoryKind } from "../store/categories-slice";
-import { toSlug } from "../utils";
-import { RequiredMark } from "./required-mark";
+import type { CategoryFormState } from "../types";
 import { DefaultServicesPicker } from "./default-services-picker";
 import { SchemaFieldsEditor } from "./schema-fields-editor";
+import { BookingRequirementsPanel } from "./booking-requirements-panel";
+import { CategoryDetailsCard } from "./category-details-card";
+import { BusinessCategoryCards } from "./business-category-cards";
 
-// Informational only — not fetched from the DB. Mirrors the columns on `businesses`
-// so admins know what every business category gets for free before adding schema fields.
-const BUSINESS_CORE_FIELDS: { name: string; type: string }[] = [
-  { name: "Contact Name", type: "text" },
-  { name: "Business Name", type: "text" },
-  { name: "Business Type / Company Size", type: "select" },
-  { name: "Description", type: "text" },
-  { name: "Legal Name / Registration Number", type: "text" },
-  { name: "Registration Licenses", type: "file" },
-  { name: "Country / State / City / Address", type: "location" },
-  { name: "Email", type: "email" },
-  { name: "Phone", type: "phone" },
-  { name: "Website", type: "url" },
-  { name: "LinkedIn / Facebook / Instagram / Twitter / YouTube", type: "url" },
-  { name: "Logo / Cover Image", type: "image" },
-];
-
-type FormState = {
-  name: string;
-  slug: string;
-  description: string;
-  icon: string;
-  sortOrder: string;
-  isActive: boolean;
-};
-
-const schema: z.ZodType<FormState> = z.object({
+const schema: z.ZodType<CategoryFormState> = z.object({
   name: z.string().trim().min(1, "Name is required").max(200, "Name must be 200 characters or fewer"),
   slug: z
     .string()
@@ -64,11 +33,11 @@ const schema: z.ZodType<FormState> = z.object({
   isActive: z.boolean(),
 });
 
-const empty = (sortOrder: number): FormState => ({
+const empty = (sortOrder: number): CategoryFormState => ({
   name: "", slug: "", description: "", icon: "", sortOrder: String(sortOrder), isActive: true,
 });
 
-const fromCategory = (c: Category): FormState => ({
+const fromCategory = (c: Category): CategoryFormState => ({
   name: c.name,
   slug: c.slug,
   description: c.description ?? "",
@@ -109,13 +78,17 @@ export function CategoryEditorView({
   const router = useRouter();
   const dispatch = useAppDispatch();
   const catalog = useAppSelector((state) => state.platformCategories);
-  const list = LIST_FOR[kind](catalog).data;
+  const listState = LIST_FOR[kind](catalog);
+  const list = listState.data;
   const editing = categoryId !== null ? list.find((c) => c.id === categoryId) ?? null : null;
   const label = LABEL[kind];
 
   const [saving, setSaving] = useState(false);
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  // Other Service Category booking requirements configured on the create page, before there is a category
+  // id to attach them to. Stays empty when editing — the panel talks to the API directly then.
+  const [pendingFields, setPendingFields] = useState<SchemaField[]>([]);
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -129,7 +102,9 @@ export function CategoryEditorView({
     if (kind === "business") dispatch(fetchServiceCategories({ limit: 100 }));
   }, [dispatch, kind]);
 
-  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => empty(list.length));
+  // `total`, not the loaded page's length: a new category should sort after every existing one, not after
+  // the ten on page one. Already in the store when arriving from the list, which is the only way in.
+  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => empty(listState.total));
 
   const syncedRef = useRef(false);
   useEffect(() => {
@@ -171,7 +146,32 @@ export function CategoryEditorView({
         ? await categoriesApi.updateCategory(endpoint, categoryId, input)
         : await categoriesApi.createCategory(endpoint, input);
       if (kind === "business") await categoriesApi.setDefaultServices(row.id, selectedServiceIds);
+
+      // Booking requirements configured before the category existed. Created in order, one at a time,
+      // because the server appends each new field to the end of the list.
+      const unsaved = categoryId === null ? pendingFields : [];
+      const rejected: string[] = [];
+      for (const pending of unsaved) {
+        // The temp id is local bookkeeping; the server assigns the real one.
+        const { id, ...field } = pending;
+        void id;
+        try {
+          await categoriesApi.createSchemaField("other-service", row.id, field);
+        } catch {
+          rejected.push(field.label);
+        }
+      }
       await dispatch(FETCH_FOR[kind]({ limit: 100 }));
+
+      if (rejected.length > 0) {
+        // The category is real, so say what did not make it and land on its editor rather than the list.
+        toast.error("Category created, but some requirements didn't save", {
+          description: `Add these again: ${rejected.join(", ")}`,
+        });
+        router.push(`/admin/platform/categories/other-service/${row.id}`);
+        return;
+      }
+
       toast.success(categoryId ? "Category updated" : "Category created");
       router.push("/admin/platform/categories");
     } catch (e) {
@@ -210,146 +210,9 @@ export function CategoryEditorView({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Basic Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="category-name">
-                    Name
-                    <RequiredMark />
-                  </Label>
-                  <Input
-                    id="category-name"
-                    className="h-9"
-                    value={form.name}
-                    placeholder="e.g. Accommodation"
-                    aria-invalid={!!errors.name}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        name: e.target.value,
-                        slug: editing ? f.slug : toSlug(e.target.value, "-"),
-                      }))
-                    }
-                  />
-                  <FieldError message={errors.name} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category-slug">
-                    Slug
-                    <RequiredMark />
-                  </Label>
-                  <Input
-                    id="category-slug"
-                    className="h-9"
-                    value={form.slug}
-                    aria-invalid={!!errors.slug}
-                    onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
-                  />
-                  <FieldError message={errors.slug} />
-                </div>
-              </div>
+          <CategoryDetailsCard kind={kind} form={form} errors={errors} setForm={setForm} slugFollowsName={!editing} />
 
-              <div className="space-y-2">
-                <Label htmlFor="category-description">Description</Label>
-                <Textarea
-                  id="category-description"
-                  rows={4}
-                  className="min-h-24"
-                  value={form.description}
-                  aria-invalid={!!errors.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                />
-                <FieldError message={errors.description} />
-              </div>
-
-              {kind === "business" ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="category-icon">Icon</Label>
-                    <IconPicker id="category-icon" value={form.icon} onChange={(icon) => setForm((f) => ({ ...f, icon }))} />
-                  </div>
-                  <div className="flex items-center gap-3 pt-6">
-                    <Label htmlFor="category-active">Active</Label>
-                    <Switch
-                      id="category-active"
-                      checked={form.isActive}
-                      onCheckedChange={(checked) => setForm((f) => ({ ...f, isActive: checked }))}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="category-icon">Icon</Label>
-                      <IconPicker id="category-icon" value={form.icon} onChange={(icon) => setForm((f) => ({ ...f, icon }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="category-sort">Sort order</Label>
-                      <Input
-                        id="category-sort"
-                        className="h-9"
-                        inputMode="numeric"
-                        value={form.sortOrder}
-                        aria-invalid={!!errors.sortOrder}
-                        onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
-                      />
-                      <FieldError message={errors.sortOrder} />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="category-active">Active</Label>
-                    <Switch
-                      id="category-active"
-                      checked={form.isActive}
-                      onCheckedChange={(checked) => setForm((f) => ({ ...f, isActive: checked }))}
-                    />
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {kind === "business" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Business Core Fields (Built-in)</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  These fields are already part of every business profile and cannot be modified here.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                  {BUSINESS_CORE_FIELDS.map((field) => (
-                    <div key={field.name} className="flex items-center gap-2 py-1">
-                      <Badge variant="outline" className="shrink-0 font-mono text-xs">
-                        {field.type}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground">{field.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {kind === "business" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Schema Fields</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Define custom fields that businesses of this type will fill in on their profile.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <SchemaFieldsEditor kind={kind} categoryId={categoryId} />
-              </CardContent>
-            </Card>
-          )}
+          {kind === "business" && <BusinessCategoryCards categoryId={categoryId} />}
         </div>
 
         <div className="lg:col-span-1">
@@ -375,6 +238,10 @@ export function CategoryEditorView({
                 )}
               </CardContent>
             </Card>
+          ) : kind === "other_service" ? (
+            // Other Service Categories configure a booking form, not profile fields — different concept,
+            // different panel. The Super Admin Service Category card below is untouched.
+            <BookingRequirementsPanel categoryId={categoryId} categoryName={form.name} onFieldsChange={setPendingFields} />
           ) : (
             <Card className="sticky top-6">
               <CardHeader>

@@ -5,7 +5,25 @@ export type Paginated<T> = { data: T[]; meta: PaginationMeta };
 export type ListParams = { page?: number; limit?: number };
 export type SearchListParams = ListParams & { search?: string };
 
-export type SchemaFieldType = "text" | "number" | "boolean" | "date" | "select" | "multi_select";
+/** Available on every category kind. Keep in sync with CORE_SCHEMA_FIELD_TYPES on the backend. */
+export type CoreSchemaFieldType = "text" | "number" | "boolean" | "date" | "select" | "multi_select";
+
+/**
+ * Booking-form types only an **Other** Service Category may use. The server rejects them on business and
+ * service categories, whose forms render by key rather than by type.
+ */
+export type BookingSchemaFieldType = "long_text" | "time" | "datetime" | "email" | "phone" | "radio" | "checkbox";
+
+export type SchemaFieldType = CoreSchemaFieldType | BookingSchemaFieldType;
+
+/** Bounds an admin can put on one answer. All optional. */
+export type SchemaFieldValidation = {
+  min?: number;
+  max?: number;
+  min_length?: number;
+  max_length?: number;
+  pattern?: string;
+};
 
 export type SchemaField = {
   id: number;
@@ -16,6 +34,13 @@ export type SchemaField = {
   is_required?: boolean;
   filterable?: boolean;
   is_default?: boolean;
+  /** The order the admin arranged. Assigned by the server on create; changed by reorderSchemaFields. */
+  display_order?: number;
+  placeholder?: string | null;
+  help_text?: string | null;
+  /** Text whatever the field type; coerced per type when the booking form prefills it. */
+  default_value?: string | null;
+  validation?: SchemaFieldValidation | null;
 };
 
 export type SchemaFieldInput = Omit<SchemaField, "id">;

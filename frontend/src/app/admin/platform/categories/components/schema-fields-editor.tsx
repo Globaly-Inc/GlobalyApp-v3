@@ -1,261 +1,188 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GripVertical, Plus, Trash2, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { categoriesApi } from "../apis";
 import type { SchemaField, SchemaFieldInput } from "../apis/types";
-
-const FIELD_TYPES: { value: SchemaField["type"]; label: string }[] = [
-  { value: "text", label: "Text" },
-  { value: "number", label: "Number" },
-  { value: "select", label: "Select" },
-  { value: "multi_select", label: "Multi Select" },
-  { value: "boolean", label: "Boolean" },
-  { value: "date", label: "Date" },
-];
-
-function toKey(label: string) {
-  return label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-}
+import { SchemaFieldRow } from "./schema-field-row";
 
 const emptyDraft: SchemaFieldInput = { label: "", key: "", type: "text", is_required: false, filterable: false, is_default: false };
 
+const failed = (what: string) => (e: unknown) =>
+  toast.error(what, { description: e instanceof Error ? e.message : "Please try again." });
+
+/**
+ * Configure what a category asks for.
+ *
+ * For an **Other** Service Category these rows are the booking requirements a Personal Portal user fills
+ * in when requesting a service, and the order set here is the order they are asked in. For business and
+ * service categories they are the profile fields they always were — same storage, same endpoints,
+ * unchanged behaviour.
+ */
 export function SchemaFieldsEditor({
   kind,
   categoryId,
-}: Readonly<{ kind: "business" | "service" | "other-service"; categoryId: number | null }>) {
+  onFieldsChange,
+}: Readonly<{
+  kind: "business" | "service" | "other-service";
+  categoryId: number | null;
+  /** Lets the parent show a live preview of what the customer will see. */
+  onFieldsChange?: (fields: SchemaField[]) => void;
+}>) {
   const [fields, setFields] = useState<SchemaField[]>([]);
   const [draft, setDraft] = useState<SchemaFieldInput | null>(null);
-  const [newOption, setNewOption] = useState<Record<number, string>>({});
-  const [loading, setLoading] = useState(false);
+  // Starts true when there is a category to load, so the first paint says "Loading…" without an effect
+  // reaching back into state. categoryId comes from the route and does not change without a remount.
+  const [loading, setLoading] = useState(categoryId !== null);
+  const isBooking = kind === "other-service";
+
+  /**
+   * On the create page there is no category to attach a field to yet, so every edit stays local and the
+   * parent persists the list once the category itself exists. Same rows, same controls, no requests —
+   * an admin should not have to save a half-configured category to find out what it will ask for.
+   */
+  const unsaved = categoryId === null;
+
+  const publish = (rows: SchemaField[]) => {
+    setFields(rows);
+    onFieldsChange?.(rows);
+  };
 
   useEffect(() => {
     if (categoryId === null) return;
-    setLoading(true);
     categoriesApi
       .getSchemaFields(kind, categoryId)
-      .then(setFields)
-      .catch(() => toast.error("Couldn't load schema fields"))
+      .then((rows) => {
+        setFields(rows);
+        onFieldsChange?.(rows);
+      })
+      .catch(() => toast.error("Couldn't load the fields for this category"))
       .finally(() => setLoading(false));
+    // onFieldsChange is a render-scoped callback; re-running on it would refetch every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, categoryId]);
 
   const saveField = async (id: number, patch: Partial<SchemaFieldInput>) => {
-    setFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+    const optimistic = fields.map((f) => (f.id === id ? { ...f, ...patch } : f));
+    publish(optimistic);
+    if (categoryId === null) return;
     try {
       const updated = await categoriesApi.updateSchemaField(id, patch);
-      setFields((prev) => prev.map((f) => (f.id === id ? updated : f)));
-      toast.success("Field updated");
+      publish(optimistic.map((f) => (f.id === id ? updated : f)));
     } catch (e) {
-      toast.error("Couldn't save field", { description: e instanceof Error ? e.message : "Please try again." });
+      // Put back what the server still holds rather than leaving the screen lying about what was saved.
+      failed("Couldn't save the field")(e);
+      publish(await categoriesApi.getSchemaFields(kind, categoryId));
     }
   };
 
   const removeField = async (id: number) => {
     const previous = fields;
-    setFields((prev) => prev.filter((f) => f.id !== id));
+    publish(fields.filter((f) => f.id !== id));
+    if (categoryId === null) return;
     try {
       await categoriesApi.deleteSchemaField(id);
     } catch (e) {
-      setFields(previous);
-      toast.error("Couldn't remove field", { description: e instanceof Error ? e.message : "Please try again." });
+      publish(previous);
+      failed("Couldn't remove the field")(e);
     }
   };
 
   const commitDraft = async () => {
-    if (!draft || categoryId === null || !draft.label.trim() || !draft.key.trim()) return;
+    if (!draft?.label.trim() || !draft.key.trim()) return;
+    if (fields.some((f) => f.key === draft.key)) {
+      toast.error("That reference name is already used in this category");
+      return;
+    }
+    if (categoryId === null) {
+      // A negative id keeps React keys stable and cannot collide with a real one. The parent strips it
+      // before creating the field for real.
+      publish([...fields, { ...draft, id: -(fields.length + 1) }]);
+      setDraft(null);
+      return;
+    }
     try {
       const row = await categoriesApi.createSchemaField(kind, categoryId, draft);
-      setFields((prev) => [...prev, row]);
+      publish([...fields, row]);
       setDraft(null);
       toast.success("Field added");
     } catch (e) {
-      toast.error("Couldn't add field", { description: e instanceof Error ? e.message : "Please try again." });
+      failed("Couldn't add the field")(e);
     }
   };
 
-  const addOption = (id: number, isDraft: boolean) => {
-    const val = (newOption[id] || "").trim();
-    if (!val) return;
-    if (isDraft && draft) {
-      setDraft({ ...draft, options: [...(draft.options ?? []), val] });
-    } else {
-      const field = fields.find((f) => f.id === id);
-      if (field) void saveField(id, { options: [...(field.options ?? []), val] });
-    }
-    setNewOption((p) => ({ ...p, [id]: "" }));
-  };
-
-  const removeOption = (id: number, optIdx: number, isDraft: boolean) => {
-    if (isDraft && draft) {
-      setDraft({ ...draft, options: (draft.options ?? []).filter((_, i) => i !== optIdx) });
-    } else {
-      const field = fields.find((f) => f.id === id);
-      if (field) void saveField(id, { options: (field.options ?? []).filter((_, i) => i !== optIdx) });
+  /** Move one field one place. The whole resulting order is sent, since order is relative. */
+  const move = async (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= fields.length) return;
+    const reordered = [...fields];
+    [reordered[index], reordered[target]] = [reordered[target]!, reordered[index]!];
+    const previous = fields;
+    publish(reordered);
+    if (categoryId === null) return;
+    try {
+      publish(await categoriesApi.reorderSchemaFields(kind, categoryId, reordered.map((f) => f.id)));
+    } catch (e) {
+      publish(previous);
+      failed("Couldn't change the order")(e);
     }
   };
-
-  if (categoryId === null) {
-    return <p className="text-sm text-muted-foreground">Save the category first to add schema fields.</p>;
-  }
-
-  const rows: { key: number; isDraft: boolean; value: SchemaField | SchemaFieldInput }[] = [
-    ...fields.map((f) => ({ key: f.id, isDraft: false, value: f })),
-    ...(draft ? [{ key: -1, isDraft: true, value: draft }] : []),
-  ];
 
   return (
     <div className="space-y-3">
       {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
 
-      {rows.map(({ key: rowKey, isDraft, value: field }) => (
-        <Card key={rowKey} size="sm">
-          <CardContent className="space-y-3">
-            <div className="flex items-start gap-2">
-              <GripVertical className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Label</Label>
-                  <Input
-                    className="h-9"
-                    value={field.label}
-                    onChange={(e) => {
-                      const label = e.target.value;
-                      const patch = { label, key: field.key || toKey(label) };
-                      if (isDraft) setDraft({ ...(draft ?? emptyDraft), ...patch });
-                      else setFields((prev) => prev.map((f) => (f.id === rowKey ? { ...f, ...patch } : f)));
-                    }}
-                    onBlur={() => (isDraft ? undefined : saveField(rowKey, { label: field.label, key: field.key }))}
-                    placeholder="e.g. Field of Study"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Key</Label>
-                  <Input
-                    className="h-9"
-                    value={field.key}
-                    onChange={(e) => {
-                      const key = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "");
-                      if (isDraft) setDraft({ ...(draft ?? emptyDraft), key });
-                      else setFields((prev) => prev.map((f) => (f.id === rowKey ? { ...f, key } : f)));
-                    }}
-                    onBlur={() => (isDraft ? undefined : saveField(rowKey, { key: field.key }))}
-                    placeholder="field_of_study"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Type</Label>
-                  <Select
-                    value={field.type}
-                    onValueChange={(v) => {
-                      const type = String(v) as SchemaField["type"];
-                      if (isDraft) setDraft({ ...(draft ?? emptyDraft), type });
-                      else void saveField(rowKey, { type });
-                    }}
-                  >
-                    <SelectTrigger className="h-9 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FIELD_TYPES.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>
-                          {t.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="mt-1 shrink-0"
-                onClick={() => (isDraft ? setDraft(null) : removeField(rowKey))}
-              >
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-              </Button>
-            </div>
+      {!loading && fields.length === 0 && !draft && (
+        <p className="text-sm text-muted-foreground">
+          {isBooking
+            ? "Nothing configured yet. Customers can request this service without answering any questions."
+            : "No fields yet."}
+        </p>
+      )}
 
-            <div className="flex items-center gap-6 pl-6">
-              <label className="flex items-center gap-2 text-xs">
-                <Switch
-                  checked={field.is_required ?? false}
-                  onCheckedChange={(v) =>
-                    isDraft ? setDraft({ ...(draft ?? emptyDraft), is_required: v }) : void saveField(rowKey, { is_required: v })
-                  }
-                />
-                Required
-              </label>
-              <label className="flex items-center gap-2 text-xs">
-                <Switch
-                  checked={field.filterable ?? false}
-                  onCheckedChange={(v) =>
-                    isDraft ? setDraft({ ...(draft ?? emptyDraft), filterable: v }) : void saveField(rowKey, { filterable: v })
-                  }
-                />
-                Filterable
-              </label>
-              <label className="flex items-center gap-2 text-xs">
-                <Switch
-                  checked={field.is_default ?? false}
-                  onCheckedChange={(v) =>
-                    isDraft ? setDraft({ ...(draft ?? emptyDraft), is_default: v }) : void saveField(rowKey, { is_default: v })
-                  }
-                />
-                Default
-              </label>
-            </div>
+      {unsaved && fields.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {fields.length === 1 ? "1 field" : `${fields.length} fields`} will be saved with the category.
+        </p>
+      )}
 
-            {(field.type === "select" || field.type === "multi_select") && (
-              <div className="space-y-2 pl-6">
-                <Label className="text-xs">Options</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(field.options ?? []).map((opt, oi) => (
-                    <Badge key={opt} variant="secondary" className="h-6 gap-1 pr-1">
-                      {opt}
-                      <button type="button" onClick={() => removeOption(rowKey, oi, isDraft)} className="ml-0.5 hover:text-destructive">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-                <div className="flex max-w-xs gap-2">
-                  <Input
-                    value={newOption[rowKey] ?? ""}
-                    onChange={(e) => setNewOption((p) => ({ ...p, [rowKey]: e.target.value }))}
-                    placeholder="Add option…"
-                    className="h-8 text-xs"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addOption(rowKey, isDraft);
-                      }
-                    }}
-                  />
-                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => addOption(rowKey, isDraft)}>
-                    Add
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {isDraft && (
-              <div className="flex justify-end pl-6">
-                <Button type="button" size="sm" onClick={commitDraft} disabled={!field.label.trim() || !field.key.trim()}>
-                  Save field
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {fields.map((field, index) => (
+        <SchemaFieldRow
+          key={field.id}
+          field={field}
+          isDraft={false}
+          isBooking={isBooking}
+          isFirst={index === 0}
+          isLast={index === fields.length - 1}
+          onLocalChange={(patch) => setFields((prev) => prev.map((f) => (f.id === field.id ? { ...f, ...patch } : f)))}
+          onSave={(patch) => void saveField(field.id, patch)}
+          onDelete={() => void removeField(field.id)}
+          onMove={(direction) => void move(index, direction)}
+        />
       ))}
+
+      {draft && (
+        <>
+          <SchemaFieldRow
+            field={draft}
+            isDraft
+            isBooking={isBooking}
+            isFirst
+            isLast
+            onLocalChange={(patch) => setDraft((d) => ({ ...(d ?? emptyDraft), ...patch }))}
+            onSave={(patch) => setDraft((d) => ({ ...(d ?? emptyDraft), ...patch }))}
+            onDelete={() => setDraft(null)}
+            onMove={() => undefined}
+          />
+          <div className="flex justify-end">
+            <Button type="button" size="sm" onClick={commitDraft} disabled={!draft.label.trim() || !draft.key.trim()}>
+              Save field
+            </Button>
+          </div>
+        </>
+      )}
 
       {!draft && (
         <Button type="button" variant="outline" className="w-full gap-2" onClick={() => setDraft(emptyDraft)}>

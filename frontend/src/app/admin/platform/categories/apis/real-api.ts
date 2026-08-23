@@ -34,6 +34,9 @@ export const categoriesRealApi = {
     httpPost(`${BASE}/${kind}-categories`, input),
   updateCategory: (kind: CategoryEndpoint, id: number, input: Partial<CategoryInput>): Promise<Category> =>
     httpPatch(`${BASE}/${kind}-categories/${id}`, input),
+  /** Other Service Categories only — soft delete, refused with a 409 while listings still use it. */
+  deleteOtherServiceCategory: (id: number): Promise<void> =>
+    httpDelete(`${BASE}/other-service-categories/${id}`),
 
   getDefaultServices: async (businessCategoryId: number): Promise<Category[]> =>
     (await httpGet<{ services: Category[] }>(`${BASE}/business-categories/${businessCategoryId}/default-services`)).services,
@@ -48,6 +51,12 @@ export const categoriesRealApi = {
   updateSchemaField: (id: number, input: Partial<SchemaFieldInput>): Promise<SchemaField> =>
     httpPatch(`${BASE}/schema-fields/${id}`, input),
   deleteSchemaField: (id: number): Promise<void> => httpDelete(`${BASE}/schema-fields/${id}`),
+  /** The whole list at once — an order only means anything relative to its siblings. */
+  reorderSchemaFields: async (kind: CategoryEndpoint, categoryId: number, fieldIds: number[]): Promise<SchemaField[]> =>
+    (await httpPut<{ schema_fields: SchemaField[] }>(
+      `${BASE}/${entityType(kind)}/${categoryId}/schema-fields/order`,
+      { field_ids: fieldIds },
+    )).schema_fields,
 
   getLookups: (kind: LookupKind, params: SearchListParams = {}): Promise<Paginated<Lookup>> =>
     httpGet(`${BASE}/${kind}${toQuery(params)}`),

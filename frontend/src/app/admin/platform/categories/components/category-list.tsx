@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,11 +13,17 @@ export function CategoryList({
   kind,
   onToggle,
   onEdit,
+  onDelete,
 }: Readonly<{
   categories: Category[];
   kind: "business" | "service" | "other_service";
   onToggle: (id: number, isActive: boolean) => void;
   onEdit: (category: Category) => void;
+  /**
+   * Only passed for Other Service Categories. Business and service categories are referenced by approved
+   * businesses and their services, so they are deactivated rather than removed.
+   */
+  onDelete?: (category: Category) => void;
 }>) {
   if (categories.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">No categories yet.</p>;
@@ -51,6 +57,16 @@ export function CategoryList({
                 <Button variant="ghost" size="icon-sm" aria-label={`Edit ${cat.name}`} onClick={() => onEdit(cat)}>
                   <Pencil />
                 </Button>
+                {onDelete && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Delete ${cat.name}`}
+                    onClick={() => onDelete(cat)}
+                  >
+                    <Trash2 className="text-destructive" />
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>

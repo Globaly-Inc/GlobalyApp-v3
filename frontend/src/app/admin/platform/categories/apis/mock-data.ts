@@ -140,6 +140,14 @@ export const categoriesMockApi = {
     await delay(300);
     return patchRow(categoryTable(kind), id, input);
   },
+  deleteOtherServiceCategory: async (id: number): Promise<void> => {
+    console.log("[mock] deleteOtherServiceCategory", id);
+    await delay(300);
+    const index = otherServiceCategories.findIndex((c) => c.id === id);
+    if (index === -1) throw new Error(`Other service category ${id} not found`);
+    otherServiceCategories.splice(index, 1);
+    delete schemaFieldsByCategory[schemaFieldsKey("other-service", id)];
+  },
 
   getSchemaFields: async (kind: CategoryEndpoint, categoryId: number): Promise<SchemaField[]> => {
     console.log("[mock] getSchemaFields", kind, categoryId);
@@ -173,6 +181,17 @@ export const categoriesMockApi = {
     for (const key of Object.keys(schemaFieldsByCategory)) {
       schemaFieldsByCategory[key] = schemaFieldsByCategory[key]!.filter((row) => row.id !== id);
     }
+  },
+  reorderSchemaFields: async (kind: CategoryEndpoint, categoryId: number, fieldIds: number[]): Promise<SchemaField[]> => {
+    console.log("[mock] reorderSchemaFields", kind, categoryId, fieldIds);
+    await delay(200);
+    const key = schemaFieldsKey(kind, categoryId);
+    const rows = schemaFieldsByCategory[key] ?? [];
+    // Ids not belonging to this category are ignored, as the server ignores them.
+    const ordered = fieldIds.map((id) => rows.find((row) => row.id === id)).filter((row): row is SchemaField => !!row);
+    const rest = rows.filter((row) => !fieldIds.includes(row.id));
+    schemaFieldsByCategory[key] = [...ordered, ...rest].map((row, index) => ({ ...row, display_order: index }));
+    return schemaFieldsByCategory[key]!;
   },
 
   getDefaultServices: async (businessCategoryId: number): Promise<Category[]> => {

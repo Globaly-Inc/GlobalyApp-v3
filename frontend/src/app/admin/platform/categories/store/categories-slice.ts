@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { categoriesApi } from "../apis";
 import type {
-  Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
+  Accreditation, AccreditationInput, Category, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
   ModerationStatus, PaginationMeta,
 } from "../apis/types";
@@ -120,13 +120,14 @@ export const toggleCategory = mutation<{ kind: CategoryKind; id: number; is_acti
   ({ kind }, state) => refetchFor(kind, state),
 );
 
-export const saveCategory = mutation<{ kind: CategoryKind; id: number | null; input: CategoryInput }>(
-  "saveCategory",
-  ({ kind, id, input }) =>
-    id
-      ? categoriesApi.updateCategory(apiKind(kind), id, input)
-      : categoriesApi.createCategory(apiKind(kind), input),
-  ({ kind }, state) => refetchFor(kind, state),
+/**
+ * Other Service Categories only. Business and service categories are referenced by approved businesses
+ * and their services, so they are deactivated rather than removed — no delete thunk for them.
+ */
+export const removeOtherServiceCategory = mutation<number>(
+  "removeOtherServiceCategory",
+  (id) => categoriesApi.deleteOtherServiceCategory(id),
+  (_arg, state) => fetchOtherServiceCategories({ page: state.otherServiceCategories.page }),
 );
 
 export const saveLookup = mutation<{ kind: LookupKind; id: number | null; input: LookupInput }>(
