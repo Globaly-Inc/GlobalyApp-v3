@@ -21,6 +21,8 @@ export const ADD_LABEL: Record<KnowledgeTab, string> = {
 
 export const CATEGORY_KIND_OPTIONS: { value: CategoryKind; label: string }[] = [
   { value: "visa", label: "Visa" },
+  { value: "country_guide", label: "Country guide" },
+  { value: "faq", label: "FAQ" },
   { value: "gov_update", label: "Government update" },
   { value: "institution_update", label: "Institution update" },
   { value: "scholarship", label: "Scholarship" },

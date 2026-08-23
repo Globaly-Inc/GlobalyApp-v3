@@ -3,8 +3,12 @@
 
 import { z } from "zod";
 
+// country_guide and faq match CrawlKind in data-extraction/lib/crawl-rules.ts, so a
+// category's kind can drive both crawl URL ranking and retrieval scoping. Without them
+// the country education docs could only be filed as "other", which no filter can target.
 export const CATEGORY_KINDS = [
-  "visa", "gov_update", "institution_update", "scholarship", "test_provider", "other",
+  "visa", "faq", "country_guide", "gov_update", "institution_update",
+  "scholarship", "test_provider", "other",
 ] as const;
 export const TRUST_TIERS = ["gov", "verified_institution", "other"] as const;
 export const SOURCE_TYPES = ["url", "file"] as const;

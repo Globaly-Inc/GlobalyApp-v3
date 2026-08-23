@@ -67,7 +67,8 @@ export type QueueItem = {
 // ── Knowledge Rack ──
 
 export type CategoryKind =
-  | "visa" | "gov_update" | "institution_update" | "scholarship" | "test_provider" | "other";
+  | "visa" | "faq" | "country_guide" | "gov_update"
+  | "institution_update" | "scholarship" | "test_provider" | "other";
 
 export type RackCategory = {
   id: string;
@@ -190,6 +191,10 @@ export type UploadSourceOptions = {
 export type UploadSourceResult = {
   source: RackSource;
   document_id: string;
+  /** True when this filename already existed in the category and was updated in place. */
+  replaced: boolean;
+  /** True when the re-uploaded content was byte-identical, so nothing was re-embedded. */
+  unchanged: boolean;
   chunks: number;
   embedded: number;
 };

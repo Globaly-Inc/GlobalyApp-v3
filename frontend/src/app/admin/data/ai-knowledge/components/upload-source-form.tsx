@@ -28,7 +28,16 @@ export function UploadSourceForm({
       const result = await aiKnowledgeApi.uploadSource(categoryId, file, {
         title: title.trim() || undefined, trust_tier: trustTier,
       });
-      toast.success(`Uploaded — ${result.chunks} chunk${result.chunks === 1 ? "" : "s"}, ${result.embedded} embedded`);
+      const chunks = `${result.chunks} chunk${result.chunks === 1 ? "" : "s"}`;
+      // Re-uploading a filename replaces it. Say so — an admin who thinks they
+      // added a second copy will go looking for one to delete.
+      toast.success(
+        result.unchanged
+          ? `Already up to date — content unchanged, ${chunks} kept`
+          : result.replaced
+            ? `Updated — replaced the previous version, ${chunks}, ${result.embedded} embedded`
+            : `Uploaded — ${chunks}, ${result.embedded} embedded`,
+      );
       onDone();
     } catch (e) {
       toast.error("Upload failed", { description: (e as Error).message });
@@ -41,6 +50,10 @@ export function UploadSourceForm({
     <Card>
       <CardContent className="flex flex-col gap-4 p-4">
         <p className="font-semibold text-foreground">Upload document</p>
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Uploading a file name that already exists in this category updates it in place —
+          the old version and its chunks are replaced, not duplicated.
+        </p>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">

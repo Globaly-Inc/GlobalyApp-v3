@@ -26,8 +26,14 @@ export interface IngestResult {
   embedded: number;
 }
 
-export const hashOf = (markdown: string): string =>
-  createHash("sha256").update(markdown).digest("hex");
+/**
+ * Change detection hash, taken over the NORMALISED text — that is the text the
+ * chunker sees, so it is what actually determines the chunks. Hashing the raw bytes
+ * instead makes a trailing-whitespace edit look like a content change and burns a
+ * full re-embed of the document for nothing.
+ */
+export const contentHashOf = (markdown: string): string =>
+  createHash("sha256").update(normaliseMarkdown(markdown)).digest("hex");
 
 export const wordsIn = (markdown: string): number =>
   markdown.split(/\s+/).filter(Boolean).length;

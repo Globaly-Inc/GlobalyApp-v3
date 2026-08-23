@@ -13,7 +13,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { KNOWLEDGE_QUEUES } from "../shared/queues.js";
 import { discoverUrlsForCrawl, politeDelay, scrapeMarkdown } from "../../data-extraction/lib/scraper.js";
-import { hashOf, ingestDocumentChunks, wordsIn } from "../lib/ingest.js";
+import { contentHashOf, ingestDocumentChunks, wordsIn } from "../lib/ingest.js";
 
 const logger = createChildLogger("ai-knowledge-crawl-worker");
 
@@ -88,7 +88,7 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
       }
       summary.scraped++;
 
-      const contentHash = hashOf(result.markdown);
+      const contentHash = contentHashOf(result.markdown);
       const existing = await masterKnex(DOCUMENTS).where({ source_id: sourceId, url }).first();
 
       if (existing?.content_hash === contentHash) {

@@ -31,10 +31,12 @@ process.env.GEMINI_API_KEY = "test-key";
 process.env.GCS_BUCKET_NAME = "test-bucket";
 process.env.GCS_PROJECT_ID = "test-project";
 
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Storage } from "@google-cloud/storage";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { masterKnex } from "../src/core/db/master-pool.js";
+import { normaliseMarkdown } from "../src/modules/superadmin/ai-knowledge/lib/chunker.js";
 import { streamChatWithTools } from "../src/modules/ai-counsellor/lib/gemini-stream.js";
 import { runTool, toolsFor } from "../src/modules/ai-counsellor/lib/tools.js";
 import { buildSystemPrompt } from "../src/modules/ai-counsellor/services/prompt.service.js";
@@ -240,6 +242,80 @@ async function main() {
     "chunk_count is written back to the document",
   );
   assertEqual(deletedObjects.length, 0, "nothing was rolled back on the happy path");
+
+  // ── Step 1b: re-uploading the same filename updates it in place ──
+  console.log("\nPhase 6 — re-upload replaces, never duplicates");
+  const EXISTING = {
+    id: SOURCE_ID, file_path: "ai-knowledge/uploads/old-object.md",
+    source_type: "file", file_name: "NEPAL.md",
+  };
+  reset([
+    [/ai_knowledge_categories/i, () => rows([{ id: CATEGORY_ID }])],
+    // The lookup that makes a re-upload an update.
+    [/select \* from "superadmin"\."ai_knowledge_sources".*"file_name"/is, () => rows([EXISTING])],
+    [/from "superadmin"\."ai_knowledge_documents"/i, () => rows([
+      { id: DOCUMENT_ID, source_id: SOURCE_ID, title: "Nepal", content_hash: "stale-hash", chunk_count: 14 },
+    ])],
+    [/update "superadmin"\."ai_knowledge_documents"/i, () => ({
+      command: "UPDATE", rows: [{ id: DOCUMENT_ID }], rowCount: 1,
+    })],
+    [/update "superadmin"\."ai_knowledge_sources"/i, () => ({
+      command: "UPDATE", rows: [{ id: SOURCE_ID }], rowCount: 1,
+    })],
+  ]);
+  uploaded.length = 0;
+  deletedObjects.length = 0;
+
+  const reupload = await rackService.uploadSource(
+    { category_id: CATEGORY_ID, trust_tier: "gov" },
+    { name: "NEPAL.md", buffer: Buffer.from(NEPAL_EXCERPT, "utf-8") },
+    42,
+  );
+
+  assertEqual(reupload.replaced, true, "the re-upload is reported as a replacement");
+  assertEqual(reupload.unchanged, false, "changed content is re-ingested");
+  assertEqual(reupload.document_id, DOCUMENT_ID, "the same document row is reused");
+  assertEqual(
+    sqlFor(/insert into "superadmin"\."ai_knowledge_sources"/i).length, 0,
+    "no second source row is created",
+  );
+  assertEqual(
+    sqlFor(/insert into "superadmin"\."ai_knowledge_documents"/i).length, 0,
+    "no second document row is created",
+  );
+  assert(
+    sqlFor(/delete from "superadmin"\."ai_knowledge_chunks"/i).length === 1,
+    "the previous chunks are cleared",
+  );
+  assert(reupload.chunks > 5, "the new content is chunked", reupload.chunks);
+  assert(
+    deletedObjects.includes(EXISTING.file_path),
+    "the superseded file is removed from storage", deletedObjects,
+  );
+
+  // Byte-identical content skips the embedding work entirely.
+  reset([
+    [/ai_knowledge_categories/i, () => rows([{ id: CATEGORY_ID }])],
+    [/select \* from "superadmin"\."ai_knowledge_sources".*"file_name"/is, () => rows([EXISTING])],
+    [/from "superadmin"\."ai_knowledge_documents"/i, () => rows([
+      {
+        id: DOCUMENT_ID, source_id: SOURCE_ID, title: "Nepal", chunk_count: 14,
+        content_hash: createHash("sha256").update(normaliseMarkdown(NEPAL_EXCERPT)).digest("hex"),
+      },
+    ])],
+  ]);
+  const embedsBefore = embedCalls;
+  const again = await rackService.uploadSource(
+    { category_id: CATEGORY_ID, trust_tier: "gov" },
+    { name: "NEPAL.md", buffer: Buffer.from(NEPAL_EXCERPT, "utf-8") },
+    42,
+  );
+  assertEqual(again.unchanged, true, "identical content is detected as unchanged");
+  assertEqual(embedCalls, embedsBefore, "unchanged content costs no embedding calls");
+  assertEqual(
+    sqlFor(/delete from "superadmin"\."ai_knowledge_chunks"/i).length, 0,
+    "unchanged content leaves its chunks alone",
+  );
 
   // ── Step 2: a failed upload leaves nothing behind ──
   console.log("\nPhase 6 — failed upload rolls back");
