@@ -83,22 +83,28 @@ export async function countJobsByStatus() {
   return Object.fromEntries(rows.map((r) => [r.status, Number(r.count)]));
 }
 
-export async function listJobsFiltered(opts: {
-  statuses?: string[];
-  sourceType?: string;
-  excludeSourceType?: string;
-  limit: number;
-}) {
-  const query = masterKnex(T)
-    .select(`${T}.*`)
-    .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
-    .orderBy("created_at", "desc")
-    .limit(opts.limit);
+export type JobFilterOpts = { statuses?: string[]; sourceType?: string; excludeSourceType?: string };
+
+function filteredJobsQuery(opts: JobFilterOpts) {
+  const query = masterKnex(T);
   if (opts.statuses?.length) query.whereIn("status", opts.statuses);
   if (opts.sourceType) query.where("source_type", opts.sourceType);
   if (opts.excludeSourceType) query.whereNot("source_type", opts.excludeSourceType);
+  return query;
+}
 
-  const jobs = await query;
+export async function countJobsFiltered(opts: JobFilterOpts) {
+  const [row] = await filteredJobsQuery(opts).count("id as count");
+  return Number(row.count);
+}
+
+export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; offset: number }) {
+  const jobs = await filteredJobsQuery(opts)
+    .select(`${T}.*`)
+    .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
+    .orderBy("created_at", "desc")
+    .limit(opts.limit)
+    .offset(opts.offset);
 
   // Attach campus/agent counts
   if (jobs.length) {

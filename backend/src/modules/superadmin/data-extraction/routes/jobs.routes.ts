@@ -42,12 +42,10 @@ export async function jobsRoutes(app: FastifyInstance) {
     const query = FilteredJobsQuerySchema.parse(req.query);
     const statuses = query.statuses?.split(",").filter(Boolean);
     return reply.send(
-      await service.listJobsFiltered({
-        statuses,
-        sourceType: query.source_type,
-        excludeSourceType: query.exclude_source_type,
-        limit: query.limit,
-      }),
+      await service.listJobsFiltered(
+        { statuses, sourceType: query.source_type, excludeSourceType: query.exclude_source_type },
+        { page: query.page, limit: query.limit },
+      ),
     );
   });
 

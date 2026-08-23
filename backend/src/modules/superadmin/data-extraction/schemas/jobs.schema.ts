@@ -1,6 +1,7 @@
 // Zod schemas for extraction jobs endpoints.
 
 import { z } from "zod";
+import { PaginationSchema } from "../../../../shared/pagination.js";
 
 export const JOB_STATUSES = [
   "pending", "processing", "stalled", "extracting", "paused",
@@ -46,11 +47,11 @@ export const ListJobsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(100),
 });
 
-export const FilteredJobsQuerySchema = z.object({
+export const FilteredJobsQuerySchema = PaginationSchema.extend({
+  limit: z.coerce.number().int().min(1).max(500).default(100),
   statuses: z.string().optional(), // csv
   source_type: z.string().optional(),
   exclude_source_type: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 
 export const MergeDuplicatesSchema = z.object({
