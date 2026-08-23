@@ -19,6 +19,7 @@
     "test:referrals": "node --import tsx tests/referrals.ts",
     "test:scraper-cascade": "node --import tsx tests/scraper-cascade.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",
+    "test:ai-tool-loop": "node --import tsx tests/ai-tool-loop.ts",
     "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",
     "job:extraction-pages": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-page.worker.ts",
     "job:extraction-verify": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-verify.worker.ts",

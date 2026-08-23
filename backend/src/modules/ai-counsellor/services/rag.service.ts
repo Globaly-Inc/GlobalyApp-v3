@@ -1,6 +1,8 @@
 import { createChildLogger } from "../../../shared/logger.js";
-import { courseSlug } from "../../search/utils/slug.js";
 import * as knowledge from "../repositories/knowledge.repository.js";
+// One card mapping for both retrieval paths — a divergence here would mean the
+// legacy path and the tool path emitting different course-card shapes.
+import { courseCardFields } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
 import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
@@ -197,13 +199,7 @@ export async function searchAll(opts: {
         c.eligibility.length
           ? `  Eligibility: ${c.eligibility.map(e => e.description ?? e.name).join("; ")}`
           : "",
-        `  CARD_FIELDS: ${JSON.stringify({
-          id: c.id, slug: courseSlug(c.name, c.id), name: c.name, institution: c.institution_name,
-          degree_level: c.degree_level, duration: c.duration_weeks ? `${c.duration_weeks} weeks` : null,
-          fees: fee?.total_amount ?? null, currency: fee?.currency ?? null,
-          country: c.institution_country ?? c.country_code, city: c.campuses[0]?.campus_name ?? null,
-          intakes: intakeNames, study_modes: modes, source_url: c.source_url,
-        })}`,
+        `  CARD_FIELDS: ${JSON.stringify(courseCardFields(c))}`,
         "",
       );
       sources.push({ type: "course", id: c.id, title: c.name });
