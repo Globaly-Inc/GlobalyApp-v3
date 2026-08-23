@@ -8,7 +8,8 @@ const SlugParam = z.object({ slug: z.string().min(1) });
 
 export async function publicGeoRoutes(app: FastifyInstance) {
   app.get("/countries/featured", async (_req, reply) => {
-    const countries = await repo.listFeaturedCountries();
+    const rows = await repo.listFeaturedCountries();
+    const countries = await Promise.all(rows.map(withImagePreviews));
     return reply.send({ countries });
   });
 

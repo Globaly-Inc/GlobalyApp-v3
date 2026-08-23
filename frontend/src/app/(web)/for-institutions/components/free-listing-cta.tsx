@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "../../components/reveal";
+import { DashboardKPIMockup } from "../../components/mockups/dashboard-kpi-mockup";
 
 export function FreeListingCta() {
   return (
     <section className="py-16 bg-[hsl(38,92%,96%)]">
       <div className="container mx-auto px-4">
-        <div className="max-w-2xl mx-auto text-center">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <Reveal direction="left">
+            <DashboardKPIMockup />
+          </Reveal>
           <Reveal direction="right">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">
               Publish Your Courses &amp; Access{" "}
@@ -20,7 +24,7 @@ export function FreeListingCta() {
             </p>
             <Button
               size="lg"
-              className="rounded-full px-8"
+              className="h-11 rounded-full px-8"
               style={{ background: "hsl(var(--gold))", color: "hsl(var(--purple-dark))", fontWeight: 700 }}
               render={<Link href="/auth/sign-up" />}
             >
