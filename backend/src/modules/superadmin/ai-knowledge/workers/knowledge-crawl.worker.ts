@@ -1,20 +1,19 @@
 // Worker — consumes "ai_knowledge_crawl".
 //
 // For one rack source: discover its pages, scrape each to markdown, store any that
-// changed, and embed them so match_ai_knowledge_documents() can retrieve them.
+// changed, and chunk + embed them so match_ai_knowledge_chunks() can retrieve them.
 // Reuses the extraction module's scraper and LLM client rather than adding its own.
 //
 // Run with: npm run job:ai-knowledge-crawl
 
 import "dotenv/config";
-import { createHash } from "node:crypto";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { KNOWLEDGE_QUEUES } from "../shared/queues.js";
 import { discoverUrlsForCrawl, politeDelay, scrapeMarkdown } from "../../data-extraction/lib/scraper.js";
-import { embed, isConfigured as llmConfigured } from "../../data-extraction/lib/llm-client.js";
+import { hashOf, ingestDocumentChunks, wordsIn } from "../lib/ingest.js";
 
 const logger = createChildLogger("ai-knowledge-crawl-worker");
 
@@ -36,13 +35,11 @@ interface CrawlSummary {
   updated: number;
   unchanged: number;
   failed: number;
+  chunks: number;
   embedded: number;
   max_pages: number;
   finished_at: string;
 }
-
-const hashOf = (markdown: string) => createHash("sha256").update(markdown).digest("hex");
-const wordsIn = (markdown: string) => markdown.split(/\s+/).filter(Boolean).length;
 
 /** First markdown heading, else the last meaningful path segment. */
 function titleFor(markdown: string, url: string): string | null {
@@ -50,24 +47,6 @@ function titleFor(markdown: string, url: string): string | null {
   if (heading) return heading.slice(0, 300);
   const segment = new URL(url).pathname.split("/").filter(Boolean).pop();
   return segment ? segment.replace(/[-_]+/g, " ").slice(0, 300) : null;
-}
-
-/**
- * Embedding is best-effort: a document with no vector is still useful to a human
- * reader, it just cannot be retrieved yet. Never fail the crawl over it.
- */
-async function embedDocument(documentId: string, text: string): Promise<boolean> {
-  if (!llmConfigured()) return false;
-  try {
-    const vector = await embed(text.slice(0, 8000));
-    await masterKnex(DOCUMENTS)
-      .where({ id: documentId })
-      .update({ embedding: masterKnex.raw("?::vector", [`[${vector.join(",")}]`]) });
-    return true;
-  } catch (e) {
-    logger.warn("Embedding failed", { documentId, error: (e as Error).message });
-    return false;
-  }
 }
 
 async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise<void> {
@@ -86,7 +65,7 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
 
   const summary: CrawlSummary = {
     discovered: 0, discovery_method: "seed-only", discovery_error: null,
-    scraped: 0, added: 0, updated: 0, unchanged: 0, failed: 0, embedded: 0,
+    scraped: 0, added: 0, updated: 0, unchanged: 0, failed: 0, chunks: 0, embedded: 0,
     max_pages: maxPages, finished_at: "",
   };
 
@@ -132,9 +111,9 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
 
       let documentId: string;
       if (existing) {
-        // Content moved on — the old vector is stale, so clear it before re-embedding.
+        // Content moved on — ingestDocumentChunks below replaces this document's chunks.
         await masterKnex(DOCUMENTS).where({ id: existing.id })
-          .update({ ...row, embedding: null, updated_at: masterKnex.fn.now() });
+          .update({ ...row, updated_at: masterKnex.fn.now() });
         documentId = existing.id;
         summary.updated++;
       } else {
@@ -143,8 +122,14 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
         summary.added++;
       }
 
-      if (await embedDocument(documentId, `${row.title ?? ""}\n\n${result.markdown}`)) {
-        summary.embedded++;
+      // Chunking replaces this document's old chunks, so a re-crawl never leaves
+      // text behind that is no longer on the page. Never fail the crawl over it.
+      try {
+        const ingested = await ingestDocumentChunks(documentId, result.markdown, { title: row.title });
+        summary.chunks += ingested.chunks;
+        summary.embedded += ingested.embedded;
+      } catch (e) {
+        logger.warn("Chunking failed", { documentId, error: (e as Error).message });
       }
       await politeDelay(DELAY_MIN_MS, DELAY_MAX_MS);
     }
