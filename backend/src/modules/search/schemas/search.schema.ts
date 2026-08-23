@@ -22,3 +22,7 @@ export const JobListQuery = SearchListQuery.extend({
   job_type: z.string().min(1).optional(),
   is_remote: z.coerce.boolean().optional(),
 });
+
+export const VisaServiceListQuery = SearchListQuery.extend({
+  licensed_only: z.coerce.boolean().optional(),
+});

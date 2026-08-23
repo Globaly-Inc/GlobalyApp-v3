@@ -33,8 +33,16 @@ function institutionsQuery(filters: Omit<BusinessSearchFilters, "categorySlug">)
   return overviewQuery(filters, "ej.source_type is distinct from 'visa_service'");
 }
 
-function visaServiceProvidersQuery(filters: Omit<BusinessSearchFilters, "categorySlug">) {
-  return overviewQuery(filters, "ej.source_type = 'visa_service'");
+export type VisaServiceFilters = Omit<BusinessSearchFilters, "categorySlug"> & { licensedOnly?: boolean };
+
+function visaServiceProvidersQuery({ licensedOnly, ...rest }: VisaServiceFilters) {
+  const q = overviewQuery(rest, "ej.source_type = 'visa_service'");
+  if (licensedOnly) {
+    q.whereRaw(
+      `exists (select 1 from ${S}.extraction_visa_services evs where evs.job_id = ei.job_id and evs.registration_status = 'active')`,
+    );
+  }
+  return q;
 }
 
 function withSlug<T extends { id: string; business_name: string }>(row: T) {
@@ -62,9 +70,7 @@ export async function countPublicInstitutions(filters: Omit<BusinessSearchFilter
   return Number(row.count);
 }
 
-export async function listPublicVisaServiceProviders(
-  filters: Omit<BusinessSearchFilters, "categorySlug">, limit: number, offset: number,
-) {
+export async function listPublicVisaServiceProviders(filters: VisaServiceFilters, limit: number, offset: number) {
   const rows = await visaServiceProvidersQuery(filters)
     .select(
       "ei.id", "ei.name as business_name", "ei.logo_url", "ei.description", "ei.city", "ei.country as country_name",
@@ -80,7 +86,7 @@ export async function listPublicVisaServiceProviders(
     withSlug({ ...r, service_count: Number(r.service_count) }));
 }
 
-export async function countPublicVisaServiceProviders(filters: Omit<BusinessSearchFilters, "categorySlug">) {
+export async function countPublicVisaServiceProviders(filters: VisaServiceFilters) {
   const [row] = await visaServiceProvidersQuery(filters).count("ei.id as count");
   return Number(row.count);
 }

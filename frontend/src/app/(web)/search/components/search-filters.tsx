@@ -68,6 +68,7 @@ export function SearchFilters({
   basis,
   countryOptions,
   cityOptions,
+  licensedOnly,
 }: Readonly<{
   activeTab: SearchTabKey;
   country?: string;
@@ -87,6 +88,7 @@ export function SearchFilters({
   basis?: string;
   countryOptions?: { value: string; label: string }[];
   cityOptions?: { value: string; label: string }[];
+  licensedOnly?: boolean;
 }>) {
   return (
     <form method="get" action="/search" className="rounded-xl border border-border bg-card p-5">
@@ -101,6 +103,7 @@ export function SearchFilters({
         {activeTab === "courses" ? "study goal, intake and budget"
           : activeTab === "jobs" ? "job type"
           : activeTab === "scholarships" ? "basis and degree level"
+          : activeTab === "visa-services" ? "location and registration"
           : "location"}.
       </p>
 
@@ -171,6 +174,15 @@ export function SearchFilters({
             </label>
           </FilterSection>
         </>
+      )}
+
+      {activeTab === "visa-services" && (
+        <FilterSection letter="B" title="Registration">
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input type="checkbox" name="licensed_only" value="true" defaultChecked={licensedOnly} className="h-4 w-4 rounded border-input" />
+            Active registration only
+          </label>
+        </FilterSection>
       )}
 
       {activeTab === "scholarships" && (

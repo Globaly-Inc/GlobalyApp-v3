@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import type { SearchTabKey } from "../types";
 
 export function SearchBar({
-  activeTab, search, country, city, degreeLevel, subjectArea, jobType, isRemote, feeMin, feeMax, currency, sort, intakeYear, basis,
+  activeTab, search, country, city, degreeLevel, subjectArea, jobType, isRemote, feeMin, feeMax, currency, sort,
+  intakeYear, basis, licensedOnly,
 }: Readonly<{
   activeTab: SearchTabKey;
   search?: string;
@@ -19,6 +20,7 @@ export function SearchBar({
   sort?: string;
   intakeYear?: number;
   basis?: string;
+  licensedOnly?: boolean;
 }>) {
   return (
     <form method="get" action="/search" className="flex items-center gap-2 flex-1">
@@ -35,6 +37,7 @@ export function SearchBar({
       {sort && <input type="hidden" name="sort" value={sort} />}
       {intakeYear != null && <input type="hidden" name="intake_year" value={intakeYear} />}
       {basis && <input type="hidden" name="basis" value={basis} />}
+      {licensedOnly && <input type="hidden" name="licensed_only" value="true" />}
       <input
         type="text"
         name="search"

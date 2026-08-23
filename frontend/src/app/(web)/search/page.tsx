@@ -61,6 +61,7 @@ type SearchPageProps = Readonly<{
     sort?: string;
     page?: string;
     basis?: string;
+    licensed_only?: string;
   }>;
 }>;
 
@@ -83,6 +84,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     intake_year: params.intake_year ? Number(params.intake_year) : undefined,
     sort: params.sort || undefined,
     basis: params.basis || undefined,
+    licensed_only: params.licensed_only === "true",
   };
 
   const fetchers: Record<SearchTabKey, () => Promise<{ data: unknown[]; meta: { page: number; limit: number; total: number; totalPages: number } }>> = {
@@ -134,6 +136,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     intakeYear: filters.intake_year,
     intakeYears: courseFilterOptions?.years,
     basis: filters.basis,
+    licensedOnly: filters.licensed_only,
   };
 
   return (
