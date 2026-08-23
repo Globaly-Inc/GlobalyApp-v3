@@ -52,7 +52,9 @@
 
 :root {
   /* Globaly Editorial Red Design System — ported verbatim from GlobalyApp-V2 */
-  --background: hsl(0 0% 100%);
+  /* Cloud white, matching GlobalyOS's `--background: 210 20% 99%`: a hair off pure white, so white cards,
+     the header and the sidebar read as surfaces on a page instead of merging into it. */
+  --background: hsl(210 20% 99%);
   --foreground: hsl(222 47% 11%);
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(222 47% 11%);

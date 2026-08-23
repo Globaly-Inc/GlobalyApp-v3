@@ -94,10 +94,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const avatarPhotoUrl = mounted ? profile?.photo_url : null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
+    <div className="min-h-screen flex flex-col bg-background">
       {/* Full-width bar above the sidebar, as in GlobalyOS: the mark sits over the rail, and the sidebar
           starts below the bar. Navigation lives in the sidebar, so this keeps only the utility cluster. */}
-      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-background">
+      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="flex h-16 items-center">
           {/* The logo box is exactly the rail's width (w-20), so the divider that follows it lands on the
               same axis as the rail's right border below. Below `md` there is no rail, so it reverts to

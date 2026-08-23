@@ -22,7 +22,7 @@ export function PersonalSidebar() {
   const submenuItems = activeModule?.items ?? [];
 
   return (
-    <aside className="hidden md:flex sticky top-16 z-30 h-[calc(100vh-4rem)] shrink-0 border-r border-border bg-background">
+    <aside className="hidden md:flex sticky top-16 z-30 h-[calc(100vh-4rem)] shrink-0 border-r border-border bg-card/95 backdrop-blur">
       <div
         className={cn(
           "flex w-20 flex-col items-center overflow-y-auto py-3",
