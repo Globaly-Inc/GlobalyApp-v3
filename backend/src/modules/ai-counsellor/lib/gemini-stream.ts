@@ -193,6 +193,29 @@ export async function streamChatWithTools(
   return { fullText, usage, toolRounds };
 }
 
+/**
+ * Tidy a generated title, or return "" to mean "not usable — keep the one we have".
+ *
+ * A reasoning model spends output tokens on thinking before it writes, so a tight
+ * maxOutputTokens can return a single truncated fragment rather than a title. That
+ * fragment was being saved over the provisional title, which is where the one-word
+ * nonsense session names came from. A title has to look like a title to be accepted.
+ */
+export function cleanTitle(raw: string): string {
+  const cleaned = raw
+    .replace(/^```[a-z]*\n?|```$/g, "") // stray code fences
+    .replace(/^["'`*#\s]+|["'`*.\s]+$/g, "") // quotes, markdown, trailing punctuation
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Under two words is a truncation, not a summary — the prompt asks for 5-9.
+  if (cleaned.split(" ").filter(Boolean).length < 2) return "";
+
+  if (cleaned.length <= 80) return cleaned;
+  // Trim to a word boundary so the sidebar never shows a half-word.
+  return cleaned.slice(0, 80).replace(/\s+\S*$/, "");
+}
+
 /** Quick one-shot generation for auto-titling (non-streaming). */
 export async function generateTitle(content: string): Promise<string> {
   const model = getClient().getGenerativeModel({
@@ -202,8 +225,11 @@ export async function generateTitle(content: string): Promise<string> {
       "Capture the specifics: study destination, program/subject, degree level, or topic (visa, scholarships, fees) when mentioned. " +
       "Examples: 'Data Science Masters options in Canada', 'Student visa requirements for Australia', 'Comparing MBA fees at Georgia Tech'. " +
       "Return ONLY the title — no quotes, no trailing punctuation.",
-    generationConfig: { maxOutputTokens: 40, temperature: 0.3 },
+    // Generous budget on purpose: GEMINI_MODEL is a reasoning model and thinking tokens
+    // are drawn from this same allowance, so 40 could be spent before the title starts.
+    // A title is ~15 tokens; the rest is headroom, not output length.
+    generationConfig: { maxOutputTokens: 512, temperature: 0.3 },
   });
   const result = await model.generateContent(content.slice(0, 500));
-  return result.response.text().trim().slice(0, 80);
+  return cleanTitle(result.response.text());
 }

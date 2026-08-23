@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Paperclip, Sparkles } from "lucide-react";
+import { Check, Copy, CornerUpLeft, Paperclip, Sparkles } from "lucide-react";
 import type { CourseCard as CourseCardType, Message, ResponseBlock } from "../apis/types";
 import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
 import { MessageBlocks } from "./message-blocks";
 import { MessageMarkdown } from "./message-markdown";
+import { setReplyTo } from "../store/ai-chat-slice";
+import { splitQuote } from "../utils";
+import { useAppDispatch } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
 
 type ChatMessageProps = {
@@ -31,6 +34,39 @@ function CopyButton({ text }: { text: string }) {
     <Button variant="ghost" size="icon-xs" onClick={copy} aria-label={copied ? "Copied" : "Copy message"}>
       {copied ? <Check className="text-primary" /> : <Copy />}
     </Button>
+  );
+}
+
+function ReplyButton({ target }: { target: { role: Message["role"]; content: string } }) {
+  const dispatch = useAppDispatch();
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      onClick={() => dispatch(setReplyTo(target))}
+      aria-label="Reply to this message"
+    >
+      <CornerUpLeft />
+    </Button>
+  );
+}
+
+/** Row under a turn holding its copy/reply/feedback controls. */
+function MessageActions({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-0.5 text-muted-foreground opacity-70 transition-opacity hover:opacity-100">
+      {children}
+    </div>
+  );
+}
+
+/** The quote a reply carries, rendered as a strip instead of a literal "> " line. */
+function QuotedText({ text }: { text: string }) {
+  return (
+    <p className="mb-1.5 border-l-2 border-primary/40 pl-2 text-xs text-muted-foreground line-clamp-3">
+      {text}
+    </p>
   );
 }
 
@@ -98,6 +134,11 @@ function AssistantTurn({
   onChipClick?: (chip: string) => void;
   footer?: React.ReactNode;
 }) {
+  // The model routinely answers its own question twice — once as a quick_replies
+  // block, once as chips — so two near-identical option rows stack up. One set of
+  // tappable options per turn; the block wins because it carries the question.
+  const hasQuickReplies = blocks.some((b) => b.type === "quick_replies");
+
   return (
     <div className="flex w-full gap-3">
       <AssistantMark />
@@ -111,7 +152,7 @@ function AssistantTurn({
             ))}
           </div>
         )}
-        {chips.length > 0 && <Chips chips={chips} onChipClick={onChipClick} />}
+        {chips.length > 0 && !hasQuickReplies && <Chips chips={chips} onChipClick={onChipClick} />}
         {footer}
       </div>
     </div>
@@ -120,14 +161,21 @@ function AssistantTurn({
 
 export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
   if (message.role === "user") {
+    const { quote, body } = splitQuote(message.content);
     return (
-      <div className="flex flex-col items-end gap-2">
+      <div className="flex flex-col items-end gap-1.5">
         <div className="max-w-[85%] rounded-2xl rounded-br-md bg-muted px-4 py-2.5">
-          <p className="text-[0.9375rem] leading-relaxed whitespace-pre-wrap text-foreground">
-            {message.content}
+          {quote && <QuotedText text={quote} />}
+          {/* select-text so the prompt can be selected and copied by hand, not just via the button */}
+          <p className="text-[0.9375rem] leading-relaxed whitespace-pre-wrap select-text text-foreground">
+            {body}
           </p>
         </div>
         {!!message.attachments?.length && <Attachments paths={message.attachments} />}
+        <MessageActions>
+          <CopyButton text={body} />
+          <ReplyButton target={{ role: "user", content: body }} />
+        </MessageActions>
       </div>
     );
   }
@@ -142,10 +190,11 @@ export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
       footer={
         // Optimistic rows have no server id yet, so there's nothing to rate.
         message.id > 0 ? (
-          <div className="flex items-center gap-0.5 text-muted-foreground opacity-70 transition-opacity hover:opacity-100">
+          <MessageActions>
             <CopyButton text={message.content} />
+            <ReplyButton target={{ role: "assistant", content: message.content }} />
             <FeedbackButtons messageId={message.id} feedback={message.feedback} />
-          </div>
+          </MessageActions>
         ) : null
       }
     />

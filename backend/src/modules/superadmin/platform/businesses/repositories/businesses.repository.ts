@@ -70,13 +70,101 @@ export async function listBusinesses(
     }),
   );
 
-  return rows;
+  // Every row says which table it came from, so a click can be routed to the right screen.
+  return rows.map((row: any) => ({ ...row, kind: "business" as const }));
 }
 
 export async function countBusinesses(search?: string, status?: string, category?: number, categorySlug?: string) {
   const q = applyBusinessFilters(businessListQuery(), search, status, category, categorySlug).count("b.id as count");
   const [row] = await q;
   return Number(row.count);
+}
+
+// ── Institutions in the same list ──
+// Institutions are the same kind of thing as businesses; they live in their own table only so
+// one table doesn't hold everything. So they are read into the SAME row shape and rendered by
+// the same card. `kind` is what tells them apart — every row carries it, so a caller can route
+// a click to the right detail screen.
+
+/** The 'institutions' business category. Institutions have no category column of their own — they
+ *  ARE that category — so it is reported as a constant to keep the row shape identical. */
+const INSTITUTION_CATEGORY_SLUG = "institutions";
+
+function institutionListQuery() {
+  return masterKnex("institutions as i")
+    .leftJoin("platform_users as owner", "owner.id", "i.platform_user_id")
+    .leftJoin("countries as c", "c.id", "i.country_id")
+    .whereNull("i.deleted_at");
+}
+
+function applyInstitutionFilters<T extends ReturnType<typeof institutionListQuery>>(
+  q: T,
+  search?: string,
+  status?: string,
+) {
+  if (search) {
+    q.where((b) =>
+      b.whereILike("i.institution_name", `%${search}%`)
+        .orWhereILike("i.email", `%${search}%`)
+        .orWhereILike("i.subdomain", `%${search}%`),
+    );
+  }
+  if (status) q.where({ "i.status": status });
+  return q;
+}
+
+export async function listInstitutions(limit: number, offset: number, search?: string, status?: string) {
+  const category = await masterKnex("business_categories")
+    .where({ slug: INSTITUTION_CATEGORY_SLUG })
+    .first("id", "name");
+
+  const rows = await applyInstitutionFilters(institutionListQuery(), search, status)
+    .select(
+      "i.id",
+      // Aliased into the business column names so one row type and one card serve both.
+      "i.institution_name as business_name",
+      "i.subdomain",
+      "i.institution_type as business_type",
+      "i.email", "i.phone", "i.status", "i.claim_status", "i.is_published", "i.country_id", "i.city",
+      "i.logo_url", "i.account_status", "i.created_at",
+      "i.platform_user_id as owner_id", "i.schema_name",
+      masterKnex.raw("i.platform_user_id IS NULL as is_unclaimed"),
+      masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
+      masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
+      "c.name as country_name",
+      "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
+    )
+    .orderBy("i.created_at", "desc")
+    .limit(limit).offset(offset);
+
+  // institutions have no profile_views/branches/services tables — reported as 0 rather than
+  // omitted, so the shared card doesn't have to special-case a missing field.
+  return rows.map((row: any) => ({
+    ...row,
+    kind: "institution" as const,
+    // institutions.status starts at 'pending', which is not one of the business status values
+    // the shared card knows — STATUS_LABELS['pending'] is undefined, so the badge rendered
+    // blank. Mapped onto the shared vocabulary; every other value already matches.
+    status: row.status === "pending" ? "unverified" : row.status,
+    profile_views: 0,
+    branch_count: 0,
+    service_count: 0,
+  }));
+}
+
+export async function countInstitutions(search?: string, status?: string) {
+  const [row] = await applyInstitutionFilters(institutionListQuery(), search, status).count("i.id as count");
+  return Number(row.count);
+}
+
+export async function findInstitutionById(id: number) {
+  return masterKnex("institutions").where({ id }).whereNull("deleted_at").first();
+}
+
+/** Category id -> slug, so the list can decide which table a category filter means. */
+export async function findCategorySlugById(id: number): Promise<string | undefined> {
+  const row = await masterKnex("business_categories").where({ id }).first("slug");
+  return row?.slug;
 }
 
 export async function findBusinessById(id: number) {

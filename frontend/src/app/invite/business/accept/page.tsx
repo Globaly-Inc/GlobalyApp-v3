@@ -1,5 +1,5 @@
-import { BusinessClaimAcceptView } from "@/app/invite/business-claim-accept-view";
+import { ClaimAcceptView } from "@/app/invite/claim-accept-view";
 
 export default function BusinessClaimAcceptPage() {
-  return <BusinessClaimAcceptView />;
+  return <ClaimAcceptView kind="business" />;
 }

@@ -170,6 +170,20 @@
       ]
     },
     {
+      "id": "factual-question-not-deflected",
+      "note": "Regression: 'counsel before recommending' was being applied to plain factual questions too, so a credit-hour question came back as 'what level of study are you interested in?' and the actual answer only arrived a turn later.",
+      "ac": [
+        "AC-04"
+      ],
+      "turn": "second",
+      "setup": "Tell me about the education system in the USA.",
+      "prompt": "How do US college credits work?",
+      "expect": [
+        "no_question_only",
+        "no_card"
+      ]
+    },
+    {
       "id": "counselling-without-course",
       "ac": [
         "AC-01"

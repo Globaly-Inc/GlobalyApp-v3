@@ -16,7 +16,7 @@ process.env.DB_NAME = process.env.DB_NAME || "x";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "x";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { streamChatWithTools } from "../src/modules/ai-counsellor/lib/gemini-stream.js";
+import { cleanTitle, streamChatWithTools } from "../src/modules/ai-counsellor/lib/gemini-stream.js";
 import { toolsFor } from "../src/modules/ai-counsellor/lib/tools.js";
 
 let passed = 0;
@@ -208,6 +208,26 @@ async function main() {
     assert(!discovery.includes("get_course_details"), "discovery turn has no get_course_details", discovery);
     assert(discovery.includes("search_knowledge"), "discovery turn keeps search_knowledge");
     assertEqual(normal.length, discovery.length + 2, "only the two course tools are withheld");
+  }
+
+  console.log("\ncleanTitle — session naming");
+  {
+    assertEqual(cleanTitle("Student visa requirements for Australia"),
+      "Student visa requirements for Australia", "a good title passes through");
+    assertEqual(cleanTitle('  "Data Science Masters options in Canada."  '),
+      "Data Science Masters options in Canada", "quotes and trailing punctuation are stripped");
+    assertEqual(cleanTitle("**US Education System**"), "US Education System", "markdown emphasis is stripped");
+    assertEqual(cleanTitle("```\nUS credit hours explained\n```"), "US credit hours explained",
+      "stray code fence is stripped");
+
+    // The actual bug: a reasoning model burns the token budget and emits a fragment.
+    assertEqual(cleanTitle("Okay"), "", "single-word fragment is rejected, not saved");
+    assertEqual(cleanTitle(""), "", "empty output is rejected");
+    assertEqual(cleanTitle("   \n  "), "", "whitespace-only output is rejected");
+
+    const long = cleanTitle(`Comparing ${"postgraduate ".repeat(12)}options`);
+    assert(long.length <= 80, "long titles are capped at 80 chars", long.length);
+    assert(!long.endsWith("postgradua"), "cap trims to a word boundary, not mid-word", long);
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

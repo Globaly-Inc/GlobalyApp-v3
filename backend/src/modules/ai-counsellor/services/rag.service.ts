@@ -1,8 +1,9 @@
 import { createChildLogger } from "../../../shared/logger.js";
 import * as knowledge from "../repositories/knowledge.repository.js";
-// One card mapping for both retrieval paths — a divergence here would mean the
-// legacy path and the tool path emitting different course-card shapes.
-import { courseCardFields } from "../lib/tools.js";
+// One card mapping and one chunk-budget rule for both retrieval paths — a divergence
+// here would mean the legacy path and the tool path emitting different course-card
+// shapes, or handing the model different amounts of rack context for the same question.
+import { capPerDocument, courseCardFields } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
 import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
@@ -71,9 +72,6 @@ function freshnessOf(row: { last_verified_at: string | null; effective_until: st
   return parts.length ? `, ${parts.join(", ")}` : "";
 }
 
-/** At most this many chunks from one document, so a long page can't fill every slot. */
-const MAX_CHUNKS_PER_DOCUMENT = 2;
-
 /** Rack retrieval: chunk-level only — the whole-page path was retired in 20260822_001. */
 async function matchRack(
   vector: number[],
@@ -83,17 +81,6 @@ async function matchRack(
   const capped = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 8, countryCode));
   trace(`Knowledge rack: ${capped.length} chunks found`);
   return capped;
-}
-
-/** Keep the best MAX_CHUNKS_PER_DOCUMENT chunks per document, order preserved. */
-function capPerDocument(chunks: knowledge.KnowledgeChunkResult[]): knowledge.KnowledgeChunkResult[] {
-  const seen = new Map<string, number>();
-  return chunks.filter((c) => {
-    const used = seen.get(c.document_id) ?? 0;
-    if (used >= MAX_CHUNKS_PER_DOCUMENT) return false;
-    seen.set(c.document_id, used + 1);
-    return true;
-  });
 }
 
 export interface RagOutput {

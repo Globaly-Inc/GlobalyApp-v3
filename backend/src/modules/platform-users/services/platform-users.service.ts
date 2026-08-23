@@ -6,6 +6,8 @@ import { computeCompletion, syncCompletion } from "./completion.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as bizRepo from "../../businesses/repositories/businesses.repository.js";
 import { registerBusiness } from "../../businesses/services/businesses.service.js";
+import { issueScopedAccessToken } from "../../auth/auth.service.js";
+import * as institutionMembers from "./institution-members.service.js";
 import { provisionInstitutionSchema } from "../../../core/business/provisioner.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
@@ -140,22 +142,35 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     throw err;
   }
 
-  // Create owner member in the institution schema.
-  // Pool key is the schema UUID — institution ids would collide with business ids in the shared pool map.
+  // Create the owner member. addMember writes BOTH the tenant `members` row and
+  // user_institution_index — see institution-members.service.ts for why they must move
+  // together. Pool key is the schema UUID: institution ids would collide with business ids.
   const db = await getKnex(institution.schema_name, schemaName(institution.schema_name));
-  await db("members").insert({
+  await institutionMembers.addMember(db, Number(institution.id), {
     platform_user_id: userId,
     role: "owner",
     is_owner: true,
-    account_status: 1,
     first_name: user.first_name,
     last_name: user.last_name,
     email: data.email ?? user.email,
     phone: data.phone,
   });
 
+  await repo.addAccountCategory(userId, { type: "institution", role: institution.institution_type ?? "institution" });
+
+  // Last, as registerBusiness does with its own account_status: 1 is what makes the
+  // institution resolvable by findInstitutionBySchemaName and listUserInstitutions, so it must
+  // not flip until the schema and the owner member exist. Without it the scoped token below
+  // would be handed out for an institution the tenant plugin then refuses to resolve.
+  await repo.updateInstitution(institution.id, { account_status: 1 });
+
+  // Scoped token, as registerBusiness does — otherwise the user has just created an
+  // institution and still has to log out and back in to enter it.
+  const access_token = issueScopedAccessToken({ id: userId, email: user.email }, institution.schema_name, "owner", "institution");
+
   return {
     institution: { id: institution.id, org_id: institution.schema_name, subdomain: institution.subdomain, institution_name: institution.institution_name },
+    access_token,
     message: "Institution registered.",
   };
 }

@@ -41,6 +41,36 @@ export interface ToolRun {
 /** Hydrating a course is 8 queries — keep the fan-out small. */
 const MAX_COURSES = 6;
 
+// ── Rack chunk budget ──
+
+/** At most this many chunks from one document, so a long page can't fill every slot. */
+export const MAX_CHUNKS_PER_DOCUMENT = 2;
+
+/**
+ * Keep the best MAX_CHUNKS_PER_DOCUMENT chunks per document, order preserved.
+ *
+ * Skipped entirely when the hits all come from ONE document: the cap exists to stop a
+ * long page crowding out other sources, and with a single source there is nothing to
+ * crowd out — capping there just throttles the only knowledge available. A rack holding
+ * one big reference doc was silently limited to 2 chunks per turn, so a question whose
+ * answer sat outside the top 2 got answered from whichever sections did make it.
+ *
+ * Lives here rather than in rag.service because rag.service already imports from this
+ * module (courseCardFields); the reverse direction would be a cycle.
+ */
+export function capPerDocument<T extends { document_id: string }>(chunks: T[]): T[] {
+  const distinctDocuments = new Set(chunks.map((c) => c.document_id)).size;
+  if (distinctDocuments <= 1) return chunks;
+
+  const perDocument = new Map<string, number>();
+  return chunks.filter((c) => {
+    const used = perDocument.get(c.document_id) ?? 0;
+    if (used >= MAX_CHUNKS_PER_DOCUMENT) return false;
+    perDocument.set(c.document_id, used + 1);
+    return true;
+  });
+}
+
 // ── Card fields ──
 
 /**
@@ -371,14 +401,7 @@ async function dispatch(
           : Promise.resolve([]),
       ]);
 
-      // Two chunks per document at most, so one long page can't fill every slot.
-      const perDocument = new Map<string, number>();
-      const chunks = passages.filter((p) => {
-        const used = perDocument.get(p.document_id) ?? 0;
-        if (used >= 2) return false;
-        perDocument.set(p.document_id, used + 1);
-        return true;
-      });
+      const chunks = capPerDocument(passages);
 
       const sources: ToolSource[] = [
         ...visaRules.map((v) => ({

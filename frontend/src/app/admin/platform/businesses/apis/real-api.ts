@@ -1,7 +1,7 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from "@/lib/api/http";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
-  BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation,
+  BranchPatch, Business, BusinessCreateInput, ClaimRequestRef, BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation,
   BusinessService, BusinessStatus, EnquirySettingsPatch, LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
@@ -70,7 +70,13 @@ export const businessesRealApi = {
   updateBusiness: (id: number, patch: BusinessPatch): Promise<BusinessDetail> => httpPatch(`${BASE}/${id}`, patch),
   updateStatus: (id: number, status: BusinessStatus): Promise<{ status: string }> =>
     httpPatch(`${BASE}/${id}/status`, { status }),
-  sendClaimRequest: (id: number): Promise<{ claim_status: string }> => httpPost(`${BASE}/${id}/claim-request`, {}),
+  // Two paths because the id spaces are separate — institution 3 and business 3 are different
+  // rows, so `kind` has to choose.
+  sendClaimRequest: ({ kind, id }: ClaimRequestRef): Promise<{ claim_status: string }> =>
+    httpPost(
+      kind === "institution" ? `/admin/platform/institutions/${id}/claim-request` : `${BASE}/${id}/claim-request`,
+      {},
+    ),
   sendBulkClaimRequests: (ids: number[]): Promise<{ queued: number }> => httpPost(`${BASE}/claim-requests/bulk`, { ids }),
   updatePublished: (id: number, is_published: boolean): Promise<{ is_published: boolean }> =>
     httpPatch(`${BASE}/${id}/published`, { is_published }),

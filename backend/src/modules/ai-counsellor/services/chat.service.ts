@@ -71,7 +71,22 @@ export async function handleMessage(opts: {
 
     writeEvent(opts.reply, "session", { id: session.id, isNew, title: provisionalTitle });
 
-    // 3. Persist user message
+    // 3. Conversation history — read BEFORE persisting this turn's message, so "everything
+    // before now" needs no positional trick. It used to be read after the insert and then
+    // `.slice(0, -1)`'d to drop the new row, which assumed the new row sorted last. When
+    // that assumption failed the slice removed the previous ASSISTANT reply instead and
+    // left the new user message in history, so the newest thing the model saw as context
+    // was the student's PREVIOUS question — and it answered that one, a turn behind.
+    //
+    // Text turns only — past tool calls and their results are not replayed. Cheaper, and
+    // the model re-searches when it actually needs the data again.
+    const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
+    const history = prevMessages.map(m => ({
+      role: (m.role === "user" ? "user" : "model") as "user" | "model",
+      parts: [{ text: m.content }],
+    }));
+
+    // 4. Persist user message
     await messagesRepo.create({
       session_id: session.id,
       role: "user",
@@ -79,7 +94,7 @@ export async function handleMessage(opts: {
       attachments: opts.attachments,
     });
 
-    // 4. Profile context
+    // 5. Profile context
     const profileContext = await knowledgeRepo.getProfileContext(opts.userId);
 
     // Discovery turn: first message of a platform session gets NO course data, so
@@ -95,23 +110,20 @@ export async function handleMessage(opts: {
     const returning =
       isFirstMessage && !opts.embed && (await sessionsRepo.countByUser(opts.userId)) > 1;
 
-    // 5. Conversation history.
-    // Text turns only — past tool calls and their results are not replayed. Cheaper,
-    // and the model re-searches when it actually needs the data again.
-    const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
-    // Exclude the user message we just persisted (it's the last one) — it goes as userMessage
-    const historyMessages = prevMessages.slice(0, -1);
-    const history = historyMessages.map(m => ({
-      role: (m.role === "user" ? "user" : "model") as "user" | "model",
-      parts: [{ text: m.content }],
-    }));
-
     if (opts.reply.raw.destroyed) {
       logger.info("Client disconnected before streaming", { sessionId: session.id });
       return;
     }
 
-    const trace = (step: string) => writeEvent(opts.reply, "trace", { step });
+    // Kept as well as streamed: the UI renders only the newest step and strips the detail
+    // off it (thinking-indicator's `step.split(/[:…]/)[0]`), so "Searched knowledge: <query>
+    // — N passages" shows as "Searched knowledge" and the query is unrecoverable afterwards.
+    // That is right for students and useless for debugging "why did it answer that?".
+    const traceSteps: string[] = [];
+    const trace = (step: string) => {
+      traceSteps.push(step);
+      writeEvent(opts.reply, "trace", { step });
+    };
     let emitted = false;
     const onChunk = (chunk: string) => {
       emitted = true;
@@ -230,6 +242,21 @@ export async function handleMessage(opts: {
       completion_tokens: result.usage.completionTokens,
       total_tokens: result.usage.totalTokens,
       latency_ms: latencyMs,
+    });
+
+    // `question` vs `historyTail` is the whole diagnosis for a suspected off-by-one:
+    // question is what the model was asked THIS turn, historyTail is the newest message
+    // it was given as prior context. If historyTail repeats question, the current message
+    // is in the history too and the model can answer either. If question does not match
+    // what the student typed, the wrong content left the browser.
+    logger.info("Retrieval trace", {
+      sessionId: session.id,
+      messageId: aiMessage.id,
+      question: opts.content,
+      historyCount: history.length,
+      historyRoles: history.map(h => h.role).join(","),
+      historyTail: history.at(-1)?.parts[0]?.text?.slice(0, 80) ?? null,
+      steps: traceSteps,
     });
 
     // 10. Increment message count

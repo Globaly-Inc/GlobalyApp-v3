@@ -104,15 +104,76 @@ export async function createBusiness(input: BusinessCreateInput) {
   return repo.findBusinessDetail(business.id);
 }
 
+/**
+ * The admin listing list, spanning BOTH tables.
+ *
+ * Businesses and institutions are the same kind of record, split across two tables only to stop
+ * one table holding everything — so the category filter decides which table to read:
+ *
+ *   category = 'institutions'  -> institutions only
+ *   any other category         -> businesses only (an institution has no other category)
+ *   no category ("All")        -> both
+ *
+ * The "both" case pages over the two tables together. It over-fetches — `limit + offset` from
+ * each side, merged, sorted by created_at, then sliced — because a row's position in the
+ * combined order can't be known from either table alone. Correct for any page, and bounded by
+ * page depth rather than table size.
+ *
+ * ponytail: a SQL UNION ALL would push the merge into Postgres. Worth doing when admins page
+ * deep; at a few hundred listings this is cheaper to read than to optimise.
+ */
 export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
 ) {
-  const [rawRows, total] = await Promise.all([
-    repo.listBusinesses(limit, offset, search, status, category, categorySlug),
-    repo.countBusinesses(search, status, category, categorySlug),
+  const scope = await resolveListScope(category, categorySlug);
+
+  if (scope === "institutions") {
+    const [rawRows, total] = await Promise.all([
+      repo.listInstitutions(limit, offset, search, status),
+      repo.countInstitutions(search, status),
+    ]);
+    return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
+  }
+
+  if (scope === "businesses") {
+    const [rawRows, total] = await Promise.all([
+      repo.listBusinesses(limit, offset, search, status, category, categorySlug),
+      repo.countBusinesses(search, status, category, categorySlug),
+    ]);
+    return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
+  }
+
+  const depth = limit + offset;
+  const [bizRows, instRows, bizTotal, instTotal] = await Promise.all([
+    repo.listBusinesses(depth, 0, search, status),
+    repo.listInstitutions(depth, 0, search, status),
+    repo.countBusinesses(search, status),
+    repo.countInstitutions(search, status),
   ]);
-  const rows = await Promise.all(rawRows.map(withImagePreviews));
-  return { rows, total };
+
+  const merged = [...bizRows, ...instRows]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(offset, offset + limit);
+
+  return {
+    rows: await Promise.all(merged.map(withImagePreviews)),
+    total: bizTotal + instTotal,
+  };
+}
+
+/**
+ * Which table(s) the current category filter means.
+ *
+ * Resolved by SLUG, never a hardcoded id, so a reseeded categories table can't silently point
+ * this at the wrong table — same reason promote resolves it that way.
+ */
+async function resolveListScope(
+  category?: number,
+  categorySlug?: string,
+): Promise<"businesses" | "institutions" | "both"> {
+  if (!category && !categorySlug) return "both";
+  const slug = categorySlug ?? (await repo.findCategorySlugById(Number(category)));
+  return slug === "institutions" ? "institutions" : "businesses";
 }
 
 export async function getBusinessDetail(id: number) {
@@ -140,17 +201,81 @@ export async function updateStatus(id: number, status: BusinessStatus) {
 export async function sendClaimRequest(id: number) {
   const biz = await repo.findBusinessDetail(id);
   if (!biz) throw new NotFoundError("Business not found");
-  if (!biz.owner_email) throw new ConflictError("This business has no owner email to send a claim request to");
+
+  // MUST match the address acceptClaim resolves the claimant against, or the link would be
+  // mailed to one person and the account created for another. An owner-bearing listing resolves
+  // by owner_id, so it goes to the owner; an ownerless promoted listing resolves by the
+  // business's own contact email, so it goes there.
+  const to = biz.owner_id ? biz.owner_email : biz.email;
+  if (!to) {
+    throw new ConflictError(
+      "This business has no email to send a claim request to — extraction found no contact address",
+    );
+  }
 
   const token = randomBytes(32).toString("hex");
   const claim_token_expires_at = new Date(Date.now() + CLAIM_TOKEN_TTL_MS);
-  await repo.updateBusiness(id, { claim_token: token, claim_token_expires_at, claim_status: "claim_pending" });
+  await repo.updateBusiness(id, {
+    claim_token: token,
+    claim_token_expires_at,
+    claim_status: "claim_pending",
+    // `status` too, because that is the column the admin badge and the status filter read
+    // (STATUS_LABELS has a "Claim Pending" entry for it). Writing only claim_status left the
+    // badge stuck on "Unverified" and made the Claim Pending filter match nothing.
+    //
+    // Only from "unverified", so sending a claim request can't quietly downgrade a business
+    // that is already verified or suspended.
+    ...(biz.status === "unverified" ? { status: "claim_pending" } : {}),
+  });
 
   const claimUrl = `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
   const ownerName = `${biz.owner_first_name ?? ""} ${biz.owner_last_name ?? ""}`.trim() || "there";
-  queueEmail({ to: biz.owner_email, ...claimBusinessEmail({ ownerName, businessName: biz.business_name, claimUrl }) }).catch((err) =>
+  queueEmail({ to, ...claimBusinessEmail({ ownerName, businessName: biz.business_name, claimUrl }) }).catch((err) =>
     logger.warn("Claim request email failed", { businessId: id, err: err.message }),
   );
+
+  return { claim_status: "claim_pending" as const };
+}
+
+/**
+ * Admin-triggered claim request for an institution — the institution twin of the above.
+ *
+ * Mails the INSTITUTION'S contact email (the address extraction captured), which is the same
+ * column acceptInstitutionClaim resolves the claimant against.
+ */
+export async function sendInstitutionClaimRequest(id: number) {
+  const inst = await repo.findInstitutionById(id);
+  if (!inst) throw new NotFoundError("Institution not found");
+
+  // Exactly the business rule, and it MUST match acceptInstitutionClaim's resolveClaimant:
+  // an institution with an owner (promote sets one when the job has a named agent) resolves by
+  // platform_user_id, so the link goes to that owner; an ownerless one resolves by the
+  // institution's own contact email, so it goes there.
+  //
+  // Getting this wrong doesn't just mislabel the dialog — it mails the link to one address while
+  // the account gets created for whoever owns the other.
+  const owner = inst.platform_user_id ? await userRepo.findByIdFull(inst.platform_user_id) : null;
+  const to = owner?.email ?? inst.email;
+  if (!to) {
+    throw new ConflictError(
+      "This institution has no contact email to send a claim request to — extraction found no address",
+    );
+  }
+
+  const token = randomBytes(32).toString("hex");
+  // setInstitutionClaimPending writes claim_status; the admin badge reads `status`, so both move
+  // together here for the same reason as the business path above.
+  await userRepo.setInstitutionClaimPending(id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
+  await userRepo.updateInstitution(id, { status: "claim_pending" });
+
+  const claimUrl = `${config.WEB_APP_URL}/invite/institution/accept?token=${token}`;
+  const ownerName = `${inst.first_name ?? ""} ${inst.last_name ?? ""}`.trim() || "there";
+  // ponytail: same template as the business claim — the copy is generic. An institution-specific
+  // one can wait until the wording actually matters.
+  queueEmail({
+    to,
+    ...claimBusinessEmail({ ownerName, businessName: inst.institution_name, claimUrl }),
+  }).catch((err) => logger.warn("Institution claim request email failed", { institutionId: id, err: err.message }));
 
   return { claim_status: "claim_pending" as const };
 }
@@ -206,13 +331,13 @@ export async function inviteMember(id: number, input: MemberInviteInput, adminId
 export async function updateMember(id: number, memberId: number, patch: MemberPatchInput) {
   const biz = await requireBusiness(id);
   const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
-  return agentsService.updateAgent(tenantDb, memberId, patch);
+  return agentsService.updateAgent(tenantDb, Number(biz.id), memberId, patch);
 }
 
 export async function removeMember(id: number, memberId: number) {
   const biz = await requireBusiness(id);
   const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
-  await agentsService.removeAgent(tenantDb, memberId);
+  await agentsService.removeAgent(tenantDb, Number(biz.id), memberId);
 }
 
 export async function listActivity(id: number, limit: number, offset: number) {

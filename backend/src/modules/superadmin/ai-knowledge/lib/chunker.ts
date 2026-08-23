@@ -281,3 +281,24 @@ export function chunkMarkdown(
   // retrieve, so drop it rather than burning a vector.
   return chunks.filter((c) => c.content.replace(/^#{1,6} .*$/gm, "").trim().length > 0);
 }
+
+/**
+ * The text that actually gets embedded for a chunk: a locating prefix, then the body.
+ *
+ * The prefix is the breadcrumb when there is one, and the document title only as a
+ * fallback. Prepending BOTH put the title on all ~100 chunks of a single document, and a
+ * question phrased like that title ("the education system of USA for domestic students"
+ * against a doc titled "United States — Domestic Education System") then scored every
+ * chunk high and nearly equally — ranking collapsed onto whichever body was most generic,
+ * so unrelated questions kept retrieving the same overview sections. The breadcrumb is
+ * what makes a specific section findable; the title is already stored for citation, and
+ * narrowing by document is a filter concern, not an embedding one.
+ */
+export function embedTextFor(
+  content: string,
+  headingPath?: string | null,
+  title?: string | null,
+): string {
+  const prefix = headingPath?.trim() || title?.trim();
+  return prefix ? `${prefix}\n\n${content}` : content;
+}

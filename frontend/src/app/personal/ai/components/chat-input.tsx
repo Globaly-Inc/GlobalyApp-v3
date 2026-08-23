@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Paperclip, Plus, X } from "lucide-react";
+import { ArrowUp, CornerUpLeft, Paperclip, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { setReplyTo } from "../store/ai-chat-slice";
+import { withQuote } from "../utils";
 import { cn } from "@/lib/utils";
 
 const MAX_ATTACHMENTS = 3;
@@ -23,6 +26,8 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments,
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const dispatch = useAppDispatch();
+  const replyTo = useAppSelector((s) => s.aiChat.replyTo);
 
   // A starter or chip fills the box from outside, so pull focus over to it — otherwise the user
   // has to click into the textarea before they can edit or press Enter. Typing already has focus,
@@ -31,6 +36,11 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments,
     const el = textareaRef.current;
     if (el && value && document.activeElement !== el) el.focus();
   }, [value]);
+
+  // Hitting Reply on a message should drop the cursor straight into the composer.
+  useEffect(() => {
+    if (replyTo) textareaRef.current?.focus();
+  }, [replyTo]);
 
   // Grow with the content up to the max height, then scroll. Height resets to auto
   // first, or the box only ratchets taller — scrollHeight keeps reporting the
@@ -42,11 +52,14 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments,
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
 
+  // A reply rides along as a leading markdown quote in the message text, so every
+  // send path (page, popover, embed) carries it without touching the API contract.
   const submit = () => {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
-    onSend(trimmed, files.length ? files : undefined);
+    onSend(replyTo ? withQuote(trimmed, replyTo.content) : trimmed, files.length ? files : undefined);
     setFiles([]);
+    if (replyTo) dispatch(setReplyTo(null));
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -73,6 +86,25 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments,
       )}
     >
       <div className="mx-auto max-w-3xl">
+        {replyTo && (
+          <div className="mb-2 flex items-start gap-2 rounded-xl border border-l-2 border-l-primary bg-muted/60 px-3 py-2">
+            <CornerUpLeft className="mt-0.5 size-3.5 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-muted-foreground">
+                Replying to {replyTo.role === "user" ? "your message" : "AI Counsellor"}
+              </p>
+              <p className="line-clamp-2 text-xs text-muted-foreground">{replyTo.content}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => dispatch(setReplyTo(null))}
+              aria-label="Cancel reply"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
         {files.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {files.map((file, i) => (

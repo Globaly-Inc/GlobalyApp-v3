@@ -319,7 +319,15 @@ async function assertSingleOwnerAndPocInvariants(db: Knex, agent: repo.AgentRow,
   }
 }
 
-export async function updateAgent(db: Knex, id: number, patch: AgentPatchInput) {
+/**
+ * `businessId` exists to keep user_business_index in step with the tenant `agents` row.
+ *
+ * The two must move together. `agents` is authoritative for permissions, but the index is
+ * what login reads to build `businesses[]` and to sign `orgRole` — so leaving it stale means
+ * /auth/me reports the member's old role and the JWT carries it. (Authorisation itself is
+ * unaffected: requirePermission resolves role_id from `agents`, never from the claim.)
+ */
+export async function updateAgent(db: Knex, businessId: number, id: number, patch: AgentPatchInput) {
   const agent = await repo.findAgentById(db, id);
   if (!agent) throw new NotFoundError("Agent not found");
 
@@ -341,10 +349,21 @@ export async function updateAgent(db: Knex, id: number, patch: AgentPatchInput) 
     ...(patch.is_public !== undefined ? { is_public: patch.is_public } : {}),
   });
   const [enriched] = await enrichAgents([updated]);
+
+  if (patch.role !== undefined || patch.is_owner !== undefined) {
+    await platformUserRepo.insertUserBusinessIndex({
+      platform_user_id: agent.platform_user_id,
+      business_id: businessId,
+      // enrichAgents resolves role_id back to a name — used when the patch didn't set a role.
+      role: patch.role ?? enriched.role,
+      is_owner: patch.is_owner ?? agent.is_owner,
+    });
+  }
+
   return enriched;
 }
 
-export async function removeAgent(db: Knex, id: number) {
+export async function removeAgent(db: Knex, businessId: number, id: number) {
   const agent = await repo.findAgentById(db, id);
   if (!agent) throw new NotFoundError("Agent not found");
   if (agent.is_owner) throw new ConflictError("Cannot remove the business owner");
@@ -353,4 +372,7 @@ export async function removeAgent(db: Knex, id: number) {
     if (remaining === 0) throw new ConflictError("Cannot remove the sole point of contact for super admin");
   }
   await repo.softDeleteAgent(db, id);
+  // Without this the removed member is still handed a token scoped to this business at login,
+  // and then requirePermission rejects every request — which reads as a broken account.
+  await platformUserRepo.softDeleteUserBusinessIndex(agent.platform_user_id, businessId);
 }

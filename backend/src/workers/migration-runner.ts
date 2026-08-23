@@ -23,14 +23,18 @@ async function migrateTenants(rows: Array<{ subdomain: string; schema_name: stri
   }
 }
 
+// schema_provisioned_at IS NULL = a promoted listing nobody owns yet, with no schema.
+// Including those would make migrate.latest() CREATE SCHEMA for every one of them.
 const businesses = await masterKnex("businesses")
   .select("subdomain", "schema_name")
-  .where("account_status", 1);
+  .where("account_status", 1)
+  .whereNotNull("schema_provisioned_at");
 await migrateTenants(businesses, "./database/migrations/business");
 
 const institutions = await masterKnex("institutions")
   .select("subdomain", "schema_name")
-  .whereNull("deleted_at");
+  .whereNull("deleted_at")
+  .whereNotNull("schema_provisioned_at");
 await migrateTenants(institutions, "./database/migrations/institution");
 
 console.table(results);

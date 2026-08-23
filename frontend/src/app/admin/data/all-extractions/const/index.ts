@@ -41,7 +41,10 @@ export const STATUS_CONFIG: Record<ExtractionStatus, StatusConfig> = {
 };
 
 export const ACTIVE_STATUSES: ExtractionStatus[] = ["mapping", "scraping", "extracting", "processing", "verifying"];
-export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "done", "approved"];
+// 'exported' is included so an already-published job can be re-published: promoteJob keys
+// every write on source_job_id, so a second run repairs the existing listing from the latest
+// extraction data instead of duplicating it. Declining is excluded for 'exported' separately.
+export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "done", "approved", "exported"];
 export const PAUSABLE_STATUSES: ExtractionStatus[] = ["scraping", "extracting"];
 export const FINISHED_STATUSES: ExtractionStatus[] = ["done", "completed", "approved", "verified", "exported", "pushed"];
 

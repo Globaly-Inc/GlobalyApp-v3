@@ -22,6 +22,8 @@ export const authPlugin = fp(async (app) => {
     "/api/v3/agents/invite/accept",
     "/api/v3/businesses/claim/accept",
     "/api/v3/businesses/claim/request",
+    "/api/v3/institutions/claim/accept",
+    "/api/v3/institutions/claim/request",
     // Health
     "/healthz",
     "/health/detailed",
@@ -60,6 +62,50 @@ export async function requireBusinessContext(req: FastifyRequest, reply: Fastify
   if (!req.auth?.orgId) {
     return reply.status(403).send({ error: "Switch to a business context first" });
   }
+  // orgId is now shared with institutions, so presence alone no longer proves this is a
+  // business. Without this check an institution-scoped token would reach business routes
+  // with req.business undefined. Absent orgType means business (pre-existing tokens).
+  if (req.auth.orgType === "institution") {
+    return reply.status(403).send({ error: "This endpoint requires a business context" });
+  }
+}
+
+export async function requireInstitutionContext(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.auth?.orgId || req.auth.orgType !== "institution") {
+    return reply.status(403).send({ error: "Switch to an institution context first" });
+  }
+}
+
+/**
+ * Institution role guard. Institutions have no roles/permissions tables — `members.role` is
+ * plain text (see database/migrations/institution/20260810_001_members.ts) — so this is a
+ * role check, not the permission resolution requirePermission does for businesses.
+ *
+ * Reads the tenant `members` row rather than trusting orgRole from the JWT, so a role
+ * changed after the token was minted takes effect immediately.
+ *
+ * Usage: { preHandler: [requireInstitutionContext, requireInstitutionRole("owner")] }
+ */
+export function requireInstitutionRole(...allowed: string[]) {
+  return async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db || req.auth?.orgType !== "institution") {
+      return reply.status(403).send({ error: "Institution context required" });
+    }
+
+    const member = await req.db("members")
+      .where({ platform_user_id: Number(req.auth.sub), account_status: 1 })
+      .whereNull("deleted_at")
+      .first("role", "is_owner");
+
+    if (!member) {
+      return reply.status(403).send({ error: "Not a member of this institution" });
+    }
+
+    // An owner can do anything, so callers don't have to spell out "owner" every time.
+    if (member.is_owner || allowed.length === 0 || allowed.includes(member.role)) return;
+
+    return reply.status(403).send({ error: "Insufficient role", required: allowed });
+  };
 }
 
 /**

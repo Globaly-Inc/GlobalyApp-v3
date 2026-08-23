@@ -7,14 +7,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAppDispatch } from "@/lib/hooks";
-import { ACTIVE_STATUSES, STATUS_CONFIG } from "../const";
+import { ACTIVE_STATUSES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
-const PUBLISH_ROW_STATUSES = ["review", "verified", "done", "approved", "exported"];
 
 export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onReload: () => void }>) {
   const router = useRouter();
@@ -98,7 +97,7 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
           </Button>
         )}
 
-        {PUBLISH_ROW_STATUSES.includes(job.status) && (
+        {PUBLISHABLE_STATUSES.includes(job.status) && (
           <>
             {job.status !== "exported" && (
               <Button

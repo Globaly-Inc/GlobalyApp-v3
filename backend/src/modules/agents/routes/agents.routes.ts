@@ -85,14 +85,14 @@ export async function agentBusinessRoutes(app: FastifyInstance) {
   app.patch("/:id", { preHandler: requireBusinessContext }, async (req, reply) => {
     const { id } = AgentParamsSchema.parse(req.params);
     const patch = AgentPatchSchema.parse(req.body);
-    const result = await service.updateAgent(req.db, id, patch);
+    const result = await service.updateAgent(req.db, req.businessId, id, patch);
     await activityService.logActivity(req.db, Number(req.auth.sub), "MEMBER_UPDATED", "member", String(id));
     return reply.send(result);
   });
 
   app.delete("/:id", { preHandler: requireBusinessContext }, async (req, reply) => {
     const { id } = AgentParamsSchema.parse(req.params);
-    await service.removeAgent(req.db, id);
+    await service.removeAgent(req.db, req.businessId, id);
     await activityService.logActivity(req.db, Number(req.auth.sub), "MEMBER_REMOVED", "member", String(id));
     return reply.status(204).send();
   });

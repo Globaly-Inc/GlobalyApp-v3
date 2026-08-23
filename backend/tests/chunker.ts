@@ -7,7 +7,7 @@
  * Style matches tests/scraper-cascade.ts: plain tsx script, manual counters, no framework.
  */
 
-import { chunkMarkdown, normaliseMarkdown } from "../src/modules/superadmin/ai-knowledge/lib/chunker.js";
+import { chunkMarkdown, embedTextFor, normaliseMarkdown } from "../src/modules/superadmin/ai-knowledge/lib/chunker.js";
 
 let passed = 0;
 let failed = 0;
@@ -167,6 +167,28 @@ const filler = (tokens: number) => "word ".repeat(Math.ceil((tokens * 4) / 5)).t
   assert(!out.includes("editorial note"), "HTML comments are stripped");
   assert(out.includes("<!-- page 3 -->"), "page markers survive normalisation");
   assert(!out.includes("\r"), "CRLF is normalised");
+}
+
+// 11. Embedded text locates a chunk by breadcrumb, not by document title.
+{
+  const title = "United States — Domestic Education System";
+  const withPath = embedTextFor("AA, AS and AAS.", "9.2 Degree structure", title);
+  assert(withPath.startsWith("9.2 Degree structure\n\n"), "breadcrumb leads the embedded text");
+  assert(
+    !withPath.includes(title),
+    "document title is NOT repeated on a chunk that already has a breadcrumb",
+    withPath,
+  );
+
+  // Unstructured docs have no breadcrumb — the title is the only locator left.
+  assertEqual(
+    embedTextFor("Body text.", null, title),
+    `${title}\n\nBody text.`,
+    "title is used when there is no breadcrumb",
+  );
+  assertEqual(embedTextFor("Body text.", "   ", title), `${title}\n\nBody text.`,
+    "blank breadcrumb falls back to the title");
+  assertEqual(embedTextFor("Body text."), "Body text.", "no prefix at all leaves the body untouched");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
