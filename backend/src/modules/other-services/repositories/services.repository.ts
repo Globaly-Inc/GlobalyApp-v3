@@ -603,18 +603,42 @@ export async function countPurchases(buyerId: number): Promise<number> {
 // table the superadmin category editor already writes to — so "Airport Pickup needs a date, a time and a
 // pickup address" is three rows an admin creates, not a code change here.
 
+/** Bounds an admin can put on one answer. All optional; see categories.schema.ts for the wire shape. */
+export interface BookingFieldValidation {
+  min?: number;
+  max?: number;
+  min_length?: number;
+  max_length?: number;
+  pattern?: string;
+}
+
 export interface BookingFieldRow {
   id: number;
   key: string;
   label: string;
-  type: "text" | "number" | "boolean" | "date" | "select" | "multi_select";
+  // `radio` behaves as `select` and `checkbox` as `multi_select` — a presentation difference, not a
+  // storage one. An unrecognised type is rendered and stored as text rather than breaking the form.
+  type:
+    | "text" | "long_text" | "number" | "boolean"
+    | "date" | "time" | "datetime"
+    | "email" | "phone"
+    | "select" | "radio" | "multi_select" | "checkbox";
   is_required: boolean;
   options: (string | number)[] | null;
+  placeholder: string | null;
+  help_text: string | null;
+  default_value: string | null;
+  validation: BookingFieldValidation | null;
 }
 
 export async function listBookingFields(categoryId: number): Promise<BookingFieldRow[]> {
   return masterKnex("schema_fields")
-    .select("id", "key", "label", "type", "is_required", "options")
+    .select(
+      "id", "key", "label", "type", "is_required", "options",
+      "placeholder", "help_text", "default_value", "validation",
+    )
     .where({ entity_type: "other_service_categories", entity_id: categoryId })
+    // The order the admin arranged, id as the tiebreak for rows never explicitly reordered.
+    .orderBy("display_order")
     .orderBy("id") as unknown as Promise<BookingFieldRow[]>;
 }

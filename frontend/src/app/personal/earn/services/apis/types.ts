@@ -235,13 +235,33 @@ export interface City {
 // Appended as one block. A buyer asks, the seller answers, and only then is there anything to pay for.
 
 /** One question a category asks its buyers, defined by an admin in the superadmin category editor. */
+/**
+ * One booking requirement configured on the listing's Other Service Category.
+ *
+ * Structurally a `BookingRequirement` from `@/components/booking-requirement-field`, which is what
+ * renders it — the type is restated here because this is the wire shape.
+ */
 export interface BookingField {
   id: number;
   key: string;
   label: string;
-  type: "text" | "number" | "boolean" | "date" | "select" | "multi_select";
+  type:
+    | "text" | "long_text" | "number" | "boolean"
+    | "date" | "time" | "datetime"
+    | "email" | "phone"
+    | "select" | "radio" | "multi_select" | "checkbox";
   is_required: boolean;
   options: (string | number)[] | null;
+  placeholder: string | null;
+  help_text: string | null;
+  default_value: string | null;
+  validation: {
+    min?: number;
+    max?: number;
+    min_length?: number;
+    max_length?: number;
+    pattern?: string;
+  } | null;
 }
 
 export type BookingAnswerValue = string | number | boolean | string[] | null;
