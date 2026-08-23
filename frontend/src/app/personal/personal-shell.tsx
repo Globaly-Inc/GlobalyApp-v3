@@ -91,6 +91,8 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   //
   // Profile completion still gates enquiries — that is a separate, server-side check and is unaffected.
 
+  const isFullBleed = pathname?.startsWith("/personal/ai") ?? false;
+
   const handleSignOut = () => {
     dispatch(logout());
     router.push("/auth/sign-in");
@@ -231,8 +233,15 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
       {/* overflow-x-clip lets a page render a full-bleed band (the Earn sub-nav's rule) without the 100vw
           box adding the scrollbar's width to the page as horizontal scroll. `clip` rather than `hidden`:
           it creates no scroll container, so sticky and anchored elements inside still behave. */}
-      <main className="flex-1 overflow-x-clip py-4 md:py-6 pb-24 md:pb-6">
-        <div className={SHELL_WIDTH}>{children}</div>
+      <main
+        className={cn(
+          "flex-1 overflow-x-clip",
+          // The AI counsellor is a full-bleed app surface, not a page in the portal's content
+          // column — it owns the whole viewport under the header and does its own bottom-nav math.
+          isFullBleed ? "" : "py-4 md:py-6 pb-24 md:pb-6",
+        )}
+      >
+        {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}
       </main>
 
       <div className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-border bg-background py-2 pb-[env(safe-area-inset-bottom)] md:hidden">

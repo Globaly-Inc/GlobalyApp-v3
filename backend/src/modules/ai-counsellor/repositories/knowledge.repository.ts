@@ -326,6 +326,30 @@ export async function searchCourses(opts: {
   })) as CourseResult[];
 }
 
+export interface CourseInstitutionMedia {
+  course_id: string;
+  institution_name: string | null;
+  logo_url: string | null;
+  city: string | null;
+  website: string | null;
+}
+
+/** Course ids come out of model output, where a hallucinated non-uuid would make
+ * Postgres throw `invalid input syntax for type uuid` on the whole query. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Institution branding for the course ids the model cited. The prompt forbids it
+ * from emitting image URLs (it invents them), so cards get their logo from here. */
+export async function institutionMediaByCourseIds(courseIds: string[]): Promise<CourseInstitutionMedia[]> {
+  const ids = courseIds.filter((id) => UUID_RE.test(id));
+  if (ids.length === 0) return [];
+
+  return masterKnex(`${SA}.extraction_courses as c`)
+    .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
+    .whereIn("c.id", ids)
+    .select("c.id as course_id", "i.name as institution_name", "i.logo_url", "i.city", "i.website");
+}
+
 export async function searchInstitutions(opts: {
   query: string;
   country?: string;

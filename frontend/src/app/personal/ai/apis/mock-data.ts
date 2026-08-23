@@ -46,12 +46,14 @@ const mockMessages: Record<number, Message[]> = {
       cards: [
         {
           institution_name: "University of Melbourne",
+          institution_logo_url: "https://logo.clearbit.com/unimelb.edu.au",
           course_name: "Master of Business Administration",
           degree_level: "Postgraduate",
           duration: "2 years full-time",
           annual_tuition_fee: 52000,
           currency: "AUD",
           country: "Australia",
+          city: "Melbourne",
           intakes: ["February", "July"],
           study_modes: ["On-campus", "Hybrid"],
           source_url: "https://example.com/unimelb-mba",
@@ -79,15 +81,32 @@ const mockMessages: Record<number, Message[]> = {
 const mockStreamCards: CourseCard[] = [
   {
     institution_name: "Monash University",
+    institution_logo_url: "https://logo.clearbit.com/monash.edu",
     course_name: "Master of Business Administration",
     degree_level: "Postgraduate",
     duration: "18 months full-time",
     annual_tuition_fee: 49500,
     currency: "AUD",
     country: "Australia",
+    city: "Melbourne",
     intakes: ["March", "October"],
     study_modes: ["On-campus"],
     source_url: "https://example.com/monash-mba",
+  },
+  {
+    // No logo — exercises the monogram fallback.
+    institution_name: "RMIT University",
+    institution_logo_url: null,
+    course_name: "Master of Business Administration (Executive)",
+    degree_level: "Postgraduate",
+    duration: "2 years part-time",
+    annual_tuition_fee: 44000,
+    currency: "AUD",
+    country: "Australia",
+    city: "Melbourne",
+    intakes: ["February", "July"],
+    study_modes: ["Hybrid", "Online"],
+    source_url: "https://example.com/rmit-emba",
   },
 ];
 

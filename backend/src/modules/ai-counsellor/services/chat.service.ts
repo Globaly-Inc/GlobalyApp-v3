@@ -2,7 +2,7 @@ import type { FastifyReply } from "fastify";
 import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
 import { streamChat, streamChatWithTools, type StreamChatResult } from "../lib/gemini-stream.js";
 import { runTool, toolLabel, toolsFor, type ToolSource } from "../lib/tools.js";
-import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
+import { parseBlocks, parseCards, parseChips, stripBlocks, type ParsedCard } from "../lib/card-parser.js";
 import { buildSystemPrompt } from "./prompt.service.js";
 import * as rag from "./rag.service.js";
 import * as sessionService from "./session.service.js";
@@ -17,6 +17,31 @@ import { createChildLogger } from "../../../shared/logger.js";
 const logger = createChildLogger("chat-service");
 
 const HISTORY_LIMIT = 20;
+
+/** Attach the institution's logo/city to each card from the DB, keyed on the course
+ * id the model cited. Decorative, so a lookup failure leaves the cards untouched
+ * rather than costing the student their answer. */
+async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedCard[]> {
+  if (!cards.length) return cards;
+  try {
+    const media = await knowledgeRepo.institutionMediaByCourseIds(cards.map((c) => c.id));
+    if (!media.length) return cards;
+    const byCourseId = new Map(media.map((m) => [m.course_id, m]));
+    return cards.map((card) => {
+      const m = byCourseId.get(card.id);
+      if (!m) return card;
+      return {
+        ...card,
+        institution_logo_url: m.logo_url,
+        institution_website: m.website,
+        city: card.city ?? m.city ?? undefined,
+      };
+    });
+  } catch (err) {
+    logger.warn("Card logo enrichment failed", { err: String(err) });
+    return cards;
+  }
+}
 
 export async function handleMessage(opts: {
   userId: number;
@@ -181,7 +206,7 @@ export async function handleMessage(opts: {
     }
 
     // 7. Parse structured blocks
-    const cards = parseCards(result.fullText);
+    const cards = await withInstitutionMedia(parseCards(result.fullText));
     const chips = parseChips(result.fullText);
     const blocks = parseBlocks(result.fullText);
     const cleanText = stripBlocks(result.fullText);

@@ -17,6 +17,7 @@ export function ChatMessages({ onChipClick }: ChatMessagesProps) {
   const streamingContent = useAppSelector((s) => s.aiChat.streamingContent);
   const streamingCards = useAppSelector((s) => s.aiChat.streamingCards);
   const streamingChips = useAppSelector((s) => s.aiChat.streamingChips);
+  const streamingBlocks = useAppSelector((s) => s.aiChat.streamingBlocks);
   const traceSteps = useAppSelector((s) => s.aiChat.traceSteps);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -30,8 +31,10 @@ export function ChatMessages({ onChipClick }: ChatMessagesProps) {
   }, [messages.length, streamingContent, traceSteps.length]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="mx-auto flex max-w-2xl flex-col gap-4">
+    <div className="flex-1 overflow-y-auto">
+      {/* Turn spacing (gap-8) carries the visual separation that the assistant
+          bubble used to provide. */}
+      <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} onChipClick={onChipClick} />
         ))}
@@ -43,11 +46,12 @@ export function ChatMessages({ onChipClick }: ChatMessagesProps) {
             content={stripStructuredBlocks(streamingContent)}
             cards={streamingCards}
             chips={streamingChips}
+            blocks={streamingBlocks}
             onChipClick={onChipClick}
           />
         )}
 
-        <div ref={bottomRef} />
+        <div ref={bottomRef} className="h-2" />
       </div>
     </div>
   );

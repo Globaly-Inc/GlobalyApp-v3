@@ -16,12 +16,15 @@ export type CourseCard = {
   /** Slug for the internal /course/[slug] detail page. Absent on cards persisted before slugs shipped. */
   slug?: string | null;
   institution_name: string;
+  /** Resolved server-side from the institution record — the model is never asked for image URLs. */
+  institution_logo_url: string | null;
   course_name: string;
   degree_level: string;
   duration: string;
   annual_tuition_fee: number | null;
   currency: string;
   country: string;
+  city: string | null;
   intakes: string[];
   study_modes: string[];
   source_url: string | null;
@@ -69,11 +72,13 @@ export type WireCourseCard = {
   slug?: string;
   name?: string;
   institution?: string;
+  institution_logo_url?: string | null;
   degree_level?: string;
   duration?: string;
   fees?: number | null;
   currency?: string;
   country?: string;
+  city?: string | null;
   intakes?: string[];
   study_modes?: string[];
   source_url?: string | null;

@@ -27,11 +27,13 @@ export const embedMockApi = {
         {
           course_name: "Master of Data Science",
           institution_name: "Acme University",
+          institution_logo_url: null,
           degree_level: "Masters",
           duration: "104 weeks",
           annual_tuition_fee: 42000,
           currency: "AUD",
           country: "Australia",
+          city: "Sydney",
           intakes: ["Feb", "Jul"],
           study_modes: ["On campus"],
           source_url: null,
