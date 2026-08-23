@@ -15,6 +15,7 @@ export type WireCourseCard = {
   slug?: string | null;
   name: string | null;
   institution: string | null;
+  institution_logo_url: string | null;
   degree_level: string | null;
   duration: string | null;
   fees: number | null;

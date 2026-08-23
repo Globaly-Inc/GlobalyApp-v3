@@ -25,29 +25,53 @@ export const updateSubCategory = createAsyncThunk("profile/updateSubCategory", (
   personalApi.updateSubCategory(params),
 );
 
-export const addQualification = createAsyncThunk("profile/addQualification", (input: QualificationInput) =>
-  personalApi.addQualification(input),
+// Adding/removing a qualification or a language test flips the "Education background" /
+// "Test scores" criterion, so the server's completion percentage changes. It lives on
+// state.profile, which only fetchFullProfile/updateProfile write — so re-read it, the same
+// way the photo upload in profile-view.tsx does. The browser must not recompute the
+// percentage itself; the backend is the single source of truth (see backend completion.ts).
+// Both criteria are "count > 0", so the edit thunks can't change them and don't refetch.
+export const addQualification = createAsyncThunk(
+  "profile/addQualification",
+  async (input: QualificationInput, { dispatch }) => {
+    const row = await personalApi.addQualification(input);
+    dispatch(fetchFullProfile());
+    return row;
+  },
 );
 export const editQualification = createAsyncThunk(
   "profile/editQualification",
   ({ id, patch }: { id: string; patch: Partial<QualificationInput> }) => personalApi.updateQualification(id, patch),
 );
-export const removeQualification = createAsyncThunk("profile/removeQualification", async (id: string) => {
-  await personalApi.removeQualification(id);
-  return id;
-});
+export const removeQualification = createAsyncThunk(
+  "profile/removeQualification",
+  async (id: string, { dispatch }) => {
+    await personalApi.removeQualification(id);
+    dispatch(fetchFullProfile());
+    return id;
+  },
+);
 
-export const addLanguageTest = createAsyncThunk("profile/addLanguageTest", (input: LanguageTestInput) =>
-  personalApi.addLanguageTest(input),
+export const addLanguageTest = createAsyncThunk(
+  "profile/addLanguageTest",
+  async (input: LanguageTestInput, { dispatch }) => {
+    const row = await personalApi.addLanguageTest(input);
+    dispatch(fetchFullProfile());
+    return row;
+  },
 );
 export const editLanguageTest = createAsyncThunk(
   "profile/editLanguageTest",
   ({ id, patch }: { id: string; patch: Partial<LanguageTestInput> }) => personalApi.updateLanguageTest(id, patch),
 );
-export const removeLanguageTest = createAsyncThunk("profile/removeLanguageTest", async (id: string) => {
-  await personalApi.removeLanguageTest(id);
-  return id;
-});
+export const removeLanguageTest = createAsyncThunk(
+  "profile/removeLanguageTest",
+  async (id: string, { dispatch }) => {
+    await personalApi.removeLanguageTest(id);
+    dispatch(fetchFullProfile());
+    return id;
+  },
+);
 
 export const addWorkExperience = createAsyncThunk("profile/addWorkExperience", (input: WorkExperienceInput) =>
   personalApi.addWorkExperience(input),

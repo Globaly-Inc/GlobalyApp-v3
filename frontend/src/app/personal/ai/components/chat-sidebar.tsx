@@ -1,8 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, MoreHorizontal, Archive, ArchiveRestore, Pencil, MessagesSquare, Trash2 } from "lucide-react";
+import Link from "next/link";
+import {
+  Plus,
+  MoreHorizontal,
+  Archive,
+  ArchiveRestore,
+  Check,
+  Pencil,
+  MessagesSquare,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +65,7 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
   const dispatch = useAppDispatch();
   const sessions = useAppSelector((s) => s.aiChat.sessions);
   const activeSessionId = useAppSelector((s) => s.aiChat.activeSessionId);
+  const profile = useAppSelector((s) => s.profile.profile);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [view, setView] = useState<"chats" | "archived">("chats");
@@ -94,25 +107,37 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b p-3">
-        <div className="flex gap-1">
-          {(["chats", "archived"] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setView(tab)}
-              className={cn(
-                "rounded-md px-2 py-1 text-sm capitalize transition-colors",
-                view === tab ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-accent/50",
-              )}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={onNewChat} aria-label="New chat">
-          <Plus />
-        </Button>
+      {/* New chat is the sidebar's primary action and sits alone at the top, ahead of the
+          list header — the archived toggle moved into that header's filter menu so it stops
+          competing with it. */}
+      <div className="p-2">
+        <button
+          type="button"
+          onClick={onNewChat}
+          className="flex w-full items-center gap-2 rounded-lg bg-accent/60 px-2.5 py-2 text-sm font-medium transition-colors hover:bg-accent"
+        >
+          <Plus className="size-4" /> New chat
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between px-4 pt-2 pb-1">
+        <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+          {showArchived ? "Archived" : "Chats"}
+        </p>
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <Button variant="ghost" size="icon-xs" render={<span />} aria-label="Filter chats">
+              <SlidersHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {(["chats", "archived"] as const).map((tab) => (
+              <DropdownMenuItem key={tab} onClick={() => setView(tab)} className="capitalize">
+                {view === tab ? <Check /> : <span className="size-4" />} {tab}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -125,10 +150,12 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
               <div
                 key={session.id}
                 className={cn(
-                  "group flex items-center gap-1 rounded-lg px-2 py-2 text-sm cursor-pointer transition-colors",
+                  // Neutral fills, no tinted highlight — the active chat reads like a selected
+                  // row in the list, not like a call-to-action button.
+                  "group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors",
                   session.id === activeSessionId
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "hover:bg-accent/50",
+                    ? "bg-accent font-medium text-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                 )}
                 onClick={() => selectSession(session.id)}
                 onDoubleClick={() => startRename(session)}
@@ -193,6 +220,22 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
             </p>
           </div>
         )}
+      </div>
+
+      {/* Identity pinned to the bottom of the rail, matching the rest of the portal's chrome. */}
+      <div className="border-t p-2">
+        <Link
+          href="/personal/profile"
+          className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60"
+        >
+          <Avatar className="size-7">
+            <AvatarImage src={profile?.photo_url ?? undefined} alt="" />
+            <AvatarFallback>{profile?.first_name?.[0]?.toUpperCase() ?? "U"}</AvatarFallback>
+          </Avatar>
+          <span className="min-w-0 flex-1 truncate text-sm">
+            {profile?.first_name ?? "Your account"}
+          </span>
+        </Link>
       </div>
     </div>
   );

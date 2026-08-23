@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Paperclip, Send, X } from "lucide-react";
+import { ArrowUp, Paperclip, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const MAX_ATTACHMENTS = 3;
 
@@ -14,9 +15,11 @@ type ChatInputProps = {
   disabled?: boolean;
   /** Show the paperclip. Off for unauthenticated surfaces (embed widget) — uploads need a session. */
   allowAttachments?: boolean;
+  /** Drop the docked padding/gradient — for the centred empty-state hero, where the box isn't pinned to the bottom. */
+  bare?: boolean;
 };
 
-export function ChatInput({ value, onChange, onSend, disabled, allowAttachments }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSend, disabled, allowAttachments, bare }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
@@ -27,6 +30,16 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments 
   useEffect(() => {
     const el = textareaRef.current;
     if (el && value && document.activeElement !== el) el.focus();
+  }, [value]);
+
+  // Grow with the content up to the max height, then scroll. Height resets to auto
+  // first, or the box only ratchets taller — scrollHeight keeps reporting the
+  // previous height once one is set inline.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
   }, [value]);
 
   const submit = () => {
@@ -50,7 +63,15 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments 
   };
 
   return (
-    <div className="border-t bg-background p-3">
+    // No top border: the gradient lets the last message scroll away under the
+    // composer instead of stopping dead at a rule. `bare` drops that entirely —
+    // in the hero the box floats mid-panel, with nothing scrolling under it.
+    <div
+      className={cn(
+        "relative shrink-0",
+        !bare && "bg-gradient-to-t from-background via-background to-transparent px-4 pb-3 pt-6 sm:px-6",
+      )}
+    >
       <div className="mx-auto max-w-3xl">
         {files.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
@@ -73,50 +94,53 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments 
             ))}
           </div>
         )}
-        {/* The ring lives on the wrapper so the textarea and the send button read as one control;
-            the textarea's own border/ring is suppressed to avoid a double outline. */}
-        <div className="flex items-end gap-2 rounded-3xl border bg-card p-1.5 pl-3 shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
-          {allowAttachments && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                hidden
-                multiple
-                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.txt,.csv"
-                onChange={(e) => addFiles(e.target.files)}
-              />
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={disabled || files.length >= MAX_ATTACHMENTS}
-                aria-label="Attach file"
-                className="size-9 self-end rounded-full"
-              >
-                <Paperclip className="size-4" />
-              </Button>
-            </>
-          )}
+        {/* Two rows inside one control: the prompt gets the full width, the actions sit on
+            their own toolbar underneath. The ring lives on the wrapper so both rows read as
+            one box; the textarea's own border/ring is suppressed to avoid a double outline. */}
+        <div className="rounded-3xl border bg-card p-2 shadow-lg transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
           <Textarea
             ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about courses, admissions, scholarships..."
+            placeholder="How can I help you today?"
             disabled={disabled}
             rows={1}
-            className="max-h-32 min-h-9 resize-none self-center border-transparent bg-transparent px-0 py-2 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+            className="max-h-48 min-h-9 w-full resize-none overflow-y-auto border-transparent bg-transparent px-2 py-1.5 text-[0.9375rem] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
           />
-          <Button
-            size="icon"
-            onClick={submit}
-            disabled={disabled || !value.trim()}
-            aria-label="Send message"
-            className="size-9 rounded-full"
-          >
-            <Send className="size-4" />
-          </Button>
+          <div className="flex items-center gap-1 pt-1">
+            {allowAttachments && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  hidden
+                  multiple
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.txt,.csv"
+                  onChange={(e) => addFiles(e.target.files)}
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={disabled || files.length >= MAX_ATTACHMENTS}
+                  aria-label="Attach file"
+                  className="size-8 rounded-full"
+                >
+                  <Plus className="size-4" />
+                </Button>
+              </>
+            )}
+            <Button
+              size="icon"
+              onClick={submit}
+              disabled={disabled || !value.trim()}
+              aria-label="Send message"
+              className="ml-auto size-8 rounded-full"
+            >
+              <ArrowUp className="size-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>

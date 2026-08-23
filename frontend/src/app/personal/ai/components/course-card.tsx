@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Banknote, CalendarDays, Clock, ExternalLink, GraduationCap, MapPin } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, Clock, ExternalLink, MapPin, Plus, Presentation } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
 import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
+import { InstitutionLogo } from "./institution-logo";
 
 type CourseCardProps = {
   card: CourseCardType;
@@ -22,15 +23,13 @@ function prettify(value: string): string {
 
 function formatFee(amount: number | null, currency: string): string | null {
   if (amount == null) return null;
-  return `${currency} ${amount.toLocaleString()} / year`;
+  return `${currency} ${amount.toLocaleString()}`;
 }
 
 function DetailRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <div className="flex items-start gap-2">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-        <Icon className="size-3.5" />
-      </span>
+      <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
         <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
         <p className="truncate text-xs font-medium text-foreground" title={value}>{value}</p>
@@ -61,83 +60,105 @@ export function CourseCard({ card }: CourseCardProps) {
 
   const fee = formatFee(card.annual_tuition_fee, card.currency);
   const modes = card.study_modes.map(prettify).join(" · ");
-  const hasDetails = Boolean(card.duration || fee || card.intakes.length > 0 || modes);
+  const place = [card.city, card.country].filter(Boolean).join(", ");
+  const hasDetails = Boolean(card.duration || card.intakes.length > 0 || modes);
 
   return (
     <Card
       size="sm"
-      className="h-full w-full gap-0 overflow-hidden py-0 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/30"
+      className="relative flex h-full w-full flex-col gap-0 overflow-hidden py-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
     >
-      {/* Accent bar */}
-      <div className="h-1 shrink-0 bg-gradient-to-r from-primary via-primary/60 to-primary/20" />
+      {/* Decorative brand wash behind the header — the logo sits on top of it. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-br from-primary/12 via-primary/5 to-transparent"
+      />
 
       {/* Header */}
-      <div className="border-b bg-gradient-to-b from-muted/60 to-muted/20 px-4 py-3">
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <GraduationCap className="size-3" />
-          </span>
-          <span className="truncate" title={card.institution_name}>{card.institution_name}</span>
-        </p>
-        <p className="mt-1.5 font-semibold leading-snug">{card.course_name}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {card.degree_level && (
-            <Badge variant="secondary" className="border-0 bg-primary/10 text-primary">
-              {prettify(card.degree_level)}
-            </Badge>
-          )}
-          {card.country && (
-            <Badge variant="outline">
-              <MapPin className="size-3" /> {card.country}
-            </Badge>
+      <div className="relative flex items-start gap-3 px-4 pt-4">
+        <InstitutionLogo name={card.institution_name} logoUrl={card.institution_logo_url} />
+        <div className="min-w-0 flex-1 pt-0.5">
+          <p className="truncate text-xs font-semibold text-foreground" title={card.institution_name}>
+            {card.institution_name}
+          </p>
+          {place && (
+            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+              <MapPin className="size-3 shrink-0" />
+              <span className="truncate">{place}</span>
+            </p>
           )}
         </div>
       </div>
 
-      {/* Details — two-column grid keeps rows aligned; section disappears entirely
-          when the card has none of the fields (no empty padded band). */}
+      {/* Course title + level */}
+      <div className="relative px-4 pt-3">
+        <p className="text-sm font-semibold leading-snug text-foreground" title={card.course_name}>
+          {card.course_name}
+        </p>
+        {card.degree_level && (
+          <Badge variant="secondary" className="mt-2 border-0 bg-primary/10 text-primary">
+            {prettify(card.degree_level)}
+          </Badge>
+        )}
+      </div>
+
+      {/* Tuition gets its own strip — it's the number students scan for first. */}
+      {fee && (
+        <div className="mx-4 mt-3 flex items-baseline justify-between rounded-lg border border-primary/15 bg-primary/[0.06] px-3 py-2">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Tuition
+          </span>
+          <span className="text-sm font-semibold text-foreground">
+            {fee}
+            <span className="ml-1 text-[10px] font-normal text-muted-foreground">/ year</span>
+          </span>
+        </div>
+      )}
+
+      {/* Details — the section disappears entirely when the card has none of the
+          fields, so there's no empty padded band. */}
       {hasDetails && (
-        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-4 py-3">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 px-4 py-3">
           {card.duration && <DetailRow icon={Clock} label="Duration" value={card.duration} />}
-          {fee && <DetailRow icon={Banknote} label="Tuition" value={fee} />}
           {card.intakes.length > 0 && (
             <DetailRow icon={CalendarDays} label="Intakes" value={card.intakes.join(", ")} />
           )}
-          {modes && <DetailRow icon={GraduationCap} label="Study mode" value={modes} />}
-        </CardContent>
+          {modes && <DetailRow icon={Presentation} label="Study mode" value={modes} />}
+        </div>
       )}
 
       {/* Actions — mt-auto pins this row to the card bottom so cards without
           details stay the same height as their row-mates, buttons aligned. */}
-      <div className="mt-auto flex items-center justify-between border-t px-4 py-2">
+      <div className="mt-auto flex items-center justify-between gap-2 border-t bg-muted/20 px-4 py-2">
         {card.slug ? (
           <Button
             variant="link"
             size="sm"
-            className="p-0"
+            className="h-auto p-0 text-xs"
             render={<Link href={`/course/${card.slug}`} target="_blank" rel="noopener noreferrer" />}
           >
-            View Details <ArrowRight />
+            View details <ArrowRight />
           </Button>
         ) : card.source_url ? (
           <Button
             variant="link"
             size="sm"
-            className="p-0"
+            className="h-auto p-0 text-xs"
             render={<a href={card.source_url} target="_blank" rel="noopener noreferrer" />}
           >
-            View Details <ExternalLink />
+            View details <ExternalLink />
           </Button>
         ) : (
           <span />
         )}
         <Button
-          variant="outline"
+          variant={added ? "secondary" : "outline"}
           size="sm"
+          className="h-7 text-xs"
           disabled={added || compare.isFull}
           onClick={() => compare.add(compareItem)}
         >
-          {added ? "Added ✓" : "Compare"}
+          {added ? <><Check /> Added</> : <><Plus /> Compare</>}
         </Button>
       </div>
     </Card>

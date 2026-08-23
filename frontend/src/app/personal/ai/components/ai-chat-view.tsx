@@ -17,6 +17,7 @@ import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { SuggestedStarters } from "./suggested-starters";
 import { CreditBanner } from "./credit-banner";
+import { ProfileCompletionBanner } from "./profile-completion-banner";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 
 export function AiChatView() {
@@ -25,6 +26,8 @@ export function AiChatView() {
   const messages = useAppSelector((s) => (activeSessionId ? s.aiChat.messages[activeSessionId] ?? [] : []));
   const sendStatus = useAppSelector((s) => s.aiChat.sendStatus);
   const error = useAppSelector((s) => s.aiChat.error);
+  // PersonalShell already fetches this — the hero just greets with whatever's in the store.
+  const profile = useAppSelector((s) => s.profile.profile);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -60,14 +63,29 @@ export function AiChatView() {
   // the user can tweak the wording before committing to it.
   const handleSuggestion = useCallback((text: string) => setDraft(text), []);
 
-  const hasMessages = messages.length > 0;
+  const isChatting = messages.length > 0 || sendStatus === "loading";
 
   const sidebar = <ChatSidebar onNewChat={handleNewChat} />;
 
+  // Same composer in both slots — only its chrome differs (docked to the bottom vs floating in the hero).
+  const composer = (bare: boolean) => (
+    <ChatInput
+      value={draft}
+      onChange={setDraft}
+      onSend={handleSend}
+      disabled={sendStatus === "loading"}
+      allowAttachments
+      bare={bare}
+    />
+  );
+
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden rounded-2xl border bg-card shadow-sm">
+    // Full-bleed under the shell header (PersonalShell drops its content column for this route),
+    // so the only chrome left to subtract is that 4rem header plus, on mobile, the fixed bottom
+    // nav. dvh so collapsing mobile browser chrome doesn't reintroduce a gap.
+    <div className="flex h-[calc(100dvh-8rem)] overflow-hidden bg-background md:h-[calc(100dvh-4rem)]">
       {/* Desktop sidebar */}
-      <div className="hidden w-64 shrink-0 border-r bg-muted/30 md:block">{sidebar}</div>
+      <div className="hidden w-64 shrink-0 bg-muted/40 md:block">{sidebar}</div>
 
       {/* Chat area */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -88,13 +106,17 @@ export function AiChatView() {
         </div>
 
         <CreditBanner />
+        <ProfileCompletionBanner />
 
-        {/* Messages or starters */}
-        {hasMessages || sendStatus === "loading" ? (
+        {/* Messages, or the empty-state hero. The composer only docks to the bottom once a
+            conversation exists — before that it sits inside the hero, under the greeting. */}
+        {isChatting ? (
           <ChatMessages onChipClick={handleSuggestion} />
         ) : (
           <div className="flex-1 overflow-y-auto">
-            <SuggestedStarters onSelect={handleSuggestion} />
+            <SuggestedStarters onSelect={handleSuggestion} name={profile?.first_name}>
+              {composer(true)}
+            </SuggestedStarters>
           </div>
         )}
 
@@ -105,13 +127,7 @@ export function AiChatView() {
             {error}
           </p>
         )}
-        <ChatInput
-          value={draft}
-          onChange={setDraft}
-          onSend={handleSend}
-          disabled={sendStatus === "loading"}
-          allowAttachments
-        />
+        {isChatting && composer(false)}
       </div>
     </div>
   );
