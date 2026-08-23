@@ -3,4 +3,5 @@ export type Destination = {
   name: string;
   slug: string;
   flagEmoji: string;
+  heroImageUrl: string | null;
 };

@@ -8,7 +8,8 @@ const SlugParam = z.object({ slug: z.string().min(1) });
 
 export async function publicGeoRoutes(app: FastifyInstance) {
   app.get("/countries/featured", async (_req, reply) => {
-    const countries = await repo.listFeaturedCountries();
+    const rows = await repo.listFeaturedCountries();
+    const countries = await Promise.all(rows.map(withImagePreviews));
     return reply.send({ countries });
   });
 
@@ -29,8 +30,11 @@ export async function publicGeoRoutes(app: FastifyInstance) {
     const { country } = z.object({ country: z.string().optional() }).parse(req.query);
     const row = await repo.findPublicCityBySlug(slug, country);
     if (!row) throw new NotFoundError("City not found");
-    const { country_id, country_name, country_slug, country_flag_emoji, ...city } = row;
-    const previewedCity = await withCityImagePreviews(city);
+    const { country_id, country_name, country_slug, country_flag_emoji, country_hero_image_url, ...city } = row;
+    const previewedCity = await withCityImagePreviews({
+      ...city,
+      hero_image_url: city.hero_image_url ?? country_hero_image_url,
+    });
     return reply.send({
       ...previewedCity,
       country: { id: country_id, name: country_name, slug: country_slug, flag_emoji: country_flag_emoji },

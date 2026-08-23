@@ -91,9 +91,18 @@ export default function HomePage() {
                   className="group relative overflow-hidden rounded-2xl block"
                   style={{ aspectRatio: "4/3" }}
                 >
-                  <div className="absolute inset-0 bg-muted flex items-center justify-center text-5xl transition-transform duration-700 group-hover:scale-110">
-                    {dest.flagEmoji}
-                  </div>
+                  {dest.heroImageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={dest.heroImageUrl}
+                      alt={dest.name}
+                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-muted flex items-center justify-center text-5xl transition-transform duration-700 group-hover:scale-110">
+                      {dest.flagEmoji}
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10 transition-opacity duration-300 group-hover:opacity-90" />
                   <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-1 group-hover:translate-y-0 transition-transform duration-300">
                     <h3 className="font-bold text-white text-base md:text-lg leading-tight">
