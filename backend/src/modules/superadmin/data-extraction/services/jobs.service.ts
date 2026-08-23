@@ -3,6 +3,7 @@
 import { NotFoundError, BadRequestError } from "../../../../shared/errors.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
+import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import * as repo from "../repositories/jobs.repository.js";
@@ -32,13 +33,17 @@ export async function listJobs(opts: { status?: string; q?: string; limit: numbe
   return { jobs: await withResolvedNames(rows), counts };
 }
 
-export async function listJobsFiltered(opts: {
-  statuses?: string[];
-  sourceType?: string;
-  excludeSourceType?: string;
-  limit: number;
-}) {
-  return { jobs: await withResolvedNames(await repo.listJobsFiltered(opts)) };
+export async function listJobsFiltered(
+  opts: { statuses?: string[]; sourceType?: string; excludeSourceType?: string },
+  pagination: PaginationInput,
+) {
+  const filter = { statuses: opts.statuses, sourceType: opts.sourceType, excludeSourceType: opts.excludeSourceType };
+  const [rows, total] = await Promise.all([
+    repo.listJobsFiltered({ ...filter, limit: pagination.limit, offset: (pagination.page - 1) * pagination.limit }),
+    repo.countJobsFiltered(filter),
+  ]);
+  const { data, meta } = buildPaginatedResponse(await withResolvedNames(rows), total, pagination);
+  return { jobs: data, meta };
 }
 
 export async function getJob(id: string) {

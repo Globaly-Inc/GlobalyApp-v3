@@ -38,14 +38,30 @@ import type {
 } from "./types";
 
 export const allExtractionsRealApi = {
-  // jobs-filtered (not /jobs) for every mode — it's the only list endpoint that
-  // attaches campus_count/agent_count, which the row shows.
+  // JobsList paginates, sorts and searches this whole set client-side ("select
+  // all" means every job matching the current filters, not just one page), so
+  // this walks every backend page — at the default page size of 10 — using
+  // `meta.totalPages` until exhausted, instead of one fetch hardcoded to
+  // `limit=10` that silently dropped every job past the first page.
   getJobs: async (mode: DashboardMode): Promise<ExtractionJob[]> => {
-    const params = new URLSearchParams({ limit: "10" });
+    const baseParams: Record<string, string> = {};
     const statuses = MODE_STATUS_FILTER[mode];
-    if (statuses) params.set("statuses", statuses.join(","));
-    if (mode === "ai-ongoing") params.set("exclude_source_type", "agentcis");
-    const { jobs } = await httpGet<{ jobs: ExtractionJob[] }>(`/admin/data-extraction/jobs-filtered?${params}`);
+    if (statuses) baseParams.statuses = statuses.join(",");
+    if (mode === "ai-ongoing") baseParams.exclude_source_type = "agentcis";
+
+    const jobs: ExtractionJob[] = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const params = new URLSearchParams({ ...baseParams, page: String(page), limit: "10" });
+      const { jobs: pageJobs, meta } = await httpGet<{ jobs: ExtractionJob[]; meta: { totalPages: number } }>(
+        `/admin/data-extraction/jobs-filtered?${params}`,
+      );
+      jobs.push(...pageJobs);
+      totalPages = meta.totalPages;
+      page += 1;
+    } while (page <= totalPages);
+
     return jobs;
   },
 
