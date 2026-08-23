@@ -13,6 +13,8 @@ import { createChildLogger } from "../../../shared/logger.js";
 import { courseSlug } from "../../search/utils/slug.js";
 import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 import * as knowledge from "../repositories/knowledge.repository.js";
+import * as sessionsRepo from "../repositories/sessions.repository.js";
+import type { CounsellingContext } from "../repositories/sessions.repository.js";
 
 const logger = createChildLogger("ai-tools");
 
@@ -20,6 +22,11 @@ export interface ToolSource {
   type: string;
   id: string;
   title: string;
+}
+
+/** What a tool needs to know about the turn it is running in. */
+export interface ToolContext {
+  sessionId: number;
 }
 
 export interface ToolRun {
@@ -159,6 +166,48 @@ const DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "update_student_context",
+    description:
+      "Record what you have learned about this student in this conversation — goals, interests, " +
+      "strengths, constraints, preferred countries, and which stage of the journey they are in. " +
+      "Call this whenever the student tells you something durable about themselves, so you do not " +
+      "have to ask again later in the conversation. Send only the fields that changed.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        goals: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "What they want out of studying — career or study outcomes, in their words",
+        },
+        interests: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "Subjects and fields they are drawn to",
+        },
+        strengths: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "What they are good at, as they described it",
+        },
+        constraints: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "Budget, family, timing, location or other limits on their options",
+        },
+        preferred_countries: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "Destinations they have expressed interest in",
+        },
+        stage: {
+          type: SchemaType.STRING, format: "enum",
+          enum: ["exploring", "narrowing", "applying", "post_offer"],
+          description: "Where they are in the journey",
+        },
+        notes: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "Anything else worth remembering that has no field above",
+        },
+      },
+    },
+  },
+  {
     name: "search_service_providers",
     description:
       "Find education agents and registered migration agents (MARA) who can help the student in person. " +
@@ -212,9 +261,13 @@ const str = (args: Record<string, unknown>, key: string): string | undefined => 
  * Run one tool call. Never throws: a failed tool returns an error payload so the
  * model can apologise or try something else, rather than killing the turn.
  */
-export async function runTool(name: string, args: Record<string, unknown>): Promise<ToolRun> {
+export async function runTool(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolRun> {
   try {
-    return await dispatch(name, args);
+    return await dispatch(name, args, ctx);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.warn("Tool failed", { name, err: message });
@@ -226,8 +279,49 @@ export async function runTool(name: string, args: Record<string, unknown>): Prom
   }
 }
 
-async function dispatch(name: string, args: Record<string, unknown>): Promise<ToolRun> {
+/** Strings from a tool argument list, trimmed and emptied of junk. */
+function strList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  return items.length ? items : undefined;
+}
+
+const STAGES = new Set(["exploring", "narrowing", "applying", "post_offer"]);
+
+async function dispatch(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolRun> {
   switch (name) {
+    case "update_student_context": {
+      const stage = str(args, "stage");
+      const patch: CounsellingContext = {
+        goals: strList(args.goals),
+        interests: strList(args.interests),
+        strengths: strList(args.strengths),
+        constraints: strList(args.constraints),
+        preferred_countries: strList(args.preferred_countries),
+        notes: strList(args.notes),
+        ...(stage && STAGES.has(stage) ? { stage: stage as CounsellingContext["stage"] } : {}),
+      };
+      const written = Object.entries(patch).filter(([, v]) => v != null).map(([k]) => k);
+      if (!written.length) {
+        return { result: { error: "Nothing to record" }, sources: [], trace: "No context to record" };
+      }
+      const context = await sessionsRepo.mergeContext(ctx.sessionId, patch);
+      return {
+        // Echo the merged context back: the model sees what is now on file, including
+        // items it recorded earlier in the conversation.
+        result: { recorded: written, context },
+        sources: [],
+        trace: `Noted: ${written.join(", ")}`,
+      };
+    }
+
     case "search_courses": {
       const query = str(args, "query") ?? "";
       const found = await knowledge.searchCourses({
