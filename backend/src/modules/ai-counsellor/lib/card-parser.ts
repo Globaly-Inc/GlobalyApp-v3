@@ -49,17 +49,28 @@ const VALIDATORS: Record<string, (b: Record<string, unknown>) => boolean> = {
   quick_replies: (b) => isActions(b.options),
 };
 
-/** Extract ```block fences from Gemini output. Unknown/malformed types are dropped. */
+// ponytail: model drifts on fence tags (```json / bare ```) and drops "type" on
+// quick_replies — accept any fence whose JSON validates as a known block.
+const FENCE_RE = /```(?!course-card|chips)[\w-]*[ \t]*\n?([\s\S]*?)```/g;
+
+/** Parse one fence body into a validated block, or null. */
+function toBlock(raw: string): ResponseBlock | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed.type === undefined && isActions(parsed.options)) parsed.type = "quick_replies";
+    const validate = typeof parsed.type === "string" ? VALIDATORS[parsed.type] : undefined;
+    return validate?.(parsed) ? (parsed as unknown as ResponseBlock) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Extract typed-block fences from Gemini output. Unknown/malformed types are dropped. */
 export function parseBlocks(text: string): ResponseBlock[] {
   const blocks: ResponseBlock[] = [];
-  const regex = /```block\n([\s\S]*?)\n```/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    try {
-      const parsed = JSON.parse(match[1]) as Record<string, unknown>;
-      const validate = typeof parsed?.type === "string" ? VALIDATORS[parsed.type] : undefined;
-      if (validate?.(parsed)) blocks.push(parsed as unknown as ResponseBlock);
-    } catch { /* skip malformed */ }
+  for (const match of text.matchAll(FENCE_RE)) {
+    const block = toBlock(match[1]);
+    if (block) blocks.push(block);
   }
   return blocks;
 }
@@ -95,6 +106,9 @@ export function parseChips(text: string): string[] {
 /** Remove structured blocks from display text (they're sent as separate SSE events). */
 export function stripBlocks(text: string): string {
   return text
-    .replace(/```(?:course-card|chips|block)\n[\s\S]*?\n```/g, "")
+    .replace(/```(?:course-card|chips)\n[\s\S]*?\n```/g, "")
+    // Only strip generic fences that actually parse as a block — real code
+    // snippets in prose stay untouched.
+    .replace(FENCE_RE, (full, body: string) => (toBlock(body) ? "" : full))
     .trim();
 }

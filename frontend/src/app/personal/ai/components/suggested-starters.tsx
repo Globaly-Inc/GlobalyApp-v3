@@ -14,9 +14,9 @@ type SuggestedStartersProps = {
 };
 
 export function SuggestedStarters({ onSelect, name, children }: Readonly<SuggestedStartersProps>) {
-  // Categories collapse to one chip each; the questions only appear once a chip is picked, so the
-  // hero stays a greeting + composer instead of a wall of twelve prompts.
-  const [openLabel, setOpenLabel] = useState<string | null>(null);
+  // Categories collapse to one chip each; "Course Search" opens by default so the hero shows
+  // recommended questions immediately instead of an empty row of chips.
+  const [openLabel, setOpenLabel] = useState<string | null>(STARTER_CATEGORIES[0]?.label ?? null);
   // Picked once per mount (useState initializer), not per render — and only on the client,
   // so SSR/hydration can't disagree about which greeting was drawn.
   const [greeting, setGreeting] = useState<string | null>(null);
