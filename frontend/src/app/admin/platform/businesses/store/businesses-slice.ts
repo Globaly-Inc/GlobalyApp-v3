@@ -2,7 +2,7 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
   ActivityListParams, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchPatch, Business, BusinessCreateInput,
-  BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation, BusinessService, BusinessStatus, ClaimRequestRef,
+  BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation, BusinessService, BusinessStatus, ListingRef,
   EnquirySettingsPatch, LinkExistingBranchInput, Member, MemberInviteInput, MemberListParams, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationPatch,
   SchemaFieldValue, ServiceInput, ServicePatch, ServiceSearchParams,
@@ -32,33 +32,36 @@ export const updateEnquirySettings = createAsyncThunk(
 
 export const updateBusinessStatus = createAsyncThunk(
   "platformBusinesses/updateStatus",
-  async ({ id, status }: { id: number; status: BusinessStatus }) => {
-    await businessesApi.updateStatus(id, status);
-    return { id, status };
+  async ({ kind, id, status }: ListingRef & { status: BusinessStatus }) => {
+    await businessesApi.updateStatus({ kind, id }, status);
+    return { kind, id, status };
   },
 );
 
-export const sendClaimRequest = createAsyncThunk("platformBusinesses/sendClaimRequest", async (ref: ClaimRequestRef) => {
+export const sendClaimRequest = createAsyncThunk("platformBusinesses/sendClaimRequest", async (ref: ListingRef) => {
   await businessesApi.sendClaimRequest(ref);
   return { ...ref, claim_status: "claim_pending" as const };
 });
 
-export const sendBulkClaimRequests = createAsyncThunk("platformBusinesses/sendBulkClaimRequests", async (ids: number[]) => {
-  await businessesApi.sendBulkClaimRequests(ids);
-  return { ids, claim_status: "claim_pending" as const };
+export const sendBulkClaimRequests = createAsyncThunk("platformBusinesses/sendBulkClaimRequests", async (refs: ListingRef[]) => {
+  const businessIds = refs.filter((r) => r.kind === "business").map((r) => r.id);
+  if (businessIds.length) await businessesApi.sendBulkClaimRequests(businessIds);
+  // No bulk endpoint for institutions — each goes through its own claim-request path.
+  await Promise.all(refs.filter((r) => r.kind === "institution").map((r) => businessesApi.sendClaimRequest(r)));
+  return { refs, claim_status: "claim_pending" as const };
 });
 
 export const updateBusinessPublished = createAsyncThunk(
   "platformBusinesses/updatePublished",
-  async ({ id, is_published }: { id: number; is_published: boolean }) => {
-    await businessesApi.updatePublished(id, is_published);
-    return { id, is_published };
+  async ({ kind, id, is_published }: ListingRef & { is_published: boolean }) => {
+    await businessesApi.updatePublished({ kind, id }, is_published);
+    return { kind, id, is_published };
   },
 );
 
-export const deleteBusinessThunk = createAsyncThunk("platformBusinesses/delete", async (id: number) => {
-  await businessesApi.deleteBusiness(id);
-  return id;
+export const deleteBusinessThunk = createAsyncThunk("platformBusinesses/delete", async (ref: ListingRef) => {
+  await businessesApi.deleteBusiness(ref);
+  return ref;
 });
 
 // ─── Branches ────────────────────────────────────────────────────────────────
@@ -192,6 +195,7 @@ const emptyPartners = (): PartnersState => ({ ...emptyRelation<BusinessRelation>
 
 type BusinessesState = {
   businesses: Business[];
+  total: number;
   status: "idle" | "loading" | "failed";
   error: string | null;
   detail: BusinessDetail | null;
@@ -209,7 +213,7 @@ type BusinessesState = {
 const emptyPaged = <T,>() => ({ ...emptyRelation<T>(), total: 0 });
 
 const initialState: BusinessesState = {
-  businesses: [], status: "idle", error: null,
+  businesses: [], total: 0, status: "idle", error: null,
   detail: null, detailStatus: "idle", detailError: null,
   branches: emptyBranches(), services: emptyPaged(), members: emptyPaged(), contacts: emptyPaged(),
   memberRoles: [], relations: emptyPartners(), activity: emptyPaged(),
@@ -227,7 +231,8 @@ const businessesSlice = createSlice({
       })
       .addCase(fetchBusinesses.fulfilled, (state, action) => {
         state.status = "idle";
-        state.businesses = action.payload;
+        state.businesses = action.payload.data;
+        state.total = action.payload.total;
       })
       .addCase(fetchBusinesses.rejected, (state, action) => {
         state.status = "failed";
@@ -237,7 +242,8 @@ const businessesSlice = createSlice({
         state.businesses.unshift(action.payload);
       })
       .addCase(updateBusinessStatus.fulfilled, (state, action) => {
-        const b = state.businesses.find((x) => x.id === action.payload.id);
+        // kind AND id — the list mixes both tables, so id alone would flip the wrong row.
+        const b = state.businesses.find((x) => x.kind === action.payload.kind && x.id === action.payload.id);
         if (b) b.status = action.payload.status;
         if (state.detail?.id === action.payload.id) state.detail.status = action.payload.status;
       })
@@ -258,19 +264,19 @@ const businessesSlice = createSlice({
         }
       })
       .addCase(sendBulkClaimRequests.fulfilled, (state, action) => {
-        const ids = new Set(action.payload.ids);
+        const keys = new Set(action.payload.refs.map((r) => `${r.kind}-${r.id}`));
         state.businesses.forEach((b) => {
-          if (ids.has(b.id)) b.claim_status = action.payload.claim_status;
+          if (keys.has(`${b.kind}-${b.id}`)) b.claim_status = action.payload.claim_status;
         });
-        if (state.detail && ids.has(state.detail.id)) state.detail.claim_status = action.payload.claim_status;
+        if (state.detail && keys.has(`business-${state.detail.id}`)) state.detail.claim_status = action.payload.claim_status;
       })
       .addCase(updateBusinessPublished.fulfilled, (state, action) => {
-        const b = state.businesses.find((x) => x.id === action.payload.id);
+        const b = state.businesses.find((x) => x.kind === action.payload.kind && x.id === action.payload.id);
         if (b) b.is_published = action.payload.is_published;
         if (state.detail?.id === action.payload.id) state.detail.is_published = action.payload.is_published;
       })
       .addCase(deleteBusinessThunk.fulfilled, (state, action) => {
-        state.businesses = state.businesses.filter((x) => x.id !== action.payload);
+        state.businesses = state.businesses.filter((x) => !(x.kind === action.payload.kind && x.id === action.payload.id));
       })
       .addCase(fetchBusinessDetail.pending, (state) => {
         state.detailStatus = "loading";

@@ -1,10 +1,10 @@
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
-  BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation,
+  BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
   BusinessService, EnquirySettingsPatch, LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
-  ServiceSearchParams, ServiceSearchResult, ClaimRequestRef,} from "./types";
+  ServiceSearchParams, ServiceSearchResult, ListingRef,} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -138,19 +138,22 @@ function applyFilters(rows: Business[], params: BusinessListParams): Business[] 
 }
 
 export const businessesMockApi = {
-  getBusinesses: async (params: BusinessListParams = {}): Promise<Business[]> => {
+  getBusinesses: async (params: BusinessListParams = {}): Promise<BusinessListResult> => {
     console.log("[mock] GET /admin/platform/businesses", params);
     await delay(300);
-    return applyFilters(mockBusinesses, params);
+    const rows = applyFilters(mockBusinesses, params);
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 10;
+    return { data: rows.slice((page - 1) * limit, page * limit), total: rows.length };
   },
-  updateStatus: async (id: number, status: Business["status"]): Promise<{ status: string }> => {
-    console.log("[mock] PATCH /admin/platform/businesses/:id/status", id, status);
+  updateStatus: async ({ kind, id }: ListingRef, status: Business["status"]): Promise<{ status: string }> => {
+    console.log(`[mock] PATCH /admin/platform/${kind}s/:id/status`, id, status);
     await delay(200);
-    const b = mockBusinesses.find((x) => x.id === id);
+    const b = mockBusinesses.find((x) => x.kind === kind && x.id === id);
     if (b) b.status = status;
     return { status };
   },
-  sendClaimRequest: async ({ kind, id }: ClaimRequestRef): Promise<{ claim_status: string }> => {
+  sendClaimRequest: async ({ kind, id }: ListingRef): Promise<{ claim_status: string }> => {
     console.log(`[mock] POST /admin/platform/${kind}s/:id/claim-request`, id);
     await delay(200);
     const b = mockBusinesses.find((x) => x.kind === kind && x.id === id);
@@ -166,17 +169,17 @@ export const businessesMockApi = {
     }
     return { queued: ids.length };
   },
-  updatePublished: async (id: number, is_published: boolean): Promise<{ is_published: boolean }> => {
-    console.log("[mock] PATCH /admin/platform/businesses/:id/published", id, is_published);
+  updatePublished: async ({ kind, id }: ListingRef, is_published: boolean): Promise<{ is_published: boolean }> => {
+    console.log(`[mock] PATCH /admin/platform/${kind}s/:id/published`, id, is_published);
     await delay(200);
-    const b = mockBusinesses.find((x) => x.id === id);
+    const b = mockBusinesses.find((x) => x.kind === kind && x.id === id);
     if (b) b.is_published = is_published;
     return { is_published };
   },
-  deleteBusiness: async (id: number): Promise<void> => {
-    console.log("[mock] DELETE /admin/platform/businesses/:id", id);
+  deleteBusiness: async ({ kind, id }: ListingRef): Promise<void> => {
+    console.log(`[mock] DELETE /admin/platform/${kind}s/:id`, id);
     await delay(200);
-    const i = mockBusinesses.findIndex((x) => x.id === id);
+    const i = mockBusinesses.findIndex((x) => x.kind === kind && x.id === id);
     if (i >= 0) mockBusinesses.splice(i, 1);
   },
   uploadImage: async (file: File): Promise<{ path: string }> => {

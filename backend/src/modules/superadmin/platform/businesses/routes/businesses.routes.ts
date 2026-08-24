@@ -95,6 +95,31 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
+  // Institution twins of status/published/delete — the admin list mixes both tables, so each
+  // row action routes by kind. Separate paths because the id spaces are separate.
+  app.patch("/institutions/:id/status", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { status } = StatusPatchSchema.parse(req.body);
+    const result = await service.updateInstitutionStatus(id, status);
+    await platformRepo.logAdminAction(Number(req.auth.sub), `INSTITUTION_STATUS_${status.toUpperCase()}`, "institution", undefined, { institution_id: id });
+    return reply.send(result);
+  });
+
+  app.patch("/institutions/:id/published", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { is_published } = PublishedPatchSchema.parse(req.body);
+    const result = await service.updateInstitutionPublished(id, is_published);
+    await platformRepo.logAdminAction(Number(req.auth.sub), is_published ? "INSTITUTION_PUBLISHED" : "INSTITUTION_UNPUBLISHED", "institution", undefined, { institution_id: id });
+    return reply.send(result);
+  });
+
+  app.delete("/institutions/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    await service.deleteInstitution(id);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_DELETED", "institution", undefined, { institution_id: id });
+    return reply.status(204).send();
+  });
+
   // PATCH /businesses/:id/published
   app.patch("/businesses/:id/published", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
