@@ -4,9 +4,10 @@ import type { FastifyInstance } from "fastify";
 import {
   OnboardingPersonalSchema, OnboardingBusinessSchema, OnboardingInstitutionSchema,
   ProfilePatchSchema, UpdateCategorySchema,
-  QualificationSchema, LanguageTestSchema, WorkExperienceSchema,
-  IdParamSchema, CountryIdParamSchema,
+  QualificationSchema, LanguageTestSchema, AcademicTestSchema, WorkExperienceSchema,
+  IdParamSchema, CountryIdParamSchema, LookupQuerySchema,
 } from "../schemas/platform-users.schema.js";
+import { paginationToOffset, buildPaginatedResponse } from "../../../shared/pagination.js";
 import * as service from "../services/platform-users.service.js";
 
 export async function platformUserRoutes(app: FastifyInstance) {
@@ -63,6 +64,22 @@ export async function platformUserRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
+  // ── Lookups (degree levels, areas of study) ──
+
+  app.get("/degree-levels", async (req, reply) => {
+    const { search, ...pagination } = LookupQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listDegreeLevels(limit, offset, search);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.get("/areas-of-study", async (req, reply) => {
+    const { search, ...pagination } = LookupQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listAreasOfStudy(limit, offset, search);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
   // ── Qualifications ──
 
   app.post("/me/qualifications", async (req, reply) => {
@@ -102,6 +119,27 @@ export async function platformUserRoutes(app: FastifyInstance) {
   app.delete("/me/language-tests/:id", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
     await service.removeLanguageTest(id, Number(req.auth.sub));
+    return reply.status(204).send();
+  });
+
+  // ── Academic Tests ──
+
+  app.post("/me/academic-tests", async (req, reply) => {
+    const data = AcademicTestSchema.parse(req.body);
+    const result = await service.addAcademicTest(Number(req.auth.sub), data);
+    return reply.status(201).send(result);
+  });
+
+  app.patch("/me/academic-tests/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const data = AcademicTestSchema.partial().parse(req.body);
+    const result = await service.editAcademicTest(id, Number(req.auth.sub), data);
+    return reply.send(result);
+  });
+
+  app.delete("/me/academic-tests/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    await service.removeAcademicTest(id, Number(req.auth.sub));
     return reply.status(204).send();
   });
 

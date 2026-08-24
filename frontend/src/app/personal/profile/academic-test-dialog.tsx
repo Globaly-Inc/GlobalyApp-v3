@@ -8,22 +8,22 @@ import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { LanguageTest, LanguageTestInput } from "../apis/types";
+import type { AcademicTest, AcademicTestInput } from "../apis/types";
 import { useValidatedForm, sanitizeDecimalInput } from "./validation";
 import { FieldError } from "./field-error";
 
-const TEST_TYPES = ["IELTS", "TOEFL", "PTE", "Duolingo", "OET"];
+const TEST_TYPES = ["SAT", "GMAT", "ACT", "GRE", "LSAT"];
 const TEST_TYPE_OPTIONS = TEST_TYPES.map((t) => ({ value: t, label: t }));
 
 const SUB_SCORE_FIELDS: Record<string, string[]> = {
-  IELTS: ["Reading", "Writing", "Listening", "Speaking"],
-  TOEFL: ["Reading", "Writing", "Listening", "Speaking"],
-  PTE: ["Reading", "Writing", "Listening", "Speaking"],
-  Duolingo: ["Literacy", "Comprehension", "Conversation", "Production"],
-  OET: ["Reading", "Writing", "Listening", "Speaking"],
+  SAT: ["Math", "Reading & Writing"],
+  GMAT: ["Quantitative", "Verbal", "Integrated Reasoning", "Analytical Writing"],
+  ACT: ["English", "Math", "Reading", "Science"],
+  GRE: ["Verbal", "Quantitative", "Analytical Writing"],
+  LSAT: [],
 };
 
-const schema: z.ZodType<LanguageTestInput> = z
+const schema: z.ZodType<AcademicTestInput> = z
   .object({
     test_status: z.string(),
     test_type: z.string().min(1, "Required"),
@@ -35,7 +35,7 @@ const schema: z.ZodType<LanguageTestInput> = z
   .refine((v) => v.test_status !== "completed" || v.overall_score !== "", { message: "Required", path: ["overall_score"] })
   .refine((v) => v.test_status !== "completed" || v.test_date !== "", { message: "Required", path: ["test_date"] });
 
-function toInput(item: LanguageTest | null): LanguageTestInput {
+function toInput(item: AcademicTest | null): AcademicTestInput {
   return {
     test_status: item?.test_status ?? "completed",
     test_type: item?.test_type ?? "",
@@ -46,7 +46,7 @@ function toInput(item: LanguageTest | null): LanguageTestInput {
   };
 }
 
-export function TestScoreDialog({
+export function AcademicTestDialog({
   open,
   onOpenChange,
   item,
@@ -55,14 +55,15 @@ export function TestScoreDialog({
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  item: LanguageTest | null;
-  onSave: (data: LanguageTestInput) => Promise<boolean>;
+  item: AcademicTest | null;
+  onSave: (data: AcademicTestInput) => Promise<boolean>;
   saving: boolean;
 }>) {
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
 
   useEffect(() => {
     if (open) reset(toInput(item));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item]);
 
   const handleSubmit = async () => {
@@ -79,37 +80,42 @@ export function TestScoreDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{item ? "Edit Test Score" : "Add Test Score"}</DialogTitle>
+          <DialogTitle>{item ? "Edit Academic Test" : "Add Academic Test"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          <div className="flex flex-col gap-2">
+            <Label>Test Status</Label>
+            <div className="flex gap-6">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  className="h-4 w-4 accent-primary"
+                  checked={completed}
+                  onChange={() => setForm((f) => ({ ...f, test_status: "completed" }))}
+                />
+                <span>I have completed this test</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  className="h-4 w-4 accent-primary"
+                  checked={!completed}
+                  onChange={() => setForm((f) => ({ ...f, test_status: "awaiting_results" }))}
+                />
+                <span>I&apos;m waiting for results</span>
+              </label>
+            </div>
+          </div>
           <div className="flex flex-col gap-2">
             <Label>Test Type *</Label>
             <Combobox
               value={form.test_type ?? ""}
               onChange={(v) => setForm((f) => ({ ...f, test_type: v, sub_scores: {} }))}
-              placeholder="Select test"
+              placeholder="Select test type"
               options={TEST_TYPE_OPTIONS}
               aria-invalid={!!errors.test_type}
             />
             <FieldError message={errors.test_type} />
-          </div>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={completed ? "default" : "outline"}
-              size="sm"
-              onClick={() => setForm((f) => ({ ...f, test_status: "completed" }))}
-            >
-              Completed
-            </Button>
-            <Button
-              type="button"
-              variant={!completed ? "default" : "outline"}
-              size="sm"
-              onClick={() => setForm((f) => ({ ...f, test_status: "awaiting_results" }))}
-            >
-              Awaiting Results
-            </Button>
           </div>
           {completed && (
             <>

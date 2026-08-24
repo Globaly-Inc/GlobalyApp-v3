@@ -16,7 +16,7 @@ import type { PortalNavGroup } from "@/components/portal-sidebar";
 // mobile drawer links every top-level entry directly.
 export const NAV_ITEMS: (PortalNavGroup & { href: string })[] = [
   { label: "Home", icon: Home, href: "/personal/portal" },
-  { label: "Explore", icon: Compass, href: "/personal/explore" },
+  { label: "Explore", icon: Compass, href: "/search?tab=courses" },
   {
     label: "Earn",
     icon: Coins,

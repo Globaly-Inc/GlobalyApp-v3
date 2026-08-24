@@ -12,6 +12,7 @@ export const mockMe: AdminUser = {
   phone: null,
   role: "super_admin",
   photo_url: null,
+  cover_url: null,
   account_status: 1,
   is_email_verified: true,
   is_active: true,
@@ -30,5 +31,14 @@ export const adminMockApi = {
     await delay(300);
     Object.assign(mockMe, patch);
     return mockMe;
+  },
+
+  uploadImage: async (category: "profile" | "cover", file: File): Promise<{ storage_path: string }> => {
+    console.log("[mock] POST /platform-users/me/files?category=" + category, file.name);
+    await delay(300);
+    const url = URL.createObjectURL(file);
+    if (category === "profile") mockMe.photo_url = url;
+    else mockMe.cover_url = url;
+    return { storage_path: url };
   },
 };

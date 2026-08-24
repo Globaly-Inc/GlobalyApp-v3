@@ -3,11 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { User, Mail, GraduationCap, Briefcase, Languages, CheckCircle2, Circle, Loader2, Lock } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { CoverLogoEditor } from "@/components/cover-logo-editor";
+import { Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { geoApi, type Country } from "../../geo/apis";
@@ -21,11 +17,16 @@ import {
   addLanguageTest,
   editLanguageTest,
   removeLanguageTest,
+  addAcademicTest,
+  editAcademicTest,
+  removeAcademicTest,
   addWorkExperience,
   editWorkExperience,
   removeWorkExperience,
 } from "../store/profile-slice";
 import type {
+  AcademicTest,
+  AcademicTestInput,
   LanguageTestInput,
   Qualification,
   QualificationInput,
@@ -34,28 +35,22 @@ import type {
   WorkExperienceInput,
   LanguageTest
 } from "../apis/types";
-import { SectionCard, OneToManySection, Field } from "./section-card";
-import { ItemRow } from "./item-row";
+import { ProfileHeroCard } from "./profile-hero-card";
+import { ProfileDetailsCards } from "./profile-details-cards";
+import { ProfileSidebar } from "./profile-sidebar";
+import { RecordSections } from "./record-sections";
 import { PersonalDetailsDialog } from "./personal-details-dialog";
 import { ContactDialog } from "./contact-dialog";
 import { PreferencesDialog } from "./preferences-dialog";
 import { QualificationDialog } from "./qualification-dialog";
 import { WorkExperienceDialog } from "./work-experience-dialog";
 import { TestScoreDialog } from "./test-score-dialog";
-
-function formatRange(start: string | null, end: string | null, isCurrent: boolean) {
-  if (!start && !end) return null;
-  return `${start ?? "—"} – ${isCurrent ? "Present" : (end ?? "—")}`;
-}
-
-function formatDate(value: string | null) {
-  return value ? value.split("T")[0] : null;
-}
+import { AcademicTestDialog } from "./academic-test-dialog";
 
 export function ProfileView() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { profile, qualifications, languageTests, workExperiences, status } = useAppSelector((state) => state.profile);
+  const { profile, qualifications, languageTests, academicTests, workExperiences, status } = useAppSelector((state) => state.profile);
   const [countries, setCountries] = useState<Country[]>([]);
 
   const { user: authUser, initializing } = useAuthState();
@@ -74,6 +69,10 @@ export function ProfileView() {
     item: null,
   });
   const [testScoreDialog, setTestScoreDialog] = useState<{ open: boolean; item: LanguageTest | null }>({
+    open: false,
+    item: null,
+  });
+  const [academicTestDialog, setAcademicTestDialog] = useState<{ open: boolean; item: AcademicTest | null }>({
     open: false,
     item: null,
   });
@@ -108,6 +107,12 @@ export function ProfileView() {
     return true;
   };
 
+  const visibility = profile.public_visibility ?? {};
+  const isSectionPublic = (key: string, defaultPublic = true) => visibility[key] ?? defaultPublic;
+  const toggleVisibility = (key: string, defaultPublic = true) => {
+    handleSaveProfile({ public_visibility: { ...visibility, [key]: !isSectionPublic(key, defaultPublic) } });
+  };
+
   const handleSaveQualification = async (data: QualificationInput) => {
     const result = qualificationDialog.item
       ? await dispatch(editQualification({ id: qualificationDialog.item.id, patch: data }))
@@ -130,6 +135,17 @@ export function ProfileView() {
     return true;
   };
 
+  const handleSaveAcademicTest = async (data: AcademicTestInput) => {
+    const result = academicTestDialog.item
+      ? await dispatch(editAcademicTest({ id: academicTestDialog.item.id, patch: data }))
+      : await dispatch(addAcademicTest(data));
+    if (result.meta.requestStatus === "rejected") {
+      toast.error("Couldn't save academic test");
+      return false;
+    }
+    return true;
+  };
+
   const handleSaveWorkExperience = async (data: WorkExperienceInput) => {
     const result = workExperienceDialog.item
       ? await dispatch(editWorkExperience({ id: workExperienceDialog.item.id, patch: data }))
@@ -140,8 +156,6 @@ export function ProfileView() {
     }
     return true;
   };
-
-  const confirmDelete = (label: string) => window.confirm(`Delete this ${label}?`);
 
   const handleImageFile = async (category: "profile" | "cover", file: File) => {
     setImageUploading(category);
@@ -155,197 +169,52 @@ export function ProfileView() {
     }
   };
 
-
   const completion = profile.completion ?? { percentage: 0, items: [] };
   const initial = profile.first_name?.[0]?.toUpperCase() ?? "U";
 
   return (
     <div className="space-y-6">
-      <Card className="overflow-hidden">
-        <CoverLogoEditor
-          className="h-40 sm:h-48"
-          coverUrl={profile.cover_url}
-          onCoverFile={(file) => handleImageFile("cover", file)}
-          coverUploading={imageUploading === "cover"}
-          logoUrl={profile.photo_url}
-          logoFallback={initial}
-          onLogoFile={(file) => handleImageFile("profile", file)}
-          logoUploading={imageUploading === "profile"}
-        />
-        <CardContent className="pt-16">
-          <h1 className="text-xl font-bold text-foreground">
-            {profile.first_name} {profile.last_name}
-          </h1>
-          <p className="text-sm text-muted-foreground">{profile.email}</p>
-        </CardContent>
-      </Card>
+      <ProfileHeroCard profile={profile} initial={initial} imageUploading={imageUploading} onImageFile={handleImageFile} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <SectionCard
-            icon={User}
-            title="Personal Details"
-            badge={
-              <Badge variant="secondary" className="gap-1">
-                <Lock className="h-3 w-3" /> Private
-              </Badge>
-            }
-            onEdit={() => setPersonalOpen(true)}
-          >
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <Field label="Full Name" value={`${profile.first_name} ${profile.last_name}`} />
-              <Field label="Date of Birth" value={formatDate(profile.date_of_birth)} />
-              <Field label="Gender" value={profile.gender} />
-              <Field label="Nationality" value={countryName(profile.nationality_id)} />
-              <Field label="City of Residence" value={profile.city_of_residence} />
-            </div>
-          </SectionCard>
+          <ProfileDetailsCards
+            profile={profile}
+            countryName={countryName}
+            isSectionPublic={isSectionPublic}
+            toggleVisibility={toggleVisibility}
+            onEditPersonal={() => setPersonalOpen(true)}
+            onEditContact={() => setContactOpen(true)}
+          />
 
-          <SectionCard icon={Mail} title="Contact Details" onEdit={() => setContactOpen(true)}>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Email" value={profile.email} />
-              <Field label="Phone" value={profile.phone} />
-              <Field
-                label="Address"
-                value={[profile.personal_address_street, profile.personal_address_city, profile.personal_address_state]
-                  .filter(Boolean)
-                  .join(", ")}
-              />
-              <Field label="Country" value={countryName(profile.personal_address_country_id)} />
-            </div>
-          </SectionCard>
-
-          <OneToManySection
-            icon={GraduationCap}
-            title="Education Background"
-            count={qualifications.length}
-            onAdd={() => setQualificationDialog({ open: true, item: null })}
-            emptyText="No education history added yet."
-          >
-            <div className="space-y-2">
-              {qualifications.map((q) => (
-                <ItemRow
-                  key={q.id}
-                  title={q.degree_title || q.qualification_type || "Qualification"}
-                  subtitle={[q.institution_name, q.subject_area].filter(Boolean).join(" · ")}
-                  meta={formatRange(q.start_date, q.end_date, q.is_current)}
-                  onEdit={() => setQualificationDialog({ open: true, item: q })}
-                  onDelete={() => confirmDelete("qualification") && dispatch(removeQualification(q.id))}
-                />
-              ))}
-            </div>
-          </OneToManySection>
-
-          <OneToManySection
-            icon={Languages}
-            title="Test Scores"
-            count={languageTests.length}
-            onAdd={() => setTestScoreDialog({ open: true, item: null })}
-            emptyText="No test scores added yet."
-          >
-            <div className="space-y-2">
-              {languageTests.map((t) => (
-                <ItemRow
-                  key={t.id}
-                  title={t.test_type ?? "Test"}
-                  subtitle={t.test_status === "completed" ? `Score: ${t.overall_score ?? "—"}` : "Awaiting results"}
-                  meta={formatDate(t.test_date)}
-                  onEdit={() => setTestScoreDialog({ open: true, item: t })}
-                  onDelete={() => confirmDelete("test score") && dispatch(removeLanguageTest(t.id))}
-                />
-              ))}
-            </div>
-          </OneToManySection>
-
-          <OneToManySection
-            icon={Briefcase}
-            title="Work Experience"
-            count={workExperiences.length}
-            onAdd={() => setWorkExperienceDialog({ open: true, item: null })}
-            emptyText="No work experience added yet."
-          >
-            <div className="space-y-2">
-              {workExperiences.map((w) => (
-                <ItemRow
-                  key={w.id}
-                  title={w.job_title}
-                  subtitle={w.organization_name}
-                  meta={formatRange(w.start_date, w.end_date, w.is_current)}
-                  onEdit={() => setWorkExperienceDialog({ open: true, item: w })}
-                  onDelete={() => confirmDelete("work experience") && dispatch(removeWorkExperience(w.id))}
-                />
-              ))}
-            </div>
-          </OneToManySection>
+          <RecordSections
+            qualifications={qualifications}
+            workExperiences={workExperiences}
+            academicTests={academicTests}
+            languageTests={languageTests}
+            isSectionPublic={isSectionPublic}
+            toggleVisibility={toggleVisibility}
+            onAddQualification={() => setQualificationDialog({ open: true, item: null })}
+            onEditQualification={(q) => setQualificationDialog({ open: true, item: q })}
+            onDeleteQualification={(id) => dispatch(removeQualification(id))}
+            onAddWorkExperience={() => setWorkExperienceDialog({ open: true, item: null })}
+            onEditWorkExperience={(w) => setWorkExperienceDialog({ open: true, item: w })}
+            onDeleteWorkExperience={(id) => dispatch(removeWorkExperience(id))}
+            onAddAcademicTest={() => setAcademicTestDialog({ open: true, item: null })}
+            onEditAcademicTest={(t) => setAcademicTestDialog({ open: true, item: t })}
+            onDeleteAcademicTest={(id) => dispatch(removeAcademicTest(id))}
+            onAddLanguageTest={() => setTestScoreDialog({ open: true, item: null })}
+            onEditLanguageTest={(t) => setTestScoreDialog({ open: true, item: t })}
+            onDeleteLanguageTest={(id) => dispatch(removeLanguageTest(id))}
+          />
         </div>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Profile Completion</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3">
-                <Progress value={completion.percentage} className="h-2 flex-1" />
-                <span className="text-sm font-medium text-muted-foreground">{completion.percentage}%</span>
-              </div>
-              {completion.percentage === 100 ? (
-                <p className="flex items-center gap-1.5 text-sm text-primary">
-                  <CheckCircle2 className="h-4 w-4" /> Your profile is complete!
-                </p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {completion.items
-                    .filter((i) => !i.met)
-                    .map((i) => (
-                      <li key={i.label} className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Circle className="h-3.5 w-3.5" /> {i.label}
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          <SectionCard icon={GraduationCap} title="Study Preferences" onEdit={() => setPreferencesOpen(true)}>
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Destinations</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {profile.preferred_destinations?.length ? (
-                    profile.preferred_destinations.map((id) => (
-                      <Badge key={id} variant="secondary">{countryName(id) ?? id}</Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">—</span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Fields of Study</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {profile.preferred_fields?.length ? (
-                    profile.preferred_fields.map((f) => <Badge key={f} variant="secondary">{f}</Badge>)
-                  ) : (
-                    <span className="text-sm text-muted-foreground">—</span>
-                  )}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Degree Level" value={profile.preferred_degree_levels?.join(", ")} />
-                <Field label="Expected Start" value={profile.expected_start_date} />
-              </div>
-              <Field
-                label="Budget"
-                value={
-                  profile.budget_min || profile.budget_max
-                    ? `${profile.budget_currency ?? ""} ${profile.budget_min ?? "?"} – ${profile.budget_max ?? "?"} / year`
-                    : null
-                }
-              />
-            </div>
-          </SectionCard>
-        </div>
+        <ProfileSidebar
+          completion={completion}
+          profile={profile}
+          countryName={countryName}
+          onEditPreferences={() => setPreferencesOpen(true)}
+        />
       </div>
 
       <PersonalDetailsDialog
@@ -384,6 +253,13 @@ export function ProfileView() {
         onOpenChange={(open) => setTestScoreDialog((s) => ({ ...s, open }))}
         item={testScoreDialog.item}
         onSave={handleSaveTestScore}
+        saving={saving}
+      />
+      <AcademicTestDialog
+        open={academicTestDialog.open}
+        onOpenChange={(open) => setAcademicTestDialog((s) => ({ ...s, open }))}
+        item={academicTestDialog.item}
+        onSave={handleSaveAcademicTest}
         saving={saving}
       />
       <WorkExperienceDialog

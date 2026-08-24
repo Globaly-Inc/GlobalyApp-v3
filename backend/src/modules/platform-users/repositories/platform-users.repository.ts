@@ -224,6 +224,31 @@ export async function deleteLanguageTest(id: string, userId: number) {
   return masterKnex("platform_user_language_tests").where({ id, user_id: userId }).update({ deleted_at: masterKnex.fn.now() });
 }
 
+// ── Academic Tests ──
+
+export async function listAcademicTests(userId: number) {
+  return masterKnex("platform_user_academic_tests").where({ user_id: userId }).whereNull("deleted_at").orderBy("sort_order");
+}
+
+export async function insertAcademicTest(userId: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("platform_user_academic_tests")
+    .insert({ user_id: userId, ...data })
+    .returning("*");
+  return row;
+}
+
+export async function updateAcademicTest(id: string, userId: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("platform_user_academic_tests")
+    .where({ id, user_id: userId })
+    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .returning("*");
+  return row;
+}
+
+export async function deleteAcademicTest(id: string, userId: number) {
+  return masterKnex("platform_user_academic_tests").where({ id, user_id: userId }).update({ deleted_at: masterKnex.fn.now() });
+}
+
 // ── Work Experiences ──
 
 export async function listWorkExperiences(userId: number) {
@@ -374,7 +399,11 @@ export async function updateInstitution(id: number, data: Record<string, unknown
 // ── Countries / Cities ──
 
 export async function listCountries() {
-  return masterKnex("countries").select("id", "name", "iso2", "iso3", "phone_code", "region").where({ is_active: true }).whereNull("deleted_at").orderBy("name");
+  return masterKnex("countries")
+    .select("id", "name", "iso2", "iso3", "phone_code", "region", "currency", "currency_symbol")
+    .where({ is_active: true })
+    .whereNull("deleted_at")
+    .orderBy("name");
 }
 
 export async function findCountryById(id: number) {

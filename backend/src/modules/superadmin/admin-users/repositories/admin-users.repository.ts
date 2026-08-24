@@ -1,6 +1,3 @@
-// Admin-users repository — queries against superadmin.admin_users (role-link table).
-// Auth fields live in platform_users, not here.
-
 import { masterKnex } from "../../../../core/db/master-pool.js";
 
 export interface AdminUserRow {
@@ -17,6 +14,7 @@ export interface AdminUserRow {
   email?: string;
   phone?: string | null;
   photo_url?: string | null;
+  cover_url?: string | null;
   account_status?: number;
 }
 
@@ -46,6 +44,7 @@ const ADMIN_WITH_USER_COLUMNS = [
   "platform_users.email",
   "platform_users.phone",
   "platform_users.photo_url",
+  "platform_users.cover_url",
   "platform_users.account_status",
 ] as const;
 

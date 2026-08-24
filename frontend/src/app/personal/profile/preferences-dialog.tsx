@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,11 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DEGREE_LEVELS, FIELDS_OF_STUDY } from "../static/onboarding-content";
 import type { Country } from "../../geo/apis";
 import type { StudentProfile, StudentProfilePatch } from "../apis/types";
-import { useValidatedForm, toMonthInput, fromMonthInput } from "./validation";
+import { useValidatedForm } from "./validation";
 import { FieldError } from "./field-error";
 
 type FormState = {
@@ -25,7 +27,7 @@ type FormState = {
   includeLiving: boolean;
 };
 
-const nonNegative = z.string().refine((v) => v === "" || Number(v) >= 0, "Must be 0 or more");
+const nonNegative = z.string().refine((v) => v === "" || (Number.isInteger(Number(v)) && Number(v) >= 0), "Must be a whole number, 0 or more");
 
 const schema: z.ZodType<FormState> = z
   .object({
@@ -77,10 +79,15 @@ export function PreferencesDialog({
     .filter((c) => !form.destinations.includes(String(c.id)))
     .map((c) => ({ value: String(c.id), label: c.name }));
 
-  const handleOpenChange = (next: boolean) => {
-    if (next) reset(toForm(profile));
-    onOpenChange(next);
-  };
+  const currencySymbolByCode = new Map(countries.filter((c) => c.currency).map((c) => [c.currency as string, c.currencySymbol]));
+  const currencyOptions = Array.from(currencySymbolByCode.keys())
+    .sort()
+    .map((code) => ({ value: code, label: currencySymbolByCode.get(code) ? `${code} (${currencySymbolByCode.get(code)})` : code }));
+
+  useEffect(() => {
+    if (open) reset(toForm(profile));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, profile]);
 
   const toggleDestination = (id: string) => {
     setForm((f) => {
@@ -114,7 +121,7 @@ export function PreferencesDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Study Preferences</DialogTitle>
@@ -155,7 +162,7 @@ export function PreferencesDialog({
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Degree Level</Label>
               <Combobox
                 value={form.degreeLevel}
@@ -164,26 +171,35 @@ export function PreferencesDialog({
                 options={DEGREE_LEVELS}
               />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Expected Start</Label>
-              <Input
-                type="month"
-                value={toMonthInput(form.expectedStartDate, "-")}
-                onChange={(e) => setForm((f) => ({ ...f, expectedStartDate: fromMonthInput(e.target.value, "-") }))}
+              <DatePicker
+                value={form.expectedStartDate}
+                onChange={(v) => setForm((f) => ({ ...f, expectedStartDate: v }))}
+                placeholder="Select expected start"
+                fromYear={new Date().getFullYear()}
+                toYear={new Date().getFullYear() + 10}
               />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Currency</Label>
-              <Input value={form.budgetCurrency} onChange={(e) => setForm((f) => ({ ...f, budgetCurrency: e.target.value }))} placeholder="AUD" />
+              <Combobox
+                value={form.budgetCurrency}
+                onChange={(v) => setForm((f) => ({ ...f, budgetCurrency: v }))}
+                placeholder="Select currency"
+                options={currencyOptions}
+              />
             </div>
             <div className="space-y-2">
               <Label>Budget Min</Label>
               <Input
                 type="number"
+                step={1}
+                inputMode="numeric"
                 value={form.budgetMin}
-                onChange={(e) => setForm((f) => ({ ...f, budgetMin: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, budgetMin: e.target.value.replace(/[^0-9]/g, "") }))}
                 aria-invalid={!!errors.budgetMin}
               />
               <FieldError message={errors.budgetMin} />
@@ -192,8 +208,10 @@ export function PreferencesDialog({
               <Label>Budget Max</Label>
               <Input
                 type="number"
+                step={1}
+                inputMode="numeric"
                 value={form.budgetMax}
-                onChange={(e) => setForm((f) => ({ ...f, budgetMax: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, budgetMax: e.target.value.replace(/[^0-9]/g, "") }))}
                 aria-invalid={!!errors.budgetMax}
               />
               <FieldError message={errors.budgetMax} />

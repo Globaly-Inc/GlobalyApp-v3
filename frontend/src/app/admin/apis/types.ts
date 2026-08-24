@@ -10,6 +10,7 @@ export type AdminUser = {
   phone: string | null;
   role: AdminRole;
   photo_url: string | null;
+  cover_url: string | null;
   account_status: number;
   is_email_verified: boolean;
   is_active: boolean;

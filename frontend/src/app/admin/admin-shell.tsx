@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { ShieldCheck, ChevronDown, Sparkles, Loader2 } from "lucide-react";
+import { ShieldCheck, ChevronDown, Sparkles, Loader2, User as UserIcon, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -28,10 +28,6 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   const { me, status, error } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
   const isAdmin = authUser?.type === "admin";
-  // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
-  // that has since moved on (e.g. after a back/forward navigation) — `status`/`me` in that cached HTML
-  // can genuinely disagree with the live store. Gate on `mounted` so the branch below matches whatever
-  // HTML is being hydrated against on the very first render.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -150,15 +146,15 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/profile")}>
-                My Profile
+                <UserIcon /> My Profile
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/portal")}>
-                Personal Portal
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/overview")}>
+                <ShieldCheck /> Super Admin
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-                Sign Out
+                <LogOut /> Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

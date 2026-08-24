@@ -12,6 +12,7 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ]
+const MONTH_ITEMS: Record<string, string> = Object.fromEntries(MONTHS.map((m, i) => [String(i), m]))
 
 function isSameDay(a: Date | undefined, b: Date | undefined) {
   return !!a && !!b && a.toDateString() === b.toDateString()
@@ -41,6 +42,10 @@ function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }:
     for (let y = maxYear; y >= minYear; y--) list.push(y)
     return list
   }, [minYear, maxYear])
+  const yearItems = React.useMemo(
+    () => Object.fromEntries(years.map((y) => [String(y), String(y)])),
+    [years],
+  )
 
   const firstWeekday = new Date(year, month, 1).getDay()
   const totalDays = new Date(year, month + 1, 0).getDate()
@@ -60,7 +65,7 @@ function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }:
         >
           <ChevronLeftIcon className="h-4 w-4" />
         </Button>
-        <Select value={String(month)} onValueChange={(v) => setViewDate(new Date(year, Number(v), 1))}>
+        <Select items={MONTH_ITEMS} value={String(month)} onValueChange={(v) => setViewDate(new Date(year, Number(v), 1))}>
           <SelectTrigger className="flex-1">
             <SelectValue />
           </SelectTrigger>
@@ -70,7 +75,7 @@ function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }:
             ))}
           </SelectContent>
         </Select>
-        <Select value={String(year)} onValueChange={(v) => setViewDate(new Date(Number(v), month, 1))}>
+        <Select items={yearItems} value={String(year)} onValueChange={(v) => setViewDate(new Date(Number(v), month, 1))}>
           <SelectTrigger className="w-[90px]">
             <SelectValue />
           </SelectTrigger>

@@ -1,8 +1,6 @@
-// Admin-users service — CRUD and invitations.
-// Admins are platform_users with an admin role-link.
-
 import { randomBytes } from "node:crypto";
 import { config } from "../../../../config.js";
+import * as storage from "../../../../shared/storage/storageService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import {
   NotFoundError,
@@ -46,8 +44,13 @@ export async function getAdmin(id: number) {
 export async function getAdminByPlatformUserId(platformUserId: number) {
   const admin = await repo.findAdminByPlatformUserId(platformUserId);
   if (!admin) throw new NotFoundError("Admin not found");
-  // Enrich with platform_user details
-  return repo.findAdminById(admin.id);
+  const full = await repo.findAdminById(admin.id);
+  if (!full) throw new NotFoundError("Admin not found");
+  const [photo_url, cover_url] = await Promise.all([
+    storage.resolvePreviewUrl(full.photo_url ?? null),
+    storage.resolvePreviewUrl(full.cover_url ?? null),
+  ]);
+  return { ...full, photo_url, cover_url };
 }
 
 export async function updateAdmin(id: number, data: UpdateAdminInput, callerRole: string) {
@@ -151,14 +154,12 @@ export async function acceptInvitation(token: string) {
 
   // Create or find platform_user for this email
   let platformUser = await platformUserRepo.findByEmail(invitation.email);
-  if (!platformUser) {
-    platformUser = await platformUserRepo.insert({
-      first_name: invitation.first_name,
-      last_name: invitation.last_name,
-      email: invitation.email,
-      account_status: 1,
-    });
-  }
+  platformUser ??= await platformUserRepo.insert({
+    first_name: invitation.first_name,
+    last_name: invitation.last_name,
+    email: invitation.email,
+    account_status: 1,
+  });
 
   // Create admin role-link synchronously — one cheap insert, no queue needed
   const existingAdmin = await repo.findAdminByPlatformUserId(platformUser.id);

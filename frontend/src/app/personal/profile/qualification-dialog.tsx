@@ -1,15 +1,18 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DEGREE_LEVELS, FIELDS_OF_STUDY } from "../static/onboarding-content";
+import type { Lookup } from "@/app/admin/platform/categories/apis/types";
+import { personalApi } from "../apis";
 import type { Qualification, QualificationInput } from "../apis/types";
-import { useValidatedForm, toMonthInput, fromMonthInput } from "./validation";
+import { useValidatedForm } from "./validation";
 import { FieldError } from "./field-error";
 
 const schema: z.ZodType<QualificationInput> = z
@@ -37,8 +40,6 @@ const GRADING_SYSTEMS = [
   { value: "pass_fail", label: "Pass / Fail" },
   { value: "other", label: "Other" },
 ];
-
-const FIELDS_OF_STUDY_OPTIONS = FIELDS_OF_STUDY.map((f) => ({ value: f, label: f }));
 
 function toInput(item: Qualification | null): QualificationInput {
   return {
@@ -70,10 +71,54 @@ export function QualificationDialog({
 }>) {
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
 
-  const handleOpenChange = (next: boolean) => {
-    if (next) reset(toInput(item));
-    onOpenChange(next);
+  useEffect(() => {
+    if (open) reset(toInput(item));
+  }, [open, item]);
+
+  const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
+  const [areasOfStudy, setAreasOfStudy] = useState<Lookup[]>([]);
+  const [degreeSearch, setDegreeSearch] = useState<Lookup[] | null>(null);
+  const [subjectSearch, setSubjectSearch] = useState<Lookup[] | null>(null);
+  const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    personalApi.getDegreeLevels().then((res) => setDegreeLevels(res.data));
+    personalApi.getAreasOfStudy().then((res) => setAreasOfStudy(res.data));
+  }, []);
+
+  useEffect(() => {
+    const timers = searchTimers.current;
+    return () => {
+      for (const timer of Object.values(timers)) clearTimeout(timer);
+    };
+  }, []);
+
+  const debouncedSearch = (key: "degree" | "subject", query: string) => {
+    clearTimeout(searchTimers.current[key]);
+    searchTimers.current[key] = setTimeout(async () => {
+      const res = key === "degree"
+        ? await personalApi.getDegreeLevels({ search: query || undefined })
+        : await personalApi.getAreasOfStudy({ search: query || undefined });
+      if (key === "degree") setDegreeSearch(res.data);
+      else setSubjectSearch(res.data);
+    }, 300);
   };
+
+  // Degree Level isn't creatable, so if a backend search narrows the currently selected value
+  // out of the list, graft it back in — otherwise the trigger falls back to the placeholder and
+  // looks like the selection was lost.
+  const degreeLevelOptions = (() => {
+    const options = (degreeSearch ?? degreeLevels).map((l) => ({ value: l.slug, label: l.name }));
+    if (form.qualification_type && !options.some((o) => o.value === form.qualification_type)) {
+      const current = degreeLevels.find((l) => l.slug === form.qualification_type);
+      if (current) return [{ value: current.slug, label: current.name }, ...options];
+    }
+    return options;
+  })();
+  const subjectAreaOptions = (subjectSearch ?? areasOfStudy).map((l) => ({ value: l.name, label: l.name }));
 
   const handleSubmit = async () => {
     const data = validate();
@@ -83,19 +128,21 @@ export function QualificationDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{item ? "Edit Education" : "Add Education"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Degree Level *</Label>
             <Combobox
               value={form.qualification_type ?? ""}
               onChange={(v) => setForm((f) => ({ ...f, qualification_type: v }))}
+              onQueryChange={(q) => debouncedSearch("degree", q)}
               placeholder="Select degree level"
-              options={DEGREE_LEVELS}
+              searchPlaceholder="Search degree levels..."
+              options={degreeLevelOptions}
               aria-invalid={!!errors.qualification_type}
             />
             <FieldError message={errors.qualification_type} />
@@ -110,29 +157,33 @@ export function QualificationDialog({
             />
             <FieldError message={errors.degree_title} />
           </div>
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Subject Area</Label>
             <Combobox
               value={form.subject_area ?? ""}
               onChange={(v) => setForm((f) => ({ ...f, subject_area: v }))}
+              onQueryChange={(q) => debouncedSearch("subject", q)}
               placeholder="Select or type a subject area"
               searchPlaceholder="Search or type your own..."
-              options={FIELDS_OF_STUDY_OPTIONS}
+              options={subjectAreaOptions}
               creatable
             />
           </div>
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Institution *</Label>
-            <Input
+            <Combobox
               value={form.institution_name ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, institution_name: e.target.value }))}
-              placeholder="e.g. University of Melbourne"
+              onChange={(v) => setForm((f) => ({ ...f, institution_name: v }))}
+              placeholder="Search or create institution..."
+              searchPlaceholder="e.g. University of Melbourne"
+              options={[]}
+              creatable
               aria-invalid={!!errors.institution_name}
             />
             <FieldError message={errors.institution_name} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Grading System</Label>
               <Combobox
                 value={form.grading_system ?? ""}
@@ -147,22 +198,24 @@ export function QualificationDialog({
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Start Date *</Label>
-              <Input
-                type="month"
-                value={toMonthInput(form.start_date ?? "")}
-                onChange={(e) => setForm((f) => ({ ...f, start_date: fromMonthInput(e.target.value) }))}
+              <DatePicker
+                value={form.start_date ?? ""}
+                onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
+                placeholder="Select start date"
+                toYear={new Date().getFullYear() + 10}
                 aria-invalid={!!errors.start_date}
               />
               <FieldError message={errors.start_date} />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>End Date{form.is_current ? "" : " *"}</Label>
-              <Input
-                type="month"
-                value={toMonthInput(form.end_date ?? "")}
-                onChange={(e) => setForm((f) => ({ ...f, end_date: fromMonthInput(e.target.value) }))}
+              <DatePicker
+                value={form.end_date ?? ""}
+                onChange={(v) => setForm((f) => ({ ...f, end_date: v }))}
+                placeholder="Select end date"
+                toYear={new Date().getFullYear() + 10}
                 disabled={form.is_current}
                 aria-invalid={!!errors.end_date}
               />

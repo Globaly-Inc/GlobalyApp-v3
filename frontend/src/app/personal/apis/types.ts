@@ -31,7 +31,7 @@ export type StudentProfile = {
   expected_start_date: string | null;
   linkedin_url: string | null;
   website_url: string | null;
-  /** Server-computed. null only if an older backend response lacks it. */
+  public_visibility: Record<string, boolean> | null;
   completion: ProfileCompletion | null;
   onboarding_completed: boolean;
 };
@@ -78,6 +78,19 @@ export type LanguageTest = {
 
 export type LanguageTestInput = Omit<LanguageTest, "id">;
 
+/** Same shape as LanguageTest — SAT/GMAT/ACT/GRE/LSAT, a separate section from IELTS/TOEFL/etc. */
+export type AcademicTest = {
+  id: string;
+  test_status: string | null;
+  test_type: string | null;
+  overall_score: string | null;
+  test_date: string | null;
+  sub_scores: Record<string, string> | null;
+  sort_order: number;
+};
+
+export type AcademicTestInput = Omit<AcademicTest, "id">;
+
 export type WorkExperience = {
   id: string;
   job_title: string;
@@ -94,5 +107,6 @@ export type FullProfile = {
   profile: StudentProfile;
   qualifications: Qualification[];
   languageTests: LanguageTest[];
+  academicTests: AcademicTest[];
   workExperiences: WorkExperience[];
 };

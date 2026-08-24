@@ -1,6 +1,8 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { personalApi } from "../apis";
 import type {
+  AcademicTest,
+  AcademicTestInput,
   LanguageTest,
   LanguageTestInput,
   Qualification,
@@ -73,6 +75,19 @@ export const removeLanguageTest = createAsyncThunk(
   },
 );
 
+// Academic tests are not a completion criterion (same as work experience), so no refetch needed.
+export const addAcademicTest = createAsyncThunk("profile/addAcademicTest", (input: AcademicTestInput) =>
+  personalApi.addAcademicTest(input),
+);
+export const editAcademicTest = createAsyncThunk(
+  "profile/editAcademicTest",
+  ({ id, patch }: { id: string; patch: Partial<AcademicTestInput> }) => personalApi.updateAcademicTest(id, patch),
+);
+export const removeAcademicTest = createAsyncThunk("profile/removeAcademicTest", async (id: string) => {
+  await personalApi.removeAcademicTest(id);
+  return id;
+});
+
 export const addWorkExperience = createAsyncThunk("profile/addWorkExperience", (input: WorkExperienceInput) =>
   personalApi.addWorkExperience(input),
 );
@@ -89,6 +104,7 @@ type ProfileState = {
   profile: StudentProfile | null;
   qualifications: Qualification[];
   languageTests: LanguageTest[];
+  academicTests: AcademicTest[];
   workExperiences: WorkExperience[];
   status: "idle" | "loading" | "saving" | "failed";
   error: string | null;
@@ -98,6 +114,7 @@ const initialState: ProfileState = {
   profile: null,
   qualifications: [],
   languageTests: [],
+  academicTests: [],
   workExperiences: [],
   status: "idle",
   error: null,
@@ -128,6 +145,7 @@ const profileSlice = createSlice({
         state.profile = action.payload.profile;
         state.qualifications = action.payload.qualifications;
         state.languageTests = action.payload.languageTests;
+        state.academicTests = action.payload.academicTests;
         state.workExperiences = action.payload.workExperiences;
       })
       .addCase(fetchFullProfile.rejected, (state, action) => {
@@ -163,6 +181,15 @@ const profileSlice = createSlice({
       })
       .addCase(removeLanguageTest.fulfilled, (state, action) => {
         state.languageTests = state.languageTests.filter((t) => t.id !== action.payload);
+      })
+      .addCase(addAcademicTest.fulfilled, (state, action) => {
+        state.academicTests = upsert(state.academicTests, action.payload);
+      })
+      .addCase(editAcademicTest.fulfilled, (state, action) => {
+        state.academicTests = upsert(state.academicTests, action.payload);
+      })
+      .addCase(removeAcademicTest.fulfilled, (state, action) => {
+        state.academicTests = state.academicTests.filter((t) => t.id !== action.payload);
       })
       .addCase(addWorkExperience.fulfilled, (state, action) => {
         state.workExperiences = upsert(state.workExperiences, action.payload);

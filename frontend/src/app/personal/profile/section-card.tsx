@@ -45,6 +45,7 @@ export function OneToManySection({
   onAdd,
   children,
   emptyText,
+  badge,
 }: Readonly<{
   icon: ComponentType<{ className?: string }>;
   title: string;
@@ -52,6 +53,7 @@ export function OneToManySection({
   onAdd: () => void;
   children: React.ReactNode;
   emptyText: string;
+  badge?: React.ReactNode;
 }>) {
   return (
     <Card>
@@ -60,6 +62,7 @@ export function OneToManySection({
           <Icon className="h-4 w-4 text-muted-foreground" />
           {title}
           {count > 0 && <Badge variant="secondary">{count}</Badge>}
+          {badge}
         </CardTitle>
         <CardAction>
           <Button variant="ghost" size="icon-sm" onClick={onAdd} aria-label={`Add ${title}`}>
