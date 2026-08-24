@@ -1,4 +1,4 @@
-import type { ComposeWithAiInput, CreatePostInput, FeedPage, FeedPost, PostMedia, ReactionGroup } from "./types";
+import type { ComposeWithAiInput, CreateCommentInput, CreatePostInput, FeedComment, FeedPage, FeedPost, PostMedia, ReactionGroup } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -13,12 +13,14 @@ let mockPosts: FeedPost[] = [
     visibility: "everyone",
     content: "Just submitted my application to Melbourne. Fingers crossed 🤞",
     media: [],
+    mentions: [],
     reactions: [
       { emoji: "❤️", count: 3, reactors: [{ first_name: "Ana", photo_url: null }, { first_name: "Bo", photo_url: null }] },
       { emoji: "🎉", count: 1, reactors: [{ first_name: "Cy", photo_url: null }] },
     ],
     is_pinned: false,
     reactions_count: 4,
+    comments_count: 1,
     created_at: new Date(Date.now() - 3600 * 1000).toISOString(),
     author_first_name: "Test",
     author_last_name: "Student",
@@ -36,6 +38,7 @@ let mockPosts: FeedPost[] = [
     visibility: "everyone",
     content: "Applications for the February intake close on the 20th.",
     media: [],
+    mentions: [],
     reactions: [
       {
         emoji: "👍",
@@ -49,6 +52,7 @@ let mockPosts: FeedPost[] = [
     ],
     is_pinned: true,
     reactions_count: 12,
+    comments_count: 0,
     created_at: new Date(Date.now() - 26 * 3600 * 1000).toISOString(),
     author_first_name: "Northbridge",
     author_last_name: "Admissions",
@@ -61,6 +65,25 @@ let mockPosts: FeedPost[] = [
 ];
 
 let nextPostId = 3;
+let nextCommentId = 1;
+let mockComments: FeedComment[] = [
+  {
+    id: 0,
+    post_id: 2,
+    author_platform_user_id: 2,
+    content: "Good luck! Melbourne moves fast once you're in.",
+    mentions: [],
+    media: [],
+    created_at: new Date(Date.now() - 1800 * 1000).toISOString(),
+    author_first_name: "Northbridge",
+    author_last_name: "Admissions",
+    author_photo_url: null,
+    is_mine: false,
+    reactions_count: 0,
+    my_reaction: null,
+    reactions: [],
+  },
+];
 
 function dropMockReaction(groups: ReactionGroup[], previousEmoji: string | null): ReactionGroup[] {
   if (!previousEmoji) return groups.map((g) => ({ ...g, reactors: [...g.reactors] }));
@@ -92,6 +115,7 @@ export const feedMockApi = {
       visibility: input.visibility,
       content: input.content,
       media: (input.media ?? []).map((m) => ({ ...m, url: m.storage_path })),
+      mentions: input.mentions ?? [],
       reactions: [],
       is_pinned: false,
       reactions_count: 0,
@@ -103,6 +127,7 @@ export const feedMockApi = {
       business_logo_url: null,
       my_reaction: null,
       is_mine: true,
+      comments_count: 0,
     };
     mockPosts = [post, ...mockPosts];
     return post;
@@ -178,4 +203,73 @@ export const feedMockApi = {
     );
   },
 
+  listComments: async (postId: number): Promise<FeedComment[]> => {
+    console.log("[mock] GET /feed/posts/:id/comments", postId);
+    await delay(200);
+    return mockComments.filter((c) => c.post_id === postId);
+  },
+
+  addComment: async (postId: number, input: CreateCommentInput): Promise<FeedComment> => {
+    console.log("[mock] POST /feed/posts/:id/comments", postId, input);
+    await delay(200);
+    const comment: FeedComment = {
+      id: nextCommentId++,
+      post_id: postId,
+      author_platform_user_id: 1,
+      content: input.content,
+      mentions: input.mentions,
+      media: (input.media ?? []).map((m) => ({ ...m, url: m.storage_path })),
+      created_at: new Date().toISOString(),
+      author_first_name: "Test",
+      author_last_name: "Student",
+      author_photo_url: null,
+      is_mine: true,
+      reactions_count: 0,
+      my_reaction: null,
+      reactions: [],
+    };
+    mockComments = [...mockComments, comment];
+    mockPosts = mockPosts.map((p) => (p.id === postId ? { ...p, comments_count: p.comments_count + 1 } : p));
+    return comment;
+  },
+
+  deleteComment: async (postId: number, commentId: number): Promise<void> => {
+    console.log("[mock] DELETE /feed/posts/:id/comments/:commentId", postId, commentId);
+    await delay(150);
+    mockComments = mockComments.filter((c) => c.id !== commentId);
+    mockPosts = mockPosts.map((p) => (p.id === postId ? { ...p, comments_count: Math.max(p.comments_count - 1, 0) } : p));
+  },
+
+  setCommentReaction: async (postId: number, commentId: number, emoji: string): Promise<void> => {
+    console.log("[mock] POST /feed/posts/:id/comments/:id/reactions", postId, commentId, emoji);
+    await delay(150);
+    mockComments = mockComments.map((c) => {
+      if (c.id !== commentId) return c;
+      const groups = dropMockReaction(c.reactions, c.my_reaction);
+      const existing = groups.find((g) => g.emoji === emoji);
+      if (existing) existing.count += 1;
+      else groups.push({ emoji, count: 1, reactors: [{ first_name: "Test", photo_url: null }] });
+      return {
+        ...c,
+        my_reaction: emoji,
+        reactions_count: c.my_reaction ? c.reactions_count : c.reactions_count + 1,
+        reactions: groups.sort((a, b) => b.count - a.count),
+      };
+    });
+  },
+
+  removeCommentReaction: async (postId: number, commentId: number): Promise<void> => {
+    console.log("[mock] DELETE /feed/posts/:id/comments/:id/reactions", postId, commentId);
+    await delay(150);
+    mockComments = mockComments.map((c) =>
+      c.id === commentId
+        ? {
+            ...c,
+            my_reaction: null,
+            reactions_count: Math.max(c.reactions_count - (c.my_reaction ? 1 : 0), 0),
+            reactions: dropMockReaction(c.reactions, c.my_reaction),
+          }
+        : c,
+    );
+  },
 };

@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { feedApi } from "../apis";
-import type { ComposeWithAiInput, CreatePostInput, FeedPost, ReactionGroup } from "../apis/types";
+import type { ComposeWithAiInput, CreateCommentInput, CreatePostInput, FeedComment, FeedPost, ReactionGroup } from "../apis/types";
 import type { RootState } from "@/lib/store";
 
 export const fetchFeedPage = createAsyncThunk(
@@ -52,6 +52,45 @@ export const removePostReaction = createAsyncThunk("feed/removeReaction", async 
   return id;
 });
 
+export const fetchComments = createAsyncThunk("feed/fetchComments", async (postId: number) => {
+  const comments = await feedApi.listComments(postId);
+  return { postId, comments };
+});
+
+export const addComment = createAsyncThunk(
+  "feed/addComment",
+  async ({ postId, input }: { postId: number; input: CreateCommentInput }) => {
+    const comment = await feedApi.addComment(postId, input);
+    return { postId, comment };
+  },
+);
+
+export const deleteComment = createAsyncThunk(
+  "feed/deleteComment",
+  async ({ postId, commentId }: { postId: number; commentId: number }) => {
+    await feedApi.deleteComment(postId, commentId);
+    return { postId, commentId };
+  },
+);
+
+/** Add or update the caller's reaction on a comment. Mirrors setPostReaction. */
+export const setCommentReaction = createAsyncThunk(
+  "feed/setCommentReaction",
+  async ({ postId, commentId, emoji }: { postId: number; commentId: number; emoji: string }, { getState }) => {
+    await feedApi.setCommentReaction(postId, commentId, emoji);
+    const profile = (getState() as RootState).profile.profile;
+    return { postId, commentId, emoji, me: { first_name: profile?.first_name ?? null, photo_url: profile?.photo_url ?? null } };
+  },
+);
+
+export const removeCommentReaction = createAsyncThunk(
+  "feed/removeCommentReaction",
+  async ({ postId, commentId }: { postId: number; commentId: number }) => {
+    await feedApi.removeCommentReaction(postId, commentId);
+    return { postId, commentId };
+  },
+);
+
 /** Mirrors the server's cap, so the client's stack never shows more faces than a refetch would. */
 const MAX_REACTOR_AVATARS = 3;
 
@@ -88,6 +127,8 @@ type FeedState = {
   postType: string;
   /** null = not checked yet; the composer hides the AI affordance when the backend has no key. */
   aiAvailable: boolean | null;
+  /** Comments only load once a post's thread is opened, keyed by post id. */
+  commentsByPost: Record<number, { items: FeedComment[]; status: RegionStatus }>;
 };
 
 const initialState: FeedState = {
@@ -98,6 +139,7 @@ const initialState: FeedState = {
   feedError: null,
   postType: "all",
   aiAvailable: null,
+  commentsByPost: {},
 };
 
 const feedSlice = createSlice({
@@ -172,6 +214,67 @@ const feedSlice = createSlice({
                 my_reaction: null,
               }
             : p,
+        );
+      })
+
+      .addCase(fetchComments.pending, (state, action) => {
+        state.commentsByPost[action.meta.arg] = { items: state.commentsByPost[action.meta.arg]?.items ?? [], status: "loading" };
+      })
+      .addCase(fetchComments.fulfilled, (state, action) => {
+        state.commentsByPost[action.payload.postId] = { items: action.payload.comments, status: "idle" };
+      })
+      .addCase(fetchComments.rejected, (state, action) => {
+        state.commentsByPost[action.meta.arg] = { items: state.commentsByPost[action.meta.arg]?.items ?? [], status: "failed" };
+      })
+      .addCase(addComment.fulfilled, (state, action) => {
+        const { postId, comment } = action.payload;
+        const bucket = state.commentsByPost[postId] ?? { items: [], status: "idle" };
+        state.commentsByPost[postId] = { ...bucket, items: [...bucket.items, comment] };
+        const post = state.posts.find((p) => p.id === postId);
+        if (post) post.comments_count += 1;
+      })
+      .addCase(deleteComment.fulfilled, (state, action) => {
+        const { postId, commentId } = action.payload;
+        const bucket = state.commentsByPost[postId];
+        if (bucket) bucket.items = bucket.items.filter((c) => c.id !== commentId);
+        const post = state.posts.find((p) => p.id === postId);
+        if (post) post.comments_count = Math.max(post.comments_count - 1, 0);
+      })
+      .addCase(setCommentReaction.fulfilled, (state, action) => {
+        const { postId, commentId, emoji, me } = action.payload;
+        const bucket = state.commentsByPost[postId];
+        if (!bucket) return;
+        bucket.items = bucket.items.map((c) => {
+          if (c.id !== commentId) return c;
+          const groups = withoutMe(c.reactions, c.my_reaction, me);
+          const existing = groups.find((g) => g.emoji === emoji);
+          if (existing) {
+            existing.count += 1;
+            if (existing.reactors.length < MAX_REACTOR_AVATARS) existing.reactors.push(me);
+          } else {
+            groups.push({ emoji, count: 1, reactors: [me] });
+          }
+          return {
+            ...c,
+            reactions_count: c.my_reaction ? c.reactions_count : c.reactions_count + 1,
+            my_reaction: emoji,
+            reactions: groups.sort((a, b) => b.count - a.count),
+          };
+        });
+      })
+      .addCase(removeCommentReaction.fulfilled, (state, action) => {
+        const { postId, commentId } = action.payload;
+        const bucket = state.commentsByPost[postId];
+        if (!bucket) return;
+        bucket.items = bucket.items.map((c) =>
+          c.id === commentId
+            ? {
+                ...c,
+                reactions_count: Math.max(c.reactions_count - (c.my_reaction ? 1 : 0), 0),
+                reactions: withoutMe(c.reactions, c.my_reaction, null).sort((a, b) => b.count - a.count),
+                my_reaction: null,
+              }
+            : c,
         );
       });
   },

@@ -12,10 +12,28 @@ export interface FeedPostRow {
   visibility: string;
   content: string;
   media: { storage_path: string; type: "image" | "video"; mime_type: string }[];
+  mentions: { platform_user_id: number; first_name: string | null; last_name: string | null }[];
   is_pinned: boolean;
   reactions_count: number;
+  comments_count: number;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface FeedCommentRow {
+  id: number;
+  post_id: number;
+  author_platform_user_id: number;
+  content: string;
+  mentions: { platform_user_id: number; first_name: string | null; last_name: string | null }[];
+  media: { storage_path: string; type: "image" | "video"; mime_type: string }[];
+  created_at: Date;
+  author_first_name: string | null;
+  author_last_name: string | null;
+  author_photo_url: string | null;
+  is_mine: boolean;
+  reactions_count: number;
+  my_reaction: string | null;
 }
 
 export type Cursor = { is_pinned: boolean; created_at: string; id: number };
@@ -71,8 +89,10 @@ function hydratedPostQuery(viewerId: number) {
       "p.visibility",
       "p.content",
       "p.media",
+      "p.mentions",
       "p.is_pinned",
       "p.reactions_count",
+      "p.comments_count",
       "p.created_at",
       // Microsecond-faithful copy of created_at, used only to build cursors. Stripped before the response.
       masterKnex.raw("p.created_at::text as cursor_ts"),
@@ -221,9 +241,10 @@ export async function insertPost(data: {
   visibility: string;
   content: string;
   media: unknown[];
+  mentions: unknown[];
 }) {
   const [row] = await masterKnex("feed_posts")
-    .insert({ ...data, media: JSON.stringify(data.media) })
+    .insert({ ...data, media: JSON.stringify(data.media), mentions: JSON.stringify(data.mentions) })
     .returning("*");
   return row as FeedPostRow;
 }
@@ -280,5 +301,168 @@ export async function removeReaction(postId: number, platformUserId: number) {
         .update({ reactions_count: masterKnex.raw("GREATEST(reactions_count - 1, 0)") });
     }
     return { removed: deleted > 0 };
+  });
+}
+
+function hydratedCommentQuery(viewerId: number) {
+  return masterKnex("feed_comments as c")
+    .leftJoin("platform_users as u", "u.id", "c.author_platform_user_id")
+    .leftJoin("feed_comment_reactions as mine", function () {
+      this.on("mine.comment_id", "=", "c.id").andOn("mine.platform_user_id", "=", masterKnex.raw("?", [viewerId]));
+    })
+    .select(
+      "c.id",
+      "c.post_id",
+      "c.author_platform_user_id",
+      "c.content",
+      "c.mentions",
+      "c.media",
+      "c.reactions_count",
+      "c.created_at",
+      "u.first_name as author_first_name",
+      "u.last_name as author_last_name",
+      "u.photo_url as author_photo_url",
+      "mine.emoji as my_reaction",
+      masterKnex.raw("(c.author_platform_user_id = ?) as is_mine", [viewerId]),
+    );
+}
+
+/** Oldest first, matching a comment thread's natural reading order. */
+export async function listComments(postId: number, viewerId: number): Promise<FeedCommentRow[]> {
+  return hydratedCommentQuery(viewerId)
+    .where("c.post_id", postId)
+    .whereNull("c.deleted_at")
+    .orderBy(["c.created_at", "c.id"]) as Promise<FeedCommentRow[]>;
+}
+
+export async function insertComment(data: {
+  post_id: number;
+  author_platform_user_id: number;
+  content: string;
+  mentions: unknown[];
+  media: unknown[];
+}): Promise<FeedCommentRow> {
+  return masterKnex.transaction(async (trx) => {
+    const [row] = await trx("feed_comments")
+      .insert({ ...data, mentions: JSON.stringify(data.mentions), media: JSON.stringify(data.media) })
+      .returning("*");
+    await trx("feed_posts").where({ id: data.post_id }).increment("comments_count", 1);
+
+    const [hydrated] = await trx("feed_comments as c")
+      .leftJoin("platform_users as u", "u.id", "c.author_platform_user_id")
+      .where("c.id", row.id)
+      .select(
+        "c.id",
+        "c.post_id",
+        "c.author_platform_user_id",
+        "c.content",
+        "c.mentions",
+        "c.media",
+        "c.reactions_count",
+        "c.created_at",
+        "u.first_name as author_first_name",
+        "u.last_name as author_last_name",
+        "u.photo_url as author_photo_url",
+        trx.raw("(c.author_platform_user_id = ?) as is_mine", [data.author_platform_user_id]),
+        trx.raw("NULL as my_reaction"),
+      );
+    return hydrated as FeedCommentRow;
+  });
+}
+
+export async function setCommentReaction(commentId: number, platformUserId: number, emoji: string) {
+  return masterKnex.transaction(async (trx) => {
+    const existing = await trx("feed_comment_reactions")
+      .where({ comment_id: commentId, platform_user_id: platformUserId })
+      .forUpdate()
+      .first();
+
+    if (existing) {
+      if (existing.emoji !== emoji) {
+        await trx("feed_comment_reactions")
+          .where({ comment_id: commentId, platform_user_id: platformUserId })
+          .update({ emoji });
+      }
+      return { added: false };
+    }
+
+    const inserted = await trx("feed_comment_reactions")
+      .insert({ comment_id: commentId, platform_user_id: platformUserId, emoji })
+      .onConflict(["comment_id", "platform_user_id"])
+      .ignore();
+
+    const didInsert = (inserted as unknown as { rowCount?: number }).rowCount !== 0;
+    if (didInsert) {
+      await trx("feed_comments").where({ id: commentId }).increment("reactions_count", 1);
+    }
+    return { added: didInsert };
+  });
+}
+
+export async function removeCommentReaction(commentId: number, platformUserId: number) {
+  return masterKnex.transaction(async (trx) => {
+    const deleted = await trx("feed_comment_reactions")
+      .where({ comment_id: commentId, platform_user_id: platformUserId })
+      .del();
+    if (deleted > 0) {
+      await trx("feed_comments")
+        .where({ id: commentId })
+        .update({ reactions_count: masterKnex.raw("GREATEST(reactions_count - 1, 0)") });
+    }
+    return { removed: deleted > 0 };
+  });
+}
+
+export type CommentReactionGroup = { emoji: string; count: number; reactors: { first_name: string | null; photo_url: string | null }[] };
+const MAX_COMMENT_REACTOR_AVATARS = 3;
+
+export async function commentReactionSummaries(commentIds: number[]): Promise<Map<number, CommentReactionGroup[]>> {
+  const summaries = new Map<number, CommentReactionGroup[]>();
+  if (!commentIds.length) return summaries;
+
+  const rows = (await masterKnex("feed_comment_reactions as r")
+    .leftJoin("platform_users as u", "u.id", "r.platform_user_id")
+    .whereIn("r.comment_id", commentIds)
+    .orderBy("r.created_at", "asc")
+    .select("r.comment_id", "r.emoji", "u.first_name", "u.photo_url")) as {
+    comment_id: number;
+    emoji: string;
+    first_name: string | null;
+    photo_url: string | null;
+  }[];
+
+  for (const row of rows) {
+    const groups = summaries.get(row.comment_id) ?? [];
+    let group = groups.find((g) => g.emoji === row.emoji);
+    if (!group) {
+      group = { emoji: row.emoji, count: 0, reactors: [] };
+      groups.push(group);
+    }
+    group.count++;
+    if (group.reactors.length < MAX_COMMENT_REACTOR_AVATARS) {
+      group.reactors.push({ first_name: row.first_name, photo_url: row.photo_url });
+    }
+    summaries.set(row.comment_id, groups);
+  }
+
+  for (const groups of summaries.values()) groups.sort((a, b) => b.count - a.count);
+  return summaries;
+}
+
+export async function findComment(id: number) {
+  return masterKnex("feed_comments").where({ id }).whereNull("deleted_at").first() as Promise<
+    { id: number; post_id: number; author_platform_user_id: number } | undefined
+  >;
+}
+
+export async function softDeleteComment(id: number, postId: number) {
+  return masterKnex.transaction(async (trx) => {
+    const deleted = await trx("feed_comments").where({ id }).update({ deleted_at: trx.fn.now() });
+    if (deleted > 0) {
+      await trx("feed_posts")
+        .where({ id: postId })
+        .update({ comments_count: masterKnex.raw("GREATEST(comments_count - 1, 0)") });
+    }
+    return deleted > 0;
   });
 }

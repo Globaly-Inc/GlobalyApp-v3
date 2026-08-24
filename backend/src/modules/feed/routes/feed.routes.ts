@@ -5,6 +5,8 @@ import {
   PostIdParamSchema,
   SetReactionSchema,
   ComposeWithAiSchema,
+  CommentIdParamSchema,
+  CreateCommentSchema,
 } from "../schemas/feed.schema.js";
 import * as service from "../services/feed.service.js";
 import * as mediaService from "../services/feed-media.service.js";
@@ -75,6 +77,38 @@ export async function feedRoutes(app: FastifyInstance) {
   app.delete("/posts/:id/reactions", async (req, reply) => {
     const { id } = PostIdParamSchema.parse(req.params);
     await service.removeReaction(id, Number(req.auth.sub));
+    return reply.status(204).send();
+  });
+
+  app.get("/posts/:id/comments", async (req, reply) => {
+    const { id } = PostIdParamSchema.parse(req.params);
+    const comments = await service.listComments(id, Number(req.auth.sub));
+    return reply.send({ data: comments });
+  });
+
+  app.post("/posts/:id/comments", async (req, reply) => {
+    const { id } = PostIdParamSchema.parse(req.params);
+    const input = CreateCommentSchema.parse(req.body);
+    const comment = await service.addComment(id, Number(req.auth.sub), input);
+    return reply.status(201).send(comment);
+  });
+
+  app.delete("/posts/:id/comments/:commentId", async (req, reply) => {
+    const { id, commentId } = CommentIdParamSchema.parse(req.params);
+    await service.deleteComment(id, commentId, Number(req.auth.sub));
+    return reply.status(204).send();
+  });
+
+  app.post("/posts/:id/comments/:commentId/reactions", async (req, reply) => {
+    const { id, commentId } = CommentIdParamSchema.parse(req.params);
+    const { emoji } = SetReactionSchema.parse(req.body ?? {});
+    await service.setCommentReaction(id, commentId, Number(req.auth.sub), emoji);
+    return reply.status(204).send();
+  });
+
+  app.delete("/posts/:id/comments/:commentId/reactions", async (req, reply) => {
+    const { id, commentId } = CommentIdParamSchema.parse(req.params);
+    await service.removeCommentReaction(id, commentId, Number(req.auth.sub));
     return reply.status(204).send();
   });
 }
