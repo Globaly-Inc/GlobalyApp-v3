@@ -3,10 +3,12 @@ import { getKnex } from "../../../core/db/pool-manager.js";
 import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 
+// The public catalog row shape the institution detail page expects — `job_id` (from
+// source_job_id) is what the /courses endpoint uses to find the scraped course catalog.
 const INSTITUTION_COLUMNS = [
-  "ei.id", "ei.job_id", "ei.name as business_name", "ei.logo_url", "ei.description",
-  "ei.city", "ei.country as country_name", "ei.website", "ei.email",
-  "ei.phone", "ei.address", "ei.facebook_url", "ei.instagram_url", "ei.twitter_url", "ei.linkedin_url", "ei.youtube_url",
+  "i.id", "i.source_job_id as job_id", "i.institution_name as business_name", "i.logo_url", "i.description",
+  "i.city", "c.name as country_name", "i.website", "i.email",
+  "i.phone", "i.address", "i.facebook_url", "i.instagram_url", "i.twitter_url", "i.linkedin_url", "i.youtube_url",
 ];
 
 function overviewQuery(
@@ -29,8 +31,37 @@ function overviewQuery(
   return q;
 }
 
-function institutionsQuery(filters: Omit<BusinessSearchFilters, "businessType">) {
-  return overviewQuery(filters, "ej.source_type is distinct from 'visa_service'");
+/**
+ * The public institutions catalog — the `institutions` table (public schema), which is where
+ * promote publishes extraction jobs and where owner-registered institutions live. Only rows
+ * an admin has published are searchable, mirroring how `businesses.is_published` gates the
+ * other tabs. Raw extraction rows are no longer served directly: an exported job becomes
+ * visible by being promoted (→ institutions row) and published.
+ */
+function institutionsQuery({ country, city, search }: Omit<BusinessSearchFilters, "businessType">) {
+  const q = masterKnex("institutions as i")
+    .leftJoin("countries as c", "c.id", "i.country_id")
+    .where("i.is_published", true)
+    .whereNull("i.deleted_at");
+
+  if (country) {
+    q.where((b) =>
+      b.whereRaw("lower(c.name) = lower(?)", [country]).orWhereRaw("lower(c.slug) = lower(?)", [country]),
+    );
+  }
+  if (city) q.whereILike("i.city", `%${city}%`);
+  if (search) {
+    q.where((b) => b.whereILike("i.institution_name", `%${search}%`).orWhereILike("i.description", `%${search}%`));
+  }
+  return q;
+}
+
+/** Confirmed scraped courses for a promoted institution, via its source job. */
+function institutionCourseCount() {
+  return masterKnex.raw(
+    `(select count(*) from ${S}.extraction_courses ec
+      where ec.job_id = i.source_job_id and ec.verification_status = 'confirmed') as course_count`,
+  );
 }
 
 export type VisaServiceFilters = Omit<BusinessSearchFilters, "businessType"> & { licensedOnly?: boolean };
@@ -54,68 +85,29 @@ function businessIdFragment(id: number): string {
   return String(id).padStart(6, "0");
 }
 
-/**
- * Real, published businesses filed under the "institutions" category — distinct from the scraped
- * `extraction_institution_overview` catalog above. Shown first: they are current, owner-maintained data,
- * while the scrape fills in the catalog until more businesses register.
- */
-function realInstitutionsQuery(filters: Omit<BusinessSearchFilters, "businessType">) {
-  return baseQuery({ businessType: "institution", ...filters });
-}
-
-async function listRealInstitutions(filters: Omit<BusinessSearchFilters, "businessType">) {
-  const rows = await realInstitutionsQuery(filters)
-    .select("b.id", "b.business_name", "b.logo_url", "b.description", "b.city", "c.name as country_name", "b.website", "b.email")
-    .orderBy("b.business_name");
-  return rows.map((r: { id: number; business_name: string }) =>
-    withSlug({ ...r, id: businessIdFragment(r.id), course_count: 0 }));
-}
-
-async function countRealInstitutions(filters: Omit<BusinessSearchFilters, "businessType">) {
-  const [row] = await realInstitutionsQuery(filters).count("b.id as count");
-  return Number(row.count);
-}
-
 export async function listPublicInstitutions(filters: Omit<BusinessSearchFilters, "businessType">, limit: number, offset: number) {
-  // ponytail: real businesses are fetched in full (not offset/limited at the SQL level) and prepended —
-  // institution counts are small today, so this keeps cross-source page math simple. Revisit with a proper
-  // merged/paginated query if the number of published institution businesses grows large.
-  const real = await listRealInstitutions(filters);
-  const page = real.slice(offset, offset + limit);
-  const remaining = limit - page.length;
-  if (remaining <= 0) return page;
-
-  const extractionOffset = Math.max(offset - real.length, 0);
-  const extractionRows = await institutionsQuery(filters)
+  const rows = await institutionsQuery(filters)
     .select(
-      "ei.id", "ei.name as business_name", "ei.logo_url", "ei.description", "ei.city", "ei.country as country_name",
-      "ei.website", "ei.email",
-      masterKnex.raw(
-        `(select count(*) from ${S}.extraction_courses ec where ec.job_id = ei.job_id and ec.verification_status = 'confirmed') as course_count`,
-      ),
+      "i.id", "i.institution_name as business_name", "i.logo_url", "i.description",
+      "i.city", "c.name as country_name", "i.website", "i.email",
+      institutionCourseCount(),
     )
-    .orderBy("ei.name")
-    .limit(remaining)
-    .offset(extractionOffset);
-  return [
-    ...page,
-    ...extractionRows.map((r: { id: string; business_name: string; course_count: string }) =>
-      withSlug({ ...r, course_count: Number(r.course_count) })),
-  ];
+    .orderBy("i.institution_name")
+    .limit(limit)
+    .offset(offset);
+  return rows.map((r: { id: number; business_name: string; logo_url: string | null; course_count: string }) =>
+    withSlug({ ...r, id: businessIdFragment(r.id), course_count: Number(r.course_count) }));
 }
 
 export async function countPublicInstitutions(filters: Omit<BusinessSearchFilters, "businessType">) {
-  const [[row], realCount] = await Promise.all([
-    institutionsQuery(filters).count("ei.id as count"),
-    countRealInstitutions(filters),
-  ]);
-  return Number(row.count) + realCount;
+  const [row] = await institutionsQuery(filters).count("i.id as count");
+  return Number(row.count);
 }
 
 /**
  * Real, published businesses that offer at least one published service filed under a
  * "Visa"-named service category — distinct from the scraped visa_service extraction catalog
- * above. Shown first, same reasoning as listRealInstitutions.
+ * above. Shown first: current, owner-maintained data ahead of the scraped catalog.
  * ponytail: one tenant-schema query per published business (services live per-tenant, so there's
  * no single cross-tenant join). Fine while business counts are small; revisit if this gets slow.
  */
@@ -129,6 +121,8 @@ async function listRealVisaProviders({ country, city, search }: Omit<VisaService
     .leftJoin("countries as c", "c.id", "b.country_id")
     .where("b.is_published", true)
     .whereNull("b.deleted_at")
+    // No tenant schema → no services to match; also querying it would throw (see promote.service).
+    .whereNotNull("b.schema_provisioned_at")
     .select("b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.logo_url", "b.description", "b.city", "c.name as country_name", "b.website", "b.email");
 
   const matches = await Promise.all(
@@ -193,20 +187,14 @@ export async function findPublicInstitutionBySlug(slug: string) {
   const fragment = parseCourseIdFragment(slug);
   if (!fragment) return null;
 
-  // Real businesses first (see listPublicInstitutions) — their fragment is the id itself, zero-padded.
-  const real = await realInstitutionsQuery({})
-    .whereRaw("lpad(b.id::text, 6, '0') = ?", [fragment])
-    .select(...BUSINESS_COLUMNS)
-    .first();
-  if (real) return withSlug({ ...real, id: businessIdFragment(real.id), job_id: null });
-
+  // The fragment is the institution's integer id, zero-padded to the 6 chars the slug scheme expects.
   const institution = await institutionsQuery({})
-    .whereRaw("left(replace(ei.id::text, '-', ''), 6) = ?", [fragment])
+    .whereRaw("lpad(i.id::text, 6, '0') = ?", [fragment])
     .select(...INSTITUTION_COLUMNS)
     .first();
   if (!institution) return null;
 
-  return withSlug(institution);
+  return withSlug({ ...institution, id: businessIdFragment(institution.id) });
 }
 
 export type BusinessSearchFilters = {
@@ -221,7 +209,7 @@ export type BusinessSearchFilters = {
 };
 
 const BUSINESS_COLUMNS = [
-  "b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.logo_url", "b.cover_url", "b.description",
+  "b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.schema_provisioned_at", "b.logo_url", "b.cover_url", "b.description",
   "b.city", "c.name as country_name", "b.website", "b.email",
   "b.phone", "b.address", "cat.name as category_name", "b.public_visibility",
   "b.facebook_url", "b.instagram_url", "b.twitter_url", "b.linkedin_url", "b.youtube_url",
@@ -250,7 +238,7 @@ function baseQuery({ businessType, country, city, search }: BusinessSearchFilter
 export async function listPublicBusinesses(filters: BusinessSearchFilters, limit: number, offset: number) {
   const rows = await baseQuery(filters)
     .select(
-      "b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.logo_url", "b.description",
+      "b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.schema_provisioned_at", "b.logo_url", "b.description",
       "b.city", "c.name as country_name", "b.status", "cat.name as category_name",
       "b.website", "b.email",
     )
@@ -259,11 +247,14 @@ export async function listPublicBusinesses(filters: BusinessSearchFilters, limit
     .offset(offset);
 
   type ListRow = {
-    id: number; business_name: string; subdomain: string; schema_name: string; logo_url: string | null;
-    description: string | null; city: string | null; country_name: string | null; status: string; category_name: string | null;
-    website: string | null; email: string | null;
+    id: number; business_name: string; subdomain: string; schema_name: string; schema_provisioned_at: Date | null;
+    logo_url: string | null; description: string | null; city: string | null; country_name: string | null;
+    status: string; category_name: string | null; website: string | null; email: string | null;
   };
-  return Promise.all(rows.map(async ({ schema_name, ...row }: ListRow) => {
+  return Promise.all(rows.map(async ({ schema_name, schema_provisioned_at, ...row }: ListRow) => {
+    // Promoted-but-unclaimed listings have no tenant schema yet (see promote.service) —
+    // querying it would throw "relation does not exist" and 500 the whole tab.
+    if (!schema_provisioned_at) return { ...row, service_count: 0, location_count: 0 };
     const db = await getKnex(row.id, schema_name);
     const [[{ count: service_count }], [{ count: location_count }]] = await Promise.all([
       db("business_services").whereNull("deleted_at").where("is_published", true).count("id as count"),
@@ -343,6 +334,7 @@ export async function listPublicServicesAcrossBusinesses(
   const businesses = await masterKnex("businesses as b")
     .where("b.is_published", true)
     .whereNull("b.deleted_at")
+    .whereNotNull("b.schema_provisioned_at") // unprovisioned promoted listings have no tenant services
     .select("b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.logo_url");
 
   const perBusiness = await Promise.all(
