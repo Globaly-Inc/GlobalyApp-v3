@@ -12,10 +12,9 @@ const CATEGORIES = [
 ];
 
 export async function seed(knex: Knex): Promise<void> {
-  for (const c of CATEGORIES) {
-    const exists = await knex("business_categories").where({ slug: c.slug }).first();
-    if (!exists) await knex("business_categories").insert(c);
-  }
+  // Upsert on id, not slug: the ids are pinned, so a pre-existing row squatting on one of
+  // them (stale dev data, a renamed slug) must be corrected rather than skipped.
+  await knex("business_categories").insert(CATEGORIES).onConflict("id").merge();
   // Explicit ids bypass the id sequence — sync it so the next auto-generated
   // insert (e.g. an admin creating a new category) doesn't collide with these.
   await knex.raw(

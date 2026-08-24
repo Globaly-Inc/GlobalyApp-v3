@@ -30,7 +30,7 @@ export function PartnershipsSection() {
           <Reveal direction="left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="https://images.pexels.com/photos/8069428/pexels-photo-8069428.jpeg?auto=compress&cs=tinysrgb&w=1280&h=960&dpr=1&fit=crop"
+              src="/photos/partnership-meeting.jpg"
               alt="Education agent and university representatives shaking hands in a business meeting"
               loading="lazy"
               width={1280}

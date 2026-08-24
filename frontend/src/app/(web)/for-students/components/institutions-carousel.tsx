@@ -4,8 +4,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "../../components/reveal";
 import type { SearchBusiness } from "../../search/types";
 
-// V2 links each card to its own /institution/:slug detail page; v3 has no institution detail route yet, so
-// every card (and the "Explore more" link) points at the institutions tab of /search instead.
 export function InstitutionsCarousel({ institutions, loading }: Readonly<{ institutions: SearchBusiness[]; loading: boolean }>) {
   return (
     <section className="py-16 bg-muted/30">
@@ -29,7 +27,7 @@ export function InstitutionsCarousel({ institutions, loading }: Readonly<{ insti
                 return (
                   <Reveal key={inst.id} delay={idx * 0.07} className="flex-shrink-0">
                     <Link
-                      href="/search?tab=institutions"
+                      href={`/institution/${inst.slug}`}
                       className="group block w-44 md:w-48 bg-background border border-border rounded-xl p-4 hover:shadow-md transition-shadow"
                     >
                       <div className="aspect-square rounded-lg overflow-hidden bg-muted mb-3 flex items-center justify-center p-2">
@@ -47,7 +45,10 @@ export function InstitutionsCarousel({ institutions, loading }: Readonly<{ insti
                           <span className="line-clamp-1">{location}</span>
                         </div>
                       )}
-                      <div className="flex items-center justify-end mt-auto pt-2 border-t border-border/50">
+                      <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
+                        <span className="text-[10px] font-medium text-primary uppercase tracking-wider">
+                          {inst.course_count || 0} courses
+                        </span>
                         <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-primary transition-colors" />
                       </div>
                     </Link>

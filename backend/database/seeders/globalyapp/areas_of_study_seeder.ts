@@ -14,10 +14,10 @@ const AREAS_OF_STUDY = [
 ];
 
 export async function seed(knex: Knex): Promise<void> {
-  for (const a of AREAS_OF_STUDY) {
-    const exists = await knex("areas_of_study").where({ slug: a.slug }).first();
-    if (!exists) await knex("areas_of_study").insert({ ...a, is_active: true });
-  }
+  await knex("areas_of_study")
+    .insert(AREAS_OF_STUDY.map((a) => ({ ...a, is_active: true })))
+    .onConflict("id")
+    .merge();
   await knex.raw(
     "SELECT setval(pg_get_serial_sequence('areas_of_study', 'id'), (SELECT MAX(id) FROM areas_of_study))",
   );

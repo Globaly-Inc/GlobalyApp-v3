@@ -15,10 +15,10 @@ const DEGREE_LEVELS = [
 ];
 
 export async function seed(knex: Knex): Promise<void> {
-  for (const d of DEGREE_LEVELS) {
-    const exists = await knex("degree_levels").where({ slug: d.slug }).first();
-    if (!exists) await knex("degree_levels").insert({ ...d, is_active: true });
-  }
+  await knex("degree_levels")
+    .insert(DEGREE_LEVELS.map((d) => ({ ...d, is_active: true })))
+    .onConflict("id")
+    .merge();
   await knex.raw(
     "SELECT setval(pg_get_serial_sequence('degree_levels', 'id'), (SELECT MAX(id) FROM degree_levels))",
   );

@@ -7,10 +7,10 @@ export function HeroSection({
   showCursor,
 }: Readonly<{ displayText: string; showCursor: boolean }>) {
   return (
-    <section className="relative min-h-[calc(100svh-64px)] flex items-center overflow-hidden">
+    <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
       <AutoplayVideo
-        src="https://videos.pexels.com/video-files/8033854/8033854-uhd_2560_1440_25fps.mp4"
-        poster="https://images.pexels.com/videos/8033854/adult-brainstorming-business-child-8033854.jpeg?auto=compress&w=1920"
+        src="/videos/agents-hero.mp4"
+        poster="/videos/agents-hero-poster.webp"
         className="absolute inset-0 w-full h-full object-cover scale-105"
         style={{ transformOrigin: "center" }}
       />
@@ -32,7 +32,7 @@ export function HeroSection({
             Connect with top institutions, access verified student leads, and scale your consultancy — all in one
             transparent, fair platform.
           </p>
-          <UnifiedSearchBar />
+          <UnifiedSearchBar defaultTabSlug="agents" />
         </div>
       </div>
     </section>
