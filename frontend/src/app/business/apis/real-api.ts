@@ -57,6 +57,7 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
     show_team_public: false,
     public_visibility: null,
     currency: null,
+    registration_licenses: null,
     gallery_images: null,
     video_urls: null,
     linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null, youtube_url: null,
