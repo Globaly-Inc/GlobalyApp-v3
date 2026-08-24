@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { MEDIA_URL } from "../../const/index";
 import { AutoplayVideo } from "../../components/autoplay-video";
 import { UnifiedSearchBar } from "../../components/unified-search-bar";
 
@@ -9,8 +10,8 @@ export function HeroSection({
   return (
     <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
       <AutoplayVideo
-        src="/videos/agents-hero.mp4"
-        poster="/videos/agents-hero-poster.webp"
+        src={`${MEDIA_URL}/agents-hero.mp4`}
+        poster={`${MEDIA_URL}/agents-hero-poster.webp`}
         className="absolute inset-0 w-full h-full object-cover scale-105"
         style={{ transformOrigin: "center" }}
       />

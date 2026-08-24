@@ -12,6 +12,7 @@ import {
   BookMarked,
   Rocket,
 } from "lucide-react";
+import { MEDIA_URL } from "../../const/index";
 
 export const INSTITUTION_TYPING_PHRASES = [
   "Reach & Impact",
@@ -159,7 +160,7 @@ export const BLOG_POSTS = [
 ];
 
 // Same photo V2 bundled from assets/public/photos/, served from public/ here.
-export const OWN_DATA_PHOTO_URL = "/photos/institution-faculty.jpg";
+export const OWN_DATA_PHOTO_URL = `${MEDIA_URL}/institution-faculty.jpg`;
 
 export const OWN_DATA_ITEMS = [
   {

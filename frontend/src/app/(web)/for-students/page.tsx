@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { MEDIA_URL } from "../const/index";
 import { Reveal } from "../components/reveal";
 import { AutoplayVideo } from "../components/autoplay-video";
 import { UnifiedSearchBar } from "../components/unified-search-bar";
@@ -63,8 +64,8 @@ export default function ForStudentsPage() {
       {/* ── 1. HERO ─────────────────────────────────────────────────────── */}
       <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
         <AutoplayVideo
-          src="/videos/students-hero.mp4"
-          poster="/videos/students-hero-poster.webp"
+          src={`${MEDIA_URL}/students-hero.mp4`}
+          poster={`${MEDIA_URL}/students-hero-poster.webp`}
           className="absolute inset-0 w-full h-full object-cover scale-105"
           style={{ transformOrigin: "center" }}
         />

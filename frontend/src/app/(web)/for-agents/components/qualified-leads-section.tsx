@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MEDIA_URL } from "../../const/index";
 import { Reveal } from "../../components/reveal";
 
 const POINTS = [
@@ -55,7 +56,7 @@ export function QualifiedLeadsSection() {
             <div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/photos/students-campus-walk.jpg"
+                src={`${MEDIA_URL}/students-campus-walk.jpg`}
                 alt="International students walking together across a university campus"
                 loading="lazy"
                 width={1280}

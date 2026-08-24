@@ -1,5 +1,6 @@
 "use client";
 
+import { MEDIA_URL } from "../../const/index";
 import { Badge } from "@/components/ui/badge";
 import { AutoplayVideo } from "../../components/autoplay-video";
 import { UnifiedSearchBar } from "../../components/unified-search-bar";
@@ -12,8 +13,8 @@ export function HeroSection() {
   return (
     <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
       <AutoplayVideo
-        src="/videos/institutions-hero.mp4"
-        poster="/videos/institutions-hero-poster.webp"
+        src={`${MEDIA_URL}/institutions-hero.mp4`}
+        poster={`${MEDIA_URL}/institutions-hero-poster.webp`}
         className="absolute inset-0 w-full h-full object-cover scale-105"
         style={{ transformOrigin: "center" }}
       />

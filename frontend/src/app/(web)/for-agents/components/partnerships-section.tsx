@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MEDIA_URL } from "../../const/index";
 import { Reveal } from "../../components/reveal";
 
 const POINTS = [
@@ -30,7 +31,7 @@ export function PartnershipsSection() {
           <Reveal direction="left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/photos/partnership-meeting.jpg"
+              src={`${MEDIA_URL}/partnership-meeting.jpg`}
               alt="Education agent and university representatives shaking hands in a business meeting"
               loading="lazy"
               width={1280}

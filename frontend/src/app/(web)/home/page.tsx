@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MEDIA_URL } from "../const/index";
 import { Reveal } from "../components/reveal";
 import { AutoplayVideo } from "../components/autoplay-video";
 import { UnifiedSearchBar } from "../components/unified-search-bar";
@@ -174,8 +175,8 @@ export default function HomePage() {
             <Reveal direction="right" className="relative">
               <div ref={parallax1Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
-                  src="/videos/students-hero.mp4"
-                  poster="/videos/students-hero-poster.webp"
+                  src={`${MEDIA_URL}/students-hero.mp4`}
+                  poster={`${MEDIA_URL}/students-hero-poster.webp`}
                   className="w-full h-full object-cover"
                   style={{ transform: isMobile ? undefined : parallax1Transform }}
                 />
@@ -252,8 +253,8 @@ export default function HomePage() {
             <Reveal direction="left" className="relative">
               <div ref={parallax2Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
-                  src="/videos/institutions-hero.mp4"
-                  poster="/videos/institutions-hero-poster.webp"
+                  src={`${MEDIA_URL}/institutions-hero.mp4`}
+                  poster={`${MEDIA_URL}/institutions-hero-poster.webp`}
                   className="w-full h-full object-cover"
                   style={{ transform: isMobile ? undefined : parallax2Transform }}
                 />
@@ -376,8 +377,8 @@ export default function HomePage() {
             <Reveal direction="right" className="relative">
               <div ref={parallax3Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
-                  src="/videos/agents-hero.mp4"
-                  poster="/videos/agents-hero-poster.webp"
+                  src={`${MEDIA_URL}/agents-hero.mp4`}
+                  poster={`${MEDIA_URL}/agents-hero-poster.webp`}
                   className="w-full h-full object-cover"
                   style={{ transform: isMobile ? undefined : parallax3Transform }}
                 />
