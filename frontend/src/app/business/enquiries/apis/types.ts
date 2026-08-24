@@ -56,3 +56,16 @@ export type CloseResult = {
   close_reason: string | null;
   closed_at: string | null;
 };
+
+/** One chat message. Mirrors the student side's shape — same server DTO. */
+export type EnquiryMessage = {
+  id: number;
+  body: string;
+  created_at: string;
+  sender_id: number;
+  sender_name: string;
+  /** Signed URL for the sender's profile photo; null when they have none. */
+  sender_avatar: string | null;
+  is_mine: boolean;
+  sender_role: "student" | "business";
+};

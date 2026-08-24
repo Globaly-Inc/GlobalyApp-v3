@@ -35,6 +35,8 @@ export const closeDistribution = createAsyncThunk(
   },
 );
 
+
+
 type BusinessEnquiriesState = {
   items: DistributionListItem[];
   status: "idle" | "loading" | "failed";
@@ -141,7 +143,9 @@ const businessEnquiriesSlice = createSlice({
       .addCase(closeDistribution.rejected, (state, action) => {
         state.actingId = null;
         state.actionError = (action.payload as string) ?? "Failed to close enquiry";
-      });
+      })
+
+;
   },
 });
 

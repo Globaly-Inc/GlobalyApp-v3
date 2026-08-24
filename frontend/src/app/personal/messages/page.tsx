@@ -1,18 +1,11 @@
-import { MessageSquare } from "lucide-react";
-import { ComingSoon } from "@/components/coming-soon";
+import { Suspense } from "react";
+import { MessagesView } from "./components/messages-view";
 
+// useSearchParams (the ?thread= deep link) needs a Suspense boundary in the App Router.
 export default function MessagesPage() {
   return (
-    <ComingSoon
-      title="Messages"
-      icon={MessageSquare}
-      description="Talk to institutions, agents and service providers without leaving Globaly."
-      features={[
-        "One inbox for every conversation",
-        "Share documents securely",
-        "Message history tied to each enquiry",
-        "Email and in-app notifications",
-      ]}
-    />
+    <Suspense fallback={null}>
+      <MessagesView />
+    </Suspense>
   );
 }

@@ -33,6 +33,9 @@ import { PersonalMobileNav } from "./components/personal-mobile-nav";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
+/** Routes that render edge-to-edge under the header instead of inside SHELL_WIDTH. */
+const FULL_BLEED_ROUTES = ["/personal/ai", "/personal/messages"] as const;
+
 export function PersonalShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const pathname = usePathname();
@@ -51,7 +54,21 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
     if (!profile) dispatch(fetchFullProfile());
   }, []);
 
-  const isFullBleed = pathname?.startsWith("/personal/ai") ?? false;
+  // ponytail: onboarding gate removed for now — an un-onboarded user goes straight to the portal instead of
+  // being redirected to /personal/onboarding. The route and its view are untouched and still reachable
+  // directly, so restoring the gate is re-adding this effect:
+  //
+  //   useEffect(() => {
+  //     if (!profile || pathname?.startsWith("/personal/onboarding")) return;   // loop guard is required:
+  //     if (!profile.onboarding_completed) router.replace("/personal/onboarding");  // onboarding-view pushes
+  //   }, [profile, pathname, router]);                                              // to /personal/profile
+  //
+  // Profile completion still gates enquiries — that is a separate, server-side check and is unaffected.
+
+  // App surfaces, not pages in the content column: they own the whole space under the
+  // header and do their own bottom-nav math. Chat belongs here for the same reason the
+  // AI counsellor does — a two-pane, non-scrolling shell of its own.
+  const isFullBleed = FULL_BLEED_ROUTES.some((route) => pathname?.startsWith(route)) ?? false;
 
   const handleSignOut = () => {
     dispatch(logout());

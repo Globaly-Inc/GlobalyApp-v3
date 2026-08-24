@@ -492,6 +492,11 @@ export async function switchAccount(userId: number, orgId: string, refreshToken?
   const business = await platformUserRepo.findBusinessByDbName(orgId);
   if (business) {
     const db = await getKnex(business.id, schemaName(business.schema_name));
+    // deleted_at MUST be filtered here, exactly as requirePermission does. Without it a
+    // removed agent still gets an orgId-scoped token: it 403s on permissioned routes but
+    // passes every route guarded only by requireBusinessContext, and the tenant db handle
+    // is attached either way. It also produced a confusing failure — switching "worked",
+    // then every business page reported "Not a member of this business".
     const agent = await db("agents")
       .join("roles", "agents.role_id", "roles.id")
       .where("agents.platform_user_id", userId)

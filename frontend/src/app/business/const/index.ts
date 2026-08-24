@@ -48,4 +48,6 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
       { icon: Bot, label: "AI embed", href: "/business/settings/ai-embed" },
     ],
   },
+  { icon: MessageSquare, label: "Messages", items: [{ icon: MessageSquare, label: "Messages", href: "/business/messages" }],
+},
 ];

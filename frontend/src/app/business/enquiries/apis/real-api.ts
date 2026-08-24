@@ -12,4 +12,7 @@ export const businessEnquiriesRealApi = {
 
   close: (id: string, closeReason: string): Promise<CloseResult> =>
     httpPost(`/enquiry-distributions/${id}/close`, { close_reason: closeReason }),
+
+  // Chat moved out: the thread lives in the /business/messages feature, which owns the
+  // whole /enquiry-distributions/messages surface. The inbox only deep-links into it.
 };

@@ -58,8 +58,53 @@ export const DistributionIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+// enquiry_messages.id is a serial, not a uuid — the star/pin/thread/reaction routes
+// all address a message.
+export const MessageIdParamSchema = z.object({
+  messageId: z.coerce.number().int().positive(),
+});
+
+// An edit cannot clear a message — deleting is the way to remove one, so unlike
+// SendEnquiryMessageSchema there is no attachment escape hatch for an empty body.
+export const EditEnquiryMessageSchema = z.object({
+  body: z.string().trim().min(1, "A message can't be empty").max(4000),
+});
+
+// The DB also caps this (chk_enquiry_message_reactions_emoji) — 16 chars is generous
+// enough for a ZWJ sequence like a family emoji, and short enough that nobody can use a
+// reaction as a text field.
+export const ToggleReactionSchema = z.object({
+  emoji: z.string().trim().min(1, "Pick an emoji").max(16),
+});
+
 // A reason is mandatory: the whole point of per-distribution closure is knowing WHY
 // this particular business dropped the lead.
 export const CloseDistributionSchema = z.object({
   close_reason: z.string().trim().min(3, "Tell us why in at least 3 characters").max(1000),
+});
+
+// Shared by both sides of the enquiry chat. The DB also enforces "text or files"
+// (enquiry_messages_body_chk), so a caller that skips this schema still cannot write an
+// empty message.
+export const SendEnquiryMessageSchema = z
+  .object({
+    // No min(1): a file with no caption is a message. The refine below is what rejects
+    // a request that carries neither.
+    body: z.string().trim().max(4000).default(""),
+    attachments: z.array(z.string().min(1)).max(5).optional(),
+  })
+  .refine((v) => v.body.length > 0 || (v.attachments?.length ?? 0) > 0, {
+    message: "Write a message or attach a file",
+    path: ["body"],
+  });
+
+export const EnquiryMessageSchema = z.object({
+  id: z.number(),
+  body: z.string(),
+  created_at: z.coerce.date(),
+  sender_id: z.number(),
+  sender_name: z.string(),
+  sender_avatar: z.string().nullable(),
+  is_mine: z.boolean(),
+  sender_role: z.enum(["student", "business"]),
 });

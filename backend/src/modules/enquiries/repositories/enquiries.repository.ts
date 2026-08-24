@@ -158,3 +158,30 @@ export async function countForStudent(studentId: number, opts: { status?: string
   const [{ count }] = await query.count("id as count");
   return Number(count);
 }
+
+/**
+ * Businesses that have PAID to unlock this enquiry — the only recipients a student
+ * is allowed to see. Gated on `unlocked_at`, not on status: a business that
+ * unlocked and later closed its copy still unlocked it, and the student should keep
+ * seeing who holds their details.
+ *
+ * `logo_url` comes back as a raw storage path; the service signs it.
+ */
+export async function listUnlockedBusinessesForEnquiry(enquiryId: string) {
+  return masterKnex("enquiry_distributions as d")
+    .join("businesses as b", "b.id", "d.business_id")
+    .where("d.enquiry_id", enquiryId)
+    .whereNotNull("d.unlocked_at")
+    .whereNull("d.deleted_at")
+    .orderBy("d.unlocked_at", "asc")
+    .select(
+      // The thread is addressed by distribution, so the client needs this to open chat.
+      "d.id as distribution_id",
+      "b.id as business_id",
+      "b.business_name",
+      "b.logo_url",
+      "b.city",
+      "d.unlocked_at",
+      "d.status",
+    );
+}

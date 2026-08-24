@@ -15,6 +15,10 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // For the runnable `*/self-check.ts` scripts: node's --experimental-strip-types
+    // resolves ESM imports by real filename, so they must carry the .ts extension.
+    // Safe because noEmit is on — nothing is ever emitted with an unrewritten path.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

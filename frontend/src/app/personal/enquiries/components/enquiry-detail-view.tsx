@@ -1,29 +1,44 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Clock, MessageSquare } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock, GraduationCap, LockOpen, SearchX } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchEnquiry } from "../store/enquiries-slice";
-import { STATUS_BADGE_CLASS, STATUS_BADGE_VARIANT, STATUS_LABEL } from "../const";
+import { STATUS_EXPLANATIONS, STATUS_ICON } from "../const";
+import { formatDate, intakeLabel } from "../utils";
+import { EnquiryDetailSkeleton } from "./enquiry-detail-skeleton";
+import { EnquiryStatusBadge } from "./enquiry-status-badge";
+import { UnlockedBusinessesList } from "./unlocked-businesses-list";
 
-function Meta({
+function DetailStat({
   icon: Icon,
   label,
   value,
 }: Readonly<{ icon: typeof Clock; label: string; value: string }>) {
   return (
-    <div className="flex items-start gap-2">
-      <Icon className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
+    <div className="flex items-start gap-2.5">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <Icon className="size-4" aria-hidden />
+      </div>
       <div className="min-w-0">
-        <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-        <p className="truncate text-sm">{value}</p>
+        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
+        <p className="truncate text-sm font-medium">{value}</p>
       </div>
     </div>
+  );
+}
+
+function BackLink() {
+  return (
+    <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" render={<Link href="/personal/enquiries" />}>
+      <ArrowLeft className="size-4" aria-hidden />
+      Back to enquiries
+    </Button>
   );
 }
 
@@ -32,81 +47,105 @@ export function EnquiryDetailView({ enquiryId }: Readonly<{ enquiryId: string }>
   const enquiry = useAppSelector((s) => s.enquiries.byId[enquiryId]);
   const status = useAppSelector((s) => s.enquiries.status);
 
+  // Guarded by id, not a bare boolean: Strict Mode double-invokes the effect, and
+  // navigating between two enquiries still has to refetch.
+  const fetchedRef = useRef<string | null>(null);
   useEffect(() => {
+    if (fetchedRef.current === enquiryId) return;
+    fetchedRef.current = enquiryId;
     dispatch(fetchEnquiry(enquiryId));
   }, [dispatch, enquiryId]);
 
-  if (!enquiry && status === "loading") {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-40 w-full rounded-xl" />
-      </div>
-    );
-  }
+  if (!enquiry && status === "loading") return <EnquiryDetailSkeleton />;
 
   if (!enquiry) {
     return (
-      <div className="text-sm text-muted-foreground">
-        Enquiry not found.{" "}
-        <Link href="/personal/enquiries" className="underline">
-          Back to enquiries
-        </Link>
+      <div className="space-y-4">
+        <BackLink />
+        <Card className="items-center gap-2 border border-dashed border-border px-6 py-14 text-center ring-0">
+          <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <SearchX className="size-6" aria-hidden />
+          </div>
+          <p className="mt-1 font-semibold text-foreground">Enquiry not found</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            It may have been removed, or the link is wrong.
+          </p>
+        </Card>
       </div>
     );
   }
 
-  const intake = enquiry.preferred_intake?.trim()
-    ? `${enquiry.preferred_intake}${enquiry.preferred_year ? ` ${enquiry.preferred_year}` : ""}`
-    : "Not specified";
+  const intake = intakeLabel(enquiry.preferred_intake, enquiry.preferred_year, "") ?? "Not specified";
+  const unlocked = enquiry.unlocked_businesses ?? [];
+  const StatusIcon = STATUS_ICON[enquiry.status];
 
   return (
     <div className="space-y-4 md:space-y-5">
-      <Link
-        href="/personal/enquiries"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden /> Back to enquiries
-      </Link>
+      <BackLink />
 
-      <Card>
-        <CardHeader className="flex-row items-start justify-between gap-3">
+      <Card className="[--card-spacing:--spacing(5)]">
+        <CardHeader>
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <MessageSquare className="size-5 text-primary" aria-hidden />
-            </div>
+            <Avatar className="size-12 rounded-xl">
+              {enquiry.institution_logo_url && (
+                <AvatarImage src={enquiry.institution_logo_url} alt="" className="bg-white object-contain p-1" />
+              )}
+              <AvatarFallback className="rounded-xl bg-primary/10 text-primary">
+                <GraduationCap className="size-5" aria-hidden />
+              </AvatarFallback>
+            </Avatar>
             <div className="min-w-0">
-              <CardTitle className="text-lg leading-snug">{enquiry.course_name}</CardTitle>
+              <CardTitle className="text-lg leading-snug font-semibold">{enquiry.course_name}</CardTitle>
               {enquiry.institution_name && (
                 <p className="mt-0.5 text-sm text-primary">{enquiry.institution_name}</p>
               )}
               {enquiry.course_short_name && (
-                <Badge variant="outline" className="mt-1.5 text-[10px]">
+                <Badge variant="outline" className="mt-2 font-normal text-muted-foreground">
                   {enquiry.course_short_name}
                 </Badge>
               )}
             </div>
           </div>
-          <Badge
-            variant={STATUS_BADGE_VARIANT[enquiry.status]}
-            className={cn(STATUS_BADGE_CLASS[enquiry.status])}
-          >
-            {STATUS_LABEL[enquiry.status]}
-          </Badge>
+          <CardAction>
+            <EnquiryStatusBadge status={enquiry.status} />
+          </CardAction>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <p className="text-sm whitespace-pre-line">{enquiry.message}</p>
+          {/* What the status means for the student, in the same words on every screen
+              that shows it. Muted rather than tinted: eight coloured banners would
+              shout, and the badge above already carries the colour. */}
+          <div className="flex items-start gap-2.5 rounded-lg bg-muted/60 px-3 py-2.5">
+            <StatusIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <p className="text-sm text-muted-foreground">{STATUS_EXPLANATIONS[enquiry.status]}</p>
+          </div>
 
-          {/* Recipients are deliberately not shown. The student should only ever see
-              businesses that have unlocked their enquiry, and unlocking does not
-              exist in this phase — so there is nothing to list yet. */}
-          <div className="grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-2">
-            <Meta icon={CalendarDays} label="Preferred intake" value={intake} />
-            <Meta icon={Clock} label="Submitted" value={new Date(enquiry.created_at).toLocaleDateString()} />
+          <div>
+            <p className="mb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+              Your message
+            </p>
+            <p className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm whitespace-pre-line">
+              {enquiry.message}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-3">
+            <DetailStat icon={CalendarDays} label="Preferred intake" value={intake} />
+            <DetailStat icon={Clock} label="Submitted" value={formatDate(enquiry.created_at)} />
+            <DetailStat
+              icon={LockOpen}
+              label="Unlocked by"
+              value={unlocked.length === 1 ? "1 business" : `${unlocked.length} businesses`}
+            />
           </div>
         </CardContent>
       </Card>
+
+      {/* Its own segment, below the enquiry itself. Only unlocked recipients — the
+          API never returns the full matched list. `?? []` because the API and this
+          app deploy independently: a server running older code omits the field, and
+          reading .length off undefined would blank the page over one section. */}
+      <UnlockedBusinessesList businesses={unlocked} />
     </div>
   );
 }

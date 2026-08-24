@@ -94,7 +94,10 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
           )}
         </Link>
 
-        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 p-5 flex flex-col justify-center gap-4">
+        {/* pointer-events-auto + z-10, same as the Compare button above: the card-wide
+            overlay Link sits at inset-0, so anything meant to stay clickable has to opt
+            back in. Without it the Enquire click falls through to the course page. */}
+        <div className="pointer-events-auto relative z-10 w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 p-5 flex flex-col justify-center gap-4">
           <div className="text-left">
             {fee ? (
               <div>
@@ -106,7 +109,12 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
               <p className="text-xs text-muted-foreground italic">Fees on enquiry</p>
             )}
           </div>
-          <Link href="/auth/sign-up?redirect=/search">
+          {/* Carries the course into the enquiry dialog, which opens prefilled from
+              ?course_id= (see personal/enquiries/components/enquiries-view.tsx).
+              A plain Link keeps this card a server component — no client JS added.
+              Anonymous visitors are bounced to sign-in by PersonalShell, which
+              preserves this URL so they land back on the prefilled dialog. */}
+          <Link href={`/personal/enquiries?course_id=${course.id}`}>
             <Button size="sm" className="w-full text-xs h-9">Enquire</Button>
           </Link>
         </div>

@@ -204,6 +204,8 @@ export const businessEnquiriesMockApi = {
     };
   },
 
+
+
   close: async (id: string, closeReason: string): Promise<CloseResult> => {
     console.log("[mock] POST /enquiry-distributions/:id/close", { id, closeReason });
     await delay(250);

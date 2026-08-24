@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Coins } from "lucide-react";
+import { Coins, Inbox, RotateCw, SearchX, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
   clearActionError,
@@ -11,19 +12,12 @@ import {
   fetchDistributions,
   unlockDistribution,
 } from "../store/business-enquiries-slice";
-import { ENQUIRY_STAT_STATUSES, ENQUIRY_STATUS_LABEL } from "../const";
+import type { InboxFilterKey } from "../const";
+import { applyInboxFilter, defaultFilter, filterCounts } from "../utils";
 import { CloseEnquiryDialog } from "./close-enquiry-dialog";
 import { ConfirmUnlockDialog } from "./confirm-unlock-dialog";
 import { EnquiryInboxCard, EnquiryInboxCardSkeleton } from "./enquiry-inbox-card";
-
-function StatCard({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-background px-4 py-3 text-center">
-      <p className="text-2xl font-semibold leading-tight">{value}</p>
-      <p className="text-xs text-muted-foreground">{label}</p>
-    </div>
-  );
-}
+import { InboxFilters } from "./inbox-filters";
 
 export function EnquiriesInboxView() {
   const dispatch = useAppDispatch();
@@ -70,26 +64,22 @@ export function EnquiriesInboxView() {
     if (closeDistribution.fulfilled.match(result)) setCloseTarget(null);
   };
 
-  const counts = useMemo(() => {
-    const byStatus = new Map<string, number>();
-    for (const item of items) byStatus.set(item.status, (byStatus.get(item.status) ?? 0) + 1);
-    return [
-      { label: "Total", value: items.length },
-      ...ENQUIRY_STAT_STATUSES.map((s) => ({
-        label: ENQUIRY_STATUS_LABEL[s] ?? s,
-        value: byStatus.get(s) ?? 0,
-      })),
-    ];
-  }, [items]);
+  // Derived until touched, the same shape as the enquiry dialog's institution field: the
+  // landing pill depends on data that arrives after mount, and this avoids setting state
+  // in an effect (which this repo lints against) while still honouring a real click.
+  const [picked, setPicked] = useState<InboxFilterKey | null>(null);
+  const counts = useMemo(() => filterCounts(items), [items]);
+  const filter = picked ?? defaultFilter(counts);
+  const visible = useMemo(() => applyInboxFilter(items, filter), [items, filter]);
 
   const loadingFirstPage = status === "loading" && items.length === 0;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
+    <div className="mx-auto max-w-4xl space-y-4 md:space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">Enquiry Management</h1>
-          <p className="text-sm text-muted-foreground">Student enquiries matched to your business.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Enquiries</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Student enquiries matched to your business.</p>
         </div>
         {credits != null && (
           <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
@@ -100,11 +90,7 @@ export function EnquiriesInboxView() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        {counts.map((c) => (
-          <StatCard key={c.label} value={c.value} label={c.label} />
-        ))}
-      </div>
+      {items.length > 0 && <InboxFilters counts={counts} active={filter} onChange={setPicked} />}
 
       {/* 402 / 409 land here with the server's own wording. */}
       {actionError && (
@@ -117,12 +103,15 @@ export function EnquiriesInboxView() {
       )}
 
       {status === "failed" && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm">
-          <p className="text-destructive">{error ?? "Failed to load enquiries"}</p>
-          <Button variant="link" size="sm" className="px-0" onClick={() => dispatch(fetchDistributions())}>
+        <Card className="items-center gap-2 border border-dashed border-destructive/40 px-6 py-12 text-center ring-0">
+          <TriangleAlert className="size-6 text-destructive" aria-hidden />
+          <p className="font-semibold text-foreground">Couldn&apos;t load your enquiries</p>
+          <p className="max-w-sm text-sm text-muted-foreground">{error ?? "Something went wrong on our side."}</p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => dispatch(fetchDistributions())}>
+            <RotateCw className="size-3.5" aria-hidden />
             Try again
           </Button>
-        </div>
+        </Card>
       )}
 
       {loadingFirstPage && (
@@ -133,15 +122,28 @@ export function EnquiriesInboxView() {
         </div>
       )}
 
-      {!loadingFirstPage && status !== "failed" && items.length === 0 && (
-        <div className="rounded-md border border-dashed p-8 text-center">
-          <p className="text-sm text-muted-foreground">No enquiries matched to your business yet.</p>
-        </div>
+      {/* Two empty states: nothing matched yet, versus nothing in the chosen filter. The
+          second must not read as "you have no leads". */}
+      {!loadingFirstPage && status !== "failed" && visible.length === 0 && (
+        <Card className="items-center gap-2 border border-dashed border-border bg-card/40 px-6 py-14 text-center ring-0">
+          <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            {items.length === 0 ? <Inbox className="size-6" aria-hidden /> : <SearchX className="size-6" aria-hidden />}
+          </div>
+          <p className="mt-1 font-semibold text-foreground">
+            {items.length === 0 ? "No enquiries yet" : "Nothing in this filter"}
+          </p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            {items.length === 0
+              ? "Student enquiries matching your courses and location appear here as soon as they are distributed."
+              : "No enquiry is in this state right now. Try another tab to see the rest."}
+          </p>
+
+        </Card>
       )}
 
-      {items.length > 0 && (
+      {visible.length > 0 && (
         <div className="space-y-3">
-          {items.map((item) => (
+          {visible.map((item) => (
             <EnquiryInboxCard
               key={item.distribution_id}
               item={item}
