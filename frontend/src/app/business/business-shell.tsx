@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, Coins, GraduationCap, LogOut, Loader2, MessageCircle, Sparkles, User } from "lucide-react";
+import { Bell, Coins, GraduationCap, LogOut, Loader2, Sparkles, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -166,13 +166,6 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
             >
               <Bell className="h-4.5 w-4.5" />
               <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden />
-            </Link>
-            <Link
-              href="/business/messages"
-              className="hidden md:inline-flex items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Messages"
-            >
-              <MessageCircle className="h-4.5 w-4.5" />
             </Link>
             <Link
               href="/business/ai-widget"
