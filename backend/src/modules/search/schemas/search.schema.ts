@@ -26,3 +26,10 @@ export const JobListQuery = SearchListQuery.extend({
 export const VisaServiceListQuery = SearchListQuery.extend({
   licensed_only: z.coerce.boolean().optional(),
 });
+
+export const ServiceListQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  search: z.string().min(1).optional(),
+  category: z.string().min(1).optional(),
+});

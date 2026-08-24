@@ -1,6 +1,6 @@
 import type {
   BusinessDetail, CourseDetail, CourseFilterOptions, InstitutionDetail, Paginated, SearchBusiness, SearchCourse, SearchScholarship,
-  SearchJob,
+  SearchJob, SearchService,
 } from "./types";
 import type { SearchFilterParams } from "./api";
 
@@ -239,31 +239,36 @@ const MOCK_BUSINESSES: Record<"institutions" | "education-agencies" | "visa-serv
     {
       id: 103, business_name: "GlobalEdu Consultants", subdomain: "demo-globaledu-consultants", logo_url: null,
       description: "Education consultancy helping students apply to universities in Australia and Canada.",
-      city: "Kathmandu", country_name: "Nepal", website: "https://example.com/globaledu", email: null,
+      city: "Kathmandu", country_name: "Nepal", status: "verified", category_name: "Education Agency",
+      website: "https://example.com/globaledu", email: null,
     },
     {
       id: 104, business_name: "BrightPath Education Advisors", subdomain: "demo-brightpath-advisors", logo_url: null,
       description: "Full-service education agency for undergraduate and postgraduate placements abroad.",
-      city: "Delhi", country_name: "India", website: "https://example.com/brightpath", email: null,
+      city: "Delhi", country_name: "India", status: "verified", category_name: "Education Agency",
+      website: "https://example.com/brightpath", email: null,
     },
   ],
   "visa-services": [
     {
       id: 105, business_name: "VisaFirst Services", subdomain: "demo-visafirst-services", logo_url: null,
       description: "Student visa application and documentation support.",
-      city: "Melbourne", country_name: "Australia", website: "https://example.com/visafirst", email: null,
+      city: "Melbourne", country_name: "Australia", status: "verified", category_name: "Visa Services",
+      website: "https://example.com/visafirst", email: null,
     },
     {
       id: 106, business_name: "Global Visa Solutions", subdomain: "demo-globalvisa-solutions", logo_url: null,
       description: "Visa processing assistance for study and work permits.",
-      city: "Toronto", country_name: "Canada", website: "https://example.com/globalvisa", email: null,
+      city: "Toronto", country_name: "Canada", status: "verified", category_name: "Visa Services",
+      website: "https://example.com/globalvisa", email: null,
     },
   ],
   "migration-agents": [
     {
       id: 107, business_name: "Southern Star Migration", subdomain: "demo-southernstar-migration", logo_url: null,
       description: "MARN-registered migration agents specialising in student and skilled visas.",
-      city: "Sydney", country_name: "Australia", website: "https://example.com/southernstar", email: null,
+      city: "Sydney", country_name: "Australia", status: "verified", category_name: "Migration Agent",
+      website: "https://example.com/southernstar", email: null,
     },
   ],
 };
@@ -415,6 +420,12 @@ export function mockGetScholarships(params: SearchFilterParams): Paginated<Searc
   if (params.degree_level) rows = rows.filter((s) => s.degree_levels.includes(params.degree_level!));
   if (params.fee_min != null) rows = rows.filter((s) => (s.coverage_amount ?? Infinity) >= params.fee_min!);
   return paginate(rows, params);
+}
+
+export function mockGetServices(params: SearchFilterParams): Paginated<SearchService> {
+  console.log("[mock] getServices", params);
+  // ponytail: no seeded mock services yet — this tab only has real data in this app so far.
+  return paginate([], params);
 }
 
 export function mockGetCourseFilters(): CourseFilterOptions {

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { Search as SearchIcon } from "lucide-react";
 import {
   getCourseFilters, getCourses, getEducationAgencies, getInstitutions, getMigrationAgents, getScholarshipsSearch,
-  getStudentJobs, getVisaServices,
+  getServices, getStudentJobs, getVisaServices,
 } from "./api";
-import type { SearchBusiness, SearchCourse, SearchJob, SearchScholarship, SearchTabKey } from "./types";
+import type { SearchBusiness, SearchCourse, SearchJob, SearchScholarship, SearchService, SearchTabKey } from "./types";
 import { SearchTabs } from "./components/search-tabs";
 import { SearchFilters } from "./components/search-filters";
 import { SearchBar } from "./components/search-bar";
@@ -15,6 +15,7 @@ import { BusinessCard } from "./components/business-card";
 import { InstitutionCard } from "./components/institution-card";
 import { JobCard } from "./components/job-card";
 import { ScholarshipSearchCard } from "./components/scholarship-search-card";
+import { ServiceSearchCard } from "./components/service-search-card";
 import { SearchEmptyState } from "./components/search-empty-state";
 import { SearchPagination } from "./components/search-pagination";
 
@@ -40,6 +41,7 @@ const TAB_NAMES: Record<SearchTabKey, string> = {
   "migration-agents": "Migration Agents",
   jobs: "Student Jobs",
   scholarships: "Scholarships",
+  services: "Services",
 };
 
 const VALID_TABS = new Set<SearchTabKey>(Object.keys(TAB_NAMES) as SearchTabKey[]);
@@ -95,6 +97,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     "migration-agents": () => getMigrationAgents(filters),
     jobs: () => getStudentJobs(filters),
     scholarships: () => getScholarshipsSearch(filters),
+    services: () => getServices(filters),
   };
 
   const [{ data: results, meta }, courseFilterOptions, scholarshipSample] = await Promise.all([
@@ -190,7 +193,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                   {activeTab === "jobs" &&
                     (results as SearchJob[]).map((j) => <JobCard key={j.id} job={j} />)}
                   {activeTab === "scholarships" &&
-                    (results as SearchScholarship[]).map((s) => <ScholarshipSearchCard key={s.id} scholarship={s} />)}                  
+                    (results as SearchScholarship[]).map((s) => <ScholarshipSearchCard key={s.id} scholarship={s} />)}
+                  {activeTab === "services" &&
+                    (results as SearchService[]).map((s) => <ServiceSearchCard key={s.id} service={s} />)}
                   {activeTab === "institutions" &&
                     (results as SearchBusiness[]).map((b) => <InstitutionCard key={b.id} institution={b} />)}
                   {(activeTab === "education-agencies" || activeTab === "visa-services" || activeTab === "migration-agents") &&
