@@ -11,7 +11,7 @@ function serviceWithCategory(db: Awaited<ReturnType<typeof getKnex>>) {
   return db("business_services as s")
     .leftJoin("service_categories as cat", "cat.id", "s.service_category_id")
     .whereNull("s.deleted_at")
-    .select(SERVICE_COLUMNS.map((c) => `s.${c}`), "cat.name as category_name");
+    .select([...SERVICE_COLUMNS.map((c) => `s.${c}`), "cat.name as category_name"]);
 }
 
 export async function listServices(businessId: number, schemaName: string) {
@@ -49,7 +49,7 @@ export async function searchServices(businessId: number, schemaName: string, lim
   };
   const [{ count }] = await base().count<{ count: string }[]>("s.id as count");
   const rows = await base()
-    .select(SERVICE_COLUMNS.map((c) => `s.${c}`), "cat.name as category_name")
+    .select([...SERVICE_COLUMNS.map((c) => `s.${c}`), "cat.name as category_name"])
     .orderBy("s.name")
     .limit(limit)
     .offset(offset);

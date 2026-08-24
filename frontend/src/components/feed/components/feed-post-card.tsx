@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Globe, Loader2, Lock, MoreHorizontal, Pin, SmilePlus, Trash2, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Globe, Loader2, Lock, MessageCircle, MoreHorizontal, Pin, SmilePlus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,10 +22,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { useAppDispatch } from "@/lib/hooks";
-import { deleteFeedPost, removePostReaction, setPostReaction } from "../store/feed-slice";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import {
+  addComment, deleteComment, deleteFeedPost, fetchComments, removeCommentReaction, removePostReaction,
+  setCommentReaction, setPostReaction,
+} from "../store/feed-slice";
 import { POST_CLAMP_CHARS, POST_TYPE_STYLES, REACTION_CHOICES, VISIBILITY_LABELS } from "../const";
 import { initials, relativeTime } from "../utils";
+import { renderFormattedContent } from "../utils/format-content";
+import { FeedCommentComposer } from "./feed-comment-composer";
+import { FeedCommentList } from "./feed-comment-list";
 import type { FeedPostCardProps } from "../types";
 
 const VISIBILITY_ICONS: Record<string, typeof Globe> = { everyone: Globe, business: Users, private: Lock };
@@ -35,10 +41,19 @@ const FALLBACK_STYLE = { accent: "border-l-border", badge: "bg-muted text-muted-
 
 export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
   const dispatch = useAppDispatch();
+  const myProfile = useAppSelector((state) => state.profile.profile);
+  const commentBucket = useAppSelector((state) => state.feed.commentsByPost[post.id]);
   const [expanded, setExpanded] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [postingComment, setPostingComment] = useState(false);
+
+  useEffect(() => {
+    if (commentsOpen && !commentBucket) dispatch(fetchComments(post.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commentsOpen, post.id]);
 
   const style = POST_TYPE_STYLES[post.post_type] ?? FALLBACK_STYLE;
   const authorName = post.business_name ?? `${post.author_first_name ?? ""} ${post.author_last_name ?? ""}`.trim();
@@ -70,6 +85,19 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
     setPickerOpen(false);
     if (post.my_reaction === emoji) dispatch(removePostReaction(post.id));
     else dispatch(setPostReaction({ id: post.id, emoji }));
+  };
+
+  const submitComment = async (
+    content: string,
+    mentions: { platform_user_id: number; first_name: string | null; last_name: string | null }[],
+    media: { storage_path: string; type: "image" | "video"; mime_type: string }[],
+  ) => {
+    setPostingComment(true);
+    const result = await dispatch(addComment({ postId: post.id, input: { content, mentions, media } }));
+    setPostingComment(false);
+    if (addComment.rejected.match(result)) {
+      toast.error("Couldn't post your comment", { description: result.error.message });
+    }
   };
 
   return (
@@ -130,7 +158,9 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
         {/* ── Body ── */}
         {post.content && (
           <div className="space-y-1">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{body}</p>
+            <div className="space-y-1 text-sm leading-relaxed text-foreground">
+              {renderFormattedContent(body, post.mentions)}
+            </div>
             {isLong && (
               <button
                 type="button"
@@ -245,7 +275,35 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
               Like
             </Button>
           )}
+
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto gap-1.5 text-muted-foreground"
+            onClick={() => setCommentsOpen((v) => !v)}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            {post.comments_count > 0 ? post.comments_count : "Comment"}
+          </Button>
         </div>
+
+        {commentsOpen && (
+          <div className="-mx-4 space-y-3 border-t border-border px-4 py-3">
+            <FeedCommentList
+              comments={commentBucket?.items ?? []}
+              loading={commentBucket?.status === "loading" && (commentBucket?.items.length ?? 0) === 0}
+              onReact={(commentId, emoji) => dispatch(setCommentReaction({ postId: post.id, commentId, emoji }))}
+              onRemoveReaction={(commentId) => dispatch(removeCommentReaction({ postId: post.id, commentId }))}
+              onDelete={(commentId) => dispatch(deleteComment({ postId: post.id, commentId }))}
+            />
+            <FeedCommentComposer
+              authorPhotoUrl={myProfile?.photo_url}
+              authorInitials={initials(myProfile?.first_name ?? null, myProfile?.last_name ?? null)}
+              submitting={postingComment}
+              onSubmit={submitComment}
+            />
+          </div>
+        )}
       </CardContent>
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>

@@ -4,17 +4,19 @@ import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldError } from "@/components/field-error";
-import { BRANCH_TYPES } from "../../const";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { cn } from "@/lib/utils";
+import { BRANCH_TYPE_OPTIONS } from "../../const";
 import type { BranchType } from "../../apis/types";
 
 export type BranchForm = {
   name: string; countryId: string; city: string; address: string; state: string; postcode: string;
-  email: string; phoneCountryId: string; phoneNumber: string; website: string;
+  email: string; phone: string; website: string;
 };
 
 export const EMPTY_BRANCH_FORM: BranchForm = {
   name: "", countryId: "", city: "", address: "", state: "", postcode: "",
-  email: "", phoneCountryId: "", phoneNumber: "", website: "",
+  email: "", phone: "", website: "",
 };
 
 export function CreateBranchDetailsStep({
@@ -25,7 +27,6 @@ export function CreateBranchDetailsStep({
   cityOptions,
   citiesLoading,
   onCityChange,
-  phoneCountryOptions,
   branchType,
   onBranchTypeChange,
 }: Readonly<{
@@ -36,7 +37,6 @@ export function CreateBranchDetailsStep({
   cityOptions: ComboboxOption[];
   citiesLoading: boolean;
   onCityChange: (cityName: string) => void;
-  phoneCountryOptions: ComboboxOption[];
   branchType: BranchType;
   onBranchTypeChange: (value: BranchType) => void;
 }>) {
@@ -99,16 +99,7 @@ export function CreateBranchDetailsStep({
 
       <div className="flex flex-col gap-2">
         <Label>Phone</Label>
-        <div className="grid grid-cols-[130px_1fr] gap-3">
-          <Combobox
-            value={form.phoneCountryId}
-            onChange={(v) => onChange("phoneCountryId", v)}
-            options={phoneCountryOptions}
-            placeholder="Code"
-            searchPlaceholder="Search countries..."
-          />
-          <Input className="h-10" value={form.phoneNumber} onChange={(e) => onChange("phoneNumber", e.target.value)} placeholder="(201) 555-0123" />
-        </div>
+        <PhoneInput value={form.phone} onChange={(v) => onChange("phone", v)} placeholder="(201) 555-0123" />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -117,16 +108,45 @@ export function CreateBranchDetailsStep({
         <FieldError message={errors.website} />
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-1">
+        <p className="text-sm font-medium text-foreground">How branches work</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          A branch is a new office linked to your primary business. It shares your business category and can access
+          shared services from other offices. Each branch operates as its own entity with separate contact details,
+          media, and team.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3">
         <Label>
           Branch type <span className="text-destructive">*</span>
         </Label>
-        <Combobox
-          value={branchType}
-          onChange={(v) => onBranchTypeChange(v as BranchType)}
-          options={BRANCH_TYPES}
-          placeholder="Select branch type"
-        />
+        <div className="grid gap-2">
+          {BRANCH_TYPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onBranchTypeChange(opt.value)}
+              className={cn(
+                "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+                branchType === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
+              )}
+            >
+              <div
+                className={cn(
+                  "mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center",
+                  branchType === opt.value ? "border-primary" : "border-muted-foreground/40",
+                )}
+              >
+                {branchType === opt.value && <div className="h-2 w-2 rounded-full bg-primary" />}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                <p className="text-xs text-muted-foreground">{opt.desc}</p>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </>
   );

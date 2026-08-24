@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, Building2, GraduationCap, Home, MapPin, Megaphone, PenLine, Settings, Users } from "lucide-react";
+import { Award, Bot, BookOpen, Building2, CalendarDays, CreditCard, Coins, GraduationCap, Handshake, Home, MapPin, Megaphone, MessageSquare, PenLine, Plug, Receipt, Settings, Users } from "lucide-react";
 
 export type BusinessNavItem = { icon: LucideIcon; label: string; href: string };
 export type BusinessNavGroup = { icon: LucideIcon; label: string; items: BusinessNavItem[] };
@@ -24,8 +24,28 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
     ],
   },
   // No features behind these yet — each routes to a ComingSoon placeholder until built.
-  { icon: Megaphone, label: "Marketing", items: [{ icon: Megaphone, label: "Marketing", href: "/business/marketing" }] },
+  {
+    icon: Megaphone,
+    label: "Marketing",
+    items: [
+      { icon: MessageSquare, label: "Enquiries", href: "/business/enquiries" },
+      { icon: Handshake, label: "Representations", href: "/business/marketing/representations" },
+      { icon: CalendarDays, label: "Events", href: "/business/marketing/events" },
+      { icon: Award, label: "Ambassadors", href: "/business/marketing/ambassadors" },
+      { icon: Megaphone, label: "Ads", href: "/business/marketing/ads" },
+    ],
+  },
   { icon: PenLine, label: "Scribe", items: [{ icon: PenLine, label: "Scribe", href: "/business/scribe" }] },
   { icon: GraduationCap, label: "LMS", items: [{ icon: GraduationCap, label: "LMS", href: "/business/lms" }] },
-  { icon: Settings, label: "Settings", items: [{ icon: Settings, label: "Settings", href: "/business/settings" }] },
+  {
+    icon: Settings,
+    label: "Settings",
+    items: [
+      { icon: CreditCard, label: "Subscription", href: "/business/settings/subscription" },
+      { icon: Coins, label: "Credits", href: "/business/settings/credits" },
+      { icon: Receipt, label: "Application charges", href: "/business/settings/application-charges" },
+      { icon: Plug, label: "Integrations", href: "/business/settings/integrations" },
+      { icon: Bot, label: "AI embed", href: "/business/settings/ai-embed" },
+    ],
+  },
 ];

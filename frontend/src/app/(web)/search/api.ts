@@ -1,11 +1,11 @@
 import type {
   BusinessDetail, CourseDetail, CourseFilterOptions, InstitutionDetail, Paginated, SearchBusiness, SearchCourse, SearchScholarship,
-  SearchJob,
+  SearchJob, SearchService,
 } from "./types";
 import {
   mockGetBusinessBySubdomain, mockGetCourseBySlug, mockGetCourseFilters, mockGetCourses, mockGetEducationAgencies,
   mockGetInstitutionBySlug, mockGetInstitutionCourses, mockGetInstitutions, mockGetMigrationAgents,
-  mockGetStudentJobs, mockGetVisaServices, mockGetScholarships
+  mockGetStudentJobs, mockGetVisaServices, mockGetScholarships, mockGetServices
 } from "./mock-data";
 
 const API_BASE = `${(process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "")}/api/v3`;
@@ -93,6 +93,9 @@ export const getScholarshipsSearch = (params: SearchFilterParams): Promise<Pagin
     return res.json();
   });
 };
+
+export const getServices = (params: SearchFilterParams): Promise<Paginated<SearchService>> =>
+  USE_MOCK_DATA ? Promise.resolve(mockGetServices(params)) : fetchPaginated<SearchService>("search/services", params);
 
 export async function getCourseFilters(): Promise<CourseFilterOptions> {
   if (USE_MOCK_DATA) return mockGetCourseFilters();

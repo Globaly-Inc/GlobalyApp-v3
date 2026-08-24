@@ -203,37 +203,40 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         </Button>
       </div>
 
-      <Card className="overflow-hidden">
-        <div className="relative h-32 bg-gradient-to-br from-primary/15 to-primary/5">
-          <Avatar className="absolute -bottom-10 left-6 size-20 rounded-xl border-4 border-background shadow-sm">
-            {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
-            <AvatarFallback className="rounded-xl bg-background text-xl font-bold text-primary">
-              {(profile?.business_name ?? "B").charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-        </div>
-        <CardContent className="flex flex-col gap-1.5 pt-12">
-          <Combobox
-            options={serviceCategories.map((c) => ({
-              value: String(c.id),
-              label: c.name,
-              icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
-            }))}
-            value={form.service_category_id ? String(form.service_category_id) : ""}
-            onChange={(v) => set("service_category_id", v ? Number(v) : null)}
-            placeholder="Select category"
-            searchPlaceholder="Search categories..."
-            className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
-          />
-          <Input
-            value={form.name}
-            onChange={(e) => set("name", e.target.value)}
-            placeholder="Untitled service"
-            className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
-          />
-          <p className="text-sm text-muted-foreground">{profile?.business_name ?? "Business"}</p>
+      <div className="overflow-hidden rounded-lg border">
+        <div className="relative h-32 bg-linear-to-br from-primary/15 to-primary/5" />
+        <CardContent>
+          <div className="flex items-start gap-4 -mt-14 ml-8">
+            <Avatar className="size-28 shrink-0 rounded-xl border-4 border-background shadow-sm">
+              {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} className="rounded-lg object-contain p-1" />}
+              <AvatarFallback className="rounded-lg bg-background text-xl font-bold text-primary">
+                {(profile?.business_name ?? "B").charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-1 flex-col gap-1.5 pt-4 sm:pt-14 m-2">
+              <Combobox
+                options={serviceCategories.map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                  icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
+                }))}
+                value={form.service_category_id ? String(form.service_category_id) : ""}
+                onChange={(v) => set("service_category_id", v ? Number(v) : null)}
+                placeholder="Select category"
+                searchPlaceholder="Search categories..."
+                className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
+              />
+              <Input
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="Untitled service"
+                className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
+              />
+              <p className="text-sm text-muted-foreground">{profile?.business_name ?? "Business"}</p>
+            </div>
+          </div>
         </CardContent>
-      </Card>
+      </div>
 
       {isEdit && serviceId ? (
         <>

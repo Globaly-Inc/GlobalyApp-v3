@@ -84,6 +84,8 @@ export type SearchBusiness = {
   description: string | null;
   city: string | null;
   country_name: string | null;
+  status?: string;
+  category_name?: string | null;
   website: string | null;
   email: string | null;
   service_count?: number;
@@ -189,6 +191,18 @@ export type SearchScholarship = {
   is_featured: boolean;
 };
 
+export type SearchService = {
+  id: string;
+  name: string;
+  description: string | null;
+  price: string | null;
+  category_name: string | null;
+  business_id: number;
+  business_name: string;
+  business_subdomain: string;
+  logo_url: string | null;
+};
+
 export type SearchTabKey =
   | "courses"
   | "institutions"
@@ -196,7 +210,8 @@ export type SearchTabKey =
   | "visa-services"
   | "migration-agents"
   | "jobs"
-  | "scholarships";
+  | "scholarships"
+  | "services";
 
 export const DEGREE_LABEL: Record<string, string> = {
   certificate: "Certificate",

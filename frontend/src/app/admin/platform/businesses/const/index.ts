@@ -46,6 +46,12 @@ export const BRANCH_TYPES: { value: BranchType; label: string }[] = [
   { value: "franchise", label: "Franchise" },
 ];
 
+export const BRANCH_TYPE_OPTIONS: { value: BranchType; label: string; desc: string }[] = [
+  { value: "same_company", label: "Same Company", desc: "Another office of the same registered company" },
+  { value: "subsidiary", label: "Subsidiary Company", desc: "A separate company owned or controlled by your business" },
+  { value: "franchise", label: "Franchise", desc: "An independently owned business operating under your brand" },
+];
+
 export const URL_FIELDS: Array<[keyof BusinessCreateInput, string]> = [
   ["website", "website"],
   ["linkedin_url", "LinkedIn"],

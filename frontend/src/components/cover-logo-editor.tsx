@@ -20,6 +20,7 @@ export function CoverLogoEditor({
   onLogoFile,
   logoUploading = false,
   className,
+  hideLogo = false,
 }: Readonly<{
   coverUrl?: string | null;
   onCoverFile?: (file: File) => void;
@@ -29,6 +30,8 @@ export function CoverLogoEditor({
   onLogoFile: (file: File) => void;
   logoUploading?: boolean;
   className?: string;
+  /** Skip the overlapping logo button — for callers that render the logo themselves alongside other header content. */
+  hideLogo?: boolean;
 }>) {
   const coverInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -61,20 +64,22 @@ export function CoverLogoEditor({
         </>
       )}
 
-      <button
-        type="button"
-        className="group absolute -bottom-12 left-6 cursor-pointer"
-        onClick={() => logoInputRef.current?.click()}
-        aria-label="Edit logo"
-      >
-        <Avatar className="size-24 border-4 border-background">
-          {logoUrl && <AvatarImage src={logoUrl} alt="" />}
-          <AvatarFallback className="text-2xl">{logoFallback}</AvatarFallback>
-        </Avatar>
-        <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
-          {logoUploading ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Camera className="h-5 w-5 text-white" />}
-        </span>
-      </button>
+      {!hideLogo && (
+        <button
+          type="button"
+          className="group absolute -bottom-12 left-6 cursor-pointer"
+          onClick={() => logoInputRef.current?.click()}
+          aria-label="Edit logo"
+        >
+          <Avatar className="size-24 rounded-xl border-4 border-background">
+            {logoUrl && <AvatarImage src={logoUrl} alt="" className="rounded-lg object-contain p-1" />}
+            <AvatarFallback className="rounded-lg text-2xl">{logoFallback}</AvatarFallback>
+          </Avatar>
+          <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
+            {logoUploading ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Camera className="h-5 w-5 text-white" />}
+          </span>
+        </button>
+      )}
       <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={handlePick(onLogoFile)} />
     </div>
   );

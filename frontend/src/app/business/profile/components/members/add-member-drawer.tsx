@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { isValidPhoneNumber } from "libphonenumber-js";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
@@ -10,14 +11,13 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { FieldError } from "@/components/field-error";
-import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
-import { buildPhone, isValidEmail, isValidPhoneForCountry } from "@/app/admin/platform/businesses/utils";
-import { geoApi, type Country } from "@/app/geo/apis";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isValidEmail } from "@/app/admin/platform/businesses/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchInvitations, fetchMemberRoles, fetchMembers, inviteMember, updateMember } from "../../store/business-profile-detail-slice";
 import type { Member } from "../../apis/types";
 
-const EMPTY = { firstName: "", lastName: "", email: "", phoneCountryId: "", phoneNumber: "", role: "member", position: "" };
+const EMPTY = { firstName: "", lastName: "", email: "", phone: "", role: "member", position: "" };
 
 export function AddMemberDrawer({
   open,
@@ -34,7 +34,6 @@ export function AddMemberDrawer({
   const roles = useAppSelector((s) => s.businessProfileDetail.memberRoles);
   const isEdit = !!editingMember;
 
-  const [countries, setCountries] = useState<Country[]>([]);
   const [form, setForm] = useState(EMPTY);
   const [role, setRole] = useState("member");
   const [active, setActive] = useState(true);
@@ -47,7 +46,6 @@ export function AddMemberDrawer({
   useEffect(() => {
     if (!open) return;
     if (roles.length === 0) dispatch(fetchMemberRoles());
-    if (countries.length === 0) geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     if (editingMember) {
       setRole(editingMember.role ?? "member");
       setActive(editingMember.account_status === 1);
@@ -67,12 +65,6 @@ export function AddMemberDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingMember]);
 
-  const phoneCountryOptions = useMemo(
-    () => countries
-      .filter((c) => c.phoneCode)
-      .map((c) => ({ value: String(c.id), label: `${c.name} (${c.phoneCode})`, icon: <span>{flagFromIso2(c.iso2)}</span> })),
-    [countries],
-  );
   const roleOptions = useMemo(() => roles.map((r) => ({ value: r.name, label: r.display_name })), [roles]);
 
   const handleClose = () => {
@@ -84,11 +76,8 @@ export function AddMemberDrawer({
 
   const validate = () => {
     const nextErrors: Record<string, string | undefined> = {};
-    if (form.phoneNumber.trim()) {
-      if (!form.phoneCountryId) nextErrors.phone = "Select a country code";
-      else if (!isValidPhoneForCountry(form.phoneNumber, countries.find((c) => String(c.id) === form.phoneCountryId)?.iso2)) {
-        nextErrors.phone = "Enter a valid phone number for the selected country";
-      }
+    if (form.phone.trim() && !isValidPhoneNumber(form.phone)) {
+      nextErrors.phone = "Enter a valid phone number";
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -112,8 +101,6 @@ export function AddMemberDrawer({
         ).unwrap();
         toast.success("Member updated");
       } else {
-        const phoneCode = countries.find((c) => String(c.id) === form.phoneCountryId)?.phoneCode ?? "";
-        const phone = buildPhone(phoneCode, form.phoneNumber);
         await dispatch(
           inviteMember({
             id: businessId,
@@ -121,7 +108,7 @@ export function AddMemberDrawer({
               first_name: form.firstName,
               last_name: form.lastName,
               email: form.email,
-              phone: phone || null,
+              phone: form.phone || null,
               role: form.role,
               admin_point_of_contact: pointOfContact,
               position: form.position.trim() || null,
@@ -218,28 +205,15 @@ export function AddMemberDrawer({
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Phone</Label>
-                <div className="grid grid-cols-[160px_1fr] gap-3">
-                  <Combobox
-                    value={form.phoneCountryId}
-                    onChange={(v) => {
-                      setForm((f) => ({ ...f, phoneCountryId: v }));
-                      setErrors((e) => (e.phone ? { ...e, phone: undefined } : e));
-                    }}
-                    placeholder="Code"
-                    searchPlaceholder="Search countries..."
-                    options={phoneCountryOptions}
-                  />
-                  <Input
-                    className="h-10"
-                    aria-invalid={!!errors.phone}
-                    value={form.phoneNumber}
-                    onChange={(e) => {
-                      setForm((f) => ({ ...f, phoneNumber: e.target.value }));
-                      setErrors((prev) => (prev.phone ? { ...prev, phone: undefined } : prev));
-                    }}
-                    placeholder="984 1234567"
-                  />
-                </div>
+                <PhoneInput
+                  aria-invalid={!!errors.phone}
+                  value={form.phone}
+                  onChange={(v) => {
+                    setForm((f) => ({ ...f, phone: v }));
+                    setErrors((e) => (e.phone ? { ...e, phone: undefined } : e));
+                  }}
+                  placeholder="(201) 555-0123"
+                />
                 <FieldError message={errors.phone} />
               </div>
               <div className="flex flex-col gap-2">

@@ -4,7 +4,7 @@ import { ForbiddenError, NotFoundError, BadRequestError } from "../../../shared/
 import * as repo from "../repositories/feed.repository.js";
 
 import * as mediaService from "./feed-media.service.js";
-import type { CreatePostInput, ListPostsQuery } from "../schemas/feed.schema.js";
+import type { CreateCommentInput, CreatePostInput, ListPostsQuery } from "../schemas/feed.schema.js";
 
 export async function listPosts(viewerId: number, query: ListPostsQuery) {
   const cursor = query.cursor ? repo.decodeCursor(query.cursor) : null;
@@ -49,6 +49,7 @@ export async function createPost(authorId: number, input: CreatePostInput) {
     visibility: input.visibility,
     content: input.content,
     media: input.media,
+    mentions: input.mentions,
   });
 
   // Read it back through the same query the timeline uses, so the response carries the author card and
@@ -68,13 +69,72 @@ export async function deletePost(postId: number, callerId: number) {
 
 /** Explicit add/update — not a toggle. The client knows its own current reaction and picks the method. */
 export async function setReaction(postId: number, callerId: number, emoji: string) {
-  const post = await repo.findPost(postId);
+  const post = await repo.findVisiblePost(postId, callerId);
   if (!post) throw new NotFoundError("Post not found");
   return repo.setReaction(postId, callerId, emoji);
 }
 
 export async function removeReaction(postId: number, callerId: number) {
-  const post = await repo.findPost(postId);
+  const post = await repo.findVisiblePost(postId, callerId);
   if (!post) throw new NotFoundError("Post not found");
   return repo.removeReaction(postId, callerId);
+}
+
+export async function listComments(postId: number, viewerId: number) {
+  const post = await repo.findVisiblePost(postId, viewerId);
+  if (!post) throw new NotFoundError("Post not found");
+  const comments = await repo.listComments(postId, viewerId);
+
+  // One reaction query for the whole thread — per-comment would be an N+1.
+  const summaries = await repo.commentReactionSummaries(comments.map((c) => c.id));
+
+  return Promise.all(
+    comments.map(async (c) => ({
+      ...c,
+      media: await mediaService.withViewUrls(c.media),
+      reactions: summaries.get(c.id) ?? [],
+    })),
+  );
+}
+
+export async function addComment(postId: number, callerId: number, input: CreateCommentInput) {
+  const post = await repo.findVisiblePost(postId, callerId);
+  if (!post) throw new NotFoundError("Post not found");
+
+  // Only media this caller actually uploaded may be attached — same rule as post media.
+  await mediaService.assertOwnedMedia(callerId, input.media);
+
+  const comment = await repo.insertComment({
+    post_id: postId,
+    author_platform_user_id: callerId,
+    content: input.content,
+    mentions: input.mentions,
+    media: input.media,
+  });
+  return { ...comment, media: await mediaService.withViewUrls(comment.media), reactions: [] };
+}
+
+async function requireVisibleComment(postId: number, commentId: number, viewerId: number) {
+  const post = await repo.findVisiblePost(postId, viewerId);
+  if (!post) throw new NotFoundError("Comment not found");
+  const comment = await repo.findComment(commentId);
+  if (!comment || comment.post_id !== postId) throw new NotFoundError("Comment not found");
+  return comment;
+}
+
+export async function deleteComment(postId: number, commentId: number, callerId: number) {
+  const comment = await requireVisibleComment(postId, commentId, callerId);
+  if (comment.author_platform_user_id !== callerId) throw new ForbiddenError("Not your comment");
+  await repo.softDeleteComment(commentId, postId);
+}
+
+/** Explicit add/update — not a toggle, mirrors post reactions. */
+export async function setCommentReaction(postId: number, commentId: number, callerId: number, emoji: string) {
+  await requireVisibleComment(postId, commentId, callerId);
+  return repo.setCommentReaction(commentId, callerId, emoji);
+}
+
+export async function removeCommentReaction(postId: number, commentId: number, callerId: number) {
+  await requireVisibleComment(postId, commentId, callerId);
+  return repo.removeCommentReaction(commentId, callerId);
 }
