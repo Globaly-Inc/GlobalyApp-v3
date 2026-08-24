@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-WORKER_PROFILES := globalyapp-extraction globalyapp-extraction-pages globalyapp-extraction-verify globalyapp-extraction-step globalyapp-extraction-schedule globalyapp-extraction-agentcis globalyapp-ai-knowledge-crawl globalyapp-ai-knowledge-recrawl
+WORKER_PROFILES := globalyapp-extraction globalyapp-extraction-pages globalyapp-extraction-verify globalyapp-extraction-step globalyapp-extraction-schedule globalyapp-extraction-agentcis globalyapp-ai-knowledge-crawl globalyapp-ai-knowledge-recrawl globalyapp-scholarship-import globalyapp-scholarship-bulk-delete
 WORKER_PROFILE_FLAGS := $(foreach p,$(WORKER_PROFILES),--profile $(p))
 
 build:
@@ -41,6 +41,12 @@ up-ai-knowledge-recrawl:
 up-extraction-agentcis:
 	docker compose --profile globalyapp-extraction-agentcis up -d extraction-agentcis-worker
 
+up-scholarship-import:
+	docker compose --profile globalyapp-scholarship-import up -d scholarship-import-worker
+
+up-scholarship-bulk-delete:
+	docker compose --profile globalyapp-scholarship-bulk-delete up -d scholarship-bulk-delete-worker
+
 down:
 	docker compose down
 
@@ -71,6 +77,12 @@ down-ai-knowledge-recrawl:
 down-extraction-agentcis:
 	docker compose --profile globalyapp-extraction-agentcis stop extraction-agentcis-worker
 
+down-scholarship-import:
+	docker compose --profile globalyapp-scholarship-import stop scholarship-import-worker
+
+down-scholarship-bulk-delete:
+	docker compose --profile globalyapp-scholarship-bulk-delete stop scholarship-bulk-delete-worker
+
 restart:
 	docker compose restart
 
@@ -96,7 +108,7 @@ logs-backend:
 	docker compose logs -f backend
 
 logs-workers:
-	docker compose $(WORKER_PROFILE_FLAGS) logs -f auth-worker extraction-worker extraction-pages-worker extraction-verify-worker extraction-step-worker extraction-schedule-worker extraction-agentcis-worker ai-knowledge-crawl-worker
+	docker compose $(WORKER_PROFILE_FLAGS) logs -f auth-worker extraction-worker extraction-pages-worker extraction-verify-worker extraction-step-worker extraction-schedule-worker extraction-agentcis-worker ai-knowledge-crawl-worker ai-knowledge-recrawl-worker scholarship-import-worker scholarship-bulk-delete-worker
 
 logs-extraction:
 	docker compose --profile globalyapp-extraction logs -f extraction-worker
@@ -122,6 +134,12 @@ logs-ai-knowledge-recrawl:
 logs-extraction-agentcis:
 	docker compose --profile globalyapp-extraction-agentcis logs -f extraction-agentcis-worker
 
+logs-scholarship-import:
+	docker compose --profile globalyapp-scholarship-import logs -f scholarship-import-worker
+
+logs-scholarship-bulk-delete:
+	docker compose --profile globalyapp-scholarship-bulk-delete logs -f scholarship-bulk-delete-worker
+
 ps:
 	docker compose ps
 
@@ -139,6 +157,8 @@ help:
 	@echo "  up-ai-knowledge-crawl       Start only the ai-knowledge-crawl-worker (profile: globalyapp-ai-knowledge-crawl)"
 	@echo "  up-ai-knowledge-recrawl     Start only the ai-knowledge-recrawl-worker (profile: globalyapp-ai-knowledge-recrawl)"
 	@echo "  up-extraction-agentcis      Start only the extraction-agentcis-worker (profile: globalyapp-extraction-agentcis)"
+	@echo "  up-scholarship-import       Start only the scholarship-import-worker (profile: globalyapp-scholarship-import)"
+	@echo "  up-scholarship-bulk-delete  Start only the scholarship-bulk-delete-worker (profile: globalyapp-scholarship-bulk-delete)"
 	@echo "  down                        Stop and remove core services"
 	@echo "  down-workers                Stop all extraction workers"
 	@echo "  down-extraction             Stop only the extraction-worker"
@@ -149,6 +169,8 @@ help:
 	@echo "  down-ai-knowledge-crawl     Stop only the ai-knowledge-crawl-worker"
 	@echo "  down-ai-knowledge-recrawl   Stop only the ai-knowledge-recrawl-worker"
 	@echo "  down-extraction-agentcis    Stop only the extraction-agentcis-worker"
+	@echo "  down-scholarship-import     Stop only the scholarship-import-worker"
+	@echo "  down-scholarship-bulk-delete Stop only the scholarship-bulk-delete-worker"
 	@echo "  restart                     Restart running services"
 	@echo "  migrate-globalyapp          Run globalyapp DB migrations"
 	@echo "  migrate-superadmin          Run superadmin DB migrations"
@@ -166,13 +188,15 @@ help:
 	@echo "  logs-ai-knowledge-crawl     Tail ai-knowledge-crawl-worker logs"
 	@echo "  logs-ai-knowledge-recrawl   Tail ai-knowledge-recrawl-worker logs"
 	@echo "  logs-extraction-agentcis    Tail extraction-agentcis-worker logs"
+	@echo "  logs-scholarship-import     Tail scholarship-import-worker logs"
+	@echo "  logs-scholarship-bulk-delete Tail scholarship-bulk-delete-worker logs"
 	@echo "  ps                          List running services"
 
 .PHONY: build build-no-cache up up-workers \
-	up-extraction up-extraction-pages up-extraction-verify up-extraction-step up-extraction-schedule up-extraction-agentcis up-ai-knowledge-crawl up-ai-knowledge-recrawl \
+	up-extraction up-extraction-pages up-extraction-verify up-extraction-step up-extraction-schedule up-extraction-agentcis up-ai-knowledge-crawl up-ai-knowledge-recrawl up-scholarship-import up-scholarship-bulk-delete \
 	down down-workers \
-	down-extraction down-extraction-pages down-extraction-verify down-extraction-step down-extraction-schedule down-extraction-agentcis down-ai-knowledge-crawl down-ai-knowledge-recrawl \
+	down-extraction down-extraction-pages down-extraction-verify down-extraction-step down-extraction-schedule down-extraction-agentcis down-ai-knowledge-crawl down-ai-knowledge-recrawl down-scholarship-import down-scholarship-bulk-delete \
 	restart migrate-globalyapp migrate-superadmin migrate-tenants seed-globalyapp seed-superadmin \
 	logs-frontend logs-backend logs-workers \
-	logs-extraction logs-extraction-pages logs-extraction-verify logs-extraction-step logs-extraction-schedule logs-extraction-agentcis logs-ai-knowledge-crawl logs-ai-knowledge-recrawl \
+	logs-extraction logs-extraction-pages logs-extraction-verify logs-extraction-step logs-extraction-schedule logs-extraction-agentcis logs-ai-knowledge-crawl logs-ai-knowledge-recrawl logs-scholarship-import logs-scholarship-bulk-delete \
 	ps help

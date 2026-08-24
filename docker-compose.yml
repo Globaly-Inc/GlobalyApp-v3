@@ -320,6 +320,24 @@ services:
     networks:
       - globalyapp
 
+  scholarship-bulk-delete-worker:
+    container_name: globalyapp-scholarship-bulk-delete-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-scholarship-bulk-delete"]
+    command: npm run job:scholarship-bulk-delete
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   lavinmq:
     container_name: globalyapp-lavinmq
     image: cloudamqp/lavinmq:2.4
