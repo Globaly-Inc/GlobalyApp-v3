@@ -9,7 +9,7 @@ export type BusinessClaimStatus = "unclaimed" | "claim_pending" | "claimed";
 export type ListingKind = "business" | "institution";
 
 /** Identifies one row in a list that mixes both tables — `id` alone is ambiguous. */
-export type ClaimRequestRef = { kind: ListingKind; id: number };
+export type ListingRef = { kind: ListingKind; id: number };
 
 export type Business = {
   kind: ListingKind;
@@ -43,7 +43,11 @@ export type BusinessListParams = {
   search?: string;
   status?: string;
   category?: number;
+  page?: number;
+  limit?: number;
 };
+
+export type BusinessListResult = { data: Business[]; total: number };
 
 export type BusinessDetail = Business & {
   description: string | null;

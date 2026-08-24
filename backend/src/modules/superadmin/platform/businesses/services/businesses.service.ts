@@ -303,6 +303,34 @@ export async function deleteBusiness(id: number) {
   await repo.deleteBusiness(id);
 }
 
+// ─── Institution twins ────────────────────────────────────────────────────────
+// The admin list mixes both tables, so every row action needs a twin on this side too —
+// same rule as sendInstitutionClaimRequest above. Separate ids, identical behavior.
+
+async function requireInstitution(id: number) {
+  const inst = await repo.findInstitutionById(id);
+  if (!inst) throw new NotFoundError("Institution not found");
+  return inst;
+}
+
+export async function updateInstitutionStatus(id: number, status: BusinessStatus) {
+  await requireInstitution(id);
+  await userRepo.updateInstitution(id, { status, ...(status === "verified" ? { verified_at: new Date() } : {}) });
+  return { status };
+}
+
+export async function updateInstitutionPublished(id: number, isPublished: boolean) {
+  await requireInstitution(id);
+  await userRepo.updateInstitution(id, { is_published: isPublished });
+  return { is_published: isPublished };
+}
+
+export async function deleteInstitution(id: number) {
+  await requireInstitution(id);
+  // Same soft delete as deleteBusiness — every institutions read filters on deleted_at.
+  await userRepo.updateInstitution(id, { deleted_at: new Date() });
+}
+
 export async function updateEnquirySettings(id: number, data: EnquirySettingsPatchInput) {
   await requireBusiness(id);
   return repo.updateBusiness(id, data);

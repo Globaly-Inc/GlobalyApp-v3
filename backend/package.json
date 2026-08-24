@@ -14,6 +14,7 @@
     "chunk:backfill": "node --import tsx scripts/chunk-backfill.ts",
     "ai:evals": "node --import tsx scripts/ai-evals/run-evals.ts",
     "seed:globalyapp": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp",
+    "seed:v2-businesses": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp --specific v2_businesses_import_seeder.ts",
     "seed:superadmin": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env superadmin",
     "job:auth": "node --import tsx src/modules/auth/jobs/email.worker.ts",
     "job:referral-codes": "node --import tsx src/modules/referrals/workers/backfill-referral-codes.worker.ts",

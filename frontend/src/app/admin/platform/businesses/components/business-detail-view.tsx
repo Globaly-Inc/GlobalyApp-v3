@@ -112,7 +112,8 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
 
   const runStatus = async (status: BusinessStatus) => {
     try {
-      await dispatch(updateBusinessStatus({ id: business.id, status })).unwrap();
+      // The detail page is business-only — institutions have no detail route here.
+      await dispatch(updateBusinessStatus({ kind: "business", id: business.id, status })).unwrap();
       toast.success(`Business ${STATUS_LABELS[status].toLowerCase()}`);
     } catch (e) {
       toast.error("Couldn't update status", { description: (e as Error).message });
@@ -122,7 +123,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
   const runTogglePublish = async () => {
     setPublishBusy(true);
     try {
-      await dispatch(updateBusinessPublished({ id: business.id, is_published: !business.is_published })).unwrap();
+      await dispatch(updateBusinessPublished({ kind: "business", id: business.id, is_published: !business.is_published })).unwrap();
       toast.success(business.is_published ? "Business unpublished" : "Business published");
     } catch (e) {
       toast.error("Couldn't update publish status", { description: (e as Error).message });

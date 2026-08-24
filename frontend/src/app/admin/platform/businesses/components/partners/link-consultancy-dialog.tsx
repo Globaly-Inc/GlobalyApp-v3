@@ -46,8 +46,8 @@ export function LinkConsultancyDialog({
   const handleQueryChange = async (query: string) => {
     setLoading(true);
     try {
-      const rows = await businessesApi.getBusinesses({ search: query || undefined });
-      setResults(rows.filter((b) => b.id !== businessId));
+      const { data } = await businessesApi.getBusinesses({ search: query || undefined });
+      setResults(data.filter((b) => b.id !== businessId));
     } finally {
       setLoading(false);
     }

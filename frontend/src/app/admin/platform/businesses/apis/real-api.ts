@@ -1,7 +1,7 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from "@/lib/api/http";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
-  BranchPatch, Business, BusinessCreateInput, ClaimRequestRef, BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation,
+  BranchPatch, Business, BusinessCreateInput, ListingRef, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
   BusinessService, BusinessStatus, EnquirySettingsPatch, LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
@@ -10,8 +10,13 @@ import type {
 
 const BASE = "/admin/platform/businesses";
 
+// The id spaces are separate — institution 3 and business 3 are different rows, so every
+// row mutation routes by kind.
+const listingBase = ({ kind, id }: ListingRef) =>
+  kind === "institution" ? `/admin/platform/institutions/${id}` : `${BASE}/${id}`;
+
 function toQuery(params: BusinessListParams): string {
-  const q = new URLSearchParams({ limit: "10" });
+  const q = new URLSearchParams({ page: String(params.page ?? 1), limit: String(params.limit ?? 10) });
   if (params.search) q.set("search", params.search);
   if (params.status) q.set("status", params.status);
   if (params.category) q.set("category", String(params.category));
@@ -56,9 +61,9 @@ function toMemberQuery(params: MemberListParams): string {
 }
 
 export const businessesRealApi = {
-  getBusinesses: async (params: BusinessListParams = {}): Promise<Business[]> => {
-    const { data } = await httpGet<{ data: Business[] }>(`${BASE}${toQuery(params)}`);
-    return data;
+  getBusinesses: async (params: BusinessListParams = {}): Promise<BusinessListResult> => {
+    const { data, meta } = await httpGet<{ data: Business[]; meta: { total: number } }>(`${BASE}${toQuery(params)}`);
+    return { data, total: meta.total };
   },
   createBusiness: (input: BusinessCreateInput): Promise<BusinessDetail> => httpPost(BASE, input),
   uploadImage: (file: File): Promise<{ path: string }> => {
@@ -68,19 +73,14 @@ export const businessesRealApi = {
   },
   getBusinessDetail: (id: number): Promise<BusinessDetail> => httpGet(`${BASE}/${id}`),
   updateBusiness: (id: number, patch: BusinessPatch): Promise<BusinessDetail> => httpPatch(`${BASE}/${id}`, patch),
-  updateStatus: (id: number, status: BusinessStatus): Promise<{ status: string }> =>
-    httpPatch(`${BASE}/${id}/status`, { status }),
-  // Two paths because the id spaces are separate — institution 3 and business 3 are different
-  // rows, so `kind` has to choose.
-  sendClaimRequest: ({ kind, id }: ClaimRequestRef): Promise<{ claim_status: string }> =>
-    httpPost(
-      kind === "institution" ? `/admin/platform/institutions/${id}/claim-request` : `${BASE}/${id}/claim-request`,
-      {},
-    ),
+  updateStatus: (ref: ListingRef, status: BusinessStatus): Promise<{ status: string }> =>
+    httpPatch(`${listingBase(ref)}/status`, { status }),
+  sendClaimRequest: (ref: ListingRef): Promise<{ claim_status: string }> =>
+    httpPost(`${listingBase(ref)}/claim-request`, {}),
   sendBulkClaimRequests: (ids: number[]): Promise<{ queued: number }> => httpPost(`${BASE}/claim-requests/bulk`, { ids }),
-  updatePublished: (id: number, is_published: boolean): Promise<{ is_published: boolean }> =>
-    httpPatch(`${BASE}/${id}/published`, { is_published }),
-  deleteBusiness: (id: number): Promise<void> => httpDelete(`${BASE}/${id}`),
+  updatePublished: (ref: ListingRef, is_published: boolean): Promise<{ is_published: boolean }> =>
+    httpPatch(`${listingBase(ref)}/published`, { is_published }),
+  deleteBusiness: (ref: ListingRef): Promise<void> => httpDelete(listingBase(ref)),
   updateEnquirySettings: (id: number, patch: EnquirySettingsPatch): Promise<BusinessDetail> =>
     httpPatch(`${BASE}/${id}/enquiry-settings`, patch),
 
