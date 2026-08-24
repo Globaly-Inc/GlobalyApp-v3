@@ -83,13 +83,27 @@ export async function countJobsByStatus() {
   return Object.fromEntries(rows.map((r) => [r.status, Number(r.count)]));
 }
 
-export type JobFilterOpts = { statuses?: string[]; sourceType?: string; excludeSourceType?: string };
+export type JobSort = "newest" | "oldest" | "name_asc" | "name_desc";
+
+export type JobFilterOpts = {
+  statuses?: string[];
+  excludeStatuses?: string[];
+  sourceType?: string;
+  excludeSourceType?: string;
+  businessCategoryId?: number;
+  q?: string;
+};
+
+const RESOLVED_NAME = `coalesce(${T}.institution_name, ${OVERVIEW_NAME})`;
 
 function filteredJobsQuery(opts: JobFilterOpts) {
   const query = masterKnex(T);
   if (opts.statuses?.length) query.whereIn("status", opts.statuses);
+  if (opts.excludeStatuses?.length) query.whereNotIn("status", opts.excludeStatuses);
   if (opts.sourceType) query.where("source_type", opts.sourceType);
   if (opts.excludeSourceType) query.whereNot("source_type", opts.excludeSourceType);
+  if (opts.businessCategoryId) query.where("business_category_id", opts.businessCategoryId);
+  if (opts.q) query.whereRaw(`(${RESOLVED_NAME} ilike ? or ${T}.institution_url ilike ?)`, [`%${opts.q}%`, `%${opts.q}%`]);
   return query;
 }
 
@@ -98,13 +112,29 @@ export async function countJobsFiltered(opts: JobFilterOpts) {
   return Number(row.count);
 }
 
-export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; offset: number }) {
-  const jobs = await filteredJobsQuery(opts)
+export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; offset: number; sort?: JobSort }) {
+  const query = filteredJobsQuery(opts)
     .select(`${T}.*`)
     .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
-    .orderBy("created_at", "desc")
     .limit(opts.limit)
     .offset(opts.offset);
+
+  switch (opts.sort) {
+    case "oldest":
+      query.orderBy("created_at", "asc");
+      break;
+    case "name_asc":
+      query.orderByRaw(`${RESOLVED_NAME} asc nulls last`);
+      break;
+    case "name_desc":
+      query.orderByRaw(`${RESOLVED_NAME} desc nulls last`);
+      break;
+    case "newest":
+    default:
+      query.orderBy("created_at", "desc");
+  }
+
+  const jobs = await query;
 
   // Attach campus/agent counts
   if (jobs.length) {

@@ -50,8 +50,12 @@ export const ListJobsQuerySchema = z.object({
 export const FilteredJobsQuerySchema = PaginationSchema.extend({
   limit: z.coerce.number().int().min(1).max(500).default(100),
   statuses: z.string().optional(), // csv
+  exclude_statuses: z.string().optional(), // csv
   source_type: z.string().optional(),
   exclude_source_type: z.string().optional(),
+  business_category_id: z.coerce.number().int().positive().optional(),
+  q: z.string().trim().min(1).optional(),
+  sort: z.enum(["newest", "oldest", "name_asc", "name_desc"]).default("newest"),
 });
 
 export const MergeDuplicatesSchema = z.object({

@@ -41,9 +41,18 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.get("/jobs-filtered", async (req, reply) => {
     const query = FilteredJobsQuerySchema.parse(req.query);
     const statuses = query.statuses?.split(",").filter(Boolean);
+    const excludeStatuses = query.exclude_statuses?.split(",").filter(Boolean);
     return reply.send(
       await service.listJobsFiltered(
-        { statuses, sourceType: query.source_type, excludeSourceType: query.exclude_source_type },
+        {
+          statuses,
+          excludeStatuses,
+          sourceType: query.source_type,
+          excludeSourceType: query.exclude_source_type,
+          businessCategoryId: query.business_category_id,
+          q: query.q,
+          sort: query.sort,
+        },
         { page: query.page, limit: query.limit },
       ),
     );

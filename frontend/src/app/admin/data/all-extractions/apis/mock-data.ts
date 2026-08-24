@@ -32,7 +32,8 @@ import type {
   VisaService,
 } from "./types";
 
-import { MODE_STATUS_FILTER, type DashboardMode } from "../const";
+import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import type { ExtractionStatus, GetJobsParams, GetJobsResult } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,14 +59,70 @@ let mockJobs: ExtractionJob[] = [
   { id: "9", institution_name: "Auckland Institute of Studies", institution_url: "https://ais.ac.nz", status: "extracting", total_pages_found: 60, courses_extracted: 48, verification_score: 0, verification_total: 0, pages_scraped: 48, pages_failed: 0, agent_count: 0, campus_count: 2, created_at: "2026-08-07T02:00:00Z", updated_at: "2026-08-07T02:00:00Z", pipeline_progress: { mapping: { status: "done", total: 60, done: 60 }, intelligence: { status: "done", total: 1, done: 1 }, scraping: { status: "done", total: 60, done: 48 }, extracting: { status: "processing", total: 48, done: 32 } } },
   { id: "10", institution_name: "RMIT University", institution_url: "https://www.rmit.edu.au", status: "pending", total_pages_found: 200, courses_extracted: 3, verification_score: 0, verification_total: 0, pages_scraped: 3, pages_failed: 0, agent_count: 0, created_at: "2026-08-07T02:30:00Z", updated_at: "2026-08-07T02:30:00Z" },
   { id: "11", institution_name: "Torrens University", institution_url: "https://www.torrens.edu.au", status: "declined", total_pages_found: 140, courses_extracted: 0, verification_score: 0, verification_total: 0, pages_scraped: 140, pages_failed: 0, agent_count: 0, created_at: "2026-06-20T09:00:00Z", updated_at: "2026-06-20T09:00:00Z" },
+  // 12-23 added to test pagination — 23 jobs total, mostly "done" so they land on the "all" and "completed" tabs.
+  { id: "12", institution_name: "Bond University", institution_url: "https://bond.edu.au", status: "done", total_pages_found: 30, courses_extracted: 25, verification_score: 24, verification_total: 25, pages_scraped: 30, pages_failed: 0, agent_count: 1, created_at: "2026-06-19T09:00:00Z", updated_at: "2026-06-19T09:00:00Z" },
+  { id: "13", institution_name: "Curtin University", institution_url: "https://curtin.edu.au", status: "done", total_pages_found: 45, courses_extracted: 40, verification_score: 38, verification_total: 40, pages_scraped: 45, pages_failed: 0, agent_count: 2, created_at: "2026-06-18T09:00:00Z", updated_at: "2026-06-18T09:00:00Z" },
+  { id: "14", institution_name: "Deakin University", institution_url: "https://deakin.edu.au", status: "done", total_pages_found: 50, courses_extracted: 44, verification_score: 41, verification_total: 44, pages_scraped: 50, pages_failed: 0, agent_count: 2, created_at: "2026-06-17T09:00:00Z", updated_at: "2026-06-17T09:00:00Z" },
+  { id: "15", institution_name: "Edith Cowan University", institution_url: "https://ecu.edu.au", status: "done", total_pages_found: 20, courses_extracted: 18, verification_score: 17, verification_total: 18, pages_scraped: 20, pages_failed: 0, agent_count: 1, created_at: "2026-06-16T09:00:00Z", updated_at: "2026-06-16T09:00:00Z" },
+  { id: "16", institution_name: "Flinders University", institution_url: "https://flinders.edu.au", status: "review", total_pages_found: 35, courses_extracted: 30, verification_score: 28, verification_total: 30, pages_scraped: 35, pages_failed: 0, agent_count: 1, created_at: "2026-06-15T09:00:00Z", updated_at: "2026-06-15T09:00:00Z" },
+  { id: "17", institution_name: "Griffith University", institution_url: "https://griffith.edu.au", status: "done", total_pages_found: 55, courses_extracted: 49, verification_score: 47, verification_total: 49, pages_scraped: 55, pages_failed: 0, agent_count: 3, created_at: "2026-06-14T09:00:00Z", updated_at: "2026-06-14T09:00:00Z" },
+  { id: "18", institution_name: "James Cook University", institution_url: "https://jcu.edu.au", status: "done", total_pages_found: 28, courses_extracted: 24, verification_score: 22, verification_total: 24, pages_scraped: 28, pages_failed: 0, agent_count: 1, created_at: "2026-06-13T09:00:00Z", updated_at: "2026-06-13T09:00:00Z" },
+  { id: "19", institution_name: "La Trobe University", institution_url: "https://latrobe.edu.au", status: "extracting", total_pages_found: 42, courses_extracted: 15, verification_score: 0, verification_total: 0, pages_scraped: 20, pages_failed: 0, agent_count: 0, created_at: "2026-08-06T09:00:00Z", updated_at: "2026-08-06T09:00:00Z" },
+  { id: "20", institution_name: "Macquarie University", institution_url: "https://mq.edu.au", status: "done", total_pages_found: 60, courses_extracted: 53, verification_score: 50, verification_total: 53, pages_scraped: 60, pages_failed: 0, agent_count: 2, created_at: "2026-06-12T09:00:00Z", updated_at: "2026-06-12T09:00:00Z" },
+  { id: "21", institution_name: "Monash University", institution_url: "https://monash.edu", status: "done", total_pages_found: 70, courses_extracted: 62, verification_score: 60, verification_total: 62, pages_scraped: 70, pages_failed: 0, agent_count: 3, created_at: "2026-06-11T09:00:00Z", updated_at: "2026-06-11T09:00:00Z" },
+  { id: "22", institution_name: "Murdoch University", institution_url: "https://murdoch.edu.au", status: "pending", total_pages_found: 18, courses_extracted: 0, verification_score: 0, verification_total: 0, pages_scraped: 0, pages_failed: 0, agent_count: 0, created_at: "2026-08-05T09:00:00Z", updated_at: "2026-08-05T09:00:00Z" },
+  { id: "23", institution_name: "Queensland University of Technology (QUT)", institution_url: "https://qut.edu.au", status: "done", total_pages_found: 65, courses_extracted: 58, verification_score: 55, verification_total: 58, pages_scraped: 65, pages_failed: 0, agent_count: 2, created_at: "2026-06-10T09:00:00Z", updated_at: "2026-06-10T09:00:00Z" },
 ];
 
+function rawStatusesForLabel(label: string): ExtractionStatus[] {
+  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
+}
+
 export const allExtractionsMockApi = {
-  getJobs: async (mode: DashboardMode): Promise<ExtractionJob[]> => {
-    console.log("[mock] GET /admin/data-extraction/jobs-filtered (mode: " + mode + ")");
+  getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
+    console.log("[mock] GET /admin/data-extraction/jobs-filtered", params);
     await delay(300);
-    const statuses = MODE_STATUS_FILTER[mode];
-    return statuses ? mockJobs.filter((j) => statuses.includes(j.status)) : mockJobs;
+
+    const baseStatuses = MODE_STATUS_FILTER[params.mode];
+    const statuses =
+      params.statusLabel && params.statusLabel !== "all"
+        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        : baseStatuses;
+
+    let filtered = statuses ? mockJobs.filter((j) => statuses.includes(j.status)) : [...mockJobs];
+    if (!params.showDeclined) filtered = filtered.filter((j) => j.status !== "declined");
+    if (params.mode === "ai-ongoing") filtered = filtered.filter((j) => j.source_type !== "agentcis");
+    else if (params.mode === "completed" && params.sourceFilter && params.sourceFilter !== "all") {
+      filtered = filtered.filter((j) =>
+        params.sourceFilter === "agentcis" ? j.source_type === "agentcis" : j.source_type !== "agentcis",
+      );
+    }
+    if (params.businessCategoryId) filtered = filtered.filter((j) => j.business_category_id === params.businessCategoryId);
+    if (params.q) {
+      const q = params.q.toLowerCase();
+      filtered = filtered.filter(
+        (j) => (j.institution_name || "").toLowerCase().includes(q) || j.institution_url.toLowerCase().includes(q),
+      );
+    }
+
+    filtered.sort((a, b) => {
+      switch (params.sort) {
+        case "oldest":
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case "name_asc":
+          return (a.institution_name || "").localeCompare(b.institution_name || "");
+        case "name_desc":
+          return (b.institution_name || "").localeCompare(a.institution_name || "");
+        case "newest":
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
+
+    const total = filtered.length;
+    const start = (params.page - 1) * params.limit;
+    const jobs = filtered.slice(start, start + params.limit);
+    return { jobs, meta: { page: params.page, limit: params.limit, total, totalPages: Math.max(1, Math.ceil(total / params.limit)) } };
   },
 
   getJob: async (id: string): Promise<ExtractionJob> => {

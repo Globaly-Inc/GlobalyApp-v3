@@ -25,9 +25,8 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
 
   return (
     <div className="group relative bg-card border border-border rounded-xl hover:shadow-md hover:border-primary/40 transition-all overflow-hidden">
-      <Link href={`/course/${course.slug}`} className="absolute inset-0 z-0" aria-label={course.name} />
-      <div className="flex flex-col sm:flex-row pointer-events-none">
-        <div className="flex-1 min-w-0 p-4">
+      <div className="flex flex-col sm:flex-row">
+        <Link href={`/course/${course.slug}`} className="flex-1 min-w-0 p-4">
           <div className="flex gap-3">
             <div className="w-14 h-14 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
               {course.image_url ? (
@@ -93,7 +92,7 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
           {course.description && (
             <p className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground truncate">{course.description}</p>
           )}
-        </div>
+        </Link>
 
         <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 p-5 flex flex-col justify-center gap-4">
           <div className="text-left">
@@ -107,7 +106,7 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
               <p className="text-xs text-muted-foreground italic">Fees on enquiry</p>
             )}
           </div>
-          <Link href="/auth/sign-up?redirect=/search" className="pointer-events-auto relative z-10">
+          <Link href="/auth/sign-up?redirect=/search">
             <Button size="sm" className="w-full text-xs h-9">Enquire</Button>
           </Link>
         </div>
