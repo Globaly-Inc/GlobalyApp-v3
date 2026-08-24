@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type Content, type Part, type Tool } from "@google/generative-ai";
+import { GoogleGenerativeAI, type Content, type FunctionCall, type Part, type Tool } from "@google/generative-ai";
 import { config } from "../../../config.js";
 import { BadRequestError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -121,6 +121,22 @@ const DEFAULT_MAX_ROUNDS = 4;
 const emptyUsage = () => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
 
 /**
+ * The SDK's stream aggregator builds one part object per chunk and reuses it, so a
+ * functionCall that arrives beside a part it doesn't recognise (a thinking-model
+ * thought/signature part) comes out duplicated. Identical calls in one round are
+ * never intentional — run each distinct call once.
+ */
+function dedupeCalls(calls: FunctionCall[]): FunctionCall[] {
+  const seen = new Set<string>();
+  return calls.filter((call) => {
+    const key = `${call.name}:${JSON.stringify(call.args ?? {})}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Agent loop: the model may call tools, we run them, it may call more, then it
  * answers. The final answer streams to the client.
  *
@@ -129,6 +145,13 @@ const emptyUsage = () => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0
  * the answer. Buffering until we knew whether the round called a tool would mean
  * the real answer arrives in one lump, which is worse. The system prompt asks the
  * model not to narrate its tool use, so this is rare in practice.
+ *
+ * The turn's `contents` array is owned HERE, not by the SDK's ChatSession. The
+ * ChatSession rewrites thinking-model stream parts it doesn't recognise into
+ * `{text: ""}`, judges the whole response invalid for it, and then silently skips
+ * recording BOTH the user's message and the model's tool call in its internal
+ * history — so every round after the tool call was sent WITHOUT the student's
+ * current question, and the model answered the PREVIOUS one, a turn behind.
  */
 export async function streamChatWithTools(
   opts: StreamChatWithToolsOpts,
@@ -139,13 +162,15 @@ export async function streamChatWithTools(
     systemInstruction: opts.system,
   });
 
-  const chat = model.startChat({ history: opts.history as Content[], tools: opts.tools });
+  const contents: Content[] = [
+    ...(opts.history as Content[]),
+    { role: "user", parts: [{ text: opts.userMessage }] },
+  ];
   const usage = emptyUsage();
   let fullText = "";
   let toolRounds = 0;
-  let message: string | Part[] = opts.userMessage;
 
-  const consume = async (result: Awaited<ReturnType<typeof chat.sendMessageStream>>) => {
+  const consume = async (result: Awaited<ReturnType<typeof model.generateContentStream>>) => {
     for await (const chunk of result.stream) {
       if (opts.signal?.aborted) break;
       const text = chunk.text();
@@ -162,33 +187,49 @@ export async function streamChatWithTools(
     return response;
   };
 
+  const send = (tools?: Tool[]) =>
+    withRetry(() => model.generateContentStream({ contents, ...(tools ? { tools } : {}) })).then(consume);
+
   for (let round = 0; round < maxRounds; round++) {
-    const response = await withRetry(() => chat.sendMessageStream(message)).then(consume);
-    const calls = response.functionCalls();
-    if (!calls?.length) return { fullText, usage, toolRounds };
+    const textBefore = fullText.length;
+    const response = await send(opts.tools);
+    const calls = dedupeCalls(response.functionCalls() ?? []);
+    if (!calls.length) return { fullText, usage, toolRounds };
     if (opts.signal?.aborted) return { fullText, usage, toolRounds };
 
     toolRounds++;
-    const parts: Part[] = [];
+    const roundText = fullText.slice(textBefore);
+    const results: Part[] = [];
     for (const call of calls) {
       const args = (call.args ?? {}) as Record<string, unknown>;
       opts.onToolCall?.(call.name, args);
       const payload = await opts.runTool(call.name, args);
-      parts.push({ functionResponse: { name: call.name, response: payload as object } });
+      results.push({ functionResponse: { name: call.name, response: payload as object } });
     }
-    message = parts;
+    contents.push(
+      {
+        role: "model",
+        parts: [
+          ...(roundText ? [{ text: roundText }] : []),
+          ...calls.map((functionCall) => ({ functionCall })),
+        ],
+      },
+      { role: "function", parts: results },
+    );
   }
 
   // Round budget spent and it still wants to search. Continue the same conversation
-  // in a tool-free session so it has to answer from what it already retrieved.
+  // with tools withheld so it has to answer from what it already retrieved.
   logger.info("Tool round cap reached — forcing an answer", { maxRounds });
-  const closing = model.startChat({ history: await chat.getHistory() });
-  await withRetry(() =>
-    closing.sendMessageStream(
-      "You have run out of searches for this turn. Answer the student now using only what you " +
-      "already retrieved, and say plainly what you could not confirm.",
-    ),
-  ).then(consume);
+  contents.push({
+    role: "user",
+    parts: [{
+      text:
+        "You have run out of searches for this turn. Answer the student now using only what you " +
+        "already retrieved, and say plainly what you could not confirm.",
+    }],
+  });
+  await send();
 
   return { fullText, usage, toolRounds };
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
   Coins,
   Bell,
@@ -29,7 +30,6 @@ import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { NAV_ITEMS } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
-import { cn } from "@/lib/utils";
 
 /**
  * One width for the page body, centred in the space left of the sidebar so the dashboard stops
@@ -193,27 +193,21 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
         </div>
       </header>
 
-      {/* overflow-x-clip lets a page render a full-bleed band (the Earn sub-nav's rule) without the 100vw
-          box adding the scrollbar's width to the page as horizontal scroll. `clip` rather than `hidden`:
-          it creates no scroll container, so sticky and anchored elements inside still behave. */}
-      <main
-        className={cn(
-          "flex-1 overflow-x-clip",
-          // The AI counsellor is a full-bleed app surface, not a page in the portal's content
-          // column — it owns the whole viewport under the header and does its own bottom-nav math.
-          isFullBleed ? "" : "py-4 md:py-6 pb-24 md:pb-6",
-        )}
-      >
-        {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}
-      </main>
       <div className="flex flex-1">
         <PortalSidebar groups={NAV_ITEMS} />
 
         {/* overflow-x-clip lets a page render a full-bleed band without the 100vw box adding the scrollbar's
             width to the page as horizontal scroll. `clip` rather than `hidden`: it creates no scroll
             container, so sticky and anchored elements inside still behave. */}
-        <main className="min-w-0 flex-1 overflow-x-clip py-4 md:py-6 pb-24 md:pb-6">
-          <div className={SHELL_WIDTH}>{children}</div>
+        <main
+          className={cn(
+            "min-w-0 flex-1 overflow-x-clip",
+            // The AI counsellor is a full-bleed app surface, not a page in the portal's content
+            // column — it owns the whole space under the header and does its own bottom-nav math.
+            isFullBleed ? "" : "py-4 md:py-6 pb-24 md:pb-6",
+          )}
+        >
+          {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}
         </main>
       </div>
 

@@ -1,4 +1,5 @@
 import type { FastifyReply } from "fastify";
+import { config } from "../../../config.js";
 import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
 import { streamChat, streamChatWithTools, type StreamChatResult } from "../lib/gemini-stream.js";
 import { runTool, toolLabel, toolsFor, type ToolSource } from "../lib/tools.js";
@@ -139,7 +140,7 @@ export async function handleMessage(opts: {
     // Embed mode stays on searchAll: its business scoping (jobIds, skipped
     // institution/agent sources) lives inside that function, and a tool the model
     // could call with its own arguments would route around the scope.
-    const useTools = !opts.embed;
+    const useTools = !opts.embed && config.AI_COUNSELLOR_TOOLS;
     let sources: ToolSource[] = [];
     let result: StreamChatResult | null = null;
 
