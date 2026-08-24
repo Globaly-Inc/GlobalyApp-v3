@@ -22,6 +22,7 @@ const mockAdminUsers: AdminUser[] = Array.from({ length: 14 }, (_, i) => {
     phone: null,
     role: ROLES[i % ROLES.length] ?? "admin",
     photo_url: null,
+    cover_url: null,
     account_status: i % 7 === 0 ? 0 : 1,
     is_email_verified: i % 5 !== 0,
     is_active: i % 6 !== 0,
