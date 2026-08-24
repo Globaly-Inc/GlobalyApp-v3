@@ -1,8 +1,6 @@
-import type { LucideIcon } from "lucide-react";
-import type { OverviewStats } from "../apis";
+export type ViewMode = "days" | "week" | "month";
 
-export interface StatCardConfig {
-  key: keyof OverviewStats;
+export interface ChartPoint {
   label: string;
-  icon: LucideIcon;
+  count: number;
 }
