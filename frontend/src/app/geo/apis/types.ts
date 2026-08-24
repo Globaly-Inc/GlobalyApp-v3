@@ -3,6 +3,8 @@ export type Country = {
   name: string;
   iso2: string;
   phoneCode: string | null;
+  currency: string | null;
+  currencySymbol: string | null;
 };
 
 export type City = {

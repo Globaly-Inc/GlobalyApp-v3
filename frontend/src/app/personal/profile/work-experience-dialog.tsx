@@ -1,13 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { WorkExperience, WorkExperienceInput } from "../apis/types";
-import { useValidatedForm, toMonthInput, fromMonthInput } from "./validation";
+import { useValidatedForm } from "./validation";
 import { FieldError } from "./field-error";
 
 const schema: z.ZodType<WorkExperienceInput> = z
@@ -47,10 +49,10 @@ export function WorkExperienceDialog({
 }>) {
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
 
-  const handleOpenChange = (next: boolean) => {
-    if (next) reset(toInput(item));
-    onOpenChange(next);
-  };
+  useEffect(() => {
+    if (open) reset(toInput(item));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, item]);
 
   const handleSubmit = async () => {
     const data = validate();
@@ -60,7 +62,7 @@ export function WorkExperienceDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{item ? "Edit Work Experience" : "Add Work Experience"}</DialogTitle>
@@ -83,23 +85,26 @@ export function WorkExperienceDialog({
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Start Date *</Label>
-              <Input
-                type="month"
-                value={toMonthInput(form.start_date ?? "")}
-                onChange={(e) => setForm((f) => ({ ...f, start_date: fromMonthInput(e.target.value) }))}
+              <DatePicker
+                value={form.start_date ?? ""}
+                onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
+                placeholder="Select start date"
+                toYear={new Date().getFullYear()}
+                disabled={(date) => date > new Date()}
                 aria-invalid={!!errors.start_date}
               />
               <FieldError message={errors.start_date} />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>End Date{form.is_current ? "" : " *"}</Label>
-              <Input
-                type="month"
-                value={toMonthInput(form.end_date ?? "")}
-                onChange={(e) => setForm((f) => ({ ...f, end_date: fromMonthInput(e.target.value) }))}
-                disabled={form.is_current}
+              <DatePicker
+                value={form.end_date ?? ""}
+                onChange={(v) => setForm((f) => ({ ...f, end_date: v }))}
+                placeholder="Select end date"
+                toYear={new Date().getFullYear()}
+                disabled={form.is_current || ((date) => date > new Date())}
                 aria-invalid={!!errors.end_date}
               />
               <FieldError message={errors.end_date} />

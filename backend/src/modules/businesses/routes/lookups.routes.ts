@@ -37,11 +37,11 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     ["areas-of-study", "areas_of_study"],
   ] as const) {
     app.get(`/${path}`, { preHandler: requireBusinessContext }, async (req, reply) => {
-      const pagination = PaginationSchema.parse(req.query);
+      const { search, ...pagination } = CategoryListQuery.parse(req.query);
       const { limit, offset } = paginationToOffset(pagination);
       const [rows, total] = await Promise.all([
-        categoriesService.listLookup(table, limit, offset),
-        categoriesService.countLookup(table),
+        categoriesService.listLookup(table, limit, offset, search),
+        categoriesService.countLookup(table, search),
       ]);
       return reply.send(buildPaginatedResponse(rows, total, pagination));
     });

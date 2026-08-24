@@ -79,12 +79,12 @@ export function updateOtherServiceCategory(id: number, data: Partial<CategoryInp
 
 // ── Lookups (degree_levels, areas_of_study) ──
 
-export function listLookup(table: LookupTable, limit: number, offset: number) {
-  return repo.listLookup(table, limit, offset);
+export function listLookup(table: LookupTable, limit: number, offset: number, search?: string) {
+  return repo.listLookup(table, limit, offset, search);
 }
 
-export function countLookup(table: LookupTable) {
-  return repo.countLookup(table);
+export function countLookup(table: LookupTable, search?: string) {
+  return repo.countLookup(table, search);
 }
 
 export function createLookup(table: LookupTable, data: LookupInput) {

@@ -11,10 +11,11 @@ import * as institutionMembers from "./institution-members.service.js";
 import { provisionInstitutionSchema } from "../../../core/business/provisioner.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
+import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
 import type {
   ProfilePatchInput,
   OnboardingPersonalInput, OnboardingBusinessInput, OnboardingInstitutionInput,
-  QualificationInput, LanguageTestInput, WorkExperienceInput,
+  QualificationInput, LanguageTestInput, AcademicTestInput, WorkExperienceInput,
 } from "../schemas/platform-users.schema.js";
 
 // ── Profile ──
@@ -25,9 +26,10 @@ export async function getProfile(userId: number) {
 
   const profile = await repo.findProfileByUserId(userId);
 
-  const [qualifications, language_tests, work_experiences] = await Promise.all([
+  const [qualifications, language_tests, academic_tests, work_experiences] = await Promise.all([
     repo.listQualifications(userId),
     repo.listLanguageTests(userId),
+    repo.listAcademicTests(userId),
     repo.listWorkExperiences(userId),
   ]);
 
@@ -42,7 +44,7 @@ export async function getProfile(userId: number) {
 
   const completion = computeCompletion(user, profile ?? null, qualifications.length, language_tests.length);
 
-  return { ...user, photo_url, cover_url, user_category, profile: profile ?? null, qualifications, language_tests, work_experiences, completion };
+  return { ...user, photo_url, cover_url, user_category, profile: profile ?? null, qualifications, language_tests, academic_tests, work_experiences, completion };
 }
 
 
@@ -176,8 +178,12 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
 }
 
 export async function updateProfile(userId: number, data: ProfilePatchInput) {
-  const { phone, ...profileFields } = data;
-  if (phone !== undefined) await repo.updateUser(userId, { phone });
+  const { first_name, last_name, phone, ...profileFields } = data;
+  const userFields: Record<string, unknown> = {};
+  if (first_name !== undefined) userFields.first_name = first_name;
+  if (last_name !== undefined) userFields.last_name = last_name;
+  if (phone !== undefined) userFields.phone = phone;
+  if (Object.keys(userFields).length > 0) await repo.updateUser(userId, userFields);
 
   // Update or auto-create profile
   const hasProfileData = Object.keys(profileFields).length > 0;
@@ -190,6 +196,9 @@ export async function updateProfile(userId: number, data: ProfilePatchInput) {
   }
   if (profileFields.fields_of_study !== undefined) {
     serialized.fields_of_study = JSON.stringify(profileFields.fields_of_study);
+  }
+  if (profileFields.public_visibility !== undefined) {
+    serialized.public_visibility = JSON.stringify(profileFields.public_visibility);
   }
 
   const existing = await repo.findProfileByUserId(userId);
@@ -214,6 +223,26 @@ export async function getCitiesByCountry(countryId: number) {
   if (!country) throw new NotFoundError("Country not found");
   const cities = await repo.listCitiesByCountry(countryId);
   return { country_id: countryId, country_name: country.name, cities };
+}
+
+// ── Lookups (degree levels, areas of study) ──
+// Personal-account counterpart to the business module's /businesses/degree-levels and
+// /areas-of-study — same underlying tables, but reachable without a business context.
+
+export async function listDegreeLevels(limit: number, offset: number, search?: string) {
+  const [rows, total] = await Promise.all([
+    categoriesService.listLookup("degree_levels", limit, offset, search),
+    categoriesService.countLookup("degree_levels", search),
+  ]);
+  return { rows, total };
+}
+
+export async function listAreasOfStudy(limit: number, offset: number, search?: string) {
+  const [rows, total] = await Promise.all([
+    categoriesService.listLookup("areas_of_study", limit, offset, search),
+    categoriesService.countLookup("areas_of_study", search),
+  ]);
+  return { rows, total };
 }
 
 // ── Qualifications ──
@@ -260,6 +289,24 @@ export async function removeLanguageTest(id: string, userId: number) {
   const deleted = await repo.deleteLanguageTest(id, userId);
   if (!deleted) throw new NotFoundError("Language test not found");
   await syncCompletion(userId);
+}
+
+// ── Academic Tests ──
+// Not a completion criterion (same as work experience), so no syncCompletion here.
+
+export async function addAcademicTest(userId: number, data: AcademicTestInput) {
+  return repo.insertAcademicTest(userId, data);
+}
+
+export async function editAcademicTest(id: string, userId: number, data: Partial<AcademicTestInput>) {
+  const row = await repo.updateAcademicTest(id, userId, data);
+  if (!row) throw new NotFoundError("Academic test not found");
+  return row;
+}
+
+export async function removeAcademicTest(id: string, userId: number) {
+  const deleted = await repo.deleteAcademicTest(id, userId);
+  if (!deleted) throw new NotFoundError("Academic test not found");
 }
 
 // ── Work Experiences ──

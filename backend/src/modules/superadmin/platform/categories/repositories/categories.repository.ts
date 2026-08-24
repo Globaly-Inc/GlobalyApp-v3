@@ -152,12 +152,16 @@ export async function updateOtherServiceCategory(id: number, data: Record<string
 
 export type LookupTable = "degree_levels" | "areas_of_study";
 
-export async function listLookup(table: LookupTable, limit: number, offset: number) {
-  return masterKnex(table).whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset);
+export async function listLookup(table: LookupTable, limit: number, offset: number, search?: string) {
+  const q = masterKnex(table).whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset);
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
 }
 
-export async function countLookup(table: LookupTable) {
-  const [row] = await masterKnex(table).whereNull("deleted_at").count("* as count");
+export async function countLookup(table: LookupTable, search?: string) {
+  const q = masterKnex(table).whereNull("deleted_at").count("* as count");
+  if (search) q.whereILike("name", `%${search}%`);
+  const [row] = await q;
   return Number(row.count);
 }
 
