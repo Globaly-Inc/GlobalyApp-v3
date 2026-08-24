@@ -20,7 +20,7 @@ import { CreditBanner } from "./credit-banner";
 import { ProfileCompletionBanner } from "./profile-completion-banner";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 
-export function AiChatView() {
+export function AiChatView({ initialQuery }: Readonly<{ initialQuery?: string }> = {}) {
   const dispatch = useAppDispatch();
   const activeSessionId = useAppSelector((s) => s.aiChat.activeSessionId);
   const messages = useAppSelector((s) => (activeSessionId ? s.aiChat.messages[activeSessionId] ?? [] : []));
@@ -29,7 +29,8 @@ export function AiChatView() {
   // PersonalShell already fetches this — the hero just greets with whatever's in the store.
   const profile = useAppSelector((s) => s.profile.profile);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [draft, setDraft] = useState("");
+  // Prefills from the landing page's Ask AI bar (/ai?q=...) — fills the box, doesn't auto-send.
+  const [draft, setDraft] = useState(initialQuery ?? "");
 
   // Guard against double-fetch in React Strict Mode
   const fetchedRef = useRef(false);

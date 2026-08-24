@@ -24,16 +24,18 @@ const TABS = [
 ];
 
 export async function searchBusinessesRoutes(app: FastifyInstance) {
-  // Institutions have no live `businesses` catalog rows yet — served from
-  // scraped extraction data instead (see businesses.repository.ts header).
+  // Served from the public `institutions` table — promoted extraction jobs and
+  // owner-registered institutions, gated by is_published (see institutionsQuery).
   app.get("/search/institutions", async (req, reply) => {
     const { country, city, search, ...pagination } = SearchListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const filters = { country, city, search };
-    const [rows, total] = await Promise.all([
+    const [rawRows, total] = await Promise.all([
       repo.listPublicInstitutions(filters, limit, offset),
       repo.countPublicInstitutions(filters),
     ]);
+    // Owner-registered institutions store logo_url as a storage key; scraped ones pass through untouched.
+    const rows = await Promise.all(rawRows.map(async (r) => ({ ...r, logo_url: await storage.resolvePreviewUrl(r.logo_url) })));
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
@@ -41,7 +43,7 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     const { slug } = SlugParam.parse(req.params);
     const institution = await repo.findPublicInstitutionBySlug(slug);
     if (!institution) throw new NotFoundError("Institution not found");
-    return reply.send(institution);
+    return reply.send({ ...institution, logo_url: await storage.resolvePreviewUrl(institution.logo_url) });
   });
 
   app.get("/search/institutions/:slug/courses", async (req, reply) => {
@@ -103,16 +105,19 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     const business = await repo.findPublicBusinessBySubdomain(subdomain);
     if (!business) throw new NotFoundError("Business not found");
 
-    const { schema_name, ...publicBusiness } = business;
+    const { schema_name, schema_provisioned_at, ...publicBusiness } = business;
     // Team Members has its own owner-controlled visibility toggle (public_visibility.team) —
     // hidden by default only when explicitly turned off, same convention the other section
     // toggles use.
     const showTeam = publicBusiness.public_visibility?.team !== false;
+    // Promoted-but-unclaimed listings have no tenant schema yet (see promote.service) —
+    // their branches/team/services sections are simply empty.
+    const hasSchema = Boolean(schema_provisioned_at);
     const [{ logo_url, cover_url }, branches, members, services, representations] = await Promise.all([
       withImagePreviews(publicBusiness),
-      repo.listPublicBranches(business.id, schema_name),
-      showTeam ? repo.listPublicMembers(business.id, schema_name) : Promise.resolve([]),
-      repo.listPublicServices(business.id, schema_name),
+      hasSchema ? repo.listPublicBranches(business.id, schema_name) : Promise.resolve([]),
+      hasSchema && showTeam ? repo.listPublicMembers(business.id, schema_name) : Promise.resolve([]),
+      hasSchema ? repo.listPublicServices(business.id, schema_name) : Promise.resolve([]),
       repo.listPublicRepresentations(business.id).then(withRepresentationPreviews),
     ]);
 
