@@ -217,6 +217,11 @@ export function toStoragePath(raw: string): string {
  */
 export async function resolvePreviewUrl(path: string | null | undefined): Promise<string | null> {
   if (!path) return null;
+  // External URLs (e.g. seeded pexels.com images) are already viewable — signing them as a
+  // bucket path produced storage.googleapis.com/<bucket>/https%3A//... broken links.
+  if (/^https?:\/\//i.test(path) && !path.includes("storage.googleapis.com/")) {
+    return path;
+  }
   try {
     return await getSignedViewUrl(toStoragePath(path));
   } catch (err) {
