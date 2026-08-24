@@ -141,3 +141,12 @@ export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
     "What help do other students offer where I'm going?",
   ],
 };
+
+/** Popular search terms per category, shown as one-tap chips under the bar in Search mode. */
+export const SEARCH_SUGGESTIONS_BY_SLUG: Record<string, string[]> = {
+  courses: ["MBA", "MSc Information Technology", "Nursing", "Data Science"],
+  institutions: ["University of Melbourne", "University of Toronto", "TAFE", "Community colleges"],
+  agents: ["Agents for Australia", "Agents for Canada", "Agents for the UK", "Agents for the USA"],
+  visas: ["Student visa", "Post-study work visa", "Dependent visa", "Visitor visa"],
+  "other-services": ["Airport pickup", "Accommodation", "Tutoring", "SIM card"],
+};

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "../../components/reveal";
+import { AutoScrollRow } from "../../components/auto-scroll-row";
 import type { BlogCardData } from "../static-content";
 
 export function BlogCarousel({ posts }: Readonly<{ posts: BlogCardData[] }>) {
@@ -15,7 +16,7 @@ export function BlogCarousel({ posts }: Readonly<{ posts: BlogCardData[] }>) {
           <p className="text-muted-foreground text-sm">Expert insights on international education and student success.</p>
         </Reveal>
 
-        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+        <AutoScrollRow className="flex gap-4 pb-4">
           {posts.map((post, i) => (
             <Reveal key={post.id} delay={i * 0.1} className="flex-shrink-0">
               <Link href={`/blog/${post.id}`} className="group block w-72 md:w-80">
@@ -44,7 +45,7 @@ export function BlogCarousel({ posts }: Readonly<{ posts: BlogCardData[] }>) {
               </Link>
             </Reveal>
           ))}
-        </div>
+        </AutoScrollRow>
       </div>
     </section>
   );

@@ -29,7 +29,7 @@ export async function getFeaturedCountries(): Promise<Destination[]> {
     name: c.name,
     slug: c.slug ?? "",
     flagEmoji: c.flag_emoji ?? "🌐",
-    heroImageUrl: c.hero_image_url ?? null,
+    heroImageUrl: c.hero_image_url ?? c.thumbnail_image_url ?? null,
     code: c.iso2 ?? null,
     institutionsLabel: c.universities_count_label ?? null,
     tuitionMin: num(c.avg_tuition_min),
