@@ -12,6 +12,12 @@ import { businessProfileDetailReducer } from "@/app/business/profile/store/busin
 import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enquiries/store/enquiries-slice"
 import { coursesReducer } from "@/app/personal/courses/store/courses-slice"
 import { businessEnquiriesReducer } from "@/app/business/enquiries/store/business-enquiries-slice"
+import { businessBillingReducer } from "@/app/business/billing/store/business-billing-slice"
+import { businessAmbassadorsReducer } from "@/app/business/ambassadors/store/business-ambassadors-slice"
+import { businessEventsReducer } from "@/app/business/events/store/business-events-slice"
+import { businessAdsReducer } from "@/app/business/ads/store/business-ads-slice"
+import { businessJobsReducer } from "@/app/business/jobs/store/business-jobs-slice"
+import { businessIntegrationsReducer } from "@/app/business/integrations/store/business-integrations-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
@@ -52,6 +58,12 @@ const appReducer = combineReducers({
     enquiries: personalEnquiriesReducer,
     courses: coursesReducer,
     businessEnquiries: businessEnquiriesReducer,
+    businessBilling: businessBillingReducer,
+    businessAmbassadors: businessAmbassadorsReducer,
+    businessEvents: businessEventsReducer,
+    businessAds: businessAdsReducer,
+    businessJobs: businessJobsReducer,
+    businessIntegrations: businessIntegrationsReducer,
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,

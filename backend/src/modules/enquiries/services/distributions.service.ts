@@ -11,8 +11,10 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import { BadRequestError, ConflictError, NotFoundError, PaymentRequiredError } from "../../../shared/errors.js";
 import { logEnquiryAudit } from "../shared/audit.js";
 import * as distributionsRepo from "../repositories/distributions.repository.js";
-import * as creditsService from "./credits.service.js";
+import * as wallet from "../../billing/services/wallet.service.js";
 import { syncStatusToTenant } from "./tenant-sync.service.js";
+
+const UNLOCK_COST = Number(process.env.ENQUIRY_UNLOCK_COST) || 30;
 
 export async function listForBusiness(
   db: Knex,
@@ -21,9 +23,8 @@ export async function listForBusiness(
   return distributionsRepo.listForBusinessFromTenant(db, filters);
 }
 
-/** One shared pool, so this takes no business — see credits.service.ts. */
-export function getCreditBalance() {
-  return { balance: creditsService.getBalance(), unlock_cost: creditsService.UNLOCK_COST };
+export async function getCreditBalance(businessId: number) {
+  return { balance: await wallet.getBalance(businessId), unlock_cost: UNLOCK_COST };
 }
 
 /**
@@ -43,7 +44,7 @@ export function getCreditBalance() {
  * exceed max_accepts (PRD §5, "known gaps").
  */
 export async function unlock(businessId: number, distributionId: string, userId: number) {
-  const cost = creditsService.UNLOCK_COST;
+  const cost = UNLOCK_COST;
   let charged = false;
 
   try {
@@ -63,10 +64,12 @@ export async function unlock(businessId: number, distributionId: string, userId:
         throw new ConflictError(`This enquiry has already been unlocked by ${enquiry.max_accepts} businesses`);
       }
 
-      if (creditsService.deduct(cost) === null) {
-        throw new PaymentRequiredError(
-          `Insufficient credits — unlocking costs ${cost}, balance is ${creditsService.getBalance()}`,
-        );
+      const newBalance = await wallet.deduct(trx, businessId, cost, "enquiry_unlock", {
+        type: "enquiry_distribution",
+        id: distributionId,
+      });
+      if (newBalance === null) {
+        throw new PaymentRequiredError(`Insufficient credits — unlocking costs ${cost}`);
       }
       charged = true;
 
@@ -110,11 +113,11 @@ export async function unlock(businessId: number, distributionId: string, userId:
       status: "unlocked",
       already_unlocked: result.alreadyUnlocked,
       coin_cost: Number(result.distribution.coin_cost),
-      credits_remaining: creditsService.getBalance(),
+      credits_remaining: await wallet.getBalance(businessId),
       ...contact,
     };
   } catch (err) {
-    if (charged) creditsService.refund(cost);
+    if (charged) await wallet.refund(businessId, cost, { type: "enquiry_distribution", id: distributionId });
     throw err;
   }
 }

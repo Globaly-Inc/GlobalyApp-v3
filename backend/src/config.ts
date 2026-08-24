@@ -40,6 +40,9 @@ const envSchema = z.object({
   // Payments (Earn → My Services). Unset outside production selects the dev driver, so the order lifecycle
   // is exercisable locally without a Stripe account. See modules/other-services/payments.
   STRIPE_SECRET_KEY: z.string().optional(),
+  // Business billing (subscriptions). Same key as above in practice, but the webhook secret is
+  // per-endpoint — Stripe issues a distinct signing secret for each configured webhook URL.
+  STRIPE_BILLING_WEBHOOK_SECRET: z.string().optional(),
   // Where the browser reaches the frontend. Checkout must return the buyer to a real origin, and the API's
   // own APP_URL is a different host.
   WEB_APP_URL: z.string().default("http://localhost:3001"),

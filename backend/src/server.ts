@@ -33,6 +33,12 @@ import aiCounsellorModule, { publicAiCounsellorModule } from "./modules/ai-couns
 import enquiriesModule from "./modules/enquiries/index.js";
 import coursesModule from "./modules/courses/index.js";
 import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
+import billingModule, { publicBillingModule } from "./modules/billing/index.js";
+import ambassadorsModule from "./modules/ambassadors/index.js";
+import eventsModule, { publicEventsModule } from "./modules/events/index.js";
+import adsModule from "./modules/ads/index.js";
+import jobsModule from "./modules/jobs/index.js";
+import integrationsModule from "./modules/integrations/index.js";
 import waitlistModule from "./modules/waitlist/index.js";
 
 const logger = createChildLogger("server");
@@ -63,6 +69,12 @@ export async function buildServer() {
     await protectedApp.register(enquiriesModule);      // student enquiry creation + lookup
     await protectedApp.register(coursesModule);        // student course browse (extracted courses)
     await protectedApp.register(referralsModule);           // Earn → Referrals: own code, stats, history
+    await protectedApp.register(billingModule);        // business subscriptions, wallet status, billing portal
+    await protectedApp.register(ambassadorsModule);   // ambassador programs, applications, roster
+    await protectedApp.register(eventsModule);        // business events, registration
+    await protectedApp.register(adsModule);           // business ad campaign management
+    await protectedApp.register(jobsModule);          // business job postings + applications
+    await protectedApp.register(integrationsModule);  // webhook subscription settings
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
@@ -74,6 +86,8 @@ export async function buildServer() {
   // Reward config + the /join code lookup. Registered outside the protected scope so these two routes
   // never acquire the auth hook — public by construction, not by an allow-list.
   await app.register(publicReferralsModule);
+  await app.register(publicBillingModule);   // plan browsing + Stripe webhook (no auth; webhook uses signature verification)
+  await app.register(publicEventsModule);    // public event browse (no auth)
   await app.register(waitlistModule);        // coming-soon page sign-up (no auth)
 
   // --- Health checks ---

@@ -28,7 +28,7 @@ export async function distributionsRoutes(app: FastifyInstance) {
   app.get(
     "/enquiry-distributions/credits",
     { preHandler: [requireBusinessContext, requirePermission("enquiries:view")] },
-    async (req, reply) => reply.send(service.getCreditBalance()),
+    async (req, reply) => reply.send(await service.getCreditBalance(req.businessId)),
   );
 
   // 402 when credits are short, 409 once the enquiry's unlock cap is reached —
