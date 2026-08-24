@@ -69,19 +69,19 @@ export async function deletePost(postId: number, callerId: number) {
 
 /** Explicit add/update — not a toggle. The client knows its own current reaction and picks the method. */
 export async function setReaction(postId: number, callerId: number, emoji: string) {
-  const post = await repo.findPost(postId);
+  const post = await repo.findVisiblePost(postId, callerId);
   if (!post) throw new NotFoundError("Post not found");
   return repo.setReaction(postId, callerId, emoji);
 }
 
 export async function removeReaction(postId: number, callerId: number) {
-  const post = await repo.findPost(postId);
+  const post = await repo.findVisiblePost(postId, callerId);
   if (!post) throw new NotFoundError("Post not found");
   return repo.removeReaction(postId, callerId);
 }
 
 export async function listComments(postId: number, viewerId: number) {
-  const post = await repo.findPost(postId);
+  const post = await repo.findVisiblePost(postId, viewerId);
   if (!post) throw new NotFoundError("Post not found");
   const comments = await repo.listComments(postId, viewerId);
 
@@ -98,7 +98,7 @@ export async function listComments(postId: number, viewerId: number) {
 }
 
 export async function addComment(postId: number, callerId: number, input: CreateCommentInput) {
-  const post = await repo.findPost(postId);
+  const post = await repo.findVisiblePost(postId, callerId);
   if (!post) throw new NotFoundError("Post not found");
 
   // Only media this caller actually uploaded may be attached — same rule as post media.
@@ -114,22 +114,27 @@ export async function addComment(postId: number, callerId: number, input: Create
   return { ...comment, media: await mediaService.withViewUrls(comment.media), reactions: [] };
 }
 
-export async function deleteComment(postId: number, commentId: number, callerId: number) {
+async function requireVisibleComment(postId: number, commentId: number, viewerId: number) {
+  const post = await repo.findVisiblePost(postId, viewerId);
+  if (!post) throw new NotFoundError("Comment not found");
   const comment = await repo.findComment(commentId);
   if (!comment || comment.post_id !== postId) throw new NotFoundError("Comment not found");
+  return comment;
+}
+
+export async function deleteComment(postId: number, commentId: number, callerId: number) {
+  const comment = await requireVisibleComment(postId, commentId, callerId);
   if (comment.author_platform_user_id !== callerId) throw new ForbiddenError("Not your comment");
   await repo.softDeleteComment(commentId, postId);
 }
 
 /** Explicit add/update — not a toggle, mirrors post reactions. */
 export async function setCommentReaction(postId: number, commentId: number, callerId: number, emoji: string) {
-  const comment = await repo.findComment(commentId);
-  if (!comment || comment.post_id !== postId) throw new NotFoundError("Comment not found");
+  await requireVisibleComment(postId, commentId, callerId);
   return repo.setCommentReaction(commentId, callerId, emoji);
 }
 
 export async function removeCommentReaction(postId: number, commentId: number, callerId: number) {
-  const comment = await repo.findComment(commentId);
-  if (!comment || comment.post_id !== postId) throw new NotFoundError("Comment not found");
+  await requireVisibleComment(postId, commentId, callerId);
   return repo.removeCommentReaction(commentId, callerId);
 }

@@ -223,7 +223,7 @@ export type BusinessSearchFilters = {
 const BUSINESS_COLUMNS = [
   "b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.logo_url", "b.cover_url", "b.description",
   "b.city", "c.name as country_name", "b.website", "b.email",
-  "b.phone", "b.address", "cat.name as category_name",
+  "b.phone", "b.address", "cat.name as category_name", "b.public_visibility",
   "b.facebook_url", "b.instagram_url", "b.twitter_url", "b.linkedin_url", "b.youtube_url",
 ];
 

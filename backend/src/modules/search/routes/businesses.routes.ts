@@ -104,10 +104,14 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     if (!business) throw new NotFoundError("Business not found");
 
     const { schema_name, ...publicBusiness } = business;
+    // Team Members has its own owner-controlled visibility toggle (public_visibility.team) —
+    // hidden by default only when explicitly turned off, same convention the other section
+    // toggles use.
+    const showTeam = publicBusiness.public_visibility?.team !== false;
     const [{ logo_url, cover_url }, branches, members, services, representations] = await Promise.all([
       withImagePreviews(publicBusiness),
       repo.listPublicBranches(business.id, schema_name),
-      repo.listPublicMembers(business.id, schema_name),
+      showTeam ? repo.listPublicMembers(business.id, schema_name) : Promise.resolve([]),
       repo.listPublicServices(business.id, schema_name),
       repo.listPublicRepresentations(business.id).then(withRepresentationPreviews),
     ]);

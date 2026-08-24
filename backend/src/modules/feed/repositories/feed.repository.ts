@@ -234,6 +234,29 @@ export async function findPost(id: number) {
   return masterKnex("feed_posts").where({ id }).whereNull("deleted_at").first() as Promise<FeedPostRow | undefined>;
 }
 
+/**
+ * Same post, but only if `viewerId` is actually allowed to see it — the same visibility rule
+ * `listPosts` applies to the timeline. Every read/write that acts on a specific post by id
+ * (comments, reactions) must go through this instead of the unchecked `findPost`, or a caller who
+ * merely knows/guesses a post id can read and react to posts outside their visibility.
+ */
+export async function findVisiblePost(id: number, viewerId: number) {
+  return masterKnex("feed_posts")
+    .where({ id })
+    .whereNull("deleted_at")
+    .where((qb) => {
+      qb.where("visibility", "everyone")
+        .orWhere((own) => own.where("visibility", "private").andWhere("author_platform_user_id", viewerId))
+        .orWhere((biz) =>
+          biz.where("visibility", "business").whereIn(
+            "business_id",
+            masterKnex("user_business_index").select("business_id").where({ platform_user_id: viewerId }).whereNull("deleted_at"),
+          ),
+        );
+    })
+    .first() as Promise<FeedPostRow | undefined>;
+}
+
 export async function insertPost(data: {
   author_platform_user_id: number;
   business_id: number | null;
