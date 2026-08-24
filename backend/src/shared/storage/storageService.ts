@@ -207,5 +207,8 @@ export function toStoragePath(raw: string): string {
 /** Resolve a stored path (or null) to a signed, viewable URL — the shared "preview this image" call. */
 export function resolvePreviewUrl(path: string | null | undefined): Promise<string | null> {
   if (!path) return Promise.resolve(null);
+  if (/^https?:\/\//i.test(path) && !path.includes("storage.googleapis.com/")) {
+    return Promise.resolve(path);
+  }
   return getSignedViewUrl(toStoragePath(path));
 }
