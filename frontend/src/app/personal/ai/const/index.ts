@@ -6,6 +6,20 @@ export type StarterCategory = {
   questions: string[];
 };
 
+/** Random study-flavoured greetings for the chat hero. `{name}` is replaced with the first name. */
+export const GREETINGS: string[] = [
+  "What's cooking, {name}?",
+  "Which country is calling, {name}?",
+  "Dreaming of a new campus, {name}?",
+  "Let's find your perfect program, {name}",
+  "Exploring your options, {name}?",
+  "Where in the world next, {name}?",
+  "Let's map out your future, {name}",
+  "Big plans brewing, {name}?",
+  "Scholarships, visas, universities — where do we start, {name}?",
+  "Your next chapter starts here, {name}",
+];
+
 export const STARTER_CATEGORIES: StarterCategory[] = [
   {
     label: "Course Search",

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, Sparkles } from "lucide-react";
-import { STARTER_CATEGORIES } from "../const";
+import { GREETINGS, STARTER_CATEGORIES } from "../const";
 import { cn } from "@/lib/utils";
 
 type SuggestedStartersProps = {
@@ -17,6 +17,12 @@ export function SuggestedStarters({ onSelect, name, children }: Readonly<Suggest
   // Categories collapse to one chip each; the questions only appear once a chip is picked, so the
   // hero stays a greeting + composer instead of a wall of twelve prompts.
   const [openLabel, setOpenLabel] = useState<string | null>(null);
+  // Picked once per mount (useState initializer), not per render — and only on the client,
+  // so SSR/hydration can't disagree about which greeting was drawn.
+  const [greeting, setGreeting] = useState<string | null>(null);
+  useEffect(() => {
+    setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
+  }, []);
   const openQuestions = STARTER_CATEGORIES.find((c) => c.label === openLabel)?.questions ?? [];
 
   return (
@@ -32,7 +38,7 @@ export function SuggestedStarters({ onSelect, name, children }: Readonly<Suggest
         <h2 className="flex items-center justify-center gap-2.5 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
           <Sparkles className="size-6 shrink-0 text-primary sm:size-7" />
           <span className="gradient-text">
-            {name ? `What's cooking, ${name}?` : "How can I help you today?"}
+            {name && greeting ? greeting.replace("{name}", name) : "How can I help you today?"}
           </span>
         </h2>
 

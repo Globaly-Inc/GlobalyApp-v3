@@ -13,6 +13,10 @@ import { useAppSelector } from "@/lib/hooks";
  */
 export function ProfileCompletionBanner() {
   const completion = useAppSelector((s) => s.profile.profile?.completion?.percentage ?? null);
+  const userType = useAppSelector((s) => s.auth.user?.type ?? null);
+
+  // Admins aren't students — nagging them to fill grades/budget is noise.
+  if (userType === "admin") return null;
 
   // null covers "not fetched yet" on its own, so don't also gate on status === "loading" —
   // that would blink the banner out during the refetch after every profile edit.
