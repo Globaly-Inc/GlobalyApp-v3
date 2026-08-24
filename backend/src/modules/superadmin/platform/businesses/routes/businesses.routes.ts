@@ -78,11 +78,20 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     return reply.status(202).send(result);
   });
 
-  // POST /businesses/:id/claim-request — emails the owner a link to claim this pre-seeded business
+  // POST /businesses/:id/claim-request — emails a link to claim this pre-seeded business
   app.post("/businesses/:id/claim-request", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
     const result = await service.sendClaimRequest(id);
     await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_CLAIM_REQUEST_SENT", "business", undefined, { business_id: id });
+    return reply.send(result);
+  });
+
+  // POST /institutions/:id/claim-request — the institution twin. Separate path because the id
+  // spaces are separate: institution 3 and business 3 are different rows.
+  app.post("/institutions/:id/claim-request", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const result = await service.sendInstitutionClaimRequest(id);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_CLAIM_REQUEST_SENT", "institution", undefined, { institution_id: id });
     return reply.send(result);
   });
 

@@ -204,7 +204,7 @@ export function ExtractionJobRow({
             {isPublishable && onPublish && (
               <Button className="gap-1.5 px-3 cursor-pointer" disabled={publishing} onClick={onPublish}>
                 {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                Publish
+                {job.status === "exported" ? "Re-publish / Repair" : "Publish to Business"}
               </Button>
             )}
 
@@ -231,7 +231,7 @@ export function ExtractionJobRow({
                     <Play className="h-3.5 w-3.5" /> {job.status === "stalled" ? "Recover" : "Resume"}
                   </DropdownMenuItem>
                 )}
-                {isPublishable && (
+                {isPublishable && job.status !== "exported" && (
                   <DropdownMenuItem onClick={onDecline} className="text-destructive">
                     <XCircle className="h-3.5 w-3.5" /> Decline
                   </DropdownMenuItem>

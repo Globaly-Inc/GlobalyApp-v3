@@ -4,8 +4,7 @@ import type {
   BusinessService, EnquirySettingsPatch, LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
-  ServiceSearchParams, ServiceSearchResult,
-} from "./types";
+  ServiceSearchParams, ServiceSearchResult, ClaimRequestRef,} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -81,7 +80,7 @@ const mockActivity: Record<number, ActivityLogEntry[]> = {
 
 const mockBusinesses: BusinessDetail[] = [
   {
-    id: 1, business_name: "Prime Education Group", subdomain: "primeedu", business_type: "education_agent",
+    kind: "business", id: 1, business_name: "Prime Education Group", subdomain: "primeedu", business_type: "education_agent",
     business_category_id: 1, category_name: "Education Agent", email: "hello@primeedu.com", phone: "+61 2 9000 1000",
     status: "verified", claim_status: "claimed", is_published: true, country_id: 1, country_name: "Australia", city: "Sydney",
     logo_url: null, account_status: 1, created_at: "2026-06-01T09:00:00Z",
@@ -95,7 +94,7 @@ const mockBusinesses: BusinessDetail[] = [
     enquiry_enabled: true, enquiry_coin_cost: 30, enquiry_max_distributions: 5,
   },
   {
-    id: 2, business_name: "Everest Migration Consultants", subdomain: "everest-migration", business_type: "immigration_department",
+    kind: "business", id: 2, business_name: "Everest Migration Consultants", subdomain: "everest-migration", business_type: "immigration_department",
     business_category_id: 2, category_name: "Immigration Department", email: "info@everestmigration.com", phone: null,
     status: "unverified", claim_status: "claimed", is_published: false, country_id: 2, country_name: "New Zealand", city: "Auckland",
     logo_url: null, account_status: 1, created_at: "2026-07-15T09:00:00Z",
@@ -108,7 +107,7 @@ const mockBusinesses: BusinessDetail[] = [
     enquiry_enabled: true, enquiry_coin_cost: 30, enquiry_max_distributions: 5,
   },
   {
-    id: 3, business_name: "Global Study Institute", subdomain: "gsi", business_type: "institution",
+    kind: "business", id: 3, business_name: "Global Study Institute", subdomain: "gsi", business_type: "institution",
     business_category_id: 3, category_name: "Institution", email: "admissions@gsi.edu", phone: "+1 604 555 0110",
     status: "unverified", claim_status: "unclaimed", is_published: false, country_id: 3, country_name: "Canada", city: "Vancouver",
     logo_url: null, account_status: 1, created_at: "2026-05-20T09:00:00Z",
@@ -151,10 +150,10 @@ export const businessesMockApi = {
     if (b) b.status = status;
     return { status };
   },
-  sendClaimRequest: async (id: number): Promise<{ claim_status: string }> => {
-    console.log("[mock] POST /admin/platform/businesses/:id/claim-request", id);
+  sendClaimRequest: async ({ kind, id }: ClaimRequestRef): Promise<{ claim_status: string }> => {
+    console.log(`[mock] POST /admin/platform/${kind}s/:id/claim-request`, id);
     await delay(200);
-    const b = mockBusinesses.find((x) => x.id === id);
+    const b = mockBusinesses.find((x) => x.kind === kind && x.id === id);
     if (b) b.claim_status = "claim_pending";
     return { claim_status: "claim_pending" };
   },
@@ -191,7 +190,7 @@ export const businessesMockApi = {
     const id = Math.max(0, ...mockBusinesses.map((b) => b.id)) + 1;
     const now = new Date().toISOString();
     const business: BusinessDetail = {
-      id, business_name: input.business_name, subdomain: input.subdomain, business_type: null,
+      kind: "business", id, business_name: input.business_name, subdomain: input.subdomain, business_type: null,
       business_category_id: input.business_category_id, category_name: null,
       email: input.email ?? null, phone: input.phone ?? null, status: "unverified", claim_status: "unclaimed", is_published: false,
       country_id: input.country_id ?? null, country_name: null, city: input.city ?? null,

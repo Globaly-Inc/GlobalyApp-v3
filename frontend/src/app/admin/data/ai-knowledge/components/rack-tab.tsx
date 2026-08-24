@@ -9,70 +9,18 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Combobox } from "@/components/combobox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { aiKnowledgeApi } from "../apis";
 import {
-  CATEGORY_KIND_OPTIONS, CRAWL_FREQUENCY_OPTIONS, CRAWL_STATUS_TONE, TRUST_TIER_OPTIONS, TRUST_TIER_TONE,
+  CRAWL_FREQUENCY_OPTIONS, CRAWL_STATUS_TONE, TRUST_TIER_OPTIONS, TRUST_TIER_TONE,
 } from "../const";
-import type { CategoryKind, CategoryParams, RackCategory, RackDocument, RackSource } from "../apis/types";
+import type { RackCategory, RackDocument, RackSource } from "../apis/types";
+import { CategoryForm } from "./category-form";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { SourceForm } from "./source-form";
 import { UploadSourceForm } from "./upload-source-form";
 import { EmptyState, ListSkeleton } from "./shared";
 import { DocumentDrawer } from "./document-drawer";
-
-function CategoryForm({
-  category, saving, onCancel, onSave,
-}: Readonly<{ category?: RackCategory; saving: boolean; onCancel: () => void; onSave: (v: CategoryParams) => void }>) {
-  const [slug, setSlug] = useState(category?.slug ?? "");
-  const [label, setLabel] = useState(category?.label ?? "");
-  const [kind, setKind] = useState<CategoryKind>(category?.kind ?? "visa");
-  const [country, setCountry] = useState(category?.country_code ?? "");
-
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Label *</Label>
-        <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Australia — Visa" className="h-8 text-xs" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Slug *</Label>
-        <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="au-visa" className="h-8 text-xs" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Kind</Label>
-        <Combobox
-          options={CATEGORY_KIND_OPTIONS}
-          value={kind}
-          onChange={(v) => setKind(v as CategoryKind)}
-          className="h-8 cursor-pointer text-xs"
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Country code</Label>
-        <Input value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} maxLength={2} placeholder="AU" className="h-8 text-xs" />
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" className="h-7 cursor-pointer text-xs" onClick={onCancel}>Cancel</Button>
-        <Button
-          size="sm" className="h-7 cursor-pointer text-xs" disabled={saving}
-          onClick={() => {
-            if (!label.trim() || !slug.trim()) { toast.error("Label and slug are required"); return; }
-            onSave({
-              label: label.trim(), slug: slug.trim(), kind,
-              country_code: country.trim() ? country.trim() : null,
-            });
-          }}
-        >
-          Save
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 const SIX_MONTHS_MS = 182 * 24 * 60 * 60 * 1000;
 

@@ -64,8 +64,13 @@ export const BusinessSearchQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(50).default(10),
 });
 
+// first/last name are collected HERE rather than at promote time: extraction never captures a
+// contact person, so the claimant is the first real source of a name. It becomes their
+// platform_user and is written onto the listing row as well.
 export const ClaimAcceptSchema = z.object({
   token: z.string().min(1),
+  first_name: z.string().trim().min(1).max(100),
+  last_name: z.string().trim().min(1).max(100),
 });
 
 export const ClaimRequestByEmailSchema = z.object({

@@ -70,10 +70,19 @@ export async function findByClaimToken(token: string): Promise<BusinessRecord | 
   return masterKnex<BusinessRecord>("businesses").where({ claim_token: token }).whereNull("deleted_at").first();
 }
 
-/** The business a platform_user owns that they haven't finished claiming yet (pre-seeded by an admin). */
-export async function findUnclaimedBusinessByOwnerId(ownerId: number): Promise<BusinessRecord | undefined> {
+/**
+ * An unclaimed business matching this address, found by the business's OWN contact email.
+ *
+ * Not by owner_id: a promoted listing has no owner until somebody claims it, so there is no
+ * owner to match on. `businesses.email` is the contact address extraction captured, and it is
+ * also where the claim link gets sent — matching on it is what makes the listing reachable.
+ *
+ * A listing extraction found no email for cannot be claimed self-serve at all; an admin has to
+ * send the claim request to an address they supply.
+ */
+export async function findUnclaimedBusinessByContactEmail(email: string): Promise<BusinessRecord | undefined> {
   return masterKnex<BusinessRecord>("businesses")
-    .where({ owner_id: ownerId })
+    .whereRaw("lower(email) = lower(?)", [email])
     .whereNot("claim_status", "claimed")
     .whereNull("deleted_at")
     .first();

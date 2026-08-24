@@ -121,8 +121,14 @@ type AiChatState = {
   traceSteps: string[];
   /** Block shown large in the Preview/Canvas panel (right column / bottom sheet). */
   previewBlock: ResponseBlock | null;
+  /** Message the composer is replying to — quoted into the next send. Lives in the
+   * store because the reply button (ChatMessage) and the composer (ChatInput) have
+   * no common parent across the page, popover and embed surfaces. */
+  replyTo: ReplyTarget | null;
   error: string | null;
 };
+
+export type ReplyTarget = { role: Message["role"]; content: string };
 
 const initialState: AiChatState = {
   sessions: [],
@@ -139,6 +145,7 @@ const initialState: AiChatState = {
   streamingBlocks: [],
   traceSteps: [],
   previewBlock: null,
+  replyTo: null,
   error: null,
 };
 
@@ -153,6 +160,10 @@ const aiChatSlice = createSlice({
   reducers: {
     setActiveSession(state, action: PayloadAction<number | null>) {
       state.activeSessionId = action.payload;
+      state.replyTo = null;
+    },
+    setReplyTo(state, action: PayloadAction<ReplyTarget | null>) {
+      state.replyTo = action.payload;
     },
     appendDelta(state, action: PayloadAction<string>) {
       state.streamingContent += action.payload;
@@ -329,6 +340,7 @@ export const {
   setChips,
   setBlocks,
   setPreviewBlock,
+  setReplyTo,
   addTrace,
   sessionCreated,
   clearStreamingState,

@@ -2,7 +2,7 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
   ActivityListParams, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchPatch, Business, BusinessCreateInput,
-  BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation, BusinessService, BusinessStatus,
+  BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation, BusinessService, BusinessStatus, ClaimRequestRef,
   EnquirySettingsPatch, LinkExistingBranchInput, Member, MemberInviteInput, MemberListParams, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationPatch,
   SchemaFieldValue, ServiceInput, ServicePatch, ServiceSearchParams,
@@ -38,9 +38,9 @@ export const updateBusinessStatus = createAsyncThunk(
   },
 );
 
-export const sendClaimRequest = createAsyncThunk("platformBusinesses/sendClaimRequest", async (id: number) => {
-  await businessesApi.sendClaimRequest(id);
-  return { id, claim_status: "claim_pending" as const };
+export const sendClaimRequest = createAsyncThunk("platformBusinesses/sendClaimRequest", async (ref: ClaimRequestRef) => {
+  await businessesApi.sendClaimRequest(ref);
+  return { ...ref, claim_status: "claim_pending" as const };
 });
 
 export const sendBulkClaimRequests = createAsyncThunk("platformBusinesses/sendBulkClaimRequests", async (ids: number[]) => {
@@ -242,9 +242,20 @@ const businessesSlice = createSlice({
         if (state.detail?.id === action.payload.id) state.detail.status = action.payload.status;
       })
       .addCase(sendClaimRequest.fulfilled, (state, action) => {
-        const b = state.businesses.find((x) => x.id === action.payload.id);
-        if (b) b.claim_status = action.payload.claim_status;
-        if (state.detail?.id === action.payload.id) state.detail.claim_status = action.payload.claim_status;
+        // Matched on kind AND id: the list mixes both tables, so id 3 exists twice and
+        // matching on id alone would flip the wrong row's badge.
+        const b = state.businesses.find((x) => x.kind === action.payload.kind && x.id === action.payload.id);
+        // `status` as well as claim_status — the badge and the status filter both read `status`,
+        // so updating only claim_status left the row showing "Unverified" until a refetch.
+        // Mirrors what the backend writes, including not downgrading a verified listing.
+        if (b) {
+          b.claim_status = action.payload.claim_status;
+          if (b.status === "unverified") b.status = "claim_pending";
+        }
+        if (state.detail?.id === action.payload.id) {
+          state.detail.claim_status = action.payload.claim_status;
+          if (state.detail.status === "unverified") state.detail.status = "claim_pending";
+        }
       })
       .addCase(sendBulkClaimRequests.fulfilled, (state, action) => {
         const ids = new Set(action.payload.ids);

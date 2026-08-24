@@ -1,7 +1,18 @@
 export type BusinessStatus = "unverified" | "claim_pending" | "claimed" | "verified" | "suspended" | "rejected";
 export type BusinessClaimStatus = "unclaimed" | "claim_pending" | "claimed";
 
+/**
+ * Which table the row came from. Businesses and institutions are the same kind of record kept in
+ * two tables, and this list shows both, so `id` alone is ambiguous — id 3 exists in each.
+ * Anything that navigates to or mutates a row must branch on this.
+ */
+export type ListingKind = "business" | "institution";
+
+/** Identifies one row in a list that mixes both tables — `id` alone is ambiguous. */
+export type ClaimRequestRef = { kind: ListingKind; id: number };
+
 export type Business = {
+  kind: ListingKind;
   id: number;
   business_name: string;
   subdomain: string;

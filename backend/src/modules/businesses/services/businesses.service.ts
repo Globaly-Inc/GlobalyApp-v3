@@ -5,7 +5,8 @@ import { NotFoundError, ConflictError } from "../../../shared/errors.js";
 import { generateText } from "../../../shared/ai/gemini.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
-import { provisionBusinessSchema } from "../../../core/business/provisioner.js";
+import { provisionBusinessSchema, provisionOnClaim } from "../../../core/business/provisioner.js";
+import type { BusinessRecord } from "../../../core/types.js";
 import { config } from "../../../config.js";
 import { claimBusinessEmail } from "../../../shared/mail/templates.js";
 import * as storage from "../../../shared/storage/storageService.js";
@@ -146,16 +147,20 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
  * signal) to avoid leaking account existence — same anti-enumeration stance as `registerUser`.
  */
 export async function requestClaimByEmail(email: string): Promise<void> {
-  const owner = await userRepo.findByEmail(email);
-  if (!owner) return;
-  const business = await repo.findUnclaimedBusinessByOwnerId(owner.id);
+  // Matched on the business's own contact email, not on a platform_user: the claimant usually
+  // has no account yet — creating one is what accepting the claim does.
+  const business = await repo.findUnclaimedBusinessByContactEmail(email);
   if (!business) return;
 
   const token = randomBytes(32).toString("hex");
   await repo.setClaimPending(business.id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
 
   const claimUrl = `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
-  const ownerName = `${owner.first_name ?? ""} ${owner.last_name ?? ""}`.trim() || "there";
+  // Personalise only if someone already registered on this address; otherwise stay generic,
+  // since the listing itself has no name for a person.
+  const existingUser = await userRepo.findByEmail(email);
+  const ownerName =
+    `${existingUser?.first_name ?? ""} ${existingUser?.last_name ?? ""}`.trim() || "there";
   queueEmail({ to: email, ...claimBusinessEmail({ ownerName, businessName: business.business_name, claimUrl }) }).catch((err) =>
     logger.warn("Self-serve claim request email failed", { businessId: business.id, err: err.message }),
   );
@@ -177,15 +182,122 @@ export async function generateProfileText(input: AiAssistInput) {
   return { text };
 }
 
-export async function acceptClaim(token: string) {
+export async function acceptClaim(token: string, claimant: { first_name: string; last_name: string }) {
   const business = await repo.findByClaimToken(token);
   if (!business) throw new NotFoundError("This claim link is invalid or has already been used");
   if (!business.claim_token_expires_at || new Date(business.claim_token_expires_at) < new Date()) {
     throw new ConflictError("This claim link has expired");
   }
 
-  const owner = await userRepo.findByIdFull(business.owner_id);
+  const owner = await resolveClaimant(business, claimant);
   await repo.clearClaim(business.id);
 
+  // A listing promoted from an extraction job has no tenant schema yet — promote
+  // deliberately defers it to here. Admin-seeded businesses were provisioned at creation
+  // and already have their owner agent, so they skip this entirely.
+  if (!business.schema_provisioned_at) await activateClaimedListing(business, owner);
+
   return { email: owner?.email ?? null, business_name: business.business_name };
+}
+
+/**
+ * Who ends up owning the listing, and the point at which a promoted one first gets an owner.
+ *
+ * Promoted listings have `owner_id` NULL — extraction captures a company email but never a
+ * contact person, so there was no name to build a platform_user from. The claimant supplies
+ * theirs here; it becomes their platform_user and is stamped onto the listing row so
+ * `businesses.owner_id` and the admin list's owner column agree.
+ *
+ * A pre-existing user on the claim address is reused rather than duplicated — the claim link
+ * was sent to that address, so whoever opened it holds it. Their stored name is left alone: it
+ * is their own account, not this listing's to rename.
+ *
+ * account_status stays 0 for a newly created claimant; OTP verification promotes it to 1, the
+ * same path an invited user takes.
+ */
+async function resolveClaimant(
+  business: BusinessRecord,
+  claimant: { first_name: string; last_name: string },
+) {
+  if (business.owner_id) return userRepo.findByIdFull(business.owner_id);
+
+  // The claim token was mailed to businesses.email, so that address identifies the claimant.
+  const email = business.email;
+  if (!email) throw new ConflictError("This listing has no contact email to claim against");
+
+  const existing = await userRepo.findByEmail(email);
+  const owner =
+    existing ??
+    (await userRepo.insert({
+      first_name: claimant.first_name,
+      last_name: claimant.last_name,
+      email,
+      phone: business.phone ?? undefined,
+      account_status: 0,
+      meta: { created_via: "business_claim" },
+    }));
+
+  await repo.updateBusinessProfile(business.id, { owner_id: owner.id });
+  return owner;
+}
+
+/**
+ * First real ownership of a promoted listing: create the schema and give the owner the same
+ * agent/index rows registerBusiness would have.
+ *
+ * The extracted branches/services are NOT copied in — they are read through
+ * businesses.source_job_id, so there is one copy of that data and it cannot drift.
+ *
+ * The owner's platform_users row is still account_status 0 at this point. That is left
+ * alone on purpose — OTP verification promotes it to 1 (auth.service.ts), exactly as it
+ * does for an invited user.
+ */
+async function activateClaimedListing(business: BusinessRecord, owner: Awaited<ReturnType<typeof userRepo.findByIdFull>>) {
+  // Taken from `owner`, NOT from business.owner_id: for a promoted listing that column was NULL
+  // on the row we fetched and resolveClaimant has only just set it, so this copy is stale.
+  if (!owner) throw new NotFoundError("Owner for this business could not be resolved");
+  const ownerId = owner.id;
+
+  await provisionOnClaim({
+    kind: "business",
+    id: Number(business.id),
+    schema_name: business.schema_name,
+  });
+
+  const db = await getKnex(business.id, schemaName(business.schema_name));
+  const ownerRole = await db("roles").where({ name: "owner" }).first();
+  if (!ownerRole) throw new NotFoundError('Role "owner" not found');
+  await db("agents")
+    .insert({
+      platform_user_id: ownerId,
+      role_id: ownerRole.id,
+      is_owner: true,
+      account_status: 1,
+      admin_point_of_contact: true,
+      first_name: owner.first_name,
+      last_name: owner.last_name,
+      email: owner.email,
+      phone: owner.phone,
+    })
+    // agents.platform_user_id is unique — makes a retried claim a no-op rather than a 500.
+    .onConflict("platform_user_id")
+    .ignore();
+
+  await userRepo.insertUserBusinessIndex({
+    platform_user_id: ownerId,
+    business_id: Number(business.id),
+    role: "owner",
+    is_owner: true,
+  });
+  await userRepo.updateUser(ownerId, { is_business_account: true });
+  await userRepo.addAccountCategory(ownerId, {
+    type: "business",
+    role: business.business_type ?? "business",
+  });
+
+  // Last, as in createBusiness: account_status 1 is what makes the business resolvable by
+  // findBusinessByDbName and listUserBusinesses, so it must not flip until the rest exists.
+  await repo.updateBusinessStatus(business.id, 1);
+
+  logger.info("Promoted listing claimed", { businessId: business.id, jobId: business.source_job_id });
 }

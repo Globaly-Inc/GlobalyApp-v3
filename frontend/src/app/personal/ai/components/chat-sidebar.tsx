@@ -24,6 +24,7 @@ import {
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { setActiveSession, updateSession, deleteSession, fetchMessages } from "../store/ai-chat-slice";
 import type { ChatSession } from "../apis/types";
+import { useConfirmAction } from "./use-confirm-action";
 import { cn } from "@/lib/utils";
 
 type ChatSidebarProps = {
@@ -69,6 +70,7 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [view, setView] = useState<"chats" | "archived">("chats");
+  const { confirm, dialog: confirmDialog } = useConfirmAction();
 
   const showArchived = view === "archived";
   const groups = groupSessions(sessions.filter((s) => s.is_archived === showArchived));
@@ -91,18 +93,27 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
     setEditingId(null);
   };
 
-  const setArchived = (session: ChatSession, archived: boolean) => {
+  const setArchived = async (session: ChatSession, archived: boolean) => {
     // Unarchiving is non-destructive — no confirm needed there.
-    if (archived && !window.confirm(`Archive "${session.title}"? You can restore it from the Archived tab.`)) {
-      return;
+    if (archived) {
+      const ok = await confirm({
+        title: `Archive "${session.title}"?`,
+        description: "It leaves your chat list but stays available under the Archived filter.",
+        action: "Archive",
+      });
+      if (!ok) return;
     }
     dispatch(updateSession({ sessionId: session.id, data: { is_archived: archived } }));
   };
 
-  const removeSession = (session: ChatSession) => {
-    if (window.confirm(`Delete "${session.title}"? This cannot be undone.`)) {
-      dispatch(deleteSession(session.id));
-    }
+  const removeSession = async (session: ChatSession) => {
+    const ok = await confirm({
+      title: `Delete "${session.title}"?`,
+      description: "This chat and its messages are removed permanently. This cannot be undone.",
+      action: "Delete",
+      destructive: true,
+    });
+    if (ok) dispatch(deleteSession(session.id));
   };
 
   return (
@@ -237,6 +248,7 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
           </span>
         </Link>
       </div>
+      {confirmDialog}
     </div>
   );
 }

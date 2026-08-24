@@ -115,6 +115,17 @@ export function buildSystemPrompt(opts: {
     "COUNSELLING APPROACH:\n" +
     "- Counsel before recommending. If the student's goals, interests, or constraints are unclear, " +
     "ask 1-3 focused follow-up questions BEFORE suggesting courses or careers — understand them first.\n" +
+    // That rule is about recommendations, but the model was applying it to plain factual questions:
+    // asked "how do US college credits work?" it withheld the answer, asked "what level of study?",
+    // and only answered the credit question a turn later — reading as a one-turn lag to the student.
+    "- That applies to RECOMMENDATIONS ONLY, never to information. When the student asks a factual " +
+    "question ('how do credits work?', 'what is a GED?', 'how many states require X'), ANSWER IT " +
+    "FIRST and in full, then optionally ask ONE follow-up. Never withhold a fact you already have in " +
+    "order to ask a question, and never reply to a direct question with only a question. If you " +
+    "genuinely do not have the answer, say so plainly — that is also an answer.\n" +
+    "- Never ask what the student has already told you. Re-read the conversation before asking " +
+    "anything: if they answered it, or you asked it in an earlier turn, do not ask again — build on " +
+    "it instead. Repeating a question you already asked reads as not listening.\n" +
     "- A vague interest ('I love mathematics', 'something in business') is NOT enough to recommend from. " +
     `Even when ${srcShort} contains matching courses, do NOT list them yet — respond to the interest warmly, ` +
     "then ask what draws them to it, what career they imagine, or what matters most to them (location, cost, " +
@@ -280,7 +291,10 @@ export function buildSystemPrompt(opts: {
   // ── Chips ──
   sections.push(
     "After every response, suggest 2-4 follow-up questions in this format:\n" +
-    '```chips\n["question1", "question2"]\n```',
+    '```chips\n["question1", "question2"]\n```\n' +
+    // The app renders one options row per turn, so a reply carrying both showed the
+    // same choices twice — quick_replies is the one that keeps the question with it.
+    "EXCEPT on turns where you emit a quick_replies block: then send no chips at all.",
   );
 
   // ── Interactive UI blocks ──
@@ -303,6 +317,24 @@ export function buildSystemPrompt(opts: {
     "Rules: use blocks to make counselling interactive — comparisons when the student weighs options, " +
     "a timeline when explaining a path, quick_replies instead of leaving your questions open-ended. " +
     "Max 3 blocks per reply. Prose stays primary: never send blocks without a conversational message around them.",
+  );
+
+  // ── How to use retrieved material ──
+  // Unconditional: applies to the CONTEXT block below and to tool results alike. Without
+  // it the model read a big labelled blob plus "facts come only from CONTEXT" as an
+  // instruction to REPORT the blob, so consecutive questions that retrieved overlapping
+  // passages got near-identical replies — including when the student's message was an
+  // answer to the counsellor's own question rather than a new question at all.
+  sections.push(
+    `USING ${srcShort.toUpperCase()}:\n` +
+    `- ${src} is reference material, not a script. Use ONLY the parts that bear on the ` +
+    "student's LATEST message and ignore the rest. Retrieval is broad on purpose and most " +
+    "of what comes back will be irrelevant to this particular turn.\n" +
+    `- Never summarise ${srcShort} back at the student, and never repeat material you ` +
+    "already covered in an earlier reply. If nothing retrieved is relevant, say what you " +
+    "do know, or ask — do not fill the reply with the nearest available passage.\n" +
+    "- If the student's latest message ANSWERS something you asked, treat it as progress: " +
+    "acknowledge it and move to the next step. Do not restate your previous reply.",
   );
 
   // ── RAG context ──
@@ -335,9 +367,18 @@ export function buildSystemPrompt(opts: {
       "they shared (if they love a subject, share their excitement — 'a maths lover — excellent taste!'), " +
       "and ask 2-3 questions that help you counsel them: what draws them to it, what career or life " +
       "they imagine, and one practical constraint (destination, budget, or start date). " +
-      "Ask your main question through a quick_replies block so the student can tap an answer " +
-      "(e.g. options like \"Pure maths and problem solving\", \"I want to work in AI/data\", \"Not sure yet — show me options\") " +
-      "and keep chips for broader follow-ups. Course recommendations begin on the next turn.",
+      // Spelled out in full here rather than pointing back at INTERACTIVE BLOCKS: the model was
+      // emitting the payload as bare unfenced JSON with no "type", which parseBlocks can't match
+      // and stripBlocks can't remove — so the raw object rendered in the chat as text.
+      "Ask your main question through a quick_replies block so the student can tap an answer, " +
+      "fenced and typed exactly as in INTERACTIVE BLOCKS above — never as bare JSON:\n" +
+      '```block\n{"type":"quick_replies","question":"What draws you to maths?","options":[' +
+      '{"label":"🧮 Problem solving","value":"Pure maths and problem solving"},' +
+      '{"label":"🤖 AI and data","value":"I want to work in AI/data"},' +
+      '{"label":"🤷 Not sure yet","value":"Not sure yet — show me options"}]}\n```\n' +
+      "Every option is an object with `label` and `value`, never a bare string. " +
+      "Send no chips this turn — the quick_replies block is the only options row. " +
+      "Course recommendations begin on the next turn.",
     );
   } else if (opts.isFirstMessage) {
     sections.push(

@@ -65,6 +65,12 @@ export function BusinessCard({
 
   const viewServices = () => router.push(`/admin/platform/businesses/${b.id}?tab=services`);
 
+  // Institutions appear in this list but have no admin detail screen yet, and every route and
+  // endpoint below is /businesses/:id. An institution id would resolve to a DIFFERENT business
+  // with the same number (id 3 exists in both tables), so these actions are disabled rather
+  // than allowed to open or mutate the wrong record.
+  const isInstitution = b.kind === "institution";
+
   return (
     <Card className={cn("transition-shadow hover:shadow-md", selected && "ring-2 ring-primary")}>
       <CardContent className="space-y-3">
@@ -83,6 +89,11 @@ export function BusinessCard({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="truncate text-sm font-semibold">{b.business_name}</span>
+              {isInstitution && (
+                <Badge variant="outline" className="border-sky-200 px-1.5 py-0 text-[10px] text-sky-700">
+                  Institution
+                </Badge>
+              )}
               {b.is_unclaimed && (
                 <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-destructive">
                   Pre-seeded
@@ -171,25 +182,37 @@ export function BusinessCard({
             <Button size="icon" variant="ghost" className="h-8 w-8 cursor-pointer" title="Copy link" onClick={copyLink}>
               <Link2 className="h-3.5 w-3.5" />
             </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8 cursor-pointer" title="View services" onClick={viewServices}>
-              <Briefcase className="h-3.5 w-3.5" />
-            </Button>
+            {!isInstitution && (
+              <Button size="icon" variant="ghost" className="h-8 w-8 cursor-pointer" title="View services" onClick={viewServices}>
+                <Briefcase className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onView}>
-              <Eye className="mr-1 h-3.5 w-3.5" />
-              View
-            </Button>
-            <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onView}>
-              Edit
-            </Button>
-            {b.claim_status !== "claimed" && b.owner_email && (
+            {isInstitution && (
+              <span className="text-xs text-muted-foreground">
+                Institution detail screen not built yet
+              </span>
+            )}
+            {/* Offered for BOTH kinds, and gated on any contact address rather than owner_email:
+                a promoted listing has no owner until it is claimed, and the link goes to its own
+                contact email. The backend picks the endpoint from `kind`. */}
+            {b.claim_status !== "claimed" && (b.owner_email ?? b.email) && (
               <Button size="sm" variant="outline" className="h-8 cursor-pointer" disabled={claimRequestBusy} onClick={onSendClaimRequest}>
                 <Mail className="mr-1 h-3.5 w-3.5" />
                 Send claim request
               </Button>
             )}
+            {!isInstitution && (
+              <>
+                <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onView}>
+                  <Eye className="mr-1 h-3.5 w-3.5" />
+                  View
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onView}>
+                  Edit
+                </Button>
             {b.status !== "verified" && b.status !== "suspended" && (
               <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onVerify}>
                 <CheckCircle className="mr-1 h-3.5 w-3.5" />
@@ -233,6 +256,8 @@ export function BusinessCard({
               <Trash2 className="mr-1 h-3.5 w-3.5" />
               Delete
             </Button>
+              </>
+            )}
           </div>
         </div>
       </CardContent>

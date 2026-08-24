@@ -47,6 +47,13 @@ const envSchema = z.object({
   // AI / LLM
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
+  // Diagnostic kill-switch for the counsellor's tool loop (Phase 7). "false" reverts every
+  // turn to the pre-Phase-7 path (searchAll + plain streamChat) — the A/B for the
+  // one-turn-lag investigation. Remove once the lag's root cause is confirmed.
+  AI_COUNSELLOR_TOOLS: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
   // text-embedding-004 is retired — it 404s on embedContent for current keys.
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
 

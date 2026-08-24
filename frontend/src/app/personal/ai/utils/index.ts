@@ -10,3 +10,24 @@ export function stripStructuredBlocks(text: string): string {
     .replace(/```(?:course-card|chips|block)[\s\S]*$/, "")
     .trim();
 }
+
+const QUOTE_MAX = 220;
+
+/**
+ * Reply-to-a-message is carried in the message text itself as a leading markdown
+ * quote line — no new column, and the model reads the quote as context for free.
+ * ponytail: text-carried quote; give it its own DB column if replies ever need
+ * to link back to the exact message id.
+ */
+export function withQuote(text: string, quoted: string): string {
+  const flat = quoted.replace(/\s+/g, " ").trim();
+  const excerpt = flat.length > QUOTE_MAX ? flat.slice(0, QUOTE_MAX) + "…" : flat;
+  return `> ${excerpt}\n\n${text}`;
+}
+
+/** Inverse of withQuote, for rendering the quote as a strip instead of a literal "> ". */
+export function splitQuote(content: string): { quote: string | null; body: string } {
+  if (!content.startsWith("> ")) return { quote: null, body: content };
+  const [first = "", ...rest] = content.split("\n\n");
+  return { quote: first.slice(2), body: rest.join("\n\n") };
+}

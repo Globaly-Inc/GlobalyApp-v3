@@ -53,16 +53,28 @@ export async function create(data: {
   return row;
 }
 
+/**
+ * The most recent `limit` messages, returned oldest-first.
+ *
+ * Ordering is DESC in SQL and reversed in memory. `ASC + LIMIT` took the OLDEST rows,
+ * so once a session passed the limit the model's history window froze on the opening
+ * turns and never saw recent ones — and chat.service's `slice(0, -1)`, which assumes
+ * the just-persisted user message is last, then stripped a real message instead.
+ *
+ * `id DESC` breaks `created_at` ties: the new user message and the previous assistant
+ * message can land in the same timestamp tick, and that `slice(0, -1)` needs the newest
+ * row to be last deterministically.
+ */
 export async function findBySession(
   sessionId: number,
-  opts: { limit?: number; beforeId?: number } = {},
+  opts: { limit?: number } = {},
 ): Promise<MessageRow[]> {
   const q = masterKnex(TABLE)
     .where({ session_id: sessionId })
-    .orderBy("created_at", "asc");
-  if (opts.beforeId) q.andWhere("id", "<", opts.beforeId);
+    .orderBy([{ column: "created_at", order: "desc" }, { column: "id", order: "desc" }]);
   if (opts.limit) q.limit(opts.limit);
-  return q;
+  const rows = await q;
+  return rows.reverse();
 }
 
 export async function updateFeedback(id: number, feedback: "positive" | "negative" | null): Promise<void> {

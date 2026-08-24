@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type Content, type Part, type Tool } from "@google/generative-ai";
+import { GoogleGenerativeAI, type Content, type FunctionCall, type Part, type Tool } from "@google/generative-ai";
 import { config } from "../../../config.js";
 import { BadRequestError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -121,6 +121,22 @@ const DEFAULT_MAX_ROUNDS = 4;
 const emptyUsage = () => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
 
 /**
+ * The SDK's stream aggregator builds one part object per chunk and reuses it, so a
+ * functionCall that arrives beside a part it doesn't recognise (a thinking-model
+ * thought/signature part) comes out duplicated. Identical calls in one round are
+ * never intentional — run each distinct call once.
+ */
+function dedupeCalls(calls: FunctionCall[]): FunctionCall[] {
+  const seen = new Set<string>();
+  return calls.filter((call) => {
+    const key = `${call.name}:${JSON.stringify(call.args ?? {})}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Agent loop: the model may call tools, we run them, it may call more, then it
  * answers. The final answer streams to the client.
  *
@@ -129,6 +145,13 @@ const emptyUsage = () => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0
  * the answer. Buffering until we knew whether the round called a tool would mean
  * the real answer arrives in one lump, which is worse. The system prompt asks the
  * model not to narrate its tool use, so this is rare in practice.
+ *
+ * The turn's `contents` array is owned HERE, not by the SDK's ChatSession. The
+ * ChatSession rewrites thinking-model stream parts it doesn't recognise into
+ * `{text: ""}`, judges the whole response invalid for it, and then silently skips
+ * recording BOTH the user's message and the model's tool call in its internal
+ * history — so every round after the tool call was sent WITHOUT the student's
+ * current question, and the model answered the PREVIOUS one, a turn behind.
  */
 export async function streamChatWithTools(
   opts: StreamChatWithToolsOpts,
@@ -139,13 +162,15 @@ export async function streamChatWithTools(
     systemInstruction: opts.system,
   });
 
-  const chat = model.startChat({ history: opts.history as Content[], tools: opts.tools });
+  const contents: Content[] = [
+    ...(opts.history as Content[]),
+    { role: "user", parts: [{ text: opts.userMessage }] },
+  ];
   const usage = emptyUsage();
   let fullText = "";
   let toolRounds = 0;
-  let message: string | Part[] = opts.userMessage;
 
-  const consume = async (result: Awaited<ReturnType<typeof chat.sendMessageStream>>) => {
+  const consume = async (result: Awaited<ReturnType<typeof model.generateContentStream>>) => {
     for await (const chunk of result.stream) {
       if (opts.signal?.aborted) break;
       const text = chunk.text();
@@ -162,35 +187,74 @@ export async function streamChatWithTools(
     return response;
   };
 
+  const send = (tools?: Tool[]) =>
+    withRetry(() => model.generateContentStream({ contents, ...(tools ? { tools } : {}) })).then(consume);
+
   for (let round = 0; round < maxRounds; round++) {
-    const response = await withRetry(() => chat.sendMessageStream(message)).then(consume);
-    const calls = response.functionCalls();
-    if (!calls?.length) return { fullText, usage, toolRounds };
+    const textBefore = fullText.length;
+    const response = await send(opts.tools);
+    const calls = dedupeCalls(response.functionCalls() ?? []);
+    if (!calls.length) return { fullText, usage, toolRounds };
     if (opts.signal?.aborted) return { fullText, usage, toolRounds };
 
     toolRounds++;
-    const parts: Part[] = [];
+    const roundText = fullText.slice(textBefore);
+    const results: Part[] = [];
     for (const call of calls) {
       const args = (call.args ?? {}) as Record<string, unknown>;
       opts.onToolCall?.(call.name, args);
       const payload = await opts.runTool(call.name, args);
-      parts.push({ functionResponse: { name: call.name, response: payload as object } });
+      results.push({ functionResponse: { name: call.name, response: payload as object } });
     }
-    message = parts;
+    contents.push(
+      {
+        role: "model",
+        parts: [
+          ...(roundText ? [{ text: roundText }] : []),
+          ...calls.map((functionCall) => ({ functionCall })),
+        ],
+      },
+      { role: "function", parts: results },
+    );
   }
 
   // Round budget spent and it still wants to search. Continue the same conversation
-  // in a tool-free session so it has to answer from what it already retrieved.
+  // with tools withheld so it has to answer from what it already retrieved.
   logger.info("Tool round cap reached — forcing an answer", { maxRounds });
-  const closing = model.startChat({ history: await chat.getHistory() });
-  await withRetry(() =>
-    closing.sendMessageStream(
-      "You have run out of searches for this turn. Answer the student now using only what you " +
-      "already retrieved, and say plainly what you could not confirm.",
-    ),
-  ).then(consume);
+  contents.push({
+    role: "user",
+    parts: [{
+      text:
+        "You have run out of searches for this turn. Answer the student now using only what you " +
+        "already retrieved, and say plainly what you could not confirm.",
+    }],
+  });
+  await send();
 
   return { fullText, usage, toolRounds };
+}
+
+/**
+ * Tidy a generated title, or return "" to mean "not usable — keep the one we have".
+ *
+ * A reasoning model spends output tokens on thinking before it writes, so a tight
+ * maxOutputTokens can return a single truncated fragment rather than a title. That
+ * fragment was being saved over the provisional title, which is where the one-word
+ * nonsense session names came from. A title has to look like a title to be accepted.
+ */
+export function cleanTitle(raw: string): string {
+  const cleaned = raw
+    .replace(/^```[a-z]*\n?|```$/g, "") // stray code fences
+    .replace(/^["'`*#\s]+|["'`*.\s]+$/g, "") // quotes, markdown, trailing punctuation
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Under two words is a truncation, not a summary — the prompt asks for 5-9.
+  if (cleaned.split(" ").filter(Boolean).length < 2) return "";
+
+  if (cleaned.length <= 80) return cleaned;
+  // Trim to a word boundary so the sidebar never shows a half-word.
+  return cleaned.slice(0, 80).replace(/\s+\S*$/, "");
 }
 
 /** Quick one-shot generation for auto-titling (non-streaming). */
@@ -202,8 +266,11 @@ export async function generateTitle(content: string): Promise<string> {
       "Capture the specifics: study destination, program/subject, degree level, or topic (visa, scholarships, fees) when mentioned. " +
       "Examples: 'Data Science Masters options in Canada', 'Student visa requirements for Australia', 'Comparing MBA fees at Georgia Tech'. " +
       "Return ONLY the title — no quotes, no trailing punctuation.",
-    generationConfig: { maxOutputTokens: 40, temperature: 0.3 },
+    // Generous budget on purpose: GEMINI_MODEL is a reasoning model and thinking tokens
+    // are drawn from this same allowance, so 40 could be spent before the title starts.
+    // A title is ~15 tokens; the rest is headroom, not output length.
+    generationConfig: { maxOutputTokens: 512, temperature: 0.3 },
   });
   const result = await model.generateContent(content.slice(0, 500));
-  return result.response.text().trim().slice(0, 80);
+  return cleanTitle(result.response.text());
 }

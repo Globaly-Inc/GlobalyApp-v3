@@ -12,8 +12,8 @@ export async function businessRoutes(app: FastifyInstance) {
   app.post("/claim/accept", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (req, reply) => {
-    const { token } = ClaimAcceptSchema.parse(req.body);
-    const result = await service.acceptClaim(token);
+    const { token, first_name, last_name } = ClaimAcceptSchema.parse(req.body);
+    const result = await service.acceptClaim(token, { first_name, last_name });
     return reply.send(result);
   });
 

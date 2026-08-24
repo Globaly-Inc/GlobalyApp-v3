@@ -130,8 +130,11 @@ export function BusinessesView() {
     setClaimRequestBusy(true);
     try {
       if (claimRequestTarget.kind === "single") {
-        await dispatch(sendClaimRequest(claimRequestTarget.business.id)).unwrap();
-        toast.success("Claim request sent to the business owner");
+        const b = claimRequestTarget.business;
+        await dispatch(sendClaimRequest({ kind: b.kind, id: b.id })).unwrap();
+        // The link goes to the listing's own contact email when nobody owns it yet — see
+        // sendClaimRequest / sendInstitutionClaimRequest on the backend.
+        toast.success(`Claim request sent to ${b.owner_email ?? b.email ?? "the listed contact"}`);
       } else {
         const ids = Array.from(selected);
         await dispatch(sendBulkClaimRequests(ids)).unwrap();
@@ -230,7 +233,11 @@ export function BusinessesView() {
             onSuspend={() => runSuspend(b.id)}
             onTogglePublish={() => runTogglePublish(b.id, !b.is_published)}
             onDelete={() => setDeleteTarget(b)}
-            onSendClaimRequest={() => setClaimRequestTarget({ kind: "single", business: b })}
+            onSendClaimRequest={() =>
+              // Recipient decided here, from the row: the owner's address if this listing has an
+              // owner, otherwise its own contact email. Same rule the backend applies.
+              setClaimRequestTarget({ kind: "single", business: b, recipient: b.owner_email ?? b.email })
+            }
             publishBusy={publishBusyId === b.id}
             claimRequestBusy={claimRequestBusy && claimRequestTarget?.kind === "single" && claimRequestTarget.business.id === b.id}
           />

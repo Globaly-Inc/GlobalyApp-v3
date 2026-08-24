@@ -9,7 +9,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { embed, isConfigured as llmConfigured } from "../../data-extraction/lib/llm-client.js";
-import { chunkMarkdown, normaliseMarkdown } from "./chunker.js";
+import { chunkMarkdown, embedTextFor, normaliseMarkdown } from "./chunker.js";
 
 const logger = createChildLogger("ai-knowledge-ingest");
 
@@ -38,6 +38,7 @@ export const contentHashOf = (markdown: string): string =>
 export const wordsIn = (markdown: string): number =>
   markdown.split(/\s+/).filter(Boolean).length;
 
+
 /**
  * Chunk a document, embed each chunk and replace whatever chunks it had before.
  *
@@ -62,12 +63,9 @@ export async function ingestDocumentChunks(
     return { chunks: 0, embedded: 0 };
   }
 
-  // The breadcrumb goes into the embedded text as well as the column: "1.1 Governing
-  // authority" is what makes an otherwise generic table of ministries findable.
   const textFor = (index: number) => {
     const chunk = chunks[index];
-    const prefix = [opts.title, chunk.heading_path].filter(Boolean).join(" > ");
-    return prefix ? `${prefix}\n\n${chunk.content}` : chunk.content;
+    return embedTextFor(chunk.content, chunk.heading_path, opts.title);
   };
 
   const vectors: Array<number[] | null> = new Array(chunks.length).fill(null);
