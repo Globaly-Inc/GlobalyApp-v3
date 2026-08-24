@@ -22,8 +22,21 @@ function prettify(value: string): string {
 }
 
 function formatFee(amount: number | null, currency: string): string | null {
-  if (amount == null) return null;
-  return `${currency} ${amount.toLocaleString()}`;
+  // Number() guard: cards persisted before the wire-mapper fix still carry the fee
+  // as a Postgres-numeric string, and String#toLocaleString would skip the separators.
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `${currency} ${n.toLocaleString("en-US")}`;
+}
+
+/** Extraction data often lacks degree_level, but the course name usually carries it. */
+function degreeLevelOf(card: CourseCardType): string {
+  if (card.degree_level) return prettify(card.degree_level);
+  // Anywhere in the name, not just the start — "CHC52021- Diploma of ..." style titles
+  // from older messages carry a code before the level word.
+  const m = /\b(Graduate Certificate|Graduate Diploma|Bachelor|Master|Doctor|PhD|Diploma|Certificate|Associate)\b/i
+    .exec(card.course_name);
+  return m?.[0] ?? "";
 }
 
 function DetailRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
@@ -92,12 +105,15 @@ export function CourseCard({ card }: CourseCardProps) {
 
       {/* Course title + level */}
       <div className="relative px-4 pt-3">
-        <p className="text-sm font-semibold leading-snug text-foreground" title={card.course_name}>
+        <p
+          className="line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight text-foreground"
+          title={card.course_name}
+        >
           {card.course_name}
         </p>
-        {card.degree_level && (
+        {degreeLevelOf(card) && (
           <Badge variant="secondary" className="mt-2 border-0 bg-primary/10 text-primary">
-            {prettify(card.degree_level)}
+            {degreeLevelOf(card)}
           </Badge>
         )}
       </div>
@@ -108,7 +124,7 @@ export function CourseCard({ card }: CourseCardProps) {
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             Tuition
           </span>
-          <span className="text-sm font-semibold text-foreground">
+          <span className="text-sm font-semibold tabular-nums text-foreground">
             {fee}
             <span className="ml-1 text-[10px] font-normal text-muted-foreground">/ year</span>
           </span>

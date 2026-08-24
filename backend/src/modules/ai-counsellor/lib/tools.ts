@@ -74,6 +74,35 @@ export function capPerDocument<T extends { document_id: string }>(chunks: T[]): 
 // ── Card fields ──
 
 /**
+ * "CHC52021- Diploma of Community Services ( CRICOS Course Code: 114977F)" →
+ * "Diploma of Community Services". Extraction keeps the page's raw title; the
+ * training-package prefix and CRICOS code are lookup keys, not a display name.
+ * Slugs keep the RAW name — they must match the search module's slug building.
+ */
+export function cleanCourseName(raw: string): string {
+  const cleaned = raw
+    .replace(/^[A-Z]{2,6}\d{4,6}\s*[-–—:]?\s*/, "")
+    .replace(/\(\s*CRICOS[^)]*\)/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || raw.trim();
+}
+
+/**
+ * Extraction misclassifies term breaks ("Holiday (17 Mar - 6 Apr 2025)") as intakes,
+ * and old years linger after re-crawls stop. Keep undated intakes ("Fall intake");
+ * drop holidays and entries whose latest named year has already passed.
+ */
+export function cleanIntakes(names: string[], now = new Date()): string[] {
+  const year = now.getFullYear();
+  return names.filter((name) => {
+    if (/holiday|term break|vacation/i.test(name)) return false;
+    const years = name.match(/\b20\d{2}\b/g);
+    return !years || Math.max(...years.map(Number)) >= year;
+  });
+}
+
+/**
  * The exact object the model copies into a ```course-card``` block. Shared with
  * rag.service's CARD_FIELDS line so the two retrieval paths can never drift into
  * emitting different card shapes.
@@ -83,7 +112,7 @@ export function courseCardFields(c: knowledge.CourseDetailResult) {
   return {
     id: c.id,
     slug: courseSlug(c.name, c.id),
-    name: c.name,
+    name: cleanCourseName(c.name),
     institution: c.institution_name,
     degree_level: c.degree_level,
     duration: c.duration_weeks ? `${c.duration_weeks} weeks` : null,
@@ -91,7 +120,7 @@ export function courseCardFields(c: knowledge.CourseDetailResult) {
     currency: fee?.currency ?? null,
     country: c.institution_country ?? c.country_code,
     city: c.campuses[0]?.campus_name ?? null,
-    intakes: c.intakes.map((i) => i.intake_name).filter(Boolean),
+    intakes: cleanIntakes(c.intakes.map((i) => i.intake_name).filter((n): n is string => !!n)),
     study_modes: c.study_options.map((o) => o.study_mode).filter(Boolean),
     source_url: c.source_url,
   };
@@ -100,14 +129,14 @@ export function courseCardFields(c: knowledge.CourseDetailResult) {
 /** A course as the model sees it: readable facts plus the verbatim card object. */
 function courseForModel(c: knowledge.CourseDetailResult) {
   return {
-    name: c.name,
+    name: cleanCourseName(c.name),
     institution: c.institution_name,
     degree_level: c.degree_level,
     subject_area: c.subject_area,
     duration_weeks: c.duration_weeks,
     country: c.institution_country ?? c.country_code,
     fees: c.fees.map((f) => ({ student_type: f.student_type, currency: f.currency, total: f.total_amount })),
-    intakes: c.intakes.map((i) => i.intake_name).filter(Boolean),
+    intakes: cleanIntakes(c.intakes.map((i) => i.intake_name).filter((n): n is string => !!n)),
     study_modes: c.study_options.map((o) => o.study_mode).filter(Boolean),
     english_requirements: c.english_requirements.map((r) => ({
       test: r.test_type_name, overall: r.overall_score,
@@ -136,17 +165,23 @@ const DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_courses",
     description:
-      "Search verified courses in the Globaly database. Use only once you understand what the student " +
-      "wants to study and at least one constraint (destination, budget, level). Returns fees, intakes, " +
-      "entry requirements and a `card` object per course.",
+      "Search verified courses in the Globaly database. Use once you understand what the student " +
+      "wants to study and at least one constraint (destination, budget, level) — or immediately, with " +
+      "whatever you know, when the student explicitly asks to see courses or a list of options; an " +
+      "explicit request overrides ask-first. Returns fees, intakes, entry requirements and a `card` " +
+      "object per course.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        query: { type: SchemaType.STRING, description: "Subject and keywords, e.g. 'data science masters'" },
+        query: {
+          type: SchemaType.STRING,
+          description:
+            "Subject keywords, e.g. 'data science'. Omit to browse everything matching the " +
+            "country/degree_level filters — use that when the student wants a general list.",
+        },
         country: { type: SchemaType.STRING, description: "Destination country name, e.g. 'Canada'" },
         degree_level: { type: SchemaType.STRING, description: "e.g. 'Bachelor', 'Master', 'Diploma'" },
       },
-      required: ["query"],
     },
   },
   {
@@ -163,13 +198,17 @@ const DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_knowledge",
     description:
-      "Search the curated knowledge base: visa rules, country education systems, FAQs, and passages from " +
-      "crawled official sources. Use for any question about visas, education systems, costs of living, " +
-      "post-study work, or 'how does X work in country Y'.",
+      "Search the curated knowledge base: visa rules, country education systems, FAQs, counselling " +
+      "guidelines, and passages from crawled official sources. Use for any question about visas, " +
+      "education systems, costs of living, post-study work, or 'how does X work in country Y' — and " +
+      "to check for guidance that applies to the student's situation even when they did not ask.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        query: { type: SchemaType.STRING, description: "The student's question, in their words" },
+        query: {
+          type: SchemaType.STRING,
+          description: "The student's question or situation — include destination, level and goals when known",
+        },
         country_code: { type: SchemaType.STRING, description: "Two-letter ISO code to scope results, e.g. 'AU'" },
       },
       required: ["query"],
@@ -354,17 +393,43 @@ async function dispatch(
 
     case "search_courses": {
       const query = str(args, "query") ?? "";
-      const found = await knowledge.searchCourses({
-        query,
-        country: str(args, "country"),
-        degreeLevel: str(args, "degree_level"),
-        limit: MAX_COURSES,
-      });
+      const country = str(args, "country");
+      const degreeLevel = str(args, "degree_level");
+      let found = await knowledge.searchCourses({ query, country, degreeLevel, limit: MAX_COURSES });
+
+      // A filter carried over from an earlier turn (country from the last result set,
+      // a level the student has moved past) silently hides matches elsewhere — the
+      // model then reports an empty database. Widen once instead.
+      let widened = false;
+      if (!found.length && (country || degreeLevel)) {
+        found = await knowledge.searchCourses({ query, limit: MAX_COURSES });
+        widened = found.length > 0;
+      }
       const courses = await hydrate(found.map((c) => c.id));
       return {
-        result: { courses: courses.map(courseForModel), count: courses.length },
+        result: {
+          courses: courses.map(courseForModel),
+          count: courses.length,
+          ...(widened && {
+            note:
+              "Nothing matched with the country/degree_level filters, so these matches ignore " +
+              "them — tell the student nothing fit their filters exactly and say where these are.",
+          }),
+          // Zero results usually means a phrase query ("all the courses") or the wrong
+          // synonym, not an empty database — steer the model to retry instead of telling
+          // the student we have nothing. Matching is keyword-based, not semantic.
+          ...(courses.length === 0 && {
+            hint:
+              "No matches for this query — that does not mean the database has none. " +
+              "Matching is by keyword: retry once with a short subject keyword or a synonym " +
+              "(e.g. 'theatre' → 'drama' → 'performing arts'), never a phrase like 'all the " +
+              "courses', before telling the student nothing exists.",
+          }),
+        },
         sources: courses.map((c) => ({ type: "course", id: c.id, title: c.name })),
-        trace: `Searched courses: ${query}${args.country ? ` in ${args.country}` : ""} — ${courses.length} found`,
+        trace:
+          `Searched courses: ${query || "(browse)"}${country ? ` in ${country}` : ""}` +
+          ` — ${courses.length} found${widened ? " (filters widened)" : ""}`,
       };
     }
 
@@ -372,7 +437,19 @@ async function dispatch(
       const id = str(args, "course_id");
       const course = id ? await knowledge.getCourseDetails(id) : undefined;
       if (!course) {
-        return { result: { error: "No course with that id" }, sources: [], trace: "Course detail not found" };
+        // Ids from earlier turns are not replayed into history, so the model often
+        // guesses one for a course it only remembers by name — and was translating
+        // this miss into "we don't have that course" for the student.
+        return {
+          result: {
+            error:
+              "No course with that id. Course ids from earlier turns are not retained — " +
+              "call search_courses again and use an id from THIS turn's results. The course " +
+              "itself is likely still in the database.",
+          },
+          sources: [],
+          trace: "Course detail not found",
+        };
       }
       return {
         result: {

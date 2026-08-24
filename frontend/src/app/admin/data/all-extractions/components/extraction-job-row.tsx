@@ -216,11 +216,9 @@ export function ExtractionJobRow({
                 <DropdownMenuItem onClick={() => router.push(`/admin/data/all-extractions/${job.id}`)}>
                   <Eye className="h-3.5 w-3.5" /> View Details
                 </DropdownMenuItem>
-                {job.status === "failed" && (
-                  <DropdownMenuItem onClick={rerun} disabled={rerunning} className="text-purple-600">
-                    <RotateCw className="h-3.5 w-3.5" /> Re-run Job
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem onClick={rerun} disabled={rerunning} className="text-purple-600">
+                  <RotateCw className="h-3.5 w-3.5" /> Re-run Job
+                </DropdownMenuItem>
                 {isPausable && (
                   <DropdownMenuItem onClick={onPause} className="text-orange-600">
                     <Pause className="h-3.5 w-3.5" /> Pause

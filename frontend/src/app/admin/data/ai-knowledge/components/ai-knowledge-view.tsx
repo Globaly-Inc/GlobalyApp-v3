@@ -9,7 +9,8 @@ import {
   fetchCategories, fetchCounts, fetchDocuments, fetchFaqs, fetchGuides,
   fetchQueue, fetchRackCounts, fetchSources, fetchVisas,
 } from "../store/ai-knowledge-slice";
-import { KNOWLEDGE_TABS } from "../const";
+import { KNOWLEDGE_TABS, RACK_KIND_TABS } from "../const";
+import type { CategoryKind } from "../apis/types";
 import type { KnowledgeTab } from "../types";
 import { FaqsTab } from "./faqs-tab";
 import { GuidesTab } from "./guides-tab";
@@ -52,9 +53,16 @@ export function AiKnowledgeView() {
     if (tab === "queue") dispatch(fetchQueue(queueStatus || undefined));
   }, [dispatch, tab, queueStatus]);
 
-  // Derived, not stored: falling back to the first category keeps the rack from
-  // being a dead end without an effect writing state during render.
-  const activeCategoryId = categoryId ?? categories[0]?.id ?? null;
+  // Kind tabs are the rack filtered to one category kind; "rack" shows everything.
+  const rackKind = RACK_KIND_TABS.includes(tab as CategoryKind) ? (tab as CategoryKind) : null;
+  const isRackView = tab === "rack" || rackKind !== null;
+  const visibleCategories = rackKind ? categories.filter((c) => c.kind === rackKind) : categories;
+
+  // Derived, not stored: falling back to the first visible category keeps the rack from
+  // being a dead end without an effect writing state during render, and switching kind
+  // tabs never leaves a category from another kind selected.
+  const activeCategoryId =
+    (categoryId && visibleCategories.some((c) => c.id === categoryId) ? categoryId : visibleCategories[0]?.id) ?? null;
 
   useEffect(() => {
     if (activeCategoryId) dispatch(fetchSources({ categoryId: activeCategoryId }));
@@ -82,11 +90,16 @@ export function AiKnowledgeView() {
     queue: () => { dispatch(fetchQueue(queueStatus || undefined)); reloadCounts(); },
   };
 
-  const stats = [
-    { key: "visa" as const, label: "Visa entries", value: counts?.visa ?? 0 },
-    { key: "faqs" as const, label: "FAQs", value: counts?.faqs ?? 0 },
-    { key: "guides" as const, label: "Country guides", value: counts?.guides ?? 0 },
-    { key: "queue" as const, label: "Pending reviews", value: counts?.pending_reviews ?? 0 },
+  const stats: { key: KnowledgeTab; label: string; value: number }[] = [
+    { key: "visa", label: "Visa entries", value: counts?.visa ?? 0 },
+    { key: "faqs", label: "FAQs", value: counts?.faqs ?? 0 },
+    { key: "guides", label: "Country guides", value: counts?.guides ?? 0 },
+    { key: "gov_update", label: "Gov update sources", value: counts?.sources_by_kind?.gov_update ?? 0 },
+    { key: "institution_update", label: "Institution sources", value: counts?.sources_by_kind?.institution_update ?? 0 },
+    { key: "scholarship", label: "Scholarship sources", value: counts?.sources_by_kind?.scholarship ?? 0 },
+    { key: "test_provider", label: "Test provider sources", value: counts?.sources_by_kind?.test_provider ?? 0 },
+    { key: "other", label: "Other sources", value: counts?.sources_by_kind?.other ?? 0 },
+    { key: "queue", label: "Pending reviews", value: counts?.pending_reviews ?? 0 },
   ];
 
   const loading = status === "loading";
@@ -99,7 +112,7 @@ export function AiKnowledgeView() {
         <p className="mt-1 text-muted-foreground">Manage the data that powers the Globaly AI counsellor.</p>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {stats.map((stat) => (
           <button
             key={stat.key}
@@ -151,16 +164,16 @@ export function AiKnowledgeView() {
         )}
       </div>
 
-      {tab === "rack" && (
+      {isRackView && (
         <>
-          {rackCounts && (
+          {tab === "rack" && rackCounts && (
             <p className="mb-3 text-xs text-muted-foreground">
               {rackCounts.categories} categories · {rackCounts.sources} sources · {rackCounts.documents} documents ·{" "}
               {rackCounts.embedded_documents} retrievable · {rackCounts.embedded_chunks} chunks in brain
             </p>
           )}
           <RackTab
-            categories={categories}
+            categories={visibleCategories}
             sources={sources}
             documents={documents}
             loading={loading}

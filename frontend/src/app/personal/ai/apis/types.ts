@@ -44,7 +44,9 @@ export type ResponseBlock =
   | { type: "timeline"; title?: string; steps: { title: string; description?: string }[] }
   | { type: "recommendation"; title: string; subtitle?: string; description?: string; image_url?: string; tags?: string[]; actions?: BlockAction[] }
   | { type: "image"; url: string; title?: string; caption?: string }
-  | { type: "quick_replies"; question?: string; options: BlockAction[] };
+  | { type: "quick_replies"; question?: string; options: BlockAction[] }
+  // Server-appended after a course search: deep link into /search with the same filters.
+  | { type: "link"; label: string; url: string };
 
 export type Message = {
   id: number;

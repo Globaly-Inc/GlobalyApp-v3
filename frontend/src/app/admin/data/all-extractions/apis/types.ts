@@ -458,3 +458,36 @@ export type StudyOptionParams = {
   save_for_reuse?: boolean;
 };
 export type Accreditation = { id: string; name: string; issuing_organization: string | null; website: string | null; description: string | null; created_at: string; updated_at?: string };
+
+/** One junction row: which scraped accreditation is on which course, and its library mapping. */
+export type AccreditationAssignment = {
+  extraction_accreditation_id: string | null;
+  accreditation_id: string | null;
+  course_id: string | null;
+  course_name: string | null;
+};
+
+export type JobAccreditations = {
+  scraped: Accreditation[];
+  assignments: AccreditationAssignment[];
+};
+
+/** superadmin.accreditations — the global library scraped rows get mapped to. */
+export type LibraryAccreditation = {
+  id: string;
+  name: string;
+  issuing_organization: string | null;
+  website: string | null;
+  description: string | null;
+  country: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LibraryAccreditationInput = {
+  name: string;
+  issuing_organization?: string | null;
+  website?: string | null;
+  description?: string | null;
+};

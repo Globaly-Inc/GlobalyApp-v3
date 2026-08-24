@@ -26,9 +26,12 @@ import type {
   Intake,
   IntakeParams,
   InstitutionOverview,
+  JobAccreditations,
   JobEvent,
   JobFull,
   JunctionSlug,
+  LibraryAccreditation,
+  LibraryAccreditationInput,
   Paginated,
   QueueItem,
   StudyOption,
@@ -407,9 +410,31 @@ export const allExtractionsRealApi = {
 
   // ── Accreditations (staged/extraction) ───────────────────────────
 
-  getAccreditations: async (jobId: string): Promise<Accreditation[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/accreditations
-    return [] as Accreditation[];
+  getJobAccreditations: (jobId: string): Promise<JobAccreditations> =>
+    httpGet(`/admin/data-extraction/jobs/${jobId}/accreditations`),
+
+  // Bulk + single mapping: sets accreditation_id on every junction row of the given scraped ids.
+  updateAccreditationMappings: async (jobId: string, extractionAccreditationIds: string[], accreditationId: string | null): Promise<void> => {
+    await httpPatch("/admin/data-extraction/accreditation-mappings", {
+      job_id: jobId,
+      extraction_accreditation_ids: extractionAccreditationIds,
+      accreditation_id: accreditationId,
+    });
+  },
+
+  getAccreditationLibrary: async (): Promise<LibraryAccreditation[]> => {
+    const { accreditations } = await httpGet<{ accreditations: LibraryAccreditation[] }>("/admin/data-extraction/accreditation-library");
+    return accreditations;
+  },
+
+  createLibraryAccreditation: (input: LibraryAccreditationInput): Promise<LibraryAccreditation> =>
+    httpPost("/admin/data-extraction/accreditation-library", input),
+
+  updateLibraryAccreditation: (id: string, input: Partial<LibraryAccreditationInput>): Promise<LibraryAccreditation> =>
+    httpPatch(`/admin/data-extraction/accreditation-library/${id}`, input),
+
+  deleteLibraryAccreditation: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/accreditation-library/${id}`);
   },
 
   createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string | null }): Promise<Accreditation> => {

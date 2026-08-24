@@ -98,6 +98,16 @@ export const CreateStagedAccreditationSchema = z.object({
   description: z.string().nullish(),
 });
 
+// ── Global accreditation library (superadmin.accreditations) ──
+export const LibraryAccreditationSchema = z.object({
+  name: z.string().trim().min(1),
+  issuing_organization: z.string().nullish(),
+  website: z.string().nullish(),
+  description: z.string().nullish(),
+});
+
+export const PatchLibraryAccreditationSchema = LibraryAccreditationSchema.partial();
+
 // ── Junctions (J1-J2) ──
 export const JUNCTION_SLUGS = [
   "study-options",

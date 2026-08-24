@@ -136,7 +136,12 @@ export const aiKnowledgeMockApi = {
   getCounts: async (): Promise<KnowledgeCounts> => {
     console.log("[mock] ai-knowledge getCounts");
     await delay();
-    return { visa: visas.length, faqs: faqs.length, guides: guides.length, pending_reviews: queue.filter((q) => q.status === "pending").length };
+    const sources_by_kind: KnowledgeCounts["sources_by_kind"] = {};
+    for (const s of sources) {
+      const kind = categories.find((c) => c.id === s.category_id)?.kind;
+      if (kind) sources_by_kind[kind] = (sources_by_kind[kind] ?? 0) + 1;
+    }
+    return { visa: visas.length, faqs: faqs.length, guides: guides.length, pending_reviews: queue.filter((q) => q.status === "pending").length, sources_by_kind };
   },
 
   getVisas: async (q?: string) => { console.log("[mock] getVisas", q); await delay(); return search(visas, q, ["visa_type", "destination_country"]); },

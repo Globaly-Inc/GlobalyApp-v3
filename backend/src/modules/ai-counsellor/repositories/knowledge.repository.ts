@@ -271,9 +271,18 @@ export async function searchCourses(opts: {
   if (opts.jobIds?.length === 0) return [];
   const limit = opts.limit ?? DEFAULT_LIMIT;
 
+  // Stop-words poison OR-matching: in "Bachelor of Arts in Drama", "of"/"in" ILIKE-hit
+  // half the catalogue, and "bachelor" alone matches every bachelor's course — the
+  // subject words are what discriminate, so only they participate.
+  const STOP_WORDS = new Set(["of", "in", "a", "an", "the", "for", "and", "to", "with"]);
+  const words = opts.query
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((w) => !STOP_WORDS.has(w.toLowerCase()));
+  const cleanQuery = words.join(" ");
+
   // Rank by how many keywords hit the strong columns (name/subject), so a match
   // on every word beats a single stray word matched in a long description.
-  const words = opts.query.split(/\s+/).filter(Boolean);
   const rankSql = words
     .map(() => "(CASE WHEN c.name ILIKE ? OR c.subject_area ILIKE ? OR i.country ILIKE ? THEN 1 ELSE 0 END)")
     .join(" + ");
@@ -287,14 +296,16 @@ export async function searchCourses(opts: {
       "c.country_code", "c.source_url",
       "i.name as institution_name", "i.country as institution_country",
     )
-    .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], opts.query))
+    .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], cleanQuery))
     // Any course status is fine — the gate is the institution being published
     // (job exported, same definition as the search module).
     .whereRaw(
       `exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`,
     )
-    .orderByRaw(`${rankSql} DESC`, rankBindings)
     .modify((q) => {
+      // Empty query = browse mode (filters only): rankSql would be empty SQL.
+      if (words.length) q.orderByRaw(`${rankSql} DESC`, rankBindings);
+      else q.orderBy("c.name", "asc");
       if (opts.country) q.whereILike("i.country", `%${opts.country}%`);
       if (opts.degreeLevel) q.whereILike("c.degree_level", `%${opts.degreeLevel}%`);
       if (opts.jobIds) q.whereIn("c.job_id", opts.jobIds);

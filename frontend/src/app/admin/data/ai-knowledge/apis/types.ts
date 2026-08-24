@@ -5,6 +5,8 @@ export type KnowledgeCounts = {
   faqs: number;
   guides: number;
   pending_reviews: number;
+  /** Sources per rack category kind — feeds the kind-tab stat cards. */
+  sources_by_kind: Partial<Record<CategoryKind, number>>;
 };
 
 export type VisaEntry = {

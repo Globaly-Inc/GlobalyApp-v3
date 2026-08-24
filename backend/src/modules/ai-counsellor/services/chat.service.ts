@@ -102,9 +102,13 @@ export async function handleMessage(opts: {
     // the model counsels (asks about goals) instead of dumping recommendations —
     // instructions alone don't stop it when CONTEXT is full of matching courses.
     // Embed visitors are exempt: they come with a specific question about one
-    // institution and expect a direct answer.
+    // institution and expect a direct answer. Also exempt: a student whose profile
+    // already carries the essentials (destination + level) — for them discovery is
+    // already done, and withholding courses on turn 1 reads as an interrogation.
     const isFirstMessage = isNew && session.message_count === 0;
-    const discoveryTurn = isFirstMessage && !opts.embed;
+    const p = profileContext?.profile;
+    const profileReady = !!(p?.degree_level && p?.preferred_destinations);
+    const discoveryTurn = isFirstMessage && !opts.embed && !profileReady;
 
     // Returning student: this fresh session is not their first ever (the count
     // includes the one just created). Platform only — embed visitors are anonymous.
@@ -143,9 +147,29 @@ export async function handleMessage(opts: {
     const useTools = !opts.embed && config.AI_COUNSELLOR_TOOLS;
     let sources: ToolSource[] = [];
     let result: StreamChatResult | null = null;
+    // Newest course search that found anything, remembered across tool rounds — it
+    // becomes the "View all" deep link into /search with the same filters (step 7b).
+    // Holder object: the write happens inside the runTool callback, which TS's
+    // control-flow analysis won't credit against a bare `let` (it narrows it to never).
+    const courseSearch: { filters: { query: string; country?: string; degree_level?: string } | null } = { filters: null };
 
     if (useTools) {
+      // Proactive Knowledge Rack pass: one vector search seeded with the student's
+      // profile + session context as well as their message, so guidance that applies
+      // to their situation reaches the model even when they did not ask about it.
+      const briefing = await rag.counsellorBriefing({
+        message: opts.content,
+        profile: profileContext,
+        counsellingContext: session.counselling_context,
+        onTrace: trace,
+      });
+
       const seen = new Set<string>();
+      if (briefing.sources.length) {
+        for (const s of briefing.sources) seen.add(`${s.type}:${s.id}`);
+        sources = briefing.sources;
+        writeEvent(opts.reply, "sources", briefing.sources);
+      }
       try {
         result = await streamChatWithTools({
           system: buildSystemPrompt({
@@ -158,6 +182,7 @@ export async function handleMessage(opts: {
             counsellingContext: session.counselling_context,
             discoveryTurn,
             returning,
+            proactiveKnowledge: briefing.text,
           }),
           history,
           userMessage: opts.content,
@@ -167,6 +192,13 @@ export async function handleMessage(opts: {
           runTool: async (name, args) => {
             const run = await runTool(name, args, { sessionId: session.id });
             trace(run.trace);
+            if (name === "search_courses" && (run.result as { count?: number }).count) {
+              courseSearch.filters = {
+                query: typeof args.query === "string" ? args.query : "",
+                country: typeof args.country === "string" ? args.country : undefined,
+                degree_level: typeof args.degree_level === "string" ? args.degree_level : undefined,
+              };
+            }
             const fresh = run.sources.filter(s => !seen.has(`${s.type}:${s.id}`));
             for (const s of fresh) seen.add(`${s.type}:${s.id}`);
             if (fresh.length) {
@@ -223,6 +255,18 @@ export async function handleMessage(opts: {
     const chips = parseChips(result.fullText);
     const blocks = parseBlocks(result.fullText);
     const cleanText = stripBlocks(result.fullText);
+
+    // 7b. "View all" deep link. The chat shows at most 3 cards; whenever a course
+    // search found results, students get a button into the full /search listing with
+    // the same filters. Server-built only — the model never writes URLs.
+    const filters = courseSearch.filters;
+    if (filters) {
+      const params = new URLSearchParams({ tab: "courses" });
+      if (filters.query) params.set("search", filters.query);
+      if (filters.country) params.set("country", filters.country);
+      if (filters.degree_level) params.set("degree_level", filters.degree_level);
+      blocks.push({ type: "link", label: "View all matching courses", url: `/search?${params}` });
+    }
 
     // 8. Emit cards + chips + blocks
     if (cards.length) writeEvent(opts.reply, "cards", cards);
