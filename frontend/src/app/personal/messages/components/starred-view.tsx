@@ -6,8 +6,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchStarredMessages, toggleMessageStar } from "../store/messages-slice";
-import { fullStamp, initials, previewText } from "../utils";
-import { SpecialViewHeader } from "./special-view-header";
+import { fullStamp, initials, previewText } from "@/components/chat/utils";
+import { SpecialViewHeader } from "@/components/chat/special-view-header";
 
 /**
  * The Starred shortcut — GlobalyOS V2's `StarredView`: bordered cards, sender avatar, a
@@ -64,7 +64,7 @@ export function StarredView({
                   <div className="mb-1 flex items-center gap-2">
                     <span className="truncate text-sm font-medium">{message.sender_name}</span>
                     <Badge variant="secondary" className="min-w-0 shrink text-xs">
-                      <span className="truncate">{message.business_name}</span>
+                      <span className="truncate">{message.counterpart_name}</span>
                     </Badge>
                     <span
                       role="button"

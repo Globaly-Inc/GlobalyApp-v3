@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { POLL_MS } from "../const";
+import { POLL_MS } from "@/components/chat/const";
+import { messagesApi } from "../apis";
 import {
   deleteMessage,
   editMessage,
@@ -15,12 +16,12 @@ import {
   toggleMessageStar,
   toggleThreadFavorite,
 } from "../store/messages-slice";
-import { ChatInfoPanel } from "./chat-info-panel";
-import { ConversationHeader } from "./conversation-header";
-import { MessageComposer } from "./message-composer";
-import { MessageList } from "./message-list";
+import { ChatInfoPanel } from "@/components/chat/chat-info-panel";
+import { ConversationHeader } from "@/components/chat/conversation-header";
+import { MessageComposer } from "@/components/chat/message-composer";
+import { MessageList } from "@/components/chat/message-list";
 import { ThreadPanel } from "./thread-panel";
-import type { EnquiryMessage, MessageThreadSummary } from "../apis/types";
+import type { EnquiryMessage, ChatThread } from "@/components/chat/types";
 
 /**
  * One open conversation: header, scrolling history, composer, and the right-hand info
@@ -32,8 +33,9 @@ export function ConversationView({
   thread,
   highlightMessageId,
   onBack,
-}: Readonly<{ thread: MessageThreadSummary; highlightMessageId: number | null; onBack: () => void }>) {
+}: Readonly<{ thread: ChatThread; highlightMessageId: number | null; onBack: () => void }>) {
   const dispatch = useAppDispatch();
+  const threads = useAppSelector((st) => st.messages.threads);
   const id = thread.distribution_id;
   const messages = useAppSelector((s) => s.messages.byDistribution[id]) ?? [];
   const status = useAppSelector((s) => s.messages.status[id]) ?? "idle";
@@ -102,12 +104,22 @@ export function ConversationView({
     return true;
   };
 
+  /**
+   * Forwarding is just a send into a DIFFERENT thread, so it reuses the same thunk. The
+   * dialog owns the toast for success and failure; this only reports which way it went.
+   */
+  const handleForward = async (toDistributionId: string, body: string): Promise<boolean> => {
+    const result = await dispatch(sendThreadMessage({ distributionId: toDistributionId, body }));
+    return !sendThreadMessage.rejected.match(result);
+  };
+
   return (
     <div className="flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col bg-background">
         <ConversationHeader
           thread={thread}
           messages={messages}
+          enquiryHref={`/personal/enquiries/${thread.enquiry_id}`}
           onBack={onBack}
           onToggleFavorite={() => dispatch(toggleThreadFavorite(id))}
         />
@@ -118,7 +130,7 @@ export function ConversationView({
           key={id}
           messages={messages}
           status={status}
-          businessName={thread.business_name}
+          counterpartName={thread.counterpart_name}
           highlightMessageId={panelJumpId ?? highlightMessageId}
           // Pinning changes what BOTH sides see, so a read-only thread cannot be pinned to.
           canPin={!thread.is_closed}
@@ -133,16 +145,25 @@ export function ConversationView({
           onOpenThread={openThread}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          // Forward destinations come from the same inbox the sidebar renders.
+          forwardThreads={threads}
+          onForward={handleForward}
         />
 
         {thread.is_closed ? (
           <p className="shrink-0 border-t border-border p-4 text-xs text-muted-foreground">
-            {thread.business_name} closed this enquiry. The conversation stays readable, but no new messages can be
+            {thread.counterpart_name} closed this enquiry. The conversation stays readable, but no new messages can be
             sent.
           </p>
         ) : (
           <div className="shrink-0 border-t border-border">
-            <MessageComposer key={id} distributionId={id} businessName={thread.business_name} onSend={handleSend} />
+            <MessageComposer
+              key={id}
+              distributionId={id}
+              counterpartName={thread.counterpart_name}
+              onUploadAttachment={messagesApi.uploadAttachment}
+              onSend={handleSend}
+            />
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessEnquiriesApi } from "../apis";
-import type { DistributionListItem, EnquiryMessage } from "../apis/types";
+import type { DistributionListItem } from "../apis/types";
 
 export const fetchDistributions = createAsyncThunk("businessEnquiries/fetchAll", async () => {
   const result = await businessEnquiriesApi.listDistributions();
@@ -35,25 +35,7 @@ export const closeDistribution = createAsyncThunk(
   },
 );
 
-/** Chat, keyed by distribution — each card in the inbox is its own thread. */
-export const fetchDistributionMessages = createAsyncThunk(
-  "businessEnquiries/fetchMessages",
-  async (distributionId: string) => ({
-    distributionId,
-    messages: (await businessEnquiriesApi.getMessages(distributionId)).messages,
-  }),
-);
 
-export const sendDistributionMessage = createAsyncThunk(
-  "businessEnquiries/sendMessage",
-  async ({ distributionId, body }: { distributionId: string; body: string }, { rejectWithValue }) => {
-    try {
-      return { distributionId, message: await businessEnquiriesApi.sendMessage(distributionId, body) };
-    } catch (err) {
-      return rejectWithValue(err instanceof Error ? err.message : "Failed to send message");
-    }
-  },
-);
 
 type BusinessEnquiriesState = {
   items: DistributionListItem[];
@@ -65,8 +47,6 @@ type BusinessEnquiriesState = {
    * so one pending action doesn't disable every button in the list. */
   actingId: string | null;
   actionError: string | null;
-  messagesByDistribution: Record<string, EnquiryMessage[]>;
-  messagesStatus: Record<string, "idle" | "loading" | "failed">;
 };
 
 const initialState: BusinessEnquiriesState = {
@@ -77,8 +57,6 @@ const initialState: BusinessEnquiriesState = {
   unlockCost: 0,
   actingId: null,
   actionError: null,
-  messagesByDistribution: {},
-  messagesStatus: {},
 };
 
 const businessEnquiriesSlice = createSlice({
@@ -167,29 +145,7 @@ const businessEnquiriesSlice = createSlice({
         state.actionError = (action.payload as string) ?? "Failed to close enquiry";
       })
 
-      .addCase(fetchDistributionMessages.pending, (state, action) => {
-        // Only on the FIRST load — the poll refetches every few seconds and flipping to
-        // a spinner each time would make the thread flicker.
-        const id = action.meta.arg;
-        if (!state.messagesByDistribution[id]) state.messagesStatus[id] = "loading";
-      })
-      .addCase(fetchDistributionMessages.fulfilled, (state, action) => {
-        state.messagesStatus[action.payload.distributionId] = "idle";
-        state.messagesByDistribution[action.payload.distributionId] = action.payload.messages;
-      })
-      .addCase(fetchDistributionMessages.rejected, (state, action) => {
-        state.messagesStatus[action.meta.arg] = "failed";
-      })
-
-      .addCase(sendDistributionMessage.fulfilled, (state, action) => {
-        // Append rather than refetch so the sender sees it immediately; the poll
-        // reconciles anything that arrived meanwhile.
-        const { distributionId, message } = action.payload;
-        state.messagesByDistribution[distributionId] = [
-          ...(state.messagesByDistribution[distributionId] ?? []),
-          message,
-        ];
-      });
+;
   },
 });
 

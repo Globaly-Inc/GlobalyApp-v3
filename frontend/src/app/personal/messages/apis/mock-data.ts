@@ -1,15 +1,15 @@
-import type { EnquiryMessage, MessageAttachment, MessageThreadSummary, StarredMessage } from "./types";
+import type { EnquiryMessage, MessageAttachment, ChatThread, StarredMessage } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const mockThreadList: MessageThreadSummary[] = [
+const mockThreadList: ChatThread[] = [
   {
     distribution_id: "dist-mock-1",
     enquiry_id: "enq-2",
-    business_name: "Sydney Study Agents",
-    logo_url: null,
+    counterpart_name: "Sydney Study Agents",
+    counterpart_avatar: null,
     course_name: "Mock Bachelor of Computer Science",
     is_closed: false,
     unlocked_at: new Date(Date.now() - 2 * 86400000).toISOString(),
@@ -22,8 +22,8 @@ const mockThreadList: MessageThreadSummary[] = [
   {
     distribution_id: "dist-mock-2",
     enquiry_id: "enq-2",
-    business_name: "Parramatta Education",
-    logo_url: null,
+    counterpart_name: "Parramatta Education",
+    counterpart_avatar: null,
     course_name: "Mock Bachelor of Computer Science",
     is_closed: true,
     unlocked_at: new Date(Date.now() - 86400000).toISOString(),
@@ -77,7 +77,7 @@ const chipsFor = (id: number) =>
   [...(mockReactions.get(id) ?? [])].map((emoji) => ({ emoji, count: 1, users: ["You"], mine: true }));
 
 export const messagesMockApi = {
-  listThreads: async (): Promise<{ threads: MessageThreadSummary[] }> => {
+  listThreads: async (): Promise<{ threads: ChatThread[] }> => {
     console.log("[mock] GET /enquiry-messages");
     await delay(200);
     return { threads: mockThreadList };
@@ -150,7 +150,7 @@ export const messagesMockApi = {
           ...m,
           is_starred: true,
           distribution_id: thread.distribution_id,
-          business_name: thread.business_name,
+          counterpart_name: thread.counterpart_name,
           course_name: thread.course_name,
         });
       }

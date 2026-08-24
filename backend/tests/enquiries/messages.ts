@@ -846,6 +846,242 @@ async function main() {
     }
   });
 
+  // ── Business side ──
+
+  await assert("the business inbox lists its own unlocked threads, and only those", async () => {
+    const s = await scenario(2);
+    const [first, second] = s.businesses as [{ id: number }, { id: number }];
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+
+      const mine = await messages.listThreadsForBusiness(first.id, s.agentId);
+      eq(mine.length, 1, "one unlocked thread");
+      eq(mine[0]!.distribution_id, distId, "the one it unlocked");
+      eq(mine[0]!.course_name.length > 0, true, "carries the course");
+      eq(mine[0]!.student_name.length > 0, true, "counterpart is the student, not the business");
+      eq(mine[0]!.is_closed, false, "open");
+
+      // The second business matched but never paid, so it has no thread at all — the
+      // inbox IS the set of conversations that exist.
+      eq((await messages.listThreadsForBusiness(second.id, s.agentId)).length, 0, "no unlock, no thread");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("unread counts the student's messages, not a teammate's", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    // A second agent in the same business, to prove a colleague's reply doesn't land as
+    // unread on everyone else in the org.
+    const mateId = await makeAgentUser();
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+
+      // The unlock greeting was sent BY this business, so it is not unread for it.
+      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.unread_count, 0, "own greeting");
+
+      await messages.sendAsStudent(distId, s.studentId, "When does the February intake close?");
+      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.unread_count, 1, "student's message");
+
+      // Per-agent cursors: reading as one agent must not clear the other's badge.
+      await messages.markReadAsBusiness(distId, biz.id, s.agentId);
+      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.unread_count, 0, "cleared for me");
+      eq((await messages.listThreadsForBusiness(biz.id, mateId))[0]!.unread_count, 1, "still unread for my colleague");
+
+      // A teammate's own reply is not something the other agents have to action.
+      await messages.sendAsBusiness(distId, biz.id, mateId, "It closes on the 30th.");
+      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.unread_count, 0, "teammate's reply is not unread");
+      // ...but the student does see it as unread.
+      const studentInbox = await messages.listThreadsForStudent(s.studentId);
+      eq(studentInbox[0]!.unread_count > 0, true, "unread for the student");
+    } finally {
+      await s.cleanup();
+      await masterKnex("platform_users").where({ id: mateId }).delete();
+    }
+  });
+
+  await assert("a business cannot touch another business's thread", async () => {
+    const s = await scenario(2);
+    const [mine, theirs] = s.businesses as [{ id: number }, { id: number }];
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+      const [greeting] = await messages.listForBusiness(distId, mine.id, s.agentId);
+
+      // 404 rather than 403 throughout: a non-participant gets no confirmation the
+      // conversation exists.
+      await rejectsWith(() => messages.listForBusiness(distId, theirs.id, s.agentId), "NotFoundError", "read");
+      await rejectsWith(
+        () => messages.sendAsBusiness(distId, theirs.id, s.agentId, "poaching"),
+        "NotFoundError",
+        "send",
+      );
+      await rejectsWith(() => messages.markReadAsBusiness(distId, theirs.id, s.agentId), "NotFoundError", "read cursor");
+      await rejectsWith(
+        () => messages.toggleStarAsBusiness(greeting!.id, theirs.id, s.agentId),
+        "NotFoundError",
+        "star",
+      );
+      await rejectsWith(
+        () => messages.togglePinAsBusiness(greeting!.id, theirs.id, s.agentId),
+        "NotFoundError",
+        "pin",
+      );
+      await rejectsWith(
+        () => messages.editAsBusiness(greeting!.id, theirs.id, s.agentId, "rewritten"),
+        "NotFoundError",
+        "edit",
+      );
+      await rejectsWith(
+        () => messages.listRepliesForBusiness(greeting!.id, theirs.id, s.agentId),
+        "NotFoundError",
+        "replies",
+      );
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("an agent may only edit or delete what they wrote themselves", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    const mateId = await makeAgentUser();
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+      const mine = await messages.sendAsBusiness(distId, biz.id, s.agentId, "Happy to help with that.");
+      const studentMsg = await messages.sendAsStudent(distId, s.studentId, "Thanks!");
+
+      const edited = await messages.editAsBusiness(mine.id, biz.id, s.agentId, "Happy to help — anything else?");
+      eq(edited.body, "Happy to help — anything else?", "own message edited");
+      eq(edited.edited_at !== null, true, "and marked edited");
+
+      // Same 404-not-403 rule: being in the thread is not being the author.
+      await rejectsWith(
+        () => messages.editAsBusiness(studentMsg.id, biz.id, s.agentId, "putting words in their mouth"),
+        "NotFoundError",
+        "editing the student's message",
+      );
+      await rejectsWith(
+        () => messages.editAsBusiness(mine.id, biz.id, mateId, "not mine to edit"),
+        "NotFoundError",
+        "editing a teammate's message",
+      );
+      await rejectsWith(
+        () => messages.deleteAsBusiness(studentMsg.id, biz.id, s.agentId),
+        "NotFoundError",
+        "deleting the student's message",
+      );
+
+      await messages.deleteAsBusiness(mine.id, biz.id, s.agentId);
+      eq(
+        (await messages.listForBusiness(distId, biz.id, s.agentId)).some((m) => m.id === mine.id),
+        false,
+        "own message gone from the thread",
+      );
+    } finally {
+      await s.cleanup();
+      await masterKnex("platform_users").where({ id: mateId }).delete();
+    }
+  });
+
+  await assert("stars are private per agent; pins are shared with the student", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    const mateId = await makeAgentUser();
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+      const studentMsg = await messages.sendAsStudent(distId, s.studentId, "Do you offer scholarships?");
+
+      eq(await messages.toggleStarAsBusiness(studentMsg.id, biz.id, s.agentId), true, "starred");
+      const starred = await messages.listStarredForBusiness(biz.id, s.agentId);
+      eq(starred.length, 1, "in my starred list");
+      eq(starred[0]!.student_name.length > 0, true, "badged with the student, not the business");
+      eq(starred[0]!.sender_role, "student", "sender_role derived against the thread's student");
+      eq(starred[0]!.is_mine, false, "the student's message is not mine");
+
+      // A star is one person's bookmark — invisible to a colleague and to the student.
+      eq((await messages.listStarredForBusiness(biz.id, mateId)).length, 0, "not my colleague's star");
+      eq((await messages.listStarredForStudent(s.studentId)).length, 0, "not the student's star");
+      eq(
+        (await messages.listForBusiness(distId, biz.id, mateId)).find((m) => m.id === studentMsg.id)!.is_starred,
+        false,
+        "and not flagged for them in the thread",
+      );
+
+      // A pin, by contrast, is on the conversation: both sides see it.
+      eq(await messages.togglePinAsBusiness(studentMsg.id, biz.id, s.agentId), true, "pinned");
+      eq(
+        (await messages.listForStudent(distId, s.studentId)).find((m) => m.id === studentMsg.id)!.is_pinned,
+        true,
+        "the student sees the pin",
+      );
+    } finally {
+      await s.cleanup();
+      await masterKnex("platform_users").where({ id: mateId }).delete();
+    }
+  });
+
+  await assert("a closed thread is read-only for the business too", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+      const mine = await messages.sendAsBusiness(distId, biz.id, s.agentId, "Details attached.");
+      const [greeting] = await messages.listForBusiness(distId, biz.id, s.agentId);
+
+      await distributions.close(biz.id, distId, "Converted.", s.agentId);
+
+      await rejectsWith(() => messages.sendAsBusiness(distId, biz.id, s.agentId, "one more"), "ConflictError", "send");
+      await rejectsWith(
+        () => messages.editAsBusiness(mine.id, biz.id, s.agentId, "amended"),
+        "ConflictError",
+        "edit",
+      );
+      await rejectsWith(() => messages.deleteAsBusiness(mine.id, biz.id, s.agentId), "ConflictError", "delete");
+      await rejectsWith(
+        () => messages.togglePinAsBusiness(greeting!.id, biz.id, s.agentId),
+        "ConflictError",
+        "pin",
+      );
+      await rejectsWith(
+        () => messages.toggleReactionAsBusiness(greeting!.id, biz.id, s.agentId, "👍"),
+        "ConflictError",
+        "react",
+      );
+
+      // Reading, and private bookmarking, both survive the close.
+      eq((await messages.listForBusiness(distId, biz.id, s.agentId)).length >= 1, true, "history still readable");
+      eq(await messages.toggleStarAsBusiness(greeting!.id, biz.id, s.agentId), true, "starring still allowed");
+      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.is_closed, true, "inbox shows it closed");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("favourites are per agent and survive a reopen of the inbox", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    const mateId = await makeAgentUser();
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+
+      eq(await messages.toggleFavoriteAsBusiness(distId, biz.id, s.agentId), true, "favourited");
+      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.is_favorite, true, "shows in my inbox");
+      eq((await messages.listThreadsForBusiness(biz.id, mateId))[0]!.is_favorite, false, "not my colleague's");
+      eq(await messages.toggleFavoriteAsBusiness(distId, biz.id, s.agentId), false, "toggles back off");
+    } finally {
+      await s.cleanup();
+      await masterKnex("platform_users").where({ id: mateId }).delete();
+    }
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   await masterKnex.destroy();
   process.exit(failed > 0 ? 1 : 0);

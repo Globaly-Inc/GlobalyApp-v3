@@ -23,12 +23,21 @@ import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { BUSINESS_NAV_GROUPS } from "./const";
 import { BusinessSwitcher } from "./components/business-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
+import { cn } from "@/lib/utils";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
+
+/**
+ * Routes that render edge-to-edge under the header instead of inside SHELL_WIDTH. Chat is
+ * an app surface, not a page in the content column: it owns the whole space below the
+ * header and does its own bottom-nav math. Mirrors PersonalShell's list.
+ */
+const FULL_BLEED_ROUTES = ["/business/messages"] as const;
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const pathname = usePathname();
+  const isFullBleed = FULL_BLEED_ROUTES.some((route) => pathname?.startsWith(route)) ?? false;
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
@@ -216,8 +225,8 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
       <div className="flex flex-1">
         <PortalSidebar groups={BUSINESS_NAV_GROUPS} />
 
-        <main className="min-w-0 flex-1 py-4 md:py-6">
-          <div className={SHELL_WIDTH}>{children}</div>
+        <main className={cn("min-w-0 flex-1 overflow-x-clip", isFullBleed ? "" : "py-4 md:py-6")}>
+          {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}
         </main>
       </div>
     </div>

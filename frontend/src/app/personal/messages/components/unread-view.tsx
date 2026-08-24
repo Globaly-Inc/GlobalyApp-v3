@@ -6,9 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { markThreadRead } from "../store/messages-slice";
-import { fullStamp, initials, previewText } from "../utils";
-import { SpecialViewHeader } from "./special-view-header";
-import type { MessageThreadSummary } from "../apis/types";
+import { fullStamp, initials, previewText } from "@/components/chat/utils";
+import { SpecialViewHeader } from "@/components/chat/special-view-header";
+import type { ChatThread } from "@/components/chat/types";
 
 /**
  * The Unread shortcut — GlobalyOS V2's `UnreadView`: bordered cards, the sender's
@@ -24,7 +24,7 @@ export function UnreadView({
   threads,
   onBack,
   onOpen,
-}: Readonly<{ threads: MessageThreadSummary[]; onBack: () => void; onOpen: (distributionId: string) => void }>) {
+}: Readonly<{ threads: ChatThread[]; onBack: () => void; onOpen: (distributionId: string) => void }>) {
   const dispatch = useAppDispatch();
   const loading = useAppSelector((s) => s.messages.threadsStatus) === "loading";
   const unread = threads.filter((t) => t.unread_count > 0);
@@ -66,12 +66,12 @@ export function UnreadView({
               >
                 <div className="flex items-start gap-3">
                   <Avatar className="size-10 shrink-0">
-                    {thread.logo_url && <AvatarImage src={thread.logo_url} alt={thread.business_name} />}
-                    <AvatarFallback className="text-xs">{initials(thread.business_name)}</AvatarFallback>
+                    {thread.counterpart_avatar && <AvatarImage src={thread.counterpart_avatar} alt={thread.counterpart_name} />}
+                    <AvatarFallback className="text-xs">{initials(thread.counterpart_name)}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2 pr-8">
-                      <span className="truncate text-sm font-medium">{thread.business_name}</span>
+                      <span className="truncate text-sm font-medium">{thread.counterpart_name}</span>
                       <Badge variant="secondary" className="shrink-0 text-xs">
                         {thread.unread_count} new
                       </Badge>
@@ -89,7 +89,7 @@ export function UnreadView({
               <button
                 type="button"
                 onClick={() => dispatch(markThreadRead(thread.distribution_id))}
-                aria-label={`Mark ${thread.business_name} as read`}
+                aria-label={`Mark ${thread.counterpart_name} as read`}
                 title="Mark as read"
                 className="absolute right-2 top-2 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
               >

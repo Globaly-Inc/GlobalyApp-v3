@@ -5,14 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { fetchThreads, toggleThreadFavorite } from "../store/messages-slice";
-import { getDraftCount, getServerDraftCount, subscribeDrafts } from "../utils/draft-store";
+import { getDraftCount, getServerDraftCount, subscribeDrafts } from "@/components/chat/draft-store";
 import { ChatEmptyState } from "./chat-empty-state";
-import { ChatSidebar } from "./chat-sidebar";
+import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ConversationView } from "./conversation-view";
-import { DraftsView } from "./drafts-view";
+import { DraftsView } from "@/components/chat/drafts-view";
 import { StarredView } from "./starred-view";
 import { UnreadView } from "./unread-view";
-import type { ActiveView, ShortcutType } from "../types";
+import type { ActiveView, ShortcutType } from "@/components/chat/ui-types";
 
 /**
  * The student chat screen, laid out like GlobalyOS V2's `pages/Chat.tsx`: a fixed-width

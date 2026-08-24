@@ -1,20 +1,11 @@
-import { MessageSquare } from "lucide-react";
-import { ComingSoon } from "@/components/coming-soon";
+import { Suspense } from "react";
+import { MessagesView } from "./components/messages-view";
 
+// useSearchParams (the ?thread= deep link) needs a Suspense boundary in the App Router.
 export default function BusinessMessagesPage() {
   return (
-    <ComingSoon
-      title="Messages"
-      icon={MessageSquare}
-      description="One shared inbox for the students, agents and partners your team talks to."
-      features={[
-        "Shared team inbox with assignment",
-        "Threads linked to each enquiry",
-        "Secure document exchange",
-        "Full conversation history",
-      ]}
-      backHref="/business/portal"
-      backLabel="Back to home"
-    />
+    <Suspense fallback={null}>
+      <MessagesView />
+    </Suspense>
   );
 }

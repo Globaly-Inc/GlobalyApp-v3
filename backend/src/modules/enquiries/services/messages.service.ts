@@ -116,6 +116,50 @@ async function assertBusinessParticipant(distributionId: string, businessId: num
   return ctx;
 }
 
+/**
+ * A participant check for one thread, already bound to who is asking.
+ *
+ * The asymmetry described at the top of this file is real — a student proves membership
+ * by owning the enquiry, a business by being the distribution's business — but it is the
+ * only thing that differs between the two sides of most operations. Passing the check in
+ * as a closure keeps that difference at the call site, so `edit`, `delete`, `star`,
+ * `pin`, `react` and the thread helpers are each written once for both sides instead of
+ * twice with one line changed.
+ */
+type Guard = (distributionId: string) => Promise<ThreadContext>;
+
+const asStudent =
+  (userId: number): Guard =>
+  (distributionId) =>
+    assertStudentParticipant(distributionId, userId);
+
+const asBusiness =
+  (businessId: number): Guard =>
+  (distributionId) =>
+    assertBusinessParticipant(distributionId, businessId);
+
+/** A message in a thread the caller belongs to. Used by star/pin/react. */
+async function loadMessageThread(messageId: number, guard: Guard): Promise<ThreadContext> {
+  const message = await messagesRepo.findById(messageId);
+  if (!message) throw new NotFoundError("Message not found");
+  return guard(message.distribution_id);
+}
+
+/**
+ * A message the caller WROTE, in a thread they belong to and which is still open —
+ * the gate edit and delete share.
+ */
+async function loadOwnMessage(messageId: number, userId: number, guard: Guard): Promise<ThreadContext> {
+  const message = await messagesRepo.findById(messageId);
+  if (!message) throw new NotFoundError("Message not found");
+  const ctx = await guard(message.distribution_id);
+  assertWritable(ctx);
+  // Being in the thread is not enough — you may only edit what you wrote. 404 rather
+  // than 403, matching how a non-participant is treated: no confirmation it exists.
+  if (message.sender_id !== userId) throw new NotFoundError("Message not found");
+  return ctx;
+}
+
 function toDto(
   row: messagesRepo.EnquiryMessageRow,
   viewerUserId: number,
@@ -332,13 +376,16 @@ export async function editAsStudent(
   userId: number,
   body: string,
 ): Promise<EnquiryMessageDto> {
-  const message = await messagesRepo.findById(messageId);
-  if (!message) throw new NotFoundError("Message not found");
-  const ctx = await assertStudentParticipant(message.distribution_id, userId);
-  assertWritable(ctx);
-  // Being in the thread is not enough — you may only edit what you wrote. 404 rather
-  // than 403, matching how a non-participant is treated: no confirmation it exists.
-  if (message.sender_id !== userId) throw new NotFoundError("Message not found");
+  return editMessage(messageId, userId, body, asStudent(userId));
+}
+
+async function editMessage(
+  messageId: number,
+  userId: number,
+  body: string,
+  guard: Guard,
+): Promise<EnquiryMessageDto> {
+  const ctx = await loadOwnMessage(messageId, userId, guard);
   if (!body.trim()) throw new BadRequestError("A message can't be emptied — delete it instead");
 
   const row = await messagesRepo.updateBody(messageId, body.trim());
@@ -358,11 +405,7 @@ export async function editAsStudent(
  * erased.
  */
 export async function deleteAsStudent(messageId: number, userId: number): Promise<void> {
-  const message = await messagesRepo.findById(messageId);
-  if (!message) throw new NotFoundError("Message not found");
-  const ctx = await assertStudentParticipant(message.distribution_id, userId);
-  assertWritable(ctx);
-  if (message.sender_id !== userId) throw new NotFoundError("Message not found");
+  await loadOwnMessage(messageId, userId, asStudent(userId));
   await messagesRepo.softDelete(messageId);
 }
 
@@ -373,17 +416,26 @@ export async function deleteAsStudent(messageId: number, userId: number): Promis
  * parent (`reply_to_id || id`). Without this, a thread panel would need to recurse and a
  * reply could end up unreachable from the message it answers.
  */
-async function resolveReplyParent(messageId: number, userId: number) {
+async function resolveReplyParent(messageId: number, guard: Guard) {
   const message = await messagesRepo.findById(messageId);
   if (!message) throw new NotFoundError("Message not found");
-  const ctx = await assertStudentParticipant(message.distribution_id, userId);
+  const ctx = await guard(message.distribution_id);
   return { ctx, parentId: message.reply_to_id ?? message.id };
 }
 
 /** The replies under one message, oldest first — the thread panel's list. */
 export async function listRepliesForStudent(messageId: number, userId: number): Promise<EnquiryMessageDto[]> {
-  const { ctx, parentId } = await resolveReplyParent(messageId, userId);
-  assertUnlocked(ctx, "student");
+  return listReplies(messageId, userId, asStudent(userId), "student");
+}
+
+async function listReplies(
+  messageId: number,
+  userId: number,
+  guard: Guard,
+  side: SenderRole,
+): Promise<EnquiryMessageDto[]> {
+  const { ctx, parentId } = await resolveReplyParent(messageId, guard);
+  assertUnlocked(ctx, side);
 
   const rows = await messagesRepo.listReplies(parentId);
   if (rows.length === 0) return [];
@@ -415,8 +467,19 @@ export async function sendReplyAsStudent(
   body: string,
   attachmentPaths: string[] = [],
 ): Promise<EnquiryMessageDto> {
-  const { ctx, parentId } = await resolveReplyParent(messageId, userId);
-  assertUnlocked(ctx, "student");
+  return sendReply(messageId, userId, body, attachmentPaths, asStudent(userId), "student");
+}
+
+async function sendReply(
+  messageId: number,
+  userId: number,
+  body: string,
+  attachmentPaths: string[],
+  guard: Guard,
+  side: SenderRole,
+): Promise<EnquiryMessageDto> {
+  const { ctx, parentId } = await resolveReplyParent(messageId, guard);
+  assertUnlocked(ctx, side);
   assertWritable(ctx);
   return appendMessage(ctx, userId, body, attachmentPaths, parentId);
 }
@@ -431,11 +494,8 @@ export async function toggleReactionAsStudent(
   userId: number,
   emoji: string,
 ): Promise<boolean> {
-  const message = await messagesRepo.findById(messageId);
-  if (!message) throw new NotFoundError("Message not found");
-  const ctx = await assertStudentParticipant(message.distribution_id, userId);
   // Reacting writes to a thread both sides read, so a closed thread is read-only here too.
-  assertWritable(ctx);
+  assertWritable(await loadMessageThread(messageId, asStudent(userId)));
   return messagesRepo.toggleReaction(messageId, userId, emoji);
 }
 
@@ -444,11 +504,8 @@ export async function toggleReactionAsStudent(
  * shared: the business sees this pin too, which is how V2's pinned panel behaves.
  */
 export async function togglePinAsStudent(messageId: number, userId: number): Promise<boolean> {
-  const message = await messagesRepo.findById(messageId);
-  if (!message) throw new NotFoundError("Message not found");
-  const ctx = await assertStudentParticipant(message.distribution_id, userId);
   // A closed thread is read-only, and pinning changes what both sides see.
-  assertWritable(ctx);
+  assertWritable(await loadMessageThread(messageId, asStudent(userId)));
   return messagesRepo.togglePin(messageId, userId);
 }
 
@@ -457,9 +514,9 @@ export async function togglePinAsStudent(messageId: number, userId: number): Pro
  * the star table would be a way to probe which message ids exist.
  */
 export async function toggleStarAsStudent(messageId: number, userId: number): Promise<boolean> {
-  const message = await messagesRepo.findById(messageId);
-  if (!message) throw new NotFoundError("Message not found");
-  await assertStudentParticipant(message.distribution_id, userId);
+  // No assertWritable: a star is a private bookmark, so it stays available on a closed
+  // thread the same way reading it does.
+  await loadMessageThread(messageId, asStudent(userId));
   return messagesRepo.toggleStar(messageId, userId);
 }
 
@@ -482,6 +539,13 @@ export async function sendAsStudent(
 }
 
 // ── Business side ──
+//
+// The mirror of the student side. Every per-viewer table (thread state, stars, reactions)
+// is keyed by platform_users.id, and an agent IS a platform_user, so none of this needed a
+// migration: only the membership check differs, and that is what `asBusiness` supplies.
+//
+// Read state, favourites and stars are therefore PER AGENT, not per business — two agents
+// working the same lead each keep their own cursor and bookmarks.
 
 export async function listForBusiness(
   distributionId: string,
@@ -498,9 +562,171 @@ export async function sendAsBusiness(
   businessId: number,
   userId: number,
   body: string,
+  attachmentPaths: string[] = [],
 ): Promise<EnquiryMessageDto> {
   const ctx = await assertBusinessParticipant(distributionId, businessId);
   assertUnlocked(ctx, "business");
   assertWritable(ctx);
-  return appendMessage(ctx, userId, body);
+  return appendMessage(ctx, userId, body, attachmentPaths);
+}
+
+/** A thread in the business inbox. Counterpart is the student, not the business. */
+export interface BusinessThreadSummaryDto {
+  distribution_id: string;
+  enquiry_id: string;
+  student_name: string;
+  student_avatar: string | null;
+  course_name: string;
+  is_closed: boolean;
+  unlocked_at: string;
+  last_message_at: string | null;
+  last_message_body: string | null;
+  last_message_is_mine: boolean;
+  unread_count: number;
+  is_favorite: boolean;
+}
+
+/**
+ * This business's chat inbox: one entry per lead it has unlocked. A locked distribution
+ * has no thread, so it never appears — the list IS the set of conversations that exist.
+ */
+export async function listThreadsForBusiness(
+  businessId: number,
+  viewerUserId: number,
+): Promise<BusinessThreadSummaryDto[]> {
+  const rows = await messagesRepo.listThreadsForBusiness(businessId, viewerUserId);
+  return Promise.all(
+    rows.map(async (r) => ({
+      distribution_id: r.distribution_id,
+      enquiry_id: r.enquiry_id,
+      student_name: r.student_name,
+      // platform_users.photo_url is a storage path, not a URL — same signing as elsewhere.
+      student_avatar: await storage.resolvePreviewUrl(r.student_photo_url),
+      course_name: r.course_name,
+      is_closed: r.status === "closed",
+      unlocked_at: new Date(r.unlocked_at).toISOString(),
+      last_message_at: r.last_message_at ? new Date(r.last_message_at).toISOString() : null,
+      last_message_body: r.last_message_body,
+      // The lateral yields NULL for a thread with no messages, not false.
+      last_message_is_mine: r.last_message_is_mine ?? false,
+      unread_count: r.unread_count,
+      is_favorite: r.favorited_at != null,
+    })),
+  );
+}
+
+export async function markReadAsBusiness(
+  distributionId: string,
+  businessId: number,
+  userId: number,
+): Promise<void> {
+  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  assertUnlocked(ctx, "business");
+  await messagesRepo.markThreadRead(distributionId, userId);
+}
+
+export async function toggleFavoriteAsBusiness(
+  distributionId: string,
+  businessId: number,
+  userId: number,
+): Promise<boolean> {
+  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  assertUnlocked(ctx, "business");
+  return messagesRepo.toggleFavorite(distributionId, userId);
+}
+
+export interface BusinessStarredMessageDto extends EnquiryMessageDto {
+  distribution_id: string;
+  student_name: string;
+  course_name: string;
+}
+
+/** Every message this agent starred, across the business's threads, newest star first. */
+export async function listStarredForBusiness(
+  businessId: number,
+  userId: number,
+): Promise<BusinessStarredMessageDto[]> {
+  const rows = await messagesRepo.listStarredForBusiness(businessId, userId);
+  return Promise.all(
+    rows.map(async (r) => ({
+      // student_id comes from the row, not from the viewer: on this side the viewer is a
+      // business agent, so sender_role has to be decided against the thread's student —
+      // otherwise a teammate's message would read as the student's.
+      ...toDto(
+        r,
+        userId,
+        r.student_id,
+        await storage.resolvePreviewUrl(r.sender_photo_url),
+        true,
+        await media.withViewUrls(r.attachments),
+      ),
+      distribution_id: r.distribution_id,
+      student_name: r.student_name,
+      course_name: r.course_name,
+    })),
+  );
+}
+
+export async function editAsBusiness(
+  messageId: number,
+  businessId: number,
+  userId: number,
+  body: string,
+): Promise<EnquiryMessageDto> {
+  return editMessage(messageId, userId, body, asBusiness(businessId));
+}
+
+export async function deleteAsBusiness(
+  messageId: number,
+  businessId: number,
+  userId: number,
+): Promise<void> {
+  await loadOwnMessage(messageId, userId, asBusiness(businessId));
+  await messagesRepo.softDelete(messageId);
+}
+
+export async function listRepliesForBusiness(
+  messageId: number,
+  businessId: number,
+  userId: number,
+): Promise<EnquiryMessageDto[]> {
+  return listReplies(messageId, userId, asBusiness(businessId), "business");
+}
+
+export async function sendReplyAsBusiness(
+  messageId: number,
+  businessId: number,
+  userId: number,
+  body: string,
+  attachmentPaths: string[] = [],
+): Promise<EnquiryMessageDto> {
+  return sendReply(messageId, userId, body, attachmentPaths, asBusiness(businessId), "business");
+}
+
+export async function toggleReactionAsBusiness(
+  messageId: number,
+  businessId: number,
+  userId: number,
+  emoji: string,
+): Promise<boolean> {
+  assertWritable(await loadMessageThread(messageId, asBusiness(businessId)));
+  return messagesRepo.toggleReaction(messageId, userId, emoji);
+}
+
+export async function togglePinAsBusiness(
+  messageId: number,
+  businessId: number,
+  userId: number,
+): Promise<boolean> {
+  assertWritable(await loadMessageThread(messageId, asBusiness(businessId)));
+  return messagesRepo.togglePin(messageId, userId);
+}
+
+export async function toggleStarAsBusiness(
+  messageId: number,
+  businessId: number,
+  userId: number,
+): Promise<boolean> {
+  await loadMessageThread(messageId, asBusiness(businessId));
+  return messagesRepo.toggleStar(messageId, userId);
 }

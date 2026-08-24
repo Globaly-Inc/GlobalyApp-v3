@@ -1,8 +1,14 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPostNoContent } from "@/lib/api/http";
-import type { EnquiryMessage, MessageAttachment, MessageThreadSummary, StarredMessage } from "./types";
+import type { ChatThread, EnquiryMessage, MessageAttachment, StarredMessage, StarredWire, ThreadWire } from "./types";
+import { toChatThread, toStarredMessage } from "./types";
 
 export const messagesRealApi = {
-  listThreads: (): Promise<{ threads: MessageThreadSummary[] }> => httpGet("/enquiry-messages"),
+  // Mapped at the boundary: the wire names the counterpart `business_name`, the kit's
+  // components read `counterpart_name`.
+  listThreads: async (): Promise<{ threads: ChatThread[] }> => {
+    const { threads } = await httpGet<{ threads: ThreadWire[] }>("/enquiry-messages");
+    return { threads: threads.map(toChatThread) };
+  },
 
   getMessages: (distributionId: string): Promise<{ messages: EnquiryMessage[] }> =>
     httpGet(`/enquiry-messages/${distributionId}`),
@@ -27,7 +33,10 @@ export const messagesRealApi = {
   toggleFavorite: (distributionId: string): Promise<{ is_favorite: boolean }> =>
     httpPost(`/enquiry-messages/${distributionId}/favorite`, {}),
 
-  listStarred: (): Promise<{ messages: StarredMessage[] }> => httpGet("/enquiry-messages/starred"),
+  listStarred: async (): Promise<{ messages: StarredMessage[] }> => {
+    const { messages } = await httpGet<{ messages: StarredWire[] }>("/enquiry-messages/starred");
+    return { messages: messages.map(toStarredMessage) };
+  },
 
   toggleStar: (messageId: number): Promise<{ is_starred: boolean }> =>
     httpPost(`/enquiry-messages/stars/${messageId}`, {}),

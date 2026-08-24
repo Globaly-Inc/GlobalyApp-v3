@@ -10,13 +10,15 @@ import {
   deleteMessage,
   editMessage,
   fetchThreadReplies,
+  sendThreadMessage,
   sendThreadReply,
   toggleMessageReaction,
   toggleMessageStar,
 } from "../store/messages-slice";
-import { MessageComposer } from "./message-composer";
-import { MessageRow } from "./message-row";
-import type { EnquiryMessage } from "../apis/types";
+import { messagesApi } from "../apis";
+import { MessageComposer } from "@/components/chat/message-composer";
+import { MessageRow } from "@/components/chat/message-row";
+import type { EnquiryMessage } from "@/components/chat/types";
 
 /**
  * The right-hand Thread panel — GlobalyOS V2's `ThreadView`: the parent message at the
@@ -48,6 +50,7 @@ export function ThreadPanel({
   // The parent of a thread is always a top-level message, so this key matches what the
   // server groups replies under.
   const parentId = parent.reply_to_id ?? parent.id;
+  const threads = useAppSelector((s) => s.messages.threads);
   const replies = useAppSelector((s) => s.messages.repliesByParent[parentId]) ?? [];
   const status = useAppSelector((s) => s.messages.repliesStatus[parentId]) ?? "idle";
 
@@ -93,6 +96,11 @@ export function ThreadPanel({
 
   /** Every row here gets the same toolbar as the main list, minus the reply affordance —
    *  you are already inside the thread, and threads are one level deep. */
+  const handleForward = async (toDistributionId: string, body: string): Promise<boolean> => {
+    const result = await dispatch(sendThreadMessage({ distributionId: toDistributionId, body }));
+    return !sendThreadMessage.rejected.match(result);
+  };
+
   const rowActions = (message: EnquiryMessage) => ({
     canPin: false,
     canReact: canReply,
@@ -103,6 +111,10 @@ export function ThreadPanel({
     onToggleReaction: (emoji: string) => void react(message.id, emoji),
     onEdit: (body: string) => handleEdit(message.id, body),
     onDelete: () => void handleDelete(message.id),
+    // Forwarding out of a thread targets the inbox's other conversations, same as from
+    // the main list.
+    forwardThreads: threads,
+    onForward: handleForward,
   });
 
   return (
@@ -159,9 +171,10 @@ export function ThreadPanel({
              persistDraft=false: a thread reply is not a conversation, so it must not
              appear in the Drafts shortcut. */
           <MessageComposer
+            onUploadAttachment={messagesApi.uploadAttachment}
             key={`thread-${parentId}`}
             distributionId={distributionId}
-            businessName=""
+            counterpartName=""
             placeholder="Reply…"
             persistDraft={false}
             compact

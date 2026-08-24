@@ -11,6 +11,7 @@ import { businessOnboardingReducer } from "@/app/business/store/business-onboard
 import { businessProfileDetailReducer } from "@/app/business/profile/store/business-profile-detail-slice"
 import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enquiries/store/enquiries-slice"
 import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
+import { businessMessagesReducer } from "@/app/business/messages/store/business-messages-slice"
 import { businessEnquiriesReducer } from "@/app/business/enquiries/store/business-enquiries-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
@@ -51,6 +52,7 @@ const appReducer = combineReducers({
     businessProfileDetail: businessProfileDetailReducer,
     enquiries: personalEnquiriesReducer,
     messages: messagesReducer,
+    businessMessages: businessMessagesReducer,
     businessEnquiries: businessEnquiriesReducer,
     admin: adminReducer,
     overview: overviewReducer,

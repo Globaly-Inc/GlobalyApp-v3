@@ -7,6 +7,6 @@ export type {
   EnquiryMessage,
   MessageAttachment,
   MessageReaction,
-  MessageThreadSummary,
+  ChatThread,
   StarredMessage,
 } from "./types";

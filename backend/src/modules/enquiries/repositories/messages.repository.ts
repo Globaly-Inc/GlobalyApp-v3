@@ -243,6 +243,79 @@ export async function listThreadsForStudent(studentId: number): Promise<ThreadSu
     ) as unknown as Promise<ThreadSummaryRow[]>;
 }
 
+export interface BusinessThreadSummaryRow
+  extends Omit<ThreadSummaryRow, "business_name" | "logo_url"> {
+  /** The counterpart is the student here, so the row names them instead of the business. */
+  student_name: string;
+  /** Raw storage path on platform_users — the service signs it. */
+  student_photo_url: string | null;
+}
+
+/**
+ * Every thread this business has, newest activity first — the inbox behind
+ * /business/messages. Mirror of listThreadsForStudent with two deliberate differences:
+ *
+ *  - The counterpart is the student, so the row carries their name and photo.
+ *  - `unread_count` counts messages FROM THE STUDENT, not "not mine". A colleague's
+ *    reply is not something this agent has to action, and counting it would leave every
+ *    agent in the business with a permanently unread inbox whenever a teammate answers.
+ *    That matches the student's own definition, which counts the other side's messages.
+ *
+ * Read state is still per agent (enquiry_thread_states is keyed by user_id), so two
+ * agents each have their own cursor over the same thread.
+ */
+export async function listThreadsForBusiness(
+  businessId: number,
+  viewerUserId: number,
+): Promise<BusinessThreadSummaryRow[]> {
+  const unread = masterKnex.raw(
+    `(select count(*) from ${T} m
+        where m.distribution_id = d.id
+          and m.deleted_at is null
+          and m.sender_id = e.student_id
+          and (ts.last_read_at is null or m.created_at > ts.last_read_at))::int as unread_count`,
+  );
+
+  return masterKnex("enquiry_distributions as d")
+    .join("enquiries as e", "e.id", "d.enquiry_id")
+    .join("platform_users as s", "s.id", "e.student_id")
+    .join("superadmin.extraction_courses as c", "c.id", "e.course_id")
+    .joinRaw(
+      `left join lateral (
+         select lm.body, lm.sender_id, lm.created_at
+           from ${T} lm
+          where lm.distribution_id = d.id
+            and lm.deleted_at is null
+          order by lm.created_at desc
+          limit 1
+       ) lastmsg on true`,
+    )
+    .leftJoin("enquiry_thread_states as ts", (join) =>
+      join.on("ts.distribution_id", "d.id").andOn("ts.user_id", masterKnex.raw("?", [viewerUserId])),
+    )
+    .where("d.business_id", businessId)
+    .whereNotNull("d.unlocked_at")
+    .whereNull("d.deleted_at")
+    .whereNull("e.deleted_at")
+    .orderByRaw("coalesce(lastmsg.created_at, d.unlocked_at) desc")
+    .select(
+      "d.id as distribution_id",
+      "e.id as enquiry_id",
+      "d.status",
+      "d.unlocked_at",
+      "s.photo_url as student_photo_url",
+      "c.name as course_name",
+      "ts.favorited_at",
+      masterKnex.raw(`${fullName("s")} as student_name`),
+      masterKnex.raw("lastmsg.created_at as last_message_at"),
+      masterKnex.raw("lastmsg.body as last_message_body"),
+      // This agent's own message, not "our side's" — a teammate's reply must not render
+      // as "You: …" in the preview line.
+      masterKnex.raw("(lastmsg.sender_id = ?) as last_message_is_mine", [viewerUserId]),
+      unread,
+    ) as unknown as Promise<BusinessThreadSummaryRow[]>;
+}
+
 // ── Per-viewer thread state: read position + Favorites (enquiry_thread_states) ──
 //
 // One upsert helper rather than one per column: both writes are "remember this
@@ -374,4 +447,44 @@ export async function listStarredForStudent(userId: number): Promise<StarredMess
     .select("st.created_at as starred_at", "b.business_name", "c.name as course_name") as unknown as Promise<
     StarredMessageRow[]
   >;
+}
+
+export interface BusinessStarredMessageRow extends Omit<StarredMessageRow, "business_name"> {
+  /** Counterpart label, as in listThreadsForBusiness: the student, not the business. */
+  student_name: string;
+  /**
+   * The thread's student. Carried per row because sender_role is derived by comparing
+   * against it — without it a teammate's message would be indistinguishable from the
+   * student's, since neither is the viewer's own.
+   */
+  student_id: number;
+}
+
+/**
+ * Every message this agent has starred, newest star first — the business Starred view.
+ *
+ * Scoped to `businessId` as well as the star's own user_id: stars are keyed by user
+ * alone, so an agent who also belongs to another business must not see that business's
+ * threads leak into this one's view.
+ */
+export async function listStarredForBusiness(
+  businessId: number,
+  userId: number,
+): Promise<BusinessStarredMessageRow[]> {
+  return messageQuery()
+    .join(`${STARS} as st`, "st.message_id", "m.id")
+    .join("enquiry_distributions as d", "d.id", "m.distribution_id")
+    .join("enquiries as e", "e.id", "d.enquiry_id")
+    .join("platform_users as s", "s.id", "e.student_id")
+    .join("superadmin.extraction_courses as c", "c.id", "e.course_id")
+    .where("st.user_id", userId)
+    .where("d.business_id", businessId)
+    .whereNull("m.deleted_at")
+    .orderBy("st.created_at", "desc")
+    .select(
+      "st.created_at as starred_at",
+      "c.name as course_name",
+      "e.student_id",
+      masterKnex.raw(`${fullName("s")} as student_name`),
+    ) as unknown as Promise<BusinessStarredMessageRow[]>;
 }
