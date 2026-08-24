@@ -55,11 +55,12 @@ export function ProfileView() {
 
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
+  const isInstitution = authUser?.user_category === "institution";
 
   useEffect(() => {
     if (initializing) return;
-    if (isBusiness) router.replace("/business/profile");
-  }, [initializing, isBusiness, router]);
+    if (isBusiness || isInstitution) router.replace("/business/profile");
+  }, [initializing, isBusiness, isInstitution, router]);
 
   const [personalOpen, setPersonalOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -87,7 +88,7 @@ export function ProfileView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!profile || initializing || isBusiness) {
+  if (!profile || initializing || isBusiness || isInstitution) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

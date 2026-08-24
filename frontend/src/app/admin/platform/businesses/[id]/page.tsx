@@ -1,6 +1,6 @@
-import { BusinessDetailView } from "../components/business-detail-view";
+import { BusinessOrInstitutionDetailView } from "../components/business-or-institution-detail-view";
 
 export default async function AdminBusinessDetailPage({ params }: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = await params;
-  return <BusinessDetailView id={Number(id)} />;
+  return <BusinessOrInstitutionDetailView id={Number(id)} />;
 }

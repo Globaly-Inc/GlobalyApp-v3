@@ -25,3 +25,8 @@ export type AcceptInstitutionClaimResult = {
   email: string | null;
   institution_name: string;
 };
+
+export type AcceptInstitutionMemberInviteResult = {
+  message: string;
+  org_id: string;
+};

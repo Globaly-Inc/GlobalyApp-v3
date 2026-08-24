@@ -71,6 +71,104 @@ export type BusinessDetail = Business & {
   enquiry_max_distributions: number;
 };
 
+export type InstitutionDetail = {
+  kind: "institution";
+  id: number;
+  business_name: string;
+  subdomain: string;
+  business_type: string | null;
+  description: string | null;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+  status: BusinessStatus;
+  claim_status: BusinessClaimStatus;
+  is_published: boolean;
+  country_id: number | null;
+  country_name: string | null;
+  state: string | null;
+  city: string | null;
+  address: string | null;
+  postcode: string | null;
+  logo_url: string | null;
+  cover_url: string | null;
+  linkedin_url: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  youtube_url: string | null;
+  whatsapp_url: string | null;
+  gallery_images: string[] | null;
+  video_urls: string[] | null;
+  account_status: number;
+  created_at: string;
+  updated_at: string;
+  verified_at: string | null;
+  owner_id: number | null;
+  is_unclaimed: boolean;
+  business_category_id: number | null;
+  category_name: string | null;
+  owner_first_name: string | null;
+  owner_last_name: string | null;
+  owner_email: string | null;
+  source_job_id: string | null;
+};
+
+export type InstitutionPatch = Partial<{
+  business_name: string;
+  description: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  country_id: number | null;
+  state: string | null;
+  city: string | null;
+  address: string | null;
+  postcode: string | null;
+}>;
+
+/** A subset of `extraction_courses` columns — the institution's courses if it was promoted from
+ *  an extraction job (source_job_id), read-only here (editing happens in the extraction admin). */
+export type InstitutionCourse = {
+  id: string;
+  name: string;
+  degree_level: string | null;
+  subject_area: string | null;
+  duration_weeks: number | null;
+  study_mode: string | null;
+  domestic_fee_total: number | null;
+  domestic_currency: string | null;
+  verification_status: string | null;
+  source_url: string | null;
+};
+
+export type InstitutionCourseListParams = { search?: string; page?: number; limit?: number };
+
+export type InstitutionCourseListResult = { data: InstitutionCourse[]; total: number };
+
+export type InstitutionInviteInput = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string | null;
+  role: string;
+};
+
+export type InstitutionInvitation = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  phone: string | null;
+  role: string | null;
+  invited_at: string;
+  expires_at: string;
+};
+
+export type InstitutionInvitationListParams = { page?: number; limit?: number };
+
+export type InstitutionInvitationListResult = { data: InstitutionInvitation[]; total: number };
+
 export type EnquirySettingsPatch = Partial<{
   enquiry_enabled: boolean;
   enquiry_coin_cost: number;

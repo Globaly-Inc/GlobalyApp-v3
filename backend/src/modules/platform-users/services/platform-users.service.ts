@@ -33,8 +33,9 @@ export async function getProfile(userId: number) {
     repo.listWorkExperiences(userId),
   ]);
 
-  let user_category: "business" | "personal" | null = null;
+  let user_category: "business" | "institution" | "personal" | null = null;
   if (user.is_business_account) user_category = "business";
+  else if (user.is_institution_account) user_category = "institution";
   else if (user.is_personal_account) user_category = "personal";
 
   const [photo_url, cover_url] = await Promise.all([

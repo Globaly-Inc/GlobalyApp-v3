@@ -22,18 +22,11 @@ import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
 import { NAV_LINKS } from "../const/index";
 
-/**
- * Where a signed-in user's own profile lives.
- *
- * `user_category` is NOT a usable signal: getMe() and verifyOtp() both hardcode it to null (see
- * auth/apis/real-api.ts), so every branch keyed on it is dead and this function used to fall through to "/"
- * for every platform user — sending them back to the marketing page they just clicked away from. `type` is
- * the field that actually carries a value.
- */
+/** Where a signed-in user's own profile lives. */
 function profileHref(user: AuthUser | null): string {
   if (!user) return "/";
   if (user.type === "admin") return "/admin/overview";
-  if (user.user_category === "business") return "/business/profile";
+  if (user.user_category === "business" || user.user_category === "institution") return "/business/profile";
   return "/personal/profile";
 }
 

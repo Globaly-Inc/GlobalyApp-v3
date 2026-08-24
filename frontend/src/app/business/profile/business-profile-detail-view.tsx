@@ -44,23 +44,28 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
 
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
-  const tab = parseTab(searchParams.get("tab"));
+  const isInstitution = authUser?.user_category === "institution";
+  // Institutions have no Branches/Partners/Services/Scholarships/Activity tenant tables —
+  // only the profile tab applies, regardless of what ?tab= says.
+  const tab = isInstitution ? "profile" : parseTab(searchParams.get("tab"));
 
   useEffect(() => {
     if (initializing) return;
     if (!authUser) router.replace("/auth/sign-in");
     else if (authUser.type === "admin") router.replace("/admin/overview");
-    else if (!isBusiness) router.replace("/personal/profile");
-  }, [initializing, authUser, isBusiness, router]);
+    else if (!isBusiness && !isInstitution) router.replace("/personal/profile");
+  }, [initializing, authUser, isBusiness, isInstitution, router]);
 
   const switchedRef = useRef(false);
   useEffect(() => {
-    if (initializing || !isBusiness || switchedRef.current) return;
-    const target = authUser?.businesses.find((b) => b.id === businessId);
+    if (initializing || (!isBusiness && !isInstitution) || switchedRef.current) return;
+    const target = isBusiness
+      ? authUser?.businesses.find((b) => b.id === businessId)
+      : authUser?.institutions.find((i) => i.id === businessId);
     if (!target) return;
     switchedRef.current = true;
     if (target.org_id === authUser?.orgId) {
-      // Already in the right business context — BusinessShell has already fetched this profile.
+      // Already in the right org context — BusinessShell has already fetched this profile.
       setContextReady(true);
       return;
     }
@@ -71,15 +76,15 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         dispatch(fetchMyProfile());
       })
       .catch((e: Error) => toast.error("Couldn't switch to this business", { description: e.message }));
-  }, [initializing, isBusiness, authUser, businessId, dispatch]);
+  }, [initializing, isBusiness, isInstitution, authUser, businessId, dispatch]);
 
   useEffect(() => {
-    if (!isBusiness) return;
+    if (!isBusiness && !isInstitution) return;
     geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isBusiness]);
+  }, [isBusiness, isInstitution]);
 
-  if (initializing || !isBusiness || !contextReady || !profile) {
+  if (initializing || (!isBusiness && !isInstitution) || !contextReady || !profile) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

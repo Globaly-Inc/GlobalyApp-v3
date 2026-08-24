@@ -1,7 +1,9 @@
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, EnquirySettingsPatch, LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
+  BusinessService, EnquirySettingsPatch, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPatch,
+  LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult, ListingRef,} from "./types";
@@ -121,6 +123,54 @@ const mockBusinesses: BusinessDetail[] = [
   },
 ];
 
+const mockInstitutions: InstitutionDetail[] = [
+  {
+    kind: "institution", id: 1, business_name: "Global Study Institute", subdomain: "gsi", business_type: "university",
+    description: "A leading study destination institute.", website: "https://gsi.edu",
+    email: "admissions@gsi.edu", phone: "+1 604 555 0110", status: "unverified", claim_status: "unclaimed",
+    is_published: false, country_id: 3, country_name: "Canada", state: "British Columbia", city: "Vancouver",
+    address: "100 Institute Way", postcode: "V6B 1A1", logo_url: null, cover_url: null,
+    linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null, youtube_url: null, whatsapp_url: null,
+    gallery_images: [], video_urls: [], account_status: 1, created_at: "2026-05-20T09:00:00Z", updated_at: "2026-05-20T09:00:00Z",
+    verified_at: null, owner_id: null, is_unclaimed: true, business_category_id: null, category_name: "Institutions",
+    owner_first_name: null, owner_last_name: null, owner_email: null, source_job_id: "mock-job-1",
+  },
+];
+
+const mockInstitutionCourses: Record<string, InstitutionCourse[]> = {
+  "mock-job-1": [
+    {
+      id: "course-1", name: "Bachelor of Computer Science", degree_level: "Bachelor", subject_area: "Computer Science",
+      duration_weeks: 156, study_mode: "Full-time", domestic_fee_total: 28000, domestic_currency: "CAD",
+      verification_status: "verified", source_url: "https://gsi.edu/courses/bcs",
+    },
+    {
+      id: "course-2", name: "Master of Business Administration", degree_level: "Master", subject_area: "Business",
+      duration_weeks: 104, study_mode: "Full-time", domestic_fee_total: 42000, domestic_currency: "CAD",
+      verification_status: "unverified", source_url: null,
+    },
+  ],
+};
+
+const mockInstitutionInvitations: Record<number, InstitutionInvitation[]> = {
+  1: [
+    {
+      id: "invite-1", first_name: "Jordan", last_name: "Lee", email: "jordan@gsi.edu", phone: null, role: "member",
+      invited_at: "2026-08-20T09:00:00Z", expires_at: "2026-08-23T09:00:00Z",
+    },
+  ],
+};
+
+const mockInstitutionMembers: Record<number, Member[]> = {
+  1: [
+    {
+      id: 1, platform_user_id: 10, is_owner: true, account_status: 1, admin_point_of_contact: false, created_at: "2026-05-20T09:00:00Z",
+      role_name: "owner", role_display_name: null,
+      user: { id: 10, first_name: "Priya", last_name: "Nair", email: "priya@gsi.edu", phone: null, photo_url: null },
+    },
+  ],
+};
+
 function applyFilters(rows: Business[], params: BusinessListParams): Business[] {
   let out = rows;
   if (params.search) {
@@ -216,6 +266,85 @@ export const businessesMockApi = {
     const b = mockBusinesses.find((x) => x.id === id);
     if (!b) throw new Error("Business not found");
     return b;
+  },
+  getInstitutionDetail: async (id: number): Promise<InstitutionDetail> => {
+    console.log("[mock] GET /admin/platform/institutions/:id", id);
+    await delay(200);
+    const inst = mockInstitutions.find((x) => x.id === id);
+    if (!inst) throw new Error("Institution not found");
+    return inst;
+  },
+  updateInstitution: async (id: number, patch: InstitutionPatch): Promise<InstitutionDetail> => {
+    console.log("[mock] PATCH /admin/platform/institutions/:id", id, patch);
+    await delay(200);
+    const inst = mockInstitutions.find((x) => x.id === id);
+    if (!inst) throw new Error("Institution not found");
+    Object.assign(inst, patch, { updated_at: new Date().toISOString() });
+    return inst;
+  },
+  getInstitutionMembers: async (id: number, params: MemberListParams = {}): Promise<MemberListResult> => {
+    console.log("[mock] GET /admin/platform/institutions/:id/members", id);
+    await delay(150);
+    let items = mockInstitutionMembers[id] ?? [];
+    if (params.search) {
+      const q = params.search.toLowerCase();
+      items = items.filter((m) =>
+        `${m.user?.first_name ?? ""} ${m.user?.last_name ?? ""}`.toLowerCase().includes(q)
+        || (m.user?.email ?? "").toLowerCase().includes(q),
+      );
+    }
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const start = (page - 1) * limit;
+    return { data: items.slice(start, start + limit), total: items.length };
+  },
+  getInstitutionCourses: async (id: number, params: InstitutionCourseListParams = {}): Promise<InstitutionCourseListResult> => {
+    console.log("[mock] GET /admin/platform/institutions/:id/courses", id);
+    await delay(150);
+    const inst = mockInstitutions.find((x) => x.id === id);
+    let items = inst?.source_job_id ? (mockInstitutionCourses[inst.source_job_id] ?? []) : [];
+    if (params.search) items = items.filter((c) => c.name.toLowerCase().includes(params.search!.toLowerCase()));
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const start = (page - 1) * limit;
+    return { data: items.slice(start, start + limit), total: items.length };
+  },
+  inviteInstitutionMember: async (id: number, input: InstitutionInviteInput): Promise<{ id: string; email: string; status: string }> => {
+    console.log("[mock] POST /admin/platform/institutions/:id/invite", id, input);
+    await delay(200);
+    const invitation: InstitutionInvitation = {
+      id: uuid(), first_name: input.first_name, last_name: input.last_name, email: input.email,
+      phone: input.phone ?? null, role: input.role,
+      invited_at: new Date().toISOString(), expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    };
+    mockInstitutionInvitations[id] = [invitation, ...(mockInstitutionInvitations[id] ?? [])];
+    return { id: invitation.id, email: input.email, status: "pending" };
+  },
+  getInstitutionInvitations: async (id: number, params: InstitutionInvitationListParams = {}): Promise<InstitutionInvitationListResult> => {
+    console.log("[mock] GET /admin/platform/institutions/:id/invitations", id);
+    await delay(150);
+    const items = mockInstitutionInvitations[id] ?? [];
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const start = (page - 1) * limit;
+    return { data: items.slice(start, start + limit), total: items.length };
+  },
+  cancelInstitutionInvitation: async (id: number, invitationId: string): Promise<void> => {
+    console.log("[mock] DELETE /admin/platform/institutions/:id/invitations/:invitationId", id, invitationId);
+    await delay(150);
+    mockInstitutionInvitations[id] = (mockInstitutionInvitations[id] ?? []).filter((i) => i.id !== invitationId);
+  },
+  resendInstitutionInvitation: async (id: number, invitationId: string): Promise<void> => {
+    console.log("[mock] POST /admin/platform/institutions/:id/invitations/:invitationId/resend", id, invitationId);
+    await delay(150);
+    const invite = (mockInstitutionInvitations[id] ?? []).find((i) => i.id === invitationId);
+    if (invite) invite.expires_at = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  },
+  setInstitutionMemberStatus: async (id: number, platformUserId: number, accountStatus: number): Promise<void> => {
+    console.log("[mock] PATCH /admin/platform/institutions/:id/members/:platformUserId/status", id, platformUserId, accountStatus);
+    await delay(150);
+    const member = (mockInstitutionMembers[id] ?? []).find((m) => m.platform_user_id === platformUserId);
+    if (member) member.account_status = accountStatus;
   },
   updateBusiness: async (id: number, patch: BusinessPatch): Promise<BusinessDetail> => {
     console.log("[mock] PATCH /admin/platform/businesses/:id", id, patch);

@@ -17,7 +17,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ensureBusinessContext } from "@/lib/api/http";
 import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
 import { authApi } from "@/app/auth/apis";
-import type { AuthMeBusiness } from "@/app/auth/apis";
+import type { AuthMeBusiness, AuthMeInstitution } from "@/app/auth/apis";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { BUSINESS_NAV_GROUPS } from "./const";
@@ -33,6 +33,26 @@ const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
  * header and does its own bottom-nav math. Mirrors PersonalShell's list.
  */
 const FULL_BLEED_ROUTES = ["/business/messages"] as const;
+// Institution accounts act as businesses throughout this shell — they never have any
+// `businesses[]` rows, so their institutions stand in wherever a business list is needed.
+function institutionsAsBusinesses(institutions: AuthMeInstitution[]): AuthMeBusiness[] {
+  return institutions.map((inst) => ({
+    id: inst.id,
+    org_id: inst.org_id,
+    business_name: inst.institution_name,
+    subdomain: inst.subdomain,
+    logo_url: inst.logo_url,
+    owner_id: 0,
+    role: inst.role,
+    is_owner: inst.is_owner,
+  }));
+}
+
+// Branches/Team/Services/Scholarships are tenant features institutions don't have —
+// only the profile tab (and unrelated top-level groups) apply to them.
+const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) =>
+  group.label === "Business" ? { ...group, items: group.items.slice(0, 1) } : group,
+);
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
@@ -48,6 +68,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   // races the switch and 403s.
   const [contextReady, setContextReady] = useState(false);
   const [businesses, setBusinesses] = useState<AuthMeBusiness[]>([]);
+  const [isInstitution, setIsInstitution] = useState(false);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
   // that has since moved on (e.g. after a back/forward navigation) — `status`/`profile` in that cached
@@ -61,6 +82,12 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     ensureBusinessContext()
       .catch(() => false)
       .then(() => (active ? authApi.listMyBusinesses().catch(() => []) : []))
+      .then(async (list) => {
+        if (!active || list.length > 0) return list;
+        const institutions = await authApi.listMyInstitutions().catch(() => []);
+        if (institutions.length > 0) setIsInstitution(true);
+        return institutionsAsBusinesses(institutions);
+      })
       .then((list) => {
         if (!active) return;
         setBusinesses(list);
@@ -223,7 +250,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
       </header>
 
       <div className="flex flex-1">
-        <PortalSidebar groups={BUSINESS_NAV_GROUPS} />
+        <PortalSidebar groups={isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS} />
 
         <main className={cn("min-w-0 flex-1 overflow-x-clip", isFullBleed ? "" : "py-4 md:py-6")}>
           {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}

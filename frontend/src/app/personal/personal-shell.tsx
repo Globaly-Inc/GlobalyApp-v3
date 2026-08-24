@@ -46,7 +46,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
 
   const portalTarget = !mounted
     ? null
-    : profile?.user_category === "business"
+    : profile?.user_category === "business" || profile?.user_category === "institution"
       ? { label: "Business Portal", icon: Building2, href: "/business/profile" }
       : { label: "Switch to Business", icon: Building2, href: "/business/onboarding" };
 

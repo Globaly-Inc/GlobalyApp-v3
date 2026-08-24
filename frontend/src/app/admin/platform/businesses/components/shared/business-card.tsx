@@ -58,12 +58,14 @@ export function BusinessCard({
     toast.success("Subdomain copied");
   };
 
+  const detailPath = `/admin/platform/businesses/${b.id}`;
+
   const copyLink = async () => {
-    await navigator.clipboard.writeText(`${window.location.origin}/admin/platform/businesses/${b.id}`);
+    await navigator.clipboard.writeText(`${window.location.origin}${detailPath}`);
     toast.success("Link copied");
   };
 
-  const viewServices = () => router.push(`/admin/platform/businesses/${b.id}?tab=services`);
+  const viewServices = () => router.push(`${detailPath}?tab=services`);
 
   return (
     <Card className={cn("transition-shadow hover:shadow-md", selected && "ring-2 ring-primary")}>
@@ -176,9 +178,11 @@ export function BusinessCard({
             <Button size="icon" variant="ghost" className="h-8 w-8 cursor-pointer" title="Copy link" onClick={copyLink}>
               <Link2 className="h-3.5 w-3.5" />
             </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8 cursor-pointer" title="View services" onClick={viewServices}>
-              <Briefcase className="h-3.5 w-3.5" />
-            </Button>
+            {b.kind !== "institution" && (
+              <Button size="icon" variant="ghost" className="h-8 w-8 cursor-pointer" title="View services" onClick={viewServices}>
+                <Briefcase className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

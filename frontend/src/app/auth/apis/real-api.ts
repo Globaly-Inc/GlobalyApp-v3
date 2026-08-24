@@ -1,9 +1,16 @@
 import { httpGet, httpPatch, httpPost, runExclusiveSwitch } from "@/lib/api/http";
 import { getRefreshToken, saveAccessToken, saveTokens } from "@/lib/session";
 import type {
-  AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthMeUser, AuthUser, SendOtpParams,
+  AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthMeInstitution, AuthMeUser, AuthUser, SendOtpParams,
   SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
 } from "./types";
+
+function resolveUserCategory(user: AuthMeUser): AuthUser["user_category"] {
+  if (user.is_business_account) return "business";
+  if (user.is_institution_account) return "institution";
+  if (user.is_personal_account) return "personal";
+  return null;
+}
 
 export const authRealApi = {
   sendOtp: ({ email }: SendOtpParams): Promise<void> =>
@@ -22,7 +29,7 @@ export const authRealApi = {
       user: { id: number; email: string; type: AuthUser["type"]; role: string | null };
     }>("/auth/verify-otp", { email: email.trim().toLowerCase(), otp: otp.trim() });
     saveTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
-    return { email, type: data.user.type, role: data.user.role, user_category: null, businesses: [], orgId: null };
+    return { email, type: data.user.type, role: data.user.role, user_category: null, businesses: [], institutions: [], orgId: null };
   },
 
   /** The businesses this user is an agent in — the org_ids valid for switch-account. */
@@ -31,17 +38,22 @@ export const authRealApi = {
     return data.user.businesses ?? [];
   },
 
+  /** The institutions this user is a member of — used by BusinessShell as a fallback
+   * when the user has no businesses (institution accounts act as businesses in the UI). */
+  listMyInstitutions: async (): Promise<AuthMeInstitution[]> => {
+    const data = await httpGet<{ user: AuthMeUser }>("/auth/me");
+    return data.user.institutions ?? [];
+  },
+
   getMe: async (): Promise<AuthUser> => {
     const data = await httpGet<{ user: AuthMeUser }>("/auth/me");
-    let user_category: AuthUser["user_category"] = null;
-    if (data.user.is_business_account) user_category = "business";
-    else if (data.user.is_personal_account) user_category = "personal";
     return {
       email: data.user.email,
       type: data.user.type,
       role: data.user.admin_role ?? null,
-      user_category,
+      user_category: resolveUserCategory(data.user),
       businesses: data.user.businesses ?? [],
+      institutions: data.user.institutions ?? [],
       orgId: data.user.orgId ?? null,
     };
   },
