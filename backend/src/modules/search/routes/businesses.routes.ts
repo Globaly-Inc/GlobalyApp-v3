@@ -49,6 +49,11 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     if (!institution) throw new NotFoundError("Institution not found");
 
     const { search, ...pagination } = SearchListQuery.omit({ country: true, city: true }).parse(req.query);
+
+    // A real (non-scraped) business has no extraction job, hence no scraped course rows — omitting
+    // `jobId` from the filter would return every publicly-visible course across all scraped jobs instead.
+    if (!institution.job_id) return reply.send(buildPaginatedResponse([], 0, pagination));
+
     const { limit, offset } = paginationToOffset(pagination);
     const filters = { jobId: institution.job_id, search };
     const [rows, total] = await Promise.all([

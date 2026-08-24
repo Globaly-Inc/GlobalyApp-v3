@@ -3,13 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { BadgeCheck, Eye, Globe, Loader2, Pencil } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { CoverLogoEditor } from "@/components/cover-logo-editor";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
@@ -23,7 +20,8 @@ import { PartnersTab } from "./components/tabs/partners-tab";
 import { MembersTab } from "./components/tabs/members-tab";
 import { ScholarshipsTab } from "./components/tabs/scholarships-tab";
 import { ActivityTab } from "./components/tabs/activity-tab";
-import { ProfileTab, businessLocationLine, businessTypeLabel } from "./components/tabs/profile-tab";
+import { ProfileTab } from "./components/tabs/profile-tab";
+import { ProfileHeaderCard } from "./components/profile-header-card";
 
 // Tab switching happens only via the sidebar (`BUSINESS_NAV_GROUPS`) — this page renders no
 // second, in-content tab strip.
@@ -90,7 +88,6 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   }
 
   const saving = status === "saving";
-  const initial = profile.business_name?.[0]?.toUpperCase() ?? "B";
 
   const handleSaveDetails = async (patch: BusinessProfilePatch) => {
     const result = await dispatch(updateMyProfile(patch));
@@ -136,59 +133,16 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         </div>
       </div>
 
-      <Card className="overflow-hidden">
-        {previewMode ? (
-          <div className="relative h-40 bg-linear-to-br from-primary to-primary/60 sm:h-48">
-            {profile.cover_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={profile.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
-            )}
-            <Avatar className="absolute -bottom-12 left-6 size-24 border-4 border-background">
-              {profile.logo_url && <AvatarImage src={profile.logo_url} alt="" />}
-              <AvatarFallback className="text-2xl">{initial}</AvatarFallback>
-            </Avatar>
-          </div>
-        ) : (
-          <CoverLogoEditor
-            coverUrl={profile.cover_url}
-            onCoverFile={(file) => handleImageFile("cover", file)}
-            coverUploading={imageUploading === "cover"}
-            logoUrl={profile.logo_url}
-            logoFallback={initial}
-            onLogoFile={(file) => handleImageFile("logo", file)}
-            logoUploading={imageUploading === "logo"}
-          />
-        )}
-        <CardContent className="pt-16">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <div className="mb-1 flex items-center gap-1.5">
-                {businessTypeLabel(profile.business_type) && (
-                  <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    {businessTypeLabel(profile.business_type)}
-                  </span>
-                )}
-                {previewMode && profile.is_published && (
-                  <Badge variant="secondary" className="gap-1 text-[11px]">
-                    <BadgeCheck className="h-3 w-3" /> Verified
-                  </Badge>
-                )}
-              </div>
-              <h1 className="text-xl font-bold text-foreground">{profile.business_name}</h1>
-              <p className="text-sm text-muted-foreground">
-                {businessLocationLine(profile, countries) ?? profile.subdomain}
-              </p>
-            </div>
-            {previewMode ? (
-              <Globe className="h-4 w-4 text-muted-foreground" aria-hidden />
-            ) : (
-              <Button variant="ghost" size="icon-sm" onClick={() => setDetailsOpen(true)} aria-label="Edit business details">
-                <Pencil className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <ProfileHeaderCard
+        profile={profile}
+        countries={countries}
+        previewMode={previewMode}
+        onCoverFile={(file) => handleImageFile("cover", file)}
+        coverUploading={imageUploading === "cover"}
+        onLogoFile={(file) => handleImageFile("logo", file)}
+        logoUploading={imageUploading === "logo"}
+        onEditDetails={() => setDetailsOpen(true)}
+      />
       </>
       )}
 

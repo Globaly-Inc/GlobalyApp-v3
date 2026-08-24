@@ -110,7 +110,7 @@ export function ServiceManagementTable({
                     onClick={() => onTogglePublish(s.id, !s.is_published)}
                     aria-label={s.is_published ? "Unpublish service" : "Publish service"}
                   >
-                    {s.is_published ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                    {s.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                   </Button>
                   <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => onDelete(s)} aria-label="Delete service">
                     <Trash2 className="h-3.5 w-3.5" />

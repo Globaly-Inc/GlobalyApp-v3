@@ -49,8 +49,44 @@ function withSlug<T extends { id: string; business_name: string }>(row: T) {
   return { ...row, slug: courseSlug(row.business_name, row.id) };
 }
 
+/** A real business's integer id, padded to the 6-hex-char fragment `courseSlug`/`parseCourseIdFragment` expect. */
+function businessIdFragment(id: number): string {
+  return String(id).padStart(6, "0");
+}
+
+/**
+ * Real, published businesses filed under the "institutions" category — distinct from the scraped
+ * `extraction_institution_overview` catalog above. Shown first: they are current, owner-maintained data,
+ * while the scrape fills in the catalog until more businesses register.
+ */
+function realInstitutionsQuery(filters: Omit<BusinessSearchFilters, "categorySlug">) {
+  return baseQuery({ categorySlug: "institutions", ...filters });
+}
+
+async function listRealInstitutions(filters: Omit<BusinessSearchFilters, "categorySlug">) {
+  const rows = await realInstitutionsQuery(filters)
+    .select("b.id", "b.business_name", "b.logo_url", "b.description", "b.city", "c.name as country_name", "b.website", "b.email")
+    .orderBy("b.business_name");
+  return rows.map((r: { id: number; business_name: string }) =>
+    withSlug({ ...r, id: businessIdFragment(r.id), course_count: 0 }));
+}
+
+async function countRealInstitutions(filters: Omit<BusinessSearchFilters, "categorySlug">) {
+  const [row] = await realInstitutionsQuery(filters).count("b.id as count");
+  return Number(row.count);
+}
+
 export async function listPublicInstitutions(filters: Omit<BusinessSearchFilters, "categorySlug">, limit: number, offset: number) {
-  const rows = await institutionsQuery(filters)
+  // ponytail: real businesses are fetched in full (not offset/limited at the SQL level) and prepended —
+  // institution counts are small today, so this keeps cross-source page math simple. Revisit with a proper
+  // merged/paginated query if the number of published institution businesses grows large.
+  const real = await listRealInstitutions(filters);
+  const page = real.slice(offset, offset + limit);
+  const remaining = limit - page.length;
+  if (remaining <= 0) return page;
+
+  const extractionOffset = Math.max(offset - real.length, 0);
+  const extractionRows = await institutionsQuery(filters)
     .select(
       "ei.id", "ei.name as business_name", "ei.logo_url", "ei.description", "ei.city", "ei.country as country_name",
       "ei.website", "ei.email",
@@ -59,15 +95,21 @@ export async function listPublicInstitutions(filters: Omit<BusinessSearchFilters
       ),
     )
     .orderBy("ei.name")
-    .limit(limit)
-    .offset(offset);
-  return rows.map((r: { id: string; business_name: string; course_count: string }) =>
-    withSlug({ ...r, course_count: Number(r.course_count) }));
+    .limit(remaining)
+    .offset(extractionOffset);
+  return [
+    ...page,
+    ...extractionRows.map((r: { id: string; business_name: string; course_count: string }) =>
+      withSlug({ ...r, course_count: Number(r.course_count) })),
+  ];
 }
 
 export async function countPublicInstitutions(filters: Omit<BusinessSearchFilters, "categorySlug">) {
-  const [row] = await institutionsQuery(filters).count("ei.id as count");
-  return Number(row.count);
+  const [[row], realCount] = await Promise.all([
+    institutionsQuery(filters).count("ei.id as count"),
+    countRealInstitutions(filters),
+  ]);
+  return Number(row.count) + realCount;
 }
 
 export async function listPublicVisaServiceProviders(filters: VisaServiceFilters, limit: number, offset: number) {
@@ -94,6 +136,13 @@ export async function countPublicVisaServiceProviders(filters: VisaServiceFilter
 export async function findPublicInstitutionBySlug(slug: string) {
   const fragment = parseCourseIdFragment(slug);
   if (!fragment) return null;
+
+  // Real businesses first (see listPublicInstitutions) — their fragment is the id itself, zero-padded.
+  const real = await realInstitutionsQuery({})
+    .whereRaw("lpad(b.id::text, 6, '0') = ?", [fragment])
+    .select(...BUSINESS_COLUMNS)
+    .first();
+  if (real) return withSlug({ ...real, id: businessIdFragment(real.id), job_id: null });
 
   const institution = await institutionsQuery({})
     .whereRaw("left(replace(ei.id::text, '-', ''), 6) = ?", [fragment])

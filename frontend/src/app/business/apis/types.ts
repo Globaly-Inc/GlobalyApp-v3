@@ -46,6 +46,7 @@ export type BusinessProfile = SocialLinks & {
   currency: string | null;
   gallery_images: string[] | null;
   video_urls: string[] | null;
+  registration_licenses: Record<string, unknown> | null;
 };
 
 export type BusinessProfilePatch = Partial<
@@ -56,6 +57,7 @@ export type BusinessProfilePatch = Partial<
     | "is_published" | "show_team_public" | "public_visibility" | "currency" | "cover_position"
     | "linkedin_url" | "facebook_url" | "instagram_url" | "twitter_url" | "youtube_url" | "whatsapp_url"
     | "tiktok_url" | "threads_url" | "messenger_url" | "telegram_url" | "line_url" | "viber_url"
+    | "gallery_images" | "video_urls" | "registration_licenses"
   >
 >;
 

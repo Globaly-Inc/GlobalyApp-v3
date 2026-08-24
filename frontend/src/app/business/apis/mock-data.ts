@@ -42,6 +42,7 @@ let mockProfile: BusinessProfile = {
   currency: null,
   gallery_images: null,
   video_urls: null,
+  registration_licenses: null,
   linkedin_url: null,
   facebook_url: null,
   instagram_url: null,
