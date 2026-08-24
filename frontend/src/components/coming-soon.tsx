@@ -59,7 +59,7 @@ export function ComingSoon({
         </span>
 
         <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          In development
+          Coming soon
         </span>
 
         <h1 className="text-balance text-2xl font-semibold tracking-[-0.02em] text-foreground sm:text-3xl">
