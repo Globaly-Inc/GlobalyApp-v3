@@ -1,16 +1,36 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { overviewApi } from "../apis";
-import type { OverviewStats } from "../apis/types";
+import type { DashboardData, DashboardPreset, SiteAccessSettings } from "../apis/types";
 
-export const fetchOverviewStats = createAsyncThunk("overview/fetchStats", () => overviewApi.getStats());
+export const fetchDashboard = createAsyncThunk("overview/fetchDashboard", (preset: DashboardPreset) =>
+  overviewApi.getDashboard(preset),
+);
+
+export const fetchSiteAccess = createAsyncThunk("overview/fetchSiteAccess", () => overviewApi.getSiteAccess());
+
+export const toggleSiteLock = createAsyncThunk("overview/toggleSiteLock", (is_locked: boolean) =>
+  overviewApi.updateSiteAccess(is_locked),
+);
+
+export const regenerateAccessCode = createAsyncThunk("overview/regenerateAccessCode", () =>
+  overviewApi.regenerateAccessCode(),
+);
 
 type OverviewState = {
-  stats: OverviewStats | null;
+  data: DashboardData | null;
+  preset: DashboardPreset;
   status: "idle" | "loading" | "failed";
   error: string | null;
+  siteAccess: SiteAccessSettings | null;
 };
 
-const initialState: OverviewState = { stats: null, status: "idle", error: null };
+const initialState: OverviewState = {
+  data: null,
+  preset: "last30",
+  status: "idle",
+  error: null,
+  siteAccess: null,
+};
 
 const overviewSlice = createSlice({
   name: "overview",
@@ -18,17 +38,27 @@ const overviewSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchOverviewStats.pending, (state) => {
+      .addCase(fetchDashboard.pending, (state, action) => {
         state.status = "loading";
+        state.preset = action.meta.arg;
         state.error = null;
       })
-      .addCase(fetchOverviewStats.fulfilled, (state, action) => {
+      .addCase(fetchDashboard.fulfilled, (state, action) => {
         state.status = "idle";
-        state.stats = action.payload;
+        state.data = action.payload;
       })
-      .addCase(fetchOverviewStats.rejected, (state, action) => {
+      .addCase(fetchDashboard.rejected, (state, action) => {
         state.status = "failed";
-        state.error = action.error.message ?? "Failed to load dashboard stats.";
+        state.error = action.error.message ?? "Failed to load dashboard.";
+      })
+      .addCase(fetchSiteAccess.fulfilled, (state, action) => {
+        state.siteAccess = action.payload;
+      })
+      .addCase(toggleSiteLock.fulfilled, (state, action) => {
+        state.siteAccess = action.payload;
+      })
+      .addCase(regenerateAccessCode.fulfilled, (state, action) => {
+        if (state.siteAccess) state.siteAccess.access_code = action.payload.access_code;
       });
   },
 });

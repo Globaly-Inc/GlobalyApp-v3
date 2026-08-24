@@ -3,4 +3,4 @@ import { overviewMockApi } from "./mock-data";
 import { overviewRealApi } from "./real-api";
 
 export const overviewApi = createApi({ mock: overviewMockApi, real: overviewRealApi });
-export type { OverviewStats } from "./types";
+export type { DashboardData, DashboardPreset, FeatureUsage, GrowthPoint } from "./types";

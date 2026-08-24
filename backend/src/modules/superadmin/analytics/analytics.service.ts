@@ -59,11 +59,13 @@ export async function getDashboard(preset: string) {
   const start = windowStart(preset);
 
   // ── Summary counts (parallel) ──
+  // Businesses + institutions are one concept product-wide — always reported combined.
   const [
     totalUsers,
     totalBusinesses,
     activeBusinesses,
     totalInstitutions,
+    activeInstitutions,
     totalAdmins,
     totalExtractionJobs,
   ] = await Promise.all([
@@ -71,15 +73,15 @@ export async function getDashboard(preset: string) {
     masterKnex("businesses").count("* as count").first(),
     masterKnex("businesses").where({ account_status: 1 }).count("* as count").first(),
     masterKnex("institutions").count("* as count").first(),
+    masterKnex("institutions").where({ account_status: 1 }).count("* as count").first(),
     masterKnex(`${S}.admin_users`).count("* as count").first(),
     masterKnex(`${S}.extraction_jobs`).count("* as count").first(),
   ]);
 
   const summary = {
     total_users: Number(totalUsers?.count ?? 0),
-    total_businesses: Number(totalBusinesses?.count ?? 0),
-    active_businesses: Number(activeBusinesses?.count ?? 0),
-    total_institutions: Number(totalInstitutions?.count ?? 0),
+    total_businesses: Number(totalBusinesses?.count ?? 0) + Number(totalInstitutions?.count ?? 0),
+    active_businesses: Number(activeBusinesses?.count ?? 0) + Number(activeInstitutions?.count ?? 0),
     total_admins: Number(totalAdmins?.count ?? 0),
     total_extraction_jobs: Number(totalExtractionJobs?.count ?? 0),
   };
@@ -97,38 +99,73 @@ export async function getDashboard(preset: string) {
     ["institutions", "institutions", "Institutions"],
     ["extraction_jobs", "extraction_jobs", "Extraction Jobs", S],
     ["extraction_courses", "extracted_courses", "Extracted Courses", S],
+    ["enquiries", "enquiries", "Enquiries"],
+    ["feed_posts", "feed_posts", "Feed Posts"],
+    ["student_jobs", "jobs", "Jobs"],
+    ["referrals", "referrals", "Referrals"],
+    ["countries", "countries", "Countries"],
+    ["blog_posts", "blog_posts", "Blog Posts", S],
+    ["scholarships", "scholarships", "Scholarships"],
+    ["credit_transactions", "credit_transactions", "Credit Transactions"],
+    ["ai_counselor_sessions", "chat_sessions", "Chat Sessions"],
+    ["waitlist_registrations", "waitlist", "Waitlist Signups"],
   ];
 
   for (const [table, key, label, schema] of features) {
     feature_usage.push(await countTable(table, key, label, schema));
   }
 
+  // Fold institutions into the single "Businesses" entry (kept separate in `features`
+  // so the activity union still counts both tables).
+  const instIdx = feature_usage.findIndex((f) => f.key === "institutions");
+  const biz = feature_usage.find((f) => f.key === "businesses");
+  if (instIdx >= 0 && biz) {
+    biz.count += feature_usage[instIdx].count;
+    biz.last_week += feature_usage[instIdx].last_week;
+    feature_usage.splice(instIdx, 1);
+  }
+
   // ── Growth timelines (raw created_at for client-side charting) ──
-  const [usersGrowth, businessesGrowth, institutionsGrowth] = await Promise.all([
+  const [usersGrowth, businessesGrowth] = await Promise.all([
     masterKnex("platform_users")
       .select(masterKnex.raw("date_trunc('day', created_at) as day"))
       .count("* as count")
       .where("created_at", ">=", start)
       .groupByRaw("date_trunc('day', created_at)")
       .orderBy("day"),
-    masterKnex("businesses")
+    masterKnex
       .select(masterKnex.raw("date_trunc('day', created_at) as day"))
       .count("* as count")
-      .where("created_at", ">=", start)
-      .groupByRaw("date_trunc('day', created_at)")
-      .orderBy("day"),
-    masterKnex("institutions")
-      .select(masterKnex.raw("date_trunc('day', created_at) as day"))
-      .count("* as count")
+      .from(
+        masterKnex.raw(
+          "(select created_at from businesses union all select created_at from institutions) as biz",
+        ),
+      )
       .where("created_at", ">=", start)
       .groupByRaw("date_trunc('day', created_at)")
       .orderBy("day"),
   ]);
 
+  // Activity = combined created_at across the same tables as feature_usage,
+  // so the "Activity over time" chart coheres with the "Total activity" card.
+  const activityUnion = features
+    .map(([table, , , schema]) => {
+      const qualified = schema ? schema + "." + table : table;
+      return `select created_at from ${qualified}`;
+    })
+    .join(" union all ");
+  const activityGrowth = await masterKnex
+    .select(masterKnex.raw("date_trunc('day', created_at) as day"))
+    .count("* as count")
+    .from(masterKnex.raw(`(${activityUnion}) as activity`))
+    .where("created_at", ">=", start)
+    .groupByRaw("date_trunc('day', created_at)")
+    .orderBy("day");
+
   const growth = {
     users: usersGrowth.map((r: any) => ({ day: r.day, count: Number(r.count) })),
     businesses: businessesGrowth.map((r: any) => ({ day: r.day, count: Number(r.count) })),
-    institutions: institutionsGrowth.map((r: any) => ({ day: r.day, count: Number(r.count) })),
+    activity: activityGrowth.map((r: any) => ({ day: r.day, count: Number(r.count) })),
   };
 
   // ── User breakdown — from is_personal_account / is_business_account flags ──
