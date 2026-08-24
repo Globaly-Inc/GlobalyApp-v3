@@ -94,7 +94,10 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
           )}
         </Link>
 
-        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 p-5 flex flex-col justify-center gap-4">
+        {/* pointer-events-auto + z-10, same as the Compare button above: the card-wide
+            overlay Link sits at inset-0, so anything meant to stay clickable has to opt
+            back in. Without it the Enquire click falls through to the course page. */}
+        <div className="pointer-events-auto relative z-10 w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 p-5 flex flex-col justify-center gap-4">
           <div className="text-left">
             {fee ? (
               <div>

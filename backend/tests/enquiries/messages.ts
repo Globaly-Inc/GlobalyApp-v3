@@ -16,9 +16,17 @@
  *  4. a second business on the same enquiry cannot see the first's thread
  *  5. a different student cannot see the thread
  *  6. closed: history readable, sending rejected
- *  7. blank / whitespace-only bodies rejected
+ *  7. blank / whitespace-only bodies rejected (no text and no files is not a message)
  *  8. the inbox lists only unlocked threads, newest activity first
  *  9. unlocking seeds the thread with the business's greeting
+ * 10. unread counts: seeded on unlock, cleared by markRead, own messages never count
+ * 11. the conversation preview fields track the newest message
+ * 12. Favorites toggle on and off, per student
+ * 13. Starred toggles per message, surfaces in the Starred list, and is scoped to the owner
+ * 14. Pins are conversation-level: both sides see them, and a closed thread can't be pinned to
+ * 15. Attachments: only the uploader's own files can be attached, and text becomes optional
+ * 16. Reactions: per person, visible to both sides, toggleable, blocked on a closed thread
+ * 17. Threads: one level deep, replies excluded from the main list, counted on the parent
  */
 
 import { masterKnex } from "../../src/core/db/master-pool.js";
@@ -26,6 +34,7 @@ import { provisionBusinessSchema } from "../../src/core/business/provisioner.js"
 import { runMatching } from "../../src/modules/enquiries/services/matching.service.js";
 import * as distributions from "../../src/modules/enquiries/services/distributions.service.js";
 import * as messages from "../../src/modules/enquiries/services/messages.service.js";
+import * as media from "../../src/modules/enquiries/services/message-media.service.js";
 import { UNLOCK_GREETING } from "../../src/modules/enquiries/services/messages.service.js";
 
 let passed = 0;
@@ -390,15 +399,16 @@ async function main() {
     }
   });
 
-  await assert("a whitespace-only body is rejected by the DB constraint", async () => {
+  await assert("a whitespace-only body with no attachment is rejected", async () => {
     const s = await scenario(1);
     const biz = s.businesses[0]!;
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
-      // The service trims, so a whitespace body reaches the insert as '' and the
-      // enquiry_messages_body_chk constraint refuses it. Zod also blocks this at the
-      // route, but the DB is the backstop that does not depend on the caller.
+      // Three layers refuse this and only the innermost is asserted here: zod at the
+      // route, appendMessage's own guard (which is what actually throws — a typed
+      // BadRequestError rather than an opaque constraint violation), and
+      // enquiry_messages_body_chk as the backstop that does not depend on the caller.
       let threw = false;
       try {
         await messages.sendAsBusiness(distId, biz.id, s.agentId, "   ");
@@ -467,6 +477,370 @@ async function main() {
       // Idempotent unlock must not post it twice.
       await s.unlock(0);
       eq((await messages.listForStudent(distId, s.studentId)).length, 1, "re-unlock adds nothing");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+
+  await assert("unread counts start at the greeting and clear on read", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+
+      // Never opened: the seeded greeting is unread.
+      const [fresh] = await messages.listThreadsForStudent(s.studentId);
+      eq(fresh!.unread_count, 1, "the greeting is unread");
+
+      await messages.markReadAsStudent(distId, s.studentId);
+      eq((await messages.listThreadsForStudent(s.studentId))[0]!.unread_count, 0, "cleared by markRead");
+
+      // The student's own message must not make their own thread unread.
+      await messages.sendAsStudent(distId, s.studentId, "Thanks!");
+      eq((await messages.listThreadsForStudent(s.studentId))[0]!.unread_count, 0, "own message is not unread");
+
+      await messages.sendAsBusiness(distId, biz.id, s.agentId, "You're welcome.");
+      eq((await messages.listThreadsForStudent(s.studentId))[0]!.unread_count, 1, "a business reply is unread again");
+
+      // Idempotent — re-reading an already-read thread is not an error.
+      await messages.markReadAsStudent(distId, s.studentId);
+      await messages.markReadAsStudent(distId, s.studentId);
+      eq((await messages.listThreadsForStudent(s.studentId))[0]!.unread_count, 0, "still read");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("the conversation preview tracks the newest message", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+
+      const seeded = (await messages.listThreadsForStudent(s.studentId))[0]!;
+      eq(seeded.last_message_body, UNLOCK_GREETING, "the greeting is the first preview");
+      eq(seeded.last_message_is_mine, false, "sent by the business");
+
+      await messages.sendAsStudent(distId, s.studentId, "What are the fees?");
+      const mine = (await messages.listThreadsForStudent(s.studentId))[0]!;
+      eq(mine.last_message_body, "What are the fees?", "preview follows the newest message");
+      eq(mine.last_message_is_mine, true, "flagged as the student's own");
+
+      await messages.sendAsBusiness(distId, biz.id, s.agentId, "About AUD 40k.");
+      eq((await messages.listThreadsForStudent(s.studentId))[0]!.last_message_is_mine, false, "and back again");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("favorites toggle on and off", async () => {
+    const s = await scenario(1);
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+
+      eq((await messages.listThreadsForStudent(s.studentId))[0]!.is_favorite, false, "not favorited by default");
+
+      eq(await messages.toggleFavoriteAsStudent(distId, s.studentId), true, "toggling on reports true");
+      eq((await messages.listThreadsForStudent(s.studentId))[0]!.is_favorite, true, "and the inbox agrees");
+
+      eq(await messages.toggleFavoriteAsStudent(distId, s.studentId), false, "toggling off reports false");
+      eq((await messages.listThreadsForStudent(s.studentId))[0]!.is_favorite, false, "and the inbox agrees again");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("stars are per message and scoped to the thread's owner", async () => {
+    const s = await scenario(1);
+    const other = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+      await messages.sendAsBusiness(distId, biz.id, s.agentId, "About AUD 40k per year.");
+
+      const [greeting, fees] = await messages.listForStudent(distId, s.studentId);
+      eq(greeting!.is_starred, false, "nothing starred to begin with");
+
+      eq(await messages.toggleStarAsStudent(fees!.id, s.studentId), true, "toggling on reports true");
+      const afterStar = await messages.listForStudent(distId, s.studentId);
+      eq(afterStar[1]!.is_starred, true, "the starred message is flagged");
+      eq(afterStar[0]!.is_starred, false, "its neighbour is not");
+
+      const starred = await messages.listStarredForStudent(s.studentId);
+      eq(starred.length, 1, "exactly one starred message");
+      eq(starred[0]!.id, fees!.id, "the right one");
+      // The fixture doesn't carry the business's name, so read it back — the point of
+      // the assertion is that the join is wired, not what the name happens to be.
+      const bizRow = await masterKnex("businesses").where({ id: biz.id }).first("business_name");
+      eq(starred[0]!.business_name, bizRow!.business_name, "carries the conversation it came from");
+      eq(starred[0]!.distribution_id, distId, "and its thread id");
+
+      // A star is private: another student cannot star a message in a thread that
+      // isn't theirs, and sees none of these stars.
+      await rejectsWith(
+        () => messages.toggleStarAsStudent(fees!.id, other.studentId),
+        "NotFoundError",
+        "outsider star",
+      );
+      eq((await messages.listStarredForStudent(other.studentId)).length, 0, "and sees no stars");
+
+      eq(await messages.toggleStarAsStudent(fees!.id, s.studentId), false, "toggling off reports false");
+      eq((await messages.listStarredForStudent(s.studentId)).length, 0, "the Starred list empties");
+      eq((await messages.listForStudent(distId, s.studentId))[1]!.is_starred, false, "and the flag clears");
+    } finally {
+      await other.cleanup();
+      await s.cleanup();
+    }
+  });
+
+
+  await assert("pins are shared by both sides and blocked on a closed thread", async () => {
+    const s = await scenario(1);
+    const other = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+      await messages.sendAsBusiness(distId, biz.id, s.agentId, "Intake closes 30 September.");
+
+      const [greeting, intake] = await messages.listForStudent(distId, s.studentId);
+      eq(greeting!.is_pinned, false, "nothing pinned to begin with");
+
+      eq(await messages.togglePinAsStudent(intake!.id, s.studentId), true, "pinning reports true");
+
+      // Unlike a star, a pin is NOT per viewer — the business sees it too.
+      const studentView = await messages.listForStudent(distId, s.studentId);
+      eq(studentView[1]!.is_pinned, true, "the student sees the pin");
+      eq(studentView[0]!.is_pinned, false, "its neighbour is untouched");
+      const businessView = await messages.listForBusiness(distId, biz.id, s.agentId);
+      eq(businessView[1]!.is_pinned, true, "and so does the business");
+
+      // Still gated on being a participant.
+      await rejectsWith(
+        () => messages.togglePinAsStudent(intake!.id, other.studentId),
+        "NotFoundError",
+        "outsider pin",
+      );
+
+      eq(await messages.togglePinAsStudent(intake!.id, s.studentId), false, "unpinning reports false");
+      eq((await messages.listForStudent(distId, s.studentId))[1]!.is_pinned, false, "and clears for the student");
+      eq(
+        (await messages.listForBusiness(distId, biz.id, s.agentId))[1]!.is_pinned,
+        false,
+        "and for the business",
+      );
+
+      // Closing makes the thread read-only, and a pin changes what both sides see.
+      await distributions.close(biz.id, distId, "Not a fit.", s.agentId);
+      await rejectsWith(
+        () => messages.togglePinAsStudent(intake!.id, s.studentId),
+        "ConflictError",
+        "pin on a closed thread",
+      );
+    } finally {
+      await other.cleanup();
+      await s.cleanup();
+    }
+  });
+
+
+  await assert("attachments are ownership-gated and make the body optional", async () => {
+    const s = await scenario(1);
+    const other = await scenario(1);
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+
+      // The bytes are GCS's problem; this suite exercises the metadata gate, so the
+      // uploaded_files rows are inserted directly rather than pushed through storage.
+      const own = `private/platform-users/${s.studentId}/enquiry-chat/transcript.pdf`;
+      const foreign = `private/platform-users/${other.studentId}/enquiry-chat/secret.pdf`;
+      const wrongCategory = `public/platform-users/${s.studentId}/feed-media/holiday.jpg`;
+      const student = await masterKnex("platform_users").where({ id: s.studentId }).first("uuid");
+      const stranger = await masterKnex("platform_users").where({ id: other.studentId }).first("uuid");
+
+      await masterKnex("uploaded_files").insert([
+        {
+          uploaded_by: s.studentId, entity_type: "platform_user", entity_id: student!.uuid,
+          category: "enquiry-chat", original_name: "transcript.pdf", storage_path: own,
+          mime_type: "application/pdf", size_bytes: 2048,
+        },
+        {
+          uploaded_by: other.studentId, entity_type: "platform_user", entity_id: stranger!.uuid,
+          category: "enquiry-chat", original_name: "secret.pdf", storage_path: foreign,
+          mime_type: "application/pdf", size_bytes: 2048,
+        },
+        {
+          uploaded_by: s.studentId, entity_type: "platform_user", entity_id: student!.uuid,
+          category: "feed-media", original_name: "holiday.jpg", storage_path: wrongCategory,
+          mime_type: "image/jpeg", size_bytes: 1024,
+        },
+      ]);
+
+      // Someone else's upload cannot be attached, even though the path is well-formed...
+      await rejectsWith(
+        () => messages.sendAsStudent(distId, s.studentId, "here", [foreign]),
+        "BadRequestError",
+        "another user's file",
+      );
+      // ...nor can one of your own uploaded for a different purpose...
+      await rejectsWith(
+        () => messages.sendAsStudent(distId, s.studentId, "here", [wrongCategory]),
+        "BadRequestError",
+        "wrong category",
+      );
+      // ...nor a path that was never uploaded at all.
+      await rejectsWith(
+        () => messages.sendAsStudent(distId, s.studentId, "here", ["private/made/up/path.pdf"]),
+        "BadRequestError",
+        "unknown path",
+      );
+
+      // Attachment with no caption is a valid message — the DB constraint allows it.
+      const sent = await messages.sendAsStudent(distId, s.studentId, "", [own]);
+      eq(sent.body, "", "no caption");
+      eq(sent.attachments.length, 1, "one attachment");
+      eq(sent.attachments[0]!.original_name, "transcript.pdf", "metadata is read back from uploaded_files");
+      eq(sent.attachments[0]!.size_bytes, 2048, "including the size, not whatever the client claimed");
+
+      // And it round-trips to both sides of the thread.
+      const reread = await messages.listForStudent(distId, s.studentId);
+      eq(reread.at(-1)!.attachments.length, 1, "the student sees it on re-read");
+      const bizView = await messages.listForBusiness(distId, s.businesses[0]!.id, s.agentId);
+      eq(bizView.at(-1)!.attachments.length, 1, "and so does the business");
+
+      // Neither text nor files is still rejected — by the service, not by a raw
+      // constraint violation surfacing as a 500.
+      await rejectsWith(
+        () => messages.sendAsStudent(distId, s.studentId, "   ", []),
+        "BadRequestError",
+        "empty message",
+      );
+
+      await rejectsWith(
+        () =>
+          messages.sendAsStudent(
+            distId,
+            s.studentId,
+            "too many",
+            Array.from({ length: media.MAX_ATTACHMENTS_PER_MESSAGE + 1 }, () => own),
+          ),
+        "BadRequestError",
+        "over the per-message cap",
+      );
+
+      await masterKnex("uploaded_files").whereIn("storage_path", [own, foreign, wrongCategory]).delete();
+    } finally {
+      await other.cleanup();
+      await s.cleanup();
+    }
+  });
+
+
+  await assert("reactions are per person but visible to both sides", async () => {
+    const s = await scenario(1);
+    const other = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+      const [greeting] = await messages.listForStudent(distId, s.studentId);
+      eq(greeting!.reactions.length, 0, "no reactions to begin with");
+
+      eq(await messages.toggleReactionAsStudent(greeting!.id, s.studentId, "\u{1F44D}"), true, "adding reports true");
+
+      // The student sees their own reaction as theirs...
+      const mine = (await messages.listForStudent(distId, s.studentId))[0]!;
+      eq(mine.reactions.length, 1, "one chip");
+      eq(mine.reactions[0]!.emoji, "\u{1F44D}", "the right emoji");
+      eq(mine.reactions[0]!.count, 1, "counted once");
+      eq(mine.reactions[0]!.mine, true, "flagged as the viewer's own");
+
+      // ...and the business sees the same chip, but not as theirs. This is what
+      // separates a reaction from a star (private) and a pin (no owner).
+      const theirs = (await messages.listForBusiness(distId, biz.id, s.agentId))[0]!;
+      eq(theirs.reactions.length, 1, "the business sees the chip");
+      eq(theirs.reactions[0]!.count, 1, "with the same count");
+      eq(theirs.reactions[0]!.mine, false, "but not as their own");
+
+      // A second, different emoji is a separate chip rather than a bigger one.
+      await messages.toggleReactionAsStudent(greeting!.id, s.studentId, "\u{1F389}");
+      eq((await messages.listForStudent(distId, s.studentId))[0]!.reactions.length, 2, "two distinct chips");
+
+      // Same emoji again removes it, and an emptied chip disappears entirely.
+      eq(await messages.toggleReactionAsStudent(greeting!.id, s.studentId, "\u{1F44D}"), false, "removing reports false");
+      const after = (await messages.listForStudent(distId, s.studentId))[0]!;
+      eq(after.reactions.length, 1, "the emptied chip is gone, not left at zero");
+      eq(after.reactions[0]!.emoji, "\u{1F389}", "the other one survives");
+
+      // Still participant-gated.
+      await rejectsWith(
+        () => messages.toggleReactionAsStudent(greeting!.id, other.studentId, "\u{1F44D}"),
+        "NotFoundError",
+        "outsider reaction",
+      );
+
+      await distributions.close(biz.id, distId, "Not a fit.", s.agentId);
+      await rejectsWith(
+        () => messages.toggleReactionAsStudent(greeting!.id, s.studentId, "\u{2764}"),
+        "ConflictError",
+        "reaction on a closed thread",
+      );
+    } finally {
+      await other.cleanup();
+      await s.cleanup();
+    }
+  });
+
+  await assert("threads are one level deep and counted on the parent", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      await s.unlock(0);
+      const distId = await s.dist(0);
+      const [greeting] = await messages.listForStudent(distId, s.studentId);
+
+      eq((await messages.listRepliesForStudent(greeting!.id, s.studentId)).length, 0, "no replies yet");
+      eq((await messages.listForStudent(distId, s.studentId))[0]!.reply_count, 0, "and none counted");
+
+      const first = await messages.sendReplyAsStudent(greeting!.id, s.studentId, "Following up on this.");
+      eq(first.reply_to_id, greeting!.id, "anchored to the greeting");
+
+      // THE one-level rule: replying to a reply anchors to that reply's parent, not to
+      // the reply itself — otherwise a thread could nest without limit.
+      const second = await messages.sendReplyAsStudent(first.id, s.studentId, "And one more thing.");
+      eq(second.reply_to_id, greeting!.id, "flattened onto the original parent");
+
+      // Reading a reply's thread resolves to the parent's thread, so both are listed.
+      const viaReply = await messages.listRepliesForStudent(first.id, s.studentId);
+      eq(viaReply.length, 2, "both replies, reached via one of them");
+      eq(viaReply[0]!.body, "Following up on this.", "oldest first");
+
+      // A reply lives ONLY in its thread — the main list holds top-level messages, and
+      // the parent's reply_count is the only trace of the thread there (V2's behaviour).
+      const list = await messages.listForStudent(distId, s.studentId);
+      eq(list.length, 1, "just the greeting; the two replies are not inline");
+      eq(list[0]!.id, greeting!.id, "and it is the greeting");
+      eq(list[0]!.reply_count, 2, "which counts both replies");
+      eq(list.some((m) => m.id === first.id), false, "the reply itself is absent from the main list");
+
+      // The business can reply into the same thread and the student sees it.
+      const bizReply = await messages.sendAsBusiness(distId, biz.id, s.agentId, "Sure — here are the details.");
+      eq(bizReply.reply_to_id, null, "a plain send is not a reply");
+
+      await distributions.close(biz.id, distId, "Done.", s.agentId);
+      await rejectsWith(
+        () => messages.sendReplyAsStudent(greeting!.id, s.studentId, "one more?"),
+        "ConflictError",
+        "reply on a closed thread",
+      );
+      // History stays readable after closing.
+      eq((await messages.listRepliesForStudent(greeting!.id, s.studentId)).length, 2, "replies still readable");
     } finally {
       await s.cleanup();
     }

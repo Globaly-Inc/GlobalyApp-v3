@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CircleAlert, Lock, MessageSquare, Plus } from "lucide-react";
+import { Plus, RotateCw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchEnquiries } from "../store/enquiries-slice";
-import { REQUIRED_COMPLETION } from "../const";
+import { REQUIRED_COMPLETION, type StatusFilterKey } from "../const";
+import { applyStatusFilter, filterCounts } from "../utils";
+import { EnquiriesEmptyState } from "./enquiries-empty-state";
 import { EnquiryCard, EnquiryCardSkeleton } from "./enquiry-card";
+import { EnquiryFilters } from "./enquiry-filters";
 import { NewEnquiryDialog } from "./new-enquiry-dialog";
+import { ProfileGateCard } from "./profile-gate-card";
 
 export function EnquiriesView() {
   const dispatch = useAppDispatch();
@@ -46,10 +51,14 @@ export function EnquiriesView() {
     setDialogOpen(true);
   };
 
+  const [filter, setFilter] = useState<StatusFilterKey>("all");
+
+  const fetchedRef = useRef(false);
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     dispatch(fetchEnquiries());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dispatch]);
 
   // Consume the deep-link param once it has been used. Left in the URL, a reload
   // would reopen the dialog prefilled with the same course — and sharing or
@@ -58,7 +67,14 @@ export function EnquiriesView() {
     if (initialCourseId) router.replace("/personal/enquiries", { scroll: false });
   }, [initialCourseId, router]);
 
+  const counts = useMemo(() => filterCounts(items), [items]);
+  const visible = useMemo(() => applyStatusFilter(items, filter), [items, filter]);
+
+  // ponytail: "idle" means both "not fetched yet" and "fetched, came back empty", so the
+  // empty state paints for the one frame before the mount effect runs. Telling those
+  // apart needs a `listLoaded` flag on the slice — add it if the flash ever gets noticed.
   const loading = status === "loading" && items.length === 0;
+  const failed = status === "failed" && items.length === 0;
 
   // Width and page padding come from PersonalShell (SHELL_WIDTH + <main>), same as
   // every other personal page — don't re-constrain or re-pad here.
@@ -72,32 +88,23 @@ export function EnquiriesView() {
           </p>
         </div>
 
-        {canEnquire ? (
-          <Button size="lg" className="gap-2" onClick={openBlankDialog}>
-            <Plus className="size-4" aria-hidden />
-            New Enquiry
-          </Button>
+        {/* Reserve the button's footprint while the profile decides whether it may
+            appear, so the header doesn't jump once the gate resolves. */}
+        {!profileLoaded ? (
+          <Skeleton className="h-10 w-32 rounded-lg" />
         ) : (
-          <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            <Lock className="size-3.5 shrink-0" aria-hidden />
-            <span>Complete your profile to send enquiries</span>
-            {completion !== null && <span className="font-semibold text-primary">({completion}%)</span>}
-          </div>
+          canEnquire && (
+            <Button onClick={openBlankDialog}>
+              <Plus className="size-4" aria-hidden />
+              New Enquiry
+            </Button>
+          )
         )}
       </div>
 
-      {profileLoaded && !canEnquire && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/30">
-          <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-          <p className="text-amber-900 dark:text-amber-200">
-            Your profile is <span className="font-semibold">{completion}%</span> complete. You need{" "}
-            {REQUIRED_COMPLETION}% to send enquiries.{" "}
-            <Link href="/personal/profile" className="font-semibold underline underline-offset-2">
-              Complete now →
-            </Link>
-          </p>
-        </div>
-      )}
+      {profileLoaded && !canEnquire && <ProfileGateCard completion={completion} />}
+
+      {items.length > 0 && <EnquiryFilters counts={counts} active={filter} onChange={setFilter} />}
 
       {loading && (
         <div className="space-y-3">
@@ -106,21 +113,34 @@ export function EnquiriesView() {
         </div>
       )}
 
-      {!loading && items.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-          <MessageSquare className="size-10 text-muted-foreground/40" aria-hidden />
-          <p className="text-muted-foreground">No enquiries yet</p>
-          <p className="text-sm text-muted-foreground/80">
-            {canEnquire
-              ? "Start one to hear back from institutions and agents."
-              : "Complete your profile to start sending enquiries."}
+      {/* A failed load used to render as an empty list, which reads as "you have no
+          enquiries" — the one wrong thing to tell someone whose enquiries exist. */}
+      {failed && (
+        <Card className="items-center gap-2 border border-dashed border-destructive/40 px-6 py-12 text-center ring-0">
+          <TriangleAlert className="size-6 text-destructive" aria-hidden />
+          <p className="font-semibold text-foreground">Couldn&apos;t load your enquiries</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Something went wrong on our side. Your enquiries are safe — try again.
           </p>
-        </div>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => dispatch(fetchEnquiries())}>
+            <RotateCw className="size-3.5" aria-hidden />
+            Try again
+          </Button>
+        </Card>
       )}
 
-      {items.length > 0 && (
+      {!loading && !failed && visible.length === 0 && (
+        <EnquiriesEmptyState
+          variant={items.length === 0 ? "no-enquiries" : "no-matches"}
+          canEnquire={canEnquire}
+          onNewEnquiry={openBlankDialog}
+          onClearFilter={() => setFilter("all")}
+        />
+      )}
+
+      {visible.length > 0 && (
         <div className="space-y-3">
-          {items.map((enquiry) => (
+          {visible.map((enquiry) => (
             <EnquiryCard key={enquiry.id} enquiry={enquiry} />
           ))}
         </div>

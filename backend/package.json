@@ -13,6 +13,7 @@
     "embed:backfill": "node --import tsx scripts/embed-backfill.ts",
     "chunk:backfill": "node --import tsx scripts/chunk-backfill.ts",
     "ai:evals": "node --import tsx scripts/ai-evals/run-evals.ts",
+    "gcs:cors": "node --import tsx scripts/set-gcs-cors.ts",
     "seed:globalyapp": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp",
     "seed:v2-businesses": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp --specific v2_businesses_import_seeder.ts",
     "seed:superadmin": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env superadmin",

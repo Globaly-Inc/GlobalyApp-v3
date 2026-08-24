@@ -19,6 +19,23 @@ export interface MessageThreadSummary {
   unlocked_at: string;
   /** Null until someone has actually said something; the row falls back to unlocked_at. */
   last_message_at: string | null;
+  /** Newest message's text, for the list's preview line. Null on an empty thread. */
+  last_message_body: string | null;
+  /** The preview is prefixed "You:" when the student sent the newest message. */
+  last_message_is_mine: boolean;
+  /** Messages from the business since this student last opened the thread. */
+  unread_count: number;
+  /** Pinned to the sidebar's Favorites section. */
+  is_favorite: boolean;
+}
+
+/** One file sent with a message. `url` is a freshly signed, expiring view URL. */
+export interface MessageAttachment {
+  storage_path: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  url: string;
 }
 
 /**
@@ -36,4 +53,31 @@ export interface EnquiryMessage {
   sender_avatar: string | null;
   is_mine: boolean;
   sender_role: "student" | "business";
+  /** The student's own bookmark on this message — drives the Starred shortcut. */
+  is_starred: boolean;
+  /** Pinned to the conversation — shown in the info panel. Shared with the business. */
+  is_pinned: boolean;
+  attachments: MessageAttachment[];
+  /** Set when this message is a thread reply. Threads are one level deep. */
+  reply_to_id: number | null;
+  /** Replies anchored to this message — drives the "N replies" link. */
+  reply_count: number;
+  reactions: MessageReaction[];
+  /** Set once the sender edited it — the row shows V2's "(edited)" marker. */
+  edited_at: string | null;
+}
+
+/** One reaction chip: the emoji, how many used it, who, and whether you did. */
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  users: string[];
+  mine: boolean;
+}
+
+/** A starred message plus the conversation it came from, for the Starred view's badge. */
+export interface StarredMessage extends EnquiryMessage {
+  distribution_id: string;
+  business_name: string;
+  course_name: string;
 }
