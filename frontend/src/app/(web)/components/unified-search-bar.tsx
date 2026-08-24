@@ -8,10 +8,10 @@ import { CATEGORIES, AI_PROMPTS_BY_SLUG, SEARCH_DESTINATIONS } from "../const/in
 
 type Mode = "ai" | "search";
 
-export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?: string }> = {}) {
+export function UnifiedSearchBar() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("ai");
-  const [activeSlug, setActiveSlug] = useState<string>(defaultTabSlug ?? CATEGORIES[0]!.slug);
+  const [activeSlug, setActiveSlug] = useState<string>(CATEGORIES[0]!.slug);
   const [query, setQuery] = useState("");
 
   const aiPrompts = useMemo(() => AI_PROMPTS_BY_SLUG[activeSlug] ?? AI_PROMPTS_BY_SLUG.courses!, [activeSlug]);

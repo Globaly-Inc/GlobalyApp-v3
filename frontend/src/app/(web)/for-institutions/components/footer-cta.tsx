@@ -27,13 +27,13 @@ export function FooterCta() {
             network.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="btn-gold h-11 rounded-full px-10" render={<Link href="/auth/sign-up" />}>
+            <Button size="lg" className="btn-gold rounded-full px-10" render={<Link href="/auth/sign-up" />}>
               Get Started Free
             </Button>
             <Button
               variant="outline"
               size="lg"
-              className="h-11 rounded-full px-10 border-white/40 bg-transparent text-white hover:bg-white hover:text-[hsl(var(--purple-dark))]"
+              className="rounded-full px-10 border-white/40 bg-transparent text-white hover:bg-white hover:text-[hsl(var(--purple-dark))]"
               render={<Link href="/search?tab=education-agencies" />}
             >
               Explore Agents

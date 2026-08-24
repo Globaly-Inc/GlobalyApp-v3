@@ -12,12 +12,12 @@ const FEE_TYPES = [
 ];
 
 export async function seed(knex: Knex): Promise<void> {
-  // business_id left null and status "approved" — this is platform reference data, not a
-  // business submission awaiting review (the column defaults to "pending" for that case).
-  await knex("fee_types")
-    .insert(FEE_TYPES.map((f) => ({ ...f, business_id: null, is_global: true, status: "approved" })))
-    .onConflict("id")
-    .merge();
+  for (const f of FEE_TYPES) {
+    const exists = await knex("fee_types").where({ slug: f.slug }).first();
+    // business_id left null and status "approved" — this is platform reference data, not a
+    // business submission awaiting review (the column defaults to "pending" for that case).
+    if (!exists) await knex("fee_types").insert({ ...f, business_id: null, is_global: true, status: "approved" });
+  }
   await knex.raw(
     "SELECT setval(pg_get_serial_sequence('fee_types', 'id'), (SELECT MAX(id) FROM fee_types))",
   );

@@ -55,7 +55,7 @@ export function QualifiedLeadsSection() {
             <div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/photos/students-campus-walk.jpg"
+                src="https://images.pexels.com/photos/7973039/pexels-photo-7973039.jpeg?auto=compress&cs=tinysrgb&w=1280&h=960&dpr=1&fit=crop"
                 alt="International students walking together across a university campus"
                 loading="lazy"
                 width={1280}

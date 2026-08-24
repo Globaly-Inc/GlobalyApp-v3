@@ -94,11 +94,7 @@ export async function findCountryById(id: number) {
 // Public, unauthenticated reads — see modules/geo/routes/public-geo.routes.ts.
 export async function listFeaturedCountries() {
   return masterKnex("countries")
-    .select(
-      "id", "name", "slug", "flag_emoji", "iso2", "hero_image_url", "thumbnail_image_url",
-      "universities_count_label", "avg_tuition_min", "avg_tuition_max", "avg_tuition_currency",
-      "cost_of_living_label",
-    )
+    .select("id", "name", "slug", "flag_emoji", "hero_image_url")
     .where({ is_active: true, is_featured: true })
     .whereNull("deleted_at")
     .orderBy("sort_order")
