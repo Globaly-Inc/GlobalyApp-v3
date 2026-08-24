@@ -83,6 +83,12 @@ export function BusinessesView() {
     [businesses, sourceFilter, ownershipFilter],
   );
 
+  // The claims tab is the same list, pre-filtered: anything an admin has sent a claim
+  // request for and nobody has accepted yet. Accepted ones flip to "claimed" and drop out.
+  const displayed = tab === "claims"
+    ? businesses.filter((b) => b.claim_status === "claim_pending")
+    : filteredBusinesses;
+
   const visibleIds = filteredBusinesses.map((b) => b.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
   const someSelected = selected.size > 0;
@@ -212,17 +218,17 @@ export function BusinessesView() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
-  } else if (filteredBusinesses.length === 0) {
+  } else if (displayed.length === 0) {
     list = (
       <div className="py-12 text-center text-muted-foreground">
         <Building2 className="mx-auto mb-3 h-12 w-12 opacity-30" />
-        <p>No businesses found.</p>
+        <p>{tab === "claims" ? "No pending claim requests." : "No businesses found."}</p>
       </div>
     );
   } else {
     list = (
       <div className="space-y-3">
-        {filteredBusinesses.map((b) => (
+        {displayed.map((b) => (
           <BusinessCard
             key={b.id}
             business={b}
@@ -269,10 +275,12 @@ export function BusinessesView() {
         onChange={setTab}
       />
 
-      {tab !== "businesses" ? (
+      {tab === "services" ? (
         <div className="py-12 text-center text-muted-foreground">
-          <p>{tab === "services" ? "Services" : "Claim requests"} management is coming soon.</p>
+          <p>Services management is coming soon.</p>
         </div>
+      ) : tab === "claims" ? (
+        list
       ) : (
         <>
       <BusinessFiltersBar

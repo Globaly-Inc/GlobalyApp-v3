@@ -21,7 +21,7 @@ export function SuggestedStarters({ onSelect, name, children }: Readonly<Suggest
   // so SSR/hydration can't disagree about which greeting was drawn.
   const [greeting, setGreeting] = useState<string | null>(null);
   useEffect(() => {
-    setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
+    setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)] ?? null);
   }, []);
   const openQuestions = STARTER_CATEGORIES.find((c) => c.label === openLabel)?.questions ?? [];
 
