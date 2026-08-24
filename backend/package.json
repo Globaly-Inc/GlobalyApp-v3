@@ -36,6 +36,7 @@
     "job:import-v2": "node --import tsx src/modules/superadmin/data-extraction/workers/import-v2.worker.ts",
     "job:backfill-promote": "node --import tsx src/modules/superadmin/data-extraction/workers/backfill-promote.worker.ts",
     "test:promote-routing": "node --import tsx tests/promote-routing.ts",
+    "test:counsellor-briefing": "node --import tsx tests/counsellor-briefing.ts",
     "diagnose:promote": "node --import tsx scripts/diagnose-promote.ts",
     "job:ai-knowledge-crawl": "node --import tsx src/modules/superadmin/ai-knowledge/workers/knowledge-crawl.worker.ts",
     "job:ai-knowledge-recrawl": "node --import tsx src/modules/superadmin/ai-knowledge/workers/knowledge-recrawl-dispatch.worker.ts",

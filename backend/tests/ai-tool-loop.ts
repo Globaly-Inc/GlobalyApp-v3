@@ -17,7 +17,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || "x";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { cleanTitle, streamChatWithTools } from "../src/modules/ai-counsellor/lib/gemini-stream.js";
-import { toolsFor } from "../src/modules/ai-counsellor/lib/tools.js";
+import { cleanCourseName, cleanIntakes, toolsFor } from "../src/modules/ai-counsellor/lib/tools.js";
 
 let passed = 0;
 let failed = 0;
@@ -252,6 +252,24 @@ async function main() {
     assert(!discovery.includes("get_course_details"), "discovery turn has no get_course_details", discovery);
     assert(discovery.includes("search_knowledge"), "discovery turn keeps search_knowledge");
     assertEqual(normal.length, discovery.length + 2, "only the two course tools are withheld");
+  }
+
+  console.log("\ncard display cleanup");
+  {
+    assertEqual(
+      cleanCourseName("CHC52021- Diploma of Community Services ( CRICOS Course Code: 114977F)"),
+      "Diploma of Community Services",
+      "training-package prefix and CRICOS suffix are stripped",
+    );
+    assertEqual(cleanCourseName("Bachelor of Arts"), "Bachelor of Arts", "clean names pass through");
+    assertEqual(cleanCourseName("BSB50120 Diploma of Business"), "Diploma of Business", "code without dash is stripped");
+
+    const kept = cleanIntakes(
+      ["1st Term 2025", "Holiday (17 Mar - 6 Apr 2025)", "Fall 2026", "Winter intake", "2nd Term 2025"],
+      new Date("2026-08-24"),
+    );
+    assertEqual(JSON.stringify(kept), JSON.stringify(["Fall 2026", "Winter intake"]),
+      "holidays and past-year intakes are dropped, undated intakes kept");
   }
 
   console.log("\ncleanTitle — session naming");

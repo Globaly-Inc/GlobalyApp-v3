@@ -31,7 +31,11 @@ export type ResponseBlock =
   | { type: "timeline"; title?: string; steps: { title: string; description?: string }[] }
   | { type: "recommendation"; title: string; subtitle?: string; description?: string; image_url?: string; tags?: string[]; actions?: Action[] }
   | { type: "image"; url: string; title?: string; caption?: string }
-  | { type: "quick_replies"; question?: string; options: Action[] };
+  | { type: "quick_replies"; question?: string; options: Action[] }
+  // Appended by chat.service after a course search, never parsed from model text —
+  // there is deliberately no validator for it, so a model-emitted "link" block (with
+  // an invented URL) is dropped by toBlock's validator lookup.
+  | { type: "link"; label: string; url: string };
 
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 const isActions = (v: unknown): v is Action[] =>

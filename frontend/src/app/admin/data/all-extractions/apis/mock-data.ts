@@ -18,9 +18,12 @@ import type {
   ExtractionJob,
   Intake,
   IntakeParams,
+  JobAccreditations,
   JobEvent,
   JobFull,
   JunctionSlug,
+  LibraryAccreditation,
+  LibraryAccreditationInput,
   Paginated,
   QueueItem,
   StudyOption,
@@ -38,6 +41,12 @@ import type { ExtractionStatus, GetJobsParams, GetJobsResult } from "./types";
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+const mockLibrary: LibraryAccreditation[] = [
+  { id: "lib-1", name: "AACSB", issuing_organization: "Association to Advance Collegiate Schools of Business", website: "https://www.aacsb.edu/", description: null, country: null, is_active: true, created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z" },
+  { id: "lib-2", name: "ABA", issuing_organization: "American Bar Association", website: "https://www.americanbar.org/", description: null, country: null, is_active: true, created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z" },
+  { id: "lib-3", name: "ABET", issuing_organization: "Accreditation Board for Engineering and Technology", website: "https://www.abet.org/", description: null, country: null, is_active: true, created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z" },
+];
 
 const EMPTY_COURSE_LINKS: CourseLinks = {
   course_fees: [], intakes: [], eligibility_requirements: [], study_units: [],
@@ -611,14 +620,59 @@ export const allExtractionsMockApi = {
 
   // ── Accreditations ───────────────────────────────────────────────
 
-  getAccreditations: async (jobId: string): Promise<Accreditation[]> => {
-    console.log("[mock] GET accreditations for job", jobId);
+  getJobAccreditations: async (jobId: string): Promise<JobAccreditations> => {
+    console.log("[mock] GET job accreditations", jobId);
     await delay(250);
     const now = new Date().toISOString();
-    return [
-      { id: "acc-1", name: "AACSB", issuing_organization: "Association to Advance Collegiate Schools of Business", website: "https://www.aacsb.edu", description: null, created_at: now },
-      { id: "acc-2", name: "TEQSA", issuing_organization: "Tertiary Education Quality and Standards Agency", website: "https://www.teqsa.gov.au", description: null, created_at: now },
-    ];
+    return {
+      scraped: [
+        { id: "acc-1", name: "AACSB", issuing_organization: "Association to Advance Collegiate Schools of Business", website: "https://www.aacsb.edu", description: null, created_at: now },
+        { id: "acc-2", name: "TEQSA", issuing_organization: "Tertiary Education Quality and Standards Agency", website: "https://www.teqsa.gov.au", description: null, created_at: now },
+      ],
+      assignments: [
+        { extraction_accreditation_id: "acc-1", accreditation_id: "lib-1", course_id: "c-1", course_name: "Bachelor of Business" },
+        { extraction_accreditation_id: "acc-2", accreditation_id: null, course_id: "c-1", course_name: "Bachelor of Business" },
+      ],
+    };
+  },
+
+  updateAccreditationMappings: async (jobId: string, ids: string[], accreditationId: string | null): Promise<void> => {
+    console.log("[mock] PATCH accreditation-mappings", { jobId, ids, accreditationId });
+    await delay(250);
+  },
+
+  getAccreditationLibrary: async (): Promise<LibraryAccreditation[]> => {
+    console.log("[mock] GET accreditation-library");
+    await delay(250);
+    return [...mockLibrary];
+  },
+
+  createLibraryAccreditation: async (input: LibraryAccreditationInput): Promise<LibraryAccreditation> => {
+    console.log("[mock] POST accreditation-library", input);
+    await delay(250);
+    const now = new Date().toISOString();
+    const row: LibraryAccreditation = {
+      id: uuid(), name: input.name, issuing_organization: input.issuing_organization ?? null,
+      website: input.website ?? null, description: input.description ?? null,
+      country: null, is_active: true, created_at: now, updated_at: now,
+    };
+    mockLibrary.push(row);
+    return row;
+  },
+
+  updateLibraryAccreditation: async (id: string, input: Partial<LibraryAccreditationInput>): Promise<LibraryAccreditation> => {
+    console.log("[mock] PATCH accreditation-library", id, input);
+    await delay(250);
+    const idx = mockLibrary.findIndex((a) => a.id === id);
+    mockLibrary[idx] = { ...mockLibrary[idx], ...input, updated_at: new Date().toISOString() } as LibraryAccreditation;
+    return mockLibrary[idx];
+  },
+
+  deleteLibraryAccreditation: async (id: string): Promise<void> => {
+    console.log("[mock] DELETE accreditation-library", id);
+    await delay(200);
+    const idx = mockLibrary.findIndex((a) => a.id === id);
+    if (idx >= 0) mockLibrary.splice(idx, 1);
   },
 
   createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string | null }): Promise<Accreditation> => {

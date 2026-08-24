@@ -14,6 +14,13 @@ import type {
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3/ai-chat`;
 
+/** Postgres NUMERIC arrives as a string, and String#toLocaleString is a no-op — the
+ * card then shows "AUD 16041" with no thousands separator. Coerce to a real number. */
+function toFee(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /** Backend streams/stores cards in prompt format; the renderer wants CourseCard.
  * Mirror of the mapper in embed/[key]/apis/real-api.ts, which must stay import-free of this file. */
 function toCourseCard(w: WireCourseCard): CourseCard {
@@ -25,7 +32,7 @@ function toCourseCard(w: WireCourseCard): CourseCard {
     institution_logo_url: w.institution_logo_url ?? null,
     degree_level: w.degree_level ?? "",
     duration: w.duration ?? "",
-    annual_tuition_fee: w.fees ?? null,
+    annual_tuition_fee: toFee(w.fees),
     currency: w.currency ?? "",
     country: w.country ?? "",
     city: w.city ?? null,

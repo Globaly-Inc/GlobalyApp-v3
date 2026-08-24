@@ -1,6 +1,6 @@
 // Staged entities + junctions service.
 
-import { BadRequestError } from "../../../../shared/errors.js";
+import { BadRequestError, NotFoundError } from "../../../../shared/errors.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/staged.repository.js";
 
@@ -122,6 +122,36 @@ export async function createAccreditation(data: Record<string, unknown>, adminId
 export async function deleteAccreditation(id: string, adminId: number) {
   await repo.accreditations.delete(id);
   await logAudit(adminId, "STAGED_ACCREDITATION_DELETE", { entityType: "extraction_accreditations", entityId: id });
+  return { deleted: true };
+}
+
+export async function getJobAccreditations(jobId: string) {
+  return repo.getJobAccreditations(jobId);
+}
+
+// ── Global accreditation library ──
+
+export async function listLibraryAccreditations() {
+  return { accreditations: await repo.accreditationLibrary.list() };
+}
+
+export async function createLibraryAccreditation(data: Record<string, unknown>, adminId: number) {
+  const row = await repo.accreditationLibrary.insert(data);
+  await logAudit(adminId, "ACCREDITATION_LIBRARY_CREATE", { entityType: "accreditations", entityId: row.id });
+  return row;
+}
+
+export async function patchLibraryAccreditation(id: string, data: Record<string, unknown>, adminId: number) {
+  const row = await repo.accreditationLibrary.update(id, data);
+  if (!row) throw new NotFoundError("Accreditation not found");
+  await logAudit(adminId, "ACCREDITATION_LIBRARY_PATCH", { entityType: "accreditations", entityId: id });
+  return row;
+}
+
+export async function deleteLibraryAccreditation(id: string, adminId: number) {
+  const deleted = await repo.accreditationLibrary.delete(id);
+  if (!deleted) throw new NotFoundError("Accreditation not found");
+  await logAudit(adminId, "ACCREDITATION_LIBRARY_DELETE", { entityType: "accreditations", entityId: id });
   return { deleted: true };
 }
 

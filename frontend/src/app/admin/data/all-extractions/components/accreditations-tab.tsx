@@ -1,51 +1,97 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { LucideIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, Link2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Award, FileText, Globe, Link2, Plus, ShieldCheck, Trash2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Combobox } from "@/components/combobox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Combobox } from "@/components/combobox";
-import { FieldError } from "@/components/field-error";
-import { cn } from "@/lib/utils";
-import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { allExtractionsApi } from "../apis";
-import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
+import { useFieldSaver } from "./editable-field";
 import { useConfirmDelete } from "./use-confirm-delete";
-import type { Accreditation } from "../apis/types";
+import { AccreditationLibrarySection } from "./accreditation-library-section";
+import { ScrapedAccreditationCard } from "./scraped-accreditation-card";
+import type { AccreditationAssignment, JobAccreditations, LibraryAccreditation } from "../apis/types";
 
-// EditableField keeps its own click-to-edit affordance — this just gives each
-// field a visual anchor (icon tile), matching the Institution/Branches tabs' treatment.
-function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
+function BulkMapDialog({
+  open, onOpenChange, count, library, onConfirm,
+}: Readonly<{
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  count: number;
+  library: LibraryAccreditation[];
+  onConfirm: (accId: string) => Promise<void>;
+}>) {
+  const [selected, setSelected] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (!open) setSelected(""); }, [open]);
+
   return (
-    <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
-      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-        <Icon className="h-3.5 w-3.5" />
-      </div>
-      <EditableField {...field} className="flex-1" />
-    </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Map {count} scraped {count === 1 ? "row" : "rows"} to a library entry</DialogTitle>
+          <DialogDescription>
+            All selected scraped accreditations across this job will be linked to the same global library entry.
+          </DialogDescription>
+        </DialogHeader>
+        {/* flex+gap, not space-y — see AGENTS.md on Combobox focus guards */}
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs text-muted-foreground">Library accreditation</Label>
+          <Combobox
+            options={library.map((a) => ({ value: a.id, label: a.name }))}
+            value={selected}
+            onChange={setSelected}
+            placeholder="Select…"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button
+            size="sm" className="gap-1.5 cursor-pointer" disabled={!selected || saving}
+            onClick={async () => {
+              setSaving(true);
+              try { await onConfirm(selected); onOpenChange(false); } finally { setSaving(false); }
+            }}
+          >
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {saving ? "Saving…" : "Apply mapping"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
-  const [accreditations, setAccreditations] = useState<Accreditation[]>([]);
+  const [data, setData] = useState<JobAccreditations>({ scraped: [], assignments: [] });
+  const [library, setLibrary] = useState<LibraryAccreditation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [libraryFormOpen, setLibraryFormOpen] = useState(false);
+  const [prefilledName, setPrefilledName] = useState<string | undefined>();
+  const autoMapScrapedId = useRef<string | null>(null);
   const fetchedRef = useRef(false);
+  const { confirm, dialog } = useConfirmDelete();
 
   async function load() {
-    setLoading(true);
     try {
-      setAccreditations(await allExtractionsApi.getAccreditations(jobId));
+      const [jobAcc, lib] = await Promise.all([
+        allExtractionsApi.getJobAccreditations(jobId),
+        allExtractionsApi.getAccreditationLibrary(),
+      ]);
+      setData(jobAcc);
+      setLibrary(lib);
     } catch (e) {
       toast.error("Failed to load accreditations", { description: (e as Error).message });
     } finally {
@@ -60,212 +106,175 @@ export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
-  async function handleDelete(id: string) {
+  const saveField = useFieldSaver(jobId, load);
+
+  const byScraped = useMemo(() => {
+    const m = new Map<string, AccreditationAssignment[]>();
+    for (const a of data.assignments) {
+      if (!a.extraction_accreditation_id) continue;
+      const arr = m.get(a.extraction_accreditation_id) ?? [];
+      arr.push(a);
+      m.set(a.extraction_accreditation_id, arr);
+    }
+    return m;
+  }, [data.assignments]);
+
+  const q = search.trim().toLowerCase();
+  const filtered = q ? data.scraped.filter((s) => s.name.toLowerCase().includes(q)) : data.scraped;
+
+  const unmappedCount = data.scraped.filter((s) => {
+    const rows = byScraped.get(s.id) ?? [];
+    return rows.length > 0 && rows.every((r) => !r.accreditation_id);
+  }).length;
+
+  async function applyMapping(scrapedIds: string[], accreditationId: string | null) {
+    try {
+      await allExtractionsApi.updateAccreditationMappings(jobId, scrapedIds, accreditationId);
+      setData((prev) => ({
+        ...prev,
+        assignments: prev.assignments.map((a) =>
+          a.extraction_accreditation_id && scrapedIds.includes(a.extraction_accreditation_id)
+            ? { ...a, accreditation_id: accreditationId }
+            : a,
+        ),
+      }));
+      toast.success(accreditationId ? "Mapped" : "Mapping cleared");
+    } catch (e) {
+      toast.error("Mapping failed", { description: (e as Error).message });
+    }
+  }
+
+  async function deleteScraped(id: string, name: string) {
+    if (!(await confirm(`Delete scraped accreditation "${name}"?`))) return;
     try {
       await allExtractionsApi.deleteAccreditation(id);
-      setAccreditations((prev) => prev.filter((a) => a.id !== id));
-      toast.success("Accreditation deleted");
+      toast.success("Deleted");
+      load();
     } catch (e) {
       toast.error("Delete failed", { description: (e as Error).message });
     }
   }
 
-  const saveField = useFieldSaver(jobId, load);
+  const visibleIds = filtered.map((s) => s.id);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const toggleAll = () => {
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      if (allSelected) visibleIds.forEach((id) => n.delete(id));
+      else visibleIds.forEach((id) => n.add(id));
+      return n;
+    });
+  };
 
-  if (loading) {
-    return <p className="py-12 text-center text-sm text-muted-foreground">Loading accreditations...</p>;
-  }
+  if (loading) return <p className="py-12 text-center text-sm text-muted-foreground">Loading accreditations...</p>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {accreditations.length} accreditation{accreditations.length !== 1 ? "s" : ""}
-        </p>
-        <Button size="sm" className="gap-1.5 cursor-pointer" onClick={() => setDialogOpen(true)}>
-          <Plus className="h-3.5 w-3.5" /> Add Accreditation
-        </Button>
+    <div className="space-y-6">
+      {dialog}
+
+      {/* ── Scraped from this job ── */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <Link2 className="h-4 w-4 text-primary" />
+            Scraped from this job
+            <Badge variant="secondary" className="text-xs">{data.scraped.length}</Badge>
+          </h3>
+          {unmappedCount > 0 && (
+            <Badge variant="destructive" className="gap-1 text-xs">
+              <AlertCircle className="h-3 w-3" />
+              {unmappedCount} need mapping
+            </Badge>
+          )}
+        </div>
+
+        {data.scraped.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3">
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search scraped..." className="h-8 max-w-xs text-sm" />
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox checked={allSelected} onCheckedChange={toggleAll} disabled={visibleIds.length === 0} />
+              <span>Select all ({visibleIds.length})</span>
+            </label>
+            {selectedIds.size > 0 && (
+              <Button size="sm" className="ml-auto gap-1.5 cursor-pointer" onClick={() => setBulkOpen(true)}>
+                Map {selectedIds.size} to library…
+              </Button>
+            )}
+          </div>
+        )}
+
+        {filtered.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-10 text-center">
+              <Link2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                {q
+                  ? "No matches"
+                  : "No scraped accreditations linked to courses in this job yet. Run the Course Data Extraction step from the action bar above."}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {filtered.map((s) => (
+              <ScrapedAccreditationCard
+                key={s.id}
+                scraped={s}
+                rows={byScraped.get(s.id) ?? []}
+                library={library}
+                selected={selectedIds.has(s.id)}
+                onToggleSelected={() =>
+                  setSelectedIds((prev) => {
+                    const n = new Set(prev);
+                    if (n.has(s.id)) n.delete(s.id); else n.add(s.id);
+                    return n;
+                  })
+                }
+                onMap={(accId) => applyMapping([s.id], accId)}
+                onAddNew={() => {
+                  autoMapScrapedId.current = s.id;
+                  setPrefilledName(s.name);
+                  setLibraryFormOpen(true);
+                }}
+                onSaveField={(column, value) => saveField("extraction_accreditations", s.id, column, value)}
+                onDelete={() => deleteScraped(s.id, s.name)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {accreditations.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Award className="mx-auto mb-3 h-8 w-8 opacity-40" />
-            <p className="text-sm">No accreditations yet</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {accreditations.map((acc) => (
-            <Card key={acc.id} className="group overflow-hidden">
-              <div className="-mt-4 flex items-center justify-between gap-2 rounded-t-xl border-b bg-primary/5 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                    <ShieldCheck className="h-4 w-4" />
-                  </div>
-                  <span className="text-sm font-semibold text-foreground">{acc.name || "Unnamed accreditation"}</span>
-                </div>
-                <Button
-                  variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive"
-                  title="Delete accreditation" onClick={() => handleDelete(acc.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+      {/* ── Library ── */}
+      <AccreditationLibrarySection
+        library={library}
+        prefilledName={prefilledName}
+        formOpen={libraryFormOpen}
+        onFormOpenChange={(open) => {
+          setLibraryFormOpen(open);
+          if (!open) { setPrefilledName(undefined); autoMapScrapedId.current = null; }
+        }}
+        onChanged={async (saved) => {
+          // "Add new" from a scraped row: map that row to the entry just created.
+          if (saved && autoMapScrapedId.current) {
+            await applyMapping([autoMapScrapedId.current], saved.id);
+            autoMapScrapedId.current = null;
+          }
+          setPrefilledName(undefined);
+          const lib = await allExtractionsApi.getAccreditationLibrary();
+          setLibrary(lib);
+        }}
+      />
 
-              <CardContent className="p-4">
-                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-                  <Field icon={Award} label="Name" value={acc.name} onSave={(v) => saveField("extraction_accreditations", acc.id, "name", v)} />
-                  <Field
-                    icon={Globe} label="Issuing organization" value={acc.issuing_organization}
-                    onSave={(v) => saveField("extraction_accreditations", acc.id, "issuing_organization", v)}
-                  />
-                  <Field
-                    icon={Link2} label="Website" value={acc.website}
-                    onSave={(v) => saveField("extraction_accreditations", acc.id, "website", v)}
-                  />
-                  <Field
-                    icon={FileText} label="Description" value={acc.description} multiline
-                    onSave={(v) => saveField("extraction_accreditations", acc.id, "description", v)}
-                    className="md:col-span-2"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <AddAccreditationDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        jobId={jobId}
-        onCreated={(created) => {
-          setAccreditations((prev) => [created, ...prev]);
-          setDialogOpen(false);
+      <BulkMapDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        count={selectedIds.size}
+        library={library}
+        onConfirm={async (accId) => {
+          await applyMapping([...selectedIds], accId);
+          setSelectedIds(new Set());
         }}
       />
     </div>
-  );
-}
-
-// ── Add dialog ───────────────────────────────────────────────────
-
-import { z } from "zod";
-
-const accreditationSchema = z.object({
-  name: z.string().trim().min(1, "Accreditation name is required"),
-  issuingOrg: z.string().trim().transform((v) => v || null),
-});
-
-function AddAccreditationDialog({
-  open,
-  onOpenChange,
-  jobId,
-  onCreated,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  jobId: string;
-  onCreated: (a: Accreditation) => void;
-}) {
-  const [name, setName] = useState("");
-  const [issuingOrg, setIssuingOrg] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [accreditationOptions, setAccreditationOptions] = useState<{ value: string; label: string }[]>([]);
-  const [issuingOrgOptions, setIssuingOrgOptions] = useState<{ value: string; label: string }[]>([]);
-  const [loadingOptions, setLoadingOptions] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!open) return;
-    setErrors({});
-    setName("");
-    setIssuingOrg("");
-    setLoadingOptions(true);
-    Promise.all([
-      categoriesApi.getAccreditations({ limit: 100 }).catch(() => ({ data: [] })),
-      categoriesApi.getIssuingOrganizations({ limit: 100 }).catch(() => ({ data: [] })),
-    ])
-      .then(([accRes, orgRes]) => {
-        setAccreditationOptions(accRes.data.map((a) => ({ value: a.name, label: a.name })));
-        setIssuingOrgOptions(orgRes.data.map((o) => ({ value: o.name, label: o.name })));
-      })
-      .finally(() => setLoadingOptions(false));
-  }, [open]);
-
-  async function handleSave() {
-    const result = accreditationSchema.safeParse({ name, issuingOrg });
-    if (!result.success) {
-      const errs: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const key = String(issue.path[0]);
-        if (!errs[key]) errs[key] = issue.message;
-      }
-      setErrors(errs);
-      return;
-    }
-
-    setErrors({});
-    const d = result.data;
-    setSaving(true);
-    try {
-      const created = await allExtractionsApi.createAccreditation({
-        job_id: jobId,
-        name: d.name,
-        issuing_organization: d.issuingOrg,
-      });
-      toast.success("Accreditation added");
-      onCreated(created);
-      setName(""); setIssuingOrg("");
-    } catch (e) {
-      toast.error("Failed to add accreditation", { description: (e as Error).message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Accreditation</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">
-              Name <span className="text-destructive">*</span>
-            </Label>
-            <Combobox
-              options={accreditationOptions}
-              value={name}
-              onChange={(v) => {
-                setName(v);
-                if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
-              }}
-              placeholder="Select or type accreditation name..."
-              loading={loadingOptions}
-              creatable
-            />
-            <FieldError message={errors.name} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Issuing Organization</Label>
-            <Combobox
-              options={issuingOrgOptions}
-              value={issuingOrg}
-              onChange={setIssuingOrg}
-              placeholder="Select or type issuing organization..."
-              loading={loadingOptions}
-              creatable
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button size="sm" className="cursor-pointer" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

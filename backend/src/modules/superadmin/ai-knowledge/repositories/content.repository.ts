@@ -81,18 +81,27 @@ export async function reviewQueueItem(
   return row;
 }
 
-/** Counts behind the four stat cards, in one round trip per table. */
+/** Counts behind the stat cards, in one round trip per table. */
 export async function overviewCounts() {
-  const [visa, faqs, guides, pending] = await Promise.all([
+  const [visa, faqs, guides, pending, kindRows] = await Promise.all([
     masterKnex(CONTENT_TABLES.visa).count("* as c").first(),
     masterKnex(CONTENT_TABLES.faqs).count("* as c").first(),
     masterKnex(CONTENT_TABLES.guides).count("* as c").first(),
     masterKnex(QUEUE).where("status", "pending").count("* as c").first(),
+    // Sources per category kind — feeds the rack-kind tab cards.
+    masterKnex(`${S}.ai_knowledge_sources as s`)
+      .join(`${S}.ai_knowledge_categories as c`, "c.id", "s.category_id")
+      .select("c.kind")
+      .count("* as c")
+      .groupBy("c.kind"),
   ]);
   return {
     visa: Number(visa?.c ?? 0),
     faqs: Number(faqs?.c ?? 0),
     guides: Number(guides?.c ?? 0),
     pending_reviews: Number(pending?.c ?? 0),
+    sources_by_kind: Object.fromEntries(
+      (kindRows as { kind: string; c: string | number }[]).map((r) => [r.kind, Number(r.c)]),
+    ),
   };
 }
