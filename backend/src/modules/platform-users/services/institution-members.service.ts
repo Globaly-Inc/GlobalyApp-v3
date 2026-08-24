@@ -25,6 +25,7 @@ import { NotFoundError, ConflictError, UnauthorizedError } from "../../../shared
 import { paginationToOffset, buildPaginatedResponse } from "../../../shared/pagination.js";
 import type { PaginationInput } from "../../../shared/pagination.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
+import { masterKnex } from "../../../core/db/master-pool.js";
 import { queueInvitationEmail } from "../../auth/auth.service.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as invitesRepo from "../repositories/institution-invitations.repository.js";
@@ -109,6 +110,86 @@ export async function removeMember(tenantDb: Knex, institutionId: number, platfo
   await tenantDb("members").where({ id: member.id }).update({ deleted_at: tenantDb.fn.now() });
   await repo.softDeleteUserInstitutionIndex(platformUserId, institutionId);
   return true;
+}
+
+const MEMBER_COLUMNS = [
+  "id", "platform_user_id", "role", "is_owner", "account_status",
+  "first_name", "last_name", "email", "phone", "created_at",
+] as const;
+
+interface MemberRow {
+  id: number;
+  platform_user_id: number;
+  role: string;
+  is_owner: boolean;
+  account_status: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  created_at: Date;
+}
+
+/** Shapes a `members` row to the same field names as businesses' agent list (role_id/role_display/
+ * admin_point_of_contact/position/is_public/photo_url don't exist for institutions — plain
+ * defaults), and re-enriches name/contact/photo from platform_users, mirroring agents' enrichAgents
+ * so a stale denormalized snapshot on `members` never shows instead of the live profile. */
+async function enrichMembers(members: MemberRow[]) {
+  if (members.length === 0) return [];
+  const ids = members.map((m) => m.platform_user_id as number);
+  const users = await masterKnex("platform_users")
+    .whereIn("id", ids)
+    .select("id", "first_name", "last_name", "email", "phone", "photo_url");
+  const userMap = new Map(users.map((u: any) => [u.id, u]));
+  return members.map((member) => {
+    const user = userMap.get(member.platform_user_id as number);
+    return {
+      id: member.id,
+      platform_user_id: member.platform_user_id,
+      role_id: 0,
+      role: member.role,
+      role_display: member.role,
+      is_owner: member.is_owner,
+      account_status: member.account_status,
+      admin_point_of_contact: false,
+      position: null,
+      is_public: true,
+      created_at: member.created_at,
+      first_name: user?.first_name ?? member.first_name,
+      last_name: user?.last_name ?? member.last_name,
+      email: user?.email ?? member.email,
+      phone: user?.phone ?? member.phone,
+      photo_url: user?.photo_url ?? null,
+    };
+  });
+}
+
+/** Self-service member list — the institution twin of agents.service.ts's listAgents. */
+export async function listMembers(tenantDb: Knex, pagination: PaginationInput) {
+  const { limit, offset } = paginationToOffset(pagination);
+  const [rows, [{ count }]] = await Promise.all([
+    tenantDb<MemberRow>("members")
+      .whereNull("deleted_at")
+      .select(MEMBER_COLUMNS as unknown as (keyof MemberRow)[])
+      .orderBy("id", "asc")
+      .limit(limit)
+      .offset(offset),
+    tenantDb("members").whereNull("deleted_at").count("id as count"),
+  ]);
+  const enriched = await enrichMembers(rows);
+  return buildPaginatedResponse(enriched, Number(count), pagination);
+}
+
+/** Self-service single-member lookup — the institution twin of agents.service.ts's getAgent. */
+export async function getMember(tenantDb: Knex, id: number) {
+  const row = await tenantDb<MemberRow>("members")
+    .where({ id })
+    .whereNull("deleted_at")
+    .select(MEMBER_COLUMNS as unknown as (keyof MemberRow)[])
+    .first();
+  if (!row) throw new NotFoundError("Member not found");
+  const [enriched] = await enrichMembers([row]);
+  return enriched;
 }
 
 /** Suspend/reinstate a member — account_status only, same 0/1 convention as agents. */

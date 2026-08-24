@@ -86,7 +86,9 @@ export function ProfileTab({
           </CardHeader>
           <CardContent>
             {profile.description ? (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{profile.description}</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {profile.description.replace(/<[^>]*>/g, "")}
+              </p>
             ) : (
               <p className="text-sm italic text-muted-foreground">No description added yet.</p>
             )}

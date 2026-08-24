@@ -74,6 +74,15 @@ export async function requireBusinessContext(req: FastifyRequest, reply: Fastify
   }
 }
 
+/** For routes that serve business AND institution tenants (e.g. team-member management) and
+ * branch internally on `req.auth.orgType` — unlike requireBusinessContext, this does not
+ * reject institution tokens. */
+export async function requireBusinessOrInstitutionContext(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.auth?.orgId) {
+    return reply.status(403).send({ error: "Switch to a business or institution context first" });
+  }
+}
+
 export async function requireInstitutionContext(req: FastifyRequest, reply: FastifyReply) {
   if (!req.auth?.orgId || req.auth.orgType !== "institution") {
     return reply.status(403).send({ error: "Switch to an institution context first" });

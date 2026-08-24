@@ -45,9 +45,10 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
   const isInstitution = authUser?.user_category === "institution";
-  // Institutions have no Branches/Partners/Services/Scholarships/Activity tenant tables —
-  // only the profile tab applies, regardless of what ?tab= says.
-  const tab = isInstitution ? "profile" : parseTab(searchParams.get("tab"));
+  const parsedTab = parseTab(searchParams.get("tab"));
+  // Branches/Partners/Scholarships/Activity have no institution-side data — the sidebar never
+  // links there for an institution, but fall back to profile if the URL is edited directly.
+  const tab = isInstitution && !["profile", "team", "services"].includes(parsedTab) ? "profile" : parsedTab;
 
   useEffect(() => {
     if (initializing) return;
@@ -132,10 +133,10 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         <Button variant="outline" size="sm" onClick={() => setPreviewMode((v) => !v)}>
           <Eye className="mr-1.5 h-3.5 w-3.5" /> {previewMode ? "Exit preview" : "Preview"}
         </Button>
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">{profile.is_published ? "Published" : "Unpublished"}</span>
           <Switch checked={profile.is_published} onCheckedChange={handleTogglePublished} />
-        </div>
+        </div> */}
       </div>
 
       <ProfileHeaderCard
@@ -158,7 +159,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
             {tab === "branches" && <BranchesTab businessId={businessId} />}
             {tab === "partners" && <PartnersTab businessId={businessId} businessName={profile.business_name} />}
             {tab === "team" && <MembersTab businessId={businessId} />}
-            {tab === "services" && <ServicesTab businessId={businessId} />}
+            {tab === "services" && <ServicesTab businessId={businessId} readOnly={isInstitution} />}
             {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
             {tab === "activity" && <ActivityTab businessId={businessId} />}
           </CardContent>

@@ -15,7 +15,7 @@ import { DeleteServiceDialog } from "../services/delete-service-dialog";
 import { ServiceColumnPicker } from "../services/service-column-picker";
 import { ServiceManagementTable, type ColumnKey, type SortColumn, type SortState } from "../services/service-management-table";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 const DEFAULT_COLUMNS: ColumnKey[] = ["category", "degree_level", "area_of_study", "duration", "location", "price", "status"];
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -23,10 +23,10 @@ const STATUS_OPTIONS = [
   { value: "draft", label: "Draft" },
 ];
 
-export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
+export function ServicesTab({ businessId, readOnly = false }: Readonly<{ businessId: number; readOnly?: boolean }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { items: services, status } = useAppSelector((state) => state.businessProfileDetail.services);
+  const { items: services, status, total } = useAppSelector((state) => state.businessProfileDetail.services);
   const [deletingService, setDeletingService] = useState<BusinessService | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
@@ -36,24 +36,38 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(new Set(DEFAULT_COLUMNS));
 
-  const fetchedRef = useRef(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const fetchPage = (p: number) => {
+    dispatch(fetchServices({ id: businessId, params: { search: search || undefined, page: p, limit: PAGE_SIZE } })).finally(() => setHasLoaded(true));
+  };
+
+  // Debounced, backend-driven search — the backend already supports `search` (and, for
+  // institutions, filters their extraction courses by it too), so this no longer fetches
+  // everything and filters client-side.
+  const fetchedRef = useRef(false);
   useEffect(() => {
-    if (fetchedRef.current) return;
+    setPage(1);
+    const isFirstRun = !fetchedRef.current;
     fetchedRef.current = true;
-    dispatch(fetchServices({ id: businessId, params: { limit: 100 } })).finally(() => setHasLoaded(true));
-  }, [dispatch, businessId]);
+    const timer = setTimeout(() => fetchPage(1), isFirstRun ? 0 : 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, businessId, search]);
+
+  const handlePageChange = (p: number) => {
+    setPage(p);
+    fetchPage(p);
+  };
 
   const handleSortChange = (column: SortColumn) => {
     setSort((s) => (s.column === column ? { column, direction: s.direction === "asc" ? "desc" : "asc" } : { column, direction: "asc" }));
   };
 
-  const filtered = useMemo(() => {
+  // Status filter and sort apply only within the current backend page — the search endpoint has
+  // no status/sort query params, and a page is only PAGE_SIZE rows, so this is a light, page-local
+  // refinement rather than a full re-query.
+  const pageRows = useMemo(() => {
     let rows = services;
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      rows = rows.filter((s) => s.name.toLowerCase().includes(q));
-    }
     if (statusFilter !== "all") {
       rows = rows.filter((s) => (statusFilter === "published" ? s.is_published : !s.is_published));
     }
@@ -71,9 +85,7 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
       rows = [...rows].sort((a, b) => key(a).localeCompare(key(b)) * (sort.direction === "asc" ? 1 : -1));
     }
     return rows;
-  }, [services, search, statusFilter, sort]);
-
-  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  }, [services, statusFilter, sort]);
 
   const handleTogglePublish = async (serviceId: string, next: boolean) => {
     try {
@@ -123,18 +135,24 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold">Service management</h2>
-          <p className="text-sm text-muted-foreground">Manage your service listings.</p>
+          <h2 className="text-lg font-bold">{readOnly ? "Courses" : "Service management"}</h2>
+          <p className="text-sm text-muted-foreground">
+            {readOnly ? "Courses extracted for this institution." : "Manage your service listings."}
+          </p>
         </div>
-        <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/services/add`)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add service
-        </Button>
+        {!readOnly && (
+          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/services/add`)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add service
+          </Button>
+        )}
       </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Combobox className="h-10 w-40" options={STATUS_OPTIONS} value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1); }} placeholder="Filter" />
-          {selectedIds.size > 0 && (
+          {!readOnly && (
+            <Combobox className="h-10 w-40" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} placeholder="Filter" />
+          )}
+          {!readOnly && selectedIds.size > 0 && (
             <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm">
               <span>{selectedIds.size} selected</span>
               <Button size="sm" variant="outline" onClick={() => handleBulkPublish(true)}>Publish</Button>
@@ -146,7 +164,7 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
         <div className="flex items-center gap-2">
           <div className="relative w-56">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="h-10 pl-9" placeholder="Search services..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            <Input className="h-10 pl-9" placeholder={readOnly ? "Search courses..." : "Search services..."} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <ServiceColumnPicker visibleColumns={visibleColumns} onChange={setVisibleColumns} />
         </div>
@@ -154,10 +172,10 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
 
       {!hasLoaded || status === "loading" ? (
         <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-      ) : filtered.length === 0 ? (
+      ) : pageRows.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
           <Package className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm font-medium">No services yet</p>
+          <p className="text-sm font-medium">{readOnly ? "No courses yet" : "No services yet"}</p>
         </div>
       ) : (
         <ServiceManagementTable
@@ -171,10 +189,11 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
           onTogglePublish={handleTogglePublish}
           onPriceSave={handlePriceSave}
           onDelete={setDeletingService}
+          readOnly={readOnly}
         />
       )}
 
-      {filtered.length > 0 && <Pagination page={page} total={filtered.length} limit={PAGE_SIZE} onPageChange={setPage} />}
+      {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
 
       <DeleteServiceDialog
         service={deletingService}
