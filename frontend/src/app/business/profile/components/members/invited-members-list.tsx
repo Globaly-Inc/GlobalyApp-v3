@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Mail, X } from "lucide-react";
+import { Loader2, Mail, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { cancelInvitation, fetchInvitations } from "../../store/business-profile-detail-slice";
+import { cancelInvitation, fetchInvitations, resendInvitation } from "../../store/business-profile-detail-slice";
 
 const PAGE_SIZE = 10;
 
@@ -34,6 +34,15 @@ export function InvitedMembersList({ businessId }: Readonly<{ businessId: number
       toast.success("Invitation cancelled");
     } catch (e) {
       toast.error("Couldn't cancel invitation", { description: (e as Error).message });
+    }
+  };
+
+  const handleResend = async (invitationId: string) => {
+    try {
+      await dispatch(resendInvitation({ id: businessId, invitationId })).unwrap();
+      toast.success("Invite resent");
+    } catch (e) {
+      toast.error("Couldn't resend invite", { description: (e as Error).message });
     }
   };
 
@@ -72,9 +81,14 @@ export function InvitedMembersList({ businessId }: Readonly<{ businessId: number
                 <p className="text-xs text-muted-foreground">{[i.email, i.phone].filter(Boolean).join(" • ") || "—"}</p>
               </div>
             </div>
-            <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleCancel(i.id)} aria-label="Cancel invitation">
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="icon-sm" variant="ghost" onClick={() => handleResend(i.id)} aria-label="Resend invitation">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleCancel(i.id)} aria-label="Cancel invitation">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         ))}
       </div>

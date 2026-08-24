@@ -3,7 +3,7 @@ import { signupReducer } from "@/app/signup/store/signup-slice"
 import { comingSoonReducer } from "@/app/coming-soon/store/coming-soon-slice"
 import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
-import { homeReducer } from "@/app/personal/portal/store/home-slice"
+import { feedReducer } from "@/components/feed/store/feed-slice"
 import { myServicesReducer } from "@/app/personal/earn/services/store/my-services-slice"
 import { referralsReducer } from "@/app/personal/earn/referrals/store/referrals-slice"
 import { joinReducer } from "@/app/join/store/join-slice"
@@ -43,7 +43,7 @@ const appReducer = combineReducers({
     comingSoon: comingSoonReducer,
     auth: authReducer,
     profile: profileReducer,
-    home: homeReducer,
+    feed: feedReducer,
     myServices: myServicesReducer,
     referrals: referralsReducer,
     join: joinReducer,

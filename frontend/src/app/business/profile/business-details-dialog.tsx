@@ -25,6 +25,7 @@ type FormState = {
   phoneCountryId: string;
   phoneNumber: string;
   description: string;
+  website: string;
   countryId: string;
   state: string;
   city: string;
@@ -43,6 +44,7 @@ function buildSchema(countries: Country[]): z.ZodType<FormState> {
     phoneCountryId: z.string().min(1, REQUIRED),
     phoneNumber: z.string().min(1, REQUIRED),
     description: z.string().min(1, REQUIRED),
+    website: z.string().refine((v) => v === "" || z.string().url().safeParse(v).success, "Enter a valid URL"),
     countryId: z.string().min(1, REQUIRED),
     state: z.string().min(1, REQUIRED),
     city: z.string().min(1, REQUIRED),
@@ -68,6 +70,7 @@ function toForm(profile: BusinessProfile, countries: Country[]): FormState {
     phoneCountryId,
     phoneNumber,
     description: profile.description ?? "",
+    website: profile.website ?? "",
     countryId: profile.country_id ? String(profile.country_id) : "",
     state: profile.state ?? "",
     city: profile.city ?? "",
@@ -140,6 +143,7 @@ export function BusinessDetailsDialog({
       email: data.email,
       phone: [phoneCode, data.phoneNumber].filter(Boolean).join(" "),
       description: data.description,
+      website: data.website || null,
       country_id: Number(data.countryId),
       state: data.state,
       city: data.city,
@@ -215,6 +219,18 @@ export function BusinessDetailsDialog({
               required
             />
             <FieldError message={errors.description} />
+          </div>
+          <div className="space-y-2">
+            <Label>Website</Label>
+            <Input
+              className="h-10"
+              type="url"
+              value={form.website}
+              onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+              aria-invalid={!!errors.website}
+              placeholder="https://example.com"
+            />
+            <FieldError message={errors.website} />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-2">

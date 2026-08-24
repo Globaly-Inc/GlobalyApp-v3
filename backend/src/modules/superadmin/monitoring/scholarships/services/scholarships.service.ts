@@ -27,6 +27,31 @@ export async function remove(id: number) {
   await repo.remove(id);
 }
 
+// ── Business-owned ──
+
+export const listForBusiness = repo.listForBusiness;
+export const countForBusiness = repo.countForBusiness;
+
+export async function findByIdForBusiness(businessId: number, id: number) {
+  const row = await repo.findByIdForBusiness(businessId, id);
+  if (!row) throw new NotFoundError("Scholarship not found");
+  return row;
+}
+
+export function createForBusiness(businessId: number, data: ScholarshipInput) {
+  return repo.insert({ ...data, business_id: businessId, is_featured: false });
+}
+
+export async function updateForBusiness(businessId: number, id: number, data: Partial<ScholarshipInput>) {
+  await findByIdForBusiness(businessId, id);
+  return repo.updateForBusiness(businessId, id, data);
+}
+
+export async function removeForBusiness(businessId: number, id: number) {
+  await findByIdForBusiness(businessId, id);
+  await repo.removeForBusiness(businessId, id);
+}
+
 // ── Public ──
 
 export const listPublished = repo.listPublished;

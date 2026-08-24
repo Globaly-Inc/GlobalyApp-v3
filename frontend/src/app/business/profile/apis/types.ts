@@ -92,6 +92,8 @@ export type Member = {
   is_owner: boolean;
   account_status: number;
   admin_point_of_contact: boolean;
+  position: string | null;
+  is_public: boolean;
   created_at: string;
   first_name: string;
   last_name: string;
@@ -113,6 +115,7 @@ export type MemberInviteInput = {
   phone?: string | null;
   role: string;
   admin_point_of_contact?: boolean;
+  position?: string | null;
 };
 
 export type MemberPatch = Partial<{
@@ -120,6 +123,8 @@ export type MemberPatch = Partial<{
   admin_point_of_contact: boolean;
   account_status: number;
   is_owner: boolean;
+  position: string | null;
+  is_public: boolean;
 }>;
 
 export type InvitedMember = {
@@ -185,3 +190,61 @@ export type ActivityLogEntry = {
 export type ActivityListParams = { page?: number; limit?: number };
 
 export type ActivityListResult = { data: ActivityLogEntry[]; total: number };
+
+export type ScholarshipSourceType = "university" | "independent" | "government" | "foundation" | "other";
+export type ScholarshipBasis = "merit" | "need" | "sports" | "diversity" | "government" | "research" | "other";
+export type ScholarshipCoverageType = "full_tuition" | "partial_tuition" | "stipend" | "living_allowance" | "various" | "other";
+
+export type Scholarship = {
+  id: number;
+  title: string;
+  slug: string;
+  description: string | null;
+  provider_name: string | null;
+  source_type: ScholarshipSourceType;
+  country: string | null;
+  city: string | null;
+  region: string | null;
+  basis: ScholarshipBasis | null;
+  degree_levels: string[];
+  requirements_summary: string | null;
+  coverage_type: ScholarshipCoverageType;
+  coverage_amount: number | null;
+  coverage_currency: string | null;
+  coverage_description: string | null;
+  deadline: string | null;
+  deadline_notes: string | null;
+  application_url: string | null;
+  source_url: string | null;
+  is_published: boolean;
+  created_at: string;
+};
+
+export type ScholarshipInput = {
+  title: string;
+  slug: string;
+  description?: string | null;
+  provider_name?: string | null;
+  source_type?: ScholarshipSourceType;
+  country?: string | null;
+  city?: string | null;
+  region?: string | null;
+  basis?: ScholarshipBasis | null;
+  degree_levels?: string[];
+  requirements_summary?: string | null;
+  coverage_type?: ScholarshipCoverageType;
+  coverage_amount?: number | null;
+  coverage_currency?: string | null;
+  coverage_description?: string | null;
+  deadline?: string | null;
+  deadline_notes?: string | null;
+  application_url?: string | null;
+  source_url?: string | null;
+  is_published?: boolean;
+};
+
+export type ScholarshipPatch = Partial<ScholarshipInput>;
+
+export type ScholarshipListParams = { search?: string; page?: number; limit?: number };
+
+export type ScholarshipListResult = { data: Scholarship[]; total: number };

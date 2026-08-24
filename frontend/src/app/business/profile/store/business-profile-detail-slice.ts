@@ -6,7 +6,8 @@ import { businessProfileDetailApi } from "../apis";
 import type {
   ActivityListParams, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchPatch, BusinessRelation,
   BusinessService, InvitedMember, LinkExistingBranchInput, Member, MemberInviteInput, MemberListParams, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch, ServiceSearchParams,
+  RelationInput, RelationListParams, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
+  ScholarshipListParams, ScholarshipPatch, ServiceInput, ServicePatch, ServiceSearchParams,
 } from "../apis/types";
 
 // ─── Branches ────────────────────────────────────────────────────────────────
@@ -101,6 +102,10 @@ export const cancelInvitation = createAsyncThunk(
     return invitationId;
   },
 );
+export const resendInvitation = createAsyncThunk(
+  "businessProfileDetail/resendInvitation",
+  ({ invitationId }: { id: number; invitationId: string }) => businessProfileDetailApi.resendInvitation(invitationId),
+);
 
 // ─── Relations (Partners tab) ─────────────────────────────────────────────────
 export const fetchRelations = createAsyncThunk(
@@ -123,6 +128,33 @@ export const deleteRelation = createAsyncThunk(
   },
 );
 
+// ─── Scholarships ────────────────────────────────────────────────────────────
+export const fetchScholarships = createAsyncThunk(
+  "businessProfileDetail/fetchScholarships",
+  ({ params }: { id: number; params?: ScholarshipListParams }) => businessProfileDetailApi.getScholarships(params),
+);
+export const createScholarship = createAsyncThunk(
+  "businessProfileDetail/createScholarship",
+  ({ input }: { id: number; input: ScholarshipInput }) => businessProfileDetailApi.createScholarship(input),
+);
+export const updateScholarship = createAsyncThunk(
+  "businessProfileDetail/updateScholarship",
+  ({ scholarshipId, patch }: { id: number; scholarshipId: number; patch: ScholarshipPatch }) =>
+    businessProfileDetailApi.updateScholarship(scholarshipId, patch),
+);
+export const toggleScholarshipPublished = createAsyncThunk(
+  "businessProfileDetail/toggleScholarshipPublished",
+  ({ scholarshipId, is_published }: { id: number; scholarshipId: number; is_published: boolean }) =>
+    businessProfileDetailApi.updateScholarship(scholarshipId, { is_published }),
+);
+export const deleteScholarship = createAsyncThunk(
+  "businessProfileDetail/deleteScholarship",
+  async ({ scholarshipId }: { id: number; scholarshipId: number }) => {
+    await businessProfileDetailApi.deleteScholarship(scholarshipId);
+    return scholarshipId;
+  },
+);
+
 // ─── Activity ──────────────────────────────────────────────────────────────
 export const fetchActivity = createAsyncThunk(
   "businessProfileDetail/fetchActivity",
@@ -140,12 +172,13 @@ type BusinessProfileDetailState = {
   invitations: ListState<InvitedMember>;
   memberRoles: MemberRole[];
   relations: ListState<BusinessRelation>;
+  scholarships: ListState<Scholarship>;
   activity: ListState<ActivityLogEntry>;
 };
 
 const initialState: BusinessProfileDetailState = {
   branches: emptyList(), services: emptyList(), members: emptyList(), invitations: emptyList(),
-  memberRoles: [], relations: emptyList(), activity: emptyList(),
+  memberRoles: [], relations: emptyList(), scholarships: emptyList(), activity: emptyList(),
 };
 
 const businessProfileDetailSlice = createSlice({
@@ -232,6 +265,26 @@ const businessProfileDetailSlice = createSlice({
         const wasPresent = state.relations.items.some((r) => r.id === action.payload);
         state.relations.items = state.relations.items.filter((r) => r.id !== action.payload);
         if (wasPresent) state.relations.total = Math.max(0, state.relations.total - 1);
+      })
+
+      .addCase(fetchScholarships.pending, (state) => { state.scholarships.status = "loading"; })
+      .addCase(fetchScholarships.fulfilled, (state, action) => {
+        state.scholarships = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
+      })
+      .addCase(fetchScholarships.rejected, (state, action) => { state.scholarships.status = "failed"; state.scholarships.error = action.error.message ?? "Failed to load scholarships."; })
+      .addCase(createScholarship.fulfilled, (state, action) => { state.scholarships.items.unshift(action.payload); state.scholarships.total += 1; })
+      .addCase(updateScholarship.fulfilled, (state, action) => {
+        const i = state.scholarships.items.findIndex((s) => s.id === action.payload.id);
+        if (i >= 0) state.scholarships.items[i] = action.payload;
+      })
+      .addCase(toggleScholarshipPublished.fulfilled, (state, action) => {
+        const s = state.scholarships.items.find((x) => x.id === action.payload.id);
+        if (s) s.is_published = action.payload.is_published;
+      })
+      .addCase(deleteScholarship.fulfilled, (state, action) => {
+        const wasPresent = state.scholarships.items.some((s) => s.id === action.payload);
+        state.scholarships.items = state.scholarships.items.filter((s) => s.id !== action.payload);
+        if (wasPresent) state.scholarships.total = Math.max(0, state.scholarships.total - 1);
       })
 
       .addCase(fetchActivity.pending, (state) => { state.activity.status = "loading"; })

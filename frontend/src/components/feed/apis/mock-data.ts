@@ -69,7 +69,7 @@ function dropMockReaction(groups: ReactionGroup[], previousEmoji: string | null)
     .filter((g) => g.count > 0);
 }
 
-export const homeMockApi = {
+export const feedMockApi = {
   listFeed: async (params: { postType?: string; cursor?: string | null }): Promise<FeedPage> => {
     console.log("[mock] GET /feed/posts", params);
     await delay(300);

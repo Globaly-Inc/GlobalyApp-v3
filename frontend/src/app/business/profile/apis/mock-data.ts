@@ -5,7 +5,8 @@ import type {
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, InvitedMember,
   LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
+  ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult,
 } from "./types";
 
@@ -40,6 +41,8 @@ const mockSearchableBusinesses: BusinessSearchResult[] = [
   { id: 102, business_name: "Global Study Advisors", logo_url: null },
 ];
 const mockActivity: { id: string; action: string; details: Record<string, unknown>; created_at: string; admin_first_name: string | null; admin_last_name: string | null }[] = [];
+let mockScholarships: Scholarship[] = [];
+let mockScholarshipSeq = 1;
 
 export const businessProfileDetailMockApi = {
   searchBusinesses: async (params: BusinessSearchParams = {}): Promise<BusinessSearchResult[]> => {
@@ -157,6 +160,9 @@ export const businessProfileDetailMockApi = {
     await delay(300);
     mockInvitations = mockInvitations.filter((i) => i.id !== invitationId);
   },
+  resendInvitation: async (_invitationId: string): Promise<void> => {
+    await delay(300);
+  },
 
   getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {
     console.log("[mock] GET /businesses/partners", params);
@@ -188,6 +194,40 @@ export const businessProfileDetailMockApi = {
     console.log("[mock] GET /businesses/activity", params);
     await delay(300);
     return { data: mockActivity, total: mockActivity.length };
+  },
+
+  getScholarships: async (params: ScholarshipListParams = {}): Promise<ScholarshipListResult> => {
+    console.log("[mock] GET /businesses/scholarships", params);
+    await delay(300);
+    const q = params.search?.toLowerCase() ?? "";
+    const filtered = q ? mockScholarships.filter((s) => s.title.toLowerCase().includes(q)) : mockScholarships;
+    return { data: filtered, total: filtered.length };
+  },
+  createScholarship: async (input: ScholarshipInput): Promise<Scholarship> => {
+    await delay(300);
+    const scholarship: Scholarship = {
+      id: mockScholarshipSeq++, title: input.title, slug: input.slug, description: input.description ?? null,
+      provider_name: input.provider_name ?? null, source_type: input.source_type ?? "university",
+      country: input.country ?? null, city: input.city ?? null, region: input.region ?? null,
+      basis: input.basis ?? null, degree_levels: input.degree_levels ?? [],
+      requirements_summary: input.requirements_summary ?? null, coverage_type: input.coverage_type ?? "various",
+      coverage_amount: input.coverage_amount ?? null, coverage_currency: input.coverage_currency ?? "USD",
+      coverage_description: input.coverage_description ?? null, deadline: input.deadline ?? null,
+      deadline_notes: input.deadline_notes ?? null, application_url: input.application_url ?? null,
+      source_url: input.source_url ?? null, is_published: input.is_published ?? false,
+      created_at: new Date().toISOString(),
+    };
+    mockScholarships = [scholarship, ...mockScholarships];
+    return scholarship;
+  },
+  updateScholarship: async (scholarshipId: number, patch: ScholarshipPatch): Promise<Scholarship> => {
+    await delay(300);
+    mockScholarships = mockScholarships.map((s) => (s.id === scholarshipId ? { ...s, ...patch } : s));
+    return mockScholarships.find((s) => s.id === scholarshipId)!;
+  },
+  deleteScholarship: async (scholarshipId: number): Promise<void> => {
+    await delay(300);
+    mockScholarships = mockScholarships.filter((s) => s.id !== scholarshipId);
   },
 
   getServiceCategories: categoriesMockApi.getServiceCategories,

@@ -9,6 +9,7 @@ import { businessServicesRoutes } from "./routes/services.routes.js";
 import { businessLookupsRoutes } from "./routes/lookups.routes.js";
 import { businessPartnersRoutes } from "./routes/partners.routes.js";
 import { businessActivityRoutes } from "./routes/activity.routes.js";
+import { businessScholarshipsRoutes } from "./routes/scholarships.routes.js";
 import { agentBusinessRoutes } from "../agents/routes/agents.routes.js";
 
 export default async function businessesModule(app: FastifyInstance) {
@@ -19,5 +20,6 @@ export default async function businessesModule(app: FastifyInstance) {
   app.register(businessLookupsRoutes, { prefix: "/api/v3/businesses" });
   app.register(businessPartnersRoutes, { prefix: "/api/v3/businesses" });
   app.register(businessActivityRoutes, { prefix: "/api/v3/businesses" });
+  app.register(businessScholarshipsRoutes, { prefix: "/api/v3/businesses" });
   app.register(agentBusinessRoutes, { prefix: "/api/v3/businesses/members" });
 }

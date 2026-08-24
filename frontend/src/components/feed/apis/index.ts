@@ -1,6 +1,6 @@
 import { createApi } from "@/lib/api/create-api";
-import { homeMockApi } from "./mock-data";
-import { homeRealApi } from "./real-api";
+import { feedMockApi } from "./mock-data";
+import { feedRealApi } from "./real-api";
 
-export const homeApi = createApi({ mock: homeMockApi, real: homeRealApi });
+export const feedApi = createApi({ mock: feedMockApi, real: feedRealApi });
 export type { FeedPost, FeedPage, CreatePostInput, ComposeWithAiInput, PostMedia, ReactionGroup } from "./types";

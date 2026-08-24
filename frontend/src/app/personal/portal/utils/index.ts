@@ -25,10 +25,6 @@ export function formatEnquiryDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function initials(first: string | null, last: string | null): string {
-  return `${first?.[0] ?? ""}${last?.[0] ?? ""}`.toUpperCase() || "U";
-}
-
 /** Open-Meteo WMO weather code → a human label. */
 export function weatherCondition(code: number): string {
   if (code === 0) return "Clear";

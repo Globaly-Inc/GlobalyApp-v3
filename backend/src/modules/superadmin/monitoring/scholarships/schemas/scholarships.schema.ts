@@ -43,6 +43,13 @@ export const ScholarshipInputSchema = z.object({
   is_featured: z.boolean().optional(),
 });
 
+export const BusinessScholarshipInputSchema = ScholarshipInputSchema.omit({ is_featured: true });
+
+export const BusinessScholarshipListQuery = PaginationSchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  search: z.string().trim().min(1).optional(),
+});
+
 export const ScholarshipListQuery = PaginationSchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().trim().min(1).optional(),
@@ -75,3 +82,4 @@ export const BulkDeleteSchema = z.object({
 });
 
 export type ScholarshipInput = z.infer<typeof ScholarshipInputSchema>;
+export type BusinessScholarshipInput = z.infer<typeof BusinessScholarshipInputSchema>;

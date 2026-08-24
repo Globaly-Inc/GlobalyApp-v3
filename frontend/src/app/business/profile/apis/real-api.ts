@@ -6,7 +6,8 @@ import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
+  ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult,
 } from "./types";
 
@@ -63,6 +64,15 @@ function toBusinessSearchQuery(params: BusinessSearchParams): string {
   return qs ? `?${qs}` : "";
 }
 
+function toScholarshipQuery(params: ScholarshipListParams): string {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.search) q.set("search", params.search);
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
 function toSearchListQuery(params: SearchListParams): string {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
@@ -114,6 +124,7 @@ export const businessProfileDetailRealApi = {
     return { data, total: meta.total };
   },
   cancelInvitation: (invitationId: string): Promise<void> => httpDelete(`${BASE}/members/invitations/${invitationId}`),
+  resendInvitation: (invitationId: string): Promise<void> => httpPost(`${BASE}/members/invitations/${invitationId}/resend`, {}),
 
   getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {
     const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/partners${toRelationQuery(params)}`);
@@ -128,6 +139,15 @@ export const businessProfileDetailRealApi = {
     const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${BASE}/activity${toActivityQuery(params)}`);
     return { data, total: meta.total };
   },
+
+  getScholarships: async (params: ScholarshipListParams = {}): Promise<ScholarshipListResult> => {
+    const { data, meta } = await httpGet<{ data: Scholarship[]; meta: { total: number } }>(`${BASE}/scholarships${toScholarshipQuery(params)}`);
+    return { data, total: meta.total };
+  },
+  createScholarship: (input: ScholarshipInput): Promise<Scholarship> => httpPost(`${BASE}/scholarships`, input),
+  updateScholarship: (scholarshipId: number, patch: ScholarshipPatch): Promise<Scholarship> =>
+    httpPatch(`${BASE}/scholarships/${scholarshipId}`, patch),
+  deleteScholarship: (scholarshipId: number): Promise<void> => httpDelete(`${BASE}/scholarships/${scholarshipId}`),
 
   getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toSearchListQuery({ limit: 10, ...params })}`),
