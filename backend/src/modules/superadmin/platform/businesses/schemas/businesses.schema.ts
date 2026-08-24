@@ -12,6 +12,20 @@ export const MemberParamsSchema = z.object({
   memberId: z.coerce.number().int().positive(),
 });
 
+export const InstitutionMemberParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  platformUserId: z.coerce.number().int().positive(),
+});
+
+export const InstitutionInvitationParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  invitationId: z.string().uuid(),
+});
+
+export const InstitutionMemberStatusSchema = z.object({
+  account_status: z.number().int(),
+});
+
 export const MemberInviteSchema = z.object({
   first_name: z.string().min(1).max(100),
   last_name: z.string().min(1).max(100),
@@ -49,6 +63,19 @@ export const BulkClaimRequestSchema = z.object({
 });
 
 export const PublishedPatchSchema = z.object({ is_published: z.boolean() });
+
+export const InstitutionPatchSchema = z.object({
+  business_name: z.string().min(1),
+  description: z.string().nullable(),
+  email: z.string().email().nullable(),
+  phone: z.string().nullable(),
+  website: z.string().nullable(),
+  country_id: z.number().int().positive().nullable(),
+  state: z.string().nullable(),
+  city: z.string().nullable(),
+  address: z.string().nullable(),
+  postcode: z.string().nullable(),
+}).partial().strict();
 
 export const EnquirySettingsPatchSchema = z.object({
   enquiry_enabled: z.boolean().optional(),
@@ -115,3 +142,4 @@ export type BusinessStatus = z.infer<typeof StatusPatchSchema>["status"];
 export type BulkClaimRequestInput = z.infer<typeof BulkClaimRequestSchema>;
 export type MemberInviteInput = z.infer<typeof MemberInviteSchema>;
 export type MemberPatchInput = z.infer<typeof MemberPatchSchema>;
+export type InstitutionPatchInput = z.infer<typeof InstitutionPatchSchema>;

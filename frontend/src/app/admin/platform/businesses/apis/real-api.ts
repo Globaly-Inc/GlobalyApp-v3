@@ -2,7 +2,9 @@ import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from 
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, ListingRef, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, BusinessStatus, EnquirySettingsPatch, LinkExistingBranchInput, LinkExistingBranchResult, Member,
+  BusinessService, BusinessStatus, EnquirySettingsPatch, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPatch,
+  LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult,
@@ -72,6 +74,35 @@ export const businessesRealApi = {
     return httpPostForm(`${BASE}/image`, form);
   },
   getBusinessDetail: (id: number): Promise<BusinessDetail> => httpGet(`${BASE}/${id}`),
+  getInstitutionDetail: (id: number): Promise<InstitutionDetail> => httpGet(`/admin/platform/institutions/${id}`),
+  updateInstitution: (id: number, patch: InstitutionPatch): Promise<InstitutionDetail> =>
+    httpPatch(`/admin/platform/institutions/${id}`, patch),
+  getInstitutionMembers: async (id: number, params: MemberListParams = {}): Promise<MemberListResult> => {
+    const { data, meta } = await httpGet<{ data: Member[]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/members${toMemberQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  getInstitutionCourses: async (id: number, params: InstitutionCourseListParams = {}): Promise<InstitutionCourseListResult> => {
+    const { data, meta } = await httpGet<{ data: InstitutionCourseListResult["data"]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/courses${toMemberQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  inviteInstitutionMember: (id: number, input: InstitutionInviteInput): Promise<{ id: string; email: string; status: string }> =>
+    httpPost(`/admin/platform/institutions/${id}/invite`, input),
+  getInstitutionInvitations: async (id: number, params: InstitutionInvitationListParams = {}): Promise<InstitutionInvitationListResult> => {
+    const { data, meta } = await httpGet<{ data: InstitutionInvitation[]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/invitations${toPageLimitQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  cancelInstitutionInvitation: (id: number, invitationId: string): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/invitations/${invitationId}`),
+  resendInstitutionInvitation: (id: number, invitationId: string): Promise<void> =>
+    httpPost(`/admin/platform/institutions/${id}/invitations/${invitationId}/resend`, {}),
+  setInstitutionMemberStatus: (id: number, platformUserId: number, accountStatus: number): Promise<void> =>
+    httpPatch(`/admin/platform/institutions/${id}/members/${platformUserId}/status`, { account_status: accountStatus }),
   updateBusiness: (id: number, patch: BusinessPatch): Promise<BusinessDetail> => httpPatch(`${BASE}/${id}`, patch),
   updateStatus: (ref: ListingRef, status: BusinessStatus): Promise<{ status: string }> =>
     httpPatch(`${listingBase(ref)}/status`, { status }),

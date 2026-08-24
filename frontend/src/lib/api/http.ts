@@ -79,6 +79,19 @@ export function hasBusinessContext(): boolean {
   return orgIdFromToken(getAccessToken()) !== null;
 }
 
+/** Institutions are treated as businesses everywhere in the /business/* UI — this is the
+ * one spot that tells API layers which backend (businesses vs institutions) to call. */
+export function isInstitutionContext(): boolean {
+  const token = getAccessToken();
+  if (!token) return false;
+  try {
+    const { orgType } = JSON.parse(atob(token.split(".")[1] ?? "")) as { orgType?: string };
+    return orgType === "institution";
+  } catch {
+    return false;
+  }
+}
+
 let switchPromise: Promise<boolean> | null = null;
 
 /**

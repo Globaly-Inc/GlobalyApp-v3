@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { BudgetFilter } from "./budget-filter";
 import { ComboFilterField } from "./combo-filter-field";
+import { DestinationFilterFields } from "./destination-filter-fields";
 import { BASIS_LABEL, DEGREE_LABEL, JOB_TYPE_LABEL, type SearchTabKey } from "../types";
 
 function FilterSection({
@@ -108,18 +109,18 @@ export function SearchFilters({
       </p>
 
       <FilterSection letter="A" title="Destination">
-        <div className="flex flex-col gap-2">
-          {countryOptions ? (
+        {countryOptions ? (
+          <div className="flex flex-col gap-2">
             <SelectField name="country" value={country} options={countryOptions} anyLabel="Any country" />
-          ) : (
-            <input type="text" name="country" defaultValue={country} placeholder="Country" className={fieldClass} />
-          )}
-          {cityOptions ? (
-            <SelectField name="city" value={city} options={cityOptions} anyLabel="Any city" />
-          ) : (
-            <input type="text" name="city" defaultValue={city} placeholder="City" className={fieldClass} />
-          )}
-        </div>
+            {cityOptions ? (
+              <SelectField name="city" value={city} options={cityOptions} anyLabel="Any city" />
+            ) : (
+              <input type="text" name="city" defaultValue={city} placeholder="City" className={fieldClass} />
+            )}
+          </div>
+        ) : (
+          <DestinationFilterFields country={country} city={city} />
+        )}
       </FilterSection>
 
       {activeTab === "courses" && (

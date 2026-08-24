@@ -4,6 +4,7 @@ import type {
   AcceptBusinessClaimResult,
   AcceptClaimParams,
   AcceptInstitutionClaimResult,
+  AcceptInstitutionMemberInviteResult,
 } from "./types";
 
 function delay(ms: number) {
@@ -28,5 +29,11 @@ export const inviteMockApi = {
     await delay(500);
     if (!params.token) throw new Error("This claim link is invalid or has already been used.");
     return { email: "owner@example.com", institution_name: "Mock Institution" };
+  },
+  acceptInstitutionMemberInvite: async ({ token, org_id }: AcceptAgentInviteParams): Promise<AcceptInstitutionMemberInviteResult> => {
+    console.log("[mock] POST /institutions/members/invite/accept", { token, org_id });
+    await delay(500);
+    if (!token || !org_id) throw new Error("Invitation not found or already used.");
+    return { message: "Invitation accepted. Log in with your email to access this institution.", org_id };
   },
 };

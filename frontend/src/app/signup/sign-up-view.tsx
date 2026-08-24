@@ -159,7 +159,7 @@ export function SignUpView() {
       }
       if (me.type === "admin") {
         router.push("/admin/overview");
-      } else if (me.user_category === "business") {
+      } else if (me.user_category === "business" || me.user_category === "institution") {
         router.push("/business/profile");
       } else {
         router.push("/personal/profile");

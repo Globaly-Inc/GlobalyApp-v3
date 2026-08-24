@@ -5,6 +5,7 @@ import type {
   AcceptBusinessClaimResult,
   AcceptClaimParams,
   AcceptInstitutionClaimResult,
+  AcceptInstitutionMemberInviteResult,
 } from "./types";
 
 export const inviteRealApi = {
@@ -15,4 +16,6 @@ export const inviteRealApi = {
   // Same payload, same flow — only the table differs.
   acceptInstitutionClaim: (params: AcceptClaimParams): Promise<AcceptInstitutionClaimResult> =>
     httpPost("/institutions/claim/accept", params),
+  acceptInstitutionMemberInvite: ({ token, org_id }: AcceptAgentInviteParams): Promise<AcceptInstitutionMemberInviteResult> =>
+    httpPost("/institutions/members/invite/accept", { token, org_id }),
 };

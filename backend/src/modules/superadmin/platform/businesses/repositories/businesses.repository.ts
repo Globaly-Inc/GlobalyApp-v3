@@ -157,6 +157,81 @@ export async function countInstitutions(search?: string, status?: string) {
   return Number(row.count);
 }
 
+export async function findInstitutionDetail(id: number) {
+  const category = await masterKnex("business_categories").where({ slug: INSTITUTION_CATEGORY_SLUG }).first("id", "name");
+  const row = await institutionListQuery()
+    .where("i.id", id)
+    .select(
+      "i.id",
+      // Aliased into the business column names, same as institutionListQuery, so one detail
+      // type serves both — see InstitutionDetail on the frontend.
+      "i.institution_name as business_name",
+      "i.subdomain",
+      "i.institution_type as business_type",
+      "i.description", "i.website",
+      "i.email", "i.phone", "i.status", "i.claim_status", "i.is_published",
+      "i.country_id", "i.state", "i.city", "i.address", "i.postcode",
+      "i.logo_url", "i.cover_url",
+      "i.linkedin_url", "i.facebook_url", "i.instagram_url", "i.twitter_url", "i.youtube_url", "i.whatsapp_url",
+      "i.gallery_images", "i.video_urls",
+      "i.account_status", "i.created_at", "i.updated_at", "i.verified_at",
+      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
+      masterKnex.raw("i.platform_user_id IS NULL as is_unclaimed"),
+      masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
+      masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
+      "c.name as country_name",
+      "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
+    )
+    .first();
+  if (!row) return row;
+  // Same status-vocabulary mapping as listInstitutions.
+  return { ...row, status: row.status === "pending" ? "unverified" : row.status };
+}
+
+export async function listInstitutionMembers(
+  institutionId: number, schemaName: string,
+  opts: { search?: string; limit: number; offset: number },
+) {
+  const db = await getKnex(institutionId, schemaName);
+  const base = () => {
+    const q = db("members as m").whereNull("m.deleted_at");
+    if (opts.search) {
+      q.where((qb) => {
+        qb.whereILike("m.first_name", `%${opts.search}%`)
+          .orWhereILike("m.last_name", `%${opts.search}%`)
+          .orWhereILike("m.email", `%${opts.search}%`);
+      });
+    }
+    return q;
+  };
+  const [{ count }] = await base().count<{ count: string }[]>("m.id as count");
+  const rows = await base()
+    .select("m.id", "m.platform_user_id", "m.is_owner", "m.account_status", "m.role", "m.created_at")
+    .orderBy("m.is_owner", "desc")
+    .orderBy("m.created_at")
+    .limit(opts.limit)
+    .offset(opts.offset);
+  const total = Number(count);
+  if (rows.length === 0) return { rows: [], total };
+  const userIds = rows.map((r) => r.platform_user_id);
+  const users = await masterKnex("platform_users").whereIn("id", userIds).select("id", "first_name", "last_name", "email", "phone", "photo_url");
+  const byId = new Map(users.map((u) => [u.id, u]));
+  return {
+    rows: rows.map((r) => ({
+      id: r.id,
+      platform_user_id: r.platform_user_id,
+      is_owner: r.is_owner,
+      account_status: r.account_status,
+      admin_point_of_contact: false,
+      created_at: r.created_at,
+      role_name: r.role,
+      role_display_name: null,
+      user: byId.get(r.platform_user_id) ?? null,
+    })),
+    total,
+  };
+}
+
 export async function findInstitutionById(id: number) {
   return masterKnex("institutions").where({ id }).whereNull("deleted_at").first();
 }

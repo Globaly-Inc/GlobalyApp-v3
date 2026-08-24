@@ -16,8 +16,12 @@ import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../../../platform-users/repositories/platform-users.repository.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
 import * as agentsService from "../../../../agents/services/agents.service.js";
+import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
+import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
+import type { InstitutionInviteInput } from "../../../../platform-users/services/institution-members.service.js";
+import type { PaginationInput } from "../../../../../shared/pagination.js";
 import type {
-  BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput,
+  BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPatchInput,
   MemberInviteInput, MemberPatchInput,
 } from "../schemas/businesses.schema.js";
 
@@ -313,6 +317,17 @@ async function requireInstitution(id: number) {
   return inst;
 }
 
+/** Same as requireInstitution, plus: a pre-seeded/unclaimed institution has a schema_name but no
+ *  tenant schema actually provisioned yet, so its `members` table doesn't exist. Anything that
+ *  needs the tenant db (invites, member status) must check this first, or hit a raw DB error. */
+async function requireProvisionedInstitution(id: number) {
+  const inst = await requireInstitution(id);
+  if (!inst.schema_provisioned_at) {
+    throw new ConflictError("This institution hasn't been claimed yet, so it has no members workspace.");
+  }
+  return inst;
+}
+
 export async function updateInstitutionStatus(id: number, status: BusinessStatus) {
   await requireInstitution(id);
   await userRepo.updateInstitution(id, { status, ...(status === "verified" ? { verified_at: new Date() } : {}) });
@@ -331,9 +346,88 @@ export async function deleteInstitution(id: number) {
   await userRepo.updateInstitution(id, { deleted_at: new Date() });
 }
 
+export async function getInstitutionDetail(id: number) {
+  const inst = await repo.findInstitutionDetail(id);
+  if (!inst) throw new NotFoundError("Institution not found");
+  return withImagePreviews({ ...inst, kind: "institution" as const });
+}
+
+export async function updateInstitutionDetail(id: number, patch: InstitutionPatchInput) {
+  await requireInstitution(id);
+  // Wire field is `business_name` (matching the shared row shape); the column is `institution_name`.
+  const { business_name, ...rest } = patch;
+  const data: Record<string, unknown> = { ...rest };
+  if (business_name !== undefined) data.institution_name = business_name;
+  await userRepo.updateInstitution(id, data);
+  // Re-fetch rather than trust the raw update() return: institutions.* alone is missing the
+  // country_name/owner_* joins findInstitutionDetail adds, which the frontend detail shape needs.
+  return getInstitutionDetail(id);
+}
+
+export async function listInstitutionMembers(id: number, opts: { search?: string; limit: number; offset: number }) {
+  const inst = await requireInstitution(id);
+  try {
+    return await repo.listInstitutionMembers(id, inst.schema_name, opts);
+  } catch {
+    // A pre-seeded, unclaimed institution has a schema_name but no schema actually provisioned
+    // yet (same as an unclaimed business) — no tenant `members` table to query.
+    return { rows: [], total: 0 };
+  }
+}
+
+/**
+ * An institution promoted from an extraction job carries that job's id (`source_job_id`), which
+ * is also the key `extraction_courses` is filed under — so the job's courses ARE this
+ * institution's courses. Self-registered institutions have no job, hence no courses.
+ */
+export async function listInstitutionCourses(id: number, opts: { search?: string; limit: number; offset: number }) {
+  const inst = await requireInstitution(id);
+  if (!inst.source_job_id) return { rows: [], total: 0 };
+  const filters = { search: opts.search };
+  const [rows, total] = await Promise.all([
+    coursesRepo.listCoursesByJob(inst.source_job_id, opts.limit, opts.offset, filters),
+    coursesRepo.countCoursesByJob(inst.source_job_id, filters),
+  ]);
+  return { rows, total };
+}
+
 export async function updateEnquirySettings(id: number, data: EnquirySettingsPatchInput) {
   await requireBusiness(id);
   return repo.updateBusiness(id, data);
+}
+
+// ── Institution member invitations ──
+// Thin wrappers: resolve the institution to its tenant db, then delegate to
+// institution-members.service.ts, the one place institution membership is allowed to change.
+
+export async function inviteInstitutionMember(id: number, input: InstitutionInviteInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.inviteMemberAsAdmin(tenantDb, inst.id, inst.schema_name, input);
+}
+
+export async function listInstitutionInvitations(id: number, pagination: PaginationInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.listInvitations(tenantDb, pagination);
+}
+
+export async function cancelInstitutionInvitation(id: number, invitationId: string) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  await institutionMembersService.cancelInvitation(tenantDb, invitationId);
+}
+
+export async function resendInstitutionInvitation(id: number, invitationId: string) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  await institutionMembersService.resendInvitation(tenantDb, invitationId, inst.schema_name);
+}
+
+export async function setInstitutionMemberStatus(id: number, platformUserId: number, accountStatus: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  await institutionMembersService.setMemberStatus(tenantDb, platformUserId, accountStatus);
 }
 
 export async function listMembers(

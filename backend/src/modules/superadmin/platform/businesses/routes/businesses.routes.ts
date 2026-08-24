@@ -8,7 +8,8 @@ import * as platformRepo from "../../platform.repository.js";
 import * as service from "../services/businesses.service.js";
 import {
   ActivityListQuerySchema, BulkClaimRequestSchema, BusinessCreateSchema, BusinessPatchSchema, EnquirySettingsPatchSchema,
-  IdParamSchema, ListQuerySchema, MemberInviteSchema, MemberListQuerySchema, MemberParamsSchema, MemberPatchSchema,
+  IdParamSchema, InstitutionInvitationParamsSchema, InstitutionMemberParamsSchema, InstitutionMemberStatusSchema,
+  InstitutionPatchSchema, ListQuerySchema, MemberInviteSchema, MemberListQuerySchema, MemberParamsSchema, MemberPatchSchema,
   PublishedPatchSchema, StatusPatchSchema,
 } from "../schemas/businesses.schema.js";
 
@@ -117,6 +118,81 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     const { id } = IdParamSchema.parse(req.params);
     await service.deleteInstitution(id);
     await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_DELETED", "institution", undefined, { institution_id: id });
+    return reply.status(204).send();
+  });
+
+  // GET /institutions/:id — the institution twin of GET /businesses/:id.
+  app.get("/institutions/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    return reply.send(await service.getInstitutionDetail(id));
+  });
+
+  // PATCH /institutions/:id — the institution twin of PATCH /businesses/:id.
+  app.patch("/institutions/:id", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const data = InstitutionPatchSchema.parse(req.body);
+    const updated = await service.updateInstitutionDetail(id, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_UPDATED", "institution", undefined, { institution_id: id, ...data });
+    return reply.send(updated);
+  });
+
+  // GET /institutions/:id/members — institutions' tenant `members` table, no roles table to join.
+  app.get("/institutions/:id/members", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listInstitutionMembers(id, { search, limit, offset });
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  // GET /institutions/:id/courses — extraction_courses filed under the institution's source_job_id.
+  app.get("/institutions/:id/courses", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listInstitutionCourses(id, { search, limit, offset });
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  // POST /institutions/:id/invite — admin invites a member; they land in the tenant `members`
+  // table once they accept (institutions' twin of POST /businesses/:id/members).
+  app.post("/institutions/:id/invite", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const input = MemberInviteSchema.parse(req.body);
+    const invitation = await service.inviteInstitutionMember(id, input);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_MEMBER_INVITED", "institution", undefined, { institution_id: id, email: input.email });
+    return reply.status(201).send(invitation);
+  });
+
+  // GET /institutions/:id/invitations — pending invites, separate from the accepted-members list.
+  app.get("/institutions/:id/invitations", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const pagination = ActivityListQuerySchema.parse(req.query);
+    return reply.send(await service.listInstitutionInvitations(id, pagination));
+  });
+
+  // DELETE /institutions/:id/invitations/:invitationId — cancel a pending invite.
+  app.delete("/institutions/:id/invitations/:invitationId", async (req, reply) => {
+    const { id, invitationId } = InstitutionInvitationParamsSchema.parse(req.params);
+    await service.cancelInstitutionInvitation(id, invitationId);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_INVITE_CANCELLED", "institution", undefined, { institution_id: id, invitation_id: invitationId });
+    return reply.status(204).send();
+  });
+
+  // POST /institutions/:id/invitations/:invitationId/resend — rotate the token, re-send the email.
+  app.post("/institutions/:id/invitations/:invitationId/resend", async (req, reply) => {
+    const { id, invitationId } = InstitutionInvitationParamsSchema.parse(req.params);
+    await service.resendInstitutionInvitation(id, invitationId);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_INVITE_RESENT", "institution", undefined, { institution_id: id, invitation_id: invitationId });
+    return reply.status(204).send();
+  });
+
+  // PATCH /institutions/:id/members/:platformUserId/status — suspend/reinstate a member.
+  app.patch("/institutions/:id/members/:platformUserId/status", async (req, reply) => {
+    const { id, platformUserId } = InstitutionMemberParamsSchema.parse(req.params);
+    const { account_status } = InstitutionMemberStatusSchema.parse(req.body);
+    await service.setInstitutionMemberStatus(id, platformUserId, account_status);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_MEMBER_STATUS_UPDATED", "institution", undefined, { institution_id: id, platform_user_id: platformUserId, account_status });
     return reply.status(204).send();
   });
 

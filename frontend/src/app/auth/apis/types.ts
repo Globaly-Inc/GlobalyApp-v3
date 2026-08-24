@@ -11,12 +11,23 @@ export type AuthMeBusiness = {
   is_owner: boolean;
 };
 
+export type AuthMeInstitution = {
+  id: number;
+  org_id: string;
+  institution_name: string;
+  subdomain: string;
+  logo_url: string | null;
+  role: string;
+  is_owner: boolean;
+};
+
 export type AuthUser = {
   email: string;
   type: "admin" | "platform_user" | "agent";
   role: string | null;
   user_category: string | null;
   businesses: AuthMeBusiness[];
+  institutions: AuthMeInstitution[];
   orgId: string | null;
 };
 
@@ -32,6 +43,7 @@ export type AuthMeUser = {
   is_email_verified: boolean;
   is_personal_account: boolean;
   is_business_account: boolean;
+  is_institution_account: boolean;
   account_categories: unknown[];
   meta: Record<string, unknown>;
   created_at: string;
@@ -42,6 +54,7 @@ export type AuthMeUser = {
   orgId?: string;
   orgRole?: string;
   businesses: AuthMeBusiness[];
+  institutions: AuthMeInstitution[];
 };
 
 export type SendOtpParams = {
