@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "../../components/reveal";
-import { AutoScrollRow } from "../../components/auto-scroll-row";
 import type { Destination } from "../../data/destinations";
 import { COUNTRY_FALLBACKS, FLAG_URL } from "../static-content";
 
@@ -33,7 +32,7 @@ export function DestinationsCarousel({ countries, loading }: Readonly<{ countrie
           </div>
         </Reveal>
 
-        <AutoScrollRow className="flex gap-4 pb-4">
+        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
           {loading
             ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="flex-shrink-0 w-56 h-52 rounded-xl" />)
             : countries.map((country, idx) => {
@@ -49,10 +48,10 @@ export function DestinationsCarousel({ countries, loading }: Readonly<{ countrie
                       className="group relative rounded-2xl overflow-hidden w-[200px] md:w-[220px] cursor-pointer block"
                     >
                       <div className="relative h-[280px] md:h-[300px]">
-                        {country.heroImageUrl ? (
+                        {country.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
-                            src={country.heroImageUrl}
+                            src={country.imageUrl}
                             alt={country.name}
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                             loading="lazy"
@@ -81,25 +80,30 @@ export function DestinationsCarousel({ countries, loading }: Readonly<{ countrie
                         </div>
                       </div>
                       <div className="p-3 space-y-1">
-                        {/* Every card carries all three rows, with a dash where the country row has no
-                            value yet — otherwise cards come out different heights and a country that is
-                            simply missing data looks like a broken card. */}
-                        {[
-                          { label: "Institutions", value: institutionCount },
-                          { label: "Avg. Tuition", value: tuitionStr },
-                          { label: "Living Cost", value: livingStr },
-                        ].map((stat) => (
-                          <div key={stat.label} className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">{stat.label}</span>
-                            <span className="font-semibold text-foreground text-right">{stat.value || "—"}</span>
+                        {institutionCount && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Institutions</span>
+                            <span className="font-semibold text-foreground">{institutionCount}</span>
                           </div>
-                        ))}
+                        )}
+                        {tuitionStr && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Avg. Tuition</span>
+                            <span className="font-semibold text-foreground text-right">{tuitionStr}</span>
+                          </div>
+                        )}
+                        {livingStr && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Living Cost</span>
+                            <span className="font-semibold text-foreground text-right">{livingStr}</span>
+                          </div>
+                        )}
                       </div>
                     </Link>
                   </Reveal>
                 );
               })}
-        </AutoScrollRow>
+        </div>
       </div>
     </section>
   );

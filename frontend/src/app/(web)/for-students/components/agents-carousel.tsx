@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "../../components/reveal";
-import { AutoScrollRow } from "../../components/auto-scroll-row";
 import type { SearchBusiness } from "../../search/types";
 
 // V2 links each card to /agent/:slug; v3 has no agent detail route yet, so cards point at the
@@ -22,7 +21,7 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
           </p>
         </Reveal>
 
-        <AutoScrollRow className="flex gap-4 pb-4">
+        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
           {loading
             ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="flex-shrink-0 w-64 h-48 rounded-xl" />)
             : agents.map((agent, idx) => {
@@ -76,7 +75,7 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
                   </Reveal>
                 );
               })}
-        </AutoScrollRow>
+        </div>
 
         <Reveal className="text-center mt-10">
           <Button variant="outline" className="rounded-full px-8" render={<Link href="/search?tab=education-agencies" />}>

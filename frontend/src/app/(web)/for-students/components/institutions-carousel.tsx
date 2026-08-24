@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ArrowRight, Building, MapPin } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "../../components/reveal";
-import { AutoScrollRow } from "../../components/auto-scroll-row";
 import type { SearchBusiness } from "../../search/types";
 
 export function InstitutionsCarousel({ institutions, loading }: Readonly<{ institutions: SearchBusiness[]; loading: boolean }>) {
@@ -20,7 +19,7 @@ export function InstitutionsCarousel({ institutions, loading }: Readonly<{ insti
           </div>
         </Reveal>
 
-        <AutoScrollRow className="flex gap-4 pb-4">
+        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
           {loading
             ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="flex-shrink-0 w-48 h-56 rounded-xl" />)
             : institutions.map((inst, idx) => {
@@ -56,7 +55,7 @@ export function InstitutionsCarousel({ institutions, loading }: Readonly<{ insti
                   </Reveal>
                 );
               })}
-        </AutoScrollRow>
+        </div>
       </div>
     </section>
   );
