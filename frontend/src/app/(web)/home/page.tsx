@@ -6,6 +6,8 @@ import { CheckCircle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MEDIA_URL } from "../const/index";
 import { Reveal } from "../components/reveal";
 import { AutoplayVideo } from "../components/autoplay-video";
 import { UnifiedSearchBar } from "../components/unified-search-bar";
@@ -30,12 +32,16 @@ export default function HomePage() {
   const { ref: parallax3Ref, transform: parallax3Transform } = useParallax(0.18);
   const isMobile = useIsMobile();
   const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [destinationsLoading, setDestinationsLoading] = useState(true);
 
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    getFeaturedCountries().then(setDestinations).catch(() => {});
+    getFeaturedCountries()
+      .then((data) => setDestinations(data.slice(0, 8)))
+      .catch(() => {})
+      .finally(() => setDestinationsLoading(false));
   }, []);
 
   return (
@@ -84,35 +90,40 @@ export default function HomePage() {
             </h2>
           </Reveal>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {destinations.map((dest, idx) => (
-              <Reveal key={dest.id} delay={idx * 0.07}>
-                <Link
-                  href={`/country/${dest.slug}`}
-                  className="group relative overflow-hidden rounded-2xl block"
-                  style={{ aspectRatio: "4/3" }}
-                >
-                  {dest.heroImageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={dest.heroImageUrl}
-                      alt={dest.name}
-                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 bg-muted flex items-center justify-center text-5xl transition-transform duration-700 group-hover:scale-110">
-                      {dest.flagEmoji}
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10 transition-opacity duration-300 group-hover:opacity-90" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-1 group-hover:translate-y-0 transition-transform duration-300">
-                    <h3 className="font-bold text-white text-base md:text-lg leading-tight">
-                      <span className="mr-1">{dest.flagEmoji}</span>
-                      {dest.name}
-                    </h3>
-                  </div>
-                </Link>
-              </Reveal>
-            ))}
+            {destinationsLoading
+              ? Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="rounded-2xl" style={{ aspectRatio: "4/3" }} />
+                ))
+              : destinations.map((dest, idx) => (
+                  <Reveal key={dest.id} delay={idx * 0.07}>
+                    <Link
+                      href={`/country/${dest.slug}`}
+                      className="group relative overflow-hidden rounded-2xl block"
+                      style={{ aspectRatio: "4/3" }}
+                    >
+                      {dest.heroImageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={dest.heroImageUrl}
+                          alt={dest.name}
+                          className="absolute inset-0 w-full h-full object-cover md:transition-transform md:duration-700 md:group-hover:scale-110"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-muted flex items-center justify-center text-5xl">
+                          {dest.flagEmoji}
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10 transition-opacity duration-300 group-hover:opacity-90" />
+                      <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-1 group-hover:translate-y-0 transition-transform duration-300">
+                        <h3 className="font-bold text-white text-base md:text-lg leading-tight">
+                          {dest.flagEmoji && <span className="mr-1">{dest.flagEmoji}</span>}
+                          {dest.name}
+                        </h3>
+                      </div>
+                    </Link>
+                  </Reveal>
+                ))}
           </div>
         </div>
       </section>
@@ -164,8 +175,8 @@ export default function HomePage() {
             <Reveal direction="right" className="relative">
               <div ref={parallax1Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
-                  src="/videos/students-hero.mp4"
-                  poster="/videos/students-hero-poster.webp"
+                  src={`${MEDIA_URL}/students-hero.mp4`}
+                  poster={`${MEDIA_URL}/students-hero-poster.webp`}
                   className="w-full h-full object-cover"
                   style={{ transform: isMobile ? undefined : parallax1Transform }}
                 />
@@ -204,7 +215,7 @@ export default function HomePage() {
                       <img
                         src={post.image}
                         alt={post.title}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                        className="w-full h-full object-cover md:transition-transform md:duration-700 md:group-hover:scale-110"
                         loading="lazy"
                       />
                     </div>
@@ -242,8 +253,8 @@ export default function HomePage() {
             <Reveal direction="left" className="relative">
               <div ref={parallax2Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
-                  src="/videos/institutions-hero.mp4"
-                  poster="/videos/institutions-hero-poster.webp"
+                  src={`${MEDIA_URL}/institutions-hero.mp4`}
+                  poster={`${MEDIA_URL}/institutions-hero-poster.webp`}
                   className="w-full h-full object-cover"
                   style={{ transform: isMobile ? undefined : parallax2Transform }}
                 />
@@ -366,8 +377,8 @@ export default function HomePage() {
             <Reveal direction="right" className="relative">
               <div ref={parallax3Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
-                  src="/videos/agents-hero.mp4"
-                  poster="/videos/agents-hero-poster.webp"
+                  src={`${MEDIA_URL}/agents-hero.mp4`}
+                  poster={`${MEDIA_URL}/agents-hero-poster.webp`}
                   className="w-full h-full object-cover"
                   style={{ transform: isMobile ? undefined : parallax3Transform }}
                 />

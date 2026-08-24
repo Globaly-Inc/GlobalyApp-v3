@@ -1,5 +1,6 @@
 "use client";
 
+import { MEDIA_URL } from "../../const/index";
 import { Badge } from "@/components/ui/badge";
 import { AutoplayVideo } from "../../components/autoplay-video";
 import { UnifiedSearchBar } from "../../components/unified-search-bar";
@@ -10,10 +11,10 @@ export function HeroSection() {
   const { displayText, showCursor } = useTypingEffect(INSTITUTION_TYPING_PHRASES);
 
   return (
-    <section className="relative min-h-[calc(100svh-64px)] flex items-center overflow-hidden">
+    <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
       <AutoplayVideo
-        src="/videos/institutions-hero.mp4"
-        poster="/videos/institutions-hero-poster.webp"
+        src={`${MEDIA_URL}/institutions-hero.mp4`}
+        poster={`${MEDIA_URL}/institutions-hero-poster.webp`}
         className="absolute inset-0 w-full h-full object-cover scale-105"
         style={{ transformOrigin: "center" }}
       />
@@ -36,7 +37,7 @@ export function HeroSection() {
             yours. Manage your course listings, expand your agent network, and enroll more
             students — all in one smart, transparent platform.
           </p>
-          <UnifiedSearchBar />
+          <UnifiedSearchBar defaultTabSlug="institutions" />
         </div>
       </div>
     </section>

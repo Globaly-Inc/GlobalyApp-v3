@@ -12,6 +12,7 @@ import {
   BookMarked,
   Rocket,
 } from "lucide-react";
+import { MEDIA_URL } from "../../const/index";
 
 export const INSTITUTION_TYPING_PHRASES = [
   "Reach & Impact",
@@ -158,11 +159,8 @@ export const BLOG_POSTS = [
   },
 ];
 
-// V2 bundled a local photo (assets/public/photos/institution-faculty.jpg) for the parallax
-// section below; v3 doesn't ship local photo assets under (web), so this sources an
-// equivalent royalty-free stock photo instead.
-export const OWN_DATA_PHOTO_URL =
-  "https://images.pexels.com/photos/8199142/pexels-photo-8199142.jpeg?auto=compress&cs=tinysrgb&w=1260&h=840&dpr=2";
+// Same photo V2 bundled from assets/public/photos/, served from public/ here.
+export const OWN_DATA_PHOTO_URL = `${MEDIA_URL}/institution-faculty.jpg`;
 
 export const OWN_DATA_ITEMS = [
   {

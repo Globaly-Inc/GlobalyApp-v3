@@ -141,3 +141,9 @@ export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
     "What help do other students offer where I'm going?",
   ],
 };
+
+/**
+ * Public bucket for hero videos, posters and marketing photos. They live in GCS rather than
+ * `public/`, so the repo and the deployed bundle stay free of tens of megabytes of media.
+ */
+export const MEDIA_URL = "https://storage.googleapis.com/globalyapp-public-images/photos";
