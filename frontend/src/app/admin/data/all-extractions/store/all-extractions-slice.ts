@@ -1,10 +1,9 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { allExtractionsApi } from "../apis";
-import type { DashboardMode } from "../const";
-import type { CreateJobParams, ExtractionJob, JobFull } from "../apis/types";
+import type { CreateJobParams, ExtractionJob, GetJobsParams, JobFull, JobsPageMeta } from "../apis/types";
 
-export const fetchAllExtractions = createAsyncThunk("dataAllExtractions/fetch", (mode: DashboardMode) =>
-  allExtractionsApi.getJobs(mode),
+export const fetchAllExtractions = createAsyncThunk("dataAllExtractions/fetch", (params: GetJobsParams) =>
+  allExtractionsApi.getJobs(params),
 );
 
 export const fetchJobDetail = createAsyncThunk("dataAllExtractions/fetchDetail", (id: string) => allExtractionsApi.getJob(id));
@@ -52,6 +51,7 @@ export const promoteJob = createAsyncThunk("dataAllExtractions/promote", async (
 
 type AllExtractionsState = {
   jobs: ExtractionJob[];
+  meta: JobsPageMeta;
   jobDetail: ExtractionJob | null;
   jobFull: JobFull | null;
   jobFullStatus: "idle" | "loading" | "failed";
@@ -61,6 +61,7 @@ type AllExtractionsState = {
 
 const initialState: AllExtractionsState = {
   jobs: [],
+  meta: { page: 1, limit: 10, total: 0, totalPages: 1 },
   jobDetail: null,
   jobFull: null,
   jobFullStatus: "idle",
@@ -80,7 +81,8 @@ const allExtractionsSlice = createSlice({
       })
       .addCase(fetchAllExtractions.fulfilled, (state, action) => {
         state.status = "idle";
-        state.jobs = action.payload;
+        state.jobs = action.payload.jobs;
+        state.meta = action.payload.meta;
       })
       .addCase(fetchAllExtractions.rejected, (state, action) => {
         state.status = "failed";
@@ -117,11 +119,17 @@ const allExtractionsSlice = createSlice({
       })
       .addCase(createJob.fulfilled, (state, action) => {
         state.jobs = [action.payload, ...state.jobs];
+        state.meta.total += 1;
+        state.meta.totalPages = Math.max(1, Math.ceil(state.meta.total / state.meta.limit));
       })
       .addCase(declineJob.fulfilled, (state, action) => {
         state.jobs = state.jobs.map((j) => (j.id === action.payload ? { ...j, status: "declined" } : j));
       })
       .addCase(deleteJob.fulfilled, (state, action) => {
+        if (state.jobs.some((j) => j.id === action.payload)) {
+          state.meta.total = Math.max(0, state.meta.total - 1);
+          state.meta.totalPages = Math.max(1, Math.ceil(state.meta.total / state.meta.limit));
+        }
         state.jobs = state.jobs.filter((j) => j.id !== action.payload);
       })
       .addCase(pauseJob.fulfilled, (state, action) => {

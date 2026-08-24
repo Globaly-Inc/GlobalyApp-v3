@@ -134,6 +134,16 @@ The centralized error handler maps these to HTTP responses.
    since 2026-08-12 with zero code path writing to it — this is a genuinely
    new capability, explicitly requested and scoped by the team, not a V2
    port (V2 never had this table).
+   Exception: `/jobs-filtered` search/sort/category-filter (2026-08-24) —
+   added `q` (institution name/URL search), `sort`, and
+   `business_category_id` params to `FilteredJobsQuerySchema`, plus a matching
+   `exclude_statuses` param. V2's ExtractionDashboard had none of these; it
+   fetched the whole filtered set and searched/sorted/paginated client-side.
+   The all-extractions dashboard moved to true server-side pagination
+   (page/limit only, fetched per click instead of walking every page on every
+   load), which meant search and sort had to move server-side too or they'd
+   silently stop covering anything past the current page. Explicitly
+   requested and scoped by the team, not a V2 port.
 
 ## External FK columns
 

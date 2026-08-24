@@ -34,12 +34,32 @@ export async function listJobs(opts: { status?: string; q?: string; limit: numbe
 }
 
 export async function listJobsFiltered(
-  opts: { statuses?: string[]; sourceType?: string; excludeSourceType?: string },
+  opts: {
+    statuses?: string[];
+    excludeStatuses?: string[];
+    sourceType?: string;
+    excludeSourceType?: string;
+    businessCategoryId?: number;
+    q?: string;
+    sort?: repo.JobSort;
+  },
   pagination: PaginationInput,
 ) {
-  const filter = { statuses: opts.statuses, sourceType: opts.sourceType, excludeSourceType: opts.excludeSourceType };
+  const filter = {
+    statuses: opts.statuses,
+    excludeStatuses: opts.excludeStatuses,
+    sourceType: opts.sourceType,
+    excludeSourceType: opts.excludeSourceType,
+    businessCategoryId: opts.businessCategoryId,
+    q: opts.q,
+  };
   const [rows, total] = await Promise.all([
-    repo.listJobsFiltered({ ...filter, limit: pagination.limit, offset: (pagination.page - 1) * pagination.limit }),
+    repo.listJobsFiltered({
+      ...filter,
+      sort: opts.sort,
+      limit: pagination.limit,
+      offset: (pagination.page - 1) * pagination.limit,
+    }),
     repo.countJobsFiltered(filter),
   ]);
   const { data, meta } = buildPaginatedResponse(await withResolvedNames(rows), total, pagination);

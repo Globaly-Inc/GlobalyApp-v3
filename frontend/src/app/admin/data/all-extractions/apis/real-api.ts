@@ -1,5 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { MODE_STATUS_FILTER, type DashboardMode } from "../const";
+import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
 import type {
   Accreditation,
   AgentFull,
@@ -20,6 +20,9 @@ import type {
   EligibilityRequirement,
   EditableTable,
   ExtractionJob,
+  ExtractionStatus,
+  GetJobsParams,
+  GetJobsResult,
   Intake,
   IntakeParams,
   InstitutionOverview,
@@ -37,32 +40,37 @@ import type {
   VisaService,
 } from "./types";
 
+function rawStatusesForLabel(label: string): ExtractionStatus[] {
+  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
+}
+
 export const allExtractionsRealApi = {
-  // JobsList paginates, sorts and searches this whole set client-side ("select
-  // all" means every job matching the current filters, not just one page), so
-  // this walks every backend page — at the default page size of 10 — using
-  // `meta.totalPages` until exhausted, instead of one fetch hardcoded to
-  // `limit=10` that silently dropped every job past the first page.
-  getJobs: async (mode: DashboardMode): Promise<ExtractionJob[]> => {
-    const baseParams: Record<string, string> = {};
-    const statuses = MODE_STATUS_FILTER[mode];
-    if (statuses) baseParams.statuses = statuses.join(",");
-    if (mode === "ai-ongoing") baseParams.exclude_source_type = "agentcis";
+  getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
+    const query: Record<string, string> = {
+      page: String(params.page),
+      limit: String(params.limit),
+      sort: params.sort,
+    };
 
-    const jobs: ExtractionJob[] = [];
-    let page = 1;
-    let totalPages = 1;
-    do {
-      const params = new URLSearchParams({ ...baseParams, page: String(page), limit: "10" });
-      const { jobs: pageJobs, meta } = await httpGet<{ jobs: ExtractionJob[]; meta: { totalPages: number } }>(
-        `/admin/data-extraction/jobs-filtered?${params}`,
-      );
-      jobs.push(...pageJobs);
-      totalPages = meta.totalPages;
-      page += 1;
-    } while (page <= totalPages);
+    const baseStatuses = MODE_STATUS_FILTER[params.mode];
+    const statuses =
+      params.statusLabel && params.statusLabel !== "all"
+        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        : baseStatuses;
+    if (statuses?.length) query.statuses = statuses.join(",");
+    if (!params.showDeclined) query.exclude_statuses = "declined";
 
-    return jobs;
+    if (params.mode === "ai-ongoing") {
+      query.exclude_source_type = "agentcis";
+    } else if (params.mode === "completed" && params.sourceFilter && params.sourceFilter !== "all") {
+      if (params.sourceFilter === "agentcis") query.source_type = "agentcis";
+      else query.exclude_source_type = "agentcis";
+    }
+
+    if (params.businessCategoryId) query.business_category_id = String(params.businessCategoryId);
+    if (params.q) query.q = params.q;
+
+    return httpGet<GetJobsResult>(`/admin/data-extraction/jobs-filtered?${new URLSearchParams(query)}`);
   },
 
   getJob: async (id: string): Promise<ExtractionJob> => {

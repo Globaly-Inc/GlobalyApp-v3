@@ -1,3 +1,5 @@
+import type { DashboardMode, SortOrder } from "../const";
+
 export type ExtractionStatus =
   | "pending"
   | "mapping"
@@ -94,6 +96,22 @@ export type Paginated<T> = {
   meta: { page: number; limit: number; total: number; totalPages: number };
   statusCounts?: { status: string; count: number }[];
 };
+
+export type JobsPageMeta = { page: number; limit: number; total: number; totalPages: number };
+
+export type GetJobsParams = {
+  mode: DashboardMode;
+  page: number;
+  limit: number;
+  sort: SortOrder;
+  statusLabel?: string;
+  sourceFilter?: string;
+  businessCategoryId?: number;
+  showDeclined: boolean;
+  q?: string;
+};
+
+export type GetJobsResult = { jobs: ExtractionJob[]; meta: JobsPageMeta };
 
 // Shared shape for the row types we only need to count and find the most
 // recent timestamp of, on the Overview tab's "Extraction Details by Tab" cards.
