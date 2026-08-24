@@ -20,7 +20,9 @@ const SubdomainParam = z.object({ subdomain: z.string().min(1) });
 // Maps a search tab directly to the signup-time `business_type` — see BusinessSearchFilters.
 const TABS = [
   { path: "/search/education-agencies", businessType: "agent" },
-  { path: "/search/migration-agents", businessType: "immigration_department" },
+  // ponytail: business_type has no separate "migration agent" value — same bucket as education
+  // agents until the signup enum grows a finer-grained type. This tab is hidden in the UI today.
+  { path: "/search/migration-agents", businessType: "agent" },
 ];
 
 export async function searchBusinessesRoutes(app: FastifyInstance) {

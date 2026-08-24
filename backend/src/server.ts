@@ -34,6 +34,7 @@ import enquiriesModule from "./modules/enquiries/index.js";
 import coursesModule from "./modules/courses/index.js";
 import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
 import waitlistModule from "./modules/waitlist/index.js";
+import businessEventsModule from "./modules/business-events/index.js";
 
 const logger = createChildLogger("server");
 
@@ -63,6 +64,7 @@ export async function buildServer() {
     await protectedApp.register(enquiriesModule);      // student enquiry creation + lookup
     await protectedApp.register(coursesModule);        // student course browse (extracted courses)
     await protectedApp.register(referralsModule);           // Earn → Referrals: own code, stats, history
+    await protectedApp.register(businessEventsModule);      // business events — core management (no payments)
   });
 
   await app.register(blogModule);            // public blog reads (no auth)

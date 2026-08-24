@@ -1,5 +1,5 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { EventsListView } from "./components/events-list-view";
 
-export default function EventsPage() {
-  return <ComingSoon title="Events" />;
+export default function BusinessEventsPage() {
+  return <EventsListView />;
 }

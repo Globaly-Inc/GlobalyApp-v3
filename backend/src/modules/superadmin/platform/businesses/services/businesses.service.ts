@@ -25,6 +25,26 @@ const logger = createChildLogger("superadmin-businesses-service");
 
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin/agent invite convention
 
+// The self-registration form (businesses/routes/businesses.routes.ts) sets `business_type`
+// directly. This admin-create form only asks for a `business_category_id`, so without this an
+// admin-created business gets business_type = null and silently drops out of every public
+// search tab, which filters on business_type (not business_category_id — see
+// search/repositories/businesses.repository.ts). Keyed on the category's `slug`, not its id —
+// ids are only pinned by the seeder's intent, not guaranteed in every environment.
+const BUSINESS_TYPE_BY_CATEGORY_SLUG: Record<string, string> = {
+  institutions: "institution",
+  education_agency: "agent",
+  visa_services: "service_provider",
+  accreditation_body: "accreditation_body",
+  migration_agents: "agent",
+  immigration_departments: "immigration_department",
+};
+
+async function businessTypeForCategory(categoryId: number): Promise<string | null> {
+  const category = await masterKnex("business_categories").where({ id: categoryId }).select("slug").first();
+  return category ? BUSINESS_TYPE_BY_CATEGORY_SLUG[category.slug] ?? null : null;
+}
+
 async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(biz: T): Promise<T> {
   const [logo_url, cover_url] = await Promise.all([
     storage.resolvePreviewUrl(biz.logo_url),
@@ -58,7 +78,11 @@ export async function createBusiness(input: BusinessCreateInput) {
         phone: input.phone ?? undefined,
         account_status: 1,
       }, trx);
-      const trxBusiness = await repo.insertBusiness({ ...businessInput, owner_id: trxOwner.id }, trx);
+      const trxBusiness = await repo.insertBusiness({
+        ...businessInput,
+        owner_id: trxOwner.id,
+        business_type: await businessTypeForCategory(businessInput.business_category_id),
+      }, trx);
       return { owner: trxOwner, business: trxBusiness };
     }));
   } catch (err: any) {

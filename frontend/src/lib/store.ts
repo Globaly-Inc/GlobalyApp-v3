@@ -13,6 +13,8 @@ import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enq
 import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
 import { businessMessagesReducer } from "@/app/business/messages/store/business-messages-slice"
 import { businessEnquiriesReducer } from "@/app/business/enquiries/store/business-enquiries-slice"
+import { businessEventsReducer } from "@/app/business/marketing/events/store/business-events-slice"
+import { businessRepresentationsReducer } from "@/app/business/marketing/representations/store/representations-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
@@ -54,6 +56,8 @@ const appReducer = combineReducers({
     messages: messagesReducer,
     businessMessages: businessMessagesReducer,
     businessEnquiries: businessEnquiriesReducer,
+    businessEvents: businessEventsReducer,
+    businessRepresentations: businessRepresentationsReducer,
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,
