@@ -3,9 +3,9 @@
 import { useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
+import { FeedComposer } from "@/components/feed/components/feed-composer";
+import { FeedTimeline } from "@/components/feed/components/feed-timeline";
 import { HomeHero } from "./home-hero";
-import { FeedComposer } from "./feed-composer";
-import { FeedTimeline } from "./feed-timeline";
 import { QuickActions } from "./quick-actions";
 import { RegionBoundary } from "./region-boundary";
 
@@ -46,7 +46,10 @@ export function HomeView() {
 
         <div className="order-1 space-y-4 lg:col-span-2">
           <RegionBoundary label="the composer">
-            <FeedComposer />
+            <FeedComposer
+              avatarUrl={profile?.photo_url}
+              avatarFallback={profile?.first_name?.[0]?.toUpperCase() ?? "U"}
+            />
           </RegionBoundary>
           <RegionBoundary label="the feed">
             <FeedTimeline />

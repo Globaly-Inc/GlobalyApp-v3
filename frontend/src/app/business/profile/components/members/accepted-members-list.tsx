@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Pencil, Trash2, Users } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMembers, removeMember } from "../../store/business-profile-detail-slice";
 import type { Member } from "../../apis/types";
 
@@ -18,6 +20,7 @@ export function AcceptedMembersList({
 }: Readonly<{ businessId: number; onEdit: (member: Member) => void }>) {
   const dispatch = useAppDispatch();
   const { items: members, status, total } = useAppSelector((state) => state.businessProfileDetail.members);
+  const { user } = useAuthState();
   const [page, setPage] = useState(1);
 
   const fetchedIdRef = useRef<number | null>(null);
@@ -64,17 +67,22 @@ export function AcceptedMembersList({
         {members.map((m) => (
           <div key={m.id} className="flex items-center justify-between rounded-lg border p-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase">
-                {(m.first_name ?? "?").slice(0, 2)}
-              </div>
+              <Avatar className="h-9 w-9">
+                {m.photo_url && <AvatarImage src={m.photo_url} alt="" />}
+                <AvatarFallback className="text-xs font-semibold uppercase">{(m.first_name ?? "?").slice(0, 2)}</AvatarFallback>
+              </Avatar>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{m.first_name ? `${m.first_name} ${m.last_name}` : "—"}</span>
+                  {m.email === user?.email && <Badge variant="outline" className="text-[10px] px-1.5 py-0">You</Badge>}
                   {m.role_display && <span className="text-xs text-muted-foreground">{m.role_display}</span>}
                   {m.admin_point_of_contact && <Badge variant="outline">POC</Badge>}
                   {m.account_status !== 1 && <Badge variant="secondary">Inactive</Badge>}
+                  {m.is_public && <Badge variant="secondary">Public profile</Badge>}
                 </div>
-                <p className="text-xs text-muted-foreground">{[m.email, m.phone].filter(Boolean).join(" • ") || "—"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {[m.position, m.email, m.phone].filter(Boolean).join(" • ") || "—"}
+                </p>
               </div>
             </div>
             <div className="flex gap-1">

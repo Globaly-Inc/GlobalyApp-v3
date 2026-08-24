@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Cloud, Globe, MapPin } from "lucide-react";
-import { Combobox } from "@/components/combobox";
+import { useEffect, useMemo, useState } from "react";
+import { Cloud, Globe, Pencil, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { HERO_WIDGET_KEY, TIMEZONE_KEY } from "../const";
 import { greeting } from "../utils";
@@ -36,20 +37,16 @@ export function HomeHero({ firstName }: { firstName: string | null }) {
   useEffect(() => setMounted(true), []);
 
   // Both preferences survive a reload, and neither is read in an effect — see usePersistedChoice.
-  const [storedWidget, chooseWidget] = usePersistedChoice<Widget>(HERO_WIDGET_KEY, "weather", isWidget);
+  const [widget, selectWidget] = usePersistedChoice<Widget>(HERO_WIDGET_KEY, "weather", isWidget);
   const [timezone, chooseTimezone] = usePersistedChoice<string>(TIMEZONE_KEY, browserZone, isTimezone);
 
-  // Weather can turn itself off for this session (denied permission, fetch failure) without overwriting the
-  // user's saved preference — the hero shows clocks rather than an empty frame.
-  const [weatherUnavailable, setWeatherUnavailable] = useState(false);
-  const widget: Widget = storedWidget === "weather" && weatherUnavailable ? "worldtime" : storedWidget;
-
-  // Picking a widget must always do something. Without clearing the flag, one failed weather load pinned the
-  // hero to clocks for the rest of the session and the cloud button silently did nothing when clicked.
-  const selectWidget = (next: Widget) => {
-    if (next === "weather") setWeatherUnavailable(false);
-    chooseWidget(next);
-  };
+  const [timezoneOpen, setTimezoneOpen] = useState(false);
+  const [timezoneQuery, setTimezoneQuery] = useState("");
+  const filteredTimezones = useMemo(() => {
+    const term = timezoneQuery.trim().toLowerCase();
+    const zones = timezoneOptions();
+    return term ? zones.filter((z) => z.label.toLowerCase().includes(term)) : zones;
+  }, [timezoneQuery]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -82,17 +79,50 @@ export function HomeHero({ firstName }: { firstName: string | null }) {
           <p className="text-sm font-medium text-primary-foreground">
             {mounted ? `${dateLabel} · ${timeLabel}` : " "}
           </p>
-          <div className="flex items-center gap-1.5 pt-0.5">
-            <MapPin className="h-3.5 w-3.5 text-primary-foreground/70" />
-            <Combobox
-              options={timezoneOptions()}
-              value={timezone}
-              onChange={chooseTimezone}
-              placeholder="Select timezone"
-              searchPlaceholder="Search timezones…"
-              className="h-7 w-56 border-white/20 bg-white/10 text-xs text-primary-foreground"
-            />
-          </div>
+          <Popover
+            open={timezoneOpen}
+            onOpenChange={(next) => {
+              setTimezoneOpen(next);
+              if (next) setTimezoneQuery("");
+            }}
+          >
+            <PopoverTrigger className="flex items-center gap-1 text-xs text-white/60 hover:text-white/90 mt-1 transition-colors">
+              <Globe className="h-3 w-3" />
+              {timezone.replace(/_/g, " ")}
+              <Pencil className="h-2.5 w-2.5 opacity-70" />
+            </PopoverTrigger>
+            <PopoverContent className="w-[280px] p-0" align="start">
+              <div className="relative border-b p-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
+                <Input
+                  autoFocus
+                  value={timezoneQuery}
+                  onChange={(event) => setTimezoneQuery(event.target.value)}
+                  placeholder="Search timezone…"
+                  className="h-8 border-none pl-8 shadow-none focus-visible:ring-0"
+                />
+              </div>
+              <div className="max-h-[250px] overflow-y-auto p-1">
+                {filteredTimezones.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">No timezone found.</p>
+                ) : (
+                  filteredTimezones.map((tz) => (
+                    <button
+                      key={tz.value}
+                      type="button"
+                      onClick={() => {
+                        chooseTimezone(tz.value);
+                        setTimezoneOpen(false);
+                      }}
+                      className="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+                    >
+                      {tz.label}
+                    </button>
+                  ))
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div className="w-full space-y-2 md:max-w-sm">
@@ -118,12 +148,7 @@ export function HomeHero({ firstName }: { firstName: string | null }) {
             ))}
           </div>
 
-          {widget === "weather" ? (
-            // A failure flips to world clocks without surfacing an error; re-selecting weather retries.
-            <WeatherWidget key={weatherUnavailable ? "retry" : "initial"} onUnavailable={() => setWeatherUnavailable(true)} />
-          ) : (
-            <WorldClocks now={now} homeTimezone={timezone} />
-          )}
+          {widget === "weather" ? <WeatherWidget /> : <WorldClocks now={now} homeTimezone={timezone} />}
         </div>
       </div>
     </section>

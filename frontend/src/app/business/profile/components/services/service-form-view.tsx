@@ -2,17 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileText, GraduationCap, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Combobox } from "@/components/combobox";
 import { DynamicIcon } from "@/components/dynamic-icon";
-import { SectionCard } from "@/app/personal/profile/section-card";
+import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { Accreditation, Category, Lookup } from "@/app/admin/platform/categories/apis/types";
 import { businessProfileDetailApi } from "../../apis";
@@ -21,6 +19,24 @@ import {
 } from "../../store/business-profile-detail-slice";
 import { ApiError } from "@/lib/api/http";
 import type { SchemaFieldValue, ServiceInput } from "../../apis/types";
+import { SummaryTab } from "./tabs/summary-tab";
+import { CourseFeesTab } from "./tabs/course-fees-tab";
+import { IntakesTab } from "./tabs/intakes-tab";
+import { EligibilityTab } from "./tabs/eligibility-tab";
+import { StudyOptionsTab } from "./tabs/study-options-tab";
+import { StudyUnitsTab } from "./tabs/study-units-tab";
+import { AccreditationsTab } from "./tabs/accreditations-tab";
+
+const DETAIL_TABS = [
+  { value: "summary", label: "Summary" },
+  { value: "fees", label: "Course Fees" },
+  { value: "intakes", label: "Intakes" },
+  { value: "eligibility", label: "Eligibility" },
+  { value: "study-options", label: "Study Options" },
+  { value: "study-units", label: "Study Units" },
+  { value: "accreditations", label: "Accreditations" },
+] as const;
+export type DetailTab = (typeof DETAIL_TABS)[number]["value"];
 
 type FormState = { name: string; service_category_id: number | null; description: string };
 
@@ -50,6 +66,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   });
   const [fieldValues, setFieldValues] = useState<Record<number, unknown>>({});
   const [saving, setSaving] = useState(false);
+  const [detailTab, setDetailTab] = useState<DetailTab>("summary");
 
   const [courseSearchResults, setCourseSearchResults] = useState<Record<string, { value: string; label: string }[]>>({});
   const [courseSearchLoading, setCourseSearchLoading] = useState<Record<string, boolean>>({});
@@ -106,10 +123,6 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
       if (!(f.key in schemaFieldIdByKey)) schemaFieldIdByKey[f.key] = f.id;
     }
   }
-  const COURSE_FIELDS = [
-    { key: "degree_level", label: "Degree level" },
-    { key: "area_of_study", label: "Area of study" },
-  ];
 
   const searchCourseField = async (key: string, query: string) => {
     setCourseSearchLoading((s) => ({ ...s, [key]: true }));
@@ -222,60 +235,48 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="gap-3 lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              Description
-            </CardTitle>
-            <CardAction>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-primary"
-                onClick={() => toast("Coming soon", { description: "AI-generated descriptions aren't available yet." })}
-              >
-                <Sparkles className="h-3.5 w-3.5" /> Write with AI
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={form.description}
-              onChange={(e) => set("description", e.target.value)}
-              placeholder="Describe the service..."
-              rows={8}
-              className="min-h-20"
-            />
-          </CardContent>
-        </Card>
-
-        <SectionCard icon={GraduationCap} title="Course details">
-          <div className="space-y-4">
-            {COURSE_FIELDS.map((field) => {
-              const fieldId = schemaFieldIdByKey[field.key];
-              const value = fieldId != null && fieldValues[fieldId] != null ? String(fieldValues[fieldId]) : "";
-              return (
-                <div key={field.key} className="flex flex-col gap-2">
-                  <Label>{field.label}</Label>
-                  <Combobox
-                    options={courseFieldOptions(field.key, value)}
-                    value={value}
-                    onChange={(v) => {
-                      if (fieldId != null) setFieldValues((f) => ({ ...f, [fieldId]: v }));
-                    }}
-                    onQueryChange={(query) => debouncedSearchCourseField(field.key, query)}
-                    loading={courseSearchLoading[field.key] ?? false}
-                    placeholder={`Select ${field.label.toLowerCase()}`}
-                    searchPlaceholder={`Search ${field.label.toLowerCase()}...`}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-      </div>
+      {isEdit && serviceId ? (
+        <>
+          <AdminSegmentedTabs options={DETAIL_TABS} value={detailTab} onChange={setDetailTab} />
+          <Card>
+            <CardContent>
+              {detailTab === "summary" && (
+                <SummaryTab
+                  serviceId={serviceId}
+                  onNavigateTab={setDetailTab}
+                  description={form.description}
+                  onDescriptionChange={(v) => set("description", v)}
+                  schemaFieldIdByKey={schemaFieldIdByKey}
+                  fieldValues={fieldValues}
+                  setFieldValues={setFieldValues}
+                  courseFieldOptions={courseFieldOptions}
+                  debouncedSearchCourseField={debouncedSearchCourseField}
+                  courseSearchLoading={courseSearchLoading}
+                />
+              )}
+              {detailTab === "fees" && <CourseFeesTab serviceId={serviceId} />}
+              {detailTab === "intakes" && <IntakesTab serviceId={serviceId} />}
+              {detailTab === "eligibility" && <EligibilityTab serviceId={serviceId} />}
+              {detailTab === "study-options" && <StudyOptionsTab serviceId={serviceId} />}
+              {detailTab === "study-units" && <StudyUnitsTab serviceId={serviceId} />}
+              {detailTab === "accreditations" && <AccreditationsTab serviceId={serviceId} />}
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <SummaryTab
+          serviceId={null}
+          onNavigateTab={() => {}}
+          description={form.description}
+          onDescriptionChange={(v) => set("description", v)}
+          schemaFieldIdByKey={schemaFieldIdByKey}
+          fieldValues={fieldValues}
+          setFieldValues={setFieldValues}
+          courseFieldOptions={courseFieldOptions}
+          debouncedSearchCourseField={debouncedSearchCourseField}
+          courseSearchLoading={courseSearchLoading}
+        />
+      )}
     </div>
   );
 }

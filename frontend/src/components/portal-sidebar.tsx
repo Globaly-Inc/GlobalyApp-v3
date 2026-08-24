@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,21 +28,30 @@ export type PortalNavGroup = {
   items?: PortalNavItem[];
 };
 
-/** Exact match, otherwise prefix match — query strings stripped first, as admin's hrefs can carry them. */
-export function isPortalNavActive(pathname: string | null, href: string): boolean {
-  const path = href.split("?")[0];
-  return pathname === path || !!pathname?.startsWith(`${path}/`);
+/**
+ * Exact match, otherwise prefix match on the path — other query params (e.g. admin's sort/filter)
+ * are ignored, but `tab` is compared explicitly so sibling items that share one route and differ
+ * only by `?tab=` (business profile's Branches/Team/Services/…) don't all light up at once. Two
+ * hrefs with no `tab` at all still compare equal (both `null`), matching a plain route.
+ */
+export function isPortalNavActive(pathname: string | null, href: string, currentSearch?: string | null): boolean {
+  const [path, hrefQuery] = href.split("?");
+  if (pathname !== path && !pathname?.startsWith(`${path}/`)) return false;
+  const hrefTab = new URLSearchParams(hrefQuery ?? "").get("tab");
+  const currentTab = new URLSearchParams(currentSearch ?? "").get("tab");
+  return hrefTab === currentTab;
 }
 
 const groupHref = (group: PortalNavGroup) => group.href ?? group.items?.[0]?.href ?? "#";
 
-const isGroupActive = (pathname: string | null, group: PortalNavGroup) =>
-  (!!group.href && isPortalNavActive(pathname, group.href)) ||
-  !!group.items?.some((item) => isPortalNavActive(pathname, item.href));
+const isGroupActive = (pathname: string | null, search: string | null, group: PortalNavGroup) =>
+  (!!group.href && isPortalNavActive(pathname, group.href, search)) ||
+  !!group.items?.some((item) => isPortalNavActive(pathname, item.href, search));
 
 export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>) {
   const pathname = usePathname();
-  const activeGroup = groups.find((group) => isGroupActive(pathname, group));
+  const search = useSearchParams().toString();
+  const activeGroup = groups.find((group) => isGroupActive(pathname, search, group));
   // One item needs no column of its own — the rail tile already goes there.
   const submenuItems = (activeGroup?.items?.length ?? 0) > 1 ? activeGroup!.items! : [];
 
@@ -84,7 +93,7 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
           </div>
           <nav className="flex flex-col gap-0.5 px-2">
             {submenuItems.map((item) => {
-              const active = isPortalNavActive(pathname, item.href);
+              const active = isPortalNavActive(pathname, item.href, search);
               return (
                 <Link
                   key={item.href}

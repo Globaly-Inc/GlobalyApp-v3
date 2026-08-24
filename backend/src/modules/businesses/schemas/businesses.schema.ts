@@ -26,6 +26,7 @@ export const BusinessProfilePatchSchema = z.object({
   description: z.string().min(1, REQUIRED).max(5000).nullable(),
   logo_url: z.string().nullable(),   // relative storage path or full URL
   cover_url: z.string().nullable(),  // relative storage path or full URL
+  website: z.string().url().nullable(),
   email: z.string().min(1, REQUIRED).email("Enter a valid email").nullable(),
   phone: z.string().min(1, REQUIRED).max(50).nullable(),
   country_id: z.number().int().positive().nullable(),

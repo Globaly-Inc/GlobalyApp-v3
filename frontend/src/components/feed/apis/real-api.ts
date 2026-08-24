@@ -38,7 +38,7 @@ function normalizePost(raw: Partial<FeedPost> | undefined | null): FeedPost {
   };
 }
 
-export const homeRealApi = {
+export const feedRealApi = {
   listFeed: async (params: { postType?: string; cursor?: string | null; limit?: number }): Promise<FeedPage> => {
     const query = new URLSearchParams();
     if (params.postType && params.postType !== "all") query.set("postType", params.postType);

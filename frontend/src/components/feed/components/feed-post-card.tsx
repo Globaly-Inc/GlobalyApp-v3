@@ -23,7 +23,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useAppDispatch } from "@/lib/hooks";
-import { deleteFeedPost, removePostReaction, setPostReaction } from "../store/home-slice";
+import { deleteFeedPost, removePostReaction, setPostReaction } from "../store/feed-slice";
 import { POST_CLAMP_CHARS, POST_TYPE_STYLES, REACTION_CHOICES, VISIBILITY_LABELS } from "../const";
 import { initials, relativeTime } from "../utils";
 import type { FeedPostCardProps } from "../types";

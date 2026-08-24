@@ -6,5 +6,8 @@ export const businessProfileDetailApi = createApi({ mock: businessProfileDetailM
 export type {
   ActivityLogEntry, Branch, BranchFilter, BranchInput, BranchPatch, BranchType,
   BusinessRelation, BusinessSearchResult, BusinessService, InvitedMember, Member, MemberRole, RelationType,
-  SchemaFieldValue, ServiceInput, ServiceSearchParams, SharedServices,
+  SchemaFieldValue, Scholarship, ScholarshipInput, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
+  ServiceEligibilityInput, ServiceFee, ServiceFeeInput, ServiceInput, ServiceIntake, ServiceIntakeInput,
+  ServiceSearchParams, ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyUnit, ServiceStudyUnitInput,
+  SharedServices,
 } from "./types";

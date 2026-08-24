@@ -1,4 +1,4 @@
-import { httpGet, httpPatch, httpPost } from "@/lib/api/http";
+import { httpGet, httpPatch, httpPost, runExclusiveSwitch } from "@/lib/api/http";
 import { getRefreshToken, saveAccessToken, saveTokens } from "@/lib/session";
 import type {
   AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthMeUser, AuthUser, SendOtpParams,
@@ -46,14 +46,18 @@ export const authRealApi = {
     };
   },
 
-  switchAccount: async ({ org_id }: SwitchAccountParams): Promise<SwitchAccountResult> => {
-    // Sending the refresh token lets the backend remember this choice on the session, so the
-    // next silent /refresh doesn't reset back to the default business (see auth.service.ts).
-    const data = await httpPost<{ access_token: string }>("/auth/switch-account", {
-      org_id,
-      refresh_token: getRefreshToken() ?? undefined,
-    });
-    saveAccessToken(data.access_token);
-    return { access_token: data.access_token };
-  },
+  switchAccount: ({ org_id }: SwitchAccountParams): Promise<SwitchAccountResult> =>
+    // Serialized against ensureBusinessContext()'s own switch-account call (http.ts) — both
+    // can fire on the same page mount, and racing them lets whichever resolves last silently
+    // clobber the other's saved token, leaving the app scoped to the wrong business.
+    runExclusiveSwitch(async () => {
+      // Sending the refresh token lets the backend remember this choice on the session, so the
+      // next silent /refresh doesn't reset back to the default business (see auth.service.ts).
+      const data = await httpPost<{ access_token: string }>("/auth/switch-account", {
+        org_id,
+        refresh_token: getRefreshToken() ?? undefined,
+      });
+      saveAccessToken(data.access_token);
+      return { access_token: data.access_token };
+    }),
 };

@@ -1,33 +1,33 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { homeApi } from "../apis";
+import { feedApi } from "../apis";
 import type { ComposeWithAiInput, CreatePostInput, FeedPost, ReactionGroup } from "../apis/types";
 import type { RootState } from "@/lib/store";
 
 export const fetchFeedPage = createAsyncThunk(
-  "home/fetchFeedPage",
+  "feed/fetchFeedPage",
   async ({ postType, cursor }: { postType: string; cursor?: string | null }) => {
-    const page = await homeApi.listFeed({ postType, cursor });
+    const page = await feedApi.listFeed({ postType, cursor });
     return { ...page, append: !!cursor };
   },
 );
 
-export const createFeedPost = createAsyncThunk("home/createPost", (input: CreatePostInput) =>
-  homeApi.createPost(input),
+export const createFeedPost = createAsyncThunk("feed/createPost", (input: CreatePostInput) =>
+  feedApi.createPost(input),
 );
 
-export const uploadFeedMedia = createAsyncThunk("home/uploadMedia", (file: File) => homeApi.uploadMedia(file));
+export const uploadFeedMedia = createAsyncThunk("feed/uploadMedia", (file: File) => feedApi.uploadMedia(file));
 
-export const composeWithAi = createAsyncThunk("home/composeWithAi", (input: ComposeWithAiInput) =>
-  homeApi.composeWithAi(input),
+export const composeWithAi = createAsyncThunk("feed/composeWithAi", (input: ComposeWithAiInput) =>
+  feedApi.composeWithAi(input),
 );
 
-export const checkAiAvailable = createAsyncThunk("home/checkAiAvailable", async () => {
-  const { available } = await homeApi.aiAvailable();
+export const checkAiAvailable = createAsyncThunk("feed/checkAiAvailable", async () => {
+  const { available } = await feedApi.aiAvailable();
   return available;
 });
 
-export const deleteFeedPost = createAsyncThunk("home/deletePost", async (id: number) => {
-  await homeApi.deletePost(id);
+export const deleteFeedPost = createAsyncThunk("feed/deletePost", async (id: number) => {
+  await feedApi.deletePost(id);
   return id;
 });
 
@@ -38,17 +38,17 @@ export const deleteFeedPost = createAsyncThunk("home/deletePost", async (id: num
  * refetch would, instead of showing a count that disagrees with the avatars until the next load.
  */
 export const setPostReaction = createAsyncThunk(
-  "home/setReaction",
+  "feed/setReaction",
   async ({ id, emoji }: { id: number; emoji: string }, { getState }) => {
-    await homeApi.setReaction(id, emoji);
+    await feedApi.setReaction(id, emoji);
     const profile = (getState() as RootState).profile.profile;
     return { id, emoji, me: { first_name: profile?.first_name ?? null, photo_url: profile?.photo_url ?? null } };
   },
 );
 
 /** Remove the caller's reaction. Mirrors DELETE /reactions. */
-export const removePostReaction = createAsyncThunk("home/removeReaction", async (id: number) => {
-  await homeApi.removeReaction(id);
+export const removePostReaction = createAsyncThunk("feed/removeReaction", async (id: number) => {
+  await feedApi.removeReaction(id);
   return id;
 });
 
@@ -79,7 +79,7 @@ function withoutMe(
 
 type RegionStatus = "idle" | "loading" | "failed";
 
-type HomeState = {
+type FeedState = {
   posts: FeedPost[];
   nextCursor: string | null;
   feedStatus: RegionStatus;
@@ -90,7 +90,7 @@ type HomeState = {
   aiAvailable: boolean | null;
 };
 
-const initialState: HomeState = {
+const initialState: FeedState = {
   posts: [],
   nextCursor: null,
   feedStatus: "idle",
@@ -100,8 +100,8 @@ const initialState: HomeState = {
   aiAvailable: null,
 };
 
-const homeSlice = createSlice({
-  name: "home",
+const feedSlice = createSlice({
+  name: "feed",
   initialState,
   reducers: {
     setPostTypeFilter(state, action: { payload: string }) {
@@ -177,5 +177,5 @@ const homeSlice = createSlice({
   },
 });
 
-export const { setPostTypeFilter } = homeSlice.actions;
-export const homeReducer = homeSlice.reducer;
+export const { setPostTypeFilter } = feedSlice.actions;
+export const feedReducer = feedSlice.reducer;

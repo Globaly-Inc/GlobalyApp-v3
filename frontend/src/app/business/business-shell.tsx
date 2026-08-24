@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { GraduationCap, LogOut, Loader2, User } from "lucide-react";
+import { Bell, Coins, GraduationCap, LogOut, Loader2, Sparkles, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -158,12 +158,37 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
             <BusinessSwitcher businesses={businesses} activeOrgId={activeOrgId} onSwitch={handleSwitchBusiness} />
           </div>
 
+          <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-2">
+            <Link
+              href="/business/notifications"
+              className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Notifications"
+            >
+              <Bell className="h-4.5 w-4.5" />
+              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden />
+            </Link>
+            <Link
+              href="/business/ai-widget"
+              className="hidden md:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 h-8 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              AI Counsellor
+            </Link>
+            <Link
+              href="/business/credits"
+              className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
+            >
+              <Coins className="h-3.5 w-3.5" />
+              Credits
+            </Link>
+          </div>
+
           {/* Account menu carries identity actions only — business switching lives in
               BusinessSwitcher above, matching V1's split between the two menus. */}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <button className="ml-auto mr-3 sm:mr-4 md:mr-6 flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
+                <button className="mr-3 sm:mr-4 md:mr-6 flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
               }
             >
               <Avatar className="size-8">

@@ -58,6 +58,41 @@ export async function remove(id: number) {
   return masterKnex(TABLE).where({ id }).delete();
 }
 
+// ── Business-owned reads/writes (scoped to one business_id) ──
+
+type BusinessFilters = { search?: string };
+
+function applyBusinessFilters(q: ReturnType<typeof masterKnex>, businessId: number, filters: BusinessFilters) {
+  q.where({ business_id: businessId });
+  if (filters.search) q.whereILike("title", `%${filters.search}%`);
+  return q;
+}
+
+export async function listForBusiness(businessId: number, limit: number, offset: number, filters: BusinessFilters) {
+  const q = masterKnex(TABLE).orderBy("created_at", "desc").limit(limit).offset(offset);
+  return applyBusinessFilters(q, businessId, filters);
+}
+
+export async function countForBusiness(businessId: number, filters: BusinessFilters) {
+  const q = masterKnex(TABLE).count("* as count");
+  applyBusinessFilters(q, businessId, filters);
+  const [row] = await q;
+  return Number(row.count);
+}
+
+export async function findByIdForBusiness(businessId: number, id: number) {
+  return masterKnex(TABLE).where({ id, business_id: businessId }).first();
+}
+
+export async function updateForBusiness(businessId: number, id: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex(TABLE).where({ id, business_id: businessId }).update({ ...data, updated_at: now() }).returning("*");
+  return row;
+}
+
+export async function removeForBusiness(businessId: number, id: number) {
+  return masterKnex(TABLE).where({ id, business_id: businessId }).delete();
+}
+
 // ── Public reads (published only) ──
 
 function applyPublicFilters(q: ReturnType<typeof masterKnex>, filters: PublicFilters) {

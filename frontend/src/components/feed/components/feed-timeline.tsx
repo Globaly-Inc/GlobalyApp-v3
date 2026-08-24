@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchFeedPage, setPostTypeFilter } from "../store/home-slice";
+import { fetchFeedPage, setPostTypeFilter } from "../store/feed-slice";
 import { FEED_FILTERS } from "../const";
 import { FeedPostCard } from "./feed-post-card";
 import { SectionError } from "./section-error";
@@ -15,7 +15,7 @@ import { SectionError } from "./section-error";
 export function FeedTimeline() {
   const dispatch = useAppDispatch();
   const { posts, postType, feedStatus, feedError, nextCursor, feedLoadingMore } = useAppSelector(
-    (state) => state.home,
+    (state) => state.feed,
   );
 
   useEffect(() => {

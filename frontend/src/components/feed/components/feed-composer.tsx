@@ -9,18 +9,33 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { checkAiAvailable, composeWithAi, createFeedPost, uploadFeedMedia } from "../store/home-slice";
+import { checkAiAvailable, composeWithAi, createFeedPost, uploadFeedMedia } from "../store/feed-slice";
 import { MAX_MEDIA, MAX_POST_LENGTH, POST_TYPES, VISIBILITY_OPTIONS } from "../const";
 import type { PostMedia } from "../apis/types";
 
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime";
 
-export function FeedComposer() {
-  const dispatch = useAppDispatch();
-  const profile = useAppSelector((state) => state.profile.profile);
-  const aiAvailable = useAppSelector((state) => state.home.aiAvailable);
+type FeedComposerProps = {
+  /** null posts as the signed-in person; a business id posts on that business's behalf. */
+  businessId?: number | null;
+  avatarUrl?: string | null;
+  avatarFallback?: string;
+  placeholder?: string;
+};
 
+export function FeedComposer({
+  businessId = null,
+  avatarUrl = null,
+  avatarFallback = "U",
+  placeholder = "Share something with your network...",
+}: FeedComposerProps) {
+  const dispatch = useAppDispatch();
+  const aiAvailable = useAppSelector((state) => state.feed.aiAvailable);
+
+  // `avatarUrl`/`avatarFallback` can already differ between an SSR pass and a client-hydrated Redux store
+  // (e.g. after an earlier navigation) — gate on `mounted` so the very first paint matches whatever HTML is
+  // being hydrated against, rather than momentarily flashing the "live" value.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -90,8 +105,7 @@ export function FeedComposer() {
         content: trimmed,
         post_type: postType,
         visibility,
-        // A personal post carries no business_id — the column is nullable precisely so this works.
-        business_id: null,
+        business_id: businessId,
         media: media.map(({ storage_path, type, mime_type }) => ({ storage_path, type, mime_type })),
       }),
     );
@@ -103,11 +117,11 @@ export function FeedComposer() {
     reset();
   };
 
-  const initial = mounted ? profile?.first_name?.[0]?.toUpperCase() ?? "U" : "U";
-  const avatarPhotoUrl = mounted ? profile?.photo_url : null;
+  const initial = mounted ? avatarFallback : "U";
+  const avatarPhotoUrl = mounted ? avatarUrl : null;
   const avatar = (
     <Avatar className="size-9 shrink-0">
-      {avatarPhotoUrl && <AvatarImage src={avatarPhotoUrl} alt={profile?.first_name} />}
+      {avatarPhotoUrl && <AvatarImage src={avatarPhotoUrl} alt={initial} />}
       <AvatarFallback>{initial}</AvatarFallback>
     </Avatar>
   );
@@ -180,7 +194,7 @@ export function FeedComposer() {
               onClick={() => setExpanded(true)}
               className="flex-1 cursor-text rounded-full bg-muted px-4 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/70"
             >
-              Share something with your network...
+              {placeholder}
             </button>
           </div>
           <div className="border-t border-border pt-2">{attachButtons}</div>
