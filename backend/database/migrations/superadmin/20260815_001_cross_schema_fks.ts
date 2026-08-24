@@ -8,24 +8,6 @@ import type { Knex } from "knex";
 // envs' tables exist. Constraint names match what knex's .references() would have
 // generated, so databases migrated before this split carry identical constraints.
 export async function up(knex: Knex): Promise<void> {
-  // Drop-then-add rather than a bare ADD: a database migrated before this split
-  // already carries these exact constraints (see the note above), and Postgres has
-  // no ADD CONSTRAINT IF NOT EXISTS — so a bare ADD aborts the whole superadmin
-  // batch with "constraint already exists". Dropping first makes this idempotent
-  // AND guarantees the definition is the one written here rather than whatever an
-  // older knex .references() produced.
-  await knex.raw(`
-    ALTER TABLE public.representations
-      DROP CONSTRAINT IF EXISTS representations_extraction_job_id_foreign,
-      DROP CONSTRAINT IF EXISTS representations_extraction_course_id_foreign
-  `);
-  await knex.raw(`
-    ALTER TABLE public.enquiries
-      DROP CONSTRAINT IF EXISTS enquiries_course_id_foreign,
-      DROP CONSTRAINT IF EXISTS enquiries_extraction_job_id_foreign,
-      DROP CONSTRAINT IF EXISTS enquiries_institution_id_foreign
-  `);
-
   await knex.raw(`
     ALTER TABLE public.representations
       ADD CONSTRAINT representations_extraction_job_id_foreign

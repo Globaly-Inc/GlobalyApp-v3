@@ -1,12 +1,12 @@
-[
-  {
-    "origin": [
-      "http://localhost:3001",
-      "https://globaly.app",
-      "https://www.globaly.app"
-    ],
-    "method": ["GET", "HEAD"],
-    "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"],
-    "maxAgeSeconds": 3600
-  }
-]
+// [
+//   {
+//     "origin": [
+//       "http://localhost:3001",
+//       "https://globaly.app",
+//       "https://www.globaly.app"
+//     ],
+//     "method": ["GET", "HEAD"],
+//     "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"],
+//     "maxAgeSeconds": 3600
+//   }
+// ]
