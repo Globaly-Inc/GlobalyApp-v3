@@ -15,9 +15,9 @@ export function CountryServices({
 
   return (
     <Reveal>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold">Popular Services in {countryName}</h2>
-        <Button variant="outline" className="h-10" render={<Link href={`/search?tab=courses&country=${encodeURIComponent(countryName)}`} />}>
+        <Button variant="outline" className="h-10 gap-1.5" render={<Link href={`/search?tab=courses&country=${encodeURIComponent(countryName)}`} />}>
           View All <ArrowRight className="h-4 w-4" />
         </Button>
       </div>

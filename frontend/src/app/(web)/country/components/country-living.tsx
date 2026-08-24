@@ -10,13 +10,13 @@ export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>)
 
   return (
     <Reveal>
-      <h2 className="mb-4 text-2xl font-bold">Living &amp; Studying</h2>
+      <h2 className="mb-6 text-2xl font-bold">Living &amp; Studying</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {hasTuition && (
           <Card className="transition-shadow hover:shadow-md">
-            <CardContent className="pt-6">
+            <CardContent className="pt-5">
               <GraduationCap className="mb-3 h-8 w-8 text-primary" />
-              <p className="text-lg font-semibold mt-1">
+              <p className="text-lg font-bold">
                 {country.avg_tuition_currency} {formatNumber(country.avg_tuition_min)}–{formatNumber(country.avg_tuition_max)}/yr
               </p>
               <p className="text-sm text-muted-foreground">Average Tuition</p>
@@ -25,19 +25,19 @@ export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>)
         )}
         {country.cost_of_living_label && (
           <Card className="transition-shadow hover:shadow-md">
-            <CardContent className="pt-6">
+            <CardContent className="pt-5">
               <DollarSign className="mb-3 h-8 w-8 text-primary" />
-              <p className="mt-1 font-semibold text-lg">{country.cost_of_living_label}</p>
+              <p className="text-lg font-bold">{country.cost_of_living_label}</p>
               <p className="text-sm text-muted-foreground">Cost of Living</p>
             </CardContent>
           </Card>
         )}
         {country.work_rights_label && (
           <Card className="transition-shadow hover:shadow-md">
-            <CardContent className="pt-6">
+            <CardContent className="pt-5">
               <Briefcase className="mb-3 h-8 w-8 text-primary" />
-              <p className="mt-1 font-semibold text-lg">{country.work_rights_label}</p>
-              <p className="text-muted-foreground mt-1">Work Rights</p>
+              <p className="text-lg font-bold">{country.work_rights_label}</p>
+              <p className="text-sm text-muted-foreground">Work Rights</p>
             </CardContent>
           </Card>
         )}

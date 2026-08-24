@@ -50,10 +50,20 @@ export default async function CountryPage({ params }: Readonly<{ params: Promise
 
   return (
     <div>
-      <div className="flex h-[calc(100svh-64px)] flex-col">
-        <CountryHero country={country} />
-        <CountryKeyFacts country={country} />
-      </div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            name: `Study in ${country.name}`,
+            url: `https://www.globalyapp.com/country/${country.slug}`,
+            description: country.why_study_here ?? `Courses, institutions and scholarships in ${country.name}.`,
+          }),
+        }}
+      />
+      <CountryHero country={country} />
+      <CountryKeyFacts country={country} />
 
       <div className="container mx-auto space-y-12 px-4 py-10 md:space-y-20 md:py-16">
         <CountryAbout country={country} />

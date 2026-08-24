@@ -11,7 +11,7 @@ export function CountryWeather({ country }: Readonly<{ country: CountryDetail }>
 
   return (
     <Reveal>
-      <h2 className="mb-4 text-2xl font-bold">Weather &amp; Climate</h2>
+      <h2 className="mb-6 text-2xl font-bold">Weather &amp; Climate</h2>
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         {seasons.map((season, i) => (
           <Card key={i} className="transition-shadow hover:shadow-md">

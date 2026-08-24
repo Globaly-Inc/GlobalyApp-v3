@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 import {
   Coins,
   Bell,
@@ -27,8 +26,7 @@ import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
-import { PortalSidebar } from "@/components/portal-sidebar";
-import { NAV_ITEMS } from "./const";
+import { PersonalSidebar } from "./components/personal-sidebar";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
 
 /**
@@ -42,7 +40,6 @@ const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
 export function PersonalShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
-  const pathname = usePathname();
   const dispatch = useAppDispatch();
   const { profile, status } = useAppSelector((state) => state.profile);
   // Next's router cache can rehydrate a previously-rendered page's HTML (e.g. after a back/forward
@@ -97,10 +94,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const avatarPhotoUrl = mounted ? profile?.photo_url : null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-muted/30">
       {/* Full-width bar above the sidebar, as in GlobalyOS: the mark sits over the rail, and the sidebar
           starts below the bar. Navigation lives in the sidebar, so this keeps only the utility cluster. */}
-      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-background">
         <div className="flex h-16 items-center">
           {/* The logo box is exactly the rail's width (w-20), so the divider that follows it lands on the
               same axis as the rail's right border below. Below `md` there is no rail, so it reverts to
@@ -193,22 +190,52 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
         </div>
       </header>
 
-      <div className="flex flex-1">
-        <PortalSidebar groups={NAV_ITEMS} />
+      {/* overflow-x-clip lets a page render a full-bleed band (the Earn sub-nav's rule) without the 100vw
+          box adding the scrollbar's width to the page as horizontal scroll. `clip` rather than `hidden`:
+          it creates no scroll container, so sticky and anchored elements inside still behave. */}
+      <main className="flex-1 overflow-x-clip py-4 md:py-6 pb-24 md:pb-6">
+        <div className={SHELL_WIDTH}>{children}</div>
+      </main>
 
-        {/* overflow-x-clip lets a page render a full-bleed band without the 100vw box adding the scrollbar's
-            width to the page as horizontal scroll. `clip` rather than `hidden`: it creates no scroll
-            container, so sticky and anchored elements inside still behave. */}
-        <main
+      <div className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-border bg-background py-2 pb-[env(safe-area-inset-bottom)] md:hidden">
+        <Link
+          href="/personal/portal"
           className={cn(
-            "min-w-0 flex-1 overflow-x-clip",
-            // The AI counsellor is a full-bleed app surface, not a page in the portal's content
-            // column — it owns the whole space under the header and does its own bottom-nav math.
-            isFullBleed ? "" : "py-4 md:py-6 pb-24 md:pb-6",
+            "flex flex-col items-center gap-0.5 px-4 py-1 text-xs",
+            pathname === "/personal/portal" ? "text-primary" : "text-muted-foreground",
           )}
         >
-          {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}
-        </main>
+          <Home className="h-5 w-5" />
+          Home
+        </Link>
+        <Link
+          href="/personal/notifications"
+          className={cn(
+            "relative flex flex-col items-center gap-0.5 px-4 py-1 text-xs",
+            pathname === "/personal/notifications" ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Bell className="h-5 w-5" />
+          Alerts
+        </Link>
+        <Link
+          href="/personal/profile"
+          className={cn(
+            "flex flex-col items-center gap-0.5 px-4 py-1 text-xs",
+            pathname === "/personal/profile" ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <UserIcon className="h-5 w-5" />
+          My Profile
+        </Link>
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          className="flex flex-col items-center gap-0.5 px-4 py-1 text-xs text-muted-foreground cursor-pointer"
+        >
+          <MenuIcon className="h-5 w-5" />
+          Menu
+        </button>
       </div>
 
       <PersonalMobileNav portalTarget={portalTarget} onSignOut={handleSignOut} />
