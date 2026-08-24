@@ -23,13 +23,86 @@ const isBlank = (v: unknown) =>
 
 /** ISO date, as `<input type="date">` emits it. Not a full parser — a date is a date, not a moment. */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** 24-hour clock, seconds optional — what `<input type="time">` emits. */
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+/** `<input type="datetime-local">`: a date and a time joined by T, no zone. */
+const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+/** Deliberately permissive — an address is valid if it can receive mail, which we cannot know here. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** Digits with the punctuation people actually type, and a plausible length. Not an E.164 check. */
+const PHONE_RE = /^\+?[\d\s()./-]{6,20}$/;
 
-function checkOne(field: BookingField, raw: unknown): unknown {
-  if (isBlank(raw)) {
-    if (field.is_required) throw new BadRequestError(`${field.label} is required`);
-    return null;
+/**
+ * Apply the admin's bounds to an already-typed answer.
+ *
+ * min/max read as numeric bounds on a number and as length bounds on everything else, because that is
+ * what an admin means by them; min_length/max_length are always about length. The pattern is
+ * admin-authored, so a regex that does not compile is ignored rather than allowed to 500 a booking.
+ */
+function checkBounds(field: BookingField, value: unknown): void {
+  const rules = field.validation;
+  if (!rules) return;
+
+  if (typeof value === "number") {
+    if (rules.min !== undefined && value < rules.min) {
+      throw new BadRequestError(`${field.label} must be at least ${rules.min}`);
+    }
+    if (rules.max !== undefined && value > rules.max) {
+      throw new BadRequestError(`${field.label} must be at most ${rules.max}`);
+    }
+    return;
   }
 
+  const length = typeof value === "string" ? value.length : Array.isArray(value) ? value.length : undefined;
+  if (length !== undefined) {
+    const min = rules.min_length ?? rules.min;
+    const max = rules.max_length ?? rules.max;
+    const unit = Array.isArray(value) ? "option" : "character";
+    if (min !== undefined && length < min) {
+      throw new BadRequestError(`${field.label} needs at least ${min} ${unit}${min === 1 ? "" : "s"}`);
+    }
+    if (max !== undefined && length > max) {
+      throw new BadRequestError(`${field.label} must be ${max} ${unit}${max === 1 ? "" : "s"} or fewer`);
+    }
+  }
+
+  if (rules.pattern && typeof value === "string") {
+    let re: RegExp;
+    try {
+      re = new RegExp(rules.pattern);
+    } catch {
+      return; // An admin typo in the pattern must not block every booking for this category.
+    }
+    if (!re.test(value)) throw new BadRequestError(`${field.label} is not in the expected format`);
+  }
+}
+
+/** One choice from the configured options. `select` and `radio` differ only in how they are drawn. */
+function checkChoice(field: BookingField, raw: unknown): string {
+  const allowed = (field.options ?? []).map(String);
+  if (typeof raw !== "string" || !allowed.includes(raw)) {
+    throw new BadRequestError(`${field.label} must be one of: ${allowed.join(", ")}`);
+  }
+  return raw;
+}
+
+/** Any number of the configured options. `multi_select` and `checkbox` differ only in how they are drawn. */
+function checkChoices(field: BookingField, raw: unknown): string[] {
+  const allowed = (field.options ?? []).map(String);
+  const values = Array.isArray(raw) ? raw.map(String) : [String(raw)];
+  const bad = values.filter((v) => !allowed.includes(v));
+  if (bad.length) throw new BadRequestError(`${field.label}: ${bad.join(", ")} is not an option`);
+  return values;
+}
+
+function matching(field: BookingField, raw: unknown, re: RegExp, expected: string): string {
+  if (typeof raw !== "string" || !re.test(raw.trim())) {
+    throw new BadRequestError(`${field.label} must be ${expected}`);
+  }
+  return raw.trim();
+}
+
+function coerce(field: BookingField, raw: unknown): unknown {
   switch (field.type) {
     case "number": {
       const n = typeof raw === "number" ? raw : Number(raw);
@@ -41,29 +114,36 @@ function checkOne(field: BookingField, raw: unknown): unknown {
       if (raw === "true" || raw === "false") return raw === "true";
       throw new BadRequestError(`${field.label} must be yes or no`);
     case "date":
-      if (typeof raw !== "string" || !DATE_RE.test(raw)) {
-        throw new BadRequestError(`${field.label} must be a date`);
-      }
-      return raw;
-    case "select": {
-      const allowed = (field.options ?? []).map(String);
-      if (typeof raw !== "string" || !allowed.includes(raw)) {
-        throw new BadRequestError(`${field.label} must be one of: ${allowed.join(", ")}`);
-      }
-      return raw;
-    }
-    case "multi_select": {
-      const allowed = (field.options ?? []).map(String);
-      const values = Array.isArray(raw) ? raw.map(String) : [String(raw)];
-      const bad = values.filter((v) => !allowed.includes(v));
-      if (bad.length) throw new BadRequestError(`${field.label}: ${bad.join(", ")} is not an option`);
-      return values;
-    }
+      return matching(field, raw, DATE_RE, "a date");
+    case "time":
+      return matching(field, raw, TIME_RE, "a time");
+    case "datetime":
+      return matching(field, raw, DATETIME_RE, "a date and time");
+    case "email":
+      return matching(field, raw, EMAIL_RE, "an email address");
+    case "phone":
+      return matching(field, raw, PHONE_RE, "a phone number");
+    case "select":
+    case "radio":
+      return checkChoice(field, raw);
+    case "multi_select":
+    case "checkbox":
+      return checkChoices(field, raw);
     default:
-      // text, and anything an admin invents later — stored as a trimmed string rather than rejected, so a new
-      // field type does not take the booking form down until this file catches up.
+      // text, long_text, and anything an admin invents later — stored as a trimmed string rather than
+      // rejected, so a new field type does not take the booking form down until this file catches up.
       return String(raw).trim();
   }
+}
+
+function checkOne(field: BookingField, raw: unknown): unknown {
+  if (isBlank(raw)) {
+    if (field.is_required) throw new BadRequestError(`${field.label} is required`);
+    return null;
+  }
+  const value = coerce(field, raw);
+  checkBounds(field, value);
+  return value;
 }
 
 /**
@@ -74,7 +154,11 @@ function checkOne(field: BookingField, raw: unknown): unknown {
  * when part of it was thrown away.
  */
 export async function validateAnswers(categoryId: number, answers: BookingAnswers): Promise<BookingAnswers> {
-  const fields = await repo.listBookingFields(categoryId);
+  return validateAgainstFields(await repo.listBookingFields(categoryId), answers);
+}
+
+/** The rules themselves, with the definitions already loaded. Split out so it can be tested without a DB. */
+export function validateAgainstFields(fields: BookingField[], answers: BookingAnswers): BookingAnswers {
   const known = new Set(fields.map((f) => f.key));
 
   const unknown = Object.keys(answers).filter((k) => !known.has(k));

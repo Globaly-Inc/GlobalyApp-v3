@@ -1,19 +1,39 @@
 // Categories service — business/service categories, degree_levels/areas_of_study lookups,
 // fee types, issuing organizations, accreditations.
 
-import { NotFoundError } from "../../../../../shared/errors.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../../../../../shared/errors.js";
 import * as repo from "../repositories/categories.repository.js";
 import type { LookupTable } from "../repositories/categories.repository.js";
+import { CORE_SCHEMA_FIELD_TYPES } from "../schemas/categories.schema.js";
 import type {
   AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput, SchemaFieldInput,
-  SchemaFieldEntityType,
+  SchemaFieldEntityType, SchemaFieldType,
 } from "../schemas/categories.schema.js";
+
+/**
+ * The booking-form field types belong to **Other** Service Categories only.
+ *
+ * `schema_fields` is shared by three entity types, and the business/service category forms render by
+ * key rather than by type — so letting `time` or `checkbox` be saved against a `service_categories`
+ * row would put a field on those forms that nothing knows how to draw. This is the wall between the
+ * two category systems: one check, both the create and the update path.
+ */
+export function assertFieldTypeAllowed(entityType: SchemaFieldEntityType, type: SchemaFieldType | undefined) {
+  if (!type || entityType === "other_service_categories") return;
+  if (!(CORE_SCHEMA_FIELD_TYPES as readonly string[]).includes(type)) {
+    throw new BadRequestError(
+      `The "${type}" field type is only available on other service categories. ` +
+      `Choose one of: ${CORE_SCHEMA_FIELD_TYPES.join(", ")}.`,
+    );
+  }
+}
 
 export function listSchemaFields(entityType: SchemaFieldEntityType, entityId: number) {
   return repo.listSchemaFields(entityType, entityId);
 }
 
 export function createSchemaField(entityType: SchemaFieldEntityType, entityId: number, data: SchemaFieldInput) {
+  assertFieldTypeAllowed(entityType, data.type);
   return repo.insertSchemaField(entityType, entityId, data);
 }
 
@@ -24,13 +44,28 @@ async function requireSchemaField(id: number) {
 }
 
 export async function updateSchemaField(id: number, data: Partial<SchemaFieldInput>) {
-  await requireSchemaField(id);
+  // The route addresses the field by id alone, so the entity type it belongs to comes from the row.
+  const existing = await requireSchemaField(id);
+  assertFieldTypeAllowed(existing.entity_type as SchemaFieldEntityType, data.type);
   return repo.updateSchemaField(id, data);
 }
 
 export async function deleteSchemaField(id: number) {
   await requireSchemaField(id);
   await repo.deleteSchemaField(id);
+}
+
+/** Reorder one category's fields. Ids that are not this category's are not moved. */
+export async function reorderSchemaFields(
+  entityType: SchemaFieldEntityType,
+  entityId: number,
+  fieldIds: number[],
+) {
+  if (new Set(fieldIds).size !== fieldIds.length) {
+    throw new BadRequestError("The same field cannot appear twice in the order");
+  }
+  await repo.reorderSchemaFields(entityType, entityId, fieldIds);
+  return repo.listSchemaFields(entityType, entityId);
 }
 
 // ── Business Categories ──
@@ -71,6 +106,29 @@ export const countOtherServiceCategories = repo.countOtherServiceCategories;
 
 export function createOtherServiceCategory(data: CategoryInput) {
   return repo.insertOtherServiceCategory(data);
+}
+
+/**
+ * Remove an Other Service Category, unless people are already selling under it.
+ *
+ * Refusing rather than cascading is the point: a listing's category is snapshotted into nothing — orders
+ * read it through the listing — so removing a category out from under live listings would break the
+ * marketplace pages that render them. Deactivating instead keeps them working while closing it to new
+ * listings, which is what an admin usually means.
+ */
+export async function deleteOtherServiceCategory(id: number) {
+  const row = await repo.findOtherServiceCategory(id);
+  if (!row) throw new NotFoundError("Other service category not found");
+
+  const listings = await repo.countListingsInOtherServiceCategory(id);
+  if (listings > 0) {
+    throw new ConflictError(
+      `${listings} ${listings === 1 ? "service is" : "services are"} listed under "${row.name}". ` +
+      "Turn it off instead — that closes it to new listings without breaking the existing ones.",
+    );
+  }
+
+  await repo.softDeleteOtherServiceCategory(id);
 }
 
 export function updateOtherServiceCategory(id: number, data: Partial<CategoryInput>) {

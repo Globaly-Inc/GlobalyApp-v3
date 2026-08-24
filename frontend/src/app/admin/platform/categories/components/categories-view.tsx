@@ -13,18 +13,17 @@ import { ADD_LABEL, CATEGORY_TABS, ROUTE_SEGMENT, TAB_DESCRIPTION } from "../con
 import {
   fetchAccreditations, fetchBusinessCategories, fetchCatalog, fetchFeeTypes, fetchIssuingOrganizations,
   fetchLookup, fetchOtherServiceCategories, fetchServiceCategories, removeAccreditation, removeFeeType, reviewAccreditation, reviewFeeType,
-  saveAccreditation, saveCategory, saveFeeType, saveLookup,
+  removeOtherServiceCategory, saveAccreditation, saveFeeType, saveLookup,
   toggleCategory, toggleLookup,
 } from "../store/categories-slice";
 import type { CategoryKind } from "../store/categories-slice";
 import type {
-  Accreditation, AccreditationInput, Category, CategoryInput, FeeType, FeeTypeInput,
+  Accreditation, AccreditationInput, FeeType, FeeTypeInput,
   Lookup, LookupInput, LookupKind, ModerationStatus,
 } from "../apis/types";
 import type { CategoryTab } from "../types";
 import { AccreditationDialog } from "./accreditation-dialog";
 import { AccreditationList } from "./accreditation-list";
-import { CategoryDialog } from "./category-dialog";
 import { CategoryList } from "./category-list";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import { FeeTypeDialog } from "./fee-type-dialog";
@@ -42,7 +41,7 @@ const LOOKUP_TITLE: Record<"degree_levels" | "areas_of_study", string> = {
   areas_of_study: "area of study",
 };
 
-type Deleting = { kind: "fee_type" | "accreditation"; id: number; name: string };
+type Deleting = { kind: "fee_type" | "accreditation" | "other_service_category"; id: number; name: string };
 
 export function CategoriesView() {
   const dispatch = useAppDispatch();
@@ -51,7 +50,6 @@ export function CategoriesView() {
   const [tab, setTab] = useState<CategoryTab>("business");
   const [saving, setSaving] = useState(false);
 
-  const [categoryDialog, setCategoryDialog] = useState<{ open: boolean; editing: Category | null }>({ open: false, editing: null });
   const [lookupDialog, setLookupDialog] = useState<{ open: boolean; editing: Lookup | null }>({ open: false, editing: null });
   const [feeTypeDialog, setFeeTypeDialog] = useState<{ open: boolean; editing: FeeType | null }>({ open: false, editing: null });
   const [accreditationDialog, setAccreditationDialog] = useState<{ open: boolean; editing: Accreditation | null }>({ open: false, editing: null });
@@ -63,12 +61,17 @@ export function CategoriesView() {
     dispatch(fetchCatalog());
   }, [dispatch]);
 
-  const run = async (action: Promise<{ meta: { requestStatus: string } }>, message: string) => {
+  const run = async (
+    action: Promise<{ meta: { requestStatus: string }; error?: { message?: string } }>,
+    message: string,
+  ) => {
     setSaving(true);
     const result = await action;
     setSaving(false);
     if (result.meta.requestStatus === "rejected") {
-      toast.error("Something went wrong", { description: "Please try again." });
+      // The server's own sentence when it has one. A refusal like "3 services are listed under this
+      // category" is the whole point of the message — "Please try again" would be a lie.
+      toast.error("Something went wrong", { description: result.error?.message || "Please try again." });
       return false;
     }
     toast.success(message);
@@ -116,17 +119,13 @@ export function CategoriesView() {
         : catalog.accreditations;
 
   const handleAdd = () => {
-    if (isCategoryTab) setCategoryDialog({ open: true, editing: null });
+    // The full editor page, not a dialog: a category is more than name and slug — an Other Service
+    // Category's booking requirements are configured alongside it, and a dialog has no room for them.
+    if (isCategoryTab) router.push(`/admin/platform/categories/${ROUTE_SEGMENT[categoryKind]}/new`);
     else if (lookupTab) setLookupDialog({ open: true, editing: null });
     else if (tab === "fee_types") setFeeTypeDialog({ open: true, editing: null });
     else if (tab === "accreditations") setAccreditationDialog({ open: true, editing: null });
   };
-
-  const handleSaveCategory = (input: CategoryInput) =>
-    run(
-      dispatch(saveCategory({ kind: categoryKind, id: categoryDialog.editing?.id ?? null, input })),
-      categoryDialog.editing ? "Category updated" : "Category created",
-    );
 
   const handleSaveLookup = (input: LookupInput) =>
     run(
@@ -146,15 +145,22 @@ export function CategoriesView() {
       accreditationDialog.editing ? "Accreditation updated" : "Accreditation created",
     );
 
-  const handleReview = (kind: Deleting["kind"], id: number, decision: ModerationStatus) => {
+  const handleReview = (kind: "fee_type" | "accreditation", id: number, decision: ModerationStatus) => {
     const thunk = kind === "fee_type" ? reviewFeeType : reviewAccreditation;
     void run(dispatch(thunk({ id, decision })), decision === "approved" ? "Approved" : "Rejected");
   };
 
+  const DELETE_THUNK = {
+    fee_type: removeFeeType,
+    accreditation: removeAccreditation,
+    other_service_category: removeOtherServiceCategory,
+  } as const;
+
   const handleConfirmDelete = async () => {
     if (!deleting) return;
-    const thunk = deleting.kind === "fee_type" ? removeFeeType : removeAccreditation;
-    const ok = await run(dispatch(thunk(deleting.id)), "Deleted");
+    // A refusal keeps the dialog open with its reason in the toast — "3 services are listed under this"
+    // is something to read and act on, not to be dismissed by a closing dialog.
+    const ok = await run(dispatch(DELETE_THUNK[deleting.kind](deleting.id)), "Deleted");
     if (ok) setDeleting(null);
   };
 
@@ -186,6 +192,11 @@ export function CategoriesView() {
               void run(dispatch(toggleCategory({ kind: categoryKind, id, is_active })), "Category updated")
             }
             onEdit={(editing) => router.push(`/admin/platform/categories/${ROUTE_SEGMENT[categoryKind]}/${editing.id}`)}
+            onDelete={
+              categoryKind === "other_service"
+                ? (cat) => setDeleting({ kind: "other_service_category", id: cat.id, name: cat.name })
+                : undefined
+            }
           />
         )}
 
@@ -253,18 +264,6 @@ export function CategoriesView() {
           limit={activePagination.limit}
           total={activePagination.total}
           onPageChange={handlePageChange}
-        />
-      )}
-
-      {isCategoryTab && (
-        <CategoryDialog
-          open={categoryDialog.open}
-          onOpenChange={(open) => setCategoryDialog((s) => ({ ...s, open }))}
-          kind={categoryKind}
-          editing={categoryDialog.editing}
-          nextSortOrder={categoryList.total}
-          onSave={handleSaveCategory}
-          saving={saving}
         />
       )}
 

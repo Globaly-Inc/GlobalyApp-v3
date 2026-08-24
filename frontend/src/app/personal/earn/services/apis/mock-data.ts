@@ -139,6 +139,27 @@ let nextId = 100;
 
 const allOrders = () => [...purchases, ...received];
 
+/**
+ * Stand-in for what an admin configured on each Other Service Category, so mock mode exercises the
+ * dynamic booking form instead of always rendering a plain confirm. This is fixture data keyed by slug,
+ * not a category-specific form: the app reads it through the same `booking_fields` array the API returns,
+ * and a slug that is absent here correctly renders nothing.
+ */
+const mockBookingFields: Record<string, PublicService["booking_fields"]> = {
+  airport_pickup: [
+    { id: 901, key: "pickup_date", label: "Pickup date", type: "date", is_required: true, options: null, placeholder: null, help_text: null, default_value: null, validation: null },
+    { id: 902, key: "pickup_time", label: "Pickup time", type: "time", is_required: true, options: null, placeholder: null, help_text: "Your landing time, not your booking time.", default_value: null, validation: null },
+    { id: 903, key: "airport", label: "Airport", type: "select", is_required: true, options: ["Sydney (SYD)", "Melbourne (MEL)", "Brisbane (BNE)"], placeholder: null, help_text: null, default_value: null, validation: null },
+    { id: 904, key: "flight_number", label: "Flight number", type: "text", is_required: false, options: null, placeholder: "e.g. QR648", help_text: null, default_value: null, validation: null },
+    { id: 905, key: "passengers", label: "Number of passengers", type: "number", is_required: true, options: null, placeholder: null, help_text: null, default_value: "1", validation: { min: 1, max: 8 } },
+  ],
+  assignment_help: [
+    { id: 911, key: "due_date", label: "Due date", type: "date", is_required: true, options: null, placeholder: null, help_text: null, default_value: null, validation: null },
+    { id: 912, key: "subject", label: "Subject", type: "text", is_required: true, options: null, placeholder: "e.g. Statistics", help_text: null, default_value: null, validation: null },
+    { id: 913, key: "brief", label: "What do you need?", type: "long_text", is_required: false, options: null, placeholder: null, help_text: null, default_value: null, validation: { max_length: 500 } },
+  ],
+};
+
 /** The seller's row, narrowed to what a buyer is allowed to see. */
 const toPublic = (l: Listing): PublicService => ({
   id: l.id,
@@ -146,7 +167,7 @@ const toPublic = (l: Listing): PublicService => ({
   description: l.description,
   category_id: l.category_id,
   category_icon: l.category_icon,
-  booking_fields: [],
+  booking_fields: mockBookingFields[l.category_slug] ?? [],
   category_slug: l.category_slug,
   category_name: l.category_name,
   price_minor: l.price_minor,
