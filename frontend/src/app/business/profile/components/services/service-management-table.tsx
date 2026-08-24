@@ -33,6 +33,7 @@ export function ServiceManagementTable({
   onTogglePublish,
   onPriceSave,
   onDelete,
+  readOnly = false,
 }: Readonly<{
   services: BusinessService[];
   visibleColumns: Set<ColumnKey>;
@@ -44,6 +45,8 @@ export function ServiceManagementTable({
   onTogglePublish: (id: string, next: boolean) => void;
   onPriceSave: (id: string, price: number) => Promise<void>;
   onDelete: (service: BusinessService) => void;
+  /** Institutions' rows are extracted courses, not real business_services — no edit/publish/delete backing them. */
+  readOnly?: boolean;
 }>) {
   const allSelected = services.length > 0 && services.every((s) => selectedIds.has(s.id));
   const toggleAll = () => onSelectedIdsChange(allSelected ? new Set() : new Set(services.map((s) => s.id)));
@@ -76,14 +79,14 @@ export function ServiceManagementTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
-            <th className="w-10 p-3"><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></th>
+            {!readOnly && <th className="w-10 p-3"><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></th>}
             <th className="p-3 text-left">
               <button type="button" className="flex items-center gap-1 hover:text-foreground" onClick={() => onSortChange("name")}>
                 Service Name
                 {sort.column === "name" ? (sort.direction === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />}
               </button>
             </th>
-            <th className="p-3 text-left">Actions</th>
+            {!readOnly && <th className="p-3 text-left">Actions</th>}
             {[...visibleColumns].map((col) => (
               <th key={col} className="p-3 text-left whitespace-nowrap">{headerButton(col, COLUMN_LABELS[col])}</th>
             ))}
@@ -92,7 +95,7 @@ export function ServiceManagementTable({
         <tbody>
           {services.map((s) => (
             <tr key={s.id} className="border-b last:border-0 hover:bg-muted/20">
-              <td className="p-3"><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} aria-label={`Select ${s.name}`} /></td>
+              {!readOnly && <td className="p-3"><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} aria-label={`Select ${s.name}`} /></td>}
               <td className="p-3">
                 <div className="flex items-center gap-2">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
@@ -101,22 +104,24 @@ export function ServiceManagementTable({
                   <span className="font-medium">{s.name}</span>
                 </div>
               </td>
-              <td className="p-3">
-                <div className="flex items-center gap-1">
-                  <Button size="icon-sm" variant="ghost" onClick={() => onEdit(s.id)} aria-label="Edit service"><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    onClick={() => onTogglePublish(s.id, !s.is_published)}
-                    aria-label={s.is_published ? "Unpublish service" : "Publish service"}
-                  >
-                    {s.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </Button>
-                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => onDelete(s)} aria-label="Delete service">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </td>
+              {!readOnly && (
+                <td className="p-3">
+                  <div className="flex items-center gap-1">
+                    <Button size="icon-sm" variant="ghost" onClick={() => onEdit(s.id)} aria-label="Edit service"><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      onClick={() => onTogglePublish(s.id, !s.is_published)}
+                      aria-label={s.is_published ? "Unpublish service" : "Publish service"}
+                    >
+                      {s.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => onDelete(s)} aria-label="Delete service">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </td>
+              )}
               {visibleColumns.has("category") && (
                 <td className="p-3">
                   {s.category_name ? <Badge variant="secondary" className="text-[10px]">{s.category_name}</Badge> : <span className="text-muted-foreground">—</span>}
@@ -128,10 +133,12 @@ export function ServiceManagementTable({
               {visibleColumns.has("location") && <td className="p-3 whitespace-nowrap text-muted-foreground">—</td>}
               {visibleColumns.has("price") && (
                 <td className="p-3 whitespace-nowrap">
-                  <PriceEditPopover price={s.price} onSave={(next) => onPriceSave(s.id, next)} />
+                  {readOnly
+                    ? (s.price ?? <span className="text-muted-foreground">—</span>)
+                    : <PriceEditPopover price={s.price} onSave={(next) => onPriceSave(s.id, next)} />}
                 </td>
               )}
-              {visibleColumns.has("status") && (
+              {visibleColumns.has("status") && !readOnly && (
                 <td className="p-3">
                   <Badge variant={s.is_published ? "default" : "secondary"} className="text-[10px]">{s.is_published ? "Published" : "Draft"}</Badge>
                 </td>

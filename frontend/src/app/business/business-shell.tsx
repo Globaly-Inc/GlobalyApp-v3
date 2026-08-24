@@ -48,10 +48,11 @@ function institutionsAsBusinesses(institutions: AuthMeInstitution[]): AuthMeBusi
   }));
 }
 
-// Branches/Team/Services/Scholarships are tenant features institutions don't have —
-// only the profile tab (and unrelated top-level groups) apply to them.
+// Branches, Partners, and Scholarships have no institution-side data — only Business Profile,
+// Team (institutions' own `members` table), and Services (their extracted courses) apply.
+const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Team", "Services"]);
 const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) =>
-  group.label === "Business" ? { ...group, items: group.items.slice(0, 1) } : group,
+  group.label === "Business" ? { ...group, items: group.items.filter((item) => INSTITUTION_BUSINESS_ITEMS.has(item.label)) } : group,
 );
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
