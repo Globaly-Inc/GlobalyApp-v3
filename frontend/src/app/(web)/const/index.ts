@@ -147,3 +147,12 @@ export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
  * `public/`, so the repo and the deployed bundle stay free of tens of megabytes of media.
  */
 export const MEDIA_URL = "https://storage.googleapis.com/globalyapp-public-images/photos";
+
+/** Popular search terms per category, shown as one-tap chips under the bar in Search mode. */
+export const SEARCH_SUGGESTIONS_BY_SLUG: Record<string, string[]> = {
+  courses: ["MBA", "MSc Information Technology", "Nursing", "Data Science"],
+  institutions: ["University of Melbourne", "University of Toronto", "TAFE", "Community colleges"],
+  agents: ["Agents for Australia", "Agents for Canada", "Agents for the UK", "Agents for the USA"],
+  visas: ["Student visa", "Post-study work visa", "Dependent visa", "Visitor visa"],
+  "other-services": ["Airport pickup", "Accommodation", "Tutoring", "SIM card"],
+};
