@@ -34,6 +34,7 @@ let mockProfile: BusinessProfile = {
   latitude: null,
   longitude: null,
   onboarding_completed: false,
+  status: "unverified",
   cover_position: null,
   is_published: false,
   show_team_public: true,

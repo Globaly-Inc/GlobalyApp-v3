@@ -5,24 +5,22 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { categoriesApi, type CountryOption } from "@/app/admin/platform/categories/apis";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
-import { BASIS_OPTIONS, COVERAGE_TYPE_OPTIONS } from "@/app/admin/monitoring/scholarships/const";
+import { BASIS_OPTIONS, COVERAGE_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from "@/app/admin/monitoring/scholarships/const";
 import { DegreeLevelPicker } from "@/app/admin/monitoring/scholarships/components/degree-level-picker";
+import { toSlug } from "@/app/admin/monitoring/scholarships/utils";
 import { Combobox } from "@/components/combobox";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldError } from "@/components/field-error";
 import { useValidatedForm } from "@/lib/use-validated-form";
 import { useAppDispatch } from "@/lib/hooks";
 import { createScholarship, updateScholarship } from "../../store/business-profile-detail-slice";
 import type { Scholarship, ScholarshipInput } from "../../apis/types";
-
-function toSlug(name: string) {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
 
 const urlOrEmpty = z.string().trim().refine((v) => v === "" || z.string().url().safeParse(v).success, "Enter a valid URL");
 
@@ -31,6 +29,7 @@ type FormState = {
   country: string; city: string; region: string; basis: string; degreeLevels: string[];
   requirementsSummary: string; coverageType: string; coverageAmount: string; coverageCurrency: string;
   coverageDescription: string; deadline: string; deadlineNotes: string; applicationUrl: string; sourceUrl: string;
+  isFeatured: boolean;
 };
 
 const schema: z.ZodType<FormState> = z.object({
@@ -42,13 +41,14 @@ const schema: z.ZodType<FormState> = z.object({
   coverageType: z.string(), coverageAmount: z.string().regex(/^\d*\.?\d*$/, "Enter a valid amount"),
   coverageCurrency: z.string().max(10), coverageDescription: z.string(),
   deadline: z.string(), deadlineNotes: z.string(), applicationUrl: urlOrEmpty, sourceUrl: urlOrEmpty,
+  isFeatured: z.boolean(),
 });
 
 const empty = (): FormState => ({
   title: "", slug: "", description: "", providerName: "", sourceType: "university",
   country: "", city: "", region: "", basis: "", degreeLevels: [], requirementsSummary: "",
   coverageType: "various", coverageAmount: "", coverageCurrency: "USD", coverageDescription: "",
-  deadline: "", deadlineNotes: "", applicationUrl: "", sourceUrl: "",
+  deadline: "", deadlineNotes: "", applicationUrl: "", sourceUrl: "", isFeatured: false,
 });
 
 const fromScholarship = (s: Scholarship): FormState => ({
@@ -58,7 +58,7 @@ const fromScholarship = (s: Scholarship): FormState => ({
   coverageType: s.coverage_type, coverageAmount: s.coverage_amount != null ? String(s.coverage_amount) : "",
   coverageCurrency: s.coverage_currency ?? "USD", coverageDescription: s.coverage_description ?? "",
   deadline: s.deadline ?? "", deadlineNotes: s.deadline_notes ?? "", applicationUrl: s.application_url ?? "",
-  sourceUrl: s.source_url ?? "",
+  sourceUrl: s.source_url ?? "", isFeatured: s.is_featured,
 });
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -102,7 +102,7 @@ export function CreateScholarshipDialog({
       coverage_amount: data.coverageAmount ? Number(data.coverageAmount) : null, coverage_currency: data.coverageCurrency || null,
       coverage_description: data.coverageDescription || null, deadline: cleanDeadline(data.deadline),
       deadline_notes: data.deadlineNotes || null, application_url: data.applicationUrl || null,
-      source_url: data.sourceUrl || null, is_published: publish,
+      source_url: data.sourceUrl || null, is_published: publish, is_featured: data.isFeatured,
     };
 
     setSaving(true);
@@ -139,8 +139,25 @@ export function CreateScholarshipDialog({
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="bsch-slug">Slug<span className="text-destructive"> *</span></Label>
+            <Input id="bsch-slug" className="h-10" value={form.slug} aria-invalid={!!errors.slug} onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))} />
+            <FieldError message={errors.slug} />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="bsch-description">Description</Label>
             <Textarea id="bsch-description" rows={4} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="bsch-provider">Provider name</Label>
+              <Input id="bsch-provider" className="h-10" value={form.providerName} onChange={(e) => setForm((f) => ({ ...f, providerName: e.target.value }))} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Source type</Label>
+              <Combobox options={SOURCE_TYPE_OPTIONS} value={form.sourceType} onChange={(v) => setForm((f) => ({ ...f, sourceType: v }))} />
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
@@ -152,15 +169,25 @@ export function CreateScholarshipDialog({
               <Label htmlFor="bsch-city">City</Label>
               <Input id="bsch-city" className="h-10" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label>Basis</Label>
-              <Combobox options={BASIS_OPTIONS} value={form.basis} onChange={(v) => setForm((f) => ({ ...f, basis: v }))} placeholder="None" />
+            <div className="space-y-2">
+              <Label htmlFor="bsch-region">Region</Label>
+              <Input id="bsch-region" className="h-10" value={form.region} onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))} />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label>Basis</Label>
+            <Combobox options={BASIS_OPTIONS} value={form.basis} onChange={(v) => setForm((f) => ({ ...f, basis: v }))} placeholder="None" />
           </div>
 
           <div className="space-y-2">
             <Label>Eligible degree levels</Label>
             <DegreeLevelPicker value={form.degreeLevels} onChange={(v) => setForm((f) => ({ ...f, degreeLevels: v }))} />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="bsch-requirements">Requirements summary</Label>
+            <Textarea id="bsch-requirements" rows={3} value={form.requirementsSummary} onChange={(e) => setForm((f) => ({ ...f, requirementsSummary: e.target.value }))} />
           </div>
 
           <div className="grid grid-cols-3 gap-4">
@@ -179,6 +206,11 @@ export function CreateScholarshipDialog({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="bsch-coverage-description">Coverage description</Label>
+            <Textarea id="bsch-coverage-description" rows={2} value={form.coverageDescription} onChange={(e) => setForm((f) => ({ ...f, coverageDescription: e.target.value }))} />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label>Deadline</Label>
@@ -186,10 +218,30 @@ export function CreateScholarshipDialog({
               <FieldError message={errors.deadline} />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="bsch-deadline-notes">Deadline notes</Label>
+              <Input id="bsch-deadline-notes" className="h-10" value={form.deadlineNotes} onChange={(e) => setForm((f) => ({ ...f, deadlineNotes: e.target.value }))} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
               <Label htmlFor="bsch-apply-url">Application URL</Label>
               <Input id="bsch-apply-url" type="url" className="h-10" value={form.applicationUrl} aria-invalid={!!errors.applicationUrl} onChange={(e) => setForm((f) => ({ ...f, applicationUrl: e.target.value }))} />
               <FieldError message={errors.applicationUrl} />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="bsch-source-url">Source URL</Label>
+              <Input id="bsch-source-url" type="url" className="h-10" value={form.sourceUrl} aria-invalid={!!errors.sourceUrl} onChange={(e) => setForm((f) => ({ ...f, sourceUrl: e.target.value }))} />
+              <FieldError message={errors.sourceUrl} />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="bsch-featured">Featured</Label>
+              <p className="text-xs text-muted-foreground">Shown at the top of the public listing, ahead of non-featured scholarships.</p>
+            </div>
+            <Switch id="bsch-featured" checked={form.isFeatured} onCheckedChange={(v) => setForm((f) => ({ ...f, isFeatured: v }))} />
           </div>
         </div>
 

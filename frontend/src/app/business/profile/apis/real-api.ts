@@ -7,9 +7,24 @@ import type {
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
-  ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceInput, ServicePatch,
-  ServiceSearchParams, ServiceSearchResult,
+  ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
+  ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
+  ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
+  ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch, ServiceStudyUnit, ServiceStudyUnitInput,
+  ServiceStudyUnitPatch,
 } from "./types";
+
+/** Generic list/create/update/delete client for one service child resource — same shape for
+ * fees/intakes/eligibility/study-options/study-units, just a different path segment. */
+function childResourceApi<TRow, TInput, TPatch>(path: string) {
+  return {
+    list: (serviceId: string): Promise<TRow[]> => httpGet(`${BASE}/services/${serviceId}/${path}`),
+    create: (serviceId: string, input: TInput): Promise<TRow> => httpPost(`${BASE}/services/${serviceId}/${path}`, input),
+    update: (serviceId: string, id: number, patch: TPatch): Promise<TRow> =>
+      httpPatch(`${BASE}/services/${serviceId}/${path}/${id}`, patch),
+    remove: (serviceId: string, id: number): Promise<void> => httpDelete(`${BASE}/services/${serviceId}/${path}/${id}`),
+  };
+}
 
 const BASE = "/businesses";
 
@@ -148,6 +163,19 @@ export const businessProfileDetailRealApi = {
   updateScholarship: (scholarshipId: number, patch: ScholarshipPatch): Promise<Scholarship> =>
     httpPatch(`${BASE}/scholarships/${scholarshipId}`, patch),
   deleteScholarship: (scholarshipId: number): Promise<void> => httpDelete(`${BASE}/scholarships/${scholarshipId}`),
+
+  serviceFees: childResourceApi<ServiceFee, ServiceFeeInput, ServiceFeePatch>("fees"),
+  serviceIntakes: childResourceApi<ServiceIntake, ServiceIntakeInput, ServiceIntakePatch>("intakes"),
+  serviceEligibility: childResourceApi<ServiceEligibility, ServiceEligibilityInput, ServiceEligibilityPatch>("eligibility"),
+  serviceStudyOptions: childResourceApi<ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch>("study-options"),
+  serviceStudyUnits: childResourceApi<ServiceStudyUnit, ServiceStudyUnitInput, ServiceStudyUnitPatch>("study-units"),
+
+  getServiceAccreditations: (serviceId: string): Promise<ServiceAccreditationLink[]> =>
+    httpGet(`${BASE}/services/${serviceId}/accreditations`),
+  linkServiceAccreditation: (serviceId: string, accreditation_id: number): Promise<ServiceAccreditationLink> =>
+    httpPost(`${BASE}/services/${serviceId}/accreditations`, { accreditation_id }),
+  unlinkServiceAccreditation: (serviceId: string, id: number): Promise<void> =>
+    httpDelete(`${BASE}/services/${serviceId}/accreditations/${id}`),
 
   getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toSearchListQuery({ limit: 10, ...params })}`),

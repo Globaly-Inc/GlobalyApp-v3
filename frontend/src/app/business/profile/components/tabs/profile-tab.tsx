@@ -34,7 +34,11 @@ const SOCIAL_LABELS: Record<keyof SocialLinks, string> = {
   messenger_url: "Messenger", telegram_url: "Telegram", line_url: "Line", viber_url: "Viber",
 };
 
-export function ProfileTab({ profile, countries }: Readonly<{ profile: BusinessProfile; countries: Country[] }>) {
+export function ProfileTab({
+  profile,
+  countries,
+  readOnly = false,
+}: Readonly<{ profile: BusinessProfile; countries: Country[]; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const [socialOpen, setSocialOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -69,7 +73,9 @@ export function ProfileTab({ profile, countries }: Readonly<{ profile: BusinessP
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">General Information</CardTitle>
-          <SectionVisibilityToggle section="general" publicVisibility={profile.public_visibility} onToggle={(v) => toggleSection("general", v)} />
+          {!readOnly && (
+            <SectionVisibilityToggle section="general" publicVisibility={profile.public_visibility} onToggle={(v) => toggleSection("general", v)} />
+          )}
         </CardHeader>
         <CardContent>
           {profile.description ? (
@@ -83,7 +89,9 @@ export function ProfileTab({ profile, countries }: Readonly<{ profile: BusinessP
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Contact Details</CardTitle>
-          <SectionVisibilityToggle section="contact" publicVisibility={profile.public_visibility} onToggle={(v) => toggleSection("contact", v)} />
+          {!readOnly && (
+            <SectionVisibilityToggle section="contact" publicVisibility={profile.public_visibility} onToggle={(v) => toggleSection("contact", v)} />
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-start gap-2">
@@ -113,7 +121,9 @@ export function ProfileTab({ profile, countries }: Readonly<{ profile: BusinessP
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Location</CardTitle>
-          <SectionVisibilityToggle section="address" publicVisibility={profile.public_visibility} onToggle={(v) => toggleSection("address", v)} />
+          {!readOnly && (
+            <SectionVisibilityToggle section="address" publicVisibility={profile.public_visibility} onToggle={(v) => toggleSection("address", v)} />
+          )}
         </CardHeader>
         <CardContent>
           <div className="flex items-start gap-2">
@@ -128,9 +138,11 @@ export function ProfileTab({ profile, countries }: Readonly<{ profile: BusinessP
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Social Links</CardTitle>
-          <Button size="icon-sm" variant="ghost" onClick={() => setSocialOpen(true)} aria-label="Edit social links">
-            <Pencil className="h-4 w-4" />
-          </Button>
+          {!readOnly && (
+            <Button size="icon-sm" variant="ghost" onClick={() => setSocialOpen(true)} aria-label="Edit social links">
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {activeSocials.length === 0 ? (

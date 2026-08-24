@@ -3,7 +3,9 @@
 
 import { getKnex } from "../../../../../core/db/pool-manager.js";
 
-const SERVICE_COLUMNS = ["uuid as id", "service_category_id", "name", "description", "price", "is_published", "created_at"];
+const SERVICE_COLUMNS = [
+  "uuid as id", "service_category_id", "name", "description", "price", "is_published", "public_visibility", "created_at",
+];
 
 function serviceWithCategory(db: Awaited<ReturnType<typeof getKnex>>) {
   return db("business_services as s")
@@ -15,6 +17,27 @@ function serviceWithCategory(db: Awaited<ReturnType<typeof getKnex>>) {
 export async function listServices(businessId: number, schemaName: string) {
   const db = await getKnex(businessId, schemaName);
   return serviceWithCategory(db).orderBy("s.created_at", "desc");
+}
+
+/** Batch fetch each service's degree_level/area_of_study schema-field values + its first
+ * study option's duration — the "table" columns list/search views need beyond the base row. */
+export async function getServiceListExtras(businessId: number, schemaName: string, serviceIds: string[]) {
+  if (serviceIds.length === 0) return { fieldValues: [], durations: [] };
+  const db = await getKnex(businessId, schemaName);
+  const [fieldValues, durations] = await Promise.all([
+    db("schema_field_values as v")
+      .join("schema_fields as f", "f.id", "v.schema_field_id")
+      .where({ "v.entity_type": "business_services" })
+      .whereIn("v.entity_id", serviceIds)
+      .whereIn("f.key", ["degree_level", "area_of_study"])
+      .select("v.entity_id as service_id", "f.key", "v.value"),
+    db("service_study_options")
+      .whereIn("service_id", serviceIds)
+      .whereNotNull("duration_value")
+      .select("service_id", "duration_value", "duration_unit")
+      .orderBy("created_at", "asc"),
+  ]);
+  return { fieldValues, durations };
 }
 
 export async function searchServices(businessId: number, schemaName: string, limit: number, offset: number, search?: string) {

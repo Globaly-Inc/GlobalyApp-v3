@@ -61,7 +61,11 @@ export type BusinessService = {
   description: string | null;
   price: string | null;
   is_published: boolean;
+  public_visibility: Record<string, boolean> | null;
   created_at: string;
+  degree_level: string | null;
+  area_of_study: string | null;
+  duration: string | null;
 };
 
 export type ServiceInput = {
@@ -79,9 +83,75 @@ export type ServiceSearchParams = {
 
 export type ServiceSearchResult = { data: BusinessService[]; total: number };
 
-export type ServicePatch = Partial<ServiceInput> & { is_published?: boolean };
+export type ServicePatch = Partial<ServiceInput> & { is_published?: boolean; public_visibility?: Record<string, boolean> | null };
 
 export type SchemaFieldValue = { schema_field_id: number; value: unknown };
+
+// ─── Service details family (fees / intakes / eligibility / study options / study units / accreditations) ───
+
+export type ServiceFee = {
+  id: number;
+  name: string | null;
+  student_type: "domestic" | "international" | "both";
+  period_type: string;
+  currency: string;
+  total_amount: number;
+  installments: Record<string, unknown>[];
+};
+export type ServiceFeeInput = Omit<ServiceFee, "id">;
+export type ServiceFeePatch = Partial<ServiceFeeInput>;
+
+export type ServiceIntake = {
+  id: number;
+  intake_name: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  orientation_date: string | null;
+  admission_deadline: string | null;
+  intake_month: number | null;
+  intake_year: number | null;
+};
+export type ServiceIntakeInput = Omit<ServiceIntake, "id">;
+export type ServiceIntakePatch = Partial<ServiceIntakeInput>;
+
+export type ServiceEligibility = {
+  id: number;
+  name: string | null;
+  applicable_to: "domestic" | "international" | "both";
+  degree_level_id: number | null;
+  score_type: "percentage" | "gpa_4" | "gpa_10" | "cgpa" | null;
+  min_score: number | null;
+  description: string | null;
+  academic_tests: Record<string, unknown>[];
+  language_tests: Record<string, unknown>[];
+};
+export type ServiceEligibilityInput = Omit<ServiceEligibility, "id">;
+export type ServiceEligibilityPatch = Partial<ServiceEligibilityInput>;
+
+export type ServiceStudyOption = {
+  id: number;
+  name: string | null;
+  study_mode: "on_campus" | "online" | "hybrid";
+  study_load: "full_time" | "part_time";
+  duration_value: number | null;
+  duration_unit: "days" | "weeks" | "months" | "years";
+  applicable_to: "domestic" | "international" | "both";
+};
+export type ServiceStudyOptionInput = Omit<ServiceStudyOption, "id">;
+export type ServiceStudyOptionPatch = Partial<ServiceStudyOptionInput>;
+
+export type ServiceStudyUnit = {
+  id: number;
+  unit_code: string | null;
+  unit_name: string;
+  credit_points: number | null;
+  description: string | null;
+  unit_type: "compulsory" | "elective";
+};
+export type ServiceStudyUnitInput = Omit<ServiceStudyUnit, "id">;
+export type ServiceStudyUnitPatch = Partial<ServiceStudyUnitInput>;
+
+export type ServiceAccreditationLink = { id: number; accreditation_id: number };
 
 export type Member = {
   id: number;
@@ -217,6 +287,8 @@ export type Scholarship = {
   application_url: string | null;
   source_url: string | null;
   is_published: boolean;
+  is_featured: boolean;
+  view_count: number;
   created_at: string;
 };
 
@@ -241,6 +313,7 @@ export type ScholarshipInput = {
   application_url?: string | null;
   source_url?: string | null;
   is_published?: boolean;
+  is_featured?: boolean;
 };
 
 export type ScholarshipPatch = Partial<ScholarshipInput>;

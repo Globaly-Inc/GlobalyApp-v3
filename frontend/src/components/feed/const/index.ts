@@ -31,7 +31,7 @@ export const MAX_MEDIA = 4;
 export const DEFAULT_REACTION = "👍";
 
 /** Offered in the reaction picker. The API accepts any emoji, so this is presentation, not a constraint. */
-export const REACTION_CHOICES = ["👍", "❤️", "🎉", "👏", "😮", "😢"];
+export const REACTION_CHOICES = ["👍", "❤️", "🎉", "👏", "😮", "😢", "😡", "🔥", "🙏", "😂"];
 
 /**
  * Per-type accent: the left border stripe and the badge. One colour per post type so the type is readable

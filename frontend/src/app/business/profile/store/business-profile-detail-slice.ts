@@ -147,6 +147,11 @@ export const toggleScholarshipPublished = createAsyncThunk(
   ({ scholarshipId, is_published }: { id: number; scholarshipId: number; is_published: boolean }) =>
     businessProfileDetailApi.updateScholarship(scholarshipId, { is_published }),
 );
+export const toggleScholarshipFeatured = createAsyncThunk(
+  "businessProfileDetail/toggleScholarshipFeatured",
+  ({ scholarshipId, is_featured }: { id: number; scholarshipId: number; is_featured: boolean }) =>
+    businessProfileDetailApi.updateScholarship(scholarshipId, { is_featured }),
+);
 export const deleteScholarship = createAsyncThunk(
   "businessProfileDetail/deleteScholarship",
   async ({ scholarshipId }: { id: number; scholarshipId: number }) => {
@@ -280,6 +285,10 @@ const businessProfileDetailSlice = createSlice({
       .addCase(toggleScholarshipPublished.fulfilled, (state, action) => {
         const s = state.scholarships.items.find((x) => x.id === action.payload.id);
         if (s) s.is_published = action.payload.is_published;
+      })
+      .addCase(toggleScholarshipFeatured.fulfilled, (state, action) => {
+        const s = state.scholarships.items.find((x) => x.id === action.payload.id);
+        if (s) s.is_featured = action.payload.is_featured;
       })
       .addCase(deleteScholarship.fulfilled, (state, action) => {
         const wasPresent = state.scholarships.items.some((s) => s.id === action.payload);

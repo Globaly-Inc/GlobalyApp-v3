@@ -16,7 +16,10 @@ export const ServiceInputSchema = z.object({
   description: z.string().nullable().optional(),
   price: z.number().min(0).nullable().optional(),
 });
-export const ServicePatchInputSchema = ServiceInputSchema.partial().extend({ is_published: z.boolean().optional() });
+export const ServicePatchInputSchema = ServiceInputSchema.partial().extend({
+  is_published: z.boolean().optional(),
+  public_visibility: z.record(z.string(), z.boolean()).nullable().optional(),
+});
 
 export const ServiceFieldValuesInputSchema = z.object({
   values: z.array(z.object({ schema_field_id: z.number().int().positive(), value: z.unknown() })),

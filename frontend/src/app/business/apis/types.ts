@@ -39,6 +39,7 @@ export type BusinessProfile = SocialLinks & {
   latitude: number | null;
   longitude: number | null;
   onboarding_completed: boolean;
+  status: "unverified" | "claim_pending" | "verified" | "suspended" | "rejected";
   is_published: boolean;
   show_team_public: boolean;
   public_visibility: Record<string, boolean> | null;

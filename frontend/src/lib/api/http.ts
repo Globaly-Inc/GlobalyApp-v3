@@ -73,6 +73,22 @@ export function hasBusinessContext(): boolean {
 let switchPromise: Promise<boolean> | null = null;
 
 /**
+ * Serializes every call that mints a new access token via /auth/switch-account.
+ * BusinessShell's `ensureBusinessContext()` and pages that switch to a specific
+ * org (e.g. /business/profile/[businessId]) can both fire on the same mount;
+ * without this lock their responses race and whichever resolves last silently
+ * clobbers the other's `saveTokens`/`saveAccessToken` call, leaving the token
+ * scoped to the wrong business.
+ */
+let switchLock: Promise<unknown> = Promise.resolve();
+
+export function runExclusiveSwitch<T>(fn: () => Promise<T>): Promise<T> {
+  const run = switchLock.catch(() => undefined).then(fn);
+  switchLock = run.catch(() => undefined);
+  return run;
+}
+
+/**
  * Upgrades the current access token to one scoped to the user's business.
  * Resolves false when the user has no business to switch into — callers decide
  * whether that is an error or just "not a business account".
@@ -99,17 +115,19 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
       ? selected!
       : [...businesses].sort((a, b) => a.id - b.id)[0]!.org_id;
 
-    const res = await fetch(`${BASE_URL}/auth/switch-account`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      // Recorded on the session so /refresh keeps honoring it (see auth.service.ts).
-      body: JSON.stringify({ org_id: orgId, refresh_token: refreshToken }),
-    });
-    if (!res.ok) return false;
+    return runExclusiveSwitch(async () => {
+      const res = await fetch(`${BASE_URL}/auth/switch-account`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        // Recorded on the session so /refresh keeps honoring it (see auth.service.ts).
+        body: JSON.stringify({ org_id: orgId, refresh_token: refreshToken }),
+      });
+      if (!res.ok) return false;
 
-    const { access_token } = (await res.json()) as { access_token: string };
-    saveTokens({ accessToken: access_token, refreshToken });
-    return true;
+      const { access_token } = (await res.json()) as { access_token: string };
+      saveTokens({ accessToken: access_token, refreshToken });
+      return true;
+    });
   })().finally(() => {
     switchPromise = null;
   });

@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Loader2, Pencil } from "lucide-react";
+import { BadgeCheck, Eye, Globe, Loader2, Pencil } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -122,6 +124,8 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
 
   return (
     <div className="space-y-4">
+      {tab === "profile" && (
+      <>
       <div className="flex items-center justify-end gap-3">
         <Button variant="outline" size="sm" onClick={() => setPreviewMode((v) => !v)}>
           <Eye className="mr-1.5 h-3.5 w-3.5" /> {previewMode ? "Exit preview" : "Preview"}
@@ -132,62 +136,75 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         </div>
       </div>
 
-      {previewMode ? (
-        <Card className="overflow-hidden">
-          <iframe
-            key={profile.subdomain}
-            src={`/business/${profile.subdomain}`}
-            title="Public profile preview"
-            className="h-[80vh] w-full border-0"
-          />
-        </Card>
-      ) : (
-        <>
-          <Card className="overflow-hidden">
-            <CoverLogoEditor
-              coverUrl={profile.cover_url}
-              onCoverFile={(file) => handleImageFile("cover", file)}
-              coverUploading={imageUploading === "cover"}
-              logoUrl={profile.logo_url}
-              logoFallback={initial}
-              onLogoFile={(file) => handleImageFile("logo", file)}
-              logoUploading={imageUploading === "logo"}
-            />
-            <CardContent className="pt-16">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  {businessTypeLabel(profile.business_type) && (
-                    <span className="mb-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                      {businessTypeLabel(profile.business_type)}
-                    </span>
-                  )}
-                  <h1 className="text-xl font-bold text-foreground">{profile.business_name}</h1>
-                  <p className="text-sm text-muted-foreground">
-                    {businessLocationLine(profile, countries) ?? profile.subdomain}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon-sm" onClick={() => setDetailsOpen(true)} aria-label="Edit business details">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div>
-            <Card>
-              <CardContent>
-                {tab === "profile" && <ProfileTab profile={profile} countries={countries} />}
-                {tab === "branches" && <BranchesTab businessId={businessId} />}
-                {tab === "partners" && <PartnersTab businessId={businessId} businessName={profile.business_name} />}
-                {tab === "team" && <MembersTab businessId={businessId} />}
-                {tab === "services" && <ServicesTab businessId={businessId} />}
-                {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
-                {tab === "activity" && <ActivityTab businessId={businessId} />}
-              </CardContent>
-            </Card>
+      <Card className="overflow-hidden">
+        {previewMode ? (
+          <div className="relative h-40 bg-linear-to-br from-primary to-primary/60 sm:h-48">
+            {profile.cover_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={profile.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            )}
+            <Avatar className="absolute -bottom-12 left-6 size-24 border-4 border-background">
+              {profile.logo_url && <AvatarImage src={profile.logo_url} alt="" />}
+              <AvatarFallback className="text-2xl">{initial}</AvatarFallback>
+            </Avatar>
           </div>
-        </>
+        ) : (
+          <CoverLogoEditor
+            coverUrl={profile.cover_url}
+            onCoverFile={(file) => handleImageFile("cover", file)}
+            coverUploading={imageUploading === "cover"}
+            logoUrl={profile.logo_url}
+            logoFallback={initial}
+            onLogoFile={(file) => handleImageFile("logo", file)}
+            logoUploading={imageUploading === "logo"}
+          />
+        )}
+        <CardContent className="pt-16">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="mb-1 flex items-center gap-1.5">
+                {businessTypeLabel(profile.business_type) && (
+                  <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    {businessTypeLabel(profile.business_type)}
+                  </span>
+                )}
+                {previewMode && profile.is_published && (
+                  <Badge variant="secondary" className="gap-1 text-[11px]">
+                    <BadgeCheck className="h-3 w-3" /> Verified
+                  </Badge>
+                )}
+              </div>
+              <h1 className="text-xl font-bold text-foreground">{profile.business_name}</h1>
+              <p className="text-sm text-muted-foreground">
+                {businessLocationLine(profile, countries) ?? profile.subdomain}
+              </p>
+            </div>
+            {previewMode ? (
+              <Globe className="h-4 w-4 text-muted-foreground" aria-hidden />
+            ) : (
+              <Button variant="ghost" size="icon-sm" onClick={() => setDetailsOpen(true)} aria-label="Edit business details">
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      </>
       )}
+
+      <div>
+        <Card>
+          <CardContent>
+            {tab === "profile" && <ProfileTab profile={profile} countries={countries} readOnly={previewMode} />}
+            {tab === "branches" && <BranchesTab businessId={businessId} />}
+            {tab === "partners" && <PartnersTab businessId={businessId} businessName={profile.business_name} />}
+            {tab === "team" && <MembersTab businessId={businessId} />}
+            {tab === "services" && <ServicesTab businessId={businessId} />}
+            {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
+            {tab === "activity" && <ActivityTab businessId={businessId} />}
+          </CardContent>
+        </Card>
+      </div>
 
       <BusinessDetailsDialog
         open={detailsOpen}
