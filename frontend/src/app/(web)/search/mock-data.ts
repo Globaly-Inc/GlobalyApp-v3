@@ -325,6 +325,7 @@ const MOCK_SCHOLARSHIPS: SearchScholarship[] = [
 const MOCK_COURSE_FILTER_OPTIONS: CourseFilterOptions = {
   years: [2026, 2027],
   currencies: ["AUD", "USD", "CAD", "INR", "NPR"],
+  degree_levels: ["Bachelor", "Certificate", "Doctorate", "Graduate Certificate", "Master", "Other", "PhD"],
 };
 
 function matchesCommon(

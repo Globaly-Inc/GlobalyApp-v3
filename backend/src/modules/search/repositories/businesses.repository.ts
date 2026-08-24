@@ -9,14 +9,38 @@ const INSTITUTION_COLUMNS = [
   "ei.phone", "ei.address", "ei.facebook_url", "ei.instagram_url", "ei.twitter_url", "ei.linkedin_url", "ei.youtube_url",
 ];
 
-function institutionsQuery({ country, city, search }: Omit<BusinessSearchFilters, "categorySlug">) {
+function overviewQuery(
+  { country, city, search }: Omit<BusinessSearchFilters, "categorySlug">,
+  sourceTypeCondition: string,
+) {
   const q = masterKnex(`${S}.extraction_institution_overview as ei`)
-    .whereRaw(`exists (select 1 from ${S}.extraction_jobs ej where ej.id = ei.job_id and ej.status = 'exported')`);
+    .whereRaw(
+      `exists (
+        select 1 from ${S}.extraction_jobs ej
+        where ej.id = ei.job_id and ej.status = 'exported' and ${sourceTypeCondition}
+      )`,
+    );
 
   if (country) q.whereILike("ei.country", `%${country}%`);
   if (city) q.whereILike("ei.city", `%${city}%`);
   if (search) {
     q.where((b) => b.whereILike("ei.name", `%${search}%`).orWhereILike("ei.description", `%${search}%`));
+  }
+  return q;
+}
+
+function institutionsQuery(filters: Omit<BusinessSearchFilters, "categorySlug">) {
+  return overviewQuery(filters, "ej.source_type is distinct from 'visa_service'");
+}
+
+export type VisaServiceFilters = Omit<BusinessSearchFilters, "categorySlug"> & { licensedOnly?: boolean };
+
+function visaServiceProvidersQuery({ licensedOnly, ...rest }: VisaServiceFilters) {
+  const q = overviewQuery(rest, "ej.source_type = 'visa_service'");
+  if (licensedOnly) {
+    q.whereRaw(
+      `exists (select 1 from ${S}.extraction_visa_services evs where evs.job_id = ei.job_id and evs.registration_status = 'active')`,
+    );
   }
   return q;
 }
@@ -43,6 +67,27 @@ export async function listPublicInstitutions(filters: Omit<BusinessSearchFilters
 
 export async function countPublicInstitutions(filters: Omit<BusinessSearchFilters, "categorySlug">) {
   const [row] = await institutionsQuery(filters).count("ei.id as count");
+  return Number(row.count);
+}
+
+export async function listPublicVisaServiceProviders(filters: VisaServiceFilters, limit: number, offset: number) {
+  const rows = await visaServiceProvidersQuery(filters)
+    .select(
+      "ei.id", "ei.name as business_name", "ei.logo_url", "ei.description", "ei.city", "ei.country as country_name",
+      "ei.website", "ei.email",
+      masterKnex.raw(
+        `(select count(*) from ${S}.extraction_visa_services evs where evs.job_id = ei.job_id) as service_count`,
+      ),
+    )
+    .orderBy("ei.name")
+    .limit(limit)
+    .offset(offset);
+  return rows.map((r: { id: string; business_name: string; service_count: string }) =>
+    withSlug({ ...r, service_count: Number(r.service_count) }));
+}
+
+export async function countPublicVisaServiceProviders(filters: VisaServiceFilters) {
+  const [row] = await visaServiceProvidersQuery(filters).count("ei.id as count");
   return Number(row.count);
 }
 

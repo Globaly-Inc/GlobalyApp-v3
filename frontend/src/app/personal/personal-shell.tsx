@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Coins,
   Bell,
@@ -29,6 +29,7 @@ import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { NAV_ITEMS } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
+import { cn } from "@/lib/utils";
 
 /**
  * One width for the page body, centred in the space left of the sidebar so the dashboard stops
@@ -41,6 +42,7 @@ const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
 export function PersonalShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
+  const pathname = usePathname();
   const dispatch = useAppDispatch();
   const { profile, status } = useAppSelector((state) => state.profile);
   // Next's router cache can rehydrate a previously-rendered page's HTML (e.g. after a back/forward

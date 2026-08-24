@@ -51,6 +51,7 @@ type SearchPageProps = Readonly<{
     city?: string;
     search?: string;
     degree_level?: string;
+    subject_area?: string;
     job_type?: string;
     is_remote?: string;
     fee_min?: string;
@@ -60,6 +61,7 @@ type SearchPageProps = Readonly<{
     sort?: string;
     page?: string;
     basis?: string;
+    licensed_only?: string;
   }>;
 }>;
 
@@ -73,6 +75,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     city: params.city || undefined,
     search: params.search || undefined,
     degree_level: params.degree_level || undefined,
+    subject_area: params.subject_area || undefined,
     job_type: params.job_type || undefined,
     is_remote: params.is_remote === "true",
     fee_min: params.fee_min ? Number(params.fee_min) : undefined,
@@ -81,6 +84,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     intake_year: params.intake_year ? Number(params.intake_year) : undefined,
     sort: params.sort || undefined,
     basis: params.basis || undefined,
+    licensed_only: params.licensed_only === "true",
   };
 
   const fetchers: Record<SearchTabKey, () => Promise<{ data: unknown[]; meta: { page: number; limit: number; total: number; totalPages: number } }>> = {
@@ -119,6 +123,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     city: filters.city,
     search: filters.search,
     degreeLevel: filters.degree_level,
+    degreeLevels: courseFilterOptions?.degree_levels,
+    subjectArea: filters.subject_area,
     jobType: filters.job_type,
     isRemote: filters.is_remote,
     feeMin: filters.fee_min,
@@ -130,6 +136,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     intakeYear: filters.intake_year,
     intakeYears: courseFilterOptions?.years,
     basis: filters.basis,
+    licensedOnly: filters.licensed_only,
   };
 
   return (

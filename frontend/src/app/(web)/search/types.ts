@@ -29,6 +29,7 @@ export type SearchCourse = {
 export type CourseFilterOptions = {
   years: number[];
   currencies: string[];
+  degree_levels: string[];
 };
 
 export type CompareCourseItem = {

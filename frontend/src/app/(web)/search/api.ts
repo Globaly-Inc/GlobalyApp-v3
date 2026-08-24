@@ -26,6 +26,7 @@ export type SearchFilterParams = {
   intake_year?: number;
   sort?: string;
   basis?: string;
+  licensed_only?: boolean;
 };
 
 function buildQuery(params: SearchFilterParams) {
@@ -43,6 +44,7 @@ function buildQuery(params: SearchFilterParams) {
   if (params.currency) qs.set("currency", params.currency);
   if (params.intake_year != null) qs.set("intake_year", String(params.intake_year));
   if (params.sort) qs.set("sort", params.sort);
+  if (params.licensed_only) qs.set("licensed_only", "true");
   return qs;
 }
 
