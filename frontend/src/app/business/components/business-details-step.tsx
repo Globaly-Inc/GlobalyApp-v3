@@ -7,10 +7,10 @@ import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import type { BusinessType, SelectOption } from "../apis/types";
+import type { SelectOption } from "../apis/types";
 
 export function BusinessDetailsStep({
-  businessType,
+  isInstitution,
   businessName,
   onBusinessNameChange,
   subdomain,
@@ -35,7 +35,7 @@ export function BusinessDetailsStep({
   onBack,
   onSubmit,
 }: Readonly<{
-  businessType: BusinessType | null;
+  isInstitution: boolean;
   businessName: string;
   onBusinessNameChange: (value: string) => void;
   subdomain: string;
@@ -69,17 +69,17 @@ export function BusinessDetailsStep({
       <Card>
         <CardContent className="p-6 space-y-4">
           <div className="space-y-2">
-            <Label>{businessType === "institution" ? "Institution Name *" : "Business Name"}</Label>
+            <Label>{isInstitution ? "Institution Name *" : "Business Name"}</Label>
             <Input
               className="h-10"
               value={businessName}
               onChange={(e) => onBusinessNameChange(e.target.value)}
-              placeholder={businessType === "institution" ? "e.g. Global State University" : "e.g. Global Education Agency"}
+              placeholder={isInstitution ? "e.g. Global State University" : "e.g. Global Education Agency"}
               aria-invalid={!!fieldErrors.businessName}
             />
             {fieldErrors.businessName && <p className="text-sm text-destructive">{fieldErrors.businessName}</p>}
           </div>
-          {businessType !== "institution" && (
+          {!isInstitution && (
             <div className="space-y-2">
               <Label>Subdomain *</Label>
               <div className="flex items-center gap-2">

@@ -146,7 +146,7 @@ export const businessProfileDetailMockApi = {
     await delay(300);
     mockServices = mockServices.filter((s) => s.id !== serviceId);
   },
-  getServiceFieldValues: async (): Promise<SchemaFieldValue[]> => {
+  getServiceFieldValues: async (_serviceId: string): Promise<SchemaFieldValue[]> => {
     await delay(100);
     return [];
   },

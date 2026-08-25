@@ -15,7 +15,7 @@ import { DynamicIcon } from "@/components/dynamic-icon";
 import { SectionCard } from "@/app/personal/profile/section-card";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
-import { fetchAccreditations, fetchLookup, fetchServiceCategories } from "@/app/admin/platform/categories/store/categories-slice";
+import { fetchAccreditations, fetchLookup, fetchServiceCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
 import {
   createService, fetchBusinessDetail, fetchServiceFieldValues, updateService,
   updateServiceFieldValues,
@@ -35,7 +35,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
 
   const business = useAppSelector((state) => state.platformBusinesses.detail);
   const services = useAppSelector((state) => state.platformBusinesses.services.items);
-  const serviceCategories = useAppSelector((state) => state.platformCategories.serviceCategories.data);
+  const serviceCategories = useAppSelector((state) => state.platformCategories.serviceCategoryOptions);
   const degreeLevels = useAppSelector((state) => state.platformCategories.degreeLevels.data);
   const areasOfStudy = useAppSelector((state) => state.platformCategories.areasOfStudy.data);
   const accreditations = useAppSelector((state) => state.platformCategories.accreditations.data);
@@ -68,7 +68,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    if (serviceCategories.length === 0) dispatch(fetchServiceCategories({}));
+    if (serviceCategories.length === 0) dispatch(fetchServiceCategoryOptions());
     if (degreeLevels.length === 0) dispatch(fetchLookup({ kind: "degree-levels" }));
     if (areasOfStudy.length === 0) dispatch(fetchLookup({ kind: "areas-of-study" }));
     if (accreditations.length === 0) dispatch(fetchAccreditations({}));

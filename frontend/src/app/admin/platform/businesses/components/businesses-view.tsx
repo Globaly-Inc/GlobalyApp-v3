@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Pagination } from "@/components/ui/pagination";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchBusinessCategories } from "@/app/admin/platform/categories/store/categories-slice";
+import { fetchBusinessCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import {
   deleteBusinessThunk,
   fetchBusinesses,
@@ -31,7 +32,7 @@ export function BusinessesView() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { businesses, total, status } = useAppSelector((state) => state.platformBusinesses);
-  const categories = useAppSelector((state) => state.platformCategories.businessCategories.data);
+  const categories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
 
   const [tab, setTab] = useState<"businesses" | "services" | "claims">("businesses");
   const [search, setSearch] = useState("");
@@ -62,7 +63,7 @@ export function BusinessesView() {
     if (fetchedCategoriesRef.current) return;
     fetchedCategoriesRef.current = true;
     if (categories.length > 0) return;
-    dispatch(fetchBusinessCategories({}));
+    dispatch(fetchBusinessCategoryOptions());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -85,7 +86,14 @@ export function BusinessesView() {
   }, [dispatch, search, statusFilter, categoryFilter, page, limit]);
 
   const categoryOptions = useMemo(
-    () => [{ value: "all", label: "All categories" }, ...categories.map((c) => ({ value: String(c.id), label: c.name }))],
+    () => [
+      { value: "all", label: "All categories" },
+      ...categories.map((c) => ({
+        value: String(c.id),
+        label: c.name,
+        icon: <DynamicIcon name={c.icon} fallback="Building2" className="h-4 w-4" />,
+      })),
+    ],
     [categories],
   );
 

@@ -46,8 +46,15 @@ export function CategoryList({
                   <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{cat.description}</p>
                 )}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Switch checked={cat.is_active} onCheckedChange={(checked) => onToggle(cat.id, checked)} />
+              <div className="flex shrink-0 items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Active</span>
+                  <Switch
+                    checked={cat.is_active}
+                    onCheckedChange={(checked) => onToggle(cat.id, checked)}
+                    aria-label={`Toggle active for ${cat.name}`}
+                  />
+                </div>
                 <Button variant="ghost" size="icon-sm" aria-label={`Edit ${cat.name}`} onClick={() => onEdit(cat)}>
                   <Pencil />
                 </Button>

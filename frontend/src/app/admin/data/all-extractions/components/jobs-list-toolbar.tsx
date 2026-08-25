@@ -4,7 +4,7 @@ import { ListFilter, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Combobox } from "@/components/combobox";
+import { Combobox, type ComboboxOption } from "@/components/combobox";
 import {
   MODE_HEADINGS,
   SORT_OPTIONS,
@@ -33,7 +33,7 @@ type Props = Readonly<{
   showSourceFilter: boolean;
   businessCategoryFilter: string;
   onBusinessCategoryFilterChange: (v: string) => void;
-  businessCategoryOptions: { value: string; label: string }[];
+  businessCategoryOptions: ComboboxOption[];
   showSelectAll: boolean;
   allPageSelected: boolean;
   onToggleSelectAll: () => void;

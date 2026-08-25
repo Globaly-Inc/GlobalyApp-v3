@@ -1,7 +1,7 @@
 import { httpGet, httpPatch, httpPost, httpPostForm, isInstitutionContext } from "@/lib/api/http";
 import type {
-  BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, RegisterBusinessResult, SelectOption,
-  UpdateSubCategoryParams,
+  BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
+  RegisterBusinessResult, UpdateSubCategoryParams,
 } from "./types";
 
 // Institution accounts render through this exact same business-profile UI (there is no
@@ -110,10 +110,12 @@ export const businessRealApi = {
     return httpPostForm(`${base}?category=${category}`, form);
   },
 
-  getBusinessCategories: async (search?: string): Promise<SelectOption[]> => {
+  getBusinessCategories: async (search?: string): Promise<BusinessCategoryOption[]> => {
     const q = new URLSearchParams({ limit: "10" });
     if (search) q.set("search", search);
-    const { data } = await httpGet<{ data: { id: number; name: string }[] }>(`/businesses/business-categories?${q}`);
-    return data.map((c) => ({ value: String(c.id), label: c.name }));
+    const { data } = await httpGet<{
+      data: { id: number; name: string; slug: string; description: string | null; icon: string | null }[];
+    }>(`/businesses/business-categories?${q}`);
+    return data.map((c) => ({ value: String(c.id), label: c.name, slug: c.slug, description: c.description, icon: c.icon }));
   },
 };

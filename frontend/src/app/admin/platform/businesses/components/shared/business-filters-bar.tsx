@@ -2,7 +2,7 @@
 
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Combobox } from "@/components/combobox";
+import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { OWNERSHIP_FILTER_OPTIONS, SOURCE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS } from "../../const";
 
 export function BusinessFiltersBar({
@@ -24,7 +24,7 @@ export function BusinessFiltersBar({
   onStatusChange: (value: string) => void;
   categoryFilter: string;
   onCategoryChange: (value: string) => void;
-  categoryOptions: { value: string; label: string }[];
+  categoryOptions: ComboboxOption[];
   sourceFilter: string;
   onSourceChange: (value: string) => void;
   ownershipFilter: string;

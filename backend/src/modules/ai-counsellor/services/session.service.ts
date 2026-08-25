@@ -33,7 +33,8 @@ export async function updateSession(
   if (session.platform_user_id !== userId) throw new ForbiddenError("Not your session");
 
   if (patch.delete) {
-    await sessionsRepo.softDelete(id);
+    // Hard delete — messages cascade. Transcripts are bulky and never restored.
+    await sessionsRepo.hardDelete(id);
     // Return the session as-is; the caller already knows it's deleted.
     return { ...session, deleted_at: new Date() };
   }

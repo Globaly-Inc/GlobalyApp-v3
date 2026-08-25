@@ -20,9 +20,27 @@ export const fetchBusinessCategories = createAsyncThunk(
   "platformCategories/fetchBusinessCategories",
   (params: ListParams = {}) => categoriesApi.getBusinessCategories({ limit: PAGE_LIMIT, ...params }),
 );
+/**
+ * Active business categories for dropdowns in OTHER screens (businesses list filter,
+ * add-business picker, extraction jobs). Own slot so catalog-page paging/searching never
+ * changes what those dropdowns show, and unpaginated so options aren't truncated at PAGE_LIMIT.
+ */
+export const fetchBusinessCategoryOptions = createAsyncThunk(
+  "platformCategories/fetchBusinessCategoryOptions",
+  // ponytail: one page of 100; revisit if the category catalog ever outgrows it
+  async () => (await categoriesApi.getBusinessCategories({ limit: 100, active: true })).data,
+);
+
 export const fetchServiceCategories = createAsyncThunk(
   "platformCategories/fetchServiceCategories",
   (params: ListParams = {}) => categoriesApi.getServiceCategories({ limit: PAGE_LIMIT, ...params }),
+);
+
+/** Same as businessCategoryOptions but for service categories (service form picker,
+ * add-business allowed-services card, business-category editor's default-services picker). */
+export const fetchServiceCategoryOptions = createAsyncThunk(
+  "platformCategories/fetchServiceCategoryOptions",
+  async () => (await categoriesApi.getServiceCategories({ limit: 100, active: true })).data,
 );
 
 /**
@@ -102,16 +120,18 @@ function mutation<Arg>(
   return createAsyncThunk(`platformCategories/${name}`, async (arg: Arg, { dispatch, getState }) => {
     await run(arg);
     const state = (getState() as { platformCategories: CategoriesState }).platformCategories;
-    await dispatch(refetch(arg, state) as never);
+    const actions = refetch(arg, state);
+    await Promise.all((Array.isArray(actions) ? actions : [actions]).map((a) => dispatch(a as never)));
   });
 }
 
 const apiKind = (kind: CategoryKind) => kind === "business" ? "business" as const : kind === "other_service" ? "other-service" as const : "service" as const;
 
+// Also refreshes the options slot so dropdowns elsewhere pick up activate/deactivate immediately.
 const refetchFor = (kind: CategoryKind, state: CategoriesState) => {
-  if (kind === "business") return fetchBusinessCategories({ page: state.businessCategories.page });
+  if (kind === "business") return [fetchBusinessCategories({ page: state.businessCategories.page }), fetchBusinessCategoryOptions()];
   if (kind === "other_service") return fetchOtherServiceCategories({ page: state.otherServiceCategories.page });
-  return fetchServiceCategories({ page: state.serviceCategories.page });
+  return [fetchServiceCategories({ page: state.serviceCategories.page }), fetchServiceCategoryOptions()];
 };
 
 export const toggleCategory = mutation<{ kind: CategoryKind; id: number; is_active: boolean }>(
@@ -185,7 +205,9 @@ export const removeAccreditation = mutation<number>(
 
 export type CategoriesState = {
   businessCategories: ListState<Category>;
+  businessCategoryOptions: Category[];
   serviceCategories: ListState<Category>;
+  serviceCategoryOptions: Category[];
   otherServiceCategories: ListState<Category>;
   degreeLevels: ListState<Lookup>;
   areasOfStudy: ListState<Lookup>;
@@ -198,7 +220,8 @@ export type CategoriesState = {
 };
 
 const initialState: CategoriesState = {
-  businessCategories: emptyList(), serviceCategories: emptyList(), otherServiceCategories: emptyList(),
+  businessCategories: emptyList(), businessCategoryOptions: [],
+  serviceCategories: emptyList(), serviceCategoryOptions: [], otherServiceCategories: emptyList(),
   degreeLevels: emptyList(), areasOfStudy: emptyList(),
   feeTypes: emptyList(), accreditations: emptyList(),
   issuingOrganizations: [], countries: [],
@@ -226,8 +249,14 @@ const categoriesSlice = createSlice({
       .addCase(fetchBusinessCategories.fulfilled, (state, action) => {
         state.businessCategories = { data: action.payload.data, ...action.payload.meta };
       })
+      .addCase(fetchBusinessCategoryOptions.fulfilled, (state, action) => {
+        state.businessCategoryOptions = action.payload;
+      })
       .addCase(fetchServiceCategories.fulfilled, (state, action) => {
         state.serviceCategories = { data: action.payload.data, ...action.payload.meta };
+      })
+      .addCase(fetchServiceCategoryOptions.fulfilled, (state, action) => {
+        state.serviceCategoryOptions = action.payload;
       })
       .addCase(fetchOtherServiceCategories.fulfilled, (state, action) => {
         state.otherServiceCategories = { data: action.payload.data, ...action.payload.meta };

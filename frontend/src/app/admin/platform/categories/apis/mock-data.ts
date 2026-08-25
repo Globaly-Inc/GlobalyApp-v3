@@ -108,20 +108,24 @@ const schemaFieldsByCategory: Record<string, SchemaField[]> = {};
 
 type CategoryEndpoint = "business" | "service" | "other-service";
 
+// Mirrors the backend's applyCategoryFilters.
+type CategoryListParams = SearchListParams & { active?: boolean };
+const applyFlags = (rows: Category[], f: { active?: boolean }) => (f.active ? rows.filter((c) => c.is_active) : rows);
+
 const lookupTable = (kind: LookupKind) => (kind === "degree-levels" ? degreeLevels : areasOfStudy);
 const categoryTable = (kind: CategoryEndpoint) => kind === "business" ? businessCategories : kind === "other-service" ? otherServiceCategories : serviceCategories;
 const schemaFieldsKey = (kind: CategoryEndpoint, categoryId: number) => `${kind}:${categoryId}`;
 
 export const categoriesMockApi = {
-  getBusinessCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
-    console.log("[mock] getBusinessCategories", search, params);
+  getBusinessCategories: async ({ search, active, ...params }: CategoryListParams = {}): Promise<Paginated<Category>> => {
+    console.log("[mock] getBusinessCategories", search, { active }, params);
     await delay(300);
-    return paginate(searchByName(businessCategories, search), { limit: 10, ...params });
+    return paginate(applyFlags(searchByName(businessCategories, search), { active }), { limit: 10, ...params });
   },
-  getServiceCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
-    console.log("[mock] getServiceCategories", search, params);
+  getServiceCategories: async ({ search, active, ...params }: CategoryListParams = {}): Promise<Paginated<Category>> => {
+    console.log("[mock] getServiceCategories", search, { active }, params);
     await delay(300);
-    return paginate(searchByName(serviceCategories, search), { limit: 10, ...params });
+    return paginate(applyFlags(searchByName(serviceCategories, search), { active }), { limit: 10, ...params });
   },
   getOtherServiceCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
     console.log("[mock] getOtherServiceCategories", search, params);

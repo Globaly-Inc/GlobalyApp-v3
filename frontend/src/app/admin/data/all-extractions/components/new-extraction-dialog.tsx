@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/combobox";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import { useAppDispatch } from "@/lib/hooks";
 import { categoriesApi, type Category } from "@/app/admin/platform/categories/apis";
 import { createJob } from "../store/all-extractions-slice";
@@ -26,7 +27,11 @@ const cleanUrls = (urls: string[] | undefined) => (urls ?? []).map((u) => u.trim
 const SEARCH_DEBOUNCE_MS = 300;
 
 const toOptions = (categories: Category[]) =>
-  categories.map((c) => ({ value: String(c.id), label: c.name }));
+  categories.map((c) => ({
+    value: String(c.id),
+    label: c.name,
+    icon: <DynamicIcon name={c.icon} fallback="Building2" className="h-4 w-4" />,
+  }));
 
 export function NewExtractionDialog({
   open,
@@ -61,7 +66,10 @@ export function NewExtractionDialog({
     if (fetchedForOpenRef.current) return;
     fetchedForOpenRef.current = true;
     setLoadingCategories(true);
-    Promise.all([categoriesApi.getBusinessCategories({ limit: 10 }), categoriesApi.getServiceCategories({ limit: 10 })])
+    Promise.all([
+      categoriesApi.getBusinessCategories({ limit: 10, active: true }),
+      categoriesApi.getServiceCategories({ limit: 10, active: true }),
+    ])
       .then(([business, service]) => {
         setBusinessOptions(business.data);
         setServiceOptions(service.data);
@@ -73,7 +81,7 @@ export function NewExtractionDialog({
   const handleBusinessSearch = (query: string) => {
     if (businessSearchRef.current) clearTimeout(businessSearchRef.current);
     businessSearchRef.current = setTimeout(async () => {
-      const { data } = await categoriesApi.getBusinessCategories({ search: query.trim() || undefined, limit: 10 });
+      const { data } = await categoriesApi.getBusinessCategories({ search: query.trim() || undefined, limit: 10, active: true });
       setBusinessOptions(data);
     }, SEARCH_DEBOUNCE_MS);
   };
@@ -81,7 +89,7 @@ export function NewExtractionDialog({
   const handleServiceSearch = (query: string) => {
     if (serviceSearchRef.current) clearTimeout(serviceSearchRef.current);
     serviceSearchRef.current = setTimeout(async () => {
-      const { data } = await categoriesApi.getServiceCategories({ search: query.trim() || undefined, limit: 10 });
+      const { data } = await categoriesApi.getServiceCategories({ search: query.trim() || undefined, limit: 10, active: true });
       setServiceOptions(data);
     }, SEARCH_DEBOUNCE_MS);
   };

@@ -1,16 +1,16 @@
 import type {
-  BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, RegisterBusinessResult, SelectOption,
-  UpdateSubCategoryParams,
+  BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
+  RegisterBusinessResult, UpdateSubCategoryParams,
 } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const MOCK_BUSINESS_CATEGORIES: SelectOption[] = [
-  { value: "1", label: "Education Agent" },
-  { value: "2", label: "Institution" },
-  { value: "3", label: "Service Provider" },
+const MOCK_BUSINESS_CATEGORIES: BusinessCategoryOption[] = [
+  { value: "1", label: "Education Agency", slug: "education_agency", description: "Education Consultants and Migration Agents", icon: "Users" },
+  { value: "2", label: "Institutions", slug: "institutions", description: "Universities, colleges, and educational institutions", icon: "Building2" },
+  { value: "3", label: "Visa Services", slug: "visa_services", description: "Visa application and immigration support services", icon: "FileCheck" },
 ];
 
 let mockProfile: BusinessProfile = {
@@ -95,7 +95,7 @@ export const businessMockApi = {
     return { storage_path: url };
   },
 
-  getBusinessCategories: async (search?: string): Promise<SelectOption[]> => {
+  getBusinessCategories: async (search?: string): Promise<BusinessCategoryOption[]> => {
     console.log("[mock] GET /businesses/business-categories", search);
     await delay(200);
     if (!search) return MOCK_BUSINESS_CATEGORIES;

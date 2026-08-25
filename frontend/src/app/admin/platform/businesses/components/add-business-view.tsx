@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchBusinessCategories, fetchCountries, fetchServiceCategories } from "@/app/admin/platform/categories/store/categories-slice";
+import { fetchBusinessCategoryOptions, fetchCountries, fetchServiceCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
 import { ApiError } from "@/lib/api/http";
 import { businessesApi } from "../apis";
 import { createBusiness } from "../store/businesses-slice";
@@ -30,8 +30,8 @@ export function AddBusinessView() {
   const router = useRouter();
   const dispatch = useAppDispatch();
 
-  const businessCategories = useAppSelector((state) => state.platformCategories.businessCategories.data);
-  const serviceCategories = useAppSelector((state) => state.platformCategories.serviceCategories.data);
+  const businessCategories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
+  const serviceCategories = useAppSelector((state) => state.platformCategories.serviceCategoryOptions);
   const countries = useAppSelector((state) => state.platformCategories.countries);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [slugManual, setSlugManual] = useState(false);
@@ -65,8 +65,8 @@ export function AddBusinessView() {
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    if (businessCategories.length === 0) dispatch(fetchBusinessCategories({}));
-    if (serviceCategories.length === 0) dispatch(fetchServiceCategories({}));
+    if (businessCategories.length === 0) dispatch(fetchBusinessCategoryOptions());
+    if (serviceCategories.length === 0) dispatch(fetchServiceCategoryOptions());
     if (countries.length === 0) dispatch(fetchCountries());
   }, []);
 

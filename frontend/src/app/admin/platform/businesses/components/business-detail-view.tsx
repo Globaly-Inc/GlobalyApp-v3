@@ -27,7 +27,7 @@ import { EditableNumberField } from "./shared/editable-number-field";
 import { MembersTab } from "./tabs/members-tab";
 import { PartnersTab } from "./tabs/partners-tab";
 import { ServicesTab } from "./tabs/services-tab";
-import { fetchBusinessCategories, fetchCountries } from "@/app/admin/platform/categories/store/categories-slice";
+import { fetchBusinessCategoryOptions, fetchCountries } from "@/app/admin/platform/categories/store/categories-slice";
 
 const TABS = [
   { value: "branches", label: "Branches" },
@@ -52,7 +52,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
   const { detail: business, detailStatus, detailError } = useAppSelector((state) => state.platformBusinesses);
-  const categories = useAppSelector((state) => state.platformCategories.businessCategories.data);
+  const categories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
   const countries = useAppSelector((state) => state.platformCategories.countries);
   const tab = parseTab(searchParams.get("tab"));
   const setTab = (next: Tab) => {
@@ -78,7 +78,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
   useEffect(() => {
     if (fetchedCatalogRef.current) return;
     fetchedCatalogRef.current = true;
-    if (categories.length === 0) dispatch(fetchBusinessCategories({}));
+    if (categories.length === 0) dispatch(fetchBusinessCategoryOptions());
     if (countries.length === 0) dispatch(fetchCountries());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

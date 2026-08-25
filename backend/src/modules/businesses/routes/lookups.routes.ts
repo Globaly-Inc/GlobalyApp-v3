@@ -15,18 +15,20 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     const { search, ...pagination } = CategoryListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
-      categoriesService.listServiceCategories(limit, offset, search),
-      categoriesService.countServiceCategories(search),
+      categoriesService.listServiceCategories(limit, offset, search, { active: true }),
+      categoriesService.countServiceCategories(search, { active: true }),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
-  app.get("/business-categories", { preHandler: requireBusinessContext }, async (req, reply) => {
+  // No business-context guard: business onboarding fetches this BEFORE any business exists
+  // (the user picks a category to register with). JWT is still required by the auth plugin.
+  app.get("/business-categories", async (req, reply) => {
     const { search, ...pagination } = CategoryListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
-      categoriesService.listBusinessCategories(limit, offset, search),
-      categoriesService.countBusinessCategories(search),
+      categoriesService.listBusinessCategories(limit, offset, search, { active: true }),
+      categoriesService.countBusinessCategories(search, { active: true }),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });

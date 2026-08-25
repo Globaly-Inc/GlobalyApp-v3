@@ -18,7 +18,7 @@ import { useValidatedForm } from "@/lib/use-validated-form";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { categoriesApi } from "../apis";
 import type { Category } from "../apis/types";
-import { fetchBusinessCategories, fetchOtherServiceCategories, fetchServiceCategories } from "../store/categories-slice";
+import { fetchBusinessCategories, fetchOtherServiceCategories, fetchServiceCategories, fetchServiceCategoryOptions } from "../store/categories-slice";
 import type { CategoriesState, CategoryKind } from "../store/categories-slice";
 import { toSlug } from "../utils";
 import { RequiredMark } from "./required-mark";
@@ -125,8 +125,9 @@ export function CategoryEditorView({
     // editor can find the record being edited regardless of which page the list is on.
     dispatch(FETCH_FOR[kind]({ limit: 100 }));
     // The business editor also needs the business-scope service categories for its default-services picker
-    // — never the personal ones, which are a different taxonomy.
-    if (kind === "business") dispatch(fetchServiceCategories({ limit: 100 }));
+    // — never the personal ones, which are a different taxonomy. Uses the options slot so it
+    // doesn't clobber the catalog page's paginated serviceCategories list.
+    if (kind === "business") dispatch(fetchServiceCategoryOptions());
   }, [dispatch, kind]);
 
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => empty(list.length));
@@ -368,7 +369,7 @@ export function CategoryEditorView({
                   </div>
                 ) : (
                   <DefaultServicesPicker
-                    serviceCategories={catalog.serviceCategories.data}
+                    serviceCategories={catalog.serviceCategoryOptions}
                     selectedIds={selectedServiceIds}
                     onChange={setSelectedServiceIds}
                   />
