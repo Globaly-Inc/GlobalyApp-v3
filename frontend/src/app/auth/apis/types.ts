@@ -30,6 +30,11 @@ export type AuthUser = {
    * own, so this is what UI that needs to know "is this person also an admin" should check. */
   is_admin: boolean;
   user_category: string | null;
+  /** Whether this platform_user has completed personal onboarding — independent of
+   * `user_category`, which only names the highest-priority role for a dual-role user
+   * (business/institution beats personal). A business-account user can still have a
+   * personal profile and needs to be able to view it. */
+  is_personal_account: boolean;
   businesses: AuthMeBusiness[];
   institutions: AuthMeInstitution[];
   orgId: string | null;

@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { config } from "../../config.js";
 import type { AuthClaims } from "../types.js";
+import { findAdminByPlatformUserId } from "../../modules/superadmin/admin-users/repositories/admin-users.repository.js";
 
 export const authPlugin = fp(async (app) => {
   app.decorateRequest("auth", null as unknown as AuthClaims);
@@ -54,7 +55,9 @@ export const authPlugin = fp(async (app) => {
 // ── Scope guards (use as preHandler on routes) ──
 
 export async function requireAdmin(req: FastifyRequest, reply: FastifyReply) {
-  if (req.auth?.type !== "admin") {
+  if (req.auth?.type === "admin") return;
+  const admin = req.auth?.sub ? await findAdminByPlatformUserId(Number(req.auth.sub)) : null;
+  if (!admin) {
     return reply.status(403).send({ error: "Admin access required" });
   }
 }

@@ -82,7 +82,10 @@ function OnboardingForm({
   const [companyRegistrationFile, setCompanyRegistrationFile] = useState<File | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  const fetchedRef = useRef(false);
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     businessApi.getBusinessCategories().then(setCategories).catch(() => setCategories([]));
   }, []);

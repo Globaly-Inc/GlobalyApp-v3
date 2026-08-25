@@ -147,33 +147,33 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 p-1.5">
-                <DropdownMenuItem className="cursor-pointer px-2 py-2" onClick={() => router.push("/personal/profile")}>
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/profile")}>
                   My Profile
                 </DropdownMenuItem>
                 {/* {portalTarget && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="cursor-pointer px-3 py-2.5" onClick={() => router.push(portalTarget.href)}>
+                    <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(portalTarget.href)}>
                       {portalTarget.label}
                     </DropdownMenuItem>
                   </>
                 )} */}
-                <DropdownMenuItem className="cursor-pointer px-3 py-2.5" onClick={() => router.push("/personal/portal")}>
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
                   Personal Portal
                 </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer px-3 py-2.5" onClick={() => router.push("/business/portal")}>
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
                   Business Portal
                 </DropdownMenuItem>
                 {user?.is_admin && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="cursor-pointer px-3 py-2.5" onClick={() => router.push("/admin/overview")}>
+                    <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
                       Super Admin
                     </DropdownMenuItem>
                   </>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer px-3 py-2.5" variant="destructive" onClick={handleSignOut}>
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
                   Sign Out
                 </DropdownMenuItem>
               </DropdownMenuContent>
