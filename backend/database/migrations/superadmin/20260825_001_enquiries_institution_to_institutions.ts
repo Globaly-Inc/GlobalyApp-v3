@@ -72,12 +72,21 @@ export async function up(knex: Knex): Promise<void> {
 export async function down(knex: Knex): Promise<void> {
   await knex.raw(`ALTER TABLE public.enquiries DROP CONSTRAINT IF EXISTS enquiries_institution_id_foreign`);
   await knex.raw(`ALTER TABLE public.enquiries ADD COLUMN institution_id_uuid uuid`);
+  // A correlated LIMIT 1, not an UPDATE ... FROM join: extraction_institution_overview.job_id
+  // carries no unique constraint (1:1 only by convention), and a join over a job with two
+  // overview rows lets Postgres restore whichever one it happens to reach — a different uuid
+  // on every rollback. Oldest row wins, id breaking ties, so the result is reproducible.
   await knex.raw(`
     UPDATE public.enquiries e
-       SET institution_id_uuid = o.id
-      FROM public.institutions i
-      JOIN superadmin.extraction_institution_overview o ON o.job_id = i.source_job_id
-     WHERE i.id = e.institution_id
+       SET institution_id_uuid = (
+             SELECT o.id
+               FROM public.institutions i
+               JOIN superadmin.extraction_institution_overview o ON o.job_id = i.source_job_id
+              WHERE i.id = e.institution_id
+              ORDER BY o.created_at, o.id
+              LIMIT 1
+           )
+     WHERE e.institution_id IS NOT NULL
   `);
   await knex.raw(`ALTER TABLE public.enquiries DROP COLUMN institution_id`);
   await knex.raw(`ALTER TABLE public.enquiries RENAME COLUMN institution_id_uuid TO institution_id`);
