@@ -7,6 +7,7 @@ import type {
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult, ListingRef,} from "./types";
+import { toSlug } from "../utils";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -243,7 +244,7 @@ export const businessesMockApi = {
     const id = Math.max(0, ...mockBusinesses.map((b) => b.id)) + 1;
     const now = new Date().toISOString();
     const business: BusinessDetail = {
-      kind: "business", id, business_name: input.business_name, subdomain: input.subdomain, business_type: null,
+      kind: "business", id, business_name: input.business_name, subdomain: toSlug(input.business_name), business_type: null,
       business_category_id: input.business_category_id, category_name: null,
       email: input.email ?? null, phone: input.phone ?? null, status: "unverified", claim_status: "unclaimed", is_published: false,
       country_id: input.country_id ?? null, country_name: null, city: input.city ?? null,

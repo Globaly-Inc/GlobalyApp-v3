@@ -98,7 +98,6 @@ export async function onboardPersonal(userId: number, data: OnboardingPersonalIn
 /** Business onboarding — delegates to businesses service (provisions tenant DB). */
 export async function onboardBusiness(userId: number, data: OnboardingBusinessInput) {
   return registerBusiness(userId, {
-    subdomain: data.subdomain,
     business_name: data.business_name,
     business_type: data.business_type,
     phone: data.phone,

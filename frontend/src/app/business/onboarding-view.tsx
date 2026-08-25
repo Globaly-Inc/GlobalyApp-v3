@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,18 +8,19 @@ import { toast } from "sonner";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, splitPhone } from "@/lib/utils";
 import { saveAccessToken, saveSelectedOrgId } from "@/lib/session";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { geoApi, type Country } from "../geo/apis";
 import { businessApi } from "./apis";
 import { registerBusiness, updateMyProfile } from "./store/business-onboarding-slice";
-import { slugify, validateBusinessDetails, validateBusinessField } from "./validation";
+import { validateBusinessDetails, validateBusinessField } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
 import { BusinessDetailsStep } from "./components/business-details-step";
 import type { BusinessCategoryOption, BusinessProfile } from "./apis/types";
-
+import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
+import type { PlaceDetails } from "@/lib/api/places";
 // The one category whose flow differs (name field instead of subdomain) — keyed on the
 // seeded slug, see backend/database/seeders/globalyapp/business_categories_seeder.ts.
 const INSTITUTION_SLUG = "institutions";
@@ -30,10 +31,6 @@ export function OnboardingView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { profile, status } = useAppSelector((state) => state.businessOnboarding);
-  // Zero-business users never get a profile fetched (BusinessShell skips it — there's
-  // nothing to load yet), and "Create New Business" forces a fresh registration even
-  // though the active business's profile is still sitting in Redux. Either signal means
-  // this is a brand-new registration, not resuming an incomplete one.
   const isNew = searchParams.get("new") === "1" || !profile;
 
   useEffect(() => {
@@ -73,14 +70,15 @@ function OnboardingForm({
     initialProfile?.business_category_id ? String(initialProfile.business_category_id) : "",
   );
   const [businessName, setBusinessName] = useState(initialProfile?.business_name ?? "");
-  const [subdomain, setSubdomain] = useState(initialProfile?.subdomain ?? "");
-  const [subdomainTouched, setSubdomainTouched] = useState(false);
-  const [phone, setPhone] = useState(initialProfile?.phone ?? "");
+  const [phoneCountryId, setPhoneCountryId] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState(initialProfile?.phone ?? "");
   const [countryId, setCountryId] = useState(initialProfile?.country_id ? String(initialProfile.country_id) : "");
   const [state, setState] = useState(initialProfile?.state ?? "");
   const [city, setCity] = useState(initialProfile?.city ?? "");
   const [address, setAddress] = useState(initialProfile?.address ?? "");
   const [postcode, setPostcode] = useState(initialProfile?.postcode ?? "");
+  const [latitude, setLatitude] = useState<number | null>(initialProfile?.latitude ?? null);
+  const [longitude, setLongitude] = useState<number | null>(initialProfile?.longitude ?? null);
   const [companyRegistrationFile, setCompanyRegistrationFile] = useState<File | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -89,8 +87,22 @@ function OnboardingForm({
     businessApi.getBusinessCategories().then(setCategories).catch(() => setCategories([]));
   }, []);
 
+  const phoneHydratedRef = useRef(false);
+  useEffect(() => {
+    if (phoneHydratedRef.current || !countries.length || !initialProfile?.phone) return;
+    phoneHydratedRef.current = true;
+    const parsed = splitPhone(initialProfile.phone, countries);
+    setPhoneCountryId(parsed.phoneCountryId);
+    setPhoneNumber(parsed.phoneNumber);
+  }, [countries, initialProfile]);
+
   const countryOptions = countries.map((c) => ({ value: String(c.id), label: c.name }));
   const isInstitution = categories.find((c) => c.value === categoryId)?.slug === INSTITUTION_SLUG;
+  const countryIso2 = countries.find((c) => String(c.id) === countryId)?.iso2;
+  const phoneCountryOptions = countries
+    .filter((c) => c.phoneCode)
+    .map((c) => ({ value: String(c.id), label: `${c.name} (${c.phoneCode})`, icon: <span>{flagFromIso2(c.iso2)}</span> }));
+  const phoneIso2 = countries.find((c) => String(c.id) === phoneCountryId)?.iso2;
 
   const save = useCallback(
     async (patch: Parameters<typeof updateMyProfile>[0]) => {
@@ -107,20 +119,14 @@ function OnboardingForm({
   const handleBusinessNameChange = (value: string) => {
     setBusinessName(value);
     clearFieldErrorIfNowValid(setFieldErrors, "businessName", validateBusinessField("businessName", value) === null);
-    if (!subdomainTouched) {
-      const generated = slugify(value);
-      setSubdomain(generated);
-      clearFieldErrorIfNowValid(setFieldErrors, "subdomain", validateBusinessField("subdomain", generated) === null);
-    }
   };
-  const handleSubdomainChange = (value: string) => {
-    setSubdomainTouched(true);
-    setSubdomain(value);
-    clearFieldErrorIfNowValid(setFieldErrors, "subdomain", validateBusinessField("subdomain", value) === null);
+  const handlePhoneCountryChange = (value: string) => {
+    setPhoneCountryId(value);
+    clearFieldErrorIfNowValid(setFieldErrors, "phoneCountryId", validateBusinessField("phoneCountryId", value) === null);
   };
-  const handlePhoneChange = (value: string) => {
-    setPhone(value);
-    clearFieldErrorIfNowValid(setFieldErrors, "phone", validateBusinessField("phone", value) === null);
+  const handlePhoneNumberChange = (value: string) => {
+    setPhoneNumber(value);
+    clearFieldErrorIfNowValid(setFieldErrors, "phoneNumber", validateBusinessField("phoneNumber", value) === null);
   };
   const handleCountryChange = (value: string) => {
     setCountryId(value);
@@ -129,6 +135,13 @@ function OnboardingForm({
   const handleAddressChange = (value: string) => {
     setAddress(value);
     clearFieldErrorIfNowValid(setFieldErrors, "address", validateBusinessField("address", value) === null);
+  };
+  const handlePlaceResolved = (details: PlaceDetails) => {
+    setLatitude(details.latitude);
+    setLongitude(details.longitude);
+    if (details.city) setCity(details.city);
+    if (details.state) setState(details.state);
+    if (details.postcode) setPostcode(details.postcode);
   };
 
   const handleContinueFromType = async () => {
@@ -141,17 +154,26 @@ function OnboardingForm({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const errors = validateBusinessDetails({ phone, countryId, address, subdomain, businessName, isInstitution });
+    const errors = validateBusinessDetails({
+      isInstitution,
+      phoneCountryId,
+      phoneNumber,
+      phoneIso2,
+      countryId,
+      address,
+      businessName,
+    });
     if (errors) {
       setFieldErrors(errors);
       return;
     }
     setFieldErrors({});
+    const phoneCode = countries.find((c) => String(c.id) === phoneCountryId)?.phoneCode ?? "";
+    const phone = [phoneCode, phoneNumber].filter(Boolean).join(" ");
 
     if (isNew) {
       const outcome = await dispatch(
         registerBusiness({
-          subdomain,
           business_name: businessName,
           business_category_id: Number(categoryId),
           phone,
@@ -182,6 +204,8 @@ function OnboardingForm({
       state: state || null,
       city: city || null,
       postcode: postcode || null,
+      latitude,
+      longitude,
       onboarding_completed: true,
     });
     if (!ok) return;
@@ -240,15 +264,18 @@ function OnboardingForm({
         isInstitution={isInstitution}
         businessName={businessName}
         onBusinessNameChange={handleBusinessNameChange}
-        subdomain={subdomain}
-        onSubdomainChange={handleSubdomainChange}
-        phone={phone}
-        onPhoneChange={handlePhoneChange}
+        phoneCountryId={phoneCountryId}
+        onPhoneCountryChange={handlePhoneCountryChange}
+        phoneNumber={phoneNumber}
+        onPhoneNumberChange={handlePhoneNumberChange}
+        phoneCountryOptions={phoneCountryOptions}
         countryId={countryId}
         onCountryChange={handleCountryChange}
         countryOptions={countryOptions}
+        countryIso2={countryIso2}
         address={address}
         onAddressChange={handleAddressChange}
+        onPlaceResolved={handlePlaceResolved}
         state={state}
         onStateChange={setState}
         city={city}

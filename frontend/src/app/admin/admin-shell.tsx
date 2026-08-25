@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { ShieldCheck, ChevronDown, Sparkles, Loader2, User as UserIcon, LogOut } from "lucide-react";
+import { ChevronDown, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -19,6 +19,7 @@ import { fetchMe } from "./store/admin-slice";
 import { ROLE_DISPLAY } from "./consts";
 import { getVisibleNavGroups, isNavPathActive } from "./nav-config";
 import { AdminMobileNav } from "./components/admin-mobile-nav";
+import { AdminPortalSwitcher } from "./components/admin-portal-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -103,10 +104,15 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
           </div>
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
           <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground flex-shrink-0 ml-3 md:ml-4">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            {ROLE_DISPLAY[me.role]}
-          </span>
+          <div className="ml-3 md:ml-4 flex-shrink-0">
+            <AdminPortalSwitcher
+              roleLabel={ROLE_DISPLAY[me.role]}
+              isSuperAdmin={me.role === "super_admin"}
+              businesses={authUser.businesses}
+              institutions={authUser.institutions}
+              activeOrgId={authUser.orgId}
+            />
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -144,17 +150,24 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
               </div>
               <ChevronDown className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/profile")}>
-                <UserIcon /> My Profile
+            <DropdownMenuContent align="end" className="w-56 p-1.5">
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/profile")}>
+                My Profile
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/overview")}>
-                <ShieldCheck /> Super Admin
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                Personal Portal
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
+                Business Portal
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-                <LogOut /> Sign Out
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
+                Super Admin
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
+                Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

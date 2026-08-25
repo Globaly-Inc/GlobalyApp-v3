@@ -12,7 +12,6 @@ import {
   ChevronDown,
   User as UserIcon,
   Building2,
-  LogOut,
   Loader2,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { logout } from "@/app/auth/store/auth-slice";
+import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { NAV_ITEMS } from "./const";
@@ -40,6 +39,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const router = useRouter();
   const pathname = usePathname();
   const dispatch = useAppDispatch();
+  const { user } = useAuthState();
   const { profile, status } = useAppSelector((state) => state.profile);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -146,21 +146,35 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                 </Avatar>
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/profile")}>
-                  <UserIcon /> My Profile
+              <DropdownMenuContent align="end" className="w-56 p-1.5">
+                <DropdownMenuItem className="cursor-pointer px-2 py-2" onClick={() => router.push("/personal/profile")}>
+                  My Profile
                 </DropdownMenuItem>
-                {portalTarget && (
+                {/* {portalTarget && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(portalTarget.href)}>
-                      <portalTarget.icon /> {portalTarget.label}
+                    <DropdownMenuItem className="cursor-pointer px-3 py-2.5" onClick={() => router.push(portalTarget.href)}>
+                      {portalTarget.label}
+                    </DropdownMenuItem>
+                  </>
+                )} */}
+                <DropdownMenuItem className="cursor-pointer px-3 py-2.5" onClick={() => router.push("/personal/portal")}>
+                  Personal Portal
+                </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer px-3 py-2.5" onClick={() => router.push("/business/portal")}>
+                  Business Portal
+                </DropdownMenuItem>
+                {user?.is_admin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="cursor-pointer px-3 py-2.5" onClick={() => router.push("/admin/overview")}>
+                      Super Admin
                     </DropdownMenuItem>
                   </>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-                  <LogOut /> Sign Out
+                <DropdownMenuItem className="cursor-pointer px-3 py-2.5" variant="destructive" onClick={handleSignOut}>
+                  Sign Out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

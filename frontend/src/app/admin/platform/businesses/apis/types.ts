@@ -351,7 +351,6 @@ export type ActivityListResult = { data: ActivityLogEntry[]; total: number };
 export type BusinessCreateInput = {
   business_name: string;
   business_category_id: number;
-  subdomain: string;
   description?: string | null;
   email: string; // also used to create/find the business owner account
   first_name?: string | null;

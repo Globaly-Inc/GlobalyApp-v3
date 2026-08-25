@@ -1,11 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessApi } from "../apis";
-import type { BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, UpdateSubCategoryParams } from "../apis/types";
-
-export const updateSubCategory = createAsyncThunk(
-  "businessOnboarding/updateSubCategory",
-  (params: UpdateSubCategoryParams) => businessApi.updateSubCategory(params),
-);
+import type { BusinessProfile, BusinessProfilePatch, BusinessRegisterInput } from "../apis/types";
 
 // Result isn't stored in this slice's state — a successful registration hard-navigates
 // to /business (same reload rationale the business switcher already uses), so there's

@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { PaginationSchema } from "../../../shared/pagination.js";
+
+export const MemberListQuerySchema = PaginationSchema.extend({
+  search: z.string().optional(),
+});
 
 export const InviteAgentSchema = z.object({
   first_name: z.string().min(1).max(100),

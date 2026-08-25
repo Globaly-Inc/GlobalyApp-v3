@@ -113,7 +113,6 @@ export const BusinessPatchSchema = z.object({
 export const BusinessCreateSchema = z.object({
   business_name: z.string().min(1),
   business_category_id: z.number().int().positive(),
-  subdomain: z.string().min(1),
   description: z.string().nullable().optional(),
   email: z.string().email(),
   first_name: z.string().min(1).max(100).nullable().optional(),

@@ -25,6 +25,10 @@ export type AuthUser = {
   email: string;
   type: "admin" | "platform_user" | "agent";
   role: string | null;
+  /** Whether this platform_user is an admin at all, independent of `type` — a business-scoped
+   * token reads `type: "platform_user"` even for an admin who switched into a business they
+   * own, so this is what UI that needs to know "is this person also an admin" should check. */
+  is_admin: boolean;
   user_category: string | null;
   businesses: AuthMeBusiness[];
   institutions: AuthMeInstitution[];
@@ -49,8 +53,9 @@ export type AuthMeUser = {
   created_at: string;
   updated_at: string;
   type: AuthUser["type"];
-  admin_role?: string | null;
-  admin_id?: number;
+  is_admin: boolean;
+  admin_role: string | null;
+  admin_id: number | null;
   orgId?: string;
   orgRole?: string;
   businesses: AuthMeBusiness[];

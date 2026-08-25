@@ -16,9 +16,21 @@ import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
 import type { BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput } from "../schemas/businesses.schema.js";
+import { generateSubdomain } from "../../../shared/subdomain.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
+
+// Subdomain is internal (routing now identifies a business by id, not subdomain) so it's
+// derived from the name instead of user-typed. Businesses and institutions share the
+// namespace — same reason the extraction promote pipeline's claimSubdomain checks both.
+async function subdomainTaken(subdomain: string): Promise<boolean> {
+  const [biz, inst] = await Promise.all([
+    repo.findBusinessBySubdomain(subdomain),
+    userRepo.findInstitutionBySubdomain(subdomain),
+  ]);
+  return Boolean(biz || inst);
+}
 
 /**
  * Register a business — owner is the authenticated platform_user.
@@ -28,28 +40,34 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   const user = await userRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
-  let business;
-  try {
-    business = await repo.insertBusiness({
-      owner_id: userId,
-      subdomain: input.subdomain,
-      business_name: input.business_name,
-      account_status: 0,
-      business_type: input.business_type,
-      business_category_id: input.business_category_id,
-      description: input.description,
-      phone: input.phone,
-      country_id: input.country_id,
-      state: input.state,
-      city: input.city,
-      address: input.address,
-      postcode: input.postcode,
-      registration_licenses: input.registration_licenses,
-    });
-  } catch (err: any) {
-    if (err.code === "23505") throw new ConflictError("Subdomain already taken");
-    throw err;
+  // There's no subdomain field left for a user to fix, so a collision (including the
+  // check-then-insert race between two signups) is retried with a freshly generated
+  // subdomain instead of ever surfacing as an error.
+  let business: BusinessRecord | undefined;
+  for (let attempt = 0; !business && attempt < 5; attempt++) {
+    const subdomain = await generateSubdomain(input.business_name, subdomainTaken);
+    try {
+      business = await repo.insertBusiness({
+        owner_id: userId,
+        subdomain,
+        business_name: input.business_name,
+        account_status: 0,
+        business_type: input.business_type,
+        business_category_id: input.business_category_id,
+        description: input.description,
+        phone: input.phone,
+        country_id: input.country_id,
+        state: input.state,
+        city: input.city,
+        address: input.address,
+        postcode: input.postcode,
+        registration_licenses: input.registration_licenses,
+      });
+    } catch (err: any) {
+      if (err.code !== "23505" || attempt === 4) throw err;
+    }
   }
+  if (!business) throw new Error("Could not create business after retrying subdomain collisions");
 
   try {
     await provisionBusinessSchema(business.schema_name);
@@ -91,7 +109,7 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   await userRepo.updateUser(userId, { is_business_account: true });
   await userRepo.addAccountCategory(userId, { type: "business", role: input.business_type ?? "business" });
 
-  logger.info("Business registered", { orgId: business.id, subdomain: input.subdomain, userId });
+  logger.info("Business registered", { orgId: business.id, subdomain: business.subdomain, userId });
 
   const access_token = issueScopedAccessToken({ id: userId, email: user.email }, business.schema_name, "owner");
 

@@ -13,7 +13,7 @@ import { businessesApi } from "../apis";
 import { createBusiness } from "../store/businesses-slice";
 import type { BusinessCreateInput } from "../apis/types";
 import { URL_FIELDS } from "../const";
-import { buildPhone, isValidEmail, isValidPhoneForCountry, isValidUrl, sanitizeSlug, toSlug } from "../utils";
+import { buildPhone, isValidEmail, isValidPhoneForCountry, isValidUrl } from "../utils";
 import { CategoryPickerCard } from "./add-business/category-picker-card";
 import { BasicInfoCard } from "./add-business/basic-info-card";
 import { LocationCard } from "./add-business/location-card";
@@ -34,7 +34,6 @@ export function AddBusinessView() {
   const serviceCategories = useAppSelector((state) => state.platformCategories.serviceCategoryOptions);
   const countries = useAppSelector((state) => state.platformCategories.countries);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [slugManual, setSlugManual] = useState(false);
   const [allowedServiceIds, setAllowedServiceIds] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [phoneCountryId, setPhoneCountryId] = useState("");
@@ -75,10 +74,7 @@ export function AddBusinessView() {
     setErrors((e) => (e[key as string] ? { ...e, [key]: undefined } : e));
   };
 
-  const handleNameChange = (value: string) => {
-    set("business_name", value);
-    if (!slugManual) set("subdomain", toSlug(value));
-  };
+  const handleNameChange = (value: string) => set("business_name", value);
 
   const handleCategoryChange = (id: number) => set("business_category_id", id);
 
@@ -95,7 +91,6 @@ export function AddBusinessView() {
     const nextErrors: typeof errors = {};
     if (form.business_name.trim().length < 2) nextErrors.business_name = "Business name is required";
     if (!form.business_category_id) nextErrors.business_category_id = "Select a business category";
-    if (!form.subdomain?.trim()) nextErrors.subdomain = "Slug is required";
     if (!form.first_name?.trim()) nextErrors.first_name = "Owner first name is required";
     if (!form.last_name?.trim()) nextErrors.last_name = "Owner last name is required";
     if (!form.email?.trim()) nextErrors.email = "Email is required";
@@ -139,7 +134,6 @@ export function AddBusinessView() {
           business_name: form.business_name,
           business_category_id: form.business_category_id,
           email: form.email,
-          subdomain: form.subdomain || toSlug(form.business_name),
           allowed_service_category_ids: Array.from(allowedServiceIds),
           phone: phone || null,
           logo_url,
@@ -201,12 +195,6 @@ export function AddBusinessView() {
         nameError={errors.business_name}
         description={form.description ?? ""}
         onDescriptionChange={(v) => set("description", v)}
-        subdomain={form.subdomain ?? ""}
-        onSubdomainChange={(v) => {
-          setSlugManual(true);
-          set("subdomain", sanitizeSlug(v));
-        }}
-        subdomainError={errors.subdomain}
       />
 
       <LocationCard

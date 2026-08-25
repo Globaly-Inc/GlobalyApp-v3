@@ -7,8 +7,9 @@ import {
   AgentParamsSchema,
   AgentPatchSchema,
   InvitationParamsSchema,
+  MemberListQuerySchema,
 } from "../schemas/agents.schema.js";
-import { PaginationSchema } from "../../../shared/pagination.js";
+import { PaginationSchema, buildPaginatedResponse } from "../../../shared/pagination.js";
 import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import { ConflictError } from "../../../shared/errors.js";
 import * as service from "../services/agents.service.js";
@@ -31,11 +32,18 @@ export async function agentPublicRoutes(app: FastifyInstance) {
 // Institutions have no `agent_activity_log`-equivalent table, so activity logging is skipped
 // for them below — the self-service Activity tab is business-only, same as Branches/Offices.
 export async function agentBusinessRoutes(app: FastifyInstance) {
-  app.get("/", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
-    const pagination = PaginationSchema.parse(req.query);
+  // Super admins browse org-less (e.g. previewing the Personal portal, whose feed composer
+  // asks this endpoint for @mention candidates) — treat that as "no team", not a 403, since
+  // there's no org left to reject them from.
+  app.get("/", async (req, reply) => {
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    if (!req.auth?.orgId) {
+      if (req.auth?.type === "admin") return reply.send(buildPaginatedResponse([], 0, pagination));
+      return reply.status(403).send({ error: "Switch to a business or institution context first" });
+    }
     const result = req.auth.orgType === "institution"
-      ? await institutionMembers.listMembers(req.db, pagination)
-      : await service.listAgents(req.db, pagination);
+      ? await institutionMembers.listMembers(req.db, pagination, search)
+      : await service.listAgents(req.db, pagination, search);
     return reply.send(result);
   });
 

@@ -254,17 +254,28 @@ export async function softDeleteAgent(db: Knex, id: number) {
   await db("agents").where({ id }).update({ deleted_at: db.fn.now() });
 }
 
-export async function listAgents(db: Knex, limit: number, offset: number) {
-  return withRole(db<AgentRow>("agents"))
+function applyAgentSearch(query: Knex.QueryBuilder, search?: string): Knex.QueryBuilder {
+  if (!search) return query;
+  return query.where((qb) => {
+    qb.whereILike("agents.first_name", `%${search}%`)
+      .orWhereILike("agents.last_name", `%${search}%`)
+      .orWhereILike("agents.email", `%${search}%`);
+  });
+}
+
+export async function listAgents(db: Knex, limit: number, offset: number, search?: string) {
+  return applyAgentSearch(
+    withRole(db<AgentRow>("agents")).whereNull("agents.deleted_at"),
+    search,
+  )
     .select(AGENT_COLUMNS as unknown as string[])
-    .whereNull("agents.deleted_at")
     .orderBy("agents.id", "asc")
     .limit(limit)
     .offset(offset);
 }
 
-export async function countAgents(db: Knex): Promise<number> {
-  const [{ count }] = await db("agents").whereNull("deleted_at").count("id as count");
+export async function countAgents(db: Knex, search?: string): Promise<number> {
+  const [{ count }] = await applyAgentSearch(db("agents").whereNull("deleted_at"), search).count("id as count");
   return Number(count);
 }
 

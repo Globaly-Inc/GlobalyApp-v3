@@ -5,5 +5,5 @@ import { businessRealApi } from "./real-api";
 export const businessApi = createApi({ mock: businessMockApi, real: businessRealApi });
 export type {
   BusinessType, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, RegisterBusinessResult, SelectOption,
-  SocialLinks, UpdateSubCategoryParams,
+  SocialLinks,
 } from "./types";
