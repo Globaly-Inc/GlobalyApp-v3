@@ -36,13 +36,18 @@ export async function findExtractionCourseById(courseId: string) {
 }
 
 /**
- * The institution profile row for a job. `.first()` because job_id carries no
- * unique constraint but is 1:1 in practice — the same convention the existing
- * data-extraction module uses (jobs.repository.ts).
+ * The institution a job was promoted to — `public.institutions`, the canonical entity,
+ * not the raw `extraction_institution_overview` row. Null when the job was never promoted.
+ *
+ * `institutions_source_job_uniq` (partial unique on source_job_id) guarantees at most one
+ * row per job, so `.first()` is exact rather than a 1:1-in-practice assumption. Soft-deleted
+ * institutions are excluded — the unique index does not filter them, so a deleted row would
+ * otherwise still claim the job.
  */
-export async function findInstitutionIdByJobId(jobId: string): Promise<string | null> {
-  const row = await masterKnex("superadmin.extraction_institution_overview")
-    .where({ job_id: jobId })
+export async function findInstitutionIdByJobId(jobId: string): Promise<number | null> {
+  const row = await masterKnex("institutions")
+    .where({ source_job_id: jobId })
+    .whereNull("deleted_at")
     .first("id");
   return row?.id ?? null;
 }

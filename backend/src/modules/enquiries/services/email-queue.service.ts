@@ -167,9 +167,11 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
   // Names, not raw ids — the email is read by a human.
   const enquiry = await masterKnex("enquiries as e")
     .leftJoin("superadmin.extraction_courses as c", "c.id", "e.course_id")
-    .leftJoin("superadmin.extraction_institution_overview as o", "o.id", "e.institution_id")
+    // institutions, not the scraped overview row: this is the name an admin published,
+    // and the same one the public search page shows the student.
+    .leftJoin("institutions as i", "i.id", "e.institution_id")
     .where("e.id", enquiryId)
-    .first("e.course_id", "c.name as course_name", "o.name as institution_name");
+    .first("e.course_id", "c.name as course_name", "i.institution_name as institution_name");
 
   for (const r of recipients) {
     await enqueue({
