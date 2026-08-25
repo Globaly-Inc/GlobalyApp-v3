@@ -219,20 +219,25 @@ export async function httpGet<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Public auth endpoints signal bad credentials with 401 (e.g. "Invalid OTP", lockout, expired
+// OTP). Those must surface to the form as-is — the refresh/forceSignIn dance in withRefreshRetry
+// would eat the error and hard-redirect to /auth/sign-in, resetting the OTP form mid-entry.
+const PUBLIC_AUTH_PATHS = new Set(["/auth/register", "/auth/send-otp", "/auth/verify-otp"]);
+
 async function httpWithBody<T>(
   method: "POST" | "PATCH" | "PUT",
   path: string,
   body: unknown,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await withRefreshRetry(() =>
+  const attempt = () =>
     fetch(`${BASE_URL}${path}`, {
       ...init,
       method,
       headers: { "Content-Type": "application/json", ...authHeaders(), ...init?.headers },
       body: JSON.stringify(body),
-    }),
-  );
+    });
+  const res = PUBLIC_AUTH_PATHS.has(path) ? await attempt() : await withRefreshRetry(attempt);
   if (!res.ok) throw await readError(res);
   return res.json() as Promise<T>;
 }

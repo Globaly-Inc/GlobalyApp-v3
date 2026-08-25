@@ -157,9 +157,9 @@ export async function incrementMessageCount(id: number): Promise<void> {
     .update({ message_count: masterKnex.raw("message_count + 1"), updated_at: masterKnex.fn.now() });
 }
 
-export async function softDelete(id: number): Promise<void> {
-  await masterKnex(TABLE)
-    .where({ id })
-    .whereNull("deleted_at")
-    .update({ deleted_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() });
+/** Hard delete — messages cascade via FK, and the credit ledger keeps its rows
+ * (credit_transactions.reference_id is a soft reference, no FK). Soft delete was
+ * dropped deliberately: chat transcripts are bulky and nothing un-deletes them. */
+export async function hardDelete(id: number): Promise<void> {
+  await masterKnex(TABLE).where({ id }).del();
 }

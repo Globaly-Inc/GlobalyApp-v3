@@ -90,7 +90,7 @@ export async function chatRoutes(app: FastifyInstance) {
     return reply.send({ messages });
   });
 
-  // PATCH /sessions/:id — update title, archive, or soft-delete
+  // PATCH /sessions/:id — update title, archive, or delete (hard delete, messages cascade)
   app.patch("/sessions/:id", async (req, reply) => {
     const { id } = SessionIdParamSchema.parse(req.params);
     const patch = UpdateSessionSchema.parse(req.body ?? {});

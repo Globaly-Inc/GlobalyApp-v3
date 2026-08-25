@@ -67,10 +67,18 @@ export type UpdateSubCategoryParams = {
 
 export type SelectOption = { value: string; label: string };
 
+/** A business_categories row shaped for pickers — superset of SelectOption so
+ * plain Comboboxes can consume it too. */
+export type BusinessCategoryOption = SelectOption & {
+  slug: string;
+  description: string | null;
+  icon: string | null;
+};
+
 export type BusinessRegisterInput = {
   subdomain: string;
   business_name: string;
-  business_type: BusinessType;
+  business_category_id: number;
   phone: string;
   country_id: number;
   address: string;

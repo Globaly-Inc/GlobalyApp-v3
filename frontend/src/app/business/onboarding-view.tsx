@@ -11,13 +11,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { saveAccessToken, saveSelectedOrgId } from "@/lib/session";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import { geoApi, type Country } from "../geo/apis";
-import { registerBusiness, updateMyProfile, updateSubCategory } from "./store/business-onboarding-slice";
-import { BUSINESS_TYPES } from "./static/onboarding-content";
+import { businessApi } from "./apis";
+import { registerBusiness, updateMyProfile } from "./store/business-onboarding-slice";
 import { slugify, validateBusinessDetails, validateBusinessField } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
 import { BusinessDetailsStep } from "./components/business-details-step";
-import type { BusinessProfile, BusinessType } from "./apis/types";
+import type { BusinessCategoryOption, BusinessProfile } from "./apis/types";
+
+// The one category whose flow differs (name field instead of subdomain) — keyed on the
+// seeded slug, see backend/database/seeders/globalyapp/business_categories_seeder.ts.
+const INSTITUTION_SLUG = "institutions";
 
 const TOTAL_STEPS = 2;
 
@@ -49,7 +54,7 @@ export function OnboardingView() {
 }
 
 function resumeStep(profile: BusinessProfile): number {
-  return profile.business_type ? 2 : 1;
+  return profile.business_category_id ? 2 : 1;
 }
 
 function OnboardingForm({
@@ -62,8 +67,11 @@ function OnboardingForm({
   const saving = status === "saving";
 
   const [countries, setCountries] = useState<Country[]>([]);
+  const [categories, setCategories] = useState<BusinessCategoryOption[]>([]);
   const [step, setStep] = useState(() => (initialProfile ? resumeStep(initialProfile) : 1));
-  const [businessType, setBusinessType] = useState<BusinessType | null>(initialProfile?.business_type ?? null);
+  const [categoryId, setCategoryId] = useState(
+    initialProfile?.business_category_id ? String(initialProfile.business_category_id) : "",
+  );
   const [businessName, setBusinessName] = useState(initialProfile?.business_name ?? "");
   const [subdomain, setSubdomain] = useState(initialProfile?.subdomain ?? "");
   const [subdomainTouched, setSubdomainTouched] = useState(false);
@@ -78,9 +86,11 @@ function OnboardingForm({
 
   useEffect(() => {
     geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
+    businessApi.getBusinessCategories().then(setCategories).catch(() => setCategories([]));
   }, []);
 
   const countryOptions = countries.map((c) => ({ value: String(c.id), label: c.name }));
+  const isInstitution = categories.find((c) => c.value === categoryId)?.slug === INSTITUTION_SLUG;
 
   const save = useCallback(
     async (patch: Parameters<typeof updateMyProfile>[0]) => {
@@ -122,17 +132,16 @@ function OnboardingForm({
   };
 
   const handleContinueFromType = async () => {
-    if (!businessType) return;
+    if (!categoryId) return;
     // No business row exists yet in `isNew` mode — there's nothing to PATCH until
     // registration on the final step.
-    if (!isNew && !(await save({ business_type: businessType }))) return;
-    dispatch(updateSubCategory({ sub_category: businessType }));
+    if (!isNew && !(await save({ business_category_id: Number(categoryId) }))) return;
     setStep(2);
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const errors = validateBusinessDetails({ phone, countryId, address, subdomain, businessName, businessType });
+    const errors = validateBusinessDetails({ phone, countryId, address, subdomain, businessName, isInstitution });
     if (errors) {
       setFieldErrors(errors);
       return;
@@ -144,7 +153,7 @@ function OnboardingForm({
         registerBusiness({
           subdomain,
           business_name: businessName,
-          business_type: businessType!,
+          business_category_id: Number(categoryId),
           phone,
           country_id: Number(countryId),
           address,
@@ -188,32 +197,38 @@ function OnboardingForm({
           <h1 className="text-2xl font-bold">What type of business are you?</h1>
           <p className="text-muted-foreground mt-1">Choose the option that best describes your organisation.</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {BUSINESS_TYPES.map((cat) => (
-            <Card
-              key={cat.value}
-              onClick={() => setBusinessType(cat.value)}
-              className={cn(
-                "cursor-pointer transition-all hover:shadow-md border-2",
-                businessType === cat.value ? "border-primary bg-primary/5" : "border-border",
-              )}
-            >
-              <CardContent className="p-5">
-                <div
-                  className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center mb-3",
-                    businessType === cat.value ? "bg-primary text-primary-foreground" : "bg-muted",
-                  )}
-                >
-                  <cat.icon className="h-5 w-5" />
-                </div>
-                <p className="font-semibold">{cat.title}</p>
-                <p className="text-sm text-muted-foreground mt-1">{cat.description}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <Button onClick={handleContinueFromType} disabled={!businessType || saving} className="h-10 w-full cursor-pointer">
+        {categories.length === 0 ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {categories.map((cat) => (
+              <Card
+                key={cat.value}
+                onClick={() => setCategoryId(cat.value)}
+                className={cn(
+                  "cursor-pointer transition-all hover:shadow-md border-2",
+                  categoryId === cat.value ? "border-primary bg-primary/5" : "border-border",
+                )}
+              >
+                <CardContent className="p-5">
+                  <div
+                    className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center mb-3",
+                      categoryId === cat.value ? "bg-primary text-primary-foreground" : "bg-muted",
+                    )}
+                  >
+                    <DynamicIcon name={cat.icon} fallback="Building2" className="h-5 w-5" />
+                  </div>
+                  <p className="font-semibold">{cat.label}</p>
+                  {cat.description && <p className="text-sm text-muted-foreground mt-1">{cat.description}</p>}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+        <Button onClick={handleContinueFromType} disabled={!categoryId || saving} className="h-10 w-full cursor-pointer">
           {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Continue
         </Button>
@@ -222,7 +237,7 @@ function OnboardingForm({
   } else {
     content = (
       <BusinessDetailsStep
-        businessType={businessType}
+        isInstitution={isInstitution}
         businessName={businessName}
         onBusinessNameChange={handleBusinessNameChange}
         subdomain={subdomain}

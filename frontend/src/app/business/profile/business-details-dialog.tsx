@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Combobox } from "@/components/combobox";
+import { Combobox, type ComboboxOption } from "@/components/combobox";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import { FieldError } from "@/components/field-error";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,7 +18,16 @@ import { splitPhone, toNumberOrNull } from "@/lib/utils";
 import type { PlaceDetails } from "@/lib/api/places";
 import type { Country } from "../../geo/apis";
 import { businessApi } from "../apis";
-import type { BusinessProfile, BusinessProfilePatch, SelectOption } from "../apis/types";
+import type { BusinessCategoryOption, BusinessProfile, BusinessProfilePatch } from "../apis/types";
+
+// The API sends the icon as a lucide icon NAME (e.g. "Building2"); render it, don't print it.
+const toCategoryOptions = (cats: BusinessCategoryOption[]): ComboboxOption[] =>
+  cats.map((c) => ({
+    value: c.value,
+    label: c.label,
+    description: c.description ?? undefined,
+    icon: <DynamicIcon name={c.icon} fallback="Building2" className="h-4 w-4" />,
+  }));
 
 type FormState = {
   categoryId: string;
@@ -98,7 +108,7 @@ export function BusinessDetailsDialog({
 }>) {
   const schema = useMemo(() => buildSchema(countries), [countries]);
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(profile, countries));
-  const [categoryOptions, setCategoryOptions] = useState<SelectOption[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<ComboboxOption[]>([]);
   const categorySearchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const countryOptions = countries.map((c) => ({ value: String(c.id), label: c.name }));
   const countryIso2 = countries.find((c) => String(c.id) === form.countryId)?.iso2;
@@ -112,14 +122,14 @@ export function BusinessDetailsDialog({
   useEffect(() => {
     if (!open) return;
     reset(toForm(profile, countries));
-    businessApi.getBusinessCategories().then(setCategoryOptions);
+    businessApi.getBusinessCategories().then((cats) => setCategoryOptions(toCategoryOptions(cats)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, countries]);
 
   const handleCategoryQueryChange = (query: string) => {
     clearTimeout(categorySearchTimerRef.current);
     categorySearchTimerRef.current = setTimeout(() => {
-      businessApi.getBusinessCategories(query).then(setCategoryOptions);
+      businessApi.getBusinessCategories(query).then((cats) => setCategoryOptions(toCategoryOptions(cats)));
     }, 300);
   };
 

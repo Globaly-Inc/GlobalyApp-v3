@@ -7,6 +7,7 @@ export const BusinessRegisterSchema = z.object({
   subdomain: z.string().min(3).max(20).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Lowercase alphanumeric with hyphens"),
   business_name: z.string().min(1).max(200),
   business_type: z.enum(BUSINESS_TYPES).optional(),
+  business_category_id: z.number().int().positive().optional(),
   description: z.string().max(5000).optional(),
   phone: z.string().max(50).optional(),
   country_id: z.number().int().positive().optional(),

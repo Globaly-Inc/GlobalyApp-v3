@@ -36,6 +36,7 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
       business_name: input.business_name,
       account_status: 0,
       business_type: input.business_type,
+      business_category_id: input.business_category_id,
       description: input.description,
       phone: input.phone,
       country_id: input.country_id,

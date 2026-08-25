@@ -14,19 +14,22 @@ type CategoryEndpoint = "business" | "service" | "other-service";
 
 const entityType = (kind: CategoryEndpoint) => kind === "other-service" ? "other_service_categories" as const : `${kind === "service" ? "service" : "business"}_categories` as const;
 
-function toQuery(params: SearchListParams): string {
+type CategoryListParams = SearchListParams & { active?: boolean };
+
+function toQuery(params: CategoryListParams): string {
   const search = new URLSearchParams();
   if (params.page) search.set("page", String(params.page));
   if (params.limit) search.set("limit", String(params.limit));
   if (params.search) search.set("search", params.search);
+  if (params.active) search.set("active", "true");
   const qs = search.toString();
   return qs ? `?${qs}` : "";
 }
 
 export const categoriesRealApi = {
-  getBusinessCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
+  getBusinessCategories: (params: CategoryListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/business-categories${toQuery({ limit: 10, ...params })}`),
-  getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
+  getServiceCategories: (params: CategoryListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toQuery(params)}`),
   getOtherServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/other-service-categories${toQuery({ limit: 10, ...params })}`),

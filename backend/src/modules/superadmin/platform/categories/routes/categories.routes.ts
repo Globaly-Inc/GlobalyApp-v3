@@ -17,6 +17,8 @@ const SchemaFieldParentParams = z.object({
 const CategoryListQuery = PaginationSchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().trim().min(1).optional(),
+  // Dropdown option pickers: active categories only. Omitted by the catalog page.
+  active: z.coerce.boolean().optional(),
 });
 
 export async function categoryRoutes(app: FastifyInstance) {
@@ -51,11 +53,11 @@ export async function categoryRoutes(app: FastifyInstance) {
   // ── Business Categories ──
 
   app.get("/business-categories", async (req, reply) => {
-    const { search, ...pagination } = CategoryListQuery.parse(req.query);
+    const { search, active, ...pagination } = CategoryListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
-      service.listBusinessCategories(limit, offset, search),
-      service.countBusinessCategories(search),
+      service.listBusinessCategories(limit, offset, search, { active }),
+      service.countBusinessCategories(search, { active }),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
@@ -90,11 +92,11 @@ export async function categoryRoutes(app: FastifyInstance) {
   // ── Service Categories (business default-services taxonomy) ──
 
   app.get("/service-categories", async (req, reply) => {
-    const { search, ...pagination } = CategoryListQuery.parse(req.query);
+    const { search, active, ...pagination } = CategoryListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
-      service.listServiceCategories(limit, offset, search),
-      service.countServiceCategories(search),
+      service.listServiceCategories(limit, offset, search, { active }),
+      service.countServiceCategories(search, { active }),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });

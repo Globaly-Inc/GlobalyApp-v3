@@ -29,14 +29,14 @@ export function validateBusinessDetails(values: {
   address: string;
   subdomain: string;
   businessName: string;
-  businessType: string | null;
+  isInstitution: boolean;
 }): Record<string, string> | null {
   const fieldErrors: Record<string, string> = {};
   for (const field of ["phone", "countryId", "address"] as const) {
     const error = validateBusinessField(field, values[field]);
     if (error) fieldErrors[field] = error;
   }
-  if (values.businessType === "institution") {
+  if (values.isInstitution) {
     const businessNameError = validateBusinessField("businessName", values.businessName);
     if (businessNameError) fieldErrors.businessName = businessNameError;
   } else {

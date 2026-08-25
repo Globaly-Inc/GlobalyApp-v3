@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchBusinessCategories } from "@/app/admin/platform/categories/store/categories-slice";
+import { fetchBusinessCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import { ACTIVE_STATUSES, MODE_HEADINGS, PUBLISHABLE_STATUSES, type DashboardMode, type SortOrder } from "../const";
 import {
   declineJob,
@@ -29,7 +30,7 @@ const DEFAULT_PAGE_SIZE = 10;
 export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const dispatch = useAppDispatch();
   const { jobs, meta, status } = useAppSelector((state) => state.dataAllExtractions);
-  const businessCategories = useAppSelector((state) => state.platformCategories.businessCategories.data);
+  const businessCategories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -54,7 +55,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   useEffect(() => {
     if (categoriesFetchedRef.current) return;
     categoriesFetchedRef.current = true;
-    if (businessCategories.length === 0) dispatch(fetchBusinessCategories({}));
+    if (businessCategories.length === 0) dispatch(fetchBusinessCategoryOptions());
   }, [dispatch, businessCategories.length]);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 350);
@@ -165,7 +166,11 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const isLoading = status === "loading" && jobs.length === 0;
   const businessCategoryOptions = [
     { value: "all", label: "All categories" },
-    ...businessCategories.map((c) => ({ value: String(c.id), label: c.name })),
+    ...businessCategories.map((c) => ({
+      value: String(c.id),
+      label: c.name,
+      icon: <DynamicIcon name={c.icon} fallback="Building2" className="h-4 w-4" />,
+    })),
   ];
 
   return (
