@@ -26,10 +26,9 @@ export function EnquiriesView() {
   const { profile, status: profileStatus } = useAppSelector((s) => s.profile);
   const completion = profile?.completion?.percentage ?? null;
   const profileLoaded = profileStatus !== "loading" && !!profile;
-  // Blocked on the percentage (v2 parity) OR the backend's own onboarding flag,
-  // so the UI never lets through something POST /enquiries would 403.
-  const canEnquire =
-    profileLoaded && completion !== null && completion >= REQUIRED_COMPLETION && profile!.onboarding_completed;
+  // Percentage only — same rule POST /enquiries enforces, so the UI never lets
+  // through something the server would 403 (and never blocks what it would accept).
+  const canEnquire = profileLoaded && completion !== null && completion >= REQUIRED_COMPLETION;
 
   // Arriving from the course search (/search?tab=courses) carries ?course_id=, so open on mount in
   // that case — otherwise the prefilled dialog would never be shown. Derived

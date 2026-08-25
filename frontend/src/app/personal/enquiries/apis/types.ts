@@ -15,7 +15,7 @@ export type Enquiry = {
   course_id: string;
   extraction_job_id: string | null;
   /** extraction_institution_overview.id — derived server-side from the course's job. */
-  institution_id: string | null;
+  institution_id: number | null;
   business_id: number | null;
   message: string;
   preferred_intake: string | null;

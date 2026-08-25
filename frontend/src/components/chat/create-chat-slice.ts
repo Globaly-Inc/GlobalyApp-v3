@@ -352,8 +352,16 @@ export function createChatSlice({
 
         .addCase(toggleMessageStar.fulfilled, (state, action) => {
           const { messageId, isStarred } = action.payload;
-          const thread = state.byDistribution[action.meta.arg.distributionId];
-          const message = thread?.find((m) => m.id === messageId);
+          // The message may be in the main list or in a thread — patch wherever it lives,
+          // same lookup as toggleMessageReaction. Only reading the main list left a starred
+          // REPLY with is_starred still false: no "Starred" badge on the row, the toolbar
+          // stuck on "Add to starred", and nothing added to the Starred view either, since
+          // the block below needs this `message` to build its row.
+          const message =
+            state.byDistribution[action.meta.arg.distributionId]?.find((m) => m.id === messageId) ??
+            Object.values(state.repliesByParent)
+              .flat()
+              .find((m) => m.id === messageId);
           if (message) message.is_starred = isStarred;
           // The Starred view reads this list, so keep it consistent without a refetch —
           // un-starring from inside a thread has to remove the row there too.

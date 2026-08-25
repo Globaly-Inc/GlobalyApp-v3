@@ -8,6 +8,7 @@
  */
 
 import assert from "node:assert/strict";
+import { createChatSlice, type ChatApi, type ChatState } from "./create-chat-slice.ts";
 import { applyFormat, parseMessageBody, truncateUrl } from "./markdown.ts";
 import {
   conversationToText,
@@ -20,7 +21,7 @@ import {
   previewText,
 } from "./utils.ts";
 import { getRecentEmojis, searchEmojis } from "./emojis.ts";
-import type { EnquiryMessage } from "./types";
+import type { ChatThread, EnquiryMessage } from "./types";
 
 const msg = (over: Partial<EnquiryMessage> & { id: number }): EnquiryMessage => ({
   body: "hi",
@@ -177,5 +178,33 @@ assert.deepEqual(searchEmojis("   "), [], "a blank query returns nothing, not ev
 assert.equal(new Set(searchEmojis("heart")).size, searchEmojis("heart").length, "results are deduped");
 // localStorage is absent under node — the picker must still open.
 assert.deepEqual(getRecentEmojis(), [], "no storage yields no recents rather than throwing");
+
+// ── starring a thread reply (reducer) ──
+// A reply lives in `repliesByParent`, never in the main `byDistribution` list, so a reducer
+// that only looks in the latter leaves a starred reply with is_starred false: no badge on
+// the row, the toolbar stuck on "Add to starred", and nothing in the Starred view.
+
+const chat = createChatSlice({
+  name: "selfCheck",
+  api: {} as ChatApi,                       // reducers never touch the api
+  selectState: () => ({}) as ChatState,     // nor the store, outside the inbox thunk
+});
+const initial = chat.reducer(undefined, { type: "@@self-check/init", payload: null });
+const starThreadReply = chat.reducer(
+  {
+    ...initial,
+    byDistribution: { d1: [msg({ id: 1, reply_count: 1 })] },
+    repliesByParent: { 1: [msg({ id: 2, reply_to_id: 1 })] },
+    threads: [{ distribution_id: "d1", counterpart_name: "Ada", course_name: "MS Civil" } as ChatThread],
+  },
+  {
+    type: chat.toggleMessageStar.fulfilled.type,
+    payload: { messageId: 2, isStarred: true },
+    meta: { arg: { messageId: 2, distributionId: "d1" } },
+  } as Parameters<typeof chat.reducer>[1],
+);
+assert.equal(starThreadReply.repliesByParent[1]?.[0]?.is_starred, true, "starring a reply marks the reply itself");
+assert.equal(starThreadReply.starred.length, 1, "and puts it in the Starred view");
+assert.equal(starThreadReply.starred[0]?.id, 2, "the starred row is the reply, not its parent");
 
 console.log("chat utils self-check: all assertions passed");

@@ -52,7 +52,7 @@ export const EnquiryDetailSchema = z.object({
   student_id: z.number(),
   course_id: z.string().uuid(),
   extraction_job_id: z.string().uuid().nullable(),
-  institution_id: z.string().uuid().nullable(),
+  institution_id: z.number().int().nullable(),   // public.institutions.id
   business_id: z.number().nullable(),
   message: z.string(),
   status: z.string(),

@@ -3,6 +3,7 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import * as repo from "../repositories/enquiries.repository.js";
 import * as platformUsersRepo from "../../platform-users/repositories/platform-users.repository.js";
+import { loadCompletion } from "../../platform-users/services/completion.js";
 import { logEnquiryAudit } from "../shared/audit.js";
 import { ENQUIRY_QUEUES } from "../shared/queues.js";
 import { queueService } from "../../../shared/queue/queueService.js";
@@ -29,14 +30,17 @@ export interface CreateEnquiryInput {
  * target → message length (DB CHECK constraint is the backstop, this is the
  * fast-fail) → insert + audit row, in one transaction.
  *
- * "Profile complete" reuses `platform_user_profiles.onboarding_completed` —
- * the only existing completeness signal in the codebase (set by the
- * onboarding flow, exposed on ProfilePatchSchema/BusinessSchema elsewhere).
- * No dedicated `isProfileComplete()` util exists yet.
+ * "Profile complete" is the 100% completion percentage from
+ * platform-users/completion.ts — the same freshly-computed figure the profile
+ * gate renders, so the UI can never show 100% while this 403s. Deliberately
+ * NOT also gated on `onboarding_completed`.
  */
 export async function createEnquiry(studentId: number, input: CreateEnquiryInput) {
-  const profile = await platformUsersRepo.findProfileByUserId(studentId);
-  if (!profile || !profile.onboarding_completed) {
+  const [profile, { percentage }] = await Promise.all([
+    platformUsersRepo.findProfileByUserId(studentId),
+    loadCompletion(studentId),
+  ]);
+  if (!profile || percentage < 100) {
     throw new ForbiddenError("Complete your profile before submitting an enquiry");
   }
 
@@ -64,9 +68,10 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
     }
   }
 
-  // Institution the enquiry is about, resolved from the course's job. Derived
-  // server-side rather than accepted from the client so it can never disagree
-  // with course_id. Null when the job has no overview row.
+  // Institution the enquiry is about: public.institutions, reached from the course's
+  // job via institutions.source_job_id. Derived server-side rather than accepted from
+  // the client so it can never disagree with course_id. Null when the job was never
+  // promoted to an institution.
   const jobId = input.extraction_job_id ?? course.job_id ?? null;
   const institutionId = jobId ? await repo.findInstitutionIdByJobId(jobId) : null;
 

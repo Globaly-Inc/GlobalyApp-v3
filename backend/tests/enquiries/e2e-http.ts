@@ -85,6 +85,8 @@ const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const studentEmail = `e2e-student-${suffix}@example.com`;
 
 let studentToken = "";
+let studentUserId = 0;
+let institutionIntId = 0;
 let businessToken = "";
 let businessOrgId = "";
 let businessIntId = 0;
@@ -118,18 +120,25 @@ async function main() {
         degree_level: "Bachelor",
       }, studentToken);
       eq(status, 201, "onboarding status");
-      // ponytail: onboardPersonal doesn't flip onboarding_completed (pre-existing gap,
-      // out of scope for this module) — set it directly like every other enquiry test does.
+      // POST /enquiries requires 100% profile completion, and onboarding only fills
+      // 4 of the 8 criteria — top up the rest directly (photo, qualification,
+      // language test, budget, destinations).
       //
       // Coordinates are set here too: onboarding collects a city but never geocodes,
       // so a freshly-registered student has NULL lat/long and distance ranking can't
       // engage. Set directly (Sydney CBD) until something writes them for real.
+      const { rows: su } = await client.query(`SELECT id FROM platform_users WHERE email = $1`, [studentEmail]);
+      studentUserId = su[0].id;
+      await client.query(`UPDATE platform_users SET photo_url = 'test/photo.jpg' WHERE id = $1`, [studentUserId]);
       await client.query(
         `UPDATE platform_user_profiles
-         SET onboarding_completed = true, latitude = -33.8688, longitude = 151.2093
-         WHERE user_id = (SELECT id FROM platform_users WHERE email = $1)`,
-        [studentEmail],
+         SET latitude = -33.8688, longitude = 151.2093,
+             budget_min = 10000, budget_max = 50000, preferred_destinations = '[1]'::jsonb
+         WHERE user_id = $1`,
+        [studentUserId],
       );
+      await client.query(`INSERT INTO platform_user_qualifications (user_id) VALUES ($1)`, [studentUserId]);
+      await client.query(`INSERT INTO platform_user_language_tests (user_id) VALUES ($1)`, [studentUserId]);
     });
 
     await assert("register a business (provisions a real tenant schema), switch into its context", async () => {
@@ -165,6 +174,16 @@ async function main() {
         `INSERT INTO superadmin.extraction_institution_overview (job_id, name, logo_url) VALUES ($1, $2, $3)`,
         [jobId, `E2E Institution ${suffix}`, "https://example.com/logo.png"],
       );
+      // The promoted institution — enquiries.institution_id points HERE (not at the overview
+      // row), reached via source_job_id. Seeded directly because promote is an admin flow with
+      // no part in this student->business path. Published, matching what the search page lists.
+      const instRes = await client.query(
+        `INSERT INTO institutions
+           (platform_user_id, first_name, last_name, email, subdomain, institution_name, source_job_id, is_published)
+         VALUES ($1, 'E2E', 'Institution', $2, $3, $4, $5, true) RETURNING id`,
+        [studentUserId, `e2e-inst-${suffix}@example.com`, `e2e-inst-${suffix}`.slice(0, 20), `E2E Institution ${suffix}`, jobId],
+      );
+      institutionIntId = instRes.rows[0].id;
       // Representations are internal-only in this phase (no HTTP CRUD) — seed directly.
       await client.query(
         `INSERT INTO representations (business_id, extraction_job_id, extraction_course_id, status)
@@ -206,11 +225,25 @@ async function main() {
       }, studentToken);
       eq(status, 201, "status");
       eq(data.status, "pending", "enquiry status");
-      // Derived server-side from the course's job, never sent by the client.
-      if (!data.institution_id) throw new Error("expected institution_id to be resolved on create");
+      // Derived server-side from the course's job, never sent by the client — and it is the
+      // institutions row id, reached via institutions.source_job_id, not the overview uuid.
+      eq(data.institution_id, institutionIntId, "institution_id resolves to the promoted institution");
       // Snapshotted from the profile so matching is reproducible.
       if (data.student_latitude === null) throw new Error("expected student coords to be snapshotted");
       enquiryId = data.id;
+
+      // The whole point of the retarget: the extraction job is still reachable from an
+      // enquiry, now by walking institution_id -> institutions.source_job_id.
+      const { rows } = await client.query(
+        `SELECT ej.id AS job_id, i.institution_name
+           FROM enquiries e
+           JOIN institutions i ON i.id = e.institution_id
+           JOIN superadmin.extraction_jobs ej ON ej.id = i.source_job_id
+          WHERE e.id = $1`,
+        [enquiryId],
+      );
+      eq(rows.length, 1, "enquiry -> institution -> extraction job chain resolves");
+      eq(rows[0].job_id, jobId, "chain lands on the course's extraction job");
     });
 
     await assert("matching distributes at T1 with a real distance (geo tiering active)", async () => {
@@ -349,6 +382,7 @@ async function main() {
       await client.query(`DELETE FROM enquiry_match_directory WHERE business_id = $1`, [businessIntId]);
       await client.query(`DELETE FROM representations WHERE business_id = $1`, [businessIntId]);
       await client.query(`DELETE FROM businesses WHERE business_name LIKE $1`, [`E2E%${suffix}`]);
+      await client.query(`DELETE FROM institutions WHERE source_job_id = $1`, [jobId]);
       await client.query(`DELETE FROM superadmin.extraction_institution_overview WHERE job_id = $1`, [jobId]);
       await client.query(`DELETE FROM superadmin.extraction_courses WHERE job_id = $1`, [jobId]);
       await client.query(`DELETE FROM superadmin.extraction_jobs WHERE id = $1`, [jobId]);
