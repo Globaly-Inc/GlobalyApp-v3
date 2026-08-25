@@ -32,6 +32,7 @@ import scholarshipsPublicModule from "./modules/scholarships/index.js";
 import aiCounsellorModule, { publicAiCounsellorModule } from "./modules/ai-counsellor/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
 import coursesModule from "./modules/courses/index.js";
+import savedItemsModule from "./modules/saved-items/index.js";
 import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
 import waitlistModule from "./modules/waitlist/index.js";
 
@@ -62,6 +63,7 @@ export async function buildServer() {
     await protectedApp.register(aiCounsellorModule);   // AI counsellor — chat, credits, sessions, embed configs
     await protectedApp.register(enquiriesModule);      // student enquiry creation + lookup
     await protectedApp.register(coursesModule);        // student course browse (extracted courses)
+    await protectedApp.register(savedItemsModule);     // heart/shortlist of courses + institutions
     await protectedApp.register(referralsModule);           // Earn → Referrals: own code, stats, history
   });
 

@@ -8,7 +8,7 @@ export function MobileFiltersSheet({ children }: Readonly<{ children: React.Reac
   return (
     <Sheet>
       <SheetTrigger
-        render={<Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0 md:hidden" />}
+        render={<Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0 md:hidden" />}
       >
         <SlidersHorizontal className="h-4 w-4" />
         <span className="sr-only">Filters</span>
