@@ -154,6 +154,18 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
+  // GET /institutions/:id/branches — extraction_campuses filed under the institution's source_job_id.
+  app.get("/institutions/:id/branches", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    return reply.send(await service.listInstitutionBranches(id));
+  });
+
+  // GET /institutions/:id/partners — extraction_agents filed under the institution's source_job_id.
+  app.get("/institutions/:id/partners", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    return reply.send(await service.listInstitutionPartners(id));
+  });
+
   // POST /institutions/:id/invite — admin invites a member; they land in the tenant `members`
   // table once they accept (institutions' twin of POST /businesses/:id/members).
   app.post("/institutions/:id/invite", async (req, reply) => {

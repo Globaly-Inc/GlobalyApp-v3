@@ -112,6 +112,9 @@ export type InstitutionDetail = {
   owner_last_name: string | null;
   owner_email: string | null;
   source_job_id: string | null;
+  /** Borrowed from the source extraction job (course/campus counts) — 0 when there's no source_job_id. */
+  branch_count: number;
+  service_count: number;
 };
 
 export type InstitutionPatch = Partial<{
@@ -125,6 +128,8 @@ export type InstitutionPatch = Partial<{
   city: string | null;
   address: string | null;
   postcode: string | null;
+  logo_url: string | null;
+  cover_url: string | null;
 }>;
 
 /** A subset of `extraction_courses` columns — the institution's courses if it was promoted from
@@ -139,6 +144,30 @@ export type InstitutionCourse = {
   domestic_fee_total: number | null;
   domestic_currency: string | null;
   verification_status: string | null;
+  source_url: string | null;
+};
+
+/** A subset of `extraction_campuses` columns — same provenance rule as InstitutionCourse. */
+export type InstitutionBranch = {
+  id: string;
+  name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  source_url: string | null;
+};
+
+/** A subset of `extraction_agents` columns — same provenance rule as InstitutionCourse. */
+export type InstitutionPartner = {
+  id: string;
+  name: string | null;
+  country: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
   source_url: string | null;
 };
 

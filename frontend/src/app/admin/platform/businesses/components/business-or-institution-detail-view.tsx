@@ -4,8 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useAppDispatch } from "@/lib/hooks";
 import { fetchBusinessDetail } from "../store/businesses-slice";
-import { BusinessDetailView } from "./business-detail-view";
-import { InstitutionDetailView } from "./institution-detail-view";
+import { DetailView } from "./detail-view";
 
 /**
  * `/admin/platform/businesses/:id` serves both tables under the exact same URL, with no
@@ -36,5 +35,5 @@ export function BusinessOrInstitutionDetailView({ id }: Readonly<{ id: number }>
     );
   }
 
-  return kind === "institution" ? <InstitutionDetailView id={id} /> : <BusinessDetailView id={id} />;
+  return <DetailView kind={kind} id={id} />;
 }

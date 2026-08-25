@@ -19,6 +19,7 @@ import { generateSubdomain } from "../../../../../shared/subdomain.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
 import * as agentsService from "../../../../agents/services/agents.service.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
+import * as reviewRepo from "../../../data-extraction/repositories/review.repository.js";
 import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
 import type { InstitutionInviteInput } from "../../../../platform-users/services/institution-members.service.js";
 import type { PaginationInput } from "../../../../../shared/pagination.js";
@@ -283,9 +284,11 @@ export async function sendInstitutionClaimRequest(id: number) {
 
   const token = randomBytes(32).toString("hex");
   // setInstitutionClaimPending writes claim_status; the admin badge reads `status`, so both move
-  // together here for the same reason as the business path above.
+  // together here for the same reason as the business path above — but only from "unverified",
+  // so resending a claim request can't quietly downgrade an institution that is already verified
+  // or suspended.
   await userRepo.setInstitutionClaimPending(id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-  await userRepo.updateInstitution(id, { status: "claim_pending" });
+  if (inst.status === "unverified") await userRepo.updateInstitution(id, { status: "claim_pending" });
 
   const claimUrl = `${config.WEB_APP_URL}/invite/institution/accept?token=${token}`;
   const ownerName = `${inst.first_name ?? ""} ${inst.last_name ?? ""}`.trim() || "there";
@@ -404,6 +407,24 @@ export async function listInstitutionCourses(id: number, opts: { search?: string
     coursesRepo.countCoursesByJob(inst.source_job_id, filters),
   ]);
   return { rows, total };
+}
+
+/**
+ * Campuses/agents the extraction job discovered for this institution — same provenance rule as
+ * listInstitutionCourses above (source_job_id), read-only here (editing happens in the
+ * extraction admin's review screen). Surfaced as this institution's Branches/Partners tabs.
+ */
+export async function listInstitutionBranches(id: number) {
+  const inst = await requireInstitution(id);
+  if (!inst.source_job_id) return [];
+  return reviewRepo.listCampusesByJob(inst.source_job_id);
+}
+
+export async function listInstitutionPartners(id: number) {
+  const inst = await requireInstitution(id);
+  if (!inst.source_job_id) return [];
+  const { agents } = await reviewRepo.listAgentsByJob(inst.source_job_id);
+  return agents;
 }
 
 export async function updateEnquirySettings(id: number, data: EnquirySettingsPatchInput) {

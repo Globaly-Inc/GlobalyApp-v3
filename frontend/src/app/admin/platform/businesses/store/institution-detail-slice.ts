@@ -1,12 +1,13 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
-  BusinessStatus, InstitutionCourse, InstitutionCourseListParams, InstitutionDetail, InstitutionInvitation,
-  InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPatch, Member, MemberListParams,
+  BusinessStatus, InstitutionBranch, InstitutionCourse, InstitutionCourseListParams, InstitutionDetail, InstitutionInvitation,
+  InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPartner, InstitutionPatch, Member, MemberListParams,
 } from "../apis/types";
 
-// Separate from businesses-slice.ts: institutions have no branches/partners/contacts/services/
-// activity/enquiry-settings backend, so this only tracks the header detail + members tab.
+// Separate from businesses-slice.ts: institutions have no real contacts/activity/enquiry-settings
+// backend yet. Branches/Partners here aren't a real CRUD either — they're read-only projections
+// of the source extraction job's campuses/agents (see businesses.service.ts on the backend).
 
 export const fetchInstitutionDetail = createAsyncThunk("institutionDetail/fetch", (id: number) =>
   businessesApi.getInstitutionDetail(id),
@@ -25,6 +26,14 @@ export const fetchInstitutionMembers = createAsyncThunk(
 export const fetchInstitutionCourses = createAsyncThunk(
   "institutionDetail/fetchCourses",
   ({ id, params }: { id: number; params?: InstitutionCourseListParams }) => businessesApi.getInstitutionCourses(id, params),
+);
+
+export const fetchInstitutionBranches = createAsyncThunk("institutionDetail/fetchBranches", (id: number) =>
+  businessesApi.getInstitutionBranches(id),
+);
+
+export const fetchInstitutionPartners = createAsyncThunk("institutionDetail/fetchPartners", (id: number) =>
+  businessesApi.getInstitutionPartners(id),
 );
 
 export const inviteInstitutionMember = createAsyncThunk(
@@ -86,6 +95,8 @@ type InstitutionDetailState = {
   members: PagedState<Member>;
   courses: PagedState<InstitutionCourse>;
   invitations: PagedState<InstitutionInvitation>;
+  branches: PagedState<InstitutionBranch>;
+  partners: PagedState<InstitutionPartner>;
 };
 
 const emptyPaged = <T,>(): PagedState<T> => ({ items: [], total: 0, status: "idle", error: null });
@@ -97,6 +108,8 @@ const initialState: InstitutionDetailState = {
   members: emptyPaged(),
   courses: emptyPaged(),
   invitations: emptyPaged(),
+  branches: emptyPaged(),
+  partners: emptyPaged(),
 };
 
 const institutionDetailSlice = createSlice({
@@ -164,6 +177,26 @@ const institutionDetailSlice = createSlice({
       .addCase(setInstitutionMemberStatus.fulfilled, (state, action) => {
         const member = state.members.items.find((m) => m.platform_user_id === action.payload.platformUserId);
         if (member) member.account_status = action.payload.accountStatus;
+      })
+      .addCase(fetchInstitutionBranches.pending, (state) => {
+        state.branches.status = "loading";
+      })
+      .addCase(fetchInstitutionBranches.fulfilled, (state, action) => {
+        state.branches = { items: action.payload, total: action.payload.length, status: "idle", error: null };
+      })
+      .addCase(fetchInstitutionBranches.rejected, (state, action) => {
+        state.branches.status = "failed";
+        state.branches.error = action.error.message ?? "Failed to load branches.";
+      })
+      .addCase(fetchInstitutionPartners.pending, (state) => {
+        state.partners.status = "loading";
+      })
+      .addCase(fetchInstitutionPartners.fulfilled, (state, action) => {
+        state.partners = { items: action.payload, total: action.payload.length, status: "idle", error: null };
+      })
+      .addCase(fetchInstitutionPartners.rejected, (state, action) => {
+        state.partners.status = "failed";
+        state.partners.error = action.error.message ?? "Failed to load partners.";
       });
   },
 });

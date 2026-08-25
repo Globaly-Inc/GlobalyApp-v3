@@ -127,7 +127,7 @@ export async function listInstitutions(limit: number, offset: number, search?: s
       "i.institution_type as business_type",
       "i.email", "i.phone", "i.status", "i.claim_status", "i.is_published", "i.country_id", "i.city",
       "i.logo_url", "i.account_status", "i.created_at",
-      "i.platform_user_id as owner_id", "i.schema_name",
+      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
       masterKnex.raw("i.platform_user_id IS NULL as is_unclaimed"),
       masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
       masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
@@ -137,8 +137,19 @@ export async function listInstitutions(limit: number, offset: number, search?: s
     .orderBy("i.created_at", "desc")
     .limit(limit).offset(offset);
 
-  // institutions have no profile_views/branches/services tables — reported as 0 rather than
-  // omitted, so the shared card doesn't have to special-case a missing field.
+  // institutions have no profile_views/branches/services tables of their own — "services" and
+  // "branches" borrow the source extraction job's course/campus counts instead, so a promoted
+  // institution shows real numbers rather than a permanent, meaningless zero.
+  const jobIds = rows.map((r: any) => r.source_job_id).filter(Boolean);
+  const [courseCounts, campusCounts] = jobIds.length
+    ? await Promise.all([
+        masterKnex(`${S}.extraction_jobs`).whereIn("id", jobIds).select("id", "courses_extracted"),
+        masterKnex(`${S}.extraction_campuses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
+      ])
+    : [[], []];
+  const courseCountByJob = new Map(courseCounts.map((r: any) => [r.id, Number(r.courses_extracted) || 0]));
+  const campusCountByJob = new Map(campusCounts.map((r: any) => [r.job_id, Number(r.count)]));
+
   return rows.map((row: any) => ({
     ...row,
     kind: "institution" as const,
@@ -147,8 +158,8 @@ export async function listInstitutions(limit: number, offset: number, search?: s
     // blank. Mapped onto the shared vocabulary; every other value already matches.
     status: row.status === "pending" ? "unverified" : row.status,
     profile_views: 0,
-    branch_count: 0,
-    service_count: 0,
+    branch_count: campusCountByJob.get(row.source_job_id) ?? 0,
+    service_count: courseCountByJob.get(row.source_job_id) ?? 0,
   }));
 }
 
@@ -184,8 +195,22 @@ export async function findInstitutionDetail(id: number) {
     )
     .first();
   if (!row) return row;
+
+  // Same borrowed-from-the-source-job counts as listInstitutions, so the detail page agrees
+  // with the list card instead of omitting the fields entirely.
+  let branch_count = 0;
+  let service_count = 0;
+  if (row.source_job_id) {
+    const [job, [{ count }]] = await Promise.all([
+      masterKnex(`${S}.extraction_jobs`).where({ id: row.source_job_id }).first("courses_extracted"),
+      masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
+    ]);
+    service_count = Number(job?.courses_extracted) || 0;
+    branch_count = Number(count) || 0;
+  }
+
   // Same status-vocabulary mapping as listInstitutions.
-  return { ...row, status: row.status === "pending" ? "unverified" : row.status };
+  return { ...row, status: row.status === "pending" ? "unverified" : row.status, branch_count, service_count };
 }
 
 export async function listInstitutionMembers(

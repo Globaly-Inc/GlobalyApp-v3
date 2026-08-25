@@ -2,8 +2,8 @@ import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from 
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, ListingRef, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, BusinessStatus, EnquirySettingsPatch, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
-  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPatch,
+  BusinessService, BusinessStatus, EnquirySettingsPatch, InstitutionBranch, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPartner, InstitutionPatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
@@ -89,6 +89,8 @@ export const businessesRealApi = {
     );
     return { data, total: meta.total };
   },
+  getInstitutionBranches: (id: number): Promise<InstitutionBranch[]> => httpGet(`/admin/platform/institutions/${id}/branches`),
+  getInstitutionPartners: (id: number): Promise<InstitutionPartner[]> => httpGet(`/admin/platform/institutions/${id}/partners`),
   inviteInstitutionMember: (id: number, input: InstitutionInviteInput): Promise<{ id: string; email: string; status: string }> =>
     httpPost(`/admin/platform/institutions/${id}/invite`, input),
   getInstitutionInvitations: async (id: number, params: InstitutionInvitationListParams = {}): Promise<InstitutionInvitationListResult> => {

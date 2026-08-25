@@ -1,8 +1,8 @@
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, EnquirySettingsPatch, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
-  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPatch,
+  BusinessService, EnquirySettingsPatch, InstitutionBranch, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPartner, InstitutionPatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
@@ -135,6 +135,7 @@ const mockInstitutions: InstitutionDetail[] = [
     gallery_images: [], video_urls: [], account_status: 1, created_at: "2026-05-20T09:00:00Z", updated_at: "2026-05-20T09:00:00Z",
     verified_at: null, owner_id: null, is_unclaimed: true, business_category_id: null, category_name: "Institutions",
     owner_first_name: null, owner_last_name: null, owner_email: null, source_job_id: "mock-job-1",
+    branch_count: 0, service_count: 3,
   },
 ];
 
@@ -149,6 +150,24 @@ const mockInstitutionCourses: Record<string, InstitutionCourse[]> = {
       id: "course-2", name: "Master of Business Administration", degree_level: "Master", subject_area: "Business",
       duration_weeks: 104, study_mode: "Full-time", domestic_fee_total: 42000, domestic_currency: "CAD",
       verification_status: "unverified", source_url: null,
+    },
+  ],
+};
+
+const mockInstitutionBranches: Record<string, InstitutionBranch[]> = {
+  "mock-job-1": [
+    {
+      id: "campus-1", name: "Main Campus", address: "100 Institute Way", city: "Vancouver", state: "British Columbia",
+      country: "Canada", phone: "+1 604 555 0110", email: "admissions@gsi.edu", source_url: "https://gsi.edu/campuses",
+    },
+  ],
+};
+
+const mockInstitutionPartners: Record<string, InstitutionPartner[]> = {
+  "mock-job-1": [
+    {
+      id: "agent-1", name: "Global Study Consultants", country: "India", email: "info@gsc.example",
+      phone: "+91 22 5550 1234", website: "https://gsc.example", source_url: "https://gsi.edu/agents",
     },
   ],
 };
@@ -309,6 +328,18 @@ export const businessesMockApi = {
     const page = params.page ?? 1;
     const start = (page - 1) * limit;
     return { data: items.slice(start, start + limit), total: items.length };
+  },
+  getInstitutionBranches: async (id: number): Promise<InstitutionBranch[]> => {
+    console.log("[mock] GET /admin/platform/institutions/:id/branches", id);
+    await delay(150);
+    const inst = mockInstitutions.find((x) => x.id === id);
+    return inst?.source_job_id ? (mockInstitutionBranches[inst.source_job_id] ?? []) : [];
+  },
+  getInstitutionPartners: async (id: number): Promise<InstitutionPartner[]> => {
+    console.log("[mock] GET /admin/platform/institutions/:id/partners", id);
+    await delay(150);
+    const inst = mockInstitutions.find((x) => x.id === id);
+    return inst?.source_job_id ? (mockInstitutionPartners[inst.source_job_id] ?? []) : [];
   },
   inviteInstitutionMember: async (id: number, input: InstitutionInviteInput): Promise<{ id: string; email: string; status: string }> => {
     console.log("[mock] POST /admin/platform/institutions/:id/invite", id, input);
