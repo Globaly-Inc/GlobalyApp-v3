@@ -38,14 +38,16 @@ async function countTable(
 // ─── Overview (admin dashboard stat cards) ────────────────────────────────
 
 export async function getOverviewStats() {
-  const [businesses, platformUsers, activeExtractions] = await Promise.all([
+  const [businesses, institutions, platformUsers, activeExtractions] = await Promise.all([
     masterKnex("businesses").count("* as count").first(),
+    masterKnex("institutions").count("* as count").first(),
     masterKnex("platform_users").count("* as count").first(),
     masterKnex(`${S}.extraction_jobs`).whereIn("status", ["pending", "processing"]).count("* as count").first(),
   ]);
 
   return {
-    businesses: Number(businesses?.count ?? 0),
+    // businesses + institutions are one concept product-wide — reported combined
+    businesses: Number(businesses?.count ?? 0) + Number(institutions?.count ?? 0),
     platform_users: Number(platformUsers?.count ?? 0),
     active_extractions: Number(activeExtractions?.count ?? 0),
     // ponytail: no scholarships table yet — wire this up once that feature lands

@@ -50,10 +50,10 @@ export function OverviewView() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Active businesses"
+          label="Total businesses"
           icon={Building2}
-          value={formatStatValue(data?.summary.active_businesses)}
-          sub={`of ${formatStatValue(data?.summary.total_businesses)} total`}
+          value={formatStatValue(data?.summary.total_businesses)}
+          sub={`${formatStatValue(data?.summary.active_businesses)} active`}
           loading={loading}
         />
         <StatCard
