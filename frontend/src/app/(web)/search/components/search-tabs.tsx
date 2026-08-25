@@ -14,24 +14,33 @@ export const SEARCH_TABS: { key: SearchTabKey; label: string; icon: typeof Gradu
   { key: "services", label: "Services", icon: Wrench },
 ];
 
-export function tabHref(tab: SearchTabKey, base: { country?: string; city?: string; search?: string }) {
+export function tabHref(
+  tab: SearchTabKey,
+  base: { country?: string; city?: string; search?: string },
+  basePath = "/search",
+) {
   const query: Record<string, string> = { tab };
   if (base.country) query.country = base.country;
   if (base.city) query.city = base.city;
   if (base.search) query.search = base.search;
-  return { pathname: "/search", query };
+  return { pathname: basePath, query };
 }
 
 export function SearchTabs({
   activeTab,
   base,
-}: Readonly<{ activeTab: SearchTabKey; base: { country?: string; city?: string; search?: string } }>) {
+  basePath = "/search",
+}: Readonly<{
+  activeTab: SearchTabKey;
+  base: { country?: string; city?: string; search?: string };
+  basePath?: string;
+}>) {
   return (
     <div className="flex items-center gap-1.5 overflow-x-auto py-3">
       {SEARCH_TABS.map(({ key, label, icon: Icon }) => {
         const active = activeTab === key;
         return (
-          <Link key={key} href={tabHref(key, base)} scroll={false}>
+          <Link key={key} href={tabHref(key, base, basePath)} scroll={false}>
             <Button
               type="button"
               size="sm"

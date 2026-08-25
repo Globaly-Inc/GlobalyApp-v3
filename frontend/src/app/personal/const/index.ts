@@ -16,7 +16,10 @@ import type { PortalNavGroup } from "@/components/portal-sidebar";
 // mobile drawer links every top-level entry directly.
 export const NAV_ITEMS: (PortalNavGroup & { href: string })[] = [
   { label: "Home", icon: Home, href: "/personal/portal" },
-  { label: "Explore", icon: Compass, href: "/search?tab=courses" },
+  // ponytail: no `?tab=` here — the view defaults to Courses. The rail tile therefore dims once the
+  // user switches tab, because isPortalNavActive compares `tab` explicitly (business profile needs
+  // that). Fixing the highlight properly means teaching the matcher which paths have tab siblings.
+  { label: "Explore", icon: Compass, href: "/personal/explore" },
   {
     label: "Earn",
     icon: Coins,

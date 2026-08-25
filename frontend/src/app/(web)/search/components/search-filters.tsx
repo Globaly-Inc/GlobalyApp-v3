@@ -70,8 +70,10 @@ export function SearchFilters({
   countryOptions,
   cityOptions,
   licensedOnly,
+  basePath = "/search",
 }: Readonly<{
   activeTab: SearchTabKey;
+  basePath?: string;
   country?: string;
   city?: string;
   search?: string;
@@ -92,7 +94,7 @@ export function SearchFilters({
   licensedOnly?: boolean;
 }>) {
   return (
-    <form method="get" action="/search" className="rounded-xl border border-border bg-card p-5">
+    <form method="get" action={basePath} className="rounded-xl border border-border bg-card p-5">
       <input type="hidden" name="tab" value={activeTab} />
       {search && <input type="hidden" name="search" value={search} />}
       {currency && <input type="hidden" name="currency" value={currency} />}
