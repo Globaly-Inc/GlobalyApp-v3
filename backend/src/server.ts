@@ -19,7 +19,7 @@ import { createChildLogger } from "./shared/logger.js";
 // Modules
 import authModule from "./modules/auth/index.js";
 import superadminModule from "./modules/superadmin/index.js";
-import platformUsersModule from "./modules/platform-users/index.js";
+import platformUsersModule, { publicPlatformUsersModule } from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
 import placesModule from "./modules/places/index.js";
 import agentsModule from "./modules/agents/index.js";
@@ -68,6 +68,7 @@ export async function buildServer() {
   await app.register(blogModule);            // public blog reads (no auth)
   await app.register(publicServicesModule);  // public marketplace browse (no auth)
   await app.register(geoModule);              // public geo reads (no auth)
+  await app.register(publicPlatformUsersModule); // public country/city lookups (no auth)
   await app.register(searchModule);          // public search reads (no auth)
   await app.register(scholarshipsPublicModule); // public scholarships reads (no auth)
   await app.register(publicAiCounsellorModule); // guest + embed-widget AI chat (no auth)

@@ -5,7 +5,7 @@ import {
   OnboardingPersonalSchema, OnboardingBusinessSchema, OnboardingInstitutionSchema,
   ProfilePatchSchema, UpdateCategorySchema,
   QualificationSchema, LanguageTestSchema, AcademicTestSchema, WorkExperienceSchema,
-  IdParamSchema, CountryIdParamSchema, LookupQuerySchema,
+  IdParamSchema, LookupQuerySchema,
 } from "../schemas/platform-users.schema.js";
 import { paginationToOffset, buildPaginatedResponse } from "../../../shared/pagination.js";
 import * as service from "../services/platform-users.service.js";
@@ -49,19 +49,6 @@ export async function platformUserRoutes(app: FastifyInstance) {
     const data = OnboardingInstitutionSchema.parse(req.body);
     const result = await service.onboardInstitution(Number(req.auth.sub), data);
     return reply.status(201).send(result);
-  });
-
-  // ── Countries / Cities ──
-
-  app.get("/countries", async (_req, reply) => {
-    const result = await service.listCountries();
-    return reply.send({ countries: result });
-  });
-
-  app.get("/countries/:id/cities", async (req, reply) => {
-    const { id } = CountryIdParamSchema.parse(req.params);
-    const result = await service.getCitiesByCountry(id);
-    return reply.send(result);
   });
 
   // ── Lookups (degree levels, areas of study) ──
