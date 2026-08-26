@@ -6,7 +6,6 @@ const BUSINESS_CLAIM_AVAILABLE = "BUSINESS_CLAIM_AVAILABLE";
 
 export const registerAndSendOtp = createAsyncThunk("signup/registerAndSendOtp", async (params: RegisterParams) => {
   await signupApi.register(params);
-  await signupApi.sendOtp({ email: params.email });
   return params.email;
 });
 

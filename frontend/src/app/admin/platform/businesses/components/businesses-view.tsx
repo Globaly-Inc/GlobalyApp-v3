@@ -260,7 +260,7 @@ export function BusinessesView() {
             business={b}
             selected={selected.has(keyOf(b))}
             onToggleSelect={() => toggleOne(keyOf(b))}
-            onView={() => router.push(`/admin/platform/businesses/${b.id}`)}
+            onView={() => router.push(`/admin/platform/businesses/${b.id}?kind=${b.kind}`)}
             onVerify={() => runVerify(b)}
             onSuspend={() => runSuspend(b)}
             onTogglePublish={() => runTogglePublish(b, !b.is_published)}
