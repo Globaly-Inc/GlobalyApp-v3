@@ -2,8 +2,9 @@ import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from 
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, ListingRef, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, BusinessStatus, EnquirySettingsPatch, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
-  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPatch,
+  BusinessService, BusinessStatus, EnquirySettingsPatch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  ListingKind,
+  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPartner, InstitutionPatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
@@ -75,6 +76,7 @@ export const businessesRealApi = {
   },
   getBusinessDetail: (id: number): Promise<BusinessDetail> => httpGet(`${BASE}/${id}`),
   getInstitutionDetail: (id: number): Promise<InstitutionDetail> => httpGet(`/admin/platform/institutions/${id}`),
+  getListingKind: (id: number): Promise<{ kind: ListingKind }> => httpGet(`/admin/platform/listings/${id}/kind`),
   updateInstitution: (id: number, patch: InstitutionPatch): Promise<InstitutionDetail> =>
     httpPatch(`/admin/platform/institutions/${id}`, patch),
   getInstitutionMembers: async (id: number, params: MemberListParams = {}): Promise<MemberListResult> => {
@@ -89,6 +91,13 @@ export const businessesRealApi = {
     );
     return { data, total: meta.total };
   },
+  getInstitutionBranches: async (id: number, params: InstitutionBranchListParams = {}): Promise<InstitutionBranchListResult> => {
+    const { data, meta } = await httpGet<{ data: InstitutionBranchListResult["data"]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/branches${toMemberQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  getInstitutionPartners: (id: number): Promise<InstitutionPartner[]> => httpGet(`/admin/platform/institutions/${id}/partners`),
   inviteInstitutionMember: (id: number, input: InstitutionInviteInput): Promise<{ id: string; email: string; status: string }> =>
     httpPost(`/admin/platform/institutions/${id}/invite`, input),
   getInstitutionInvitations: async (id: number, params: InstitutionInvitationListParams = {}): Promise<InstitutionInvitationListResult> => {

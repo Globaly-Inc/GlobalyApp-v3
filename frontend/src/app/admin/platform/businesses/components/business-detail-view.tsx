@@ -162,7 +162,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
               <XCircle className="mr-1.5 h-3.5 w-3.5" /> Suspend
             </Button>
           )}
-          {/* {business.is_published ? (
+          {business.is_published ? (
             <Button className="h-10" variant="outline" disabled={publishBusy} onClick={runTogglePublish}>
               <EyeOff className="mr-1.5 h-3.5 w-3.5" /> Unpublish
             </Button>
@@ -170,7 +170,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
             <Button className="h-10" disabled={publishBusy || business.status !== "verified"} onClick={runTogglePublish}>
               <Globe className="mr-1.5 h-3.5 w-3.5" /> Publish
             </Button>
-          )} */}
+          )}
         </div>
       </div>
 

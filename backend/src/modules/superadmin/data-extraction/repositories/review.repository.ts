@@ -26,8 +26,25 @@ export async function updateAgent(id: string, data: Record<string, unknown>) {
 
 // ── Campuses ──
 
+export type CampusListFilters = { search?: string };
+
+function filteredCampusesQuery(jobId: string, { search }: CampusListFilters = {}) {
+  const q = masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId });
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
+}
+
 export async function listCampusesByJob(jobId: string) {
   return masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).orderBy("created_at", "asc");
+}
+
+export async function listCampusesByJobPaged(jobId: string, limit: number, offset: number, filters: CampusListFilters = {}) {
+  return filteredCampusesQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countCampusesByJob(jobId: string, filters: CampusListFilters = {}) {
+  const [row] = await filteredCampusesQuery(jobId, filters).count("id as count");
+  return Number(row.count);
 }
 
 export async function updateCampus(id: string, data: Record<string, unknown>) {

@@ -28,16 +28,12 @@ export type PortalNavGroup = {
   items?: PortalNavItem[];
 };
 
-/**
- * Exact match, otherwise prefix match on the path — other query params (e.g. admin's sort/filter)
- * are ignored, but `tab` is compared explicitly so sibling items that share one route and differ
- * only by `?tab=` (business profile's Branches/Team/Services/…) don't all light up at once. Two
- * hrefs with no `tab` at all still compare equal (both `null`), matching a plain route.
- */
 export function isPortalNavActive(pathname: string | null, href: string, currentSearch?: string | null): boolean {
   const [path, hrefQuery] = href.split("?");
-  if (pathname !== path && !pathname?.startsWith(`${path}/`)) return false;
+  const isExactPath = pathname === path;
+  if (!isExactPath && !pathname?.startsWith(`${path}/`)) return false;
   const hrefTab = new URLSearchParams(hrefQuery ?? "").get("tab");
+  if (!isExactPath) return hrefTab === null;
   const currentTab = new URLSearchParams(currentSearch ?? "").get("tab");
   return hrefTab === currentTab;
 }

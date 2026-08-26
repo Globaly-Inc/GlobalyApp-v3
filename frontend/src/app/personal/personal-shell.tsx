@@ -44,11 +44,13 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const portalTarget = !mounted
-    ? null
-    : profile?.user_category === "business" || profile?.user_category === "institution"
-      ? { label: "Business Portal", icon: Building2, href: "/business/profile" }
-      : { label: "Switch to Business", icon: Building2, href: "/business/onboarding" };
+  const isBusinessAccount = profile?.user_category === "business" || profile?.user_category === "institution";
+  const myProfileHref = isBusinessAccount ? "/business/profile" : "/personal/profile";
+
+  const businessPortalTarget = isBusinessAccount
+    ? { label: "Business Portal", icon: Building2, href: "/business/profile" }
+    : { label: "Switch to Business", icon: Building2, href: "/business/onboarding" };
+  const portalTarget = mounted ? businessPortalTarget : null;
 
   useEffect(() => {
     if (!profile) dispatch(fetchFullProfile());
@@ -147,7 +149,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 p-1.5">
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/profile")}>
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(myProfileHref)}>
                   My Profile
                 </DropdownMenuItem>
                 {/* {portalTarget && (
@@ -194,7 +196,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
         </main>
       </div>
 
-      <PersonalMobileNav portalTarget={portalTarget} onSignOut={handleSignOut} />
+      <PersonalMobileNav portalTarget={portalTarget} myProfileHref={myProfileHref} onSignOut={handleSignOut} />
       <AiLauncher />
     </div>
   );

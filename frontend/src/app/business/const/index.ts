@@ -51,3 +51,16 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
   { icon: MessageSquare, label: "Messages", items: [{ icon: MessageSquare, label: "Messages", href: "/business/messages" }],
 },
 ];
+
+export function withBusinessId(groups: BusinessNavGroup[], businessId: number | null): BusinessNavGroup[] {
+  if (businessId == null) return groups;
+  return groups.map((group) => ({
+    ...group,
+    items: group.items.map((item) => {
+      const [path, query] = item.href.split("?");
+      if (path !== "/business/profile") return item;
+      const querySuffix = query ? `?${query}` : "";
+      return { ...item, href: `/business/profile/${businessId}${querySuffix}` };
+    }),
+  }));
+}

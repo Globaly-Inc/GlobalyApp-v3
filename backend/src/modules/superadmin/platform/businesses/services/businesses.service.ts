@@ -19,6 +19,7 @@ import { generateSubdomain } from "../../../../../shared/subdomain.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
 import * as agentsService from "../../../../agents/services/agents.service.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
+import * as reviewRepo from "../../../data-extraction/repositories/review.repository.js";
 import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
 import type { InstitutionInviteInput } from "../../../../platform-users/services/institution-members.service.js";
 import type { PaginationInput } from "../../../../../shared/pagination.js";
@@ -43,6 +44,12 @@ async function requireBusiness(id: number) {
   const biz = await repo.findBusinessById(id);
   if (!biz) throw new NotFoundError("Business not found");
   return biz;
+}
+
+export async function resolveListingKind(id: number): Promise<{ kind: "business" | "institution" }> {
+  if (await repo.findInstitutionById(id)) return { kind: "institution" };
+  if (await repo.findBusinessById(id)) return { kind: "business" };
+  throw new NotFoundError("Listing not found");
 }
 
 async function subdomainTaken(subdomain: string): Promise<boolean> {
@@ -283,9 +290,11 @@ export async function sendInstitutionClaimRequest(id: number) {
 
   const token = randomBytes(32).toString("hex");
   // setInstitutionClaimPending writes claim_status; the admin badge reads `status`, so both move
-  // together here for the same reason as the business path above.
+  // together here for the same reason as the business path above — but only from "unverified",
+  // so resending a claim request can't quietly downgrade an institution that is already verified
+  // or suspended.
   await userRepo.setInstitutionClaimPending(id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-  await userRepo.updateInstitution(id, { status: "claim_pending" });
+  if (inst.status === "unverified") await userRepo.updateInstitution(id, { status: "claim_pending" });
 
   const claimUrl = `${config.WEB_APP_URL}/invite/institution/accept?token=${token}`;
   const ownerName = `${inst.first_name ?? ""} ${inst.last_name ?? ""}`.trim() || "there";
@@ -390,11 +399,6 @@ export async function listInstitutionMembers(id: number, opts: { search?: string
   }
 }
 
-/**
- * An institution promoted from an extraction job carries that job's id (`source_job_id`), which
- * is also the key `extraction_courses` is filed under — so the job's courses ARE this
- * institution's courses. Self-registered institutions have no job, hence no courses.
- */
 export async function listInstitutionCourses(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
   if (!inst.source_job_id) return { rows: [], total: 0 };
@@ -404,6 +408,24 @@ export async function listInstitutionCourses(id: number, opts: { search?: string
     coursesRepo.countCoursesByJob(inst.source_job_id, filters),
   ]);
   return { rows, total };
+}
+
+export async function listInstitutionBranches(id: number, opts: { search?: string; limit: number; offset: number }) {
+  const inst = await requireInstitution(id);
+  if (!inst.source_job_id) return { rows: [], total: 0 };
+  const filters = { search: opts.search };
+  const [rows, total] = await Promise.all([
+    reviewRepo.listCampusesByJobPaged(inst.source_job_id, opts.limit, opts.offset, filters),
+    reviewRepo.countCampusesByJob(inst.source_job_id, filters),
+  ]);
+  return { rows, total };
+}
+
+export async function listInstitutionPartners(id: number) {
+  const inst = await requireInstitution(id);
+  if (!inst.source_job_id) return [];
+  const { agents } = await reviewRepo.listAgentsByJob(inst.source_job_id);
+  return agents;
 }
 
 export async function updateEnquirySettings(id: number, data: EnquirySettingsPatchInput) {
