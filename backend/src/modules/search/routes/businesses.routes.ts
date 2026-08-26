@@ -10,7 +10,7 @@ import { SearchListQuery, ServiceListQuery, VisaServiceListQuery } from "../sche
 
 async function withRepresentationPreviews(reps: Awaited<ReturnType<typeof repo.listPublicRepresentations>>) {
   return Promise.all(reps.map(async (rep) => ({
-    ...rep, partner_business_logo_url: await storage.resolvePreviewUrl(rep.partner_business_logo_url),
+    ...rep, partner_logo_url: await storage.resolvePreviewUrl(rep.partner_logo_url),
   })));
 }
 

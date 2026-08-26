@@ -134,10 +134,10 @@ export type BusinessService = {
 
 export type BusinessRepresentation = {
   id: string;
-  partner_business_id: number;
-  partner_business_name: string;
-  partner_business_logo_url: string | null;
-  relation_type: string;
+  partner_kind: "business" | "institution";
+  partner_id: number;
+  partner_name: string;
+  partner_logo_url: string | null;
 };
 
 export type BusinessDetail = SearchBusiness & {

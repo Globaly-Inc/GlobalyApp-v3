@@ -2,13 +2,14 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
   BusinessStatus, InstitutionBranch, InstitutionBranchListParams, InstitutionCourse, InstitutionCourseListParams, InstitutionDetail, InstitutionInvitation,
-  InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPartner, InstitutionPatch, InstitutionPermission, InstitutionRole,
-  InstitutionRoleCreateInput, InstitutionRolePatch, Member, MemberListParams,
+  InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPartnerInput, InstitutionPartnerListParams, InstitutionPartnerPatch, InstitutionPartnerRow,
+  InstitutionPatch, InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch, Member, MemberListParams,
 } from "../apis/types";
 
 // Separate from businesses-slice.ts: institutions have no real contacts/activity/enquiry-settings
-// backend yet. Branches/Partners here aren't a real CRUD either — they're read-only projections
-// of the source extraction job's campuses/agents (see businesses.service.ts on the backend).
+// backend yet. Branches here aren't a real CRUD either — they're read-only projections of the
+// source extraction job's campuses (see businesses.service.ts on the backend). Partners IS real
+// CRUD (business_representations), merged with the same read-only extraction_agents projection.
 
 export const fetchInstitutionDetail = createAsyncThunk("institutionDetail/fetch", (id: number) =>
   businessesApi.getInstitutionDetail(id),
@@ -34,8 +35,26 @@ export const fetchInstitutionBranches = createAsyncThunk(
   ({ id, params }: { id: number; params?: InstitutionBranchListParams }) => businessesApi.getInstitutionBranches(id, params),
 );
 
-export const fetchInstitutionPartners = createAsyncThunk("institutionDetail/fetchPartners", (id: number) =>
-  businessesApi.getInstitutionPartners(id),
+export const fetchInstitutionPartners = createAsyncThunk(
+  "institutionDetail/fetchPartners",
+  ({ id, params }: { id: number; params?: InstitutionPartnerListParams }) => businessesApi.getInstitutionPartners(id, params),
+);
+
+export const createInstitutionPartner = createAsyncThunk(
+  "institutionDetail/createPartner",
+  ({ id, input }: { id: number; input: InstitutionPartnerInput }) => businessesApi.createInstitutionPartner(id, input),
+);
+export const updateInstitutionPartner = createAsyncThunk(
+  "institutionDetail/updatePartner",
+  ({ id, partnerId, patch }: { id: number; partnerId: string; patch: InstitutionPartnerPatch }) =>
+    businessesApi.updateInstitutionPartner(id, partnerId, patch),
+);
+export const deleteInstitutionPartner = createAsyncThunk(
+  "institutionDetail/deletePartner",
+  async ({ id, partnerId }: { id: number; partnerId: string }) => {
+    await businessesApi.deleteInstitutionPartner(id, partnerId);
+    return partnerId;
+  },
 );
 
 export const inviteInstitutionMember = createAsyncThunk(
@@ -124,7 +143,7 @@ type InstitutionDetailState = {
   courses: PagedState<InstitutionCourse>;
   invitations: PagedState<InstitutionInvitation>;
   branches: PagedState<InstitutionBranch>;
-  partners: PagedState<InstitutionPartner>;
+  partners: PagedState<InstitutionPartnerRow>;
   roles: PagedState<InstitutionRole>;
   permissions: InstitutionPermission[];
 };
@@ -244,11 +263,24 @@ const institutionDetailSlice = createSlice({
         state.partners.status = "loading";
       })
       .addCase(fetchInstitutionPartners.fulfilled, (state, action) => {
-        state.partners = { items: action.payload, total: action.payload.length, status: "idle", error: null };
+        state.partners = { items: action.payload.data, total: action.payload.total, status: "idle", error: null };
       })
       .addCase(fetchInstitutionPartners.rejected, (state, action) => {
         state.partners.status = "failed";
         state.partners.error = action.error.message ?? "Failed to load partners.";
+      })
+      .addCase(createInstitutionPartner.fulfilled, (state, action) => {
+        state.partners.items.push({ ...action.payload, source: "manual" });
+        state.partners.total += 1;
+      })
+      .addCase(updateInstitutionPartner.fulfilled, (state, action) => {
+        const i = state.partners.items.findIndex((p) => p.id === action.payload.id);
+        if (i !== -1) state.partners.items[i] = { ...action.payload, source: "manual" };
+      })
+      .addCase(deleteInstitutionPartner.fulfilled, (state, action) => {
+        const wasPresent = state.partners.items.some((p) => p.id === action.payload);
+        state.partners.items = state.partners.items.filter((p) => p.id !== action.payload);
+        if (wasPresent) state.partners.total = Math.max(0, state.partners.total - 1);
       });
   },
 });

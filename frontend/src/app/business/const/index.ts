@@ -18,9 +18,9 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
     items: [
       { icon: Building2, label: "Business Profile", href: "/business/profile" },
       { icon: MapPin, label: "Branches", href: "/business/profile?tab=branches" },
+      { icon: Handshake, label: "Representative", href: "/business/profile?tab=partners" },
       { icon: Users, label: "Team", href: "/business/profile?tab=team" },
       { icon: BookOpen, label: "Services", href: "/business/profile?tab=services" },
-      { icon: GraduationCap, label: "Scholarships", href: "/business/profile?tab=scholarships" },
     ],
   },
   // No features behind these yet — each routes to a ComingSoon placeholder until built.
@@ -51,6 +51,10 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
   { icon: MessageSquare, label: "Messages", items: [{ icon: MessageSquare, label: "Messages", href: "/business/messages" }],
 },
 ];
+
+export const INSTITUTION_SCHOLARSHIPS_ITEM: BusinessNavItem = {
+  icon: GraduationCap, label: "Scholarships", href: "/business/profile?tab=scholarships",
+};
 
 export function withBusinessId(groups: BusinessNavGroup[], businessId: number | null): BusinessNavGroup[] {
   if (businessId == null) return groups;

@@ -134,6 +134,7 @@ export async function acceptInstitutionClaim(
       phone: owner.phone,
     });
 
+    await repo.updateUser(owner.id, { is_personal_account: true });
     await repo.addAccountCategory(owner.id, {
       type: "institution",
       role: institution.institution_type ?? "institution",

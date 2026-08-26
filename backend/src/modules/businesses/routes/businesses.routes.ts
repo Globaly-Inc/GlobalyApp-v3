@@ -5,7 +5,7 @@ import {
   BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema, ClaimAcceptSchema, ClaimRequestByEmailSchema,
   AiAssistSchema,
 } from "../schemas/businesses.schema.js";
-import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
+import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/businesses.service.js";
 
 export async function businessRoutes(app: FastifyInstance) {
@@ -35,10 +35,9 @@ export async function businessRoutes(app: FastifyInstance) {
     return reply.status(201).send(result);
   });
 
-  // Business context required: search other businesses (e.g. to link a partner)
-  app.get("/search", { preHandler: requireBusinessContext }, async (req, reply) => {
+  app.get("/search", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { search, limit } = BusinessSearchQuerySchema.parse(req.query);
-    const result = await service.searchBusinesses(req.auth.orgId!, search, limit);
+    const result = await service.searchBusinesses(req.auth, search, limit);
     return reply.send(result);
   });
 

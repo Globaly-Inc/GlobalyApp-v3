@@ -3,7 +3,8 @@ import type {
   BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
   BusinessService, EnquirySettingsPatch, InstitutionBranch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
   ListingKind,
-  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPartner, InstitutionPatch,
+  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput,
+  InstitutionPartner, InstitutionPartnerInput, InstitutionPartnerListParams, InstitutionPartnerListResult, InstitutionPartnerPatch, InstitutionPartnerRow, InstitutionPatch,
   InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
@@ -70,13 +71,17 @@ const mockRoles: MemberRole[] = [
 ];
 
 function paginateRelations(items: BusinessRelation[], params: RelationListParams): RelationListResult {
+  const filtered = params.search
+    ? items.filter((r) => r.partner_name.toLowerCase().includes(params.search!.toLowerCase()))
+    : items;
   const limit = params.limit ?? 20;
   const page = params.page ?? 1;
   const start = (page - 1) * limit;
-  return { data: items.slice(start, start + limit), total: items.length };
+  return { data: filtered.slice(start, start + limit), total: filtered.length };
 }
 
 const mockRelations: Record<number, BusinessRelation[]> = {};
+const mockInstitutionRelations: Record<number, BusinessRelation[]> = {};
 const mockActivity: Record<number, ActivityLogEntry[]> = {
   1: [
     { id: "log-1", action: "BUSINESS_UPDATED", details: { business_id: 1 }, created_at: "2026-06-02T09:00:00Z", admin_first_name: "Super", admin_last_name: "Admin" },
@@ -128,7 +133,7 @@ const mockBusinesses: BusinessDetail[] = [
 
 const mockInstitutions: InstitutionDetail[] = [
   {
-    kind: "institution", id: 1, business_name: "Global Study Institute", subdomain: "gsi", business_type: "university",
+    kind: "institution", id: 1, slug: "global-study-institute-000001", business_name: "Global Study Institute", subdomain: "gsi", business_type: "university",
     description: "A leading study destination institute.", website: "https://gsi.edu",
     email: "admissions@gsi.edu", phone: "+1 604 555 0110", status: "unverified", claim_status: "unclaimed",
     is_published: false, country_id: 3, country_name: "Canada", state: "British Columbia", city: "Vancouver",
@@ -144,12 +149,12 @@ const mockInstitutions: InstitutionDetail[] = [
 const mockInstitutionCourses: Record<string, InstitutionCourse[]> = {
   "mock-job-1": [
     {
-      id: "course-1", name: "Bachelor of Computer Science", degree_level: "Bachelor", subject_area: "Computer Science",
+      id: "course-1", slug: "bachelor-of-computer-science-course1", name: "Bachelor of Computer Science", degree_level: "Bachelor", subject_area: "Computer Science",
       duration_weeks: 156, study_mode: "Full-time", domestic_fee_total: 28000, domestic_currency: "CAD",
       verification_status: "verified", source_url: "https://gsi.edu/courses/bcs",
     },
     {
-      id: "course-2", name: "Master of Business Administration", degree_level: "Master", subject_area: "Business",
+      id: "course-2", slug: "master-of-business-administration-course2", name: "Master of Business Administration", degree_level: "Master", subject_area: "Business",
       duration_weeks: 104, study_mode: "Full-time", domestic_fee_total: 42000, domestic_currency: "CAD",
       verification_status: "unverified", source_url: null,
     },
@@ -206,6 +211,7 @@ function applyFilters(rows: Business[], params: BusinessListParams): Business[] 
   }
   if (params.status) out = out.filter((b) => b.status === params.status);
   if (params.category) out = out.filter((b) => b.business_category_id === params.category);
+  if (params.kind) out = out.filter((b) => b.kind === params.kind);
   return out;
 }
 
@@ -349,11 +355,50 @@ export const businessesMockApi = {
     const start = (page - 1) * limit;
     return { data: items.slice(start, start + limit), total: items.length };
   },
-  getInstitutionPartners: async (id: number): Promise<InstitutionPartner[]> => {
-    console.log("[mock] GET /admin/platform/institutions/:id/partners", id);
+  getInstitutionPartners: async (id: number, params: InstitutionPartnerListParams = {}): Promise<InstitutionPartnerListResult> => {
+    console.log("[mock] GET /admin/platform/institutions/:id/partners", id, params);
     await delay(150);
     const inst = mockInstitutions.find((x) => x.id === id);
-    return inst?.source_job_id ? (mockInstitutionPartners[inst.source_job_id] ?? []) : [];
+    const extracted = inst?.source_job_id ? (mockInstitutionPartners[inst.source_job_id] ?? []) : [];
+    let rows: InstitutionPartnerRow[] = [
+      ...(mockInstitutionRelations[id] ?? []).map((r): InstitutionPartnerRow => ({ ...r, source: "manual" })),
+      ...extracted.map((a): InstitutionPartnerRow => ({ ...a, source: "extracted" })),
+    ];
+    if (params.search) {
+      const q = params.search.toLowerCase();
+      rows = rows.filter((r) => (r.source === "manual" ? r.partner_name : (r.name ?? "")).toLowerCase().includes(q));
+    }
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 10;
+    const start = (page - 1) * limit;
+    return { data: rows.slice(start, start + limit), total: rows.length };
+  },
+  createInstitutionPartner: async (id: number, input: InstitutionPartnerInput): Promise<BusinessRelation> => {
+    console.log("[mock] POST /admin/platform/institutions/:id/partners", id, input);
+    await delay(150);
+    const biz = mockBusinesses.find((x) => x.id === input.business_id);
+    if (!biz) throw new Error("Business not found");
+    const relation: BusinessRelation = {
+      id: uuid(), status: "active", created_at: new Date().toISOString(),
+      partner_kind: "business", partner_id: biz.id, partner_name: biz.business_name, partner_logo_url: biz.logo_url, business_type: biz.business_type,
+      country_ids: input.country_ids ?? [], valid_from: input.valid_from ?? null,
+      valid_until: input.valid_until ?? null, notes: input.notes ?? null,
+    };
+    mockInstitutionRelations[id] = [...(mockInstitutionRelations[id] ?? []), relation];
+    return relation;
+  },
+  updateInstitutionPartner: async (id: number, partnerId: string, patch: InstitutionPartnerPatch): Promise<BusinessRelation> => {
+    console.log("[mock] PATCH /admin/platform/institutions/:id/partners/:partnerId", id, partnerId, patch);
+    await delay(150);
+    const relation = (mockInstitutionRelations[id] ?? []).find((r) => r.id === partnerId);
+    if (!relation) throw new Error("Partner not found");
+    Object.assign(relation, patch);
+    return relation;
+  },
+  deleteInstitutionPartner: async (id: number, partnerId: string): Promise<void> => {
+    console.log("[mock] DELETE /admin/platform/institutions/:id/partners/:partnerId", id, partnerId);
+    await delay(150);
+    mockInstitutionRelations[id] = (mockInstitutionRelations[id] ?? []).filter((r) => r.id !== partnerId);
   },
   inviteInstitutionMember: async (id: number, input: InstitutionInviteInput): Promise<{ id: string; email: string; status: string }> => {
     console.log("[mock] POST /admin/platform/institutions/:id/invite", id, input);
@@ -523,7 +568,7 @@ export const businessesMockApi = {
   // ponytail: mock skips the invite/accept round-trip and adds the member immediately.
   inviteMember: async (id: number, input: MemberInviteInput): Promise<{ id: string; email: string; status: string }> => {
     await delay(150);
-    const role = mockRoles.find((r) => r.name === input.role) ?? mockRoles[mockRoles.length - 1]!;
+    const role = mockRoles.find((r) => r.name === input.role) ?? mockRoles[mockRoles?.length - 1]!;
     const existing = mockMembers[id] ?? [];
     const nextId = existing.reduce((max, m) => Math.max(max, m.id), 0) + 1;
     const member: Member = {
@@ -567,8 +612,8 @@ export const businessesMockApi = {
       const biz = mockBusinesses.find((x) => x.id === input.partner_business_id);
       if (!biz) throw new Error("Business not found");
       const relation: BusinessRelation = {
-        id: uuid(), status: "active", relation_type: input.relation_type, created_at: new Date().toISOString(),
-        business_id: biz.id, business_name: biz.business_name, logo_url: biz.logo_url, business_type: biz.business_type,
+        id: uuid(), status: "active", created_at: new Date().toISOString(),
+        partner_kind: "business", partner_id: biz.id, partner_name: biz.business_name, partner_logo_url: biz.logo_url, business_type: biz.business_type,
         country_ids: input.country_ids ?? [], valid_from: input.valid_from ?? null,
         valid_until: input.valid_until ?? null, notes: input.notes ?? null,
       };

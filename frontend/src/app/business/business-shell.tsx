@@ -20,7 +20,7 @@ import { authApi } from "@/app/auth/apis";
 import type { AuthMeInstitution } from "@/app/auth/apis";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
-import { BUSINESS_NAV_GROUPS, withBusinessId } from "./const";
+import { BUSINESS_NAV_GROUPS, INSTITUTION_SCHOLARSHIPS_ITEM, withBusinessId } from "./const";
 import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
@@ -50,21 +50,18 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
   }));
 }
 
-// Branches, Partners, and Scholarships have no institution-side data — only Business Profile,
-// Team (institutions' own `members` table), and Services (their extracted courses) apply.
-const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Team", "Services"]);
+const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Representative", "Team", "Services"]);
 // Enquiries and Messages are the only other items backed by real pages, and both call
 // requireBusinessContext routes — offering them to an institution just produced a 403
 // ("This endpoint requires a business context"). Everything else in the sidebar is a
 // ComingSoon placeholder that makes no requests, so it stays.
 const INSTITUTION_HIDDEN_ITEMS = new Set(["Enquiries", "Messages"]);
-const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => ({
-  ...group,
-  items: group.items.filter((item) =>
-    group.label === "Business" ? INSTITUTION_BUSINESS_ITEMS.has(item.label) : !INSTITUTION_HIDDEN_ITEMS.has(item.label),
-  ),
-  // Messages is a single-item group, so filtering its item empties the group.
-})).filter((group) => group.items.length > 0);
+const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => {
+  if (group.label !== "Business") {
+    return { ...group, items: group.items.filter((item) => !INSTITUTION_HIDDEN_ITEMS.has(item.label)) };
+  }
+  return { ...group, items: [...group.items.filter((item) => INSTITUTION_BUSINESS_ITEMS.has(item.label)), INSTITUTION_SCHOLARSHIPS_ITEM] };
+}).filter((group) => group.items.length > 0);
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();

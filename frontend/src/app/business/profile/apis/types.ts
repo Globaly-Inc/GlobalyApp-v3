@@ -238,16 +238,16 @@ export type InvitedMember = {
 
 export type InvitationListResult = { data: InvitedMember[]; total: number };
 
-export type RelationType = "partner" | "subsidiary" | "franchise";
+export type PartnerKind = "business" | "institution";
 
 export type BusinessRelation = {
   id: string;
   status: string;
-  relation_type: RelationType;
   created_at: string;
-  business_id: number;
-  business_name: string;
-  logo_url: string | null;
+  partner_kind: PartnerKind;
+  partner_id: number;
+  partner_name: string;
+  partner_logo_url: string | null;
   business_type: string | null;
   country_ids: number[] | null;
   valid_from: string | null;
@@ -257,7 +257,6 @@ export type BusinessRelation = {
 
 export type RelationInput = {
   partner_business_id: number;
-  relation_type: RelationType;
   country_ids?: number[];
   valid_from?: string | null;
   valid_until?: string | null;
@@ -270,6 +269,39 @@ export type RelationPatch = Partial<Pick<RelationInput, "country_ids" | "valid_f
 export type RelationListParams = { page?: number; limit?: number };
 
 export type RelationListResult = { data: BusinessRelation[]; total: number };
+
+export type PartnerInstitutionDetail = {
+  id: number;
+  institution_name: string;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  description: string | null;
+  country_id: number | null;
+  state: string | null;
+  city: string | null;
+  address: string | null;
+  logo_url: string | null;
+  cover_url: string | null;
+};
+
+export type PartnerInstitutionCourse = {
+  id: string;
+  slug: string;
+  name: string;
+  degree_level: string | null;
+  subject_area: string | null;
+  duration_weeks: number | null;
+  study_mode: string | null;
+  domestic_fee_total: number | null;
+  domestic_currency: string | null;
+  verification_status: string | null;
+  source_url: string | null;
+};
+
+export type PartnerInstitutionCourseListParams = { search?: string; page?: number; limit?: number };
+
+export type PartnerInstitutionCourseListResult = { data: PartnerInstitutionCourse[]; total: number };
 
 export type BusinessSearchParams = { search?: string; limit?: number };
 

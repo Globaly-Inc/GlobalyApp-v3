@@ -5,9 +5,13 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 // ── Agents ──
 
-export async function listAgentsByJob(jobId: string) {
+// `search` param: not a V2 port, explicitly requested for the institution admin Partners tab
+// (2026-08-26) so its merged manual+scraped list can search server-side like every other tab.
+export async function listAgentsByJob(jobId: string, search?: string) {
+  const agentsQuery = masterKnex(`${S}.extraction_agents`).where({ job_id: jobId }).orderBy("created_at", "asc");
+  if (search) agentsQuery.whereILike("name", `%${search}%`);
   const [agents, agentLocations] = await Promise.all([
-    masterKnex(`${S}.extraction_agents`).where({ job_id: jobId }).orderBy("created_at", "asc"),
+    agentsQuery,
     masterKnex(`${S}.extraction_agent_locations`).where({ job_id: jobId }).orderBy("created_at", "asc"),
   ]);
   return { agents, agent_locations: agentLocations };

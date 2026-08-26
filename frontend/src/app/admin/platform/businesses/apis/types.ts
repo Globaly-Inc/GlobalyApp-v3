@@ -43,6 +43,9 @@ export type BusinessListParams = {
   search?: string;
   status?: string;
   category?: number;
+  /** Forces which table(s) to query, independent of `category` — e.g. a consultancy picker
+   *  that wants every business, no category restriction, and never institutions. */
+  kind?: ListingKind;
   page?: number;
   limit?: number;
 };
@@ -74,6 +77,7 @@ export type BusinessDetail = Business & {
 export type InstitutionDetail = {
   kind: "institution";
   id: number;
+  slug: string;
   business_name: string;
   subdomain: string;
   business_type: string | null;
@@ -136,6 +140,7 @@ export type InstitutionPatch = Partial<{
  *  an extraction job (source_job_id), read-only here (editing happens in the extraction admin). */
 export type InstitutionCourse = {
   id: string;
+  slug: string;
   name: string;
   degree_level: string | null;
   subject_area: string | null;
@@ -170,6 +175,25 @@ export type InstitutionPartner = {
   website: string | null;
   source_url: string | null;
 };
+
+/** GET /institutions/:id/partners merges manually-linked consultancies (real CRUD, same
+ *  business_representations row shape as BusinessRelation) with read-only scraped agents —
+ *  `source` says which, and only "manual" rows get edit/delete affordances. */
+export type InstitutionPartnerRow = (BusinessRelation & { source: "manual" }) | (InstitutionPartner & { source: "extracted" });
+
+export type InstitutionPartnerInput = {
+  business_id: number;
+  country_ids?: number[];
+  valid_from?: string | null;
+  valid_until?: string | null;
+  notes?: string | null;
+};
+
+export type InstitutionPartnerPatch = Partial<Pick<InstitutionPartnerInput, "country_ids" | "valid_from" | "valid_until" | "notes">>;
+
+export type InstitutionPartnerListParams = { search?: string; page?: number; limit?: number };
+
+export type InstitutionPartnerListResult = { data: InstitutionPartnerRow[]; total: number };
 
 export type InstitutionCourseListParams = { search?: string; page?: number; limit?: number };
 
@@ -361,17 +385,16 @@ export type MemberPatch = Partial<{
   is_owner: boolean;
 }>;
 
-// Subsidiary/franchise/partner links between businesses (business_representations) — "partner" type shown in the Partners tab.
-export type RelationType = "partner" | "subsidiary" | "franchise";
+export type PartnerKind = "business" | "institution";
 
 export type BusinessRelation = {
   id: string;
   status: string;
-  relation_type: RelationType;
   created_at: string;
-  business_id: number;
-  business_name: string;
-  logo_url: string | null;
+  partner_kind: PartnerKind;
+  partner_id: number;
+  partner_name: string;
+  partner_logo_url: string | null;
   business_type: string | null;
   country_ids: number[] | null;
   valid_from: string | null;
@@ -381,7 +404,6 @@ export type BusinessRelation = {
 
 export type RelationInput = {
   partner_business_id: number;
-  relation_type: RelationType;
   country_ids?: number[];
   valid_from?: string | null;
   valid_until?: string | null;
@@ -391,7 +413,7 @@ export type RelationInput = {
 
 export type RelationPatch = Partial<Pick<RelationInput, "country_ids" | "valid_from" | "valid_until" | "notes">>;
 
-export type RelationListParams = { page?: number; limit?: number };
+export type RelationListParams = { search?: string; page?: number; limit?: number };
 
 export type RelationListResult = { data: BusinessRelation[]; total: number };
 

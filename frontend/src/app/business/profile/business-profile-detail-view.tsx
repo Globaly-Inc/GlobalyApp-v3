@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
+// import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
@@ -54,7 +54,9 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const parsedTab = parseTab(searchParams.get("tab"));
   // Branches/Partners/Scholarships/Activity have no institution-side data — the sidebar never
   // links there for an institution, but fall back to profile if the URL is edited directly.
-  const tab = isViewingInstitution && !["profile", "team", "services"].includes(parsedTab) ? "profile" : parsedTab;
+  const institutionTabAllowed = ["profile", "team", "services", "partners", "scholarships"].includes(parsedTab);
+  const isDisallowedForRole = (isInstitution && !institutionTabAllowed) || (isBusiness && parsedTab === "scholarships");
+  const tab = isDisallowedForRole ? "profile" : parsedTab;
 
   useEffect(() => {
     if (initializing) return;
@@ -128,14 +130,14 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     }
   };
 
-  const handleTogglePublished = async (is_published: boolean) => {
-    const result = await dispatch(updateMyProfile({ is_published }));
-    if (updateMyProfile.rejected.match(result)) {
-      toast.error("Couldn't update", { description: result.error.message ?? "Please try again." });
-      return;
-    }
-    toast.success(is_published ? "Profile published" : "Profile unpublished");
-  };
+  // const handleTogglePublished = async (is_published: boolean) => {
+  //   const result = await dispatch(updateMyProfile({ is_published }));
+  //   if (updateMyProfile.rejected.match(result)) {
+  //     toast.error("Couldn't update", { description: result.error.message ?? "Please try again." });
+  //     return;
+  //   }
+  //   toast.success(is_published ? "Profile published" : "Profile unpublished");
+  // };
 
   return (
     <div className="space-y-4">

@@ -18,15 +18,15 @@ export async function findBusinessByDbName(dbName: string): Promise<BusinessReco
 
 export async function searchBusinesses(
   search: string | undefined,
-  excludeId: string,
+  excludeId: string | undefined,
   limit: number,
 ): Promise<Pick<BusinessRecord, "id" | "business_name" | "logo_url">[]> {
   const query = masterKnex<BusinessRecord>("businesses")
     .select("id", "business_name", "logo_url")
     .whereNull("deleted_at")
-    .whereNot("id", excludeId)
     .orderBy("business_name")
     .limit(limit);
+  if (excludeId) query.whereNot("id", excludeId);
   if (search) query.whereILike("business_name", `%${search}%`);
   return query;
 }

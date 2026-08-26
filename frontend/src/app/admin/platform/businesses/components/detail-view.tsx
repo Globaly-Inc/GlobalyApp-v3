@@ -156,7 +156,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
             </Button>
           )}
           {/* Publish/unpublish is institution-only for now — deliberately hidden for businesses, see business-detail-view history. */}
-          {kind === "institution" && (detail.is_published ? (
+          {(detail.is_published ? (
             <Button className="h-10" variant="outline" disabled={publishBusy} onClick={runTogglePublish}>
               <EyeOff className="mr-1.5 h-3.5 w-3.5" /> Unpublish
             </Button>
