@@ -200,6 +200,33 @@ export type InstitutionInvitation = {
 
 export type InstitutionInvitationListParams = { page?: number; limit?: number };
 
+export type InstitutionPermission = {
+  id: number;
+  module: string;
+  action: string;
+  display_name: string;
+  description: string | null;
+};
+
+export type InstitutionRole = {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+  is_system: boolean;
+  sort_order: number;
+  permission_ids: number[];
+  members_count: number;
+};
+
+export type InstitutionRoleCreateInput = {
+  display_name: string;
+  description?: string | null;
+  permission_ids: number[];
+};
+
+export type InstitutionRolePatch = Partial<InstitutionRoleCreateInput>;
+
 export type InstitutionInvitationListResult = { data: InstitutionInvitation[]; total: number };
 
 export type EnquirySettingsPatch = Partial<{

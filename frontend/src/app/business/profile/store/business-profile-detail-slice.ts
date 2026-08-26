@@ -109,20 +109,26 @@ export const resendInvitation = createAsyncThunk(
 );
 
 // ─── Roles (Members → Roles sub-tab) ─────────────────────────────────────────
-export const fetchRoles = createAsyncThunk("businessProfileDetail/fetchRoles", () => businessProfileDetailApi.getRoles());
-export const fetchPermissions = createAsyncThunk("businessProfileDetail/fetchPermissions", () => businessProfileDetailApi.getPermissions());
+// ponytail: orgBase switches the API prefix for institution tokens (/institutions/roles vs /businesses/roles)
+function getOrgBase(getState: () => unknown): string {
+  const state = getState() as { auth?: { user?: { user_category?: string | null } } };
+  return state.auth?.user?.user_category === "institution" ? "/institutions" : "/businesses";
+}
+
+export const fetchRoles = createAsyncThunk("businessProfileDetail/fetchRoles", (_: void, { getState }) => businessProfileDetailApi.getRoles(getOrgBase(getState)));
+export const fetchPermissions = createAsyncThunk("businessProfileDetail/fetchPermissions", (_: void, { getState }) => businessProfileDetailApi.getPermissions(getOrgBase(getState)));
 export const createRole = createAsyncThunk(
   "businessProfileDetail/createRole",
-  ({ input }: { input: RoleCreateInput }) => businessProfileDetailApi.createRole(input),
+  ({ input }: { input: RoleCreateInput }, { getState }) => businessProfileDetailApi.createRole(input, getOrgBase(getState)),
 );
 export const updateRole = createAsyncThunk(
   "businessProfileDetail/updateRole",
-  ({ roleId, patch }: { roleId: number; patch: RolePatch }) => businessProfileDetailApi.updateRole(roleId, patch),
+  ({ roleId, patch }: { roleId: number; patch: RolePatch }, { getState }) => businessProfileDetailApi.updateRole(roleId, patch, getOrgBase(getState)),
 );
 export const deleteRole = createAsyncThunk(
   "businessProfileDetail/deleteRole",
-  async ({ roleId }: { roleId: number }) => {
-    await businessProfileDetailApi.deleteRole(roleId);
+  async ({ roleId }: { roleId: number }, { getState }) => {
+    await businessProfileDetailApi.deleteRole(roleId, getOrgBase(getState));
     return roleId;
   },
 );

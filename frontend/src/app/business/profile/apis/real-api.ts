@@ -143,11 +143,11 @@ export const businessProfileDetailRealApi = {
   cancelInvitation: (invitationId: string): Promise<void> => httpDelete(`${BASE}/members/invitations/${invitationId}`),
   resendInvitation: (invitationId: string): Promise<void> => httpPost(`${BASE}/members/invitations/${invitationId}/resend`, {}),
 
-  getRoles: (): Promise<Role[]> => httpGet(`${BASE}/roles`),
-  getPermissions: (): Promise<Permission[]> => httpGet(`${BASE}/roles/permissions`),
-  createRole: (input: RoleCreateInput): Promise<Role> => httpPost(`${BASE}/roles`, input),
-  updateRole: (roleId: number, patch: RolePatch): Promise<Role> => httpPatch(`${BASE}/roles/${roleId}`, patch),
-  deleteRole: (roleId: number): Promise<void> => httpDelete(`${BASE}/roles/${roleId}`),
+  getRoles: (orgBase = BASE): Promise<Role[]> => httpGet(`${orgBase}/roles`),
+  getPermissions: (orgBase = BASE): Promise<Permission[]> => httpGet(`${orgBase}/roles/permissions`),
+  createRole: (input: RoleCreateInput, orgBase = BASE): Promise<Role> => httpPost(`${orgBase}/roles`, input),
+  updateRole: (roleId: number, patch: RolePatch, orgBase = BASE): Promise<Role> => httpPatch(`${orgBase}/roles/${roleId}`, patch),
+  deleteRole: (roleId: number, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/roles/${roleId}`),
 
   getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {
     const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/partners${toRelationQuery(params)}`);

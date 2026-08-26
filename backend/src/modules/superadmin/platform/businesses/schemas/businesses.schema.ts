@@ -134,6 +134,25 @@ export const BusinessCreateSchema = z.object({
   twitter_url: z.string().nullable().optional(),
 });
 
+// ── Institution role management ──
+
+export const InstitutionRoleParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  roleId: z.coerce.number().int().positive(),
+});
+
+export const RoleCreateSchema = z.object({
+  display_name: z.string().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
+  permission_ids: z.array(z.number().int()).default([]),
+});
+
+export const RolePatchSchema = z.object({
+  display_name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+  permission_ids: z.array(z.number().int()).optional(),
+}).strict();
+
 export type BusinessCreateInput = z.infer<typeof BusinessCreateSchema>;
 export type BusinessPatchInput = z.infer<typeof BusinessPatchSchema>;
 export type EnquirySettingsPatchInput = z.infer<typeof EnquirySettingsPatchSchema>;
@@ -142,3 +161,5 @@ export type BulkClaimRequestInput = z.infer<typeof BulkClaimRequestSchema>;
 export type MemberInviteInput = z.infer<typeof MemberInviteSchema>;
 export type MemberPatchInput = z.infer<typeof MemberPatchSchema>;
 export type InstitutionPatchInput = z.infer<typeof InstitutionPatchSchema>;
+export type RoleCreateInput = z.infer<typeof RoleCreateSchema>;
+export type RolePatchInput = z.infer<typeof RolePatchSchema>;

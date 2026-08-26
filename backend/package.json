@@ -9,6 +9,7 @@
     "migrate:globalyapp": "node --import tsx node_modules/.bin/knex migrate:latest --knexfile knexfile.ts --env globalyapp",
     "migrate:superadmin": "node --import tsx node_modules/.bin/knex migrate:latest --knexfile knexfile.ts --env superadmin",
     "migrate:tenants": "node --import tsx src/workers/migration-runner.ts",
+    "seed:tenants": "node --import tsx src/workers/seed-runner.ts",
     "import:v2": "node --import tsx scripts/import-v2.ts",
     "embed:backfill": "node --import tsx scripts/embed-backfill.ts",
     "chunk:backfill": "node --import tsx scripts/chunk-backfill.ts",

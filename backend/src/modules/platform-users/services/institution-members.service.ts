@@ -21,7 +21,7 @@ import { randomBytes } from "node:crypto";
 import type { Knex } from "knex";
 import { config } from "../../../config.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import { NotFoundError, ConflictError, UnauthorizedError } from "../../../shared/errors.js";
+import { NotFoundError, ConflictError, UnauthorizedError, BadRequestError } from "../../../shared/errors.js";
 import { paginationToOffset, buildPaginatedResponse } from "../../../shared/pagination.js";
 import type { PaginationInput } from "../../../shared/pagination.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
@@ -29,6 +29,8 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import { queueInvitationEmail } from "../../auth/auth.service.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as invitesRepo from "../repositories/institution-invitations.repository.js";
+import * as agentsRepo from "../../agents/repositories/agents.repository.js";
+import type { RoleCreateInput, RolePatchInput } from "../../agents/schemas/agents.schema.js";
 
 const logger = createChildLogger("institution-members-service");
 const INVITE_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching the agent invite flow
@@ -361,4 +363,122 @@ export async function acceptMemberInvitation(institutionSchemaName: string, toke
     message: "Invitation accepted. Log in with your email to access this institution.",
     org_id: institution.schema_name,
   };
+}
+
+// ── Roles (institution twin of agents.service.ts role functions) ──
+// `roles`, `permissions`, `role_permissions` are standalone tables in the institution tenant schema.
+// They are NOT joined to `members.role` (which stays as a text column for simplicity).
+// These functions manage the custom-role/permission definitions; member assignment uses the
+// text role name on the `members` row directly (same as before).
+
+function slugifyRoleName(displayName: string): string {
+  return displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_/, "").replace(/_$/, "");
+}
+
+async function assertPermissionIdsExist(db: Knex, ids: number[]) {
+  if (ids.length === 0) return;
+  const found = await db("permissions").whereIn("id", ids).whereNull("deleted_at").pluck("id");
+  const missing = ids.filter((id) => !found.includes(id));
+  if (missing.length > 0) throw new BadRequestError(`Unknown permission ids: ${missing.join(", ")}`);
+}
+
+async function roleWithDetails(db: Knex, role: agentsRepo.RoleRow) {
+  const [links, membersCount] = await Promise.all([
+    db("role_permissions").where({ role_id: role.id }).pluck("permission_id"),
+    // members.role is still text — count by matching name
+    db("members").where({ role: role.name }).whereNull("deleted_at").count("id as count").then(([r]: any[]) => Number(r.count)),
+  ]);
+  return { ...role, permission_ids: links as number[], members_count: membersCount };
+}
+
+export async function listRolesWithDetails(tenantDb: Knex) {
+  const [roles, links] = await Promise.all([
+    agentsRepo.listRoles(tenantDb),
+    agentsRepo.listRolePermissionLinks(tenantDb),
+  ]);
+  // Count members per role name (text column)
+  const roleCounts = await tenantDb("members")
+    .whereNull("deleted_at")
+    .groupBy("role")
+    .select("role")
+    .count("id as count") as { role: string; count: string }[];
+
+  const permsByRole = new Map<number, number[]>();
+  for (const link of links) {
+    const list = permsByRole.get(link.role_id) ?? [];
+    list.push(link.permission_id);
+    permsByRole.set(link.role_id, list);
+  }
+  const countByRoleName = new Map(roleCounts.map((c) => [c.role, Number(c.count)]));
+
+  return roles.map((role) => ({
+    ...role,
+    permission_ids: permsByRole.get(role.id) ?? [],
+    members_count: countByRoleName.get(role.name) ?? 0,
+  }));
+}
+
+export async function listPermissions(tenantDb: Knex) {
+  return agentsRepo.listPermissions(tenantDb);
+}
+
+export async function createRole(tenantDb: Knex, input: RoleCreateInput) {
+  const name = slugifyRoleName(input.display_name);
+  if (!name) throw new BadRequestError("Role name must contain letters or numbers");
+
+  const existing = await agentsRepo.findRoleByName(tenantDb, name);
+  if (existing) throw new ConflictError(`A role named "${existing.display_name}" already exists`);
+
+  await assertPermissionIdsExist(tenantDb, input.permission_ids);
+
+  const sortOrder = (await agentsRepo.maxRoleSortOrder(tenantDb)) + 1;
+  const role = await agentsRepo.insertRole(tenantDb, {
+    name,
+    display_name: input.display_name.trim(),
+    description: input.description ?? null,
+    is_system: false,
+    sort_order: sortOrder,
+  });
+  await agentsRepo.setRolePermissions(tenantDb, role.id, input.permission_ids);
+  return roleWithDetails(tenantDb, role);
+}
+
+export async function updateRole(tenantDb: Knex, id: number, patch: RolePatchInput) {
+  const role = await agentsRepo.findRoleById(tenantDb, id);
+  if (!role) throw new NotFoundError("Role not found");
+  if (role.is_system) throw new ConflictError("System roles cannot be modified");
+
+  if (patch.permission_ids !== undefined) {
+    await assertPermissionIdsExist(tenantDb, patch.permission_ids);
+    await agentsRepo.setRolePermissions(tenantDb, id, patch.permission_ids);
+  }
+
+  let updated = role;
+  if (patch.display_name !== undefined || patch.description !== undefined) {
+    updated = (await agentsRepo.updateRoleRow(tenantDb, id, {
+      ...(patch.display_name !== undefined ? { display_name: patch.display_name.trim() } : {}),
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+    }))!;
+  }
+  return roleWithDetails(tenantDb, updated);
+}
+
+export async function deleteRole(tenantDb: Knex, id: number) {
+  const role = await agentsRepo.findRoleById(tenantDb, id);
+  if (!role) throw new NotFoundError("Role not found");
+  if (role.is_system) throw new ConflictError("System roles cannot be deleted");
+
+  const [membersCount, pendingCount] = await Promise.all([
+    tenantDb("members").where({ role: role.name }).whereNull("deleted_at").count("id as count").then(([r]: any[]) => Number(r.count)),
+    tenantDb("member_invitations")
+      .where({ status: "pending" })
+      .whereNull("deleted_at")
+      .whereRaw("user_details->>'role' = ?", [role.name])
+      .count("id as count")
+      .then(([r]: any[]) => Number(r.count)),
+  ]);
+  if (membersCount > 0) throw new ConflictError(`Role is assigned to ${membersCount} member(s) — reassign them first`);
+  if (pendingCount > 0) throw new ConflictError(`Role is used by ${pendingCount} pending invitation(s) — cancel or wait for them first`);
+
+  await agentsRepo.softDeleteRole(tenantDb, id);
 }
