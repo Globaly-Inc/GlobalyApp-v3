@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { ensureBusinessContext } from "@/lib/api/http";
+import { ensureBusinessContext, refreshAccessToken } from "@/lib/api/http";
 import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
 import { authApi } from "@/app/auth/apis";
 import type { AuthMeInstitution } from "@/app/auth/apis";
@@ -268,7 +268,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
               {user?.is_admin && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={async () => { await refreshAccessToken(); window.location.assign("/admin/overview"); }}>
                     Super Admin
                   </DropdownMenuItem>
                 </>

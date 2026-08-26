@@ -18,7 +18,7 @@ export function authHeaders(): HeadersInit {
 
 let refreshPromise: Promise<boolean> | null = null;
 
-function refreshAccessToken(): Promise<boolean> {
+export function refreshAccessToken(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return Promise.resolve(false);
 
