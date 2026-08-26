@@ -26,8 +26,9 @@ type PortalTarget = { label: string; icon: LucideIcon; href: string } | null;
  */
 export function PersonalMobileNav({
   portalTarget,
+  myProfileHref,
   onSignOut,
-}: Readonly<{ portalTarget: PortalTarget; onSignOut: () => void }>) {
+}: Readonly<{ portalTarget: PortalTarget; myProfileHref: string; onSignOut: () => void }>) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -48,7 +49,7 @@ export function PersonalMobileNav({
           <Bell className="h-5 w-5" />
           Alerts
         </Link>
-        <Link href="/personal/profile" className={tabClass("/personal/profile")}>
+        <Link href={myProfileHref} className={tabClass(myProfileHref)}>
           <UserIcon className="h-5 w-5" />
           My Profile
         </Link>
@@ -112,7 +113,7 @@ export function PersonalMobileNav({
               <Coins className="h-4 w-4" /> Credits
             </Link>
             <Link
-              href="/personal/profile"
+              href={myProfileHref}
               onClick={() => setDrawerOpen(false)}
               className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
             >

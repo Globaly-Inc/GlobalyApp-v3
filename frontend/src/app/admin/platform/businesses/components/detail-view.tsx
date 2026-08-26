@@ -46,8 +46,11 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
     const key = `${kind}-${id}`;
     if (fetchedRef.current === key) return;
     fetchedRef.current = key;
-    if (kind === "business") dispatch(fetchBusinessDetail(id));
-    else dispatch(fetchInstitutionDetail(id));
+    if (kind === "business") {
+      if (business?.id !== id) dispatch(fetchBusinessDetail(id));
+    } else if (institution?.id !== id) {
+      dispatch(fetchInstitutionDetail(id));
+    }
   }, [dispatch, kind, id]);
 
   const fetchedCatalogRef = useRef(false);
@@ -56,7 +59,6 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
     fetchedCatalogRef.current = true;
     if (kind === "business" && categories.length === 0) dispatch(fetchBusinessCategories({}));
     if (countries.length === 0) dispatch(fetchCountries());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const detail = kind === "business" ? business : institution;

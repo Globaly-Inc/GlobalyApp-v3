@@ -243,6 +243,7 @@ export async function registerUser(
     last_name: lastName,
     email,
     account_status: 0, // inactive until OTP verified
+    is_personal_account: true,
     meta: pendingReferral ? { pending_referral: pendingReferral } : undefined,
   });
 
@@ -485,7 +486,7 @@ export async function switchAccount(userId: number, orgId: string, refreshToken?
   const rememberOnSession = async () => {
     if (!refreshToken) return;
     const session = await authRepo.findSessionByRefreshToken(hashToken(refreshToken));
-    if (session && session.platform_user_id === userId) {
+    if (session?.platform_user_id === userId) {
       await authRepo.updateSessionOrgId(session.id, orgId);
     }
   };

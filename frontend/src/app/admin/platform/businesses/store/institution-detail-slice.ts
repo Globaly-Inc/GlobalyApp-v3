@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
-  BusinessStatus, InstitutionBranch, InstitutionCourse, InstitutionCourseListParams, InstitutionDetail, InstitutionInvitation,
+  BusinessStatus, InstitutionBranch, InstitutionBranchListParams, InstitutionCourse, InstitutionCourseListParams, InstitutionDetail, InstitutionInvitation,
   InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPartner, InstitutionPatch, Member, MemberListParams,
 } from "../apis/types";
 
@@ -28,8 +28,9 @@ export const fetchInstitutionCourses = createAsyncThunk(
   ({ id, params }: { id: number; params?: InstitutionCourseListParams }) => businessesApi.getInstitutionCourses(id, params),
 );
 
-export const fetchInstitutionBranches = createAsyncThunk("institutionDetail/fetchBranches", (id: number) =>
-  businessesApi.getInstitutionBranches(id),
+export const fetchInstitutionBranches = createAsyncThunk(
+  "institutionDetail/fetchBranches",
+  ({ id, params }: { id: number; params?: InstitutionBranchListParams }) => businessesApi.getInstitutionBranches(id, params),
 );
 
 export const fetchInstitutionPartners = createAsyncThunk("institutionDetail/fetchPartners", (id: number) =>
@@ -182,7 +183,7 @@ const institutionDetailSlice = createSlice({
         state.branches.status = "loading";
       })
       .addCase(fetchInstitutionBranches.fulfilled, (state, action) => {
-        state.branches = { items: action.payload, total: action.payload.length, status: "idle", error: null };
+        state.branches = { items: action.payload.data, total: action.payload.total, status: "idle", error: null };
       })
       .addCase(fetchInstitutionBranches.rejected, (state, action) => {
         state.branches.status = "failed";

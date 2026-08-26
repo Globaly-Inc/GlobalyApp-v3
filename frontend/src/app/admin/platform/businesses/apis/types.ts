@@ -175,6 +175,10 @@ export type InstitutionCourseListParams = { search?: string; page?: number; limi
 
 export type InstitutionCourseListResult = { data: InstitutionCourse[]; total: number };
 
+export type InstitutionBranchListParams = { search?: string; page?: number; limit?: number };
+
+export type InstitutionBranchListResult = { data: InstitutionBranch[]; total: number };
+
 export type InstitutionInviteInput = {
   first_name: string;
   last_name: string;

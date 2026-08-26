@@ -20,7 +20,7 @@ import { authApi } from "@/app/auth/apis";
 import type { AuthMeBusiness, AuthMeInstitution } from "@/app/auth/apis";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
-import { BUSINESS_NAV_GROUPS } from "./const";
+import { BUSINESS_NAV_GROUPS, withBusinessId } from "./const";
 import { BusinessSwitcher } from "./components/business-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
@@ -187,6 +187,8 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   }
 
   const initial = profile?.business_name?.[0]?.toUpperCase() ?? "B";
+  const activeBusinessId = businesses.find((b) => b.org_id === activeOrgId)?.id ?? null;
+  const navGroups = withBusinessId(isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS, activeBusinessId);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -276,7 +278,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
       </header>
 
       <div className="flex flex-1">
-        <PortalSidebar groups={isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS} />
+        <PortalSidebar groups={navGroups} />
 
         <main className={cn("min-w-0 flex-1 overflow-x-clip", isFullBleed ? "" : "py-4 md:py-6")}>
           {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}

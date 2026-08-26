@@ -46,6 +46,12 @@ async function requireBusiness(id: number) {
   return biz;
 }
 
+export async function resolveListingKind(id: number): Promise<{ kind: "business" | "institution" }> {
+  if (await repo.findInstitutionById(id)) return { kind: "institution" };
+  if (await repo.findBusinessById(id)) return { kind: "business" };
+  throw new NotFoundError("Listing not found");
+}
+
 async function subdomainTaken(subdomain: string): Promise<boolean> {
   const [biz, inst] = await Promise.all([
     findBusinessBySubdomain(subdomain),
@@ -393,11 +399,6 @@ export async function listInstitutionMembers(id: number, opts: { search?: string
   }
 }
 
-/**
- * An institution promoted from an extraction job carries that job's id (`source_job_id`), which
- * is also the key `extraction_courses` is filed under — so the job's courses ARE this
- * institution's courses. Self-registered institutions have no job, hence no courses.
- */
 export async function listInstitutionCourses(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
   if (!inst.source_job_id) return { rows: [], total: 0 };
@@ -409,15 +410,15 @@ export async function listInstitutionCourses(id: number, opts: { search?: string
   return { rows, total };
 }
 
-/**
- * Campuses/agents the extraction job discovered for this institution — same provenance rule as
- * listInstitutionCourses above (source_job_id), read-only here (editing happens in the
- * extraction admin's review screen). Surfaced as this institution's Branches/Partners tabs.
- */
-export async function listInstitutionBranches(id: number) {
+export async function listInstitutionBranches(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
-  if (!inst.source_job_id) return [];
-  return reviewRepo.listCampusesByJob(inst.source_job_id);
+  if (!inst.source_job_id) return { rows: [], total: 0 };
+  const filters = { search: opts.search };
+  const [rows, total] = await Promise.all([
+    reviewRepo.listCampusesByJobPaged(inst.source_job_id, opts.limit, opts.offset, filters),
+    reviewRepo.countCampusesByJob(inst.source_job_id, filters),
+  ]);
+  return { rows, total };
 }
 
 export async function listInstitutionPartners(id: number) {

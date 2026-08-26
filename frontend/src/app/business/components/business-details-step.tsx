@@ -147,7 +147,7 @@ export function BusinessDetailsStep({
             <Label>Postcode</Label>
             <Input className="h-10" value={postcode} onChange={(e) => onPostcodeChange(e.target.value)} />
           </div>
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Label>Company Registration Document</Label>
             <Input
               type="file"
@@ -157,7 +157,7 @@ export function BusinessDetailsStep({
             {companyRegistrationFile && (
               <p className="text-sm text-muted-foreground">Selected: {companyRegistrationFile.name}</p>
             )}
-          </div>
+          </div> */}
         </CardContent>
       </Card>
       <div className="flex gap-3">

@@ -47,6 +47,11 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
+  app.get("/listings/:id/kind", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    return reply.send(await service.resolveListingKind(id));
+  });
+
   // GET /businesses/:id
   app.get("/businesses/:id", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
@@ -157,7 +162,10 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   // GET /institutions/:id/branches — extraction_campuses filed under the institution's source_job_id.
   app.get("/institutions/:id/branches", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
-    return reply.send(await service.listInstitutionBranches(id));
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listInstitutionBranches(id, { search, limit, offset });
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
   // GET /institutions/:id/partners — extraction_agents filed under the institution's source_job_id.

@@ -1,7 +1,8 @@
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, EnquirySettingsPatch, InstitutionBranch, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  BusinessService, EnquirySettingsPatch, InstitutionBranch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  ListingKind,
   InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPartner, InstitutionPatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
@@ -294,6 +295,13 @@ export const businessesMockApi = {
     if (!inst) throw new Error("Institution not found");
     return inst;
   },
+  getListingKind: async (id: number): Promise<{ kind: ListingKind }> => {
+    console.log("[mock] GET /admin/platform/listings/:id/kind", id);
+    await delay(100);
+    if (mockInstitutions.some((x) => x.id === id)) return { kind: "institution" };
+    if (mockBusinesses.some((x) => x.id === id)) return { kind: "business" };
+    throw new Error("Listing not found");
+  },
   updateInstitution: async (id: number, patch: InstitutionPatch): Promise<InstitutionDetail> => {
     console.log("[mock] PATCH /admin/platform/institutions/:id", id, patch);
     await delay(200);
@@ -329,11 +337,16 @@ export const businessesMockApi = {
     const start = (page - 1) * limit;
     return { data: items.slice(start, start + limit), total: items.length };
   },
-  getInstitutionBranches: async (id: number): Promise<InstitutionBranch[]> => {
+  getInstitutionBranches: async (id: number, params: InstitutionBranchListParams = {}): Promise<InstitutionBranchListResult> => {
     console.log("[mock] GET /admin/platform/institutions/:id/branches", id);
     await delay(150);
     const inst = mockInstitutions.find((x) => x.id === id);
-    return inst?.source_job_id ? (mockInstitutionBranches[inst.source_job_id] ?? []) : [];
+    let items = inst?.source_job_id ? (mockInstitutionBranches[inst.source_job_id] ?? []) : [];
+    if (params.search) items = items.filter((b) => b.name?.toLowerCase().includes(params.search!.toLowerCase()));
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const start = (page - 1) * limit;
+    return { data: items.slice(start, start + limit), total: items.length };
   },
   getInstitutionPartners: async (id: number): Promise<InstitutionPartner[]> => {
     console.log("[mock] GET /admin/platform/institutions/:id/partners", id);
