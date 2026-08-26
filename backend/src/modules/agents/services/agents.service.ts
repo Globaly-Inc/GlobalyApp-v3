@@ -10,6 +10,7 @@ import {
   NotFoundError,
   ConflictError,
   UnauthorizedError,
+  BadRequestError,
 } from "../../../shared/errors.js";
 import { queueInvitationEmail } from "../../auth/auth.service.js";
 import {
@@ -23,7 +24,7 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import * as repo from "../repositories/agents.repository.js";
 import * as platformUserRepo from "../../platform-users/repositories/platform-users.repository.js";
 import * as businessRepo from "../../businesses/repositories/businesses.repository.js";
-import type { AgentPatchInput, InviteAgentInput } from "../schemas/agents.schema.js";
+import type { AgentPatchInput, InviteAgentInput, RoleCreateInput, RolePatchInput } from "../schemas/agents.schema.js";
 
 const logger = createChildLogger("agents-service");
 
@@ -375,4 +376,106 @@ export async function removeAgent(db: Knex, businessId: number, id: number) {
   // Without this the removed member is still handed a token scoped to this business at login,
   // and then requirePermission rejects every request — which reads as a broken account.
   await platformUserRepo.softDeleteUserBusinessIndex(agent.platform_user_id, businessId);
+}
+
+// ── Custom roles (Settings → Roles, gated by roles:manage) ──
+
+function slugifyRoleName(displayName: string): string {
+  return displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+async function roleWithDetails(db: Knex, role: repo.RoleRow) {
+  const [links, membersCount] = await Promise.all([
+    db("role_permissions").where({ role_id: role.id }).pluck("permission_id"),
+    repo.countAgentsWithRole(db, role.id),
+  ]);
+  return { ...role, permission_ids: links as number[], members_count: membersCount };
+}
+
+export async function listRolesWithDetails(db: Knex) {
+  const [roles, links, counts] = await Promise.all([
+    repo.listRoles(db),
+    repo.listRolePermissionLinks(db),
+    repo.countAgentsPerRole(db),
+  ]);
+  const permsByRole = new Map<number, number[]>();
+  for (const link of links) {
+    const list = permsByRole.get(link.role_id) ?? [];
+    list.push(link.permission_id);
+    permsByRole.set(link.role_id, list);
+  }
+  const countByRole = new Map(counts.map((c) => [c.role_id, Number(c.count)]));
+  return roles.map((role) => ({
+    ...role,
+    permission_ids: permsByRole.get(role.id) ?? [],
+    members_count: countByRole.get(role.id) ?? 0,
+  }));
+}
+
+export async function listPermissions(db: Knex) {
+  return repo.listPermissions(db);
+}
+
+async function assertPermissionIdsExist(db: Knex, ids: number[]) {
+  if (ids.length === 0) return;
+  const found = await db("permissions").whereIn("id", ids).whereNull("deleted_at").pluck("id");
+  const missing = ids.filter((id) => !found.includes(id));
+  if (missing.length > 0) throw new BadRequestError(`Unknown permission ids: ${missing.join(", ")}`);
+}
+
+export async function createRole(db: Knex, input: RoleCreateInput) {
+  const name = slugifyRoleName(input.display_name);
+  if (!name) throw new BadRequestError("Role name must contain letters or numbers");
+
+  const existing = await repo.findRoleByName(db, name);
+  if (existing) throw new ConflictError(`A role named "${existing.display_name}" already exists`);
+
+  await assertPermissionIdsExist(db, input.permission_ids);
+
+  const sortOrder = (await repo.maxRoleSortOrder(db)) + 1;
+  const role = await repo.insertRole(db, {
+    name,
+    display_name: input.display_name.trim(),
+    description: input.description ?? null,
+    is_system: false,
+    sort_order: sortOrder,
+  });
+  await repo.setRolePermissions(db, role.id, input.permission_ids);
+  return roleWithDetails(db, role);
+}
+
+export async function updateRole(db: Knex, id: number, patch: RolePatchInput) {
+  const role = await repo.findRoleById(db, id);
+  if (!role) throw new NotFoundError("Role not found");
+  if (role.is_system) throw new ConflictError("System roles cannot be modified");
+
+  if (patch.permission_ids !== undefined) {
+    await assertPermissionIdsExist(db, patch.permission_ids);
+    await repo.setRolePermissions(db, id, patch.permission_ids);
+  }
+
+  // `name` stays immutable — it's referenced by pending invitations' user_details JSONB.
+  let updated = role;
+  if (patch.display_name !== undefined || patch.description !== undefined) {
+    updated = (await repo.updateRoleRow(db, id, {
+      ...(patch.display_name !== undefined ? { display_name: patch.display_name.trim() } : {}),
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+    }))!;
+  }
+  return roleWithDetails(db, updated);
+}
+
+export async function deleteRole(db: Knex, id: number) {
+  const role = await repo.findRoleById(db, id);
+  if (!role) throw new NotFoundError("Role not found");
+  if (role.is_system) throw new ConflictError("System roles cannot be deleted");
+
+  const [membersCount, pendingCount] = await Promise.all([
+    repo.countAgentsWithRole(db, id),
+    repo.countPendingInvitationsWithRole(db, role.name),
+  ]);
+  if (membersCount > 0) throw new ConflictError(`Role is assigned to ${membersCount} member(s) — reassign them first`);
+  if (pendingCount > 0) throw new ConflictError(`Role is used by ${pendingCount} pending invitation(s) — cancel or wait for them first`);
+
+  await repo.softDeleteRole(db, id);
 }

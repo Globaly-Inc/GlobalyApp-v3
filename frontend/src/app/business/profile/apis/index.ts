@@ -5,7 +5,8 @@ import { businessProfileDetailRealApi } from "./real-api";
 export const businessProfileDetailApi = createApi({ mock: businessProfileDetailMockApi, real: businessProfileDetailRealApi });
 export type {
   ActivityLogEntry, Branch, BranchFilter, BranchInput, BranchPatch, BranchType,
-  BusinessRelation, BusinessSearchResult, BusinessService, InvitedMember, Member, MemberRole, RelationType,
+  BusinessRelation, BusinessSearchResult, BusinessService, InvitedMember, Member, MemberRole, Permission,
+  RelationType, Role, RoleCreateInput, RolePatch,
   SchemaFieldValue, Scholarship, ScholarshipInput, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceFee, ServiceFeeInput, ServiceInput, ServiceIntake, ServiceIntakeInput,
   ServiceSearchParams, ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyUnit, ServiceStudyUnitInput,

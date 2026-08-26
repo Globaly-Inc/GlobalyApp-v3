@@ -4,7 +4,8 @@ import type {
   ActivityListParams, ActivityListResult, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, InvitedMember,
   LinkExistingBranchInput, LinkExistingBranchResult,
-  Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
+  Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole, Permission,
+  Role, RoleCreateInput, RolePatch,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
@@ -59,6 +60,28 @@ let mockMembers: Member[] = [];
 const mockRoles: MemberRole[] = [
   { id: 1, name: "owner", display_name: "Owner" },
   { id: 2, name: "member", display_name: "Member" },
+];
+// Mirrors backend/database/seeders/business/roles_seeder.ts
+const mockPermissions: Permission[] = [
+  { id: 1, module: "business", action: "read", display_name: "View Business Profile", description: "View business details and settings" },
+  { id: 2, module: "business", action: "write", display_name: "Edit Business Profile", description: "Edit business details and settings" },
+  { id: 3, module: "agents", action: "read", display_name: "View Team Members", description: "View agent/team member list" },
+  { id: 4, module: "agents", action: "write", display_name: "Manage Team Members", description: "Invite and manage agents" },
+  { id: 5, module: "agents", action: "delete", display_name: "Remove Team Members", description: "Remove agents from business" },
+  { id: 6, module: "enquiries", action: "view", display_name: "View Enquiries", description: "View incoming student enquiries" },
+  { id: 7, module: "enquiries", action: "unlock", display_name: "Unlock Enquiries", description: "Unlock enquiry contact details (spends credits)" },
+  { id: 8, module: "enquiries", action: "respond", display_name: "Respond to Enquiries", description: "Reply to students in enquiry conversations" },
+  { id: 9, module: "enquiries", action: "assign", display_name: "Assign Enquiries", description: "Assign enquiries to team members" },
+  { id: 10, module: "enquiries", action: "convert", display_name: "Convert Enquiries", description: "Mark enquiries as converted" },
+  { id: 11, module: "roles", action: "manage", display_name: "Manage Roles", description: "Create, edit and delete custom roles and their permissions" },
+];
+let mockRoleSeq = 6;
+let mockCustomRoles: Role[] = [
+  { id: 1, name: "owner", display_name: "Owner", description: "Business owner with full access", is_system: true, sort_order: 0, permission_ids: mockPermissions.map((p) => p.id), members_count: 1 },
+  { id: 2, name: "admin", display_name: "Admin", description: "Administrative access", is_system: true, sort_order: 1, permission_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], members_count: 0 },
+  { id: 3, name: "manager", display_name: "Manager", description: "Team and operations management", is_system: true, sort_order: 2, permission_ids: [1, 3, 6, 7, 8, 9, 10], members_count: 0 },
+  { id: 4, name: "counsellor", display_name: "Counsellor", description: "Student counselling and support", is_system: true, sort_order: 3, permission_ids: [1, 6, 8, 10], members_count: 2 },
+  { id: 5, name: "member", display_name: "Member", description: "Standard team member", is_system: true, sort_order: 4, permission_ids: [1, 6], members_count: 0 },
 ];
 let mockInvitations: InvitedMember[] = [
   {
@@ -163,6 +186,43 @@ export const businessProfileDetailMockApi = {
   getMemberRoles: async (): Promise<MemberRole[]> => {
     await delay(200);
     return mockRoles;
+  },
+  getRoles: async (): Promise<Role[]> => {
+    console.log("[mock] GET /businesses/roles");
+    await delay(250);
+    return mockCustomRoles;
+  },
+  getPermissions: async (): Promise<Permission[]> => {
+    console.log("[mock] GET /businesses/roles/permissions");
+    await delay(200);
+    return mockPermissions;
+  },
+  createRole: async (input: RoleCreateInput): Promise<Role> => {
+    console.log("[mock] POST /businesses/roles");
+    await delay(300);
+    const role: Role = {
+      id: mockRoleSeq++,
+      name: input.display_name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+      display_name: input.display_name.trim(),
+      description: input.description ?? null,
+      is_system: false,
+      sort_order: mockCustomRoles.length,
+      permission_ids: input.permission_ids,
+      members_count: 0,
+    };
+    mockCustomRoles = [...mockCustomRoles, role];
+    return role;
+  },
+  updateRole: async (roleId: number, patch: RolePatch): Promise<Role> => {
+    console.log(`[mock] PATCH /businesses/roles/${roleId}`);
+    await delay(300);
+    mockCustomRoles = mockCustomRoles.map((r) => (r.id === roleId ? { ...r, ...patch, description: patch.description ?? r.description } : r));
+    return mockCustomRoles.find((r) => r.id === roleId)!;
+  },
+  deleteRole: async (roleId: number): Promise<void> => {
+    console.log(`[mock] DELETE /businesses/roles/${roleId}`);
+    await delay(300);
+    mockCustomRoles = mockCustomRoles.filter((r) => r.id !== roleId);
   },
   inviteMember: async (input: MemberInviteInput): Promise<{ id: string; email: string; status: string }> => {
     await delay(300);
