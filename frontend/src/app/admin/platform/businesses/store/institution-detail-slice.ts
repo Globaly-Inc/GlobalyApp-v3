@@ -2,7 +2,8 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
   BusinessStatus, InstitutionBranch, InstitutionBranchListParams, InstitutionCourse, InstitutionCourseListParams, InstitutionDetail, InstitutionInvitation,
-  InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPartner, InstitutionPatch, Member, MemberListParams,
+  InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPartner, InstitutionPatch, InstitutionPermission, InstitutionRole,
+  InstitutionRoleCreateInput, InstitutionRolePatch, Member, MemberListParams,
 } from "../apis/types";
 
 // Separate from businesses-slice.ts: institutions have no real contacts/activity/enquiry-settings
@@ -63,6 +64,32 @@ export const resendInstitutionInvitation = createAsyncThunk(
   },
 );
 
+// ── Roles ─────────────────────────────────────────────────────────────────────
+export const fetchInstitutionRoles = createAsyncThunk(
+  "institutionDetail/fetchRoles",
+  (id: number) => businessesApi.getInstitutionRoles(id),
+);
+export const fetchInstitutionPermissions = createAsyncThunk(
+  "institutionDetail/fetchPermissions",
+  (id: number) => businessesApi.getInstitutionPermissions(id),
+);
+export const createInstitutionRole = createAsyncThunk(
+  "institutionDetail/createRole",
+  ({ id, input }: { id: number; input: InstitutionRoleCreateInput }) => businessesApi.createInstitutionRole(id, input),
+);
+export const updateInstitutionRole = createAsyncThunk(
+  "institutionDetail/updateRole",
+  ({ id, roleId, patch }: { id: number; roleId: number; patch: InstitutionRolePatch }) =>
+    businessesApi.updateInstitutionRole(id, roleId, patch),
+);
+export const deleteInstitutionRole = createAsyncThunk(
+  "institutionDetail/deleteRole",
+  async ({ id, roleId }: { id: number; roleId: number }) => {
+    await businessesApi.deleteInstitutionRole(id, roleId);
+    return roleId;
+  },
+);
+
 export const setInstitutionMemberStatus = createAsyncThunk(
   "institutionDetail/setMemberStatus",
   async ({ id, platformUserId, accountStatus }: { id: number; platformUserId: number; accountStatus: number }) => {
@@ -98,6 +125,8 @@ type InstitutionDetailState = {
   invitations: PagedState<InstitutionInvitation>;
   branches: PagedState<InstitutionBranch>;
   partners: PagedState<InstitutionPartner>;
+  roles: PagedState<InstitutionRole>;
+  permissions: InstitutionPermission[];
 };
 
 const emptyPaged = <T,>(): PagedState<T> => ({ items: [], total: 0, status: "idle", error: null });
@@ -111,6 +140,8 @@ const initialState: InstitutionDetailState = {
   invitations: emptyPaged(),
   branches: emptyPaged(),
   partners: emptyPaged(),
+  roles: emptyPaged(),
+  permissions: [],
 };
 
 const institutionDetailSlice = createSlice({
@@ -178,6 +209,26 @@ const institutionDetailSlice = createSlice({
       .addCase(setInstitutionMemberStatus.fulfilled, (state, action) => {
         const member = state.members.items.find((m) => m.platform_user_id === action.payload.platformUserId);
         if (member) member.account_status = action.payload.accountStatus;
+      })
+      .addCase(fetchInstitutionRoles.pending, (state) => { state.roles.status = "loading"; })
+      .addCase(fetchInstitutionRoles.fulfilled, (state, action) => {
+        state.roles = { items: action.payload, total: action.payload.length, status: "idle", error: null };
+      })
+      .addCase(fetchInstitutionRoles.rejected, (state, action) => {
+        state.roles.status = "failed"; state.roles.error = action.error.message ?? "Failed to load roles.";
+      })
+      .addCase(fetchInstitutionPermissions.fulfilled, (state, action) => { state.permissions = action.payload; })
+      .addCase(createInstitutionRole.fulfilled, (state, action) => {
+        state.roles.items.push(action.payload); state.roles.total += 1;
+      })
+      .addCase(updateInstitutionRole.fulfilled, (state, action) => {
+        const i = state.roles.items.findIndex((r) => r.id === action.payload.id);
+        if (i >= 0) state.roles.items[i] = action.payload;
+      })
+      .addCase(deleteInstitutionRole.fulfilled, (state, action) => {
+        const wasPresent = state.roles.items.some((r) => r.id === action.payload);
+        state.roles.items = state.roles.items.filter((r) => r.id !== action.payload);
+        if (wasPresent) state.roles.total = Math.max(0, state.roles.total - 1);
       })
       .addCase(fetchInstitutionBranches.pending, (state) => {
         state.branches.status = "loading";

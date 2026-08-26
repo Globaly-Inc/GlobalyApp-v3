@@ -191,17 +191,17 @@ export const businessProfileDetailMockApi = {
     await delay(200);
     return mockRoles;
   },
-  getRoles: async (): Promise<Role[]> => {
+  getRoles: async (_orgBase?: string): Promise<Role[]> => {
     console.log("[mock] GET /businesses/roles");
     await delay(250);
     return mockCustomRoles;
   },
-  getPermissions: async (): Promise<Permission[]> => {
+  getPermissions: async (_orgBase?: string): Promise<Permission[]> => {
     console.log("[mock] GET /businesses/roles/permissions");
     await delay(200);
     return mockPermissions;
   },
-  createRole: async (input: RoleCreateInput): Promise<Role> => {
+  createRole: async (input: RoleCreateInput, _orgBase?: string): Promise<Role> => {
     console.log("[mock] POST /businesses/roles");
     await delay(300);
     const role: Role = {
@@ -217,13 +217,13 @@ export const businessProfileDetailMockApi = {
     mockCustomRoles = [...mockCustomRoles, role];
     return role;
   },
-  updateRole: async (roleId: number, patch: RolePatch): Promise<Role> => {
+  updateRole: async (roleId: number, patch: RolePatch, _orgBase?: string): Promise<Role> => {
     console.log(`[mock] PATCH /businesses/roles/${roleId}`);
     await delay(300);
     mockCustomRoles = mockCustomRoles.map((r) => (r.id === roleId ? { ...r, ...patch, description: patch.description ?? r.description } : r));
     return mockCustomRoles.find((r) => r.id === roleId)!;
   },
-  deleteRole: async (roleId: number): Promise<void> => {
+  deleteRole: async (roleId: number, _orgBase?: string): Promise<void> => {
     console.log(`[mock] DELETE /businesses/roles/${roleId}`);
     await delay(300);
     mockCustomRoles = mockCustomRoles.filter((r) => r.id !== roleId);

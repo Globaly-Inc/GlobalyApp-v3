@@ -60,7 +60,7 @@ export async function provisionBusinessSchema(schemaUuid: string): Promise<void>
  * 2. Run institution migrations (members, member_invitations)
  */
 export async function provisionInstitutionSchema(schemaUuid: string): Promise<void> {
-  await provisionSchema("institutions", schemaUuid, "./database/migrations/institution");
+  await provisionSchema("institutions", schemaUuid, "./database/migrations/institution", "./database/seeders/institution");
 }
 
 export interface ClaimTarget {

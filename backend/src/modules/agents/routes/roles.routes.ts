@@ -1,6 +1,6 @@
-// Custom role management (Settings → Roles). Business-only — institutions have no roles
-// table. All endpoints owner-only: gated on agents.is_owner directly, no roles:manage
-// permission needed (so no migration/seeder backfill for existing tenants either).
+// Custom role management (Settings → Roles) for businesses.
+// Owner-only: gated on agents.is_owner directly, no roles:manage permission needed.
+// Institution equivalent lives in institution-roles.routes.ts, registered under /api/v3/institutions/roles.
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { RoleCreateSchema, RolePatchSchema, RoleParamsSchema } from "../schemas/agents.schema.js";

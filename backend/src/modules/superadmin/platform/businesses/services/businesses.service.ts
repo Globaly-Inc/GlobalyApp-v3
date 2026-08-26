@@ -25,7 +25,7 @@ import type { InstitutionInviteInput } from "../../../../platform-users/services
 import type { PaginationInput } from "../../../../../shared/pagination.js";
 import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPatchInput,
-  MemberInviteInput, MemberPatchInput,
+  MemberInviteInput, MemberPatchInput, RoleCreateInput, RolePatchInput,
 } from "../schemas/businesses.schema.js";
 
 const logger = createChildLogger("superadmin-businesses-service");
@@ -502,4 +502,37 @@ export async function removeMember(id: number, memberId: number) {
 export async function listActivity(id: number, limit: number, offset: number) {
   await requireBusiness(id);
   return repo.listBusinessActivity(id, limit, offset);
+}
+
+// ── Institution role management ──
+// Thin wrappers: resolve institution → tenant DB, delegate to institution-members.service.ts.
+
+export async function listInstitutionRoles(id: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.listRolesWithDetails(tenantDb);
+}
+
+export async function listInstitutionPermissions(id: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.listPermissions(tenantDb);
+}
+
+export async function createInstitutionRole(id: number, input: RoleCreateInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.createRole(tenantDb, input);
+}
+
+export async function updateInstitutionRole(id: number, roleId: number, patch: RolePatchInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.updateRole(tenantDb, roleId, patch);
+}
+
+export async function deleteInstitutionRole(id: number, roleId: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  await institutionMembersService.deleteRole(tenantDb, roleId);
 }

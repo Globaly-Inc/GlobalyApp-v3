@@ -4,6 +4,7 @@ import type {
   BusinessService, EnquirySettingsPatch, InstitutionBranch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
   ListingKind,
   InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPartner, InstitutionPatch,
+  InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
@@ -602,5 +603,33 @@ export const businessesMockApi = {
     const page = params.page ?? 1;
     const start = (page - 1) * limit;
     return { data: items.slice(start, start + limit), total: items.length };
+  },
+
+  getInstitutionRoles: async (_id: number): Promise<InstitutionRole[]> => {
+    await delay(150);
+    return [
+      { id: 1, name: "owner", display_name: "Owner", description: null, is_system: true, sort_order: 0, permission_ids: [1, 2, 3], members_count: 1 },
+      { id: 2, name: "admin", display_name: "Admin", description: null, is_system: true, sort_order: 1, permission_ids: [1, 2], members_count: 2 },
+      { id: 3, name: "member", display_name: "Member", description: null, is_system: true, sort_order: 3, permission_ids: [], members_count: 3 },
+    ];
+  },
+  getInstitutionPermissions: async (_id: number): Promise<InstitutionPermission[]> => {
+    await delay(150);
+    return [
+      { id: 1, module: "members", action: "read", display_name: "View Members", description: null },
+      { id: 2, module: "members", action: "write", display_name: "Manage Members", description: null },
+      { id: 3, module: "courses", action: "read", display_name: "View Courses", description: null },
+    ];
+  },
+  createInstitutionRole: async (_id: number, input: InstitutionRoleCreateInput): Promise<InstitutionRole> => {
+    await delay(200);
+    return { id: Math.floor(Math.random() * 1000) + 10, name: input.display_name.toLowerCase().replace(/\s+/g, "_"), display_name: input.display_name, description: input.description ?? null, is_system: false, sort_order: 99, permission_ids: input.permission_ids, members_count: 0 };
+  },
+  updateInstitutionRole: async (_id: number, roleId: number, patch: InstitutionRolePatch): Promise<InstitutionRole> => {
+    await delay(200);
+    return { id: roleId, name: "custom", display_name: patch.display_name ?? "Custom", description: patch.description ?? null, is_system: false, sort_order: 99, permission_ids: patch.permission_ids ?? [], members_count: 0 };
+  },
+  deleteInstitutionRole: async (_id: number, _roleId: number): Promise<void> => {
+    await delay(200);
   },
 };

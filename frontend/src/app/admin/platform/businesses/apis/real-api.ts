@@ -5,6 +5,7 @@ import type {
   BusinessService, BusinessStatus, EnquirySettingsPatch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
   ListingKind,
   InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPartner, InstitutionPatch,
+  InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
@@ -112,6 +113,17 @@ export const businessesRealApi = {
     httpPost(`/admin/platform/institutions/${id}/invitations/${invitationId}/resend`, {}),
   setInstitutionMemberStatus: (id: number, platformUserId: number, accountStatus: number): Promise<void> =>
     httpPatch(`/admin/platform/institutions/${id}/members/${platformUserId}/status`, { account_status: accountStatus }),
+
+  getInstitutionRoles: (id: number): Promise<InstitutionRole[]> =>
+    httpGet(`/admin/platform/institutions/${id}/roles`),
+  getInstitutionPermissions: (id: number): Promise<InstitutionPermission[]> =>
+    httpGet(`/admin/platform/institutions/${id}/roles/permissions`),
+  createInstitutionRole: (id: number, input: InstitutionRoleCreateInput): Promise<InstitutionRole> =>
+    httpPost(`/admin/platform/institutions/${id}/roles`, input),
+  updateInstitutionRole: (id: number, roleId: number, patch: InstitutionRolePatch): Promise<InstitutionRole> =>
+    httpPatch(`/admin/platform/institutions/${id}/roles/${roleId}`, patch),
+  deleteInstitutionRole: (id: number, roleId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/roles/${roleId}`),
   updateBusiness: (id: number, patch: BusinessPatch): Promise<BusinessDetail> => httpPatch(`${BASE}/${id}`, patch),
   updateStatus: (ref: ListingRef, status: BusinessStatus): Promise<{ status: string }> =>
     httpPatch(`${listingBase(ref)}/status`, { status }),

@@ -61,11 +61,7 @@ export async function agentBusinessRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  // Institutions have no `roles` table — role is a free-text column on `members` (see
-  // requireInstitutionRole's doc comment) — so there is nothing to list; the invite/edit UI
-  // falls back to a plain text field for them instead of this Combobox source.
   app.get("/roles", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
-    if (req.auth.orgType === "institution") return reply.send([]);
     const roles = await repo.listRoles(req.db);
     return reply.send(roles);
   });

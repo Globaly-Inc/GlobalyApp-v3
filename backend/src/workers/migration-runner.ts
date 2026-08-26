@@ -37,5 +37,14 @@ const institutions = await masterKnex("institutions")
   .whereNotNull("schema_provisioned_at");
 await migrateTenants(institutions, "./database/migrations/institution");
 
-console.table(results);
+for (const r of results) {
+  if (r.error) {
+    console.error(`[${r.tenant}] ERROR: ${r.error}`);
+  } else if (r.applied?.length) {
+    console.log(`[${r.tenant}] ${r.applied.length} migration(s):`);
+    for (const f of r.applied) console.log(`  + ${f}`);
+  } else {
+    console.log(`[${r.tenant}] already up to date`);
+  }
+}
 await masterKnex.destroy();
