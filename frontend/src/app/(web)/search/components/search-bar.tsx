@@ -4,9 +4,10 @@ import type { SearchTabKey } from "../types";
 
 export function SearchBar({
   activeTab, search, country, city, degreeLevel, subjectArea, jobType, isRemote, feeMin, feeMax, currency, sort,
-  intakeYear, basis, licensedOnly,
+  intakeYear, basis, licensedOnly, basePath = "/search",
 }: Readonly<{
   activeTab: SearchTabKey;
+  basePath?: string;
   search?: string;
   country?: string;
   city?: string;
@@ -23,7 +24,7 @@ export function SearchBar({
   licensedOnly?: boolean;
 }>) {
   return (
-    <form method="get" action="/search" className="flex items-center gap-2 flex-1">
+    <form method="get" action={basePath} className="flex items-center gap-2 flex-1">
       <input type="hidden" name="tab" value={activeTab} />
       {country && <input type="hidden" name="country" value={country} />}
       {city && <input type="hidden" name="city" value={city} />}

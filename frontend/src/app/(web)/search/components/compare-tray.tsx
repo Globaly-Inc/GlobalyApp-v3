@@ -13,8 +13,11 @@ import { COMPARE_ROWS } from "../compare-rows";
  * in-memory store. "Compare Now" renders the comparison inline in this
  * widget; "View details" opens the full /compare page in the SAME tab
  * (a new tab would start with an empty store).
+ *
+ * `positionClass` exists because the portal parks its own floating button in this same corner —
+ * /personal/explore passes an offset so the two don't sit on top of each other.
  */
-export function CompareTray() {
+export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ positionClass?: string }> = {}) {
   const { items, max, remove, clear } = useCompareTray();
   const [collapsed, setCollapsed] = useState(false);
   const [comparing, setComparing] = useState(false);
@@ -29,7 +32,7 @@ export function CompareTray() {
         type="button"
         onClick={() => setCollapsed(false)}
         aria-label={`Open compare list (${items.length} courses)`}
-        className="fixed bottom-4 right-4 z-40 flex size-12 cursor-pointer items-center justify-center rounded-full border border-border bg-card shadow-lg transition-transform hover:scale-105"
+        className={`fixed ${positionClass} z-40 flex size-12 cursor-pointer items-center justify-center rounded-full border border-border bg-card shadow-lg transition-transform hover:scale-105`}
       >
         <Layers className="size-5 text-primary" />
         <span className="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
@@ -41,7 +44,7 @@ export function CompareTray() {
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl ${
+      className={`fixed ${positionClass} z-40 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl ${
         showTable ? "w-[42rem]" : "w-80"
       }`}
     >
