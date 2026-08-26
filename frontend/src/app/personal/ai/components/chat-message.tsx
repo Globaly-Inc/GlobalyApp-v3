@@ -97,19 +97,41 @@ function Attachments({ paths }: { paths: string[] }) {
 }
 
 function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const toggle = (chip: string) =>
+    setSelected((prev) => (prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip]));
+
+  const sendSelected = () => {
+    if (!selected.length) return;
+    // Single chip sends as-is; multiple chips sent as a bullet list so the AI sees distinct questions.
+    onChipClick?.(selected.length === 1 ? selected[0]! : selected.map((c) => `• ${c}`).join("\n"));
+    setSelected([]);
+  };
+
   return (
-    <div className="flex flex-wrap gap-1.5 pt-1">
-      {chips.map((chip) => (
-        <Button
-          key={chip}
-          variant="outline"
-          size="sm"
-          className="h-7 rounded-full text-xs font-normal text-muted-foreground hover:text-foreground"
-          onClick={() => onChipClick?.(chip)}
-        >
-          {chip}
+    <div className="flex flex-col gap-2 pt-1">
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map((chip) => {
+          const active = selected.includes(chip);
+          return (
+            <Button
+              key={chip}
+              variant={active ? "default" : "outline"}
+              size="sm"
+              className="h-7 rounded-full text-xs font-normal"
+              onClick={() => toggle(chip)}
+            >
+              {chip}
+            </Button>
+          );
+        })}
+      </div>
+      {selected.length > 0 && (
+        <Button size="sm" className="self-start rounded-full" onClick={sendSelected}>
+          Ask ({selected.length})
         </Button>
-      ))}
+      )}
     </div>
   );
 }
