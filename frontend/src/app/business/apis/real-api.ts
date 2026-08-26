@@ -1,7 +1,7 @@
 import { httpGet, httpPatch, httpPost, httpPostForm, isInstitutionContext } from "@/lib/api/http";
 import type {
   BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
-  RegisterBusinessResult,
+  RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult,
 } from "./types";
 
 // Institution accounts render through this exact same business-profile UI (there is no
@@ -85,6 +85,9 @@ function toInstitutionPatch(patch: BusinessProfilePatch): Record<string, unknown
 export const businessRealApi = {
   registerBusiness: (input: BusinessRegisterInput): Promise<RegisterBusinessResult> =>
     httpPost("/businesses/register", input),
+
+  registerInstitution: (input: InstitutionRegisterInput): Promise<RegisterInstitutionResult> =>
+    httpPost("/platform-users/me/onboarding/institution", input),
 
   getMyProfile: async (): Promise<BusinessProfile> => {
     if (isInstitutionContext()) {

@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessApi } from "../apis";
-import type { BusinessProfile, BusinessProfilePatch, BusinessRegisterInput } from "../apis/types";
+import type { BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, InstitutionRegisterInput } from "../apis/types";
 
 // Result isn't stored in this slice's state — a successful registration hard-navigates
 // to /business (same reload rationale the business switcher already uses), so there's
@@ -8,6 +8,11 @@ import type { BusinessProfile, BusinessProfilePatch, BusinessRegisterInput } fro
 export const registerBusiness = createAsyncThunk(
   "businessOnboarding/registerBusiness",
   (input: BusinessRegisterInput) => businessApi.registerBusiness(input),
+);
+
+export const registerInstitution = createAsyncThunk(
+  "businessOnboarding/registerInstitution",
+  (input: InstitutionRegisterInput) => businessApi.registerInstitution(input),
 );
 
 export const fetchMyProfile = createAsyncThunk("businessOnboarding/fetchMyProfile", () =>
@@ -71,6 +76,17 @@ const businessOnboardingSlice = createSlice({
       .addCase(registerBusiness.rejected, (state, action) => {
         state.status = "failed";
         state.error = action.error.message ?? "Failed to create business.";
+      })
+      .addCase(registerInstitution.pending, (state) => {
+        state.status = "saving";
+        state.error = null;
+      })
+      .addCase(registerInstitution.fulfilled, (state) => {
+        state.status = "idle";
+      })
+      .addCase(registerInstitution.rejected, (state, action) => {
+        state.status = "failed";
+        state.error = action.error.message ?? "Failed to create institution.";
       });
   },
 });

@@ -87,3 +87,19 @@ export type RegisterBusinessResult = {
   access_token: string;
   message: string;
 };
+
+export type InstitutionRegisterInput = {
+  institution_name: string;
+  phone?: string;
+  country_id?: number;
+  address?: string;
+  state?: string;
+  city?: string;
+  postcode?: string;
+};
+
+export type RegisterInstitutionResult = {
+  institution: { id: number; org_id: string; subdomain: string; institution_name: string };
+  access_token: string;
+  message: string;
+};

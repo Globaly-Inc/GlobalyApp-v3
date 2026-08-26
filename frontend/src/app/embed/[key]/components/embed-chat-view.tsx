@@ -6,6 +6,8 @@ import { ChatInput } from "@/app/personal/ai/components/chat-input";
 import { ChatMessage, StreamingMessage } from "@/app/personal/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/personal/ai/components/thinking-indicator";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { CourseCard, Message } from "@/app/personal/ai/apis/types";
 import { embedApi, type EmbedPublicConfig } from "../apis";
 import { uuid } from "@/lib/utils";
@@ -21,6 +23,52 @@ function getFingerprint(): string {
   return fp;
 }
 
+/** Inline signup nudge shown after the first AI response, stays dismissible. */
+function GuestRegistrationCard({ fingerprint, onDismiss }: { fingerprint: string; onDismiss: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+
+  const handleSignup = () => {
+    const params = new URLSearchParams({ fp: fingerprint });
+    if (name.trim()) params.set("name", name.trim());
+    if (email.trim()) params.set("email", email.trim());
+    window.open(`/auth/sign-up?${params}`, "_blank");
+  };
+
+  return (
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <p className="mb-0.5 text-sm font-semibold">Save this conversation</p>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Create a free account to get 10 credits and keep your history.
+      </p>
+      <div className="flex flex-col gap-2">
+        <Input
+          placeholder="Your name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="h-8 text-xs"
+        />
+        <Input
+          type="email"
+          placeholder="Email address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSignup()}
+          className="h-8 text-xs"
+        />
+        <div className="flex gap-2">
+          <Button size="sm" className="flex-1" onClick={handleSignup}>
+            Sign Up Free
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDismiss}>
+            Later
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type EmbedChatViewProps = { embedKey: string };
 
 export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
@@ -34,6 +82,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   const [streamChips, setStreamChips] = useState<string[]>([]);
   const [traceSteps, setTraceSteps] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [signupDismissed, setSignupDismissed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fetchedRef = useRef(false);
 
@@ -94,6 +143,8 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   }
 
   const name = config?.display_name ?? "AI Counsellor";
+  const hasFirstAiResponse = messages.some((m) => m.role === "assistant");
+  const showSignupCard = hasFirstAiResponse && !signupDismissed && !sending;
 
   return (
     <div className="flex h-dvh flex-col bg-background">
@@ -122,6 +173,9 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
         {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
         {sending && streamText && (
           <StreamingMessage content={streamText} cards={streamCards} chips={streamChips} onChipClick={send} />
+        )}
+        {showSignupCard && (
+          <GuestRegistrationCard fingerprint={getFingerprint()} onDismiss={() => setSignupDismissed(true)} />
         )}
         {error && <p className="text-center text-sm text-destructive">{error}</p>}
         <div ref={bottomRef} />

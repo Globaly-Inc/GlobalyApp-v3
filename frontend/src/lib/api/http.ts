@@ -124,18 +124,25 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
 
     const meRes = await fetch(`${BASE_URL}/auth/me`, { headers: authHeaders() });
     if (!meRes.ok) return false;
-    const me = (await meRes.json()) as { user?: { businesses?: { id: number; org_id: string }[] } };
+    const me = (await meRes.json()) as {
+      user?: {
+        businesses?: { id: number; org_id: string }[];
+        institutions?: { id: number; org_id: string }[];
+      };
+    };
     const businesses = me.user?.businesses ?? [];
-    if (businesses.length === 0) return false;
+    const institutions = me.user?.institutions ?? [];
+    const allOrgs = [...businesses, ...institutions];
+    if (allOrgs.length === 0) return false;
 
     // Honour the user's pick when it is still a valid membership; otherwise fall
-    // back to the lowest business id. Sorting matters: listUserBusinesses has no
-    // ORDER BY, so "the first row" is whatever Postgres happens to return and the
-    // active business would otherwise change between reloads.
+    // back to the lowest id (businesses first, then institutions). Sorting matters:
+    // listUserBusinesses has no ORDER BY, so "the first row" is whatever Postgres
+    // happens to return and the active business would otherwise change between reloads.
     const selected = getSelectedOrgId();
-    const orgId = businesses.some((b) => b.org_id === selected)
+    const orgId = allOrgs.some((b) => b.org_id === selected)
       ? selected!
-      : [...businesses].sort((a, b) => a.id - b.id)[0]!.org_id;
+      : [...allOrgs].sort((a, b) => a.id - b.id)[0]!.org_id;
 
     return runExclusiveSwitch(async () => {
       const res = await fetch(`${BASE_URL}/auth/switch-account`, {

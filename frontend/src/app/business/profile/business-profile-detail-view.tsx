@@ -45,10 +45,16 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
   const isInstitution = authUser?.user_category === "institution";
+  // Membership lists are the authoritative source for whether THIS businessId is a business or
+  // institution — user_category only gives the primary role, so a dual-role user always resolves
+  // to "business" even when they're viewing an institution profile.
+  const isViewingInstitution =
+    !authUser?.businesses.some((b) => b.id === businessId) &&
+    !!authUser?.institutions.some((i) => i.id === businessId);
   const parsedTab = parseTab(searchParams.get("tab"));
   // Branches/Partners/Scholarships/Activity have no institution-side data — the sidebar never
   // links there for an institution, but fall back to profile if the URL is edited directly.
-  const tab = isInstitution && !["profile", "team", "services"].includes(parsedTab) ? "profile" : parsedTab;
+  const tab = isViewingInstitution && !["profile", "team", "services"].includes(parsedTab) ? "profile" : parsedTab;
 
   useEffect(() => {
     if (initializing) return;
@@ -64,9 +70,11 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const switchedRef = useRef(false);
   useEffect(() => {
     if (initializing || (!isBusiness && !isInstitution) || switchedRef.current) return;
-    const target = isBusiness
-      ? authUser?.businesses.find((b) => b.id === businessId)
-      : authUser?.institutions.find((i) => i.id === businessId);
+    // Search both lists — user_category picks the primary role, so a dual-role user has
+    // isBusiness=true even when navigating to an institution profile.
+    const target =
+      authUser?.businesses.find((b) => b.id === businessId) ??
+      authUser?.institutions.find((i) => i.id === businessId);
     if (!target) return;
     switchedRef.current = true;
     if (target.org_id === authUser?.orgId) {
@@ -163,7 +171,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
             {tab === "branches" && <BranchesTab businessId={businessId} />}
             {tab === "partners" && <PartnersTab businessId={businessId} businessName={profile.business_name} />}
             {tab === "team" && <MembersTab businessId={businessId} />}
-            {tab === "services" && <ServicesTab businessId={businessId} readOnly={isInstitution} />}
+            {tab === "services" && <ServicesTab businessId={businessId} readOnly={isViewingInstitution} />}
             {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
             {tab === "activity" && <ActivityTab businessId={businessId} />}
           </CardContent>

@@ -14,7 +14,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { geoApi, type Country } from "../geo/apis";
 import { businessApi } from "./apis";
-import { registerBusiness, updateMyProfile } from "./store/business-onboarding-slice";
+import { registerBusiness, registerInstitution, updateMyProfile } from "./store/business-onboarding-slice";
 import { validateBusinessDetails, validateBusinessField } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
 import { BusinessDetailsStep } from "./components/business-details-step";
@@ -175,6 +175,29 @@ function OnboardingForm({
     const phone = [phoneCode, phoneNumber].filter(Boolean).join(" ");
 
     if (isNew) {
+      if (isInstitution) {
+        const outcome = await dispatch(
+          registerInstitution({
+            institution_name: businessName,
+            phone,
+            country_id: Number(countryId),
+            address,
+            state: state || undefined,
+            city: city || undefined,
+            postcode: postcode || undefined,
+          }),
+        );
+        if (registerInstitution.rejected.match(outcome)) {
+          toast.error("Couldn't create institution", { description: outcome.error.message ?? "Please try again." });
+          return;
+        }
+        saveAccessToken(outcome.payload.access_token);
+        saveSelectedOrgId(outcome.payload.institution.org_id);
+        toast.success("Institution created!");
+        window.location.assign("/business/profile");
+        return;
+      }
+
       const outcome = await dispatch(
         registerBusiness({
           business_name: businessName,

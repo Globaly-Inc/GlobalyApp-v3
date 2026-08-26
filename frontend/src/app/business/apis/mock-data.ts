@@ -1,6 +1,6 @@
 import type {
   BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
-  RegisterBusinessResult,
+  RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult,
 } from "./types";
 
 function delay(ms: number) {
@@ -58,6 +58,17 @@ let mockProfile: BusinessProfile = {
 };
 
 export const businessMockApi = {
+  registerInstitution: async (input: InstitutionRegisterInput): Promise<RegisterInstitutionResult> => {
+    console.log("[mock] POST /platform-users/me/onboarding/institution", input);
+    await delay(500);
+    const subdomain = input.institution_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").split("-").filter(Boolean).join("-").slice(0, 20) || "institution";
+    return {
+      institution: { id: 1, org_id: "mock-inst-org-id", subdomain, institution_name: input.institution_name },
+      access_token: "mock-access-token",
+      message: "Institution created.",
+    };
+  },
+
   registerBusiness: async (input: BusinessRegisterInput): Promise<RegisterBusinessResult> => {
     console.log("[mock] POST /businesses/register", input);
     await delay(500);

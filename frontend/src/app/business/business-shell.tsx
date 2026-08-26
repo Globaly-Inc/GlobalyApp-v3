@@ -17,11 +17,11 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ensureBusinessContext } from "@/lib/api/http";
 import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
 import { authApi } from "@/app/auth/apis";
-import type { AuthMeBusiness, AuthMeInstitution } from "@/app/auth/apis";
+import type { AuthMeInstitution } from "@/app/auth/apis";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { BUSINESS_NAV_GROUPS, withBusinessId } from "./const";
-import { BusinessSwitcher } from "./components/business-switcher";
+import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
 
@@ -33,9 +33,10 @@ const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
  * header and does its own bottom-nav math. Mirrors PersonalShell's list.
  */
 const FULL_BLEED_ROUTES = ["/business/messages"] as const;
-// Institution accounts act as businesses throughout this shell — they never have any
-// `businesses[]` rows, so their institutions stand in wherever a business list is needed.
-function institutionsAsBusinesses(institutions: AuthMeInstitution[]): AuthMeBusiness[] {
+// Institution accounts act as businesses throughout this shell — their records are adapted
+// to the SwitcherOrg shape so the switcher can render them uniformly, with kind="institution"
+// to distinguish them visually and drive the nav-group filter.
+function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
   return institutions.map((inst) => ({
     id: inst.id,
     org_id: inst.org_id,
@@ -45,6 +46,7 @@ function institutionsAsBusinesses(institutions: AuthMeInstitution[]): AuthMeBusi
     owner_id: 0,
     role: inst.role,
     is_owner: inst.is_owner,
+    kind: "institution" as const,
   }));
 }
 
@@ -78,8 +80,8 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   // freely — and hold them back until it resolves, or their mount-time fetch
   // races the switch and 403s.
   const [contextReady, setContextReady] = useState(false);
-  const [businesses, setBusinesses] = useState<AuthMeBusiness[]>([]);
-  const [isInstitution, setIsInstitution] = useState(false);
+  const [businesses, setBusinesses] = useState<SwitcherOrg[]>([]);
+  const [institutionOrgIds, setInstitutionOrgIds] = useState<Set<string>>(new Set());
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
   // that has since moved on (e.g. after a back/forward navigation) — `status`/`profile` in that cached
@@ -92,20 +94,22 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     let active = true;
     ensureBusinessContext()
       .catch(() => false)
-      .then(() => (active ? authApi.listMyBusinesses().catch(() => []) : []))
-      .then(async (list) => {
-        if (!active || list.length > 0) return list;
-        const institutions = await authApi.listMyInstitutions().catch(() => []);
-        if (institutions.length > 0) setIsInstitution(true);
-        return institutionsAsBusinesses(institutions);
-      })
-      .then((list) => {
+      .then(async () => {
         if (!active) return;
-        setBusinesses(list);
-        setActiveOrgId(getSelectedOrgId() ?? [...list].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
-        // A zero-business user has nothing for /businesses/me to return — fetching
-        // it would just 403. onboarding-view.tsx handles the empty case itself.
-        if (list.length > 0) dispatch(fetchMyProfile());
+        const [bizList, instList] = await Promise.all([
+          authApi.listMyBusinesses().catch(() => []),
+          authApi.listMyInstitutions().catch(() => []),
+        ]);
+        const bizOrgs: SwitcherOrg[] = bizList.map((b) => ({ ...b, kind: "business" as const }));
+        const instOrgs = institutionsAsOrgs(instList);
+        const merged = [...bizOrgs, ...instOrgs];
+        if (!active) return;
+        setBusinesses(merged);
+        setInstitutionOrgIds(new Set(instOrgs.map((o) => o.org_id)));
+        setActiveOrgId(getSelectedOrgId() ?? [...merged].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
+        // A zero-org user has nothing for /businesses/me or /institutions/me to return.
+        // onboarding-view.tsx handles the empty case itself.
+        if (merged.length > 0) dispatch(fetchMyProfile());
       })
       .finally(() => {
         if (active) setContextReady(true);
@@ -186,6 +190,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     );
   }
 
+  const isInstitution = institutionOrgIds.has(activeOrgId ?? "");
   const initial = profile?.business_name?.[0]?.toUpperCase() ?? "B";
   const activeBusinessId = businesses.find((b) => b.org_id === activeOrgId)?.id ?? null;
   const navGroups = withBusinessId(isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS, activeBusinessId);
