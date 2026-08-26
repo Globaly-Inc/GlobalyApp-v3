@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuthState } from "@/app/auth/store/auth-slice";
-import { BusinessProfileDetailView } from "./business-profile-detail-view";
+import { ProfileView } from "@/app/personal/profile/profile-view";
 
 export default function BusinessProfilePage() {
   const router = useRouter();
@@ -28,5 +28,5 @@ export default function BusinessProfilePage() {
     );
   }
 
-  return <BusinessProfileDetailView businessId={target.id} />;
+  return <ProfileView />;
 }
