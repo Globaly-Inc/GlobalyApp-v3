@@ -6,7 +6,8 @@ import { businessProfileDetailApi } from "../apis";
 import type {
   ActivityListParams, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchPatch, BusinessRelation,
   BusinessService, InvitedMember, LinkExistingBranchInput, Member, MemberInviteInput, MemberListParams, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
+  Permission, RelationInput, RelationListParams, RelationPatch, Role, RoleCreateInput, RolePatch,
+  SchemaFieldValue, Scholarship, ScholarshipInput,
   ScholarshipListParams, ScholarshipPatch, ServiceInput, ServicePatch, ServiceSearchParams,
 } from "../apis/types";
 
@@ -107,6 +108,25 @@ export const resendInvitation = createAsyncThunk(
   ({ invitationId }: { id: number; invitationId: string }) => businessProfileDetailApi.resendInvitation(invitationId),
 );
 
+// ─── Roles (Members → Roles sub-tab) ─────────────────────────────────────────
+export const fetchRoles = createAsyncThunk("businessProfileDetail/fetchRoles", () => businessProfileDetailApi.getRoles());
+export const fetchPermissions = createAsyncThunk("businessProfileDetail/fetchPermissions", () => businessProfileDetailApi.getPermissions());
+export const createRole = createAsyncThunk(
+  "businessProfileDetail/createRole",
+  ({ input }: { input: RoleCreateInput }) => businessProfileDetailApi.createRole(input),
+);
+export const updateRole = createAsyncThunk(
+  "businessProfileDetail/updateRole",
+  ({ roleId, patch }: { roleId: number; patch: RolePatch }) => businessProfileDetailApi.updateRole(roleId, patch),
+);
+export const deleteRole = createAsyncThunk(
+  "businessProfileDetail/deleteRole",
+  async ({ roleId }: { roleId: number }) => {
+    await businessProfileDetailApi.deleteRole(roleId);
+    return roleId;
+  },
+);
+
 // ─── Relations (Partners tab) ─────────────────────────────────────────────────
 export const fetchRelations = createAsyncThunk(
   "businessProfileDetail/fetchRelations",
@@ -176,6 +196,8 @@ type BusinessProfileDetailState = {
   members: ListState<Member>;
   invitations: ListState<InvitedMember>;
   memberRoles: MemberRole[];
+  roles: ListState<Role>;
+  permissions: Permission[];
   relations: ListState<BusinessRelation>;
   scholarships: ListState<Scholarship>;
   activity: ListState<ActivityLogEntry>;
@@ -183,7 +205,7 @@ type BusinessProfileDetailState = {
 
 const initialState: BusinessProfileDetailState = {
   branches: emptyList(), services: emptyList(), members: emptyList(), invitations: emptyList(),
-  memberRoles: [], relations: emptyList(), scholarships: emptyList(), activity: emptyList(),
+  memberRoles: [], roles: emptyList(), permissions: [], relations: emptyList(), scholarships: emptyList(), activity: emptyList(),
 };
 
 const businessProfileDetailSlice = createSlice({
@@ -254,6 +276,23 @@ const businessProfileDetailSlice = createSlice({
         const wasPresent = state.invitations.items.some((i) => i.id === action.payload);
         state.invitations.items = state.invitations.items.filter((i) => i.id !== action.payload);
         if (wasPresent) state.invitations.total = Math.max(0, state.invitations.total - 1);
+      })
+
+      .addCase(fetchRoles.pending, (state) => { state.roles.status = "loading"; })
+      .addCase(fetchRoles.fulfilled, (state, action) => {
+        state.roles = { items: action.payload, status: "idle", error: null, total: action.payload.length };
+      })
+      .addCase(fetchRoles.rejected, (state, action) => { state.roles.status = "failed"; state.roles.error = action.error.message ?? "Failed to load roles."; })
+      .addCase(fetchPermissions.fulfilled, (state, action) => { state.permissions = action.payload; })
+      .addCase(createRole.fulfilled, (state, action) => { state.roles.items.push(action.payload); state.roles.total += 1; })
+      .addCase(updateRole.fulfilled, (state, action) => {
+        const i = state.roles.items.findIndex((r) => r.id === action.payload.id);
+        if (i >= 0) state.roles.items[i] = action.payload;
+      })
+      .addCase(deleteRole.fulfilled, (state, action) => {
+        const wasPresent = state.roles.items.some((r) => r.id === action.payload);
+        state.roles.items = state.roles.items.filter((r) => r.id !== action.payload);
+        if (wasPresent) state.roles.total = Math.max(0, state.roles.total - 1);
       })
 
       .addCase(fetchRelations.pending, (state) => { state.relations.status = "loading"; })

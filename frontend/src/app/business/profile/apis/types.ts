@@ -174,6 +174,33 @@ export type Member = {
 
 export type MemberRole = { id: number; name: string; display_name: string };
 
+export type Permission = {
+  id: number;
+  module: string;
+  action: string;
+  display_name: string;
+  description: string | null;
+};
+
+export type Role = {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+  is_system: boolean;
+  sort_order: number;
+  permission_ids: number[];
+  members_count: number;
+};
+
+export type RoleCreateInput = {
+  display_name: string;
+  description?: string | null;
+  permission_ids: number[];
+};
+
+export type RolePatch = Partial<RoleCreateInput>;
+
 export type MemberListParams = { page?: number; limit?: number };
 
 export type MemberListResult = { data: Member[]; total: number };

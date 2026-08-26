@@ -83,6 +83,94 @@ export async function listRoles(db: Knex) {
   return db<RoleRow>("roles").whereNull("deleted_at").orderBy("sort_order", "asc");
 }
 
+export async function findRoleById(db: Knex, id: number) {
+  return db<RoleRow>("roles").where({ id }).whereNull("deleted_at").first();
+}
+
+export interface PermissionRow {
+  id: number;
+  module: string;
+  action: string;
+  display_name: string;
+  description: string | null;
+}
+
+export async function listPermissions(db: Knex) {
+  return db<PermissionRow>("permissions")
+    .whereNull("deleted_at")
+    .select("id", "module", "action", "display_name", "description")
+    .orderBy(["module", "id"]);
+}
+
+/** All role→permission links, for building permission_ids arrays per role in one query. */
+export async function listRolePermissionLinks(db: Knex): Promise<{ role_id: number; permission_id: number }[]> {
+  return db("role_permissions").select("role_id", "permission_id");
+}
+
+/** Members per role_id (soft-deleted agents excluded), for "in use" counts. */
+export async function countAgentsPerRole(db: Knex): Promise<{ role_id: number; count: string }[]> {
+  return db("agents").whereNull("deleted_at").groupBy("role_id").select("role_id").count("id as count");
+}
+
+export async function countAgentsWithRole(db: Knex, roleId: number): Promise<number> {
+  const [{ count }] = await db("agents").where({ role_id: roleId }).whereNull("deleted_at").count("id as count");
+  return Number(count);
+}
+
+/** Pending invitations that would resolve to this role name on accept. */
+export async function countPendingInvitationsWithRole(db: Knex, roleName: string): Promise<number> {
+  const [{ count }] = await db("agent_invitations")
+    .where({ status: "pending" })
+    .whereNull("deleted_at")
+    .whereRaw("user_details->>'role' = ?", [roleName])
+    .count("id as count");
+  return Number(count);
+}
+
+export async function insertRole(db: Knex, data: {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  is_system: boolean;
+  sort_order: number;
+}) {
+  const [row] = await db<RoleRow>("roles")
+    .insert({ ...data, created_at: db.fn.now(), updated_at: db.fn.now() } as any)
+    .returning("*");
+  return row;
+}
+
+export async function updateRoleRow(db: Knex, id: number, data: {
+  display_name?: string;
+  description?: string | null;
+}) {
+  const [row] = await db<RoleRow>("roles")
+    .where({ id })
+    .whereNull("deleted_at")
+    .update({ ...data, updated_at: db.fn.now() } as any)
+    .returning("*");
+  return row;
+}
+
+export async function softDeleteRole(db: Knex, id: number) {
+  await db("roles").where({ id }).update({ deleted_at: db.fn.now() });
+}
+
+/** Replace-all semantics: the payload's permission_ids is the full desired set. */
+export async function setRolePermissions(db: Knex, roleId: number, permissionIds: number[]) {
+  await db.transaction(async (trx) => {
+    await trx("role_permissions").where({ role_id: roleId }).delete();
+    if (permissionIds.length > 0) {
+      await trx("role_permissions").insert(permissionIds.map((permission_id) => ({ role_id: roleId, permission_id })));
+    }
+  });
+}
+
+export async function maxRoleSortOrder(db: Knex): Promise<number> {
+  const row = await db("roles").whereNull("deleted_at").max("sort_order as max").first();
+  return Number(row?.max ?? 0);
+}
+
 // ── Business lookup (globalyapp) ──
 
 export async function findBusinessByDbName(dbName: string): Promise<BusinessRecord | undefined> {

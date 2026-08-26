@@ -5,8 +5,9 @@ import type {
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
-  Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
+  Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole, Permission,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, Role, RoleCreateInput, RolePatch,
+  SchemaFieldValue, Scholarship, ScholarshipInput,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
@@ -140,6 +141,12 @@ export const businessProfileDetailRealApi = {
   },
   cancelInvitation: (invitationId: string): Promise<void> => httpDelete(`${BASE}/members/invitations/${invitationId}`),
   resendInvitation: (invitationId: string): Promise<void> => httpPost(`${BASE}/members/invitations/${invitationId}/resend`, {}),
+
+  getRoles: (): Promise<Role[]> => httpGet(`${BASE}/roles`),
+  getPermissions: (): Promise<Permission[]> => httpGet(`${BASE}/roles/permissions`),
+  createRole: (input: RoleCreateInput): Promise<Role> => httpPost(`${BASE}/roles`, input),
+  updateRole: (roleId: number, patch: RolePatch): Promise<Role> => httpPatch(`${BASE}/roles/${roleId}`, patch),
+  deleteRole: (roleId: number): Promise<void> => httpDelete(`${BASE}/roles/${roleId}`),
 
   getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {
     const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/partners${toRelationQuery(params)}`);
