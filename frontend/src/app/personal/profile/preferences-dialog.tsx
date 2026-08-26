@@ -50,7 +50,7 @@ function toForm(profile: StudentProfile): FormState {
     destinations: (profile.preferred_destinations ?? []).map(String),
     fields: profile.preferred_fields ?? [],
     degreeLevel: profile.preferred_degree_levels?.[0] ?? "",
-    expectedStartDate: profile.expected_start_date ?? new Date().toISOString().split("T")[0],
+    expectedStartDate: profile.expected_start_date ?? new Date().toISOString().slice(0, 10),
     budgetCurrency: profile.budget_currency ?? "",
     budgetMin: profile.budget_min != null ? String(profile.budget_min) : "",
     budgetMax: profile.budget_max != null ? String(profile.budget_max) : "",

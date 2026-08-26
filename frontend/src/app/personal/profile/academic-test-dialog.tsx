@@ -40,7 +40,7 @@ function toInput(item: AcademicTest | null): AcademicTestInput {
     test_status: item?.test_status ?? "completed",
     test_type: item?.test_type ?? "",
     overall_score: item?.overall_score ?? "",
-    test_date: item?.test_date ?? new Date().toISOString().split("T")[0],
+    test_date: item?.test_date ?? new Date().toISOString().slice(0, 10),
     sub_scores: item?.sub_scores ?? {},
     sort_order: item?.sort_order ?? 0,
   };
