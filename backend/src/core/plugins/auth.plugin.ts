@@ -90,9 +90,11 @@ export async function requireInstitutionContext(req: FastifyRequest, reply: Fast
 }
 
 /**
- * Institution role guard. Institutions have no roles/permissions tables — `members.role` is
- * plain text (see database/migrations/institution/20260810_001_members.ts) — so this is a
- * role check, not the permission resolution requirePermission does for businesses.
+ * Institution role guard. Institutions store the role NAME on the member (`members.role`
+ * text, no role_id FK — see database/migrations/institution/20260810_001_members.ts), so this
+ * is a name check, not the permission resolution requirePermission does for businesses.
+ * Institutions do have roles/permissions tables (20260826_001) for Settings → Roles, but
+ * nothing resolves member permissions from them yet — enforcement here is still name-based.
  *
  * Reads the tenant `members` row rather than trusting orgRole from the JWT, so a role
  * changed after the token was minted takes effect immediately.

@@ -107,9 +107,17 @@ export async function listRolePermissionLinks(db: Knex): Promise<{ role_id: numb
   return db("role_permissions").select("role_id", "permission_id");
 }
 
+/** Which tenant schema the roles tables live in: business (agents/role_id) or institution (members/role name). */
+export type TenantKind = "business" | "institution";
+
 /** Members per role_id (soft-deleted agents excluded), for "in use" counts. */
 export async function countAgentsPerRole(db: Knex): Promise<{ role_id: number; count: string }[]> {
   return db("agents").whereNull("deleted_at").groupBy("role_id").select("role_id").count("id as count");
+}
+
+/** Institution counterpart — members reference roles by NAME (members.role text), not role_id. */
+export async function countMembersPerRoleName(db: Knex): Promise<{ role: string; count: string }[]> {
+  return db("members").whereNull("deleted_at").groupBy("role").select("role").count("id as count");
 }
 
 export async function countAgentsWithRole(db: Knex, roleId: number): Promise<number> {
@@ -117,9 +125,15 @@ export async function countAgentsWithRole(db: Knex, roleId: number): Promise<num
   return Number(count);
 }
 
+export async function countMembersWithRoleName(db: Knex, roleName: string): Promise<number> {
+  const [{ count }] = await db("members").where({ role: roleName }).whereNull("deleted_at").count("id as count");
+  return Number(count);
+}
+
 /** Pending invitations that would resolve to this role name on accept. */
-export async function countPendingInvitationsWithRole(db: Knex, roleName: string): Promise<number> {
-  const [{ count }] = await db("agent_invitations")
+export async function countPendingInvitationsWithRole(db: Knex, kind: TenantKind, roleName: string): Promise<number> {
+  const table = kind === "institution" ? "member_invitations" : "agent_invitations";
+  const [{ count }] = await db(table)
     .where({ status: "pending" })
     .whereNull("deleted_at")
     .whereRaw("user_details->>'role' = ?", [roleName])
