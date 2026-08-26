@@ -2,24 +2,25 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { ResponseBlock } from "../../apis/types";
 
 type QuickRepliesBlockProps = {
   block: Extract<ResponseBlock, { type: "quick_replies" }>;
-  /** Tapping an option or submitting the custom field sends its value as the user's next message. */
   onAction?: (value: string) => void;
 };
 
-/** Tappable answer options for a question the counsellor asked, plus a free-text fallback. */
+/** Tappable answer options for a question the counsellor asked. Multi-select populates the chat input. */
 export function QuickRepliesBlock({ block, onAction }: QuickRepliesBlockProps) {
-  const [custom, setCustom] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
 
-  const submitCustom = () => {
-    const val = custom.trim();
-    if (!val) return;
-    onAction?.(val);
-    setCustom("");
+  const toggle = (value: string) => {
+    const next = selected.includes(value)
+      ? selected.filter((v) => v !== value)
+      : [...selected, value];
+    setSelected(next);
+    const text =
+      next.length === 0 ? "" : next.length === 1 ? next[0]! : next.map((v) => `• ${v}`).join("\n");
+    onAction?.(text);
   };
 
   return (
@@ -29,26 +30,14 @@ export function QuickRepliesBlock({ block, onAction }: QuickRepliesBlockProps) {
         {block.options.map((option) => (
           <Button
             key={option.label}
-            variant="secondary"
+            variant={selected.includes(option.value) ? "default" : "secondary"}
             size="sm"
             className="rounded-full"
-            onClick={() => onAction?.(option.value)}
+            onClick={() => toggle(option.value)}
           >
             {option.label}
           </Button>
         ))}
-      </div>
-      <div className="mt-2 flex gap-2">
-        <Input
-          placeholder="Or type your own answer…"
-          value={custom}
-          onChange={(e) => setCustom(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submitCustom()}
-          className="h-8 text-xs"
-        />
-        <Button size="sm" variant="outline" disabled={!custom.trim()} onClick={submitCustom}>
-          Send
-        </Button>
       </div>
     </div>
   );

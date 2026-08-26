@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Power } from "lucide-react";
+import { Check, Copy, Power, PowerOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,8 @@ function embedSnippet(embedKey: string): string {
 export function WidgetCard({
   config,
   onDeactivate,
-}: Readonly<{ config: EmbedConfig; onDeactivate: (id: number) => void }>) {
+  onReactivate,
+}: Readonly<{ config: EmbedConfig; onDeactivate: (id: number) => void; onReactivate: (id: number) => void }>) {
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -38,11 +39,11 @@ export function WidgetCard({
           {config.display_name ?? "Untitled widget"}
           {!config.is_active && <Badge variant="secondary">Inactive</Badge>}
         </CardTitle>
-        {config.is_active && (
+        {config.is_active ? (
           confirming ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Deactivate?</span>
-              <Button size="sm" variant="destructive" onClick={() => onDeactivate(config.id)}>Yes</Button>
+              <Button size="sm" variant="destructive" onClick={() => { onDeactivate(config.id); setConfirming(false); }}>Yes</Button>
               <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>No</Button>
             </div>
           ) : (
@@ -50,6 +51,10 @@ export function WidgetCard({
               <Power className="size-4" />
             </Button>
           )
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => onReactivate(config.id)} title="Reactivate">
+            <PowerOff className="size-4" />
+          </Button>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
