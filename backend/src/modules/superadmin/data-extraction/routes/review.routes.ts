@@ -1,9 +1,11 @@
 // Review routes — maps V2 endpoints RA1-RA5, RCa1-RCa4.
 
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import * as service from "../services/review.service.js";
 import { UuidParamSchema } from "../schemas/jobs.schema.js";
 import { PatchAgentSchema, PatchCampusSchema } from "../schemas/review.schema.js";
+import { PaginationSchema, paginationToOffset } from "../../../../shared/pagination.js";
 
 export async function reviewRoutes(app: FastifyInstance) {
   const adminId = (req: any) => Number(req.auth.sub);
@@ -14,6 +16,15 @@ export async function reviewRoutes(app: FastifyInstance) {
   app.get("/jobs/:id/agents", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     return reply.send(await service.listAgents(id));
+  });
+
+  // GET /jobs/:id/agents-filtered — paginated + searchable, unlike RA1's full dump
+  app.get("/jobs/:id/agents-filtered", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const pagination = PaginationSchema.parse(req.query);
+    const { search } = z.object({ search: z.string().optional() }).parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    return reply.send(await service.listAgentsFiltered(id, limit, offset, pagination, { search }));
   });
 
   // RA2: GET /jobs/:id/mara-agents
@@ -47,6 +58,15 @@ export async function reviewRoutes(app: FastifyInstance) {
   app.get("/jobs/:id/campuses", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     return reply.send(await service.listCampuses(id));
+  });
+
+  // GET /jobs/:id/campuses-filtered — paginated + searchable, unlike RCa1's full dump
+  app.get("/jobs/:id/campuses-filtered", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const pagination = PaginationSchema.parse(req.query);
+    const { search } = z.object({ search: z.string().optional() }).parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    return reply.send(await service.listCampusesFiltered(id, limit, offset, pagination, { search }));
   });
 
   // RCa2: PATCH /campuses/:id

@@ -31,6 +31,7 @@ import {
   writeJobEvent,
   normaliseCampusName,
   upsertStudyUnit,
+  normaliseCourseCategory,
   writeVisaService,
   updateVisaServiceById,
   normaliseVisaServiceName,
@@ -883,6 +884,8 @@ async function handleCourseDataStep(
         const v = extracted[k];
         if (v && typeof v === "string" && v.trim()) updates[k] = v.trim();
       }
+      const category = normaliseCourseCategory(extracted.course_category);
+      if (category) updates.course_category = category;
       if (typeof extracted.duration_weeks === "number" && extracted.duration_weeks > 0) updates.duration_weeks = extracted.duration_weeks;
       if (Array.isArray(extracted.career_paths) && extracted.career_paths.length > 0) updates.career_paths = extracted.career_paths;
       if (Object.keys(updates).length > 0) {

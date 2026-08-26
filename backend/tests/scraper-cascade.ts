@@ -119,6 +119,29 @@ async function main() {
   assertEqual(r.scraper, "scrapling", "recovers within the same call after a session-expiry throw");
   assertEqual(tracker.connectCalls(), 1, "drops the dead client and reconnects exactly once");
 
+  // 7. expandCollapsed threads through to Firecrawl as a click-open action. Real bug, seen
+  // live on harvard.edu's "programs" pages: Firecrawl reports success every time (never
+  // actually blocked) — the real degree listing only renders after a client-side accordion
+  // click, so a static/rendered snapshot comes back as an empty shell (~95 chars) and the
+  // old code burned two retries on proxy/mobile escalation that can never fix that. Verified
+  // live against https://www.harvard.edu/programs/computer-science: adding this action took
+  // the recovered markdown from ~95 chars to 3434.
+  let capturedBody: any = null;
+  mockScrapling(SHORT);
+  global.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const u = url.toString();
+    if (u.includes("crawl4ai.test")) return new Response(JSON.stringify({ markdown: SHORT }), { status: 200 });
+    if (u.includes("firecrawl.dev")) {
+      capturedBody = JSON.parse(init!.body as string);
+      return new Response(JSON.stringify({ markdown: LONG }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+  r = await scrapeMarkdown("https://example.com", { expandCollapsed: true });
+  assertEqual(r.scraper, "firecrawl", "expandCollapsed still resolves via firecrawl");
+  assertEqual(Array.isArray(capturedBody?.actions), true, "expandCollapsed adds a Firecrawl actions array");
+  assertEqual(capturedBody?.actions?.[0]?.type, "executeJavascript", "the action is a JS click-open script, not a brittle selector-specific click that fails the whole scrape when nothing matches");
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

@@ -156,6 +156,9 @@ export type JobFull = {
   campuses: CampusRow[];
   agents: AgentRow[];
   courses: CourseRow[];
+  /** Real total course count for this job — `courses` above is capped (limit=100), so
+   * job stats/counts must read this, not `courses.length`. */
+  coursesTotal: number;
   courseLinks: CourseLinks;
   /** Only populated for source_type: "visa_service" jobs — empty array otherwise. */
   visaServices: VisaService[];

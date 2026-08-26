@@ -17,6 +17,31 @@ export async function listAgentsByJob(jobId: string, search?: string) {
   return { agents, agent_locations: agentLocations };
 }
 
+export type AgentListFilters = { search?: string };
+
+// Matches agents-tab.tsx's pre-existing client-side search scope (name/country/email/city)
+// so moving it server-side doesn't narrow what admins could already search by.
+function filteredAgentsQuery(jobId: string, { search }: AgentListFilters = {}) {
+  const q = masterKnex(`${S}.extraction_agents`).where({ job_id: jobId });
+  if (search) {
+    q.where((b) => b
+      .whereILike("name", `%${search}%`)
+      .orWhereILike("country", `%${search}%`)
+      .orWhereILike("email", `%${search}%`)
+      .orWhereILike("city", `%${search}%`));
+  }
+  return q;
+}
+
+export async function listAgentsByJobPaged(jobId: string, limit: number, offset: number, filters: AgentListFilters = {}) {
+  return filteredAgentsQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countAgentsByJob(jobId: string, filters: AgentListFilters = {}) {
+  const [row] = await filteredAgentsQuery(jobId, filters).count("id as count");
+  return Number(row.count);
+}
+
 export async function listMaraAgentsByJob(jobId: string) {
   return masterKnex(`${S}.extraction_mara_agents`).where({ job_id: jobId }).orderBy("created_at", "asc");
 }

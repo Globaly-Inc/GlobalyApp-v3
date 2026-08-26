@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Building2, Globe, Hash, Link2, Loader2, Mail, MapPin, Pencil, Phone, Plus, Trash2, Type,
+  Building2, Globe, Hash, Link2, Loader2, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, Type,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
@@ -18,6 +20,8 @@ import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { CampusFull, ExtractionJob } from "../apis/types";
 import type { LucideIcon } from "lucide-react";
+
+const DEFAULT_PAGE_SIZE = 10;
 
 // Empty strings would overwrite extracted values with blanks — send nulls instead.
 const toPatch = (v: BranchValues) =>
@@ -122,6 +126,10 @@ export function BranchesTab({
   onJumpToContext: () => void;
 }>) {
   const [branches, setBranches] = useState<CampusFull[]>([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -129,21 +137,40 @@ export function BranchesTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  // Accepts overrides for the same reason study-units-tab.tsx does — setState is async, so a
+  // caller that also resets page/search right before reloading needs the new values applied
+  // to THIS fetch immediately, not next render's stale closure.
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string }) => {
     try {
-      setBranches(await allExtractionsApi.getCampuses(jobId));
+      const res = await allExtractionsApi.getCampusesFiltered(jobId, {
+        page: overrides?.page ?? page,
+        limit: overrides?.limit ?? limit,
+        search: (overrides?.search ?? search).trim() || undefined,
+      });
+      setBranches(res.data);
+      setTotal(res.meta?.total ?? 0);
     } catch (e) {
       toast.error("Failed to load branches", { description: (e as Error).message });
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, page, limit, search]);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    load();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      load();
+      return;
+    }
+    // Debounce so typing in the search box doesn't fire a request per keystroke.
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
   }, [load]);
+
+  // A search change invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
@@ -204,13 +231,25 @@ export function BranchesTab({
         label="Branches"
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.branches}
         lastUpdated={latestTimestamp(branches)}
-        hasData={branches.length > 0}
+        hasData={total > 0}
         guidedUrls={job.guided_urls}
         contextKey="branches_urls"
         contextLabel="branches URLs"
         onChanged={onReload}
         onAddContext={onJumpToContext}
       />
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="relative w-full max-w-xs">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search branches…"
+            className="h-8 pl-7 text-sm"
+          />
+        </div>
+      </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
@@ -220,7 +259,8 @@ export function BranchesTab({
               onCheckedChange={() => setSelectedIds(allSelected ? [] : branches.map((b) => b.id))}
               disabled={branches.length === 0}
             />
-            Select all ({branches.length})
+            {total} branch{total === 1 ? "" : "es"}
+            {search.trim() && ` · ${branches.length} on this page`}
           </label>
           {selectedIds.length > 0 && (
             <Button
@@ -259,8 +299,10 @@ export function BranchesTab({
           <Card className="border-dashed">
             <CardContent className="py-12 text-center text-muted-foreground">
               <Building2 className="mx-auto mb-3 h-8 w-8 opacity-40" />
-              <p className="text-sm">No branches yet</p>
-              <p className="mt-1 text-xs">Add one manually, or run the branches extraction above.</p>
+              <p className="text-sm">{search.trim() ? "No branches match your search" : "No branches yet"}</p>
+              {!search.trim() && (
+                <p className="mt-1 text-xs">Add one manually, or run the branches extraction above.</p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -287,6 +329,17 @@ export function BranchesTab({
           ),
         )}
       </div>
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          total={total}
+          limit={limit}
+          onPageChange={setPage}
+          align="end"
+          onPageSizeChange={(next) => { setLimit(next); setPage(1); }}
+        />
+      )}
     </div>
   );
 }

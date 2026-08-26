@@ -4,7 +4,7 @@ import { z } from "zod";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  Award, BookMarked, BookOpen, FileText, Hash, Link2, Loader2, Pencil, Plus, Save, Tag, Trash2, X,
+  Award, BookMarked, BookOpen, FileText, Hash, Link2, Loader2, Pencil, Plus, Save, Search, Tag, Trash2, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Pagination } from "@/components/ui/pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
@@ -24,9 +25,10 @@ import { UNIT_TYPE_OPTIONS } from "../const";
 import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
-import type { CourseFull, CourseLinks, ExtractionJob, StudyUnit, StudyUnitParams } from "../apis/types";
+import type { CourseLinks, CourseRow, ExtractionJob, StudyUnit, StudyUnitParams } from "../apis/types";
 
 const CHIP_LIMIT = 6;
+const DEFAULT_PAGE_SIZE = 10;
 
 const studyUnitSchema = z.object({
   name: z.string().trim().min(1, "Unit name is required"),
@@ -204,7 +206,7 @@ function StudyUnitCard({
   onUnlinkCourse,
 }: Readonly<{
   unit: StudyUnit;
-  courses: CourseFull[];
+  courses: CourseRow[];
   linkedCourseIds: string[];
   selected: boolean;
   busy: boolean;
@@ -341,16 +343,22 @@ function StudyUnitCard({
 export function StudyUnitsTab({
   jobId,
   job,
+  courses,
   onReload,
   onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
+  courses: CourseRow[];
   onReload: () => void;
   onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
-  const [courses, setCourses] = useState<CourseFull[]>([]);
+  const [units, setUnits] = useState<StudyUnit[]>([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -358,28 +366,45 @@ export function StudyUnitsTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  // Accepts overrides for the same reason courses-tab.tsx does — setState is async, so a
+  // caller that also resets page/search right before reloading needs the new values applied
+  // to THIS fetch immediately, not next render's stale closure.
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string }) => {
     try {
-      const [courseLinks, courseRows] = await Promise.all([
+      const [unitsRes, courseLinks] = await Promise.all([
+        allExtractionsApi.getStudyUnits(jobId, {
+          page: overrides?.page ?? page,
+          limit: overrides?.limit ?? limit,
+          search: (overrides?.search ?? search).trim() || undefined,
+        }),
         allExtractionsApi.getCourseLinks(jobId),
-        allExtractionsApi.getCourses(jobId, { limit: 100 }).then((r) => r.data),
       ]);
+      setUnits(unitsRes.data);
+      setTotal(unitsRes.meta?.total ?? 0);
       setLinks(courseLinks);
-      setCourses(courseRows);
     } catch (e) {
       toast.error("Failed to load study units", { description: (e as Error).message });
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, page, limit, search]);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    load();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      load();
+      return;
+    }
+    // Debounce so typing in the search box doesn't fire a request per keystroke.
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
   }, [load]);
 
-  const units = links?.study_units ?? [];
+  // A search change invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
   const allSelected = units.length > 0 && selectedIds.length === units.length;
 
   const { confirm, dialog } = useConfirmDelete();
@@ -411,13 +436,25 @@ export function StudyUnitsTab({
         runLabel="Run Study Units Extraction"
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(units)}
-        hasData={units.length > 0}
+        hasData={total > 0}
         guidedUrls={job.guided_urls}
         contextKey="extract_fields"
         contextLabel="extract fields"
         onChanged={onReload}
         onAddContext={onJumpToContext}
       />
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="relative w-full max-w-xs">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search study units…"
+            className="h-8 pl-7 text-sm"
+          />
+        </div>
+      </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
@@ -427,7 +464,8 @@ export function StudyUnitsTab({
               onCheckedChange={() => setSelectedIds(allSelected ? [] : units.map((u) => u.id))}
               disabled={units.length === 0}
             />
-            Select all ({units.length})
+            {total} unit{total === 1 ? "" : "s"}
+            {search.trim() && ` · ${units.length} on this page`}
           </label>
           {selectedIds.length > 0 && (
             <Button
@@ -478,8 +516,10 @@ export function StudyUnitsTab({
           <Card className="border-dashed">
             <CardContent className="py-12 text-center text-muted-foreground">
               <BookMarked className="mx-auto mb-3 h-8 w-8 opacity-40" />
-              <p className="text-sm">No study units yet</p>
-              <p className="mt-1 text-xs">Add one manually, or extract units from a course in the Courses tab.</p>
+              <p className="text-sm">{search.trim() ? "No study units match your search" : "No study units yet"}</p>
+              {!search.trim() && (
+                <p className="mt-1 text-xs">Add one manually, or extract units from a course in the Courses tab.</p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -530,6 +570,17 @@ export function StudyUnitsTab({
           ),
         )}
       </div>
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          total={total}
+          limit={limit}
+          onPageChange={setPage}
+          align="end"
+          onPageSizeChange={(next) => { setLimit(next); setPage(1); }}
+        />
+      )}
     </div>
   );
 }

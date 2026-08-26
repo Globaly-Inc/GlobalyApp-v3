@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  BookOpen, Clock, Layers, Link2, Loader2, Pencil, Plus, Trash2, Type, Users, X,
+  BookOpen, Clock, Layers, Link2, Loader2, Pencil, Plus, Search, Trash2, Type, Users, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { EditableField, saveFormAndLearn, useFieldSaver, type EditableFieldProps } from "./editable-field";
@@ -19,9 +21,10 @@ import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { StudyOptionForm } from "./study-option-form";
-import type { CourseFull, CourseLinks, ExtractionJob, StudyOption } from "../apis/types";
+import type { CourseLinks, CourseRow, ExtractionJob, StudyOption } from "../apis/types";
 
 const CHIP_LIMIT = 6;
+const DEFAULT_PAGE_SIZE = 10;
 const humanize = (v: string | null) => (v ? v.replaceAll("_", " ") : "");
 
 // EditableField keeps its own click-to-edit affordance — this just gives each
@@ -51,7 +54,7 @@ function StudyOptionCard({
   onSaveField,
 }: Readonly<{
   option: StudyOption;
-  courses: CourseFull[];
+  courses: CourseRow[];
   linkedCourseIds: string[];
   selected: boolean;
   onToggleSelect: () => void;
@@ -159,16 +162,22 @@ function StudyOptionCard({
 export function StudyOptionsTab({
   jobId,
   job,
+  courses,
   onReload,
   onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
+  courses: CourseRow[];
   onReload: () => void;
   onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
-  const [courses, setCourses] = useState<CourseFull[]>([]);
+  const [options, setOptions] = useState<StudyOption[]>([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -176,30 +185,47 @@ export function StudyOptionsTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  // Accepts overrides for the same reason study-units-tab.tsx does — setState is async, so a
+  // caller that also resets page/search right before reloading needs the new values applied
+  // to THIS fetch immediately, not next render's stale closure.
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string }) => {
     try {
-      const [courseLinks, courseRows] = await Promise.all([
+      const [optionsRes, courseLinks] = await Promise.all([
+        allExtractionsApi.getStudyOptions(jobId, {
+          page: overrides?.page ?? page,
+          limit: overrides?.limit ?? limit,
+          search: (overrides?.search ?? search).trim() || undefined,
+        }),
         allExtractionsApi.getCourseLinks(jobId),
-        allExtractionsApi.getCourses(jobId, { limit: 100 }).then((r) => r.data),
       ]);
+      setOptions(optionsRes.data);
+      setTotal(optionsRes.meta?.total ?? 0);
       setLinks(courseLinks);
-      setCourses(courseRows);
     } catch (e) {
       toast.error("Failed to load study options", { description: (e as Error).message });
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, page, limit, search]);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    load();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      load();
+      return;
+    }
+    // Debounce so typing in the search box doesn't fire a request per keystroke.
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
   }, [load]);
+
+  // A search change invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
-  const options = links?.study_options ?? [];
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setSaving(true);
@@ -227,13 +253,25 @@ export function StudyOptionsTab({
         runLabel="Run Study Options Extraction"
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(options)}
-        hasData={options.length > 0}
+        hasData={total > 0}
         guidedUrls={job.guided_urls}
         contextKey="extract_fields"
         contextLabel="extract fields"
         onChanged={onReload}
         onAddContext={onJumpToContext}
       />
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="relative w-full max-w-xs">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search study options…"
+            className="h-8 pl-7 text-sm"
+          />
+        </div>
+      </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
@@ -243,7 +281,8 @@ export function StudyOptionsTab({
               onCheckedChange={() => setSelectedIds(selectedIds.length === options.length ? [] : options.map((o) => o.id))}
               disabled={options.length === 0}
             />
-            Select all ({options.length})
+            {total} option{total === 1 ? "" : "s"}
+            {search.trim() && ` · ${options.length} on this page`}
           </label>
           {selectedIds.length > 0 && (
             <Button
@@ -295,8 +334,10 @@ export function StudyOptionsTab({
           <Card className="border-dashed">
             <CardContent className="py-12 text-center text-muted-foreground">
               <Clock className="mx-auto mb-3 h-8 w-8 opacity-40" />
-              <p className="text-sm">No study options yet</p>
-              <p className="mt-1 text-xs">Add one manually, or extract them from a course in the Courses tab.</p>
+              <p className="text-sm">{search.trim() ? "No study options match your search" : "No study options yet"}</p>
+              {!search.trim() && (
+                <p className="mt-1 text-xs">Add one manually, or extract them from a course in the Courses tab.</p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -342,6 +383,17 @@ export function StudyOptionsTab({
           ),
         )}
       </div>
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          total={total}
+          limit={limit}
+          onPageChange={setPage}
+          align="end"
+          onPageSizeChange={(next) => { setLimit(next); setPage(1); }}
+        />
+      )}
     </div>
   );
 }

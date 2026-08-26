@@ -25,6 +25,17 @@ export interface ScrapeOptions {
    * credit cost otherwise); "stealth" forces it. Unset = Firecrawl's own default.
    */
   proxy?: "basic" | "stealth" | "auto";
+  /**
+   * Click open any collapsed accordion/details/toggle before capturing (Firecrawl
+   * executeJavascript action). Real bug, seen live on harvard.edu's "programs" pages:
+   * the page isn't blocked at all (Firecrawl returns success every time) — the actual
+   * degree listing only renders after a client click, so a static/rendered snapshot
+   * comes back as an empty accordion shell (~95 chars) and our own length gate then
+   * misclassifies it as "blocked", burning retries on proxy/mobile escalation that can
+   * never fix a JS-interaction-gated page. Safe to always set: the click script no-ops
+   * via querySelectorAll if nothing matches, so it never breaks a normal page.
+   */
+  expandCollapsed?: boolean;
 }
 
 export interface ScrapeResult {
@@ -319,6 +330,14 @@ async function scraplingScrape(
 
 // ─── Firecrawl ──────────────────────────────────────────────────────────────
 
+// Generic click-open for common accordion/tab/toggle patterns — not Harvard-specific,
+// add more selectors here if another site's collapse pattern slips through. Wrapped in
+// try/catch per element and run via forEach (never throws on zero matches), unlike
+// Firecrawl's dedicated `click` action which fails the whole scrape if the selector
+// isn't found on the page.
+const EXPAND_COLLAPSED_SCRIPT =
+  `document.querySelectorAll('.c-accordion__header, [aria-expanded="false"], details:not([open]) summary, .accordion-header, .accordion-title, [data-toggle="collapse"], [data-bs-toggle="collapse"]').forEach(function(el){ try { el.click(); } catch(e) {} });`;
+
 async function firecrawlScrape(
   url: string,
   apiKey: string,
@@ -336,6 +355,10 @@ async function firecrawlScrape(
         waitFor: opts.waitFor ?? 2000,
         ...(opts.mobile ? { mobile: true } : {}),
         ...(opts.proxy ? { proxy: opts.proxy } : {}),
+        ...(opts.expandCollapsed ? { actions: [
+          { type: "executeJavascript", script: EXPAND_COLLAPSED_SCRIPT },
+          { type: "wait", milliseconds: 1500 },
+        ] } : {}),
       }),
     });
     const data: any = await res.json().catch(() => ({}));
