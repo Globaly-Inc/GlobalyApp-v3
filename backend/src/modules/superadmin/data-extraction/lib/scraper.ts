@@ -49,6 +49,25 @@ export interface DiscoveryResult {
 
 const MIN_CONTENT_LEN = 200;
 
+// Soft-404/error shells (nav + footer + "page not found") routinely clear MIN_CONTENT_LEN
+// on their own, so a length-only gate accepts them as a successful scrape and the cascade
+// never escalates to a tier that would actually render the real page.
+const NO_CONTENT_PATTERNS = [
+  /page (could not be found|not found|doesn['’]?t exist|does not exist)/i,
+  /\b404\b[^a-z0-9]{0,20}(error|not found|page)/i,
+  /we (can|could)['’]?n[o]?t find (that|this|the) page/i,
+  /sorry,? (we )?(couldn['’]?t|could not|can['’]?t) find/i,
+  /access (denied|forbidden)/i,
+  /you don['’]?t have permission to access/i,
+];
+
+// ponytail: phrase-based soft-404 detector, not a content-density model — add one if a
+// real page keeps slipping through with boilerplate-only content but no matching phrase.
+function isUsableContent(content: string): boolean {
+  if (content.length < MIN_CONTENT_LEN) return false;
+  return !NO_CONTENT_PATTERNS.some((re) => re.test(content));
+}
+
 // ─── Human-like fetch helpers ───────────────────────────────────────────────
 
 const USER_AGENTS = [
@@ -276,15 +295,23 @@ async function scraplingScrape(
       }
       const structured = result.structuredContent as ScraplingToolResult | undefined;
       const content = structured?.content?.join("\n") ?? "";
-      if (content.length >= MIN_CONTENT_LEN) {
+      if (isUsableContent(content)) {
         logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars)`);
         return { content, tierUsed: tier.tool };
       }
-      lastError = `${tier.tool} returned ${content.length} chars`;
+      lastError = `${tier.tool} returned ${content.length} chars (unusable)`;
       logger.info(`scrapling mcp: tool "${tier.tool}" insufficient for ${url} (${content.length} chars) — escalating`);
     } catch (err) {
       lastError = err instanceof Error ? `${tier.tool}: ${err.message}` : `${tier.tool} error`;
       logger.warn(`scrapling mcp: tool "${tier.tool}" threw for ${url} — ${lastError}`);
+      mcpClient = null;
+      mcpClientBaseUrl = null;
+      try {
+        client = await getMcpClient(cfg);
+      } catch (reconnectErr) {
+        lastError = reconnectErr instanceof Error ? reconnectErr.message : "scrapling mcp reconnect failed";
+        break;
+      }
     }
   }
   return { content: "", error: lastError ?? "all scrapling tiers exhausted" };
@@ -328,7 +355,7 @@ export async function scrapeRenderedHtml(
   const scrapling = getScraplingConfig();
   if (scrapling) {
     const s = await scraplingScrape(url, scrapling, "html");
-    if (s.content.length >= MIN_CONTENT_LEN) {
+    if (isUsableContent(s.content)) {
       logger.info(`scrapling OK (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return { html: s.content };
     }
@@ -366,7 +393,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
   // Path 0: Scrapling available
   if (scrapling) {
     const s = await scraplingScrape(url, scrapling, "markdown");
-    if (s.content.length >= MIN_CONTENT_LEN) {
+    if (isUsableContent(s.content)) {
       logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return {
         markdown: s.content,
@@ -380,7 +407,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
   // Path A: Crawl4AI available
   if (c4) {
     const a1 = await crawl4aiScrape(url, "fit", c4);
-    if (a1.markdown.length >= MIN_CONTENT_LEN) {
+    if (isUsableContent(a1.markdown)) {
       return {
         markdown: a1.markdown,
         links: opts.withLinks ? extractLinksFromMarkdown(a1.markdown) : [],
@@ -388,7 +415,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
       };
     }
     const a2 = await crawl4aiScrape(url, "raw", c4);
-    if (a2.markdown.length >= MIN_CONTENT_LEN) {
+    if (isUsableContent(a2.markdown)) {
       return {
         markdown: a2.markdown,
         links: opts.withLinks ? extractLinksFromMarkdown(a2.markdown) : [],
@@ -398,7 +425,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     // Crawl4AI blocked — try Firecrawl
     if (fcKey) {
       const fc = await firecrawlScrape(url, fcKey, opts);
-      if (fc.markdown.length >= MIN_CONTENT_LEN) {
+      if (isUsableContent(fc.markdown)) {
         return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl" };
       }
       return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true, error: fc.error || a2.error || a1.error || "Empty page" };
@@ -409,7 +436,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
   // Path B: Firecrawl-only
   if (fcKey) {
     const fc = await firecrawlScrape(url, fcKey, opts);
-    return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: fc.markdown.length < MIN_CONTENT_LEN, error: fc.error };
+    return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: !isUsableContent(fc.markdown), error: fc.error };
   }
 
   return { markdown: "", links: [], scraper: "none", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)" };

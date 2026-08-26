@@ -54,6 +54,29 @@ function mockScrapling(markdown: string | null) {
   };
 }
 
+/**
+ * Simulates the real staging bug: the cached MCP client's session id has gone dead
+ * (scrapling-mcp restarted server-side), so the FIRST callTool throws exactly like a
+ * StreamableHTTP 404 "unknown or expired session ID" would. Every call after that must
+ * succeed, and connect() must fire again — proving the client actually reconnected
+ * instead of reusing the dead session forever.
+ */
+function mockScraplingSessionExpiry(markdown: string) {
+  let connectCalls = 0;
+  let callToolCalls = 0;
+  (Client.prototype as any).connect = async function () {
+    connectCalls++;
+  };
+  (Client.prototype as any).callTool = async function () {
+    callToolCalls++;
+    if (callToolCalls === 1) {
+      throw new Error("Rejected request with unknown or expired session ID: 230bcc487fa6454a911c8dbb36f89556");
+    }
+    return { structuredContent: { status: 200, content: [markdown], url: "https://example.com" } };
+  };
+  return { connectCalls: () => connectCalls };
+}
+
 async function main() {
   const { scrapeMarkdown } = await import("../src/modules/superadmin/data-extraction/lib/scraper.js");
 
@@ -79,6 +102,22 @@ async function main() {
   mockFetch({ "crawl4ai.test": LONG, "firecrawl.dev": LONG });
   r = await scrapeMarkdown("https://example.com", { forceFirecrawl: true });
   assertEqual(r.scraper, "firecrawl", "forceFirecrawl skips scrapling and crawl4ai");
+
+  // 5. Scrapling returns a long-but-empty soft-404 shell (nav/footer boilerplate padded past
+  // MIN_CONTENT_LEN) — must not be accepted as a real scrape; falls through to Crawl4AI.
+  // Reproduces the real UTS soft-404 page: 8k+ chars of nav/footer plus "Page not found".
+  const SOFT_404 = `${LONG}\nPage not found\nWe can't find the page you're looking for.\n${LONG}`;
+  mockScrapling(SOFT_404);
+  mockFetch({ "crawl4ai.test": LONG });
+  r = await scrapeMarkdown("https://example.com");
+  assertEqual(r.scraper, "crawl4ai", "rejects a long soft-404 shell from scrapling and falls through");
+
+  // 6. Cached client's session has died server-side (staging bug) — must reconnect and
+  // recover WITHIN this same call, not just on some future call after the process restarts.
+  const tracker = mockScraplingSessionExpiry(LONG);
+  r = await scrapeMarkdown("https://example.com");
+  assertEqual(r.scraper, "scrapling", "recovers within the same call after a session-expiry throw");
+  assertEqual(tracker.connectCalls(), 1, "drops the dead client and reconnects exactly once");
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
