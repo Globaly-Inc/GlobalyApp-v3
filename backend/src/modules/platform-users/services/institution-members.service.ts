@@ -164,17 +164,25 @@ async function enrichMembers(members: MemberRow[]) {
   });
 }
 
+function applyMemberSearch(query: Knex.QueryBuilder, search?: string): Knex.QueryBuilder {
+  if (!search) return query;
+  return query.where((qb) => {
+    qb.whereILike("first_name", `%${search}%`)
+      .orWhereILike("last_name", `%${search}%`)
+      .orWhereILike("email", `%${search}%`);
+  });
+}
+
 /** Self-service member list — the institution twin of agents.service.ts's listAgents. */
-export async function listMembers(tenantDb: Knex, pagination: PaginationInput) {
+export async function listMembers(tenantDb: Knex, pagination: PaginationInput, search?: string) {
   const { limit, offset } = paginationToOffset(pagination);
   const [rows, [{ count }]] = await Promise.all([
-    tenantDb<MemberRow>("members")
-      .whereNull("deleted_at")
+    applyMemberSearch(tenantDb<MemberRow>("members").whereNull("deleted_at"), search)
       .select(MEMBER_COLUMNS as unknown as (keyof MemberRow)[])
       .orderBy("id", "asc")
       .limit(limit)
       .offset(offset),
-    tenantDb("members").whereNull("deleted_at").count("id as count"),
+    applyMemberSearch(tenantDb("members").whereNull("deleted_at"), search).count("id as count"),
   ]);
   const enriched = await enrichMembers(rows);
   return buildPaginatedResponse(enriched, Number(count), pagination);

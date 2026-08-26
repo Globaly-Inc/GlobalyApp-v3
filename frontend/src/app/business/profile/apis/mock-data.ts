@@ -181,7 +181,11 @@ export const businessProfileDetailMockApi = {
   getMembers: async (params: MemberListParams = {}): Promise<MemberListResult> => {
     console.log("[mock] GET /businesses/members", params);
     await delay(300);
-    return { data: mockMembers, total: mockMembers.length };
+    const search = params.search?.toLowerCase();
+    const filtered = search
+      ? mockMembers.filter((m) => `${m.first_name} ${m.last_name} ${m.email}`.toLowerCase().includes(search))
+      : mockMembers;
+    return { data: filtered, total: filtered.length };
   },
   getMemberRoles: async (): Promise<MemberRole[]> => {
     await delay(200);

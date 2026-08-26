@@ -51,11 +51,11 @@ async function enrichAgents(agents: any[]) {
 
 // ── CRUD ──
 
-export async function listAgents(db: Knex, pagination: PaginationInput) {
+export async function listAgents(db: Knex, pagination: PaginationInput, search?: string) {
   const { limit, offset } = paginationToOffset(pagination);
   const [rows, total] = await Promise.all([
-    repo.listAgents(db, limit, offset),
-    repo.countAgents(db),
+    repo.listAgents(db, limit, offset, search),
+    repo.countAgents(db, search),
   ]);
   const enriched = await enrichAgents(rows);
   return buildPaginatedResponse(enriched, total, pagination);

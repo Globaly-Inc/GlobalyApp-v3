@@ -14,6 +14,8 @@ import { queueEmail } from "../../../../auth/auth.service.js";
 import { claimBusinessEmail } from "../../../../../shared/mail/templates.js";
 import * as repo from "../repositories/businesses.repository.js";
 import * as userRepo from "../../../../platform-users/repositories/platform-users.repository.js";
+import { findBusinessBySubdomain } from "../../../../businesses/repositories/businesses.repository.js";
+import { generateSubdomain } from "../../../../../shared/subdomain.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
 import * as agentsService from "../../../../agents/services/agents.service.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
@@ -43,6 +45,14 @@ async function requireBusiness(id: number) {
   return biz;
 }
 
+async function subdomainTaken(subdomain: string): Promise<boolean> {
+  const [biz, inst] = await Promise.all([
+    findBusinessBySubdomain(subdomain),
+    userRepo.findInstitutionBySubdomain(subdomain),
+  ]);
+  return Boolean(biz || inst);
+}
+
 export async function createBusiness(input: BusinessCreateInput) {
   const existingOwner = await userRepo.findByEmail(input.email);
   if (existingOwner) throw new ConflictError("This email is already in use");
@@ -50,25 +60,30 @@ export async function createBusiness(input: BusinessCreateInput) {
 
   const { first_name, last_name, ...businessInput } = input;
 
-
-  let owner: Awaited<ReturnType<typeof userRepo.insert>>;
-  let business: Awaited<ReturnType<typeof repo.insertBusiness>>;
-  try {
-    ({ owner, business } = await masterKnex.transaction(async (trx) => {
-      const trxOwner = await userRepo.insert({
-        first_name: first_name || input.business_name,
-        last_name: last_name ?? "",
-        email: input.email,
-        phone: input.phone ?? undefined,
-        account_status: 1,
-      }, trx);
-      const trxBusiness = await repo.insertBusiness({ ...businessInput, owner_id: trxOwner.id }, trx);
-      return { owner: trxOwner, business: trxBusiness };
-    }));
-  } catch (err: any) {
-    if (err.code === "23505") throw new ConflictError("Subdomain already taken");
-    throw err;
+  // No subdomain field for an admin to fix, so a collision (including the check-then-insert
+  // race between two concurrent creates) is retried with a freshly generated subdomain instead
+  // of ever surfacing as an error — same handling as the self-service registration flow.
+  let owner: Awaited<ReturnType<typeof userRepo.insert>> | undefined;
+  let business: Awaited<ReturnType<typeof repo.insertBusiness>> | undefined;
+  for (let attempt = 0; !business && attempt < 5; attempt++) {
+    const subdomain = await generateSubdomain(input.business_name, subdomainTaken);
+    try {
+      ({ owner, business } = await masterKnex.transaction(async (trx) => {
+        const trxOwner = await userRepo.insert({
+          first_name: first_name || input.business_name,
+          last_name: last_name ?? "",
+          email: input.email,
+          phone: input.phone ?? undefined,
+          account_status: 1,
+        }, trx);
+        const trxBusiness = await repo.insertBusiness({ ...businessInput, subdomain, owner_id: trxOwner.id }, trx);
+        return { owner: trxOwner, business: trxBusiness };
+      }));
+    } catch (err: any) {
+      if (err.code !== "23505" || attempt === 4) throw err;
+    }
   }
+  if (!owner || !business) throw new Error("Could not create business after retrying subdomain collisions");
 
   try {
     await provisionBusinessSchema(business.schema_name);

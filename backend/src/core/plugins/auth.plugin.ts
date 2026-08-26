@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { config } from "../../config.js";
 import type { AuthClaims } from "../types.js";
+import { findAdminByPlatformUserId } from "../../modules/superadmin/admin-users/repositories/admin-users.repository.js";
 
 export const authPlugin = fp(async (app) => {
   app.decorateRequest("auth", null as unknown as AuthClaims);
@@ -25,8 +26,6 @@ export const authPlugin = fp(async (app) => {
     "/api/v3/institutions/claim/accept",
     "/api/v3/institutions/claim/request",
     "/api/v3/institutions/members/invite/accept",
-    // Country/city reference data — used by public search/filter pages, not user-specific.
-    "/api/v3/platform-users/countries",
     // Health
     "/healthz",
     "/health/detailed",
@@ -34,11 +33,10 @@ export const authPlugin = fp(async (app) => {
     "/health/queue",
     "/health/mail",
   ]);
-  const publicPathPattern = /^\/api\/v3\/platform-users\/countries\/\d+\/cities$/;
 
   app.addHook("onRequest", async (req, reply) => {
     const path = req.url.split("?")[0];
-    if (publicPaths.has(path) || publicPathPattern.test(path)) return;
+    if (publicPaths.has(path)) return;
 
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) {
@@ -57,7 +55,9 @@ export const authPlugin = fp(async (app) => {
 // ── Scope guards (use as preHandler on routes) ──
 
 export async function requireAdmin(req: FastifyRequest, reply: FastifyReply) {
-  if (req.auth?.type !== "admin") {
+  if (req.auth?.type === "admin") return;
+  const admin = req.auth?.sub ? await findAdminByPlatformUserId(Number(req.auth.sub)) : null;
+  if (!admin) {
     return reply.status(403).send({ error: "Admin access required" });
   }
 }

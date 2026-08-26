@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, Coins, GraduationCap, LogOut, Loader2, Sparkles, User } from "lucide-react";
+import { Bell, ChevronDown, Coins, Loader2, Sparkles } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -18,7 +18,7 @@ import { ensureBusinessContext } from "@/lib/api/http";
 import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
 import { authApi } from "@/app/auth/apis";
 import type { AuthMeBusiness, AuthMeInstitution } from "@/app/auth/apis";
-import { logout } from "@/app/auth/store/auth-slice";
+import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { BUSINESS_NAV_GROUPS } from "./const";
 import { BusinessSwitcher } from "./components/business-switcher";
@@ -70,6 +70,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const isFullBleed = FULL_BLEED_ROUTES.some((route) => pathname?.startsWith(route)) ?? false;
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
+  const { user } = useAuthState();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
 
   // Tenant-scoped endpoints 403 without an `orgId` claim, and login never issues
@@ -234,25 +235,40 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <button className="mr-3 sm:mr-4 md:mr-6 flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
+                <button
+                  className="mr-3 sm:mr-4 md:mr-6 flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                  type="button"
+                  aria-label="Account menu"
+                />
               }
             >
-              <Avatar className="size-8">
+              <Avatar className="size-7">
                 {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
                 <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/profile")}>
-                <User /> My Profile
+            <DropdownMenuContent align="end" className="w-56 p-1.5">
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/profile")}>
+                My Profile
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/portal")}>
-                <GraduationCap /> Personal Portal
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                Personal Portal
               </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
+                Business Portal
+              </DropdownMenuItem>
+              {user?.is_admin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
+                    Super Admin
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-                <LogOut /> Sign Out
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
+                Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

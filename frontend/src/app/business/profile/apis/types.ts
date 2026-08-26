@@ -201,7 +201,7 @@ export type RoleCreateInput = {
 
 export type RolePatch = Partial<RoleCreateInput>;
 
-export type MemberListParams = { page?: number; limit?: number };
+export type MemberListParams = { page?: number; limit?: number; search?: string };
 
 export type MemberListResult = { data: Member[]; total: number };
 

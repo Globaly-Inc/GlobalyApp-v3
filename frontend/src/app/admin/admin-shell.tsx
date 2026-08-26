@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { ShieldCheck, ChevronDown, Sparkles, Loader2, User as UserIcon, LogOut } from "lucide-react";
+import { ChevronDown, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -19,6 +19,7 @@ import { fetchMe } from "./store/admin-slice";
 import { ROLE_DISPLAY } from "./consts";
 import { getVisibleNavGroups, isNavPathActive } from "./nav-config";
 import { AdminMobileNav } from "./components/admin-mobile-nav";
+import { AdminPortalSwitcher } from "./components/admin-portal-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -27,7 +28,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   const dispatch = useAppDispatch();
   const { me, status, error } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
-  const isAdmin = authUser?.type === "admin";
+  const isAdmin = authUser?.is_admin === true;
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -94,22 +95,27 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
     <div className="min-h-screen flex flex-col bg-background">
       {/* Full-width bar above the rail, matching the personal and business portals: the mark sits over the
           rail (hence the w-20 box), navigation lives in the sidebar, and this keeps identity only. */}
-      <header className="sticky top-0 z-50 h-16 w-full border-b border-border bg-card/95 backdrop-blur-md supports-[backdrop-filter]:bg-card/60 flex items-center justify-between pr-4 md:pr-6">
+      <header className="sticky top-0 z-50 h-16 w-full border-b border-border bg-card/95 backdrop-blur-md supports-backdrop-filter:bg-card/60 flex items-center justify-between pr-4 md:pr-6">
         <div className="flex items-center min-w-0">
           <div className="flex h-16 shrink-0 items-center px-4 md:w-20 md:justify-center md:px-0">
-            <Link href="/" className="flex items-center flex-shrink-0">
+            <Link href="/" className="flex items-center shrink-0">
               <Image src="/globaly-red-icon.png" alt="Globaly" width={283} height={283} className="size-9 rounded-[10px]" />
             </Link>
           </div>
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
           <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground flex-shrink-0 ml-3 md:ml-4">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            {ROLE_DISPLAY[me.role]}
-          </span>
+          <div className="ml-3 md:ml-4 shrink-0">
+            <AdminPortalSwitcher
+              roleLabel={ROLE_DISPLAY[me.role]}
+              isSuperAdmin={me.role === "super_admin"}
+              businesses={authUser.businesses}
+              institutions={authUser.institutions}
+              activeOrgId={authUser.orgId}
+            />
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <Link
             href="/ai"
             className="hidden md:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 h-8 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
@@ -132,7 +138,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
             >
               <div
                 className={cn(
-                  "h-7 w-7 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0",
+                  "h-7 w-7 rounded-lg flex items-center justify-center overflow-hidden shrink-0",
                   me.photo_url ? "bg-transparent" : "bg-primary",
                 )}
               >
@@ -144,17 +150,24 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
               </div>
               <ChevronDown className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/profile")}>
-                <UserIcon /> My Profile
+            <DropdownMenuContent align="end" className="w-56 p-1.5">
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/profile")}>
+                My Profile
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/overview")}>
-                <ShieldCheck /> Super Admin
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                Personal Portal
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
+                Business Portal
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-                <LogOut /> Sign Out
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
+                Super Admin
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
+                Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

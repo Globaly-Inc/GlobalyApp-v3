@@ -60,6 +60,7 @@ function toMemberQuery(params: MemberListParams): string {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
+  if (params.search) q.set("search", params.search);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }

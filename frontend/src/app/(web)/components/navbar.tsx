@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Sparkles, ChevronDown, User as UserIcon, ShieldCheck, LogOut } from "lucide-react";
+import { Menu, X, Sparkles, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -25,7 +25,7 @@ import { NAV_LINKS } from "../const/index";
 /** Where a signed-in user's own profile lives. */
 function profileHref(user: AuthUser | null): string {
   if (!user) return "/";
-  if (user.type === "admin") return "/admin/overview";
+  if (user.type === "admin") return "/personal/profile";
   if (user.user_category === "business" || user.user_category === "institution") return "/business/profile";
   return "/personal/profile";
 }
@@ -110,26 +110,28 @@ export function Navbar() {
                   </Avatar>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(profileHref(user))}>
-                    <UserIcon /> My Profile
+                <DropdownMenuContent align="end" className="w-56 p-1.5">
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(profileHref(user))}>
+                    My Profile
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  {/* Keyed on `type`, the only field getMe actually populates. Every platform user can enter
-                      the Personal Portal — its shell gates on authentication, not on a category. */}
-                  {user.type === "platform_user" && (
-                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/portal")}>
-                      <UserIcon /> Personal Portal
-                    </DropdownMenuItem>
-                  )}
-                  {user.type === "admin" && (
-                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/overview")}>
-                      <ShieldCheck /> Super Admin
-                    </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                    Personal Portal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
+                    Business Portal
+                  </DropdownMenuItem>
+                  {user.is_admin && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
+                        Super Admin
+                      </DropdownMenuItem>
+                    </>
                   )}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-                    <LogOut /> Sign Out
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
+                    Sign Out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -197,7 +199,7 @@ export function Navbar() {
                           nativeButton={false}
                           render={
                             <Link
-                              href={user.type === "admin" ? "/admin/overview" : "/personal/portal"}
+                              href={"/personal/portal"}
                               onClick={() => setMobileOpen(false)}
                             />
                           }

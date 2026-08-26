@@ -53,8 +53,12 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   useEffect(() => {
     if (initializing) return;
     if (!authUser) router.replace("/auth/sign-in");
+    // A business/institution membership takes priority over `type` — a super-admin who
+    // also owns or manages a business must still be able to view it, not get bounced to
+    // the admin dashboard just because their session is admin-typed.
+    else if (isBusiness || isInstitution) return;
     else if (authUser.type === "admin") router.replace("/admin/overview");
-    else if (!isBusiness && !isInstitution) router.replace("/personal/profile");
+    else router.replace("/personal/profile");
   }, [initializing, authUser, isBusiness, isInstitution, router]);
 
   const switchedRef = useRef(false);

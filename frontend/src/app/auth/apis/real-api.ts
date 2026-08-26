@@ -29,7 +29,19 @@ export const authRealApi = {
       user: { id: number; email: string; type: AuthUser["type"]; role: string | null };
     }>("/auth/verify-otp", { email: email.trim().toLowerCase(), otp: otp.trim() });
     saveTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
-    return { email, type: data.user.type, role: data.user.role, user_category: null, businesses: [], institutions: [], orgId: null };
+    // Accurate at login time — the token was just minted, so it can't yet be business-scoped
+    // (only a later /auth/switch-account can turn `type` into "platform_user" for an admin).
+    return {
+      email,
+      type: data.user.type,
+      role: data.user.role,
+      is_admin: data.user.type === "admin",
+      user_category: null,
+      is_personal_account: false,
+      businesses: [],
+      institutions: [],
+      orgId: null,
+    };
   },
 
   /** The businesses this user is an agent in — the org_ids valid for switch-account. */
@@ -51,7 +63,9 @@ export const authRealApi = {
       email: data.user.email,
       type: data.user.type,
       role: data.user.admin_role ?? null,
+      is_admin: data.user.is_admin,
       user_category: resolveUserCategory(data.user),
+      is_personal_account: data.user.is_personal_account,
       businesses: data.user.businesses ?? [],
       institutions: data.user.institutions ?? [],
       orgId: data.user.orgId ?? null,
