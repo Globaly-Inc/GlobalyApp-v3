@@ -1,8 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SocialIcon } from "./social-icon";
+import { NewsletterForm } from "./newsletter-form";
 import { FOOTER_LINKS, SOCIALS } from "../const/index";
 
 export function Footer() {
@@ -56,13 +55,7 @@ export function Footer() {
               <h4 className="font-semibold text-white mb-1">Subscribe to our newsletter</h4>
               <p className="text-sm text-white/60">Stay updated with the latest in global education.</p>
             </div>
-            <div className="flex gap-2 w-full md:w-auto">
-              <Input
-                placeholder="Enter your email"
-                className="h-10 bg-white/10 border-white/20 text-white placeholder:text-white/40 md:w-64"
-              />
-              <Button className="btn-gold h-10 whitespace-nowrap">Subscribe</Button>
-            </div>
+            <NewsletterForm />
           </div>
         </div>
 

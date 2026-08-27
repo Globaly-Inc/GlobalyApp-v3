@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import DOMPurify from "isomorphic-dompurify";
-import { ArrowLeft, Calendar, Clock, Globe, BookOpen, Briefcase, Home } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Globe, BookOpen, Briefcase, Home, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getPostById } from "../api";
 
@@ -110,7 +110,10 @@ export default async function BlogPostPage({ params }: Readonly<{ params: Promis
               <Clock className="h-4 w-4" />
               {readingTime} min read
             </span>
-            {post.views > 0 && <span className="text-xs">{post.views.toLocaleString()} views</span>}
+            <span className="flex items-center gap-1.5">
+              <Eye className="h-4 w-4" />
+              {post.views.toLocaleString()} views
+            </span>
           </div>
         </div>
 

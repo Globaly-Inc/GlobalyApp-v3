@@ -291,3 +291,11 @@ export async function httpDelete(path: string, init?: RequestInit): Promise<void
   );
   if (!res.ok) throw await readError(res);
 }
+
+export async function httpBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const res = await withRefreshRetry(() =>
+    fetch(`${BASE_URL}${path}`, { ...init, headers: { ...authHeaders(), ...init?.headers } }),
+  );
+  if (!res.ok) throw await readError(res);
+  return res.blob();
+}

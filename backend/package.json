@@ -28,6 +28,7 @@
     "test:counselling-context": "node --import tsx tests/counselling-context.ts",
     "test:ai-counsellor-flow": "node --import tsx tests/ai-counsellor-flow.ts",
     "test:ai-evals-checks": "node --import tsx tests/ai-evals-checks.ts",
+    "test:subscribers": "node --import tsx tests/subscribers.ts",
     "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",
     "job:extraction-pages": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-page.worker.ts",
     "job:extraction-verify": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-verify.worker.ts",
@@ -50,7 +51,9 @@
     "lint": "eslint src/",
     "job:blog-generate": "node --import tsx src/modules/superadmin/marketing/blog/workers/blog-generate.worker.ts",
     "job:guide-email": "node --import tsx src/modules/superadmin/marketing/guides/workers/guide-email.worker.ts",
-    "job:seo-snapshot": "node --import tsx src/modules/superadmin/marketing/seo/workers/seo-snapshot.worker.ts"
+    "job:seo-snapshot": "node --import tsx src/modules/superadmin/marketing/seo/workers/seo-snapshot.worker.ts",
+    "test:seo-aeo": "node --import tsx tests/seo-aeo.ts",
+    "test:guides": "node --import tsx tests/guides.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
@@ -58,12 +61,14 @@
     "@fastify/rate-limit": "^11.1.0",
     "@google-cloud/storage": "^7.21.0",
     "@google/generative-ai": "^0.24.1",
+    "@googleapis/searchconsole": "^7.1.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@opentelemetry/api": "^1.9.1",
     "amqplib": "^2.0.1",
     "dotenv": "^16.4.0",
     "fastify": "^5.0.0",
     "fastify-plugin": "^5.0.0",
+    "google-auth-library": "^10.5.0",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.0",
     "knex": "^3.1.0",
