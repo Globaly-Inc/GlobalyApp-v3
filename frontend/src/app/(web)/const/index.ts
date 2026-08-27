@@ -17,7 +17,7 @@ export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
   "Get Started": [
     { label: "For Students", href: "/for-students" },
     { label: "For Institutions", href: "/for-institutions" },
-    { label: "For Agents", href: "/for-agents" },
+    { label: "For Education Counselors", href: "/for-agents" },
     { label: "Pricing", href: "/pricing" },
     { label: "Ambassador Program", href: "/for-students" },
   ],
@@ -62,7 +62,7 @@ export const SOCIALS: { name: SocialName; href: string; label: string }[] = [
 export const NAV_LINKS = [
   { label: "For Students", href: "/for-students" },
   { label: "For Institutions", href: "/for-institutions" },
-  { label: "For Agents", href: "/for-agents" },
+  { label: "For Education Counselors", href: "/for-agents" },
   { label: "Blog", href: "/blog" },
 ];
 

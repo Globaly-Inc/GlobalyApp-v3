@@ -16,6 +16,8 @@ const MODES: { id: Mode; label: string; Icon: typeof Search }[] = [
 export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?: string }> = {}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("ai");
+  // Courses everywhere except the pages that are about something else: a Search from the
+  // for-institutions hero has to land on institutions, not courses.
   const [activeSlug, setActiveSlug] = useState<string>(defaultTabSlug ?? CATEGORIES[0]!.slug);
   const [query, setQuery] = useState("");
 
@@ -88,22 +90,24 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
 
           <div className="flex-1" />
 
-          {/* ponytail: native select — no popover/listbox to own, and it is a good mobile picker for free. */}
-          <div className="relative flex-shrink-0">
-            <select
-              value={activeSlug}
-              onChange={(e) => setActiveSlug(e.target.value)}
-              aria-label="Search category"
-              className="appearance-none h-9 pl-3 pr-6 rounded-full bg-transparent text-sm font-medium text-slate-600 hover:text-slate-900 outline-none cursor-pointer"
-            >
-              {CATEGORIES.map((cat) => (
-                <option key={cat.slug} value={cat.slug}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          </div>
+          {/* ponytail: native select, and only for Search — AI mode has no category to filter. */}
+          {mode === "search" && (
+            <div className="relative flex-shrink-0">
+              <select
+                value={activeSlug}
+                onChange={(e) => setActiveSlug(e.target.value)}
+                aria-label="Search category"
+                className="appearance-none h-9 pl-3 pr-6 rounded-full bg-transparent text-sm font-medium text-slate-600 hover:text-slate-900 outline-none cursor-pointer"
+              >
+                {CATEGORIES.map((cat) => (
+                  <option key={cat.slug} value={cat.slug}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            </div>
+          )}
 
           <button
             type="button"
@@ -117,14 +121,14 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
       </div>
 
       <div className="mt-5 max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-2">
-        <span className="text-sm text-white/70">Try:</span>
+        <span className="text-sm font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">Try:</span>
         {suggestions.map((suggestion) => (
           <button
             key={suggestion}
             type="button"
             // A Search chip is a whole query, so run it; an AI prompt is usually a starting point to edit.
             onClick={() => (mode === "ai" ? setQuery(suggestion) : submit(suggestion))}
-            className="rounded-full border border-white/40 px-3.5 py-1.5 text-sm text-white transition-colors duration-200 hover:bg-white/10 hover:border-white/70 cursor-pointer"
+            className="rounded-full border border-white/60 bg-black/35 backdrop-blur-xl px-3.5 py-1.5 text-sm font-medium text-white shadow-md transition-colors duration-200 hover:bg-black/50 hover:border-white cursor-pointer"
           >
             {suggestion}
           </button>
