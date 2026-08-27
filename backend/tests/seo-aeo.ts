@@ -144,7 +144,7 @@ async function tGscNotConfigured() {
     return;
   }
 
-  check("T-05a", "isConfigured() -> false", isConfigured() === false);
+  check("T-05a", "isConfigured() -> false", (await isConfigured()) === false);
   await expectThrow("T-05b", "querySearchAnalytics throws GscNotConfiguredError (never a raw googleapis error)", () =>
     querySearchAnalytics({ startDate: "2026-01-01", endDate: "2026-01-02", dimensions: ["query"] }),
     (err) => err instanceof GscNotConfiguredError);
