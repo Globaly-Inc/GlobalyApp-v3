@@ -31,6 +31,20 @@ RUN apt-get update && apt-get install -y \
     sudo \
     supervisor \
     ca-certificates \
+    mtr-tiny \
+    nmap \
+    socat \
+    sysstat \
+    iotop \
+    whois \
+    rsync \
+    tree \
+    file \
+    psmisc \
+    openssl \
+    iptables \
+    postgresql-client \
+    redis-tools \
     && rm -rf /var/lib/apt/lists/*
 
 RUN echo "globalyapp ALL=(ALL) NOPASSWD: /usr/sbin/nginx, /usr/bin/nginx, /usr/sbin/service, /usr/bin/supervisord, /usr/bin/supervisorctl" > /etc/sudoers.d/globalyapp \
