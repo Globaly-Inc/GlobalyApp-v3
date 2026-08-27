@@ -7,6 +7,7 @@
 // plan reserves a single HIGGSFIELD_API_KEY env var, so that var is expected to hold
 // "<key-id>:<key-secret>" already joined and is passed straight through.
 
+import { getIntegrationSetting } from "../../../settings/services/integration-settings.service.js";
 import { createChildLogger } from "../../../../../shared/logger.js";
 
 const logger = createChildLogger("higgsfield-client");
@@ -53,11 +54,12 @@ async function pollForImageUrl(statusUrl: string, apiKey: string): Promise<strin
   return null;
 }
 
-/** Never throws. Returns null when HIGGSFIELD_API_KEY is unset or generation fails for any reason. */
+/** Never throws. Returns null when no key is configured (Settings → Integrations, or
+ * HIGGSFIELD_API_KEY env fallback) or generation fails for any reason. */
 export async function generateCoverImage(prompt: string): Promise<Buffer | null> {
-  const apiKey = process.env.HIGGSFIELD_API_KEY;
+  const apiKey = await getIntegrationSetting("higgsfield_api_key");
   if (!apiKey) {
-    logger.info("Higgsfield cover generation skipped — HIGGSFIELD_API_KEY not set");
+    logger.info("Higgsfield cover generation skipped — no key in Settings → Integrations or HIGGSFIELD_API_KEY");
     return null;
   }
 

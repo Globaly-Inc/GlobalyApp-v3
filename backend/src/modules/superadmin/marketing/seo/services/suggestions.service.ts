@@ -29,7 +29,7 @@ const MIN_IMPRESSIONS = 100;
 const MIN_POSITION = 10;
 
 async function getGscSuggestions(): Promise<Suggestion[]> {
-  if (!gscClient.isConfigured()) return [];
+  if (!(await gscClient.isConfigured())) return [];
   try {
     const end = new Date();
     const start = new Date(end);

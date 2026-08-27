@@ -54,7 +54,8 @@
     "job:guide-email": "node --import tsx src/modules/superadmin/marketing/guides/workers/guide-email.worker.ts",
     "job:seo-snapshot": "node --import tsx src/modules/superadmin/marketing/seo/workers/seo-snapshot.worker.ts",
     "test:seo-aeo": "node --import tsx tests/seo-aeo.ts",
-    "test:guides": "node --import tsx tests/guides.ts"
+    "test:guides": "node --import tsx tests/guides.ts",
+    "test:integration-settings": "node --import tsx tests/integration-settings.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

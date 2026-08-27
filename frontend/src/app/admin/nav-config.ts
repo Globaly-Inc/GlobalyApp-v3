@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Settings,
   BookOpen,
   TrendingUp,
   LayoutDashboard,
@@ -100,6 +101,11 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { icon: CreditCard, label: "Credits", href: "/admin/revenue/subscriptions/credits" },
       { icon: CreditCard, label: "Subscriptions", href: "/admin/revenue/subscriptions" },
     ],
+  },
+  {
+    icon: Settings,
+    label: "Settings",
+    items: [{ icon: Settings, label: "Integrations", href: "/admin/settings/integrations" }],
   },
 ];
 

@@ -17,7 +17,7 @@ function formatDate(d: Date): string {
 }
 
 async function main() {
-  if (!gscClient.isConfigured()) {
+  if (!(await gscClient.isConfigured())) {
     logger.info("GSC not configured — skipping snapshot sweep");
     return;
   }
