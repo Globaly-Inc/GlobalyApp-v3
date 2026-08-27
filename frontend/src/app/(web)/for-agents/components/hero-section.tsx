@@ -19,7 +19,7 @@ export function HeroSection({
       <div className="container relative mx-auto px-4 py-16 md:py-20 z-10">
         <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
           <Badge className="mb-4 bg-[hsl(var(--gold))]/20 text-[hsl(var(--gold))] border-[hsl(var(--gold))]/30 text-xs font-semibold px-3 py-1 rounded-full">
-            For Agents
+            For Education Counselors
           </Badge>
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
             Grow Your Agency
@@ -33,7 +33,7 @@ export function HeroSection({
             Connect with top institutions, access verified student leads, and scale your consultancy — all in one
             transparent, fair platform.
           </p>
-          <UnifiedSearchBar defaultTabSlug="agents" />
+          <UnifiedSearchBar />
         </div>
       </div>
     </section>
