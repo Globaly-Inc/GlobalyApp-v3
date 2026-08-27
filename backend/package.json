@@ -47,7 +47,10 @@
     "job:enquiry-email": "node --import tsx src/modules/enquiries/workers/enquiry-email.worker.ts",
     "job:scholarship-import": "node --import tsx src/modules/superadmin/monitoring/scholarships/workers/scholarship-import.worker.ts",
     "job:scholarship-bulk-delete": "node --import tsx src/modules/superadmin/monitoring/scholarships/workers/scholarship-bulk-delete.worker.ts",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "job:blog-generate": "node --import tsx src/modules/superadmin/marketing/blog/workers/blog-generate.worker.ts",
+    "job:guide-email": "node --import tsx src/modules/superadmin/marketing/guides/workers/guide-email.worker.ts",
+    "job:seo-snapshot": "node --import tsx src/modules/superadmin/marketing/seo/workers/seo-snapshot.worker.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

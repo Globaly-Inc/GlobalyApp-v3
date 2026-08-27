@@ -34,6 +34,7 @@ import enquiriesModule from "./modules/enquiries/index.js";
 import coursesModule from "./modules/courses/index.js";
 import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
 import waitlistModule from "./modules/waitlist/index.js";
+import guidesPublicModule from "./modules/guides-public/index.js";
 
 const logger = createChildLogger("server");
 
@@ -66,6 +67,7 @@ export async function buildServer() {
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
+  await app.register(guidesPublicModule);    // public guide landing pages + lead capture (no auth)
   await app.register(publicServicesModule);  // public marketplace browse (no auth)
   await app.register(geoModule);              // public geo reads (no auth)
   await app.register(searchModule);          // public search reads (no auth)
