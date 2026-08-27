@@ -12,7 +12,8 @@ import type { InstitutionRole } from "../../apis/types";
 export function InstitutionRolesList({
   institutionId,
   onEdit,
-}: Readonly<{ institutionId: number; onEdit: (role: InstitutionRole) => void }>) {
+  readOnly = false,
+}: Readonly<{ institutionId: number; onEdit: (role: InstitutionRole) => void; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: roles, status } = useAppSelector((state) => state.platformInstitutionDetail.roles);
   const permissions = useAppSelector((state) => state.platformInstitutionDetail.permissions);
@@ -70,10 +71,12 @@ export function InstitutionRolesList({
             <p className="truncate text-xs text-muted-foreground">{role.description ?? "—"}</p>
           </div>
           <div className="flex shrink-0 gap-1">
-            <Button size="icon-sm" variant="ghost" onClick={() => onEdit(role)} aria-label={role.is_system ? "View role" : "Edit role"}>
-              <Pencil className="h-4 w-4" />
-            </Button>
-            {!role.is_system && (
+            {(role.is_system || !readOnly) && (
+              <Button size="icon-sm" variant="ghost" onClick={() => onEdit(role)} aria-label={role.is_system ? "View role" : "Edit role"}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {!role.is_system && !readOnly && (
               <Button
                 size="icon-sm"
                 variant="ghost"

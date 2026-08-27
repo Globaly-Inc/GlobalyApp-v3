@@ -26,6 +26,7 @@ function toQuery(params: BusinessListParams): string {
   if (params.status) q.set("status", params.status);
   if (params.category) q.set("category", String(params.category));
   if (params.kind) q.set("kind", params.kind);
+  if (params.sort) q.set("sort", params.sort);
   return `?${q.toString()}`;
 }
 

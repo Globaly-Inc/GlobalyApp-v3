@@ -1,7 +1,8 @@
 import { httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import { toAdminUser, type AdminMeWire } from "../../../apis/real-api";
 import type {
-  InviteAdminParams, ListParams, PaginatedAdminUsers, PaginatedInvitations, UpdateAdminParams,
+  InviteAdminParams, ListParams, PaginatedAdminUsers, PaginatedInvitations, PaginatedPlatformUsers,
+  PlatformUser, UpdateAdminParams, UpdatePlatformUserParams,
 } from "./types";
 
 function toQuery(params: ListParams): string {
@@ -20,6 +21,12 @@ export const usersRealApi = {
     );
     return { ...result, data: result.data.map(toAdminUser) };
   },
+
+  listPlatformUsers: (params: ListParams = {}): Promise<PaginatedPlatformUsers> =>
+    httpGet(`/admin/platform-users${toQuery(params)}`),
+
+  updatePlatformUser: (id: number, patch: UpdatePlatformUserParams): Promise<PlatformUser> =>
+    httpPatch(`/admin/platform-users/${id}`, patch),
 
   listInvitations: (params: ListParams = {}): Promise<PaginatedInvitations> =>
     httpGet(`/admin/users/invitations${toQuery(params)}`),

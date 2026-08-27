@@ -21,8 +21,11 @@ import { queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as institutionMembers from "./institution-members.service.js";
+import { createSystemPost } from "../../feed/services/feed.service.js";
+import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
 
 const logger = createChildLogger("institution-claim-service");
+const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching the business claim flow
 
 /**
@@ -146,6 +149,19 @@ export async function acceptInstitutionClaim(
     await repo.updateInstitution(institution.id, { account_status: 1 });
 
     logger.info("Promoted institution claimed", { institutionId: institution.id, jobId: institution.source_job_id });
+
+    createSystemPost({
+      authorId: owner.id,
+      institutionId: Number(institution.id),
+      content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+      media: [
+        {
+          storage_path: institution.logo_url ?? WELCOME_POST_IMAGE,
+          type: "image",
+          mime_type: institution.logo_url ? guessImageMimeType(institution.logo_url) : "image/png",
+        },
+      ],
+    }).catch((err) => logger.warn("Welcome post creation error", { institutionId: institution.id, err: err.message }));
   }
 
   // The owner's platform_users row may still be account_status 0 (placeholder). OTP

@@ -22,6 +22,7 @@ export function DetailSidebar({
   statusColor,
   sourceLabel,
   enquiry,
+  readOnly = false,
 }: Readonly<{
   description: string | null;
   onEditOverview: () => void;
@@ -30,6 +31,8 @@ export function DetailSidebar({
   sourceLabel: string;
   /** Omit (or pass null) to hide the Enquiry Settings card — e.g. for kinds that don't support it yet. */
   enquiry: EnquiryProps | null;
+  /** The owner has claimed this listing — hide the description edit control. */
+  readOnly?: boolean;
 }>) {
   const [descExpanded, setDescExpanded] = useState(false);
 
@@ -51,9 +54,11 @@ export function DetailSidebar({
 
           <div className="mt-4 flex items-start justify-between gap-2">
             <p className="text-xs text-muted-foreground">Description</p>
-            <Button variant="ghost" size="icon-sm" onClick={onEditOverview} aria-label="Edit description">
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
+            {!readOnly && (
+              <Button variant="ghost" size="icon-sm" onClick={onEditOverview} aria-label="Edit description">
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
           {description ? (
             <>

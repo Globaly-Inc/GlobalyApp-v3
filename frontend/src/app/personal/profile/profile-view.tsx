@@ -184,11 +184,18 @@ export function ProfileView() {
   };
 
   const completion = profile.completion ?? { percentage: 0, items: [] };
-  const initial = profile.first_name?.[0]?.toUpperCase() ?? "U";
+  const initial =
+    `${profile.first_name?.[0] ?? ""}${profile.last_name?.[0] ?? ""}`.toUpperCase() || "U";
 
   return (
     <div className="space-y-6">
-      <ProfileHeroCard profile={profile} initial={initial} imageUploading={imageUploading} onImageFile={handleImageFile} />
+      <ProfileHeroCard
+        profile={profile}
+        initial={initial}
+        imageUploading={imageUploading}
+        onImageFile={handleImageFile}
+        countries={countries}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

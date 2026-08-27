@@ -253,6 +253,11 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 p-1.5">
+              <div className="px-1.5 py-1.5">
+                <p className="text-sm font-medium truncate">{profile?.business_name || "Business"}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+              </div>
+              <DropdownMenuSeparator />
               <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/profile")}>
                 My Profile
               </DropdownMenuItem>

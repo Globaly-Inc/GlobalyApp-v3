@@ -79,6 +79,8 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
 
   const location = [detail.address, detail.city, detail.state, detail.country_name].filter(Boolean).join(", ");
   const canVerify = !(detail.status === "unverified" && detail.is_unclaimed);
+  // The owner has claimed this listing — superadmin can view its details but not edit them.
+  const readOnly = !detail.is_unclaimed;
 
   const handleSave = async (patch: BusinessPatch | InstitutionPatch) => {
     setSaving(true);
@@ -169,9 +171,9 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
       </div>
 
       {kind === "business" ? (
-        <BusinessHeaderCard business={business!} location={location} onSave={handleSave} onEdit={() => setHeaderOpen(true)} />
+        <BusinessHeaderCard business={business!} location={location} onSave={handleSave} onEdit={() => setHeaderOpen(true)} readOnly={readOnly} />
       ) : (
-        <InstitutionHeaderCard institution={institution!} location={location} onSave={handleSave} onEdit={() => setHeaderOpen(true)} />
+        <InstitutionHeaderCard institution={institution!} location={location} onSave={handleSave} onEdit={() => setHeaderOpen(true)} readOnly={readOnly} />
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -181,6 +183,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
           statusLabel={STATUS_LABELS[detail.status]}
           statusColor={STATUS_COLORS[detail.status]}
           sourceLabel={detail.is_unclaimed ? "Pre-seeded" : "Claimed"}
+          readOnly={readOnly}
           enquiry={
             kind === "business" && business
               ? {
@@ -192,7 +195,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
               : null
           }
         />
-        <DetailTabs kind={kind} id={id} businessName={business?.business_name} />
+        <DetailTabs kind={kind} id={id} businessName={business?.business_name} readOnly={readOnly} />
       </div>
 
       {kind === "business" ? (

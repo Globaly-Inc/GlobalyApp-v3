@@ -41,3 +41,27 @@ export type UpdateAdminParams = {
   role?: AdminRole;
   is_active?: boolean;
 };
+
+export type PlatformUser = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  account_status: number;
+  is_email_verified: boolean;
+  is_personal_account: boolean;
+  is_business_account: boolean;
+  is_institution_account: boolean;
+  created_at: string;
+};
+
+export type UpdatePlatformUserParams = {
+  account_status?: number;
+  is_email_verified?: boolean;
+};
+
+export type PaginatedPlatformUsers = {
+  data: PlatformUser[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+};

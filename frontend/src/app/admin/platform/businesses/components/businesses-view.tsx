@@ -20,7 +20,7 @@ import {
   updateBusinessStatus,
 } from "../store/businesses-slice";
 import { filterBusinessesBySourceAndOwnership } from "../utils";
-import type { Business, ListingRef } from "../apis/types";
+import type { Business, BusinessSort, ListingRef } from "../apis/types";
 import { BusinessCard } from "./shared/business-card";
 import { DeleteBusinessDialog } from "./shared/delete-business-dialog";
 import { BulkDeleteDialog } from "./shared/bulk-delete-dialog";
@@ -36,15 +36,25 @@ export function BusinessesView() {
 
   const [tab, setTab] = useState<"businesses" | "services" | "claims">("businesses");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [ownershipFilter, setOwnershipFilter] = useState("all");
+  const [sort, setSort] = useState("name_asc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
 
   // Server-side filters change the result set, so a stale page would fall off the end.
   const resetPage = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(1);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setDebouncedSearch(value), 300);
+  };
 
   // The list mixes both tables, so business 19 and institution 19 are different rows with the
   // same id — row identity (React keys, selection) must be {kind, id}, not id alone.
@@ -68,9 +78,10 @@ export function BusinessesView() {
   }, []);
 
   const buildBusinessesParams = () => ({
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     category: categoryFilter !== "all" ? Number(categoryFilter) : undefined,
+    sort: sort as BusinessSort,
     page,
     limit,
   });
@@ -83,7 +94,7 @@ export function BusinessesView() {
     lastBusinessesFetchKey.current = key;
     dispatch(fetchBusinesses(params));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, search, statusFilter, categoryFilter, page, limit]);
+  }, [dispatch, debouncedSearch, statusFilter, categoryFilter, sort, page, limit]);
 
   const categoryOptions = useMemo(
     () => [
@@ -311,7 +322,7 @@ export function BusinessesView() {
         <>
       <BusinessFiltersBar
         search={search}
-        onSearchChange={resetPage(setSearch)}
+        onSearchChange={handleSearchChange}
         statusFilter={statusFilter}
         onStatusChange={resetPage(setStatusFilter)}
         categoryFilter={categoryFilter}
@@ -321,6 +332,8 @@ export function BusinessesView() {
         onSourceChange={setSourceFilter}
         ownershipFilter={ownershipFilter}
         onOwnershipChange={setOwnershipFilter}
+        sort={sort}
+        onSortChange={resetPage(setSort)}
       />
 
       {status !== "loading" && filteredBusinesses.length > 0 && (
@@ -341,6 +354,7 @@ export function BusinessesView() {
           total={total}
           onPageChange={setPage}
           onPageSizeChange={resetPage(setLimit)}
+          align="end"
         />
       )}
 
