@@ -4,6 +4,9 @@ import { stripStructuredBlocks } from "../utils";
 import type { ChatSession, CourseCard, CreditBalance, Message, ResponseBlock, SSEEvent } from "../apis/types";
 import type { AppDispatch } from "@/lib/store";
 
+/** Fake session id used to store guest messages in the messages map. */
+export const GUEST_SESSION_ID = -1;
+
 /* ── thunks ── */
 
 export const fetchSessions = createAsyncThunk("aiChat/fetchSessions", () => aiApi.listSessions());
@@ -101,6 +104,52 @@ export const fetchCreditBalance = createAsyncThunk("aiChat/fetchCreditBalance", 
   aiApi.getCreditBalance(),
 );
 
+/** Migrate the guest transcript into the newly-authenticated user's session history. */
+export const migrateGuestSession = createAsyncThunk<
+  number | null,
+  string, // fingerprintHash
+  { dispatch: AppDispatch }
+>("aiChat/migrateGuestSession", async (fingerprintHash) => {
+  const { session_id } = await aiApi.migrateGuestSession(fingerprintHash);
+  return session_id;
+});
+
+/** One-shot guest chat — no session persisted, replies blocked after first response. */
+export const sendGuestMessage = createAsyncThunk<
+  void,
+  { content: string; fingerprint: string },
+  { dispatch: AppDispatch }
+>("aiChat/sendGuestMessage", async ({ content, fingerprint }, { dispatch, signal }) => {
+  // Activate the fake guest session so messages render in ChatMessages
+  dispatch(setActiveSession(GUEST_SESSION_ID));
+  dispatch(addOptimisticUserMessage({ sessionId: GUEST_SESSION_ID, content }));
+
+  await aiApi.sendGuestMessage(content, fingerprint, (event) => {
+    switch (event.type) {
+      case "guest-meta":
+        dispatch(setGuestFingerprintHash(event.fingerprint_hash));
+        break;
+      case "trace":
+        dispatch(addTrace(event.step));
+        break;
+      case "delta":
+        dispatch(appendDelta(event.text));
+        break;
+      case "cards":
+        dispatch(setCards(event.cards));
+        break;
+      case "chips":
+        dispatch(setChips(event.chips));
+        break;
+      case "blocks":
+        dispatch(setBlocks(event.blocks));
+        break;
+      case "error":
+        throw new Error(event.error);
+    }
+  }, signal);
+});
+
 /* ── state ── */
 
 type RegionStatus = "idle" | "loading" | "failed";
@@ -125,6 +174,8 @@ type AiChatState = {
    * store because the reply button (ChatMessage) and the composer (ChatInput) have
    * no common parent across the page, popover and embed surfaces. */
   replyTo: ReplyTarget | null;
+  /** Server-returned hash from the guest-meta event — passed to /guest/migrate on sign-up. */
+  guestFingerprintHash: string | null;
   error: string | null;
 };
 
@@ -146,6 +197,7 @@ const initialState: AiChatState = {
   traceSteps: [],
   previewBlock: null,
   replyTo: null,
+  guestFingerprintHash: null,
   error: null,
 };
 
@@ -161,6 +213,9 @@ const aiChatSlice = createSlice({
     setActiveSession(state, action: PayloadAction<number | null>) {
       state.activeSessionId = action.payload;
       state.replyTo = null;
+    },
+    setGuestFingerprintHash(state, action: PayloadAction<string | null>) {
+      state.guestFingerprintHash = action.payload;
     },
     setReplyTo(state, action: PayloadAction<ReplyTarget | null>) {
       state.replyTo = action.payload;
@@ -319,6 +374,49 @@ const aiChatSlice = createSlice({
         state.creditsStatus = "failed";
       })
 
+      // sendGuestMessage
+      .addCase(sendGuestMessage.pending, (state) => {
+        state.sendStatus = "loading";
+        state.streamingContent = "";
+        state.streamingCards = [];
+        state.streamingChips = [];
+        state.streamingBlocks = [];
+        state.traceSteps = [];
+        state.error = null;
+      })
+      .addCase(sendGuestMessage.fulfilled, (state) => {
+        state.sendStatus = "idle";
+        if (state.streamingContent) {
+          const msg: Message = {
+            id: -Date.now(),
+            session_id: GUEST_SESSION_ID,
+            role: "assistant",
+            content: stripStructuredBlocks(state.streamingContent),
+            cards: state.streamingCards,
+            chips: state.streamingChips,
+            blocks: state.streamingBlocks,
+            feedback: null,
+            created_at: new Date().toISOString(),
+          };
+          if (!state.messages[GUEST_SESSION_ID]) state.messages[GUEST_SESSION_ID] = [];
+          state.messages[GUEST_SESSION_ID].push(msg);
+        }
+        state.streamingContent = "";
+        state.streamingCards = [];
+        state.streamingChips = [];
+        state.streamingBlocks = [];
+        state.traceSteps = [];
+      })
+      .addCase(sendGuestMessage.rejected, (state, action) => {
+        state.sendStatus = "failed";
+        state.error = action.error.message ?? "Failed to send message.";
+        state.streamingContent = "";
+        state.streamingCards = [];
+        state.streamingChips = [];
+        state.streamingBlocks = [];
+        state.traceSteps = [];
+      })
+
       // setFeedback
       .addCase(setFeedback.fulfilled, (state, action) => {
         const { messageId, feedback } = action.payload;
@@ -335,6 +433,7 @@ const aiChatSlice = createSlice({
 
 export const {
   setActiveSession,
+  setGuestFingerprintHash,
   appendDelta,
   setCards,
   setChips,

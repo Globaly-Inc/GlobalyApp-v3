@@ -4,6 +4,7 @@ import type {
   ChatSession,
   CourseCard,
   CreditBalance,
+  GuestSSEEvent,
   Message,
   ResponseBlock,
   SendMessageInput,
@@ -109,6 +110,83 @@ export const aiRealApi = {
       throw new Error((body as { error?: string } | null)?.error ?? "Upload failed");
     }
     return res.json();
+  },
+
+  /** Migrate a guest transcript into the caller's authenticated session. */
+  migrateGuestSession: async (fingerprintHash: string): Promise<{ session_id: number | null }> => {
+    const res = await withRefreshRetry(() =>
+      fetch(`${BASE_URL}/guest/migrate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ fingerprint_hash: fingerprintHash }),
+      }),
+    );
+    if (!res.ok) return { session_id: null };
+    return res.json();
+  },
+
+  /** Public SSE stream for guests — no auth, one reply per fingerprint. Same SSE
+   * wire format as sendMessage minus session/done events. */
+  sendGuestMessage: async (
+    content: string,
+    fingerprint: string,
+    onEvent: (event: GuestSSEEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const res = await fetch(`${BASE_URL}/guest/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, fingerprint }),
+      signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error((body as { error?: string } | null)?.error ?? "Failed to send message.");
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let eventType = "";
+
+    const emit = (data: string) => {
+      if (data === "[DONE]") return;
+      let parsed: unknown;
+      try { parsed = JSON.parse(data); } catch { return; }
+
+      if (!eventType) {
+        const text = (parsed as { choices?: [{ delta?: { content?: string } }] }).choices?.[0]?.delta?.content;
+        if (text) onEvent({ type: "delta", text });
+      } else if (eventType === "guest-meta") {
+        onEvent({ type: "guest-meta", ...(parsed as { replies_remaining: number; fingerprint_hash: string }) });
+      } else if (eventType === "trace") {
+        onEvent({ type: "trace", step: (parsed as { step: string }).step });
+      } else if (eventType === "cards") {
+        onEvent({ type: "cards", cards: (parsed as WireCourseCard[]).map(toCourseCard) });
+      } else if (eventType === "chips") {
+        onEvent({ type: "chips", chips: parsed as string[] });
+      } else if (eventType === "blocks") {
+        onEvent({ type: "blocks", blocks: parsed as ResponseBlock[] });
+      } else if (eventType === "error") {
+        onEvent({ type: "error", error: (parsed as { error: string }).error });
+      }
+    };
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.startsWith("event:")) eventType = line.slice(6).trim();
+        else if (line.startsWith("data:")) emit(line.slice(5).trim());
+        else if (line === "") eventType = "";
+      }
+    }
   },
 
   /**

@@ -4,18 +4,21 @@ import { useEffect, useRef } from "react";
 import { AlertTriangle, Coins } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchCreditBalance } from "../store/ai-chat-slice";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import Link from "next/link";
 
 export function CreditBanner() {
   const dispatch = useAppDispatch();
   const credits = useAppSelector((s) => s.aiChat.credits);
+  const { user } = useAuthState();
   const fetchedRef = useRef(false);
 
   useEffect(() => {
+    if (!user) return;
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     dispatch(fetchCreditBalance());
-  }, [dispatch]);
+  }, [dispatch, user]);
 
   if (!credits || credits.total > 3) return null;
 
