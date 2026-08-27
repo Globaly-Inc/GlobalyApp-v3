@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Fraunces } from "next/font/google";
 import { cookies } from "next/headers";
+import Script from "next/script";
 import { siteConfig } from "@/config/site";
 import { ThemeSettingsSync } from "@/components/theme-settings-sync";
 import { Toaster } from "@/components/ui/sonner";
@@ -57,6 +58,7 @@ export default async function RootLayout({
     siteConfig.name
   );
   const isDark = cookieStore.get("theme")?.value === "dark";
+  const supportToken = process.env.NEXT_PUBLIC_GLOBALYOS_SUPPORT_TOKEN;
 
   return (
     <html
@@ -81,6 +83,16 @@ export default async function RootLayout({
         <ThemeSettingsSync />
         <StoreProvider>{children}</StoreProvider>
         <Toaster />
+        {/* GlobalyOS support widget. afterInteractive is next/script's `defer` — the widget must
+            never block hydration. Unset token means the script is skipped entirely rather than
+            loaded with an empty data-token, which the SDK would reject anyway. */}
+        {supportToken && (
+          <Script
+            src="https://globalyos.com/sdk-v1.js"
+            data-token={supportToken}
+            strategy="afterInteractive"
+          />
+        )}
       </body>
     </html>
   );
