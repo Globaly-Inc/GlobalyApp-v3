@@ -9,8 +9,8 @@ on:
       - 'develop'
       - 'devops-scrapping-update'
 
-    # paths:
-    #   - "devops/docker/scrapling/**"
+    paths:
+      - "devops/docker/scrapling/**"
 
 env:
   RED_COLOR_MESSAGE: "\e[31m"
