@@ -5,6 +5,7 @@
 
 import { masterKnex } from "../src/core/db/master-pool.js";
 import { config } from "../src/config.js";
+import { escapeCsvField } from "../src/modules/superadmin/marketing/subscribers/repositories/subscribers.repository.js";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3010/api/v3";
 
@@ -238,13 +239,22 @@ async function testCsvEscaping() {
 
     const row = (result as any)[0];
 
-    // Verify escaping logic: CSV fields with commas or quotes need wrapping
-    const escapedName = row.name.includes(",") || row.name.includes('"')
-      ? `"${row.name.replace(/"/g, '""')}"`
-      : row.name;
-
-    check("T4a", "CSV escaping handles commas in names", escapedName.includes('"'));
-    check("T4b", "CSV escaping handles quotes in names", escapedName.includes('""'));
+    // Test the REAL escaping function, not a reimplementation of it.
+    check("T4a", "CSV escaping handles commas in names", escapeCsvField(row.name) === `"${row.name}"`);
+    check("T4b", "CSV escaping handles quotes in names", escapeCsvField('Bob "Bobby" Lee') === '"Bob ""Bobby"" Lee"');
+    check(
+      "T4c",
+      "CSV formula injection is defused (leading = + - @)",
+      escapeCsvField("=HYPERLINK(1)") === "'=HYPERLINK(1)" &&
+        escapeCsvField("+1") === "'+1" &&
+        escapeCsvField("-x") === "'-x" &&
+        escapeCsvField("@cmd") === "'@cmd",
+    );
+    check(
+      "T4d",
+      "CSV injection defusal composes with quote-wrapping",
+      escapeCsvField('=1,"a"') === `"'=1,""a"""`,
+    );
   } catch (e) {
     check("T4a", "CSV escaping handles commas in names", false, e);
   }

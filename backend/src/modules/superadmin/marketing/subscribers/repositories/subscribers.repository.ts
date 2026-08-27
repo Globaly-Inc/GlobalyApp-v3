@@ -116,13 +116,16 @@ export async function countSubscribers(filters: SubscriberFilters) {
   return total;
 }
 
-// CSV export with proper escaping
+// CSV export with proper escaping. Values are public-form input, so a cell
+// starting with = + - @ (or tab/CR) would execute as a formula when the export
+// opens in Excel/Sheets — prefix those with ' to neutralise (OWASP CSV injection).
 export function escapeCsvField(value: string | null): string {
   if (!value) return "";
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const defused = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (defused.includes(",") || defused.includes('"') || defused.includes("\n")) {
+    return `"${defused.replace(/"/g, '""')}"`;
   }
-  return value;
+  return defused;
 }
 
 export function buildCsvRow(subscriber: Subscriber): string {
