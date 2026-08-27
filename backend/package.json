@@ -29,6 +29,7 @@
     "test:ai-counsellor-flow": "node --import tsx tests/ai-counsellor-flow.ts",
     "test:ai-evals-checks": "node --import tsx tests/ai-evals-checks.ts",
     "test:subscribers": "node --import tsx tests/subscribers.ts",
+    "test:blog-generation": "node --import tsx tests/blog-generation.ts",
     "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",
     "job:extraction-pages": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-page.worker.ts",
     "job:extraction-verify": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-verify.worker.ts",

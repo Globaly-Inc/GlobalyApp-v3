@@ -1,4 +1,6 @@
 import type { FastifyInstance } from "fastify";
+import { seoRoutes } from "./routes/seo.routes.js";
 
-// SEO/AEO dashboard endpoints (Track C fills in routes).
-export default async function seoAdminModule(app: FastifyInstance) {}
+export default async function seoAdminModule(app: FastifyInstance) {
+  app.register(seoRoutes);
+}
