@@ -1,5 +1,6 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm } from "@/lib/api/http";
 import type { Lookup, Paginated, SearchListParams } from "@/app/admin/platform/categories/apis/types";
+import type { PlatformTest } from "@/lib/tests-catalog";
 import type {
   AcademicTest,
   AcademicTestInput,
@@ -172,4 +173,7 @@ export const personalRealApi = {
     httpGet(`/platform-users/degree-levels${toSearchQuery(params)}`),
   getAreasOfStudy: (params: SearchListParams = {}): Promise<Paginated<Lookup>> =>
     httpGet(`/platform-users/areas-of-study${toSearchQuery(params)}`),
+
+  /** The platform test catalogue — the same public list the course pages read, not a portal-only copy. */
+  getTests: (): Promise<PlatformTest[]> => httpGet("/search/tests"),
 };

@@ -55,6 +55,18 @@ export type LookupInput = Omit<Lookup, "id">;
 
 export type LookupKind = "degree-levels" | "areas-of-study";
 
+/** Academic vs language — which of the two lists a test belongs to, not the test's name. */
+export type TestCategory = "academic" | "language";
+
+/** A standardised test (IELTS, GRE…) in the platform catalogue. Its image is the logo every
+ *  course and profile surface shows next to the test's name. */
+export type Test = Lookup & {
+  category: TestCategory;
+  image_url: string | null;
+};
+
+export type TestInput = Omit<Test, "id">;
+
 export type FeeType = {
   id: number;
   name: string;

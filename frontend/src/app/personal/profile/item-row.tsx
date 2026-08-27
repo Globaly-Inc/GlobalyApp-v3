@@ -5,18 +5,26 @@ export function ItemRow({
   title,
   subtitle,
   meta,
+  imageUrl,
   onEdit,
   onDelete,
 }: Readonly<{
   title: string;
   subtitle?: string | null;
   meta?: string | null;
+  /** Optional leading artwork — test rows show the logo from the platform test catalogue. */
+  imageUrl?: string | null;
   onEdit: () => void;
   onDelete: () => void;
 }>) {
   return (
     <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
-      <div className="min-w-0">
+      {imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageUrl} alt="" className="size-8 shrink-0 rounded object-contain" />
+      )}
+      {/* flex-1 so the leading image and the text stay packed together on the left, actions on the right. */}
+      <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground truncate">{title}</p>
         {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
         {meta && <p className="text-xs text-muted-foreground mt-0.5">{meta}</p>}

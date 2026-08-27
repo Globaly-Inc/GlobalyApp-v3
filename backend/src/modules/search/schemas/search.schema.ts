@@ -27,6 +27,12 @@ export const VisaServiceListQuery = SearchListQuery.extend({
   licensed_only: z.coerce.boolean().optional(),
 });
 
+export const InstitutionListQuery = SearchListQuery.extend({
+  institution_type: z.string().min(1).optional(),
+  /** "YYYY-MM", straight off the filter's <input type="month">. */
+  intake_from: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+});
+
 export const ServiceListQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(10),

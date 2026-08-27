@@ -3,7 +3,7 @@ import { categoriesApi } from "../apis";
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, PaginationMeta,
+  ModerationStatus, PaginationMeta, Test, TestInput,
 } from "../apis/types";
 
 type ListState<T> = { data: T[] } & PaginationMeta;
@@ -57,6 +57,14 @@ export const fetchLookup = createAsyncThunk(
   "platformCategories/fetchLookup",
   ({ kind, ...params }: { kind: LookupKind } & ListParams) =>
     categoriesApi.getLookups(kind, { limit: PAGE_LIMIT, ...params }),
+);
+/**
+ * Tests sit outside fetchCatalog for the same reason other-service categories do — that thunk maps its
+ * results by index, and the tab is rarely the first an admin lands on. Fetched when the tab opens.
+ */
+export const fetchTests = createAsyncThunk(
+  "platformCategories/fetchTests",
+  (params: ListParams = {}) => categoriesApi.getTests({ limit: PAGE_LIMIT, ...params }),
 );
 export const fetchFeeTypes = createAsyncThunk(
   "platformCategories/fetchFeeTypes",
@@ -167,6 +175,18 @@ export const toggleLookup = mutation<{ kind: LookupKind; id: number; is_active: 
   },
 );
 
+export const saveTest = mutation<{ id: number | null; input: TestInput }>(
+  "saveTest",
+  ({ id, input }) => (id ? categoriesApi.updateTest(id, input) : categoriesApi.createTest(input)),
+  (_arg, state) => fetchTests({ page: state.tests.page }),
+);
+
+export const toggleTest = mutation<{ id: number; is_active: boolean }>(
+  "toggleTest",
+  ({ id, is_active }) => categoriesApi.updateTest(id, { is_active }),
+  (_arg, state) => fetchTests({ page: state.tests.page }),
+);
+
 export const saveFeeType = mutation<{ id: number | null; input: FeeTypeInput }>(
   "saveFeeType",
   ({ id, input }) => (id ? categoriesApi.updateFeeType(id, input) : categoriesApi.createFeeType(input)),
@@ -211,6 +231,7 @@ export type CategoriesState = {
   otherServiceCategories: ListState<Category>;
   degreeLevels: ListState<Lookup>;
   areasOfStudy: ListState<Lookup>;
+  tests: ListState<Test>;
   feeTypes: ListState<FeeType>;
   accreditations: ListState<Accreditation>;
   issuingOrganizations: IssuingOrganization[];
@@ -222,7 +243,7 @@ export type CategoriesState = {
 const initialState: CategoriesState = {
   businessCategories: emptyList(), businessCategoryOptions: [],
   serviceCategories: emptyList(), serviceCategoryOptions: [], otherServiceCategories: emptyList(),
-  degreeLevels: emptyList(), areasOfStudy: emptyList(),
+  degreeLevels: emptyList(), areasOfStudy: emptyList(), tests: emptyList(),
   feeTypes: emptyList(), accreditations: emptyList(),
   issuingOrganizations: [], countries: [],
   status: "idle", error: null,
@@ -268,6 +289,9 @@ const categoriesSlice = createSlice({
         const list = { data: action.payload.data, ...action.payload.meta };
         if (action.meta.arg.kind === "degree-levels") state.degreeLevels = list;
         else state.areasOfStudy = list;
+      })
+      .addCase(fetchTests.fulfilled, (state, action) => {
+        state.tests = { data: action.payload.data, ...action.payload.meta };
       })
       .addCase(fetchFeeTypes.fulfilled, (state, action) => {
         state.feeTypes = { data: action.payload.data, ...action.payload.meta };

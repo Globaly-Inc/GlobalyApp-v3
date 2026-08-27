@@ -149,6 +149,10 @@ const profileSlice = createSlice({
         state.workExperiences = action.payload.workExperiences;
       })
       .addCase(fetchFullProfile.rejected, (state, action) => {
+        // A dispatch skipped by the `condition` above is a de-dup, not a failure. Recording it as
+        // one flipped status out of "loading" while the real request was still in flight, so the
+        // shell dropped its spinner and rendered a profile-less page.
+        if (action.meta.condition) return;
         state.status = "failed";
         state.error = action.error.message ?? "Failed to load your profile.";
       })

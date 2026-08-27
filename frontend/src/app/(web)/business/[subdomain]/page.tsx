@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getBusinessBySubdomain } from "../../search/api";
-import { BusinessHero } from "./components/business-hero";
-import { BusinessInfoCard } from "./components/business-info-card";
+import { EntityProfile } from "../../components/profile/entity-profile";
+import {
+  joinParts, toNumber, toProfileRegistration, toProfileSocials, type ProfileData,
+} from "../../components/profile/profile-data";
+import type { BusinessDetail } from "../../search/types";
 import { BusinessServicesSection } from "./components/business-services-section";
-import { BusinessBranchesSection } from "./components/business-branches-section";
 import { BusinessTeamSection } from "./components/business-team-section";
 import { BusinessRepresentationsSection } from "./components/business-representations-section";
 
@@ -20,42 +23,77 @@ export async function generateMetadata({ params }: BusinessPageProps): Promise<M
   };
 }
 
+function toProfileData(business: BusinessDetail): ProfileData {
+  const headOffice = business.address || business.city
+    ? [{
+      id: `business-${business.id}`,
+      name: business.business_name,
+      address: business.address,
+      city: business.city,
+      state: business.state,
+      country: business.country_name,
+      email: business.email,
+      phone: business.phone,
+      latitude: toNumber(business.latitude),
+      longitude: toNumber(business.longitude),
+    }]
+    : [];
+
+  return {
+    name: business.business_name,
+    categoryLabel: business.category_name,
+    logoUrl: business.logo_url,
+    coverUrl: business.cover_url,
+    locationLabel: joinParts(business.city, business.state, business.country_name),
+    verified: business.status === "verified",
+    description: business.description,
+    website: business.website,
+    email: business.email,
+    phone: business.phone,
+    addressLabel: joinParts(business.address, business.city, business.state, business.postcode, business.country_name),
+    socials: toProfileSocials(business),
+    // Head office first, then every branch — the Locations card groups them by city itself.
+    locations: [
+      ...headOffice,
+      ...business.branches.map((branch) => ({
+        id: branch.id,
+        name: branch.name,
+        address: branch.address,
+        city: branch.city,
+        state: branch.state,
+        country: branch.country,
+        email: branch.email,
+        phone: branch.phone,
+        latitude: null,
+        longitude: null,
+      })),
+    ],
+    registration: toProfileRegistration(business.business_registration_number, business.registration_licenses),
+  };
+}
+
 export default async function BusinessPage({ params }: BusinessPageProps) {
   const { subdomain } = await params;
   const business = await getBusinessBySubdomain(subdomain);
   if (!business) notFound();
 
   return (
-    <div>
-      <BusinessHero business={business} />
-
-      <section className="py-10">
-        <div className="container max-w-6xl mx-auto px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <div className="rounded-xl border border-border bg-card p-6 h-full">
-                <h2 className="text-lg font-bold text-foreground mb-3">About {business.business_name}</h2>
-                {business.description ? (
-                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{business.description}</p>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic leading-relaxed">
-                    {business.business_name} hasn&apos;t added a description yet — reach out directly to learn more about what they offer.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <BusinessInfoCard business={business} />
-            </div>
-          </div>
-        </div>
-      </section>
-
+    <EntityProfile
+      data={toProfileData(business)}
+      breadcrumb={
+        <p className="text-xs text-muted-foreground">
+          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+          <Link href="/search" className="hover:text-primary">Search</Link> / {business.business_name}
+        </p>
+      }
+      sidebar={
+        <>
+          <BusinessRepresentationsSection representations={business.representations} />
+          <BusinessTeamSection members={business.members} />
+        </>
+      }
+    >
       <BusinessServicesSection services={business.services} />
-      <BusinessBranchesSection branches={business.branches} />
-      <BusinessTeamSection members={business.members} />
-      <BusinessRepresentationsSection representations={business.representations} />
-    </div>
+    </EntityProfile>
   );
 }

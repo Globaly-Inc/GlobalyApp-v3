@@ -21,6 +21,7 @@
     "job:auth": "node --import tsx src/modules/auth/jobs/email.worker.ts",
     "job:referral-codes": "node --import tsx src/modules/referrals/workers/backfill-referral-codes.worker.ts",
     "test:referrals": "node --import tsx tests/referrals.ts",
+    "test:saved-items": "node --import tsx tests/saved-items.ts",
     "test:enquiry-messages": "node --import tsx tests/enquiries/messages.ts",
     "test:scraper-cascade": "node --import tsx tests/scraper-cascade.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",

@@ -6,7 +6,7 @@ import * as repo from "../repositories/categories.repository.js";
 import type { LookupTable } from "../repositories/categories.repository.js";
 import type {
   AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput, SchemaFieldInput,
-  SchemaFieldEntityType,
+  SchemaFieldEntityType, TestInput,
 } from "../schemas/categories.schema.js";
 
 export function listSchemaFields(entityType: SchemaFieldEntityType, entityId: number) {
@@ -87,11 +87,11 @@ export function countLookup(table: LookupTable, search?: string) {
   return repo.countLookup(table, search);
 }
 
-export function createLookup(table: LookupTable, data: LookupInput) {
+export function createLookup(table: LookupTable, data: LookupInput | TestInput) {
   return repo.insertLookup(table, data);
 }
 
-export async function updateLookup(table: LookupTable, id: number, data: Partial<LookupInput>) {
+export async function updateLookup(table: LookupTable, id: number, data: Partial<LookupInput | TestInput>) {
   const row = await repo.updateLookup(table, id, data);
   if (!row) throw new NotFoundError("Not found");
   return row;

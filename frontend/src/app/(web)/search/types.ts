@@ -24,6 +24,22 @@ export type SearchCourse = {
   next_intake_year: number | null;
   next_intake_month: number | null;
   slug: string;
+  /** ISO 3166-1 alpha-2, used for the flag beside the institution name. */
+  country_code: string | null;
+  /** Crest of the promoted institution that shares this course's extraction job. */
+  institution_logo_url: string | null;
+  /** Campus cities of that institution — the card's "Location:" chips. */
+  campus_locations: string[];
+  /** First installment amount, present only when the fee actually splits into several payments. */
+  domestic_fee_installment: string | null;
+  international_fee_installment: string | null;
+};
+
+/** Facets for the institutions filter panel — only values the catalog actually contains. */
+export type InstitutionFilterOptions = {
+  institution_types: string[];
+  /** "YYYY-MM", earliest first. */
+  intake_months: string[];
 };
 
 export type CourseFilterOptions = {
@@ -45,6 +61,9 @@ export type CompareCourseItem = {
   feeCurrency?: string;
 };
 
+/** Extraction writes the row's caption as `label`; older imports used `name`. */
+export type FeeInstallment = { label?: string | null; name?: string | null; amount?: number | string | null; due_date?: string | null };
+
 export type CourseIntake = {
   id: string;
   intake_name: string | null;
@@ -54,6 +73,10 @@ export type CourseIntake = {
   intake_year: number | null;
 };
 
+/** Rows of an eligibility requirement's `academic_tests` / `language_tests` jsonb. */
+export type EligibilityAcademicTest = { test_name: string; score?: string };
+export type EligibilityLanguageTest = { test_type_name: string; overall_score?: string };
+
 export type CourseEligibility = {
   id: string;
   applicable_to: string;
@@ -61,18 +84,60 @@ export type CourseEligibility = {
   min_score_percent: string | null;
   min_score_grade: string | null;
   description: string | null;
+  academic_tests: EligibilityAcademicTest[] | null;
+  language_tests: EligibilityLanguageTest[] | null;
 };
 
 export type CourseEnglishRequirement = {
   id: string;
   test_type_name: string | null;
   overall_score: string | null;
+  listening_score: string | null;
+  reading_score: string | null;
+  writing_score: string | null;
+  speaking_score: string | null;
+};
+
+/** The awarding institution, enough of it to render the course hero and link to its profile. */
+export type CourseInstitution = {
+  id: string;
+  slug: string;
+  name: string;
+  logo_url: string | null;
+  cover_url: string | null;
+  website: string | null;
+  city: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
+  youtube_url: string | null;
+  /** Signed preview URLs for the institution's `gallery_images`, resolved server-side. */
+  gallery_image_urls: string[];
+};
+
+/** One season's entry in `countries.weather_*` — free-form JSON, so every field is optional. */
+export type WeatherSeason = { temp_range?: string; description?: string } | null;
+
+export type CourseWeather = {
+  summer: WeatherSeason;
+  autumn: WeatherSeason;
+  winter: WeatherSeason;
+  spring: WeatherSeason;
 };
 
 export type CourseDetail = SearchCourse & {
   intakes: CourseIntake[];
   eligibility: CourseEligibility[];
   englishRequirements: CourseEnglishRequirement[];
+  institution: CourseInstitution | null;
+  campuses: InstitutionCampus[];
+  weather: CourseWeather | null;
+  /** Full payment schedule, when the fee splits — `[{ name?, amount }]`. */
+  domestic_fee_installments: FeeInstallment[] | null;
+  international_fee_installments: FeeInstallment[] | null;
+  /** The platform's city page for the campus city, when one is published. */
+  city_link: { name: string; href: string } | null;
 };
 
 export type SearchBusiness = {
@@ -91,16 +156,114 @@ export type SearchBusiness = {
   service_count?: number;
   location_count?: number;
   course_count?: number;
+  /** Institution-card fields, derived from the institution's scraped catalog and campuses. */
+  country_code?: string | null;
+  institution_type?: string | null;
+  subject_area_count?: number;
+  study_modes?: string[];
+  campus_locations?: string[];
+};
+
+/** A campus of a scraped institution — `extraction_campuses`, keyed to its extraction job. */
+export type InstitutionCampus = {
+  id: string;
+  name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+};
+
+export type InstitutionMember = {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  photo_url: string | null;
+  role: string;
+  is_owner: boolean;
+};
+
+/** One row of the catalog breakdown — a degree level with its course count. */
+export type CourseFacet = { name: string; count: number };
+
+/** A subject area with the degree spread and fee range of the courses filed under it. */
+export type SubjectAreaSummary = {
+  name: string;
+  count: number;
+  degrees: CourseFacet[];
+  cost_min: number | null;
+  cost_max: number | null;
+  currency: string | null;
 };
 
 export type InstitutionDetail = SearchBusiness & {
+  cover_url: string | null;
   phone: string | null;
   address: string | null;
+  state: string | null;
+  postcode: string | null;
+  registration_number: string | null;
+  registration_licenses: Record<string, unknown> | null;
   facebook_url: string | null;
   instagram_url: string | null;
   twitter_url: string | null;
   linkedin_url: string | null;
   youtube_url: string | null;
+  company_size: string | null;
+  created_at: string | null;
+  video_urls: string[] | null;
+  /** Signed preview URLs for `gallery_images`, resolved server-side. */
+  gallery_image_urls?: (string | null)[];
+  campuses: InstitutionCampus[];
+  members: InstitutionMember[];
+  subject_areas: SubjectAreaSummary[];
+  degree_levels: CourseFacet[];
+};
+
+/**
+ * A scraped visa-service provider — extraction-catalog only, so it has a slug but no subdomain
+ * and none of the tenant-backed sections (branches, team) a real business profile carries.
+ */
+export type VisaServiceProviderDetail = {
+  id: string;
+  slug: string;
+  business_name: string;
+  logo_url: string | null;
+  description: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country_name: string | null;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+  source_url: string | null;
+  services: VisaServiceItem[];
+};
+
+export type VisaServiceItem = {
+  id: string;
+  name: string;
+  type: string | null;
+  description: string | null;
+  registration_number: string | null;
+  registration_body: string | null;
+  registration_status: string | null;
+  registration_expiry: string | null;
+  visa_types_handled: string[] | null;
+  specializations: string[] | null;
+  languages_spoken: string[] | null;
+  fee_amount: string | null;
+  fee_currency: string | null;
+  fee_type: string | null;
+  fee_from: string | null;
+  fee_to: string | null;
+  consultation_fee: string | null;
+  consultation_free: boolean | null;
+  years_experience: number | null;
+  countries_serviced: string[] | null;
 };
 
 export type BusinessBranch = {
@@ -144,6 +307,12 @@ export type BusinessDetail = SearchBusiness & {
   cover_url: string | null;
   phone: string | null;
   address: string | null;
+  state: string | null;
+  postcode: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  business_registration_number: string | null;
+  registration_licenses: Record<string, unknown> | null;
   category_name: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
@@ -230,6 +399,14 @@ export const BASIS_LABEL: Record<string, string> = {
   government: "Government", research: "Research", other: "Other",
 };
 
+export const STUDY_MODE_LABEL: Record<string, string> = {
+  full_time: "Full-Time",
+  part_time: "Part-Time",
+  online: "Online",
+  on_campus: "On Campus",
+  blended: "Blended",
+};
+
 export const JOB_TYPE_LABEL: Record<string, string> = {
   full_time: "Full Time",
   part_time: "Part Time",
@@ -240,8 +417,22 @@ export const JOB_TYPE_LABEL: Record<string, string> = {
 
 export const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/**
+ * How the card's headline fee is expressed. Display-only — it never reaches the API, because
+ * every figure it needs (installment, total, duration) is already on the course row.
+ */
+export type FeePeriod = "per_semester" | "per_year" | "total";
+
+export const FEE_PERIOD_OPTIONS: { value: FeePeriod; label: string }[] = [
+  { value: "per_semester", label: "Per Semester" },
+  { value: "per_year", label: "Per Year" },
+  { value: "total", label: "Total" },
+];
+
+export const DEFAULT_FEE_PERIOD: FeePeriod = "per_semester";
+
 export const SORT_OPTIONS: { value: string; label: string }[] = [
-  { value: "best_match", label: "Best match" },
+  { value: "best_match", label: "Relevance" },
   { value: "fee_asc", label: "Fee: Low to High" },
   { value: "fee_desc", label: "Fee: High to Low" },
   { value: "duration_asc", label: "Duration: Shortest" },

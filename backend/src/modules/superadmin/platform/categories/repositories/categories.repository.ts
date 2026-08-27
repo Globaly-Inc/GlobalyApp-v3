@@ -159,7 +159,7 @@ export async function updateOtherServiceCategory(id: number, data: Record<string
 // ─── Lookups (degree_levels, areas_of_study) ───────────────────────────────
 // Identical shape, so one implementation serves both.
 
-export type LookupTable = "degree_levels" | "areas_of_study";
+export type LookupTable = "degree_levels" | "areas_of_study" | "tests";
 
 export async function listLookup(table: LookupTable, limit: number, offset: number, search?: string) {
   const q = masterKnex(table).whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset);

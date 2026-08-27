@@ -11,10 +11,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import type { LanguageTest, LanguageTestInput } from "../apis/types";
 import { useValidatedForm, sanitizeDecimalInput } from "./validation";
 import { FieldError } from "./field-error";
+import { useTests } from "./use-tests";
 
-const TEST_TYPES = ["IELTS", "TOEFL", "PTE", "Duolingo", "OET"];
-const TEST_TYPE_OPTIONS = TEST_TYPES.map((t) => ({ value: t, label: t }));
-
+/**
+ * Which sub-scores a test breaks down into. Keyed by the catalogue's test name; a test an admin adds
+ * that isn't listed here simply collects an overall score, which is the sane default.
+ */
 const SUB_SCORE_FIELDS: Record<string, string[]> = {
   IELTS: ["Reading", "Writing", "Listening", "Speaking"],
   TOEFL: ["Reading", "Writing", "Listening", "Speaking"],
@@ -59,6 +61,7 @@ export function TestScoreDialog({
   onSave: (data: LanguageTestInput) => Promise<boolean>;
   saving: boolean;
 }>) {
+  const tests = useTests("language");
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
 
   useEffect(() => {
@@ -74,6 +77,15 @@ export function TestScoreDialog({
 
   const subFields = form.test_type ? (SUB_SCORE_FIELDS[form.test_type] ?? []) : [];
   const completed = form.test_status === "completed";
+  // The options are the admin-managed catalogue, each carrying its own logo.
+  const testOptions = tests.map((test) => ({
+    value: test.name,
+    label: test.name,
+    icon: test.image_url ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={test.image_url} alt="" className="size-4 object-contain" />
+    ) : undefined,
+  }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -88,7 +100,7 @@ export function TestScoreDialog({
               value={form.test_type ?? ""}
               onChange={(v) => setForm((f) => ({ ...f, test_type: v, sub_scores: {} }))}
               placeholder="Select test"
-              options={TEST_TYPE_OPTIONS}
+              options={testOptions}
               aria-invalid={!!errors.test_type}
             />
             <FieldError message={errors.test_type} />
