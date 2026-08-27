@@ -4,6 +4,7 @@ import { usersRealApi } from "./real-api";
 
 export const usersApi = createApi({ mock: usersMockApi, real: usersRealApi });
 export type {
-  AdminUser, AdminRole, AdminInvitation,
-  PaginatedInvitations, PaginatedAdminUsers, ListParams, InviteAdminParams, UpdateAdminParams,
+  AdminUser, AdminRole, AdminInvitation, PlatformUser,
+  PaginatedInvitations, PaginatedAdminUsers, PaginatedPlatformUsers, ListParams,
+  InviteAdminParams, UpdateAdminParams, UpdatePlatformUserParams,
 } from "./types";

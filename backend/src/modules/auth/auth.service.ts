@@ -594,8 +594,12 @@ export async function getMe(auth: AuthClaims) {
     platformUserRepo.listUserBusinesses(id),
     platformUserRepo.listUserInstitutions(id),
   ]);
-  result.businesses = businesses;
-  result.institutions = institutions;
+  result.businesses = await Promise.all(
+    businesses.map(async (b) => ({ ...b, logo_url: await storage.resolvePreviewUrl(b.logo_url) })),
+  );
+  result.institutions = await Promise.all(
+    institutions.map(async (i) => ({ ...i, logo_url: await storage.resolvePreviewUrl(i.logo_url) })),
+  );
 
   return { user: result };
 }

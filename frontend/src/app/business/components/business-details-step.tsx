@@ -130,6 +130,7 @@ export function BusinessDetailsStep({
               onChange={onAddressChange}
               onResolved={onPlaceResolved}
               countryIso2={countryIso2}
+              aria-invalid={!!fieldErrors.address}
             />
             {fieldErrors.address && <p className="text-sm text-destructive">{fieldErrors.address}</p>}
           </div>

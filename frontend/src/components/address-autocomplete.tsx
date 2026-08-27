@@ -11,11 +11,13 @@ export function AddressAutocomplete({
   onChange,
   onResolved,
   countryIso2,
+  "aria-invalid": ariaInvalid,
 }: Readonly<{
   value: string;
   onChange: (address: string) => void;
   onResolved: (details: PlaceDetails) => void;
   countryIso2?: string | null;
+  "aria-invalid"?: boolean;
 }>) {
   const [suggestions, setSuggestions] = useState<ComboboxOption[]>([]);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -63,6 +65,7 @@ export function AddressAutocomplete({
       searchPlaceholder="Search address"
       emptyText="No matches — keep typing or press Enter to use as-is"
       contentClassName="w-96"
+      aria-invalid={ariaInvalid}
     />
   );
 }

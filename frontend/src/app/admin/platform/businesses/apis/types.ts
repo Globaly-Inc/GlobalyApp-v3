@@ -39,6 +39,8 @@ export type Business = {
   service_count: number;
 };
 
+export type BusinessSort = "name_asc" | "name_desc" | "created_desc" | "created_asc";
+
 export type BusinessListParams = {
   search?: string;
   status?: string;
@@ -48,6 +50,7 @@ export type BusinessListParams = {
   kind?: ListingKind;
   page?: number;
   limit?: number;
+  sort?: BusinessSort;
 };
 
 export type BusinessListResult = { data: Business[]; total: number };

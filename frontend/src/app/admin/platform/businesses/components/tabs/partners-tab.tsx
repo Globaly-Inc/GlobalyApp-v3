@@ -16,7 +16,11 @@ import { ViewInstitutionDrawer } from "../partners/view-institution-drawer";
 
 const PAGE_SIZE = 10;
 
-export function PartnersTab({ businessId, businessName }: Readonly<{ businessId: number; businessName?: string }>) {
+export function PartnersTab({
+  businessId,
+  businessName,
+  readOnly = false,
+}: Readonly<{ businessId: number; businessName?: string; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: partners, status, total: relationsTotal } = useAppSelector((state) => state.platformBusinesses.relations);
   const [addOpen, setAddOpen] = useState(false);
@@ -96,12 +100,16 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
                   <Eye className="h-4 w-4" />
                 </Button>
               )}
+               {!readOnly && (
+                <>
               <Button size="icon-sm" variant="ghost" onClick={() => setEditingRelation(p)} aria-label="Edit partner">
                 <Pencil className="h-4 w-4" />
               </Button>
               <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingRelation(p)} aria-label="Remove partner">
                 <Trash2 className="h-4 w-4" />
               </Button>
+                </>
+              )}
             </div>
           </div>
         ))}
@@ -120,9 +128,11 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
           </div>
           <p className="text-xs text-muted-foreground">Educational consultancies authorised to represent this institution.</p>
         </div>
-        <Button className="h-10" onClick={() => setAddOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Link consultancy
-        </Button>
+        {!readOnly && (
+          <Button className="h-10" onClick={() => setAddOpen(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Link consultancy
+          </Button>
+        )}
       </div>
 
       <div className="relative mb-3 w-1/3">

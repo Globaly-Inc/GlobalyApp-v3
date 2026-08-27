@@ -1,6 +1,7 @@
 // Platform user service — profile management and sub-resources (registration + OTP auth handled by auth module).
 
 import { NotFoundError, ConflictError, BadRequestError } from "../../../shared/errors.js";
+import { config } from "../../../config.js";
 import { generateSubdomain } from "../../../shared/subdomain.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import { computeCompletion, syncCompletion } from "./completion.js";
@@ -13,11 +14,17 @@ import { provisionInstitutionSchema } from "../../../core/business/provisioner.j
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
+import { createSystemPost } from "../../feed/services/feed.service.js";
+import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
+import { createChildLogger } from "../../../shared/logger.js";
 import type {
   ProfilePatchInput,
   OnboardingPersonalInput, OnboardingBusinessInput, OnboardingInstitutionInput,
   QualificationInput, LanguageTestInput, AcademicTestInput, WorkExperienceInput,
 } from "../schemas/platform-users.schema.js";
+
+const logger = createChildLogger("platform-users-service");
+const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
 
 // ── Profile ──
 
@@ -169,6 +176,19 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   // not flip until the schema and the owner member exist. Without it the scoped token below
   // would be handed out for an institution the tenant plugin then refuses to resolve.
   await repo.updateInstitution(institution.id, { account_status: 1 });
+
+  createSystemPost({
+    authorId: userId,
+    institutionId: Number(institution.id),
+    content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    media: [
+      {
+        storage_path: institution.logo_url ?? WELCOME_POST_IMAGE,
+        type: "image",
+        mime_type: institution.logo_url ? guessImageMimeType(institution.logo_url) : "image/png",
+      },
+    ],
+  }).catch((err) => logger.warn("Welcome post creation error", { institutionId: institution.id, err: err.message }));
 
   // Scoped token, as registerBusiness does — otherwise the user has just created an
   // institution and still has to log out and back in to enter it.

@@ -43,9 +43,9 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   // dropdown), by category_slug (e.g. partner-pairing lookups that only know a slug), or by
   // `kind` (a consultancy/partner picker that wants one table, no category restriction).
   app.get("/businesses", async (req, reply) => {
-    const { search, status, category, category_slug, kind, ...pagination } = ListQuerySchema.parse(req.query);
+    const { search, status, category, category_slug, sort, kind, ...pagination } = ListQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug, kind);
+    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug, kind, sort);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 

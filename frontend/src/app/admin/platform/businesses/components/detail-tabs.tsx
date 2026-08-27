@@ -39,7 +39,8 @@ export function DetailTabs({
   kind,
   id,
   businessName,
-}: Readonly<{ kind: "business" | "institution"; id: number; businessName?: string }>) {
+  readOnly = false,
+}: Readonly<{ kind: "business" | "institution"; id: number; businessName?: string; readOnly?: boolean }>) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -56,22 +57,26 @@ export function DetailTabs({
       <Card>
         <CardContent>
           {tab === "branches" && (kind === "business" ? (
-            <BranchesTab businessId={id} />
+            <BranchesTab businessId={id} readOnly={readOnly} />
           ) : (
             <InstitutionBranchesTab institutionId={id} />
           ))}
           {tab === "partners" && (kind === "business" ? (
-            <PartnersTab businessId={id} businessName={businessName} />
+            <PartnersTab businessId={id} businessName={businessName} readOnly={readOnly} />
           ) : (
             <InstitutionPartnersTab institutionId={id} />
           ))}
-          {tab === "members" && (kind === "business" ? <MembersTab businessId={id} /> : <InstitutionMembersTab institutionId={id} />)}
+          {tab === "members" && (kind === "business" ? (
+            <MembersTab businessId={id} readOnly={readOnly} />
+          ) : (
+            <InstitutionMembersTab institutionId={id} readOnly={readOnly} />
+          ))}
           {tab === "contacts" && (kind === "business" ? (
-            <ContactsTab businessId={id} />
+            <ContactsTab businessId={id} readOnly={readOnly} />
           ) : (
             <EmptyTabPlaceholder icon={Contact} title="No contacts yet" subtitle={NOT_AVAILABLE} />
           ))}
-          {tab === "services" && (kind === "business" ? <ServicesTab businessId={id} /> : <InstitutionCoursesTab institutionId={id} />)}
+          {tab === "services" && (kind === "business" ? <ServicesTab businessId={id} readOnly={readOnly} /> : <InstitutionCoursesTab institutionId={id} />)}
           {tab === "activity" && (kind === "business" ? (
             <ActivityTab businessId={id} />
           ) : (

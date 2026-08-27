@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -111,6 +112,13 @@ export function Navbar() {
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 p-1.5">
+                  <DropdownMenuLabel className="px-1.5 py-1.5 font-normal">
+                    <p className="text-sm font-medium truncate">
+                      {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "User"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(profileHref(user))}>
                     My Profile
                   </DropdownMenuItem>

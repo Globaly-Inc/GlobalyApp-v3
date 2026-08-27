@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Building2, Mail, Pencil, Users } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,11 +16,14 @@ export function BusinessHeaderCard({
   location,
   onSave,
   onEdit,
+  readOnly = false,
 }: Readonly<{
   business: BusinessDetail;
   location: string;
   onSave: (patch: BusinessPatch) => Promise<boolean>;
   onEdit: () => void;
+  /** The owner has claimed this business — superadmin can view but not edit its details. */
+  readOnly?: boolean;
 }>) {
   const [uploading, setUploading] = useState<"cover" | "logo" | null>(null);
   const initial = business.business_name.charAt(0).toUpperCase();
@@ -38,15 +42,30 @@ export function BusinessHeaderCard({
 
   return (
     <div className="overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
-      <CoverLogoEditor
-        coverUrl={business.cover_url}
-        onCoverFile={(file) => uploadAndSave("cover_url", "cover", file)}
-        coverUploading={uploading === "cover"}
-        logoUrl={business.logo_url}
-        logoFallback={initial}
-        onLogoFile={(file) => uploadAndSave("logo_url", "logo", file)}
-        logoUploading={uploading === "logo"}
-      />
+      {readOnly ? (
+        <div className="relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48">
+          {business.cover_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={business.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          )}
+          <Avatar className="absolute -bottom-12 left-6 size-24 rounded-xl border-4 border-background bg-white shadow-lg">
+            {business.logo_url && (
+              <AvatarImage src={business.logo_url} alt="" className="rounded-lg object-contain p-1" />
+            )}
+            <AvatarFallback className="rounded-lg text-2xl">{initial}</AvatarFallback>
+          </Avatar>
+        </div>
+      ) : (
+        <CoverLogoEditor
+          coverUrl={business.cover_url}
+          onCoverFile={(file) => uploadAndSave("cover_url", "cover", file)}
+          coverUploading={uploading === "cover"}
+          logoUrl={business.logo_url}
+          logoFallback={initial}
+          onLogoFile={(file) => uploadAndSave("logo_url", "logo", file)}
+          logoUploading={uploading === "logo"}
+        />
+      )}
       <CardContent className="flex items-start gap-4 pt-16 ml-8 mb-8">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -69,9 +88,11 @@ export function BusinessHeaderCard({
             </span>
           </div>
         </div>
-        <Button variant="ghost" size="icon-sm" onClick={onEdit} aria-label="Edit business">
-          <Pencil className="h-4 w-4" />
-        </Button>
+        {!readOnly && (
+          <Button variant="ghost" size="icon-sm" onClick={onEdit} aria-label="Edit business">
+            <Pencil className="h-4 w-4" />
+          </Button>
+        )}
       </CardContent>
     </div>
   );

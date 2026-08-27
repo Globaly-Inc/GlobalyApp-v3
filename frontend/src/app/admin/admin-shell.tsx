@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -38,8 +38,11 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
     }
   }, [initializing, isAdmin, router]);
 
+  const fetchedMeRef = useRef(false);
   useEffect(() => {
-    if (isAdmin) dispatch(fetchMe());
+    if (!isAdmin || fetchedMeRef.current) return;
+    fetchedMeRef.current = true;
+    dispatch(fetchMe());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
   useEffect(() => {
@@ -151,6 +154,11 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
               <ChevronDown className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 p-1.5">
+              <div className="px-1.5 py-1.5">
+                <p className="text-sm font-medium truncate">{me.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{me.email}</p>
+              </div>
+              <DropdownMenuSeparator />
               <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/profile")}>
                 My Profile
               </DropdownMenuItem>

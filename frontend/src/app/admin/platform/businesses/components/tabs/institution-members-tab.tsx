@@ -21,7 +21,10 @@ const SUB_TABS = [
 
 type SubTab = (typeof SUB_TABS)[number]["value"];
 
-export function InstitutionMembersTab({ institutionId }: Readonly<{ institutionId: number }>) {
+export function InstitutionMembersTab({
+  institutionId,
+  readOnly = false,
+}: Readonly<{ institutionId: number; readOnly?: boolean }>) {
   const total = useAppSelector((state) => state.platformInstitutionDetail.members.total);
   const [subTab, setSubTab] = useState<SubTab>("members");
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -36,7 +39,7 @@ export function InstitutionMembersTab({ institutionId }: Readonly<{ institutionI
           <span className="text-sm font-semibold">Members</span>
           <Badge variant="secondary">{total}</Badge>
         </div>
-        {subTab === "roles" ? (
+        {!readOnly && (subTab === "roles" ? (
           <Button className="h-10" onClick={() => { setEditingRole(null); setRoleDrawerOpen(true); }}>
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Add role
           </Button>
@@ -44,15 +47,19 @@ export function InstitutionMembersTab({ institutionId }: Readonly<{ institutionI
           <Button className="h-10" onClick={() => setInviteOpen(true)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Member
           </Button>
-        )}
+        ))}
       </div>
 
       <AdminSegmentedTabs options={SUB_TABS} value={subTab} onChange={setSubTab} />
 
-      {subTab === "members" && <InstitutionMembersList institutionId={institutionId} />}
-      {subTab === "invitations" && <InstitutionInvitationsList institutionId={institutionId} />}
+      {subTab === "members" && <InstitutionMembersList institutionId={institutionId} readOnly={readOnly} />}
+      {subTab === "invitations" && <InstitutionInvitationsList institutionId={institutionId} readOnly={readOnly} />}
       {subTab === "roles" && (
-        <InstitutionRolesList institutionId={institutionId} onEdit={(r) => { setEditingRole(r); setRoleDrawerOpen(true); }} />
+        <InstitutionRolesList
+          institutionId={institutionId}
+          onEdit={(r) => { setEditingRole(r); setRoleDrawerOpen(true); }}
+          readOnly={readOnly}
+        />
       )}
 
       <InviteInstitutionMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} institutionId={institutionId} />

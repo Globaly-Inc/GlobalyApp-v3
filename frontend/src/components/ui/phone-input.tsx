@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function flagEmoji(iso2: string): string {
+export function flagEmoji(iso2: string): string {
   // Regional indicator symbols: offset from 'A' (0x41) → 0x1F1E6
   return [...iso2.toUpperCase()]
     .map((c) => String.fromCodePoint(c.codePointAt(0)! - 0x41 + 0x1f1e6))

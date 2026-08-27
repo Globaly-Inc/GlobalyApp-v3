@@ -15,11 +15,14 @@ import * as userRepo from "../../platform-users/repositories/platform-users.repo
 import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
+import { createSystemPost } from "../../feed/services/feed.service.js";
+import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
 import type { BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput } from "../schemas/businesses.schema.js";
 import { generateSubdomain } from "../../../shared/subdomain.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
+const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
 
 // Subdomain is internal (routing now identifies a business by id, not subdomain) so it's
 // derived from the name instead of user-typed. Businesses and institutions share the
@@ -95,15 +98,21 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   });
 
   await repo.updateBusinessStatus(business.id, 1);
-
-  // A business entity gets its OWN referral code, separate from the owner's personal code — the two
-  // credit different wallets. Idempotent and never throws; a failure is repaired by
-  // `npm run job:referral-codes` rather than rolling back a provisioned business (INV-10).
-  //
-  // Business CREATION is deliberately not a qualification trigger: only verification pays out.
   issueCode("business", Number(business.id)).catch((err) =>
     logger.warn("Referral code issuance error", { businessId: business.id, err: err.message }),
   );
+  createSystemPost({
+    authorId: userId,
+    businessId: Number(business.id),
+    content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    media: [
+      {
+        storage_path: business.logo_url ?? WELCOME_POST_IMAGE,
+        type: "image",
+        mime_type: business.logo_url ? guessImageMimeType(business.logo_url) : "image/png",
+      },
+    ],
+  }).catch((err) => logger.warn("Welcome post creation error", { businessId: business.id, err: err.message }));
 
   // Mark user as a business account holder + track category
   await userRepo.updateUser(userId, { is_business_account: true });

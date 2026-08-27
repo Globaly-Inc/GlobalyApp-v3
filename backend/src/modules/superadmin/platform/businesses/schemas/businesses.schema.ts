@@ -72,6 +72,8 @@ export const MemberListQuerySchema = PaginationSchema.extend({
   search: z.string().optional(),
 });
 
+export const BusinessSortOptions = ["name_asc", "name_desc", "created_desc", "created_asc"] as const;
+
 export const ListQuerySchema = PaginationSchema.extend({
   search: z.string().optional(),
   status: z.string().optional(),
@@ -81,6 +83,7 @@ export const ListQuerySchema = PaginationSchema.extend({
   // specific business category (e.g. a consultancy picker that wants ALL businesses, no
   // category restriction, and never institutions).
   kind: z.enum(["business", "institution"]).optional(),
+  sort: z.enum(BusinessSortOptions).default("name_asc"),
 });
 
 export const StatusPatchSchema = z.object({

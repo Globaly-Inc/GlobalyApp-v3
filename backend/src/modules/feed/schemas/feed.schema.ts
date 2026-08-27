@@ -28,16 +28,22 @@ export const CreatePostSchema = z
     post_type: z.enum(POST_TYPES).default("social"),
     visibility: z.enum(VISIBILITIES).default("everyone"),
     business_id: z.number().int().positive().nullable().optional(),
+    institution_id: z.number().int().positive().nullable().optional(),
     media: z.array(MediaItemSchema).max(4).default([]),
     mentions: z.array(MentionSchema).max(20).default([]),
   })
   // .strict() so an attempt to set author_platform_user_id is rejected loudly rather than silently
   // stripped — matching ProfilePatchSchema. The author always comes from the JWT.
   .strict()
-  // A business-visible post with no business would be visible to nobody — reject the state outright
+ 
+  .refine((v) => v.business_id == null || v.institution_id == null, {
+    message: "A post cannot belong to both a business and an institution",
+    path: ["institution_id"],
+  })
+  // A business-visible post with no org would be visible to nobody — reject the state outright
   // rather than storing something the visibility query can never match.
-  .refine((v) => v.visibility !== "business" || v.business_id != null, {
-    message: "business_id is required when visibility is 'business'",
+  .refine((v) => v.visibility !== "business" || v.business_id != null || v.institution_id != null, {
+    message: "business_id or institution_id is required when visibility is 'business'",
     path: ["business_id"],
   })
   .refine((v) => v.content.length > 0 || v.media.length > 0, {

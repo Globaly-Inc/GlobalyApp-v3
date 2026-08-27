@@ -107,6 +107,48 @@ export async function listAdmins(limit: number, offset: number, search?: string)
     .offset(offset);
 }
 
+// ── Platform users (every signed-up account, not just admins) ──
+
+const PLATFORM_USER_COLUMNS = [
+  "id", "first_name", "last_name", "email", "phone", "account_status", "is_email_verified",
+  "is_personal_account", "is_business_account", "is_institution_account", "created_at",
+];
+
+function platformUserListQuery(search?: string) {
+  const q = masterKnex("platform_users").whereNull("deleted_at");
+  if (search) {
+    q.where((b: any) =>
+      b.whereILike("first_name", `%${search}%`).orWhereILike("last_name", `%${search}%`).orWhereILike("email", `%${search}%`),
+    );
+  }
+  return q;
+}
+
+export async function listPlatformUsers(limit: number, offset: number, search?: string) {
+  return platformUserListQuery(search)
+    .select(PLATFORM_USER_COLUMNS)
+    .orderBy("id", "desc")
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function countPlatformUsers(search?: string): Promise<number> {
+  const [{ count }] = await platformUserListQuery(search).count("id as count");
+  return Number(count);
+}
+
+export async function updatePlatformUserStatus(
+  id: number,
+  data: { account_status?: number; is_email_verified?: boolean },
+) {
+  const [row] = await masterKnex("platform_users")
+    .where({ id })
+    .whereNull("deleted_at")
+    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .returning(PLATFORM_USER_COLUMNS);
+  return row;
+}
+
 export async function countAdmins(search?: string): Promise<number> {
   const [{ count }] = await adminListQuery(search).count("superadmin.admin_users.id as count");
   return Number(count);

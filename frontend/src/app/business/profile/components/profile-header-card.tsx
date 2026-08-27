@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CoverLogoEditor } from "@/components/cover-logo-editor";
+import { flagEmoji } from "@/components/ui/phone-input";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
 import { businessLocationLine, businessTypeLabel } from "./tabs/profile-tab";
@@ -37,6 +38,7 @@ export function ProfileHeaderCard({
 }>) {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const initial = profile.business_name?.[0]?.toUpperCase() ?? "B";
+  const country = countries.find((c) => c.id === profile.country_id) ?? null;
 
   const handleLogoPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,8 +49,8 @@ export function ProfileHeaderCard({
   const logo = (
     <div className="relative h-28 w-28 shrink-0 left-5">
       {previewMode ? (
-        <Avatar className="size-28 rounded-xl border-4 border-background">
-          {profile.logo_url && <AvatarImage src={profile.logo_url} alt="" className="rounded-lg object-contain p-1" />}
+        <Avatar className="size-28 rounded-xl border-4 border-background bg-white shadow-lg">
+          {profile.logo_url && <AvatarImage src={profile.logo_url} alt="" className="rounded-lg object-cover" />}
           <AvatarFallback className="rounded-lg text-2xl">{initial}</AvatarFallback>
         </Avatar>
       ) : (
@@ -58,8 +60,8 @@ export function ProfileHeaderCard({
           onClick={() => logoInputRef.current?.click()}
           aria-label="Edit logo"
         >
-          <Avatar className="size-28 rounded-xl border-4 border-background">
-            {profile.logo_url && <AvatarImage src={profile.logo_url} alt="" className="rounded-lg object-contain p-1" />}
+          <Avatar className="size-28 rounded-xl border-4 border-background bg-white shadow-lg">
+            {profile.logo_url && <AvatarImage src={profile.logo_url} alt="" className="rounded-lg object-cover" />}
             <AvatarFallback className="rounded-lg text-2xl">{initial}</AvatarFallback>
           </Avatar>
           <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
@@ -111,6 +113,7 @@ export function ProfileHeaderCard({
               </div>
               <h1 className="text-xl font-bold text-foreground">{profile.business_name}</h1>
               <p className="text-sm text-muted-foreground">
+                {country && `${flagEmoji(country.iso2)} `}
                 {businessLocationLine(profile, countries) ?? profile.subdomain}
               </p>
             </div>

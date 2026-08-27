@@ -13,6 +13,7 @@ import { queueService } from "../../../../../shared/queue/queueService.js";
 import { queueEmail } from "../../../../auth/auth.service.js";
 import { claimBusinessEmail } from "../../../../../shared/mail/templates.js";
 import * as repo from "../repositories/businesses.repository.js";
+import type { BusinessSort } from "../repositories/businesses.repository.js";
 import * as userRepo from "../../../../platform-users/repositories/platform-users.repository.js";
 import { findBusinessBySubdomain } from "../../../../businesses/repositories/businesses.repository.js";
 import { generateSubdomain } from "../../../../../shared/subdomain.js";
@@ -143,22 +144,37 @@ export async function createBusiness(input: BusinessCreateInput) {
  *   no category ("All")        -> both
  *
  * The "both" case pages over the two tables together. It over-fetches — `limit + offset` from
- * each side, merged, sorted by created_at, then sliced — because a row's position in the
+ * each side, merged, sorted alphabetically by name, then sliced — because a row's position in the
  * combined order can't be known from either table alone. Correct for any page, and bounded by
  * page depth rather than table size.
  *
  * ponytail: a SQL UNION ALL would push the merge into Postgres. Worth doing when admins page
  * deep; at a few hundred listings this is cheaper to read than to optimise.
  */
+/** Same comparator the DB-side ORDER BY uses per sort option, for the merged both-tables case. */
+function sortComparator(sort: BusinessSort) {
+  switch (sort) {
+    case "name_desc":
+      return (a: any, b: any) => b.business_name.localeCompare(a.business_name);
+    case "created_desc":
+      return (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    case "created_asc":
+      return (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    default:
+      return (a: any, b: any) => a.business_name.localeCompare(b.business_name);
+  }
+}
+
 export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
   kind?: "business" | "institution",
+  sort: BusinessSort = "name_asc",
 ) {
   const scope = kind ? (kind === "institution" ? "institutions" : "businesses") : await resolveListScope(category, categorySlug);
 
   if (scope === "institutions") {
     const [rawRows, total] = await Promise.all([
-      repo.listInstitutions(limit, offset, search, status),
+      repo.listInstitutions(limit, offset, search, status, sort),
       repo.countInstitutions(search, status),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
@@ -166,7 +182,7 @@ export async function listBusinesses(
 
   if (scope === "businesses") {
     const [rawRows, total] = await Promise.all([
-      repo.listBusinesses(limit, offset, search, status, category, categorySlug),
+      repo.listBusinesses(limit, offset, search, status, category, categorySlug, sort),
       repo.countBusinesses(search, status, category, categorySlug),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
@@ -174,15 +190,13 @@ export async function listBusinesses(
 
   const depth = limit + offset;
   const [bizRows, instRows, bizTotal, instTotal] = await Promise.all([
-    repo.listBusinesses(depth, 0, search, status),
-    repo.listInstitutions(depth, 0, search, status),
+    repo.listBusinesses(depth, 0, search, status, undefined, undefined, sort),
+    repo.listInstitutions(depth, 0, search, status, sort),
     repo.countBusinesses(search, status),
     repo.countInstitutions(search, status),
   ]);
 
-  const merged = [...bizRows, ...instRows]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(offset, offset + limit);
+  const merged = [...bizRows, ...instRows].sort(sortComparator(sort)).slice(offset, offset + limit);
 
   return {
     rows: await Promise.all(merged.map(withImagePreviews)),

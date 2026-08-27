@@ -16,7 +16,10 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-export function InstitutionInvitationsList({ institutionId }: Readonly<{ institutionId: number }>) {
+export function InstitutionInvitationsList({
+  institutionId,
+  readOnly = false,
+}: Readonly<{ institutionId: number; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: invitations, status, total } = useAppSelector((state) => state.platformInstitutionDetail.invitations);
   const [page, setPage] = useState(1);
@@ -82,14 +85,16 @@ export function InstitutionInvitationsList({ institutionId }: Readonly<{ institu
                 {i.email} · Invited {formatDate(i.invited_at)} · Expires {formatDate(i.expires_at)}
               </p>
             </div>
-            <div className="flex gap-1">
-              <Button size="icon-sm" variant="ghost" onClick={() => handleResend(i.id)} aria-label="Re-invite">
-                <RotateCw className="h-4 w-4" />
-              </Button>
-              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleCancel(i.id)} aria-label="Delete invitation">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
+            {!readOnly && (
+              <div className="flex gap-1">
+                <Button size="icon-sm" variant="ghost" onClick={() => handleResend(i.id)} aria-label="Re-invite">
+                  <RotateCw className="h-4 w-4" />
+                </Button>
+                <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleCancel(i.id)} aria-label="Delete invitation">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -23,6 +23,16 @@ export function kindFor(mimeType: string): MediaKind {
   throw new BadRequestError(`Unsupported media type "${mimeType}"`);
 }
 
+export function guessImageMimeType(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "png": return "image/png";
+    case "webp": return "image/webp";
+    case "gif": return "image/gif";
+    default: return "image/jpeg";
+  }
+}
+
 export async function uploadMedia(input: {
   userId: number;
   filename: string;
@@ -80,8 +90,10 @@ export async function withViewUrls(media: PostMedia[] | null): Promise<(PostMedi
   return Promise.all(
     media.map(async (item) => ({
       ...item,
-      // A missing/unreachable object must not break the whole timeline — the item renders without a URL.
-      url: await storage.getSignedViewUrl(item.storage_path).catch(() => ""),
+      url: /^https?:\/\//i.test(item.storage_path)
+        ? item.storage_path
+        // A missing/unreachable object must not break the whole timeline — the item renders without a URL.
+        : await storage.getSignedViewUrl(item.storage_path).catch(() => ""),
     })),
   );
 }

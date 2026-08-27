@@ -53,8 +53,10 @@ export function BusinessSwitcher({
         <DropdownMenuGroup>
           {businesses.map((b) => (
             <DropdownMenuItem key={b.org_id} className="cursor-pointer gap-2" onClick={() => onSwitch(b.org_id)}>
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted">
-                {b.kind === "institution" ? (
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted overflow-hidden">
+                {b.logo_url ? (
+                  <img src={b.logo_url} alt="" className="size-full object-contain p-0.5" />
+                ) : b.kind === "institution" ? (
                   <GraduationCap className="h-3.5 w-3.5 text-muted-foreground" />
                 ) : (
                   <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
