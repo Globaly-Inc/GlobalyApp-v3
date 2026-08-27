@@ -1,26 +1,21 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { isInstitutionContext } from "@/lib/api/http";
 import { businessEnquiriesApi } from "../apis";
 import type { DistributionListItem } from "../apis/types";
 
-// Institution tenants share the /business/* shell but have no business context, and every
-// enquiry route sits behind requireBusinessContext — the whole substrate (representations,
-// enquiry_match_directory, enquiry_distributions) keys on business_id, so there is nothing
-// for an institution to read. Guarded in the thunks rather than at each call site: both the
-// inbox and the portal's stats rail dispatch these, and both otherwise surface the plumbing's
-// own "This endpoint requires a business context" as a load failure.
-const INSTITUTION_UNSUPPORTED = "Enquiries are only available for business accounts.";
+// Institution tenants share the /business/* shell, and these thunks used to short-circuit for
+// them: every enquiry route sat behind requireBusinessContext, so the request could only come
+// back as "This endpoint requires a business context". Both sides now serve either org kind —
+// an enquiry nobody represents falls back to the institution that owns the course, and it works
+// that lead here — so the guard is gone and the request is simply made.
 
 export const fetchDistributions = createAsyncThunk("businessEnquiries/fetchAll", async () => {
-  if (isInstitutionContext()) throw new Error(INSTITUTION_UNSUPPORTED);
   const result = await businessEnquiriesApi.listDistributions();
   return result.data;
 });
 
-export const fetchCredits = createAsyncThunk("businessEnquiries/fetchCredits", () => {
-  if (isInstitutionContext()) throw new Error(INSTITUTION_UNSUPPORTED);
-  return businessEnquiriesApi.getCredits();
-});
+export const fetchCredits = createAsyncThunk("businessEnquiries/fetchCredits", () =>
+  businessEnquiriesApi.getCredits(),
+);
 
 export const unlockDistribution = createAsyncThunk(
   "businessEnquiries/unlock",

@@ -51,15 +51,13 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
 }
 
 const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Representative", "Team", "Services"]);
-// Enquiries and Messages are the only other items backed by real pages, and both call
-// requireBusinessContext routes — offering them to an institution just produced a 403
-// ("This endpoint requires a business context"). Everything else in the sidebar is a
-// ComingSoon placeholder that makes no requests, so it stays.
-const INSTITUTION_HIDDEN_ITEMS = new Set(["Enquiries", "Messages"]);
+// Enquiries and Messages used to be hidden here: both called requireBusinessContext routes and
+// just produced a 403 for an institution. They now serve either org kind, because an enquiry
+// nobody represents falls back to the institution that owns the course and it works that lead in
+// these very screens. Everything else in the sidebar is a ComingSoon placeholder that makes no
+// requests, so it stays — so outside the Business group there is nothing left to filter.
 const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => {
-  if (group.label !== "Business") {
-    return { ...group, items: group.items.filter((item) => !INSTITUTION_HIDDEN_ITEMS.has(item.label)) };
-  }
+  if (group.label !== "Business") return group;
   return { ...group, items: [...group.items.filter((item) => INSTITUTION_BUSINESS_ITEMS.has(item.label)), INSTITUTION_SCHOLARSHIPS_ITEM] };
 }).filter((group) => group.items.length > 0);
 
