@@ -10,7 +10,7 @@ function requireSuperAdmin(role?: string) {
 }
 
 export async function subscriberRoutes(app: FastifyInstance) {
-  app.get("/subscribers", async (req, reply) => {
+  app.get("/", async (req, reply) => {
     requireSuperAdmin(req.auth.role);
     const { search, type, ...pagination } = SubscriberListQuery.parse(req.query);
     const filters = { search, type };
@@ -25,7 +25,7 @@ export async function subscriberRoutes(app: FastifyInstance) {
   });
 
   // CSV export endpoint
-  app.get("/subscribers/export.csv", async (req, reply) => {
+  app.get("/export.csv", async (req, reply) => {
     requireSuperAdmin(req.auth.role);
     const { search, type } = SubscriberListQuery.parse(req.query);
     const filters = { search, type };
