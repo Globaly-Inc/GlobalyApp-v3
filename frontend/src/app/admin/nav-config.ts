@@ -1,6 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Settings,
+  BookOpen,
+  TrendingUp,
   LayoutDashboard,
   Building2,
   Users,
@@ -84,7 +87,10 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     icon: BookMarked,
     label: "Marketing",
     items: [
-      { icon: BookMarked, label: "Blog", href: "/admin/marketing/blog" },
+      { icon: BookMarked, label: "Blogs", href: "/admin/marketing/blog" },
+      { icon: BookOpen, label: "Guides", href: "/admin/marketing/guides" },
+      { icon: TrendingUp, label: "SEO/AEO", href: "/admin/marketing/seo" },
+      { icon: Users, label: "Subscribers", href: "/admin/marketing/subscribers" },
       // { icon: Megaphone, label: "Ads", href: "/admin/marketing/ads" },
     ],
   },
@@ -95,6 +101,11 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { icon: CreditCard, label: "Credits", href: "/admin/revenue/subscriptions/credits" },
       { icon: CreditCard, label: "Subscriptions", href: "/admin/revenue/subscriptions" },
     ],
+  },
+  {
+    icon: Settings,
+    label: "Settings",
+    items: [{ icon: Settings, label: "Integrations", href: "/admin/settings/integrations" }],
   },
 ];
 

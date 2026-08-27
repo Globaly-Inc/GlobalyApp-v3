@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { ensureBusinessContext } from "@/lib/api/http";
+import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
@@ -126,7 +128,18 @@ export function Navbar() {
                   <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
                     Personal Portal
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
+                  {/* Entering needs an ORG-SCOPED token, not just a route change: ensureBusinessContext()
+                      reads the memberships, picks the selected org, and calls /auth/switch-account.
+                      Navigating without it lands on a 403. */}
+                  <DropdownMenuItem
+                    className="cursor-pointer px-1.5 py-1.5"
+                    onClick={async () => {
+                      if (await ensureBusinessContext()) router.push("/business/portal");
+                      else toast.error("Could not open the Business Portal", {
+                        description: "Your business membership could not be confirmed. Please sign in again.",
+                      });
+                    }}
+                  >
                     Business Portal
                   </DropdownMenuItem>
                   {user.is_admin && (
@@ -202,6 +215,9 @@ export function Navbar() {
                       // The drawer replaces the dropdown below lg, so it offers the same destinations rather
                       // than a single "Dashboard" whose target was never well defined.
                       <>
+                        {/* One button per destination the user actually has, not an either/or. This was
+                            `admin ? "Super Admin" : "Personal Portal"`, which gave an admin no way to reach
+                            their own Personal Portal and offered nobody the Business Portal. */}
                         <Button
                           className="btn-gold h-10"
                           nativeButton={false}
@@ -212,8 +228,37 @@ export function Navbar() {
                             />
                           }
                         >
-                          {user.type === "admin" ? "Super Admin" : "Personal Portal"}
+                          Personal Portal
                         </Button>
+                        {(user.businesses?.length ?? 0) > 0 && (
+                          <Button
+                            variant="outline"
+                            className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                            onClick={async () => {
+                              // Same org-scoped-token requirement as the dropdown: switch first, then navigate.
+                              if (await ensureBusinessContext()) {
+                                setMobileOpen(false);
+                                router.push("/business/portal");
+                              } else {
+                                toast.error("Could not open the Business Portal", {
+                                  description: "Your business membership could not be confirmed. Please sign in again.",
+                                });
+                              }
+                            }}
+                          >
+                            Business Portal
+                          </Button>
+                        )}
+                        {user.type === "admin" && (
+                          <Button
+                            variant="outline"
+                            className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                            nativeButton={false}
+                            render={<Link href="/admin/overview" onClick={() => setMobileOpen(false)} />}
+                          >
+                            Super Admin
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"

@@ -27,6 +27,7 @@ export type BlogPost = {
   seo_score: number | null;
   canonical_url: string | null;
   og_image_url: string | null;
+  generated_by_ai: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -71,4 +72,21 @@ export type BlogKeywordInput = {
   category: string | null;
   difficulty: KeywordDifficulty | null;
   is_active: boolean;
+};
+
+export type GenerationStatus = "pending" | "running" | "done" | "failed";
+
+export type GenerationJob = {
+  id: number;
+  status: GenerationStatus;
+  error: string | null;
+  blog_post_id: number | null;
+};
+
+export type GenerationInput = {
+  keywords: string[];
+  context?: string;
+  count: number;
+  topic?: string;
+  country?: string;
 };

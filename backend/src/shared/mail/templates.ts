@@ -135,6 +135,7 @@ const REGISTRANT_TYPE_LABELS: Record<string, string> = {
   institution: "Institution",
   service_provider: "Service Provider",
   other: "Other",
+  newsletter: "Newsletter Subscriber",
 };
 
 // Keep in sync with the frontend's LAUNCH_MS (frontend/src/app/coming-soon/const/index.ts)
@@ -151,19 +152,27 @@ export function waitlistConfirmationEmail(
   name: string,
   registrantType: string,
 ): { subject: string; html: string; text: string } {
-  const firstName = esc(name.trim().split(/\s+/)[0] || name);
+  const trimmedName = name.trim();
+  const firstName = trimmedName ? esc(trimmedName.split(/\s+/)[0]) : "";
   const typeLabel = REGISTRANT_TYPE_LABELS[registrantType] ?? "Other";
+
+  // When name is empty (newsletter signup), omit the personalized greeting
+  const greeting = firstName
+    ? `<p style="margin:0 0 12px">Thanks for registering your interest, ${firstName}.</p>`
+    : "";
 
   return {
     subject: "You're on the Globaly waitlist ✨",
-    text: `You're on the list, ${name}. Thanks for registering your interest in Globaly's AI Education Discovery agents. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore. Registered as: ${typeLabel}.`,
+    text: trimmedName
+      ? `You're on the list, ${trimmedName}. Thanks for registering your interest in Globaly's AI Education Discovery agents. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore. Registered as: ${typeLabel}.`
+      : `Thanks for subscribing to our newsletter. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore.`,
     html: emailLayout({
       heading: "You're on the list",
-      body: `<p style="margin:0 0 12px">Thanks for registering your interest, ${firstName}.</p>
+      body: `${greeting}
              <p style="margin:0 0 12px">We're building something new to help you find the right courses,
              institutions and pathways — and we'll email you the moment it's ready to explore.</p>
              <p style="margin:0 0 12px;color:${BRAND.muted}">Launching <strong>${LAUNCH_DATE_LABEL}</strong>.</p>
-             <p style="margin:0;color:${BRAND.muted}">Registered as: <strong>${esc(typeLabel)}</strong></p>`,
+             ${trimmedName ? `<p style="margin:0;color:${BRAND.muted}">Registered as: <strong>${esc(typeLabel)}</strong></p>` : ""}`,
       footnote: "You'll only hear from us about the launch.",
     }),
   };
@@ -191,6 +200,26 @@ export function claimBusinessEmail(options: {
              enquiries, and get discovered by prospective students.</p>`,
       cta: { label: "Claim your account", href: options.claimUrl },
       footnote: "This link expires in 72 hours. If you weren't expecting this, you can safely ignore this email.",
+    }),
+  };
+}
+
+/** The "here's your guide" mail, sent by guide-email.worker.ts with a 7-day signed GCS link. */
+export function guideDeliveryEmail(options: {
+  guideTitle: string;
+  downloadUrl: string;
+}): { subject: string; html: string; text: string } {
+  const guideTitle = esc(options.guideTitle);
+
+  return {
+    subject: `Your guide: ${options.guideTitle}`,
+    text: `Here's your guide — ${options.guideTitle}. Download it here (link expires in 7 days): ${options.downloadUrl}`,
+    html: emailLayout({
+      heading: "Your guide is ready",
+      body: `<p style="margin:0 0 12px">Thanks for your interest in <strong>${guideTitle}</strong>.</p>
+             <p style="margin:0">Download it below — the link stays active for 7 days.</p>`,
+      cta: { label: "Download your guide", href: options.downloadUrl },
+      footnote: "This link expires in 7 days. If you didn't request this guide, you can safely ignore this email.",
     }),
   };
 }

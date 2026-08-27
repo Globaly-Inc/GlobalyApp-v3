@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Globe, BookOpen, Briefcase, Home, Calendar, Clock } from "lucide-react";
+import { Globe, BookOpen, Briefcase, Home, Calendar, Clock, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getFilters, getPosts } from "./api";
@@ -125,6 +125,10 @@ function PostCard({ post }: Readonly<{ post: PublicBlogPost }>) {
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
               {post.reading_time_minutes}m
+            </span>
+            <span className="flex items-center gap-1">
+              <Eye className="h-3 w-3" />
+              {post.views}
             </span>
           </div>
         </div>

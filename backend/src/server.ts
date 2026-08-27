@@ -35,6 +35,7 @@ import coursesModule from "./modules/courses/index.js";
 import savedItemsModule from "./modules/saved-items/index.js";
 import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
 import waitlistModule from "./modules/waitlist/index.js";
+import guidesPublicModule from "./modules/guides-public/index.js";
 
 const logger = createChildLogger("server");
 
@@ -75,6 +76,7 @@ export async function buildServer() {
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
+  await app.register(guidesPublicModule);    // public guide landing pages + lead capture (no auth)
   await app.register(publicServicesModule);  // public marketplace browse (no auth)
   await app.register(geoModule);              // public geo reads (no auth)
   await app.register(publicPlatformUsersModule); // public country/city lookups (no auth)

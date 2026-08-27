@@ -1,6 +1,7 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm } from "@/lib/api/http";
 import type {
-  BlogKeyword, BlogKeywordInput, BlogPost, BlogPostInput, BlogPostListParams, Paginated,
+  BlogKeyword, BlogKeywordInput, BlogPost, BlogPostInput, BlogPostListParams,
+  GenerationInput, GenerationJob, Paginated,
 } from "./types";
 
 const BASE = "/admin/marketing/blog";
@@ -29,6 +30,10 @@ export const blogRealApi = {
     form.append("file", file);
     return httpPostForm(`${BASE}/posts/cover-image`, form);
   },
+
+  createGeneration: (input: GenerationInput): Promise<{ jobIds: number[] }> => httpPost(`${BASE}/generation`, input),
+  getGenerationStatus: (ids: number[]): Promise<GenerationJob[]> =>
+    httpGet(`${BASE}/generation?ids=${ids.join(",")}`),
 
   getKeywords: async (isActive?: boolean): Promise<BlogKeyword[]> =>
     (await httpGet<{ keywords: BlogKeyword[] }>(`${BASE}/keywords${isActive !== undefined ? `?is_active=${isActive}` : ""}`)).keywords,
