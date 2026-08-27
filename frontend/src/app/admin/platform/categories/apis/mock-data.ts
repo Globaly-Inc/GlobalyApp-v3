@@ -72,9 +72,9 @@ const areasOfStudy: Lookup[] = [
 ];
 
 const tests: Test[] = [
-  { id: 1, name: "IELTS", slug: "ielts", category: "language", image_url: "/logos/IELTS.svg", sort_order: 1, is_active: true },
-  { id: 2, name: "TOEFL", slug: "toefl", category: "language", image_url: "/logos/TOEFL.svg", sort_order: 2, is_active: true },
-  { id: 3, name: "GRE", slug: "gre", category: "academic", image_url: "/logos/GRE.webp", sort_order: 3, is_active: true },
+  { id: 1, name: "IELTS", slug: "ielts", category: "language", image_url: null, sort_order: 1, is_active: true },
+  { id: 2, name: "TOEFL", slug: "toefl", category: "language", image_url: null, sort_order: 2, is_active: true },
+  { id: 3, name: "GRE", slug: "gre", category: "academic", image_url: null, sort_order: 3, is_active: true },
 ];
 
 const feeTypes: FeeType[] = [
