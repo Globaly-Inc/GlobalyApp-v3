@@ -37,7 +37,7 @@ export function HeroSection() {
             yours. Manage your course listings, expand your agent network, and enroll more
             students — all in one smart, transparent platform.
           </p>
-          <UnifiedSearchBar />
+          <UnifiedSearchBar defaultTabSlug="institutions" />
         </div>
       </div>
     </section>

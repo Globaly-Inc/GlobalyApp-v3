@@ -13,10 +13,12 @@ const MODES: { id: Mode; label: string; Icon: typeof Search }[] = [
   { id: "search", label: "Search", Icon: Search },
 ];
 
-export function UnifiedSearchBar() {
+export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?: string }> = {}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("ai");
-  const [activeSlug, setActiveSlug] = useState<string>(CATEGORIES[0]!.slug);
+  // Courses everywhere except the pages that are about something else: a Search from the
+  // for-institutions hero has to land on institutions, not courses.
+  const [activeSlug, setActiveSlug] = useState<string>(defaultTabSlug ?? CATEGORIES[0]!.slug);
   const [query, setQuery] = useState("");
 
   const suggestions = useMemo(

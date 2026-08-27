@@ -33,7 +33,7 @@ export function HeroSection({
             Connect with top institutions, access verified student leads, and scale your consultancy — all in one
             transparent, fair platform.
           </p>
-          <UnifiedSearchBar />
+          <UnifiedSearchBar defaultTabSlug="agents" />
         </div>
       </div>
     </section>
