@@ -120,20 +120,13 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   };
 }
 
-/** Search other businesses by name for cross-business pickers (e.g. linking a partner). */
-export async function searchBusinesses(orgId: string, search: string | undefined, limit: number) {
-  const caller = await repo.findBusinessByDbName(orgId);
+export async function searchBusinesses(auth: { orgId?: string; orgType?: string }, search: string | undefined, limit: number) {
+  if (auth.orgType === "institution") return repo.searchBusinesses(search, undefined, limit);
+  const caller = await repo.findBusinessByDbName(auth.orgId!);
   if (!caller) throw new NotFoundError("Business not found");
   return repo.searchBusinesses(search, caller.id, limit);
 }
 
-/**
- * Resolve stored logo/cover paths to signed, viewable URLs — mirrors the admin-side helper.
- * `gallery_images` itself is left untouched (raw storage paths) since the gallery editor reads,
- * modifies, and PATCHes that array back — resolving it in place would mean a save-without-editing
- * silently persists temporary signed URLs instead of the paths. A parallel `gallery_image_urls`
- * carries the resolved, display-only URLs instead; it's never sent back on PATCH.
- */
 export async function withImagePreviews<
   T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null },
 >(biz: T): Promise<T & { gallery_image_urls?: (string | null)[] }> {
@@ -308,7 +301,7 @@ async function activateClaimedListing(business: BusinessRecord, owner: Awaited<R
     role: "owner",
     is_owner: true,
   });
-  await userRepo.updateUser(ownerId, { is_business_account: true });
+  await userRepo.updateUser(ownerId, { is_business_account: true, is_personal_account: true });
   await userRepo.addAccountCategory(ownerId, {
     type: "business",
     role: business.business_type ?? "business",

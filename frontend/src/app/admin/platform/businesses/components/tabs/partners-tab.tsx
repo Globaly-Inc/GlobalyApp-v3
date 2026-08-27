@@ -1,44 +1,59 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Building2, Handshake, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Building2, Eye, Handshake, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { BusinessRelation } from "../../apis/types";
 import { deleteRelation, fetchRelations } from "../../store/businesses-slice";
 import { LinkConsultancyDialog } from "../partners/link-consultancy-dialog";
+import { DeletePartnerDialog } from "../partners/delete-partner-dialog";
+import { ViewInstitutionDrawer } from "../partners/view-institution-drawer";
 
 const PAGE_SIZE = 10;
 
 export function PartnersTab({ businessId, businessName }: Readonly<{ businessId: number; businessName?: string }>) {
   const dispatch = useAppDispatch();
-  const { items: relations, status, total: relationsTotal } = useAppSelector((state) => state.platformBusinesses.relations);
-  const partners = relations.filter((r) => r.relation_type === "partner");
+  const { items: partners, status, total: relationsTotal } = useAppSelector((state) => state.platformBusinesses.relations);
   const [addOpen, setAddOpen] = useState(false);
   const [editingRelation, setEditingRelation] = useState<BusinessRelation | null>(null);
+  const [deletingRelation, setDeletingRelation] = useState<BusinessRelation | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [viewingInstitutionId, setViewingInstitutionId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
-  const fetchedIdRef = useRef<number | null>(null);
+  const fetchPage = (p: number) => {
+    dispatch(fetchRelations({ id: businessId, params: { search: search || undefined, page: p, limit: PAGE_SIZE } }));
+  };
+
   useEffect(() => {
-    if (fetchedIdRef.current === businessId) return;
-    fetchedIdRef.current = businessId;
-    dispatch(fetchRelations({ id: businessId, params: { page: 1, limit: PAGE_SIZE } }));
-  }, [dispatch, businessId]);
+    setPage(1);
+    const timer = setTimeout(() => fetchPage(1), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, businessId, search]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
-    dispatch(fetchRelations({ id: businessId, params: { page: p, limit: PAGE_SIZE } }));
+    fetchPage(p);
   };
 
-  const handleRemove = async (relationId: string) => {
+  const handleDelete = async () => {
+    if (!deletingRelation) return;
+    setDeleting(true);
     try {
-      await dispatch(deleteRelation({ id: businessId, relationId })).unwrap();
+      await dispatch(deleteRelation({ id: businessId, relationId: deletingRelation.id })).unwrap();
       toast.success("Partner removed");
+      setDeletingRelation(null);
     } catch (e) {
       toast.error("Couldn't remove partner", { description: (e as Error).message });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -64,22 +79,27 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
           <div key={p.id} className="flex items-center justify-between rounded-lg border p-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-                {p.logo_url ? (
+                {p.partner_logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.logo_url} alt="" className="h-full w-full rounded-lg object-contain p-1" />
+                  <img src={p.partner_logo_url} alt="" className="h-full w-full rounded-lg object-contain p-1" />
                 ) : (
                   <Building2 className="h-4 w-4 text-muted-foreground" />
                 )}
               </div>
               <div>
-                <p className="text-sm font-medium">{p.business_name}</p>
+                <p className="text-sm font-medium">{p.partner_name}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {p.partner_kind === "institution" && (
+                <Button size="icon-sm" variant="ghost" onClick={() => setViewingInstitutionId(p.partner_id)} aria-label="View institution">
+                  <Eye className="h-4 w-4" />
+                </Button>
+              )}
               <Button size="icon-sm" variant="ghost" onClick={() => setEditingRelation(p)} aria-label="Edit partner">
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleRemove(p.id)} aria-label="Remove partner">
+              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingRelation(p)} aria-label="Remove partner">
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
@@ -105,6 +125,11 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
         </Button>
       </div>
 
+      <div className="relative mb-3 w-1/3">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input className="h-10 pl-9" placeholder="Search partners..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
+
       {list}
 
       {relationsTotal > 0 && <Pagination page={page} total={relationsTotal} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
@@ -116,6 +141,17 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
         businessId={businessId}
         businessName={businessName}
         editRelation={editingRelation}
+      />
+      <DeletePartnerDialog
+        partner={deletingRelation}
+        onOpenChange={(open) => { if (!open) setDeletingRelation(null); }}
+        onConfirm={handleDelete}
+        deleting={deleting}
+      />
+      <ViewInstitutionDrawer
+        open={viewingInstitutionId != null}
+        onOpenChange={(open) => { if (!open) setViewingInstitutionId(null); }}
+        institutionId={viewingInstitutionId}
       />
     </div>
   );

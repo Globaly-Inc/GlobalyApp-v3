@@ -9,6 +9,7 @@ import * as service from "../services/businesses.service.js";
 import {
   ActivityListQuerySchema, BulkClaimRequestSchema, BusinessCreateSchema, BusinessPatchSchema, EnquirySettingsPatchSchema,
   IdParamSchema, InstitutionInvitationParamsSchema, InstitutionMemberParamsSchema, InstitutionMemberStatusSchema,
+  InstitutionPartnerInputSchema, InstitutionPartnerParamsSchema, InstitutionPartnerPatchSchema,
   InstitutionPatchSchema, InstitutionRoleParamsSchema, ListQuerySchema, MemberInviteSchema, MemberListQuerySchema,
   MemberParamsSchema, MemberPatchSchema, PublishedPatchSchema, RoleCreateSchema, RolePatchSchema, StatusPatchSchema,
 } from "../schemas/businesses.schema.js";
@@ -39,11 +40,12 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   });
 
   // GET /businesses — supports filtering by numeric category id (main list's category
-  // dropdown) or by category_slug (e.g. partner-pairing lookups that only know a slug).
+  // dropdown), by category_slug (e.g. partner-pairing lookups that only know a slug), or by
+  // `kind` (a consultancy/partner picker that wants one table, no category restriction).
   app.get("/businesses", async (req, reply) => {
-    const { search, status, category, category_slug, ...pagination } = ListQuerySchema.parse(req.query);
+    const { search, status, category, category_slug, kind, ...pagination } = ListQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug);
+    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug, kind);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
@@ -168,10 +170,40 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
-  // GET /institutions/:id/partners — extraction_agents filed under the institution's source_job_id.
+  // GET /institutions/:id/partners — manually-linked consultancies (business_representations)
+  // merged with extraction_agents filed under the institution's source_job_id, tagged by `source`.
   app.get("/institutions/:id/partners", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
-    return reply.send(await service.listInstitutionPartners(id));
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listInstitutionPartners(id, { search, limit, offset });
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  // POST /institutions/:id/partners — "Link consultancy": institution picks a business to link.
+  app.post("/institutions/:id/partners", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const data = InstitutionPartnerInputSchema.parse(req.body);
+    const partner = await service.createInstitutionPartner(id, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_PARTNER_ADDED", "institution", undefined, {
+      institution_id: id, business_id: data.business_id,
+    });
+    return reply.status(201).send(partner);
+  });
+
+  app.patch("/institutions/:id/partners/:partnerId", async (req, reply) => {
+    const { id, partnerId } = InstitutionPartnerParamsSchema.parse(req.params);
+    const data = InstitutionPartnerPatchSchema.parse(req.body);
+    const partner = await service.updateInstitutionPartner(id, partnerId, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_PARTNER_UPDATED", "institution", undefined, { institution_id: id, partner_id: partnerId });
+    return reply.send(partner);
+  });
+
+  app.delete("/institutions/:id/partners/:partnerId", async (req, reply) => {
+    const { id, partnerId } = InstitutionPartnerParamsSchema.parse(req.params);
+    await service.deleteInstitutionPartner(id, partnerId);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_PARTNER_REMOVED", "institution", undefined, { institution_id: id });
+    return reply.status(204).send();
   });
 
   // POST /institutions/:id/invite — admin invites a member; they land in the tenant `members`

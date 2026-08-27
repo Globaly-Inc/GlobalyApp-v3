@@ -1,5 +1,4 @@
-// Superadmin routes for a single business's relations (subsidiary/franchise/partner
-// representations — surfaced in the Branches tab).
+// Superadmin routes for a single business's partner representations (surfaced in the Partners tab).
 
 import type { FastifyInstance } from "fastify";
 import { buildPaginatedResponse, paginationToOffset } from "../../../../../shared/pagination.js";
@@ -12,9 +11,9 @@ import * as service from "../services/business-representations.service.js";
 export async function businessRepresentationsRoutes(app: FastifyInstance) {
   app.get("/businesses/:id/relations", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
-    const pagination = RelationListQuerySchema.parse(req.query);
+    const { search, ...pagination } = RelationListQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = await service.listRelations(id, limit, offset);
+    const { rows, total } = await service.listRelations(id, limit, offset, search);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
@@ -23,7 +22,7 @@ export async function businessRepresentationsRoutes(app: FastifyInstance) {
     const data = RelationInputSchema.parse(req.body);
     const relation = await service.createRelation(id, data);
     await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_RELATION_ADDED", "business", undefined, {
-      business_id: id, partner_business_id: data.partner_business_id, relation_type: data.relation_type,
+      business_id: id, partner_business_id: data.partner_business_id,
     });
     return reply.status(201).send(relation);
   });

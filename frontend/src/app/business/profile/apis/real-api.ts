@@ -5,7 +5,8 @@ import type {
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
-  Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole, Permission,
+  Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
+  PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, Role, RoleCreateInput, RolePatch,
   SchemaFieldValue, Scholarship, ScholarshipInput,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
@@ -43,6 +44,15 @@ function toRelationQuery(params: RelationListParams): string {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function toCourseQuery(params: PartnerInstitutionCourseListParams): string {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.search) q.set("search", params.search);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -149,14 +159,26 @@ export const businessProfileDetailRealApi = {
   updateRole: (roleId: number, patch: RolePatch, orgBase = BASE): Promise<Role> => httpPatch(`${orgBase}/roles/${roleId}`, patch),
   deleteRole: (roleId: number, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/roles/${roleId}`),
 
-  getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {
-    const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/partners${toRelationQuery(params)}`);
+  getRelations: async (params: RelationListParams = {}, orgBase = BASE): Promise<RelationListResult> => {
+    const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${orgBase}/partners${toRelationQuery(params)}`);
     return { data, total: meta.total };
   },
-  createRelation: (input: RelationInput): Promise<BusinessRelation> => httpPost(`${BASE}/partners`, input),
-  updateRelation: (relationId: string, patch: RelationPatch): Promise<BusinessRelation> =>
-    httpPatch(`${BASE}/partners/${relationId}`, patch),
-  deleteRelation: (relationId: string): Promise<void> => httpDelete(`${BASE}/partners/${relationId}`),
+  createRelation: (input: RelationInput, orgBase = BASE): Promise<BusinessRelation> => httpPost(`${orgBase}/partners`, input),
+  updateRelation: (relationId: string, patch: RelationPatch, orgBase = BASE): Promise<BusinessRelation> =>
+    httpPatch(`${orgBase}/partners/${relationId}`, patch),
+  deleteRelation: (relationId: string, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/partners/${relationId}`),
+
+  getPartnerInstitutionDetail: (institutionId: number): Promise<PartnerInstitutionDetail> =>
+    httpGet(`${BASE}/partners/institutions/${institutionId}`),
+  getPartnerInstitutionCourses: async (
+    institutionId: number,
+    params: PartnerInstitutionCourseListParams = {},
+  ): Promise<PartnerInstitutionCourseListResult> => {
+    const { data, meta } = await httpGet<{ data: PartnerInstitutionCourse[]; meta: { total: number } }>(
+      `${BASE}/partners/institutions/${institutionId}/courses${toCourseQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
 
   getActivity: async (params: ActivityListParams = {}): Promise<ActivityListResult> => {
     const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${BASE}/activity${toActivityQuery(params)}`);

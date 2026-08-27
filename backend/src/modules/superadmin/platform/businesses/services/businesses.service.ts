@@ -20,12 +20,14 @@ import * as agentsRepo from "../../../../agents/repositories/agents.repository.j
 import * as agentsService from "../../../../agents/services/agents.service.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
 import * as reviewRepo from "../../../data-extraction/repositories/review.repository.js";
+import { courseSlug } from "../../../../search/utils/slug.js";
 import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
 import type { InstitutionInviteInput } from "../../../../platform-users/services/institution-members.service.js";
+import * as representationsService from "../../business-representations/services/business-representations.service.js";
 import type { PaginationInput } from "../../../../../shared/pagination.js";
 import type {
-  BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPatchInput,
-  MemberInviteInput, MemberPatchInput, RoleCreateInput, RolePatchInput,
+  BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPartnerInput, InstitutionPartnerPatch,
+  InstitutionPatchInput, MemberInviteInput, MemberPatchInput, RoleCreateInput, RolePatchInput,
 } from "../schemas/businesses.schema.js";
 
 const logger = createChildLogger("superadmin-businesses-service");
@@ -150,8 +152,9 @@ export async function createBusiness(input: BusinessCreateInput) {
  */
 export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
+  kind?: "business" | "institution",
 ) {
-  const scope = await resolveListScope(category, categorySlug);
+  const scope = kind ? (kind === "institution" ? "institutions" : "businesses") : await resolveListScope(category, categorySlug);
 
   if (scope === "institutions") {
     const [rawRows, total] = await Promise.all([
@@ -373,7 +376,8 @@ export async function deleteInstitution(id: number) {
 export async function getInstitutionDetail(id: number) {
   const inst = await repo.findInstitutionDetail(id);
   if (!inst) throw new NotFoundError("Institution not found");
-  return withImagePreviews({ ...inst, kind: "institution" as const });
+  const slug = courseSlug(inst.business_name, String(inst.id).padStart(6, "0"));
+  return withImagePreviews({ ...inst, kind: "institution" as const, slug });
 }
 
 export async function updateInstitutionDetail(id: number, patch: InstitutionPatchInput) {
@@ -407,7 +411,41 @@ export async function listInstitutionCourses(id: number, opts: { search?: string
     coursesRepo.listCoursesByJob(inst.source_job_id, opts.limit, opts.offset, filters),
     coursesRepo.countCoursesByJob(inst.source_job_id, filters),
   ]);
-  return { rows, total };
+  return { rows: rows.map((r) => ({ ...r, slug: courseSlug(r.name, r.id) })), total };
+}
+
+async function requirePartnerInstitution(businessId: number, institutionId: number) {
+  const isPartner = await representationsService.isActivePartner(businessId, institutionId);
+  if (!isPartner) throw new NotFoundError("Institution is not a partner of this business");
+  return requireInstitution(institutionId);
+}
+
+export async function getPartnerInstitutionDetail(businessId: number, institutionId: number) {
+  const inst = await requirePartnerInstitution(businessId, institutionId);
+  const { logo_url, cover_url } = await withImagePreviews(inst);
+  return {
+    id: inst.id,
+    institution_name: inst.institution_name,
+    email: inst.email,
+    phone: inst.phone,
+    website: inst.website,
+    description: inst.description,
+    country_id: inst.country_id,
+    state: inst.state,
+    city: inst.city,
+    address: inst.address,
+    logo_url,
+    cover_url,
+  };
+}
+
+export async function listPartnerInstitutionCourses(
+  businessId: number,
+  institutionId: number,
+  opts: { search?: string; limit: number; offset: number },
+) {
+  await requirePartnerInstitution(businessId, institutionId);
+  return listInstitutionCourses(institutionId, opts);
 }
 
 export async function listInstitutionBranches(id: number, opts: { search?: string; limit: number; offset: number }) {
@@ -421,11 +459,40 @@ export async function listInstitutionBranches(id: number, opts: { search?: strin
   return { rows, total };
 }
 
-export async function listInstitutionPartners(id: number) {
+// Merges manually-linked consultancies (business_representations, real CRUD) with the
+// read-only extraction_agents scraped for this institution's source job — one list, tagged by
+// `source` so the frontend only offers edit/delete on the manual rows. Both sides are fetched
+// search-filtered but otherwise unbounded, then paginated here in the service layer, since a
+// single SQL query can't span the two tables — see project memory on this feature for why.
+const MAX_INSTITUTION_PARTNERS = 1000;
+
+export async function listInstitutionPartners(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
-  if (!inst.source_job_id) return [];
-  const { agents } = await reviewRepo.listAgentsByJob(inst.source_job_id);
-  return agents;
+  const [manual, extracted] = await Promise.all([
+    representationsService.listInstitutionRelations(id, MAX_INSTITUTION_PARTNERS, 0, opts.search),
+    inst.source_job_id
+      ? reviewRepo.listAgentsByJob(inst.source_job_id, opts.search).then((r) => r.agents)
+      : Promise.resolve([]),
+  ]);
+  const merged = [
+    ...manual.rows.map((r) => ({ ...r, source: "manual" as const })),
+    ...extracted.map((a) => ({ ...a, source: "extracted" as const })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  return { rows: merged.slice(opts.offset, opts.offset + opts.limit), total: merged.length };
+}
+
+export async function createInstitutionPartner(id: number, data: InstitutionPartnerInput) {
+  const { business_id, ...rest } = data;
+  return representationsService.createInstitutionRelation(id, business_id, rest);
+}
+
+export async function updateInstitutionPartner(id: number, partnerId: string, data: InstitutionPartnerPatch) {
+  return representationsService.updateInstitutionRelation(id, partnerId, data);
+}
+
+export async function deleteInstitutionPartner(id: number, partnerId: string) {
+  return representationsService.deleteInstitutionRelation(id, partnerId);
 }
 
 export async function updateEnquirySettings(id: number, data: EnquirySettingsPatchInput) {

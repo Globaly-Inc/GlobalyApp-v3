@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+// import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
@@ -14,8 +14,8 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchCountries } from "@/app/admin/platform/categories/store/categories-slice";
 import { businessesApi } from "../../apis";
 import type { Business, BusinessRelation } from "../../apis/types";
-import { createRelation, updateRelation } from "../../store/businesses-slice";
-import { CountryMultiSelect } from "../shared/country-multi-select";
+import { createRelation, fetchRelations, updateRelation } from "../../store/businesses-slice";
+// import { CountryMultiSelect } from "../shared/country-multi-select";
 export function LinkConsultancyDialog({
   open,
   onOpenChange,
@@ -46,7 +46,9 @@ export function LinkConsultancyDialog({
   const handleQueryChange = async (query: string) => {
     setLoading(true);
     try {
-      const { data } = await businessesApi.getBusinesses({ search: query || undefined });
+      // kind: "business" — this dialog only ever writes a business as the partner, so
+      // institutions must never be selectable (and never worth fetching over the wire).
+      const { data } = await businessesApi.getBusinesses({ search: query || undefined, kind: "business" });
       setResults(data.filter((b) => b.id !== businessId));
     } finally {
       setLoading(false);
@@ -59,7 +61,7 @@ export function LinkConsultancyDialog({
   useEffect(() => {
     if (!open) return;
     if (editRelation) {
-      setSelected(String(editRelation.business_id));
+      setSelected(String(editRelation.partner_id));
       setCountryIds(editRelation.country_ids ?? []);
       setValidFrom(editRelation.valid_from ?? "");
       setValidUntil(editRelation.valid_until ?? "");
@@ -101,7 +103,6 @@ export function LinkConsultancyDialog({
             id: businessId,
             input: {
               partner_business_id: Number(selected),
-              relation_type: "partner",
               country_ids: countryIds,
               valid_from: validFrom || null,
               valid_until: validUntil || null,
@@ -112,6 +113,7 @@ export function LinkConsultancyDialog({
         ).unwrap();
         toast.success("Consultancy linked");
       }
+      dispatch(fetchRelations({ id: businessId }));
       onOpenChange(false);
     } catch (e) {
       toast.error(isEdit ? "Couldn't update partnership" : "Couldn't link consultancy", { description: (e as Error).message });
@@ -130,7 +132,7 @@ export function LinkConsultancyDialog({
           <SheetDescription>
             {isEdit ? (
               <>
-                Update the partnership with <strong>{editRelation?.business_name}</strong>.
+                Update the partnership with <strong>{editRelation?.partner_name}</strong>.
               </>
             ) : (
               <>
@@ -146,7 +148,7 @@ export function LinkConsultancyDialog({
               Consultancy <span className="text-destructive">*</span>
             </Label>
             {isEdit ? (
-              <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{editRelation?.business_name}</div>
+              <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{editRelation?.partner_name}</div>
             ) : (
               <Combobox
                 value={selected}
@@ -160,23 +162,23 @@ export function LinkConsultancyDialog({
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
+          {/* <div className="flex flex-col gap-2">
             <Label>Countries</Label>
             <CountryMultiSelect
               options={countries.map((c) => ({ value: c.id, label: c.name }))}
               value={countryIds}
               onChange={setCountryIds}
             />
-          </div>
+          </div> */}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">
               <Label>Valid from</Label>
-              <DatePicker value={validFrom} onChange={setValidFrom} />
+              <DatePicker value={validFrom} onChange={setValidFrom} defaultMonth={new Date()} />
             </div>
             <div className="flex flex-col gap-2">
               <Label>Valid until</Label>
-              <DatePicker value={validUntil} onChange={setValidUntil} />
+              <DatePicker value={validUntil} onChange={setValidUntil} defaultMonth={new Date()} toYear={new Date().getFullYear() + 10} />
             </div>
           </div>
 

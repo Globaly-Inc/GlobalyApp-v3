@@ -11,7 +11,7 @@ import { findAdminByPlatformUserId } from "../admin-users/repositories/admin-use
 const now = () => masterKnex.fn.now();
 
 // business-* sibling modules use this to verify a business exists before touching its sub-resources.
-export { findBusinessById } from "./businesses/repositories/businesses.repository.js";
+export { findBusinessById, findInstitutionById } from "./businesses/repositories/businesses.repository.js";
 
 // ─── User management ───────────────────────────────────────────────────────
 

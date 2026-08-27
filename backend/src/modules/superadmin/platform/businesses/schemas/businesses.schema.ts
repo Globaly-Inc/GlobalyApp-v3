@@ -26,6 +26,31 @@ export const InstitutionMemberStatusSchema = z.object({
   account_status: z.number().int(),
 });
 
+export const InstitutionPartnerParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  partnerId: z.string().uuid(),
+});
+
+// "Link consultancy" from the institution's own page: pick a business, the rest of the
+// row (originator/target pair) is filled in server-side — see business-representations.service.ts.
+export const InstitutionPartnerInputSchema = z.object({
+  business_id: z.number().int().positive(),
+  country_ids: z.array(z.number().int().positive()).default([]),
+  valid_from: z.string().nullable().optional(),
+  valid_until: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+export const InstitutionPartnerPatchSchema = z.object({
+  country_ids: z.array(z.number().int().positive()).optional(),
+  valid_from: z.string().nullable().optional(),
+  valid_until: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+export type InstitutionPartnerInput = z.infer<typeof InstitutionPartnerInputSchema>;
+export type InstitutionPartnerPatch = z.infer<typeof InstitutionPartnerPatchSchema>;
+
 export const MemberInviteSchema = z.object({
   first_name: z.string().min(1).max(100),
   last_name: z.string().min(1).max(100),
@@ -52,6 +77,10 @@ export const ListQuerySchema = PaginationSchema.extend({
   status: z.string().optional(),
   category: z.coerce.number().int().positive().optional(),
   category_slug: z.string().optional(),
+  // Independent of category: forces which table(s) to query without also filtering by a
+  // specific business category (e.g. a consultancy picker that wants ALL businesses, no
+  // category restriction, and never institutions).
+  kind: z.enum(["business", "institution"]).optional(),
 });
 
 export const StatusPatchSchema = z.object({

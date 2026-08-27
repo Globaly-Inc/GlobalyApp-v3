@@ -136,20 +136,23 @@ export const deleteRole = createAsyncThunk(
 // ─── Relations (Partners tab) ─────────────────────────────────────────────────
 export const fetchRelations = createAsyncThunk(
   "businessProfileDetail/fetchRelations",
-  ({ params }: { id: number; params?: RelationListParams }) => businessProfileDetailApi.getRelations(params),
+  ({ params }: { id: number; params?: RelationListParams }, { getState }) =>
+    businessProfileDetailApi.getRelations(params, getOrgBase(getState)),
 );
 export const createRelation = createAsyncThunk(
   "businessProfileDetail/createRelation",
-  ({ input }: { id: number; input: RelationInput }) => businessProfileDetailApi.createRelation(input),
+  ({ input }: { id: number; input: RelationInput }, { getState }) =>
+    businessProfileDetailApi.createRelation(input, getOrgBase(getState)),
 );
 export const updateRelation = createAsyncThunk(
   "businessProfileDetail/updateRelation",
-  ({ relationId, patch }: { id: number; relationId: string; patch: RelationPatch }) => businessProfileDetailApi.updateRelation(relationId, patch),
+  ({ relationId, patch }: { id: number; relationId: string; patch: RelationPatch }, { getState }) =>
+    businessProfileDetailApi.updateRelation(relationId, patch, getOrgBase(getState)),
 );
 export const deleteRelation = createAsyncThunk(
   "businessProfileDetail/deleteRelation",
-  async ({ relationId }: { id: number; relationId: string }) => {
-    await businessProfileDetailApi.deleteRelation(relationId);
+  async ({ relationId }: { id: number; relationId: string }, { getState }) => {
+    await businessProfileDetailApi.deleteRelation(relationId, getOrgBase(getState));
     return relationId;
   },
 );

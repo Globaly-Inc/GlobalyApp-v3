@@ -4,7 +4,8 @@ import type {
   ActivityListParams, ActivityListResult, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, InvitedMember,
   LinkExistingBranchInput, LinkExistingBranchResult,
-  Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole, Permission,
+  Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
+  PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   Role, RoleCreateInput, RolePatch,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
@@ -261,30 +262,56 @@ export const businessProfileDetailMockApi = {
     await delay(300);
   },
 
-  getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {
+  getRelations: async (params: RelationListParams = {}, _orgBase?: string): Promise<RelationListResult> => {
     console.log("[mock] GET /businesses/partners", params);
     await delay(300);
     return { data: mockRelations, total: mockRelations.length };
   },
-  createRelation: async (input: RelationInput): Promise<BusinessRelation> => {
+  createRelation: async (input: RelationInput, _orgBase?: string): Promise<BusinessRelation> => {
     await delay(300);
     const relation: BusinessRelation = {
-      id: uuid(), status: "active", relation_type: input.relation_type, created_at: new Date().toISOString(),
-      business_id: input.partner_business_id, business_name: `Business #${input.partner_business_id}`, logo_url: null,
+      id: uuid(), status: "active", created_at: new Date().toISOString(),
+      partner_kind: "business", partner_id: input.partner_business_id, partner_name: `Business #${input.partner_business_id}`, partner_logo_url: null,
       business_type: null, country_ids: input.country_ids ?? null, valid_from: input.valid_from ?? null,
       valid_until: input.valid_until ?? null, notes: input.notes ?? null,
     };
     mockRelations = [...mockRelations, relation];
     return relation;
   },
-  updateRelation: async (relationId: string, patch: RelationPatch): Promise<BusinessRelation> => {
+  updateRelation: async (relationId: string, patch: RelationPatch, _orgBase?: string): Promise<BusinessRelation> => {
     await delay(300);
     mockRelations = mockRelations.map((r) => (r.id === relationId ? { ...r, ...patch } : r));
     return mockRelations.find((r) => r.id === relationId)!;
   },
-  deleteRelation: async (relationId: string): Promise<void> => {
+  deleteRelation: async (relationId: string, _orgBase?: string): Promise<void> => {
     await delay(300);
     mockRelations = mockRelations.filter((r) => r.id !== relationId);
+  },
+
+  getPartnerInstitutionDetail: async (institutionId: number): Promise<PartnerInstitutionDetail> => {
+    console.log("[mock] GET /businesses/partners/institutions/:id", institutionId);
+    await delay(300);
+    return {
+      id: institutionId, institution_name: `Institution #${institutionId}`, email: "admissions@example.edu",
+      phone: "+1 604 555 0110", website: "https://example.edu", description: "A partner institution.",
+      country_id: null, state: null, city: null, address: null, logo_url: null, cover_url: null,
+    };
+  },
+  getPartnerInstitutionCourses: async (
+    _institutionId: number,
+    params: PartnerInstitutionCourseListParams = {},
+  ): Promise<PartnerInstitutionCourseListResult> => {
+    console.log("[mock] GET /businesses/partners/institutions/:id/courses", params);
+    await delay(300);
+    const courses: PartnerInstitutionCourse[] = [
+      {
+        id: "course-1", slug: "bachelor-of-business-abc123", name: "Bachelor of Business", degree_level: "Bachelor", subject_area: "Business",
+        duration_weeks: 156, study_mode: "on_campus", domestic_fee_total: 28000, domestic_currency: "AUD",
+        verification_status: "verified", source_url: null,
+      },
+    ];
+    const filtered = params.search ? courses.filter((c) => c.name.toLowerCase().includes(params.search!.toLowerCase())) : courses;
+    return { data: filtered, total: filtered.length };
   },
 
   getActivity: async (params: ActivityListParams = {}): Promise<ActivityListResult> => {

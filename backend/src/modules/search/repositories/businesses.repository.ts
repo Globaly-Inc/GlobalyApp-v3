@@ -359,10 +359,18 @@ export async function listPublicServicesAcrossBusinesses(
 }
 
 export async function listPublicRepresentations(businessId: number) {
-  return masterKnex("business_representations")
-    .whereNull("deleted_at")
-    .where("business_id", businessId)
-    .where("status", "active")
-    .select("uuid as id", "partner_business_id", "partner_business_name", "partner_business_logo_url", "relation_type")
-    .orderBy("partner_business_name");
+  return masterKnex("business_representations as r")
+    .leftJoin("businesses as tb", (join) => join.on("tb.id", "r.target_id").andOnVal("r.target_type", "business"))
+    .leftJoin("institutions as ti", (join) => join.on("ti.id", "r.target_id").andOnVal("r.target_type", "institution"))
+    .whereNull("r.deleted_at")
+    .where({ "r.originator_id": businessId, "r.originator_type": "business" })
+    .where("r.status", "active")
+    .select(
+      "r.uuid as id",
+      "r.target_type as partner_kind",
+      "r.target_id as partner_id",
+      masterKnex.raw("COALESCE(tb.business_name, ti.institution_name) as partner_name"),
+      masterKnex.raw("COALESCE(tb.logo_url, ti.logo_url) as partner_logo_url"),
+    )
+    .orderBy("partner_name");
 }

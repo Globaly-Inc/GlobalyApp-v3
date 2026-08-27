@@ -20,15 +20,15 @@ export function BusinessRepresentationsSection({ representations = [] }: Readonl
               className="bg-card border border-border rounded-xl p-4 flex items-center gap-3 hover:border-primary/40 hover:shadow-sm transition-all"
             >
               <div className="w-11 h-11 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-                {rep.partner_business_logo_url ? (
+                {rep.partner_logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={rep.partner_business_logo_url} alt={rep.partner_business_name} className="w-full h-full object-contain p-1" />
+                  <img src={rep.partner_logo_url} alt={rep.partner_name} className="w-full h-full object-contain p-1" />
                 ) : (
                   <Building2 className="h-5 w-5 text-muted-foreground" />
                 )}
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">{rep.partner_business_name}</p>
+                <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">{rep.partner_name}</p>
                 <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                   <BadgeCheck className="h-3 w-3 text-primary" />Verified partner
                 </p>

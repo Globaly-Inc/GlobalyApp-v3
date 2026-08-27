@@ -23,16 +23,20 @@ export type CalendarProps = {
   onSelect: (date: Date) => void
   fromYear?: number
   toYear?: number
+  /** Month/year to open on when nothing is selected yet. Defaults to 18 years back (date-of-birth
+   *  fields, this component's original use case) — pass `new Date()` for any field where the
+   *  likely value is near today (validity windows, deadlines, etc). */
+  defaultMonth?: Date
   disabled?: (date: Date) => boolean
   className?: string
 }
 
-function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }: Readonly<CalendarProps>) {
+function Calendar({ selected, onSelect, fromYear, toYear, defaultMonth, disabled, className }: Readonly<CalendarProps>) {
   const currentYear = new Date().getFullYear()
   const minYear = fromYear ?? currentYear - 100
   const maxYear = toYear ?? currentYear
 
-  const [viewDate, setViewDate] = React.useState(() => selected ?? new Date(maxYear - 18, 0, 1))
+  const [viewDate, setViewDate] = React.useState(() => selected ?? defaultMonth ?? new Date(maxYear - 18, 0, 1))
 
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
