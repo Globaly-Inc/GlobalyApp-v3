@@ -378,25 +378,34 @@ export async function removeAgent(db: Knex, businessId: number, id: number) {
   await platformUserRepo.softDeleteUserBusinessIndex(agent.platform_user_id, businessId);
 }
 
-// ── Custom roles (Settings → Roles, gated by roles:manage) ──
+// ── Custom roles (Settings → Roles, owner-only) ──
+// Both tenant kinds have identical roles/permissions/role_permissions tables; only the
+// "who has this role" side differs: business agents key on role_id, institution members
+// key on the role NAME (members.role text) — hence the `kind` branches on counts.
 
 function slugifyRoleName(displayName: string): string {
   return displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
-async function roleWithDetails(db: Knex, role: repo.RoleRow) {
+async function countRoleMembers(db: Knex, kind: repo.TenantKind, role: repo.RoleRow): Promise<number> {
+  return kind === "institution"
+    ? repo.countMembersWithRoleName(db, role.name)
+    : repo.countAgentsWithRole(db, role.id);
+}
+
+async function roleWithDetails(db: Knex, kind: repo.TenantKind, role: repo.RoleRow) {
   const [links, membersCount] = await Promise.all([
     db("role_permissions").where({ role_id: role.id }).pluck("permission_id"),
-    repo.countAgentsWithRole(db, role.id),
+    countRoleMembers(db, kind, role),
   ]);
   return { ...role, permission_ids: links as number[], members_count: membersCount };
 }
 
-export async function listRolesWithDetails(db: Knex) {
+export async function listRolesWithDetails(db: Knex, kind: repo.TenantKind) {
   const [roles, links, counts] = await Promise.all([
     repo.listRoles(db),
     repo.listRolePermissionLinks(db),
-    repo.countAgentsPerRole(db),
+    kind === "institution" ? repo.countMembersPerRoleName(db) : repo.countAgentsPerRole(db),
   ]);
   const permsByRole = new Map<number, number[]>();
   for (const link of links) {
@@ -404,11 +413,12 @@ export async function listRolesWithDetails(db: Knex) {
     list.push(link.permission_id);
     permsByRole.set(link.role_id, list);
   }
-  const countByRole = new Map(counts.map((c) => [c.role_id, Number(c.count)]));
+  // Keyed by role_id for businesses, role name for institutions.
+  const countByRole = new Map(counts.map((c) => ["role_id" in c ? c.role_id : c.role, Number(c.count)]));
   return roles.map((role) => ({
     ...role,
     permission_ids: permsByRole.get(role.id) ?? [],
-    members_count: countByRole.get(role.id) ?? 0,
+    members_count: countByRole.get(kind === "institution" ? role.name : role.id) ?? 0,
   }));
 }
 
@@ -423,7 +433,7 @@ async function assertPermissionIdsExist(db: Knex, ids: number[]) {
   if (missing.length > 0) throw new BadRequestError(`Unknown permission ids: ${missing.join(", ")}`);
 }
 
-export async function createRole(db: Knex, input: RoleCreateInput) {
+export async function createRole(db: Knex, kind: repo.TenantKind, input: RoleCreateInput) {
   const name = slugifyRoleName(input.display_name);
   if (!name) throw new BadRequestError("Role name must contain letters or numbers");
 
@@ -441,10 +451,10 @@ export async function createRole(db: Knex, input: RoleCreateInput) {
     sort_order: sortOrder,
   });
   await repo.setRolePermissions(db, role.id, input.permission_ids);
-  return roleWithDetails(db, role);
+  return roleWithDetails(db, kind, role);
 }
 
-export async function updateRole(db: Knex, id: number, patch: RolePatchInput) {
+export async function updateRole(db: Knex, kind: repo.TenantKind, id: number, patch: RolePatchInput) {
   const role = await repo.findRoleById(db, id);
   if (!role) throw new NotFoundError("Role not found");
   if (role.is_system) throw new ConflictError("System roles cannot be modified");
@@ -462,17 +472,17 @@ export async function updateRole(db: Knex, id: number, patch: RolePatchInput) {
       ...(patch.description !== undefined ? { description: patch.description } : {}),
     }))!;
   }
-  return roleWithDetails(db, updated);
+  return roleWithDetails(db, kind, updated);
 }
 
-export async function deleteRole(db: Knex, id: number) {
+export async function deleteRole(db: Knex, kind: repo.TenantKind, id: number) {
   const role = await repo.findRoleById(db, id);
   if (!role) throw new NotFoundError("Role not found");
   if (role.is_system) throw new ConflictError("System roles cannot be deleted");
 
   const [membersCount, pendingCount] = await Promise.all([
-    repo.countAgentsWithRole(db, id),
-    repo.countPendingInvitationsWithRole(db, role.name),
+    countRoleMembers(db, kind, role),
+    repo.countPendingInvitationsWithRole(db, kind, role.name),
   ]);
   if (membersCount > 0) throw new ConflictError(`Role is assigned to ${membersCount} member(s) — reassign them first`);
   if (pendingCount > 0) throw new ConflictError(`Role is used by ${pendingCount} pending invitation(s) — cancel or wait for them first`);

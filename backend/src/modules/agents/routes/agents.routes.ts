@@ -61,6 +61,9 @@ export async function agentBusinessRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
+  // Both tenant kinds have a `roles` table now (institutions since 20260826_001) — this is
+  // the Combobox source for the invite/edit member drawer. Institution members store the
+  // role NAME (members.role text); business agents store role_id.
   app.get("/roles", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const roles = await repo.listRoles(req.db);
     return reply.send(roles);
