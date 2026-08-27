@@ -3,6 +3,7 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 export interface GuestSessionRow {
   id: number;
   fingerprint_hash: string;
+  ip_hash: string | null;
   message_content: string | null;
   response_content: string | null;
   response_sources: unknown | null;
@@ -14,9 +15,24 @@ export interface GuestSessionRow {
 
 const TABLE = "ai_guest_chat_sessions";
 
-export async function findByFingerprint(hash: string): Promise<GuestSessionRow | undefined> {
+/** Gate check: blocks if this fingerprint OR this IP has already had a reply. */
+export async function findByFingerprintOrIp(
+  fingerprintHash: string,
+  ipHash: string,
+): Promise<GuestSessionRow | undefined> {
   return masterKnex(TABLE)
-    .where({ fingerprint_hash: hash })
+    .where(function () {
+      this.where({ fingerprint_hash: fingerprintHash }).orWhere({ ip_hash: ipHash });
+    })
+    .whereNull("migrated_to_session_id")
+    .andWhere("expires_at", ">", masterKnex.fn.now())
+    .first();
+}
+
+/** Migration lookup: find by exact fingerprint_hash (the value the client echoes back). */
+export async function findByFingerprint(fingerprintHash: string): Promise<GuestSessionRow | undefined> {
+  return masterKnex(TABLE)
+    .where({ fingerprint_hash: fingerprintHash })
     .whereNull("migrated_to_session_id")
     .andWhere("expires_at", ">", masterKnex.fn.now())
     .first();
@@ -24,6 +40,7 @@ export async function findByFingerprint(hash: string): Promise<GuestSessionRow |
 
 export async function create(data: {
   fingerprint_hash: string;
+  ip_hash?: string;
   message_content?: string;
   response_content?: string;
   response_sources?: unknown;
@@ -33,6 +50,7 @@ export async function create(data: {
   const [row] = await masterKnex(TABLE)
     .insert({
       fingerprint_hash: data.fingerprint_hash,
+      ip_hash: data.ip_hash ?? null,
       message_content: data.message_content ?? null,
       response_content: data.response_content ?? null,
       response_sources: data.response_sources ? JSON.stringify(data.response_sources) : null,

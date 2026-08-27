@@ -112,6 +112,19 @@ export const aiRealApi = {
     return res.json();
   },
 
+  /** Migrate a guest transcript into the caller's authenticated session. */
+  migrateGuestSession: async (fingerprintHash: string): Promise<{ session_id: number | null }> => {
+    const res = await withRefreshRetry(() =>
+      fetch(`${BASE_URL}/guest/migrate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ fingerprint_hash: fingerprintHash }),
+      }),
+    );
+    if (!res.ok) return { session_id: null };
+    return res.json();
+  },
+
   /** Public SSE stream for guests — no auth, one reply per fingerprint. Same SSE
    * wire format as sendMessage minus session/done events. */
   sendGuestMessage: async (

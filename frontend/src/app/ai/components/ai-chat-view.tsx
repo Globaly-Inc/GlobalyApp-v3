@@ -11,6 +11,7 @@ import {
   fetchSessions,
   sendMessage,
   sendGuestMessage,
+  migrateGuestSession,
   setActiveSession,
   addOptimisticUserMessage,
   GUEST_SESSION_ID,
@@ -25,13 +26,14 @@ import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { LoginPromptModal } from "./login-prompt-modal";
 
-export function AiChatView({ initialQuery, redirectIfAuthenticated = false }: Readonly<{ initialQuery?: string; redirectIfAuthenticated?: boolean }> = {}) {
+export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }: Readonly<{ initialQuery?: string; redirectIfAuthenticated?: boolean; fp?: string }> = {}) {
   const dispatch = useAppDispatch();
   const router = useRouter();
   const activeSessionId = useAppSelector((s) => s.aiChat.activeSessionId);
   const messages = useAppSelector((s) => (activeSessionId ? s.aiChat.messages[activeSessionId] ?? [] : []));
   const sendStatus = useAppSelector((s) => s.aiChat.sendStatus);
   const error = useAppSelector((s) => s.aiChat.error);
+  const guestFingerprintHash = useAppSelector((s) => s.aiChat.guestFingerprintHash);
   const profile = useAppSelector((s) => s.profile.profile);
   const { user, initializing } = useAuthState();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -52,7 +54,15 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false }: Re
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     dispatch(fetchSessions());
-  }, [dispatch, user, initializing]);
+    // Post-auth migration: if the URL carries a guest fingerprint hash, migrate the
+    // transcript into the now-authenticated user's session history and open it.
+    if (fp) {
+      dispatch(migrateGuestSession(fp)).then((action) => {
+        const sessionId = (action.payload as number | null);
+        if (sessionId) dispatch(setActiveSession(sessionId));
+      });
+    }
+  }, [dispatch, user, initializing, fp]);
 
   const handleSend = useCallback(
     (content: string, files?: File[]) => {
@@ -162,6 +172,7 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false }: Re
       <LoginPromptModal
         open={showLoginPrompt}
         onOpenChange={(open) => { if (!open) setLoginPromptDismissed(true); }}
+        fingerprintHash={guestFingerprintHash}
       />
     </div>
   );

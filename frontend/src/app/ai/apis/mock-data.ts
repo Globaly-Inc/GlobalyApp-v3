@@ -162,6 +162,12 @@ export const aiMockApi = {
     return { free: 7, subscription: 0, purchased: 0, total: 7 };
   },
 
+  migrateGuestSession: async (_fingerprintHash: string): Promise<{ session_id: number | null }> => {
+    console.log("[mock] POST /ai-chat/guest/migrate");
+    await delay(200);
+    return { session_id: null };
+  },
+
   sendGuestMessage: async (
     content: string,
     _fingerprint: string,

@@ -104,6 +104,16 @@ export const fetchCreditBalance = createAsyncThunk("aiChat/fetchCreditBalance", 
   aiApi.getCreditBalance(),
 );
 
+/** Migrate the guest transcript into the newly-authenticated user's session history. */
+export const migrateGuestSession = createAsyncThunk<
+  number | null,
+  string, // fingerprintHash
+  { dispatch: AppDispatch }
+>("aiChat/migrateGuestSession", async (fingerprintHash) => {
+  const { session_id } = await aiApi.migrateGuestSession(fingerprintHash);
+  return session_id;
+});
+
 /** One-shot guest chat — no session persisted, replies blocked after first response. */
 export const sendGuestMessage = createAsyncThunk<
   void,
@@ -117,7 +127,8 @@ export const sendGuestMessage = createAsyncThunk<
   await aiApi.sendGuestMessage(content, fingerprint, (event) => {
     switch (event.type) {
       case "guest-meta":
-        break; // hash not stored — guest sessions are ephemeral
+        dispatch(setGuestFingerprintHash(event.fingerprint_hash));
+        break;
       case "trace":
         dispatch(addTrace(event.step));
         break;
@@ -163,6 +174,8 @@ type AiChatState = {
    * store because the reply button (ChatMessage) and the composer (ChatInput) have
    * no common parent across the page, popover and embed surfaces. */
   replyTo: ReplyTarget | null;
+  /** Server-returned hash from the guest-meta event — passed to /guest/migrate on sign-up. */
+  guestFingerprintHash: string | null;
   error: string | null;
 };
 
@@ -184,6 +197,7 @@ const initialState: AiChatState = {
   traceSteps: [],
   previewBlock: null,
   replyTo: null,
+  guestFingerprintHash: null,
   error: null,
 };
 
@@ -199,6 +213,9 @@ const aiChatSlice = createSlice({
     setActiveSession(state, action: PayloadAction<number | null>) {
       state.activeSessionId = action.payload;
       state.replyTo = null;
+    },
+    setGuestFingerprintHash(state, action: PayloadAction<string | null>) {
+      state.guestFingerprintHash = action.payload;
     },
     setReplyTo(state, action: PayloadAction<ReplyTarget | null>) {
       state.replyTo = action.payload;
@@ -416,6 +433,7 @@ const aiChatSlice = createSlice({
 
 export const {
   setActiveSession,
+  setGuestFingerprintHash,
   appendDelta,
   setCards,
   setChips,

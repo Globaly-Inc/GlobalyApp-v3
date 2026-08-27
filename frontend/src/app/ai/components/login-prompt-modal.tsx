@@ -22,7 +22,8 @@ const BENEFITS = [
 export function LoginPromptModal({
   open,
   onOpenChange,
-}: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void }>) {
+  fingerprintHash,
+}: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void; fingerprintHash?: string | null }>) {
   const router = useRouter();
 
   const go = (path: string) => {
@@ -30,8 +31,9 @@ export function LoginPromptModal({
     router.push(path);
   };
 
-  // After auth, land in the full authenticated AI experience (with session history).
-  const REDIRECT = "/personal/ai";
+  // After auth, land in the full authenticated AI experience. The fp param lets
+  // /personal/ai call /guest/migrate so the conversation is preserved.
+  const REDIRECT = fingerprintHash ? `/personal/ai?fp=${encodeURIComponent(fingerprintHash)}` : "/personal/ai";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
