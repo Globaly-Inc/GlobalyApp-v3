@@ -76,7 +76,7 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
   return (
     <div className="space-y-6">
       <JobHeader job={full.job} onReload={reload} />
-      <JobStats job={full.job} courses={full.courses} />
+      <JobStats job={full.job} courses={full.courses} coursesTotal={full.coursesTotal} />
       <JobTabsBar
         active={activeTab}
         onChange={setTab}
@@ -96,15 +96,15 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
       ) : activeTab === "agents" ? (
         <AgentsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
       ) : activeTab === "fees" ? (
-        <FeesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+        <FeesTab jobId={jobId} job={full.job} courses={full.courses} onReload={reload} onJumpToContext={() => setTab("context")} />
       ) : activeTab === "intakes" ? (
-        <IntakesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+        <IntakesTab jobId={jobId} job={full.job} courses={full.courses} onReload={reload} onJumpToContext={() => setTab("context")} />
       ) : activeTab === "eligibility" ? (
-        <EligibilityTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+        <EligibilityTab jobId={jobId} job={full.job} courses={full.courses} onReload={reload} onJumpToContext={() => setTab("context")} />
       ) : activeTab === "units" ? (
-        <StudyUnitsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+        <StudyUnitsTab jobId={jobId} job={full.job} courses={full.courses} onReload={reload} onJumpToContext={() => setTab("context")} />
       ) : activeTab === "study_options" ? (
-        <StudyOptionsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />
+        <StudyOptionsTab jobId={jobId} job={full.job} courses={full.courses} onReload={reload} onJumpToContext={() => setTab("context")} />
       ) : activeTab === "accreditations" ? (
         <AccreditationsTab jobId={jobId} />
       ) : activeTab === "visa_services" ? (

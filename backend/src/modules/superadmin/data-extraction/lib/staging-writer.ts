@@ -12,14 +12,13 @@ export interface ExtractedCourse {
   name: string;
   short_name?: string | null;
   degree_level?: string | null;
+  /** LLM-classified per course, not inherited from the job's service_category_id — a job
+   * scoped to "Academic Courses" still surfaces short courses on the same pages. */
+  course_category?: string | null;
   subject_area?: string | null;
   duration_weeks?: number | null;
   study_mode?: string | null;
   description?: string | null;
-  domestic_fee_total?: number | null;
-  domestic_currency?: string | null;
-  international_fee_total?: number | null;
-  international_currency?: string | null;
   awarding_institution?: string | null;
   source_url?: string | null;
   career_paths?: string[] | null;
@@ -44,8 +43,10 @@ export interface ExtractedFee {
   name?: string | null;
   student_type?: string;
   period_type?: string;
-  currency?: string;
-  total_amount?: number;
+  currency?: string | null;
+  /** LLM output isn't schema-enforced (responseMimeType: json only) — often a plain number, but a
+   * range ("$25,000-$30,000") or unparseable text ("Contact us") arrives as a string. */
+  total_amount?: number | string | null;
 }
 
 export interface ExtractedIntake {
@@ -92,6 +93,28 @@ function coerceInt(v: unknown): number | null {
   if (v == null) return null;
   const n = Number(v);
   return isNaN(n) ? null : Math.floor(n);
+}
+
+// ponytail: takes the lower bound of a range/currency-symbol string ("$25,000-$30,000" -> 25000);
+// the full original text still survives in the fee's own name. Doesn't handle "25k"-style shorthand
+// — add that if a real page needs it. Never falls back to 0: an unparseable fee must stay null, not
+// look like a real $0 tuition figure.
+/** LLM output isn't schema-enforced — clamp free-text drift ("Academic", "Short Course") to
+ * the two values the pipeline actually stores/filters on; anything unrecognised is left null
+ * rather than guessed. */
+export function normaliseCourseCategory(v: unknown): "academic" | "short_course" | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (s === "academic") return "academic";
+  if (s === "short_course" || s === "short_courses") return "short_course";
+  return null;
+}
+
+export function coerceMoney(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return isNaN(v) ? null : v;
+  const match = String(v).replace(/,/g, "").match(/\d+(\.\d+)?/);
+  return match ? Number(match[0]) : null;
 }
 
 export interface ExtractedStudyOption {
@@ -276,13 +299,14 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     // Merge: fill nulls on the existing row with data from this extraction
     const updates: Record<string, unknown> = {};
     const mergeFields: Array<keyof ExtractedCourse> = [
-      "short_name", "degree_level", "subject_area", "duration_weeks",
-      "study_mode", "description", "domestic_fee_total", "domestic_currency",
-      "international_fee_total", "international_currency", "awarding_institution",
+      "short_name", "degree_level", "course_category", "subject_area", "duration_weeks",
+      "study_mode", "description", "awarding_institution",
       "source_url",
     ];
     for (const field of mergeFields) {
-      const newVal = field === "duration_weeks" ? coerceInt(course[field]) : (course[field] ?? null);
+      const newVal = field === "duration_weeks" ? coerceInt(course[field])
+        : field === "course_category" ? normaliseCourseCategory(course[field])
+        : (course[field] ?? null);
       if (newVal != null && newVal !== "" && (existing[field] == null || existing[field] === "")) {
         updates[field] = newVal;
       }
@@ -304,14 +328,11 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
       name: course.name,
       short_name: course.short_name ?? null,
       degree_level: course.degree_level ?? null,
+      course_category: normaliseCourseCategory(course.course_category),
       subject_area: course.subject_area ?? null,
       duration_weeks: coerceInt(course.duration_weeks),
       study_mode: course.study_mode ?? null,
       description: course.description ?? null,
-      domestic_fee_total: course.domestic_fee_total ?? null,
-      domestic_currency: course.domestic_currency ?? null,
-      international_fee_total: course.international_fee_total ?? null,
-      international_currency: course.international_currency ?? null,
       awarding_institution: course.awarding_institution ?? null,
       source_url: course.source_url ?? null,
       verification_status: "unverified",
@@ -331,8 +352,8 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
           name: fee.name ?? null,
           student_type: fee.student_type ?? "both",
           period_type: fee.period_type ?? "Per Year",
-          currency: fee.currency ?? "AUD",
-          total_amount: coerceInt(fee.total_amount) ?? 0,
+          currency: fee.currency ?? null,
+          total_amount: coerceMoney(fee.total_amount),
         })
         .returning("id");
       await masterKnex(`${S}.extraction_course_fee_assignments`)

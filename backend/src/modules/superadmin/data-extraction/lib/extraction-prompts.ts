@@ -97,27 +97,24 @@ Extract this JSON:
 {
   "courses": [
     {
-      "name": "full course name",
+      "name": "full course name, including its own qualification — e.g. 'Aerospace Engineering BEng(Hons)', not just 'Aerospace Engineering'",
       "short_name": "abbreviated name or null",
       "degree_level": "Bachelor|Master|PhD|Diploma|Certificate|Graduate Certificate|Graduate Diploma|Associate Degree|Doctorate|Other",
-      "subject_area": "e.g. Computer Science, Medicine, Business",
+      "course_category": "academic|short_course — 'academic' is a formal qualification requiring sustained enrolment (any degree_level above); 'short_course' is a standalone, non-award offering — a workshop, single-topic training, professional development, or language course with no degree_level qualification",
+      "subject_area": "the shared subject/program name this qualification belongs to, WITHOUT the qualification suffix — e.g. 'Aerospace Engineering', 'Computer Science', 'Medicine', 'Business'",
       "duration_weeks": null,
       "study_mode": "on-campus|online|hybrid|null",
       "description": "course description or null",
-      "domestic_fee_total": null,
-      "domestic_currency": null,
-      "international_fee_total": null,
-      "international_currency": null,
       "awarding_institution": null,
       "source_url": "${url}",
       "career_paths": [],
       "fees": [
         {
-          "name": "fee description",
+          "name": "fee description — include the original text verbatim if it's a range or unclear figure, e.g. 'Tuition (range: $25,000-$30,000)' or 'Tuition — contact institution'",
           "student_type": "domestic|international|both",
           "period_type": "Per Year|Per Semester|Total|Per Unit",
-          "currency": "AUD",
-          "total_amount": 0
+          "currency": "the currency actually shown on the page (AUD, USD, GBP, ...) — null if not stated, never assume AUD",
+          "total_amount": "numeric amount — the lower bound if the page shows a range, null if no real figure is stated (e.g. \"Contact us\")"
         }
       ],
       "intakes": [
@@ -185,14 +182,17 @@ Rules:
 - If the page is a single course detail page, return exactly 1 course
 - If it's a listing page with multiple courses, extract all of them
 - Do NOT extract a page as a course if it describes a single SUBJECT/UNIT/MODULE that sits inside a larger qualification — e.g. a page titled "Introduction to Databases" or "COMP101 — Introduction to Databases", with a short code (2-4 letters + 2-3 digits) and content describing one subject rather than an entire degree/diploma/certificate. These belong in study_units under their parent course, never as a standalone course. If this page IS such a unit/subject page, return an empty courses array.
+- Classify EVERY course's course_category yourself from what the page shows about it — never copy one value onto every course just because the page is generally about "programs" or "courses". A page mixing both (e.g. a Bachelor's degree next to a 6-week professional certificate with no admission/degree structure) must return each with its own correct course_category.
+- If a page presents ONE subject area offered as MULTIPLE qualification variants — e.g. "Aerospace Engineering" offered as BEng(Hons), MEng, and BSc — extract ONE COURSE OBJECT PER VARIANT, never a single course for the subject as a whole. Each variant's "name" is its full specific title as shown (e.g. "Aerospace Engineering BEng(Hons)"), its "subject_area" is the shared subject name without the qualification (e.g. "Aerospace Engineering"), and its "degree_level" is derived from that variant's own qualification (BEng/BSc/BA/BBA → Bachelor; MEng/MSc/MA/MBA → Master; PhD/DPhil → PhD; Grad Cert → Graduate Certificate; Grad Dip → Graduate Diploma). Never emit a course for the bare subject heading with no qualification attached.
 - Do NOT extract a page as a course if it describes the ADMISSIONS PROCESS in general — e.g. "How to Apply as a First-Year Student", "Transfer Pathways", "Application Requirements", "Dates and Deadlines" — rather than one specific named qualification. These pages talk about applying, deadlines, or eligibility across many/all programs at once, and never name one degree with its own curriculum. Never invent a degree_level (e.g. "Bachelor") for a page like this just because it mentions undergraduate/first-year admission — if the page does not name one specific qualification, return an empty courses array.
 - Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
 - Never invent fees or dates — only extract what's explicitly stated
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If fees link to an external PDF or schedule page, include that URL in the fee name (e.g. "See fee schedule: <url>")
+- If a fee is shown as a range (e.g. "$25,000-$30,000"), set total_amount to the lower bound and keep the full range in the fee's name — never average or invent a single figure. If a page shows both a per-year figure AND a total-program figure, extract BOTH as separate fees array entries distinguished by period_type — never collapse them into one guess.
 - Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")
-- study_units are the individual subjects/units taught within THIS course's curriculum (e.g. a listed core/elective unit with its own code or name) — only include units explicitly listed as part of this course's structure, not unrelated courses mentioned elsewhere on the page
+- study_units are the individual subjects/units taught within THIS course's curriculum (e.g. a listed core/elective unit with its own code or name) — only include units explicitly listed as part of this course's structure, not unrelated courses mentioned elsewhere on the page. A differently-titled qualification or award-level variant of the same subject (anything containing a degree word/abbreviation — BEng, MEng, BSc, MSc, BA, MA, PhD, "(Hons)", Diploma, Certificate, Bachelor, Master, Doctorate) is ALWAYS its own course per the rule above, NEVER a study_unit, regardless of what list or section it appears under.
 - Set curriculum_page_url whenever a link on this page plausibly leads to THIS course's own detailed curriculum/program-structure page (e.g. "View Degree Program Website", "Course Structure", "Programs of Study", or a "Curriculum" link within a program-specific site) — not a generic institution-wide "Programs" or "Courses" catalog link. Set it EVEN IF you already found some study_units on this page: an admissions or overview page often names only a few example courses, while the dedicated curriculum page lists the full set — more complete data always wins.`;
 }
 
@@ -631,7 +631,7 @@ export function courseDataPrompt(
 }`,
     course: `{
   "name": "full course name", "short_name": null, "description": "2-4 sentences", "degree_level": "Bachelor|Master|Diploma|Certificate|etc",
-  "subject_area": null, "duration_weeks": null, "study_mode": null, "career_paths": [], "awarding_institution": null
+  "course_category": "academic|short_course", "subject_area": null, "duration_weeks": null, "study_mode": null, "career_paths": [], "awarding_institution": null
 }`,
   };
 

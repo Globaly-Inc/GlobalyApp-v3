@@ -4,11 +4,12 @@ import { BookOpen, CheckCircle2, ExternalLink, Flag, Plus, Search, Trash2 } from
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { VERIFICATION_DOT } from "../const";
+import { SORT_OPTIONS, VERIFICATION_DOT, type SortOrder } from "../const";
 import type { CourseFull } from "../apis/types";
 
 export function CourseListPanel({
@@ -22,6 +23,8 @@ export function CourseListPanel({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
+  sort,
+  onSortChange,
   onPageChange,
   selectedId,
   onSelect,
@@ -46,6 +49,8 @@ export function CourseListPanel({
   onSearchChange: (v: string) => void;
   statusFilter: string;
   onStatusFilterChange: (v: string) => void;
+  sort: SortOrder;
+  onSortChange: (v: SortOrder) => void;
   onPageChange: (page: number) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -92,6 +97,12 @@ export function CourseListPanel({
             ))}
           </SelectContent>
         </Select>
+        <Combobox
+          options={SORT_OPTIONS}
+          value={sort}
+          onChange={(v) => onSortChange(v as SortOrder)}
+          className="h-9 w-[150px] text-xs cursor-pointer"
+        />
         <Button className="h-9 gap-1.5 cursor-pointer" disabled={adding} onClick={onAdd}>
           <Plus className="h-4 w-4" />
           Add Course

@@ -175,9 +175,9 @@ async function checkAllPagesDone(jobId: string) {
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
-    proxy: "stealth" | "auto" | undefined;
+    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined;
   try {
-    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -237,6 +237,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       withLinks: true,
       forceFirecrawl: !!forceFirecrawl,
       mobile: !!mobile,
+      expandCollapsed: !!expandCollapsed,
       // Retries exist because the first pass came back empty — give the renderer
       // time for the JS-heavy pages that produce most of those.
       ...(forceFirecrawl ? { waitFor: 8000 } : {}),
@@ -250,7 +251,15 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // Route through retry logic instead of silently completing
       const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
       const retries = item?.retry_count ?? 0;
-      const meta = { ...(item?.processing_meta ?? {}), last_error: reason, last_failure_class: "anti_bot" as const };
+      // last_error_detail keeps the real signal (Firecrawl's actual error, or undefined
+      // when the call succeeded and content was just thin) — real bug: every one of these
+      // was previously bucketed as a generic "blocked", indistinguishable in the DB from an
+      // actual anti-bot 403 even when Firecrawl reported success and the page was simply a
+      // client-side accordion shell (see expandCollapsed above).
+      const meta = {
+        ...(item?.processing_meta ?? {}), last_error: reason,
+        last_error_detail: page.error ?? null, last_failure_class: "anti_bot" as const,
+      };
 
       // Retry 1: Firecrawl with JS rendering + auto proxy escalation (Firecrawl only
       // pays for its stealth/residential proxy tier if the basic datacenter IP
@@ -259,6 +268,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // blackhole datacenter IPs outright and only serve the mobile site.
       // The old `!forceFirecrawl` guard made retry 2 unreachable: the first retry
       // set the flag, so every blocked page died as "after 1 retries".
+      // Both retries also click open collapsed accordions/tabs (expandCollapsed) — most
+      // of this job's "blocked" pages were never actually blocked, they were JS-accordion
+      // shells that no proxy tier could ever fix.
       if (retries < 2) {
         meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
         const retryProxy = retries === 0 ? "auto" : "stealth";
@@ -268,12 +280,14 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         });
         await queueService.publish(EXTRACTION_QUEUES.PAGES, {
           jobId, queueItemId, url, forceFirecrawl: true, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
+          expandCollapsed: true,
         });
         logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1, proxy: retryProxy });
       } else {
         // Exhausted retries — mark failed so it's visible in the admin queue panel
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
-          status: "failed", error: `Page ${reason} after ${retries} retries (${page.scraper})`,
+          status: "failed",
+          error: `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${page.error}` : ""}`,
           failure_class: "anti_bot", retry_count: retries,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
@@ -478,6 +492,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         jobId, queueItemId, url,
         forceFirecrawl: meta.retry_strategy !== "default",
         mobile: meta.retry_strategy === "mobile",
+        expandCollapsed: failureClass === "anti_bot",
       });
       logger.info("Re-queued for retry", { jobId, queueItemId, failureClass, retries: retries + 1, strategy: meta.retry_strategy });
     } else {

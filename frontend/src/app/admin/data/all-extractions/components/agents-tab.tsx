@@ -16,6 +16,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Pagination } from "@/components/ui/pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { geoApi, type City, type Country } from "@/app/geo/apis";
@@ -25,6 +26,8 @@ import { EditableField, useFieldSaver, type EditableFieldProps } from "./editabl
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { AgentFull, AgentRun, ExtractionJob } from "../apis/types";
+
+const DEFAULT_PAGE_SIZE = 10;
 
 type AgentValues = {
   name: string; country: string; email: string; phone: string; website: string;
@@ -361,6 +364,9 @@ export function AgentsTab({
   onJumpToContext: () => void;
 }>) {
   const [agents, setAgents] = useState<AgentFull[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [runsLoading, setRunsLoading] = useState(true);
@@ -371,15 +377,24 @@ export function AgentsTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  // Accepts overrides for the same reason study-units-tab.tsx does — setState is async, so a
+  // caller that also resets page/search right before reloading needs the new values applied
+  // to THIS fetch immediately, not next render's stale closure.
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string }) => {
     try {
-      setAgents(await allExtractionsApi.getAgents(jobId));
+      const res = await allExtractionsApi.getAgentsFiltered(jobId, {
+        page: overrides?.page ?? page,
+        limit: overrides?.limit ?? limit,
+        search: (overrides?.search ?? search).trim() || undefined,
+      });
+      setAgents(res.data);
+      setTotal(res.meta?.total ?? 0);
     } catch (e) {
       toast.error("Failed to load agents", { description: (e as Error).message });
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, page, limit, search]);
 
   const loadRuns = useCallback(async () => {
     try {
@@ -392,11 +407,25 @@ export function AgentsTab({
   }, [jobId]);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    load();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      load();
+      return;
+    }
+    // Debounce so typing in the search box doesn't fire a request per keystroke.
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  // Independent of search/pagination — fetch once (and again if the job changes).
+  useEffect(() => {
     loadRuns();
-  }, [load, loadRuns]);
+  }, [loadRuns]);
+
+  // A search change invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const handleRerun = async () => {
     setRerunning(true);
@@ -445,13 +474,6 @@ export function AgentsTab({
   const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
 
-  const query = search.trim().toLowerCase();
-  const visible = query
-    ? agents.filter((a) =>
-        [a.name, a.country, a.email, a.city].some((f) => (f ?? "").toLowerCase().includes(query)),
-      )
-    : agents;
-
   return (
     <div>
       {dialog}
@@ -461,7 +483,7 @@ export function AgentsTab({
         label="Agents"
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.agents}
         lastUpdated={latestTimestamp(agents)}
-        hasData={agents.length > 0}
+        hasData={total > 0}
         guidedUrls={job.guided_urls}
         contextKey="agents_urls"
         contextLabel="agents URLs"
@@ -482,7 +504,8 @@ export function AgentsTab({
                 }
                 disabled={agents.length === 0}
               />
-              Select all ({agents.length})
+              {total} agent{total === 1 ? "" : "s"}
+              {search.trim() && ` · ${agents.length} on this page`}
             </label>
             {selectedIds.length > 0 && (
               <Button
@@ -493,7 +516,6 @@ export function AgentsTab({
                 Delete {selectedIds.length}
               </Button>
             )}
-            {query && <span className="text-sm text-muted-foreground">{visible.length} matching</span>}
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
@@ -524,15 +546,15 @@ export function AgentsTab({
           </div>
         )}
 
-        {!loading && visible.length === 0 && !adding && (
+        {!loading && agents.length === 0 && !adding && (
           <Card className="border-dashed">
             <CardContent className="py-12 text-center text-muted-foreground">
               <Users className="mx-auto mb-3 h-8 w-8 opacity-40" />
-              <p className="text-sm">{query ? "No agents match your search" : "No agents yet"}</p>
-              {!query && (
+              <p className="text-sm">{search.trim() ? "No agents match your search" : "No agents yet"}</p>
+              {!search.trim() && (
                 <p className="mt-1 text-xs">Add agent directory URLs in the Context tab, then run the extraction.</p>
               )}
-              {query && (
+              {search.trim() && (
                 <Button variant="ghost" size="sm" className="mt-2 gap-1.5 cursor-pointer" onClick={() => setSearch("")}>
                   <X className="h-3.5 w-3.5" />
                   Clear search
@@ -542,7 +564,7 @@ export function AgentsTab({
           </Card>
         )}
 
-        {visible.map((agent) => (
+        {agents.map((agent) => (
           <AgentCard
             key={agent.id}
             agent={agent}
@@ -554,6 +576,17 @@ export function AgentsTab({
             onSaveField={(column, next) => saveField("extraction_agents", agent.id, column, next)}
           />
         ))}
+
+        {total > 0 && (
+          <Pagination
+            page={page}
+            total={total}
+            limit={limit}
+            onPageChange={setPage}
+            align="end"
+            onPageSizeChange={(next) => { setLimit(next); setPage(1); }}
+          />
+        )}
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import { CourseForm } from "./course-form";
 import { CourseListPanel } from "./course-list-panel";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import type { SortOrder } from "../const";
 import type { CampusFull, CourseFull, CourseLinks, CreateCourseParams, ExtractionJob } from "../apis/types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -38,6 +39,7 @@ export function CoursesTab({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sort, setSort] = useState<SortOrder>("name_asc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [adding, setAdding] = useState(false);
@@ -49,7 +51,7 @@ export function CoursesTab({
   // delete) can force this fetch to use the new values immediately — setState is async,
   // so reading the state variables here right after calling their setters would still
   // see the pre-reset values from this render's closure.
-  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string }) => {
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder }) => {
     try {
       const [coursesRes, courseLinks, campusRows, queue] = await Promise.all([
         allExtractionsApi.getCourses(jobId, {
@@ -57,6 +59,7 @@ export function CoursesTab({
           limit: overrides?.limit ?? limit,
           search: (overrides?.search ?? search).trim() || undefined,
           status: (overrides?.status ?? statusFilter) === "all" ? undefined : (overrides?.status ?? statusFilter),
+          sort: overrides?.sort ?? sort,
         }),
         allExtractionsApi.getCourseLinks(jobId),
         allExtractionsApi.getCampuses(jobId),
@@ -73,7 +76,7 @@ export function CoursesTab({
     } finally {
       setLoading(false);
     }
-  }, [jobId, page, limit, search, statusFilter]);
+  }, [jobId, page, limit, search, statusFilter, sort]);
 
   useEffect(() => {
     if (!fetchedRef.current) {
@@ -86,10 +89,10 @@ export function CoursesTab({
     return () => clearTimeout(t);
   }, [load]);
 
-  // Any filter change invalidates the current page.
+  // Any filter/sort change invalidates the current page.
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, sort]);
 
   const handleCreate = async (values: CreateCourseParams) => {
     setSaving(true);
@@ -98,6 +101,7 @@ export function CoursesTab({
       toast.success("Course added");
       setAdding(false);
       await load();
+      onReload(); // other tabs' course-linking pickers read the job-level course list too
       setSelectedId(created.id);
     } catch (e) {
       toast.error("Failed to add course", { description: (e as Error).message });
@@ -114,6 +118,7 @@ export function CoursesTab({
   const resetListState = () => {
     setSearch("");
     setStatusFilter("all");
+    setSort("name_asc");
     setPage(1);
     setLimit(DEFAULT_PAGE_SIZE);
     setSelectedIds([]);
@@ -127,7 +132,7 @@ export function CoursesTab({
       await allExtractionsApi.deleteCourse(id);
       toast.success("Course deleted");
       resetListState();
-      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all" });
+      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all", sort: "name_asc" });
       onReload();
     } catch (e) {
       toast.error("Delete failed", { description: (e as Error).message });
@@ -152,7 +157,7 @@ export function CoursesTab({
       setCourses((prev) => prev.filter((c) => !deletedIds.has(c.id)));
       setTotal((prev) => Math.max(0, prev - deletedIds.size));
       resetListState();
-      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all" });
+      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all", sort: "name_asc" });
       onReload();
     } catch (e) {
       toast.error("Delete failed", { description: (e as Error).message });
@@ -226,6 +231,8 @@ export function CoursesTab({
             onSearchChange={setSearch}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
+            sort={sort}
+            onSortChange={setSort}
             onPageChange={setPage}
             selectedId={selectedId}
             onSelect={setSelectedId}

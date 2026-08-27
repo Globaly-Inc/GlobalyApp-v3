@@ -23,7 +23,7 @@ function assert(cond: boolean, label: string) {
 
 async function main() {
   const { courseExtractionPrompt, studyUnitsFromPagePrompt } = await import("../src/modules/superadmin/data-extraction/lib/extraction-prompts.js");
-  const { normaliseUnitName } = await import("../src/modules/superadmin/data-extraction/lib/staging-writer.js");
+  const { normaliseUnitName, coerceMoney } = await import("../src/modules/superadmin/data-extraction/lib/staging-writer.js");
   const { looksLikeCourseUrl, filterUrls } = await import("../src/modules/superadmin/data-extraction/lib/html-utils.js");
 
   // 1. Prompt tells the LLM to exclude standalone unit/subject pages from courses.
@@ -89,6 +89,38 @@ async function main() {
   assert(!filtered.some((u) => u.includes("/news/")), "news articles are filtered out before the course heuristic runs");
   assert(!filtered.some((u) => u.includes("/press-room/")), "press releases are filtered out before the course heuristic runs");
   assert(filtered.some((u) => u.includes("/academics/")), "a genuine academics/programs page still survives the filter");
+
+  // 6. Prompt tells the LLM to split one subject's multiple qualification variants into
+  // separate courses (real bug: "Aerospace Engineering" saved as the course, with
+  // "Aerospace Engineering BEng(Hons)" wrongly saved as a study_unit under it).
+  const variantPrompt = courseExtractionPrompt("https://uni.example/aerospace-engineering", "Aerospace Engineering — BEng(Hons), MEng");
+  assert(/ONE COURSE OBJECT PER VARIANT/.test(variantPrompt), "prompt asks for one course per qualification variant");
+  assert(/subject_area.*without the qualification/is.test(variantPrompt), "prompt tells the LLM subject_area excludes the qualification suffix");
+  assert(
+    /is ALWAYS its own course.*NEVER a study_unit/is.test(variantPrompt),
+    "prompt tells the LLM a qualification variant is never a study_unit",
+  );
+
+  // 7. coerceMoney — the real staging bug: an unparseable fee silently became a fake $0
+  // (staging-writer.ts used to do `coerceInt(fee.total_amount) ?? 0`). Must return null,
+  // never 0, and must take the lower bound of a range rather than averaging or inventing one.
+  assert(coerceMoney(25000) === 25000, "coerceMoney passes through a plain number");
+  assert(coerceMoney("$25,000") === 25000, "coerceMoney strips currency symbols and commas");
+  assert(coerceMoney("$25,000 - $30,000") === 25000, "coerceMoney takes the lower bound of a range");
+  assert(coerceMoney("Contact us") === null, "coerceMoney returns null, not 0, for unparseable text");
+  assert(coerceMoney(null) === null, "coerceMoney returns null for null");
+
+  // 8. Prompt asks the LLM to classify each course as academic vs short_course per-course,
+  // not inherited from the job's service_category_id (real bug: a job scoped to "Academic
+  // Courses" still saved every short course found on the same pages with no way to tell
+  // them apart — see staging-writer.ts's normaliseCourseCategory()).
+  const mixedPrompt = courseExtractionPrompt("https://uni.example/programs", "Bachelor of Arts, Digital Marketing Workshop");
+  assert(/course_category/.test(mixedPrompt), "prompt requests course_category per course");
+  assert(/academic\|short_course/.test(mixedPrompt), "prompt gives the two course_category values");
+  assert(
+    /never copy one value onto every course/i.test(mixedPrompt),
+    "prompt tells the LLM to classify each course individually, not inherit one value for the whole page",
+  );
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
