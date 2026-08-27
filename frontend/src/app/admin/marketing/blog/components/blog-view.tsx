@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock, Eye, ImageOff, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Clock, Eye, ImageOff, Loader2, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ import type { BlogTab } from "../types";
 import type { BlogPost, BlogTopic } from "../apis/types";
 import { BlogKeywordsManager } from "./blog-keywords-manager";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
+import { GenerateDialog } from "./generate-dialog";
+import { GenerationProgress } from "./generation-progress";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -47,6 +49,12 @@ function PostRow({ post, onEdit, onDelete }: Readonly<{ post: BlogPost; onEdit: 
           {post.category && <Badge variant="outline">{post.category}</Badge>}
           <Badge variant={post.is_published ? "default" : "secondary"}>{post.is_published ? "Published" : "Draft"}</Badge>
           {post.seo_score !== null && <Badge variant="outline" className="font-mono">SEO {post.seo_score}</Badge>}
+          {post.generated_by_ai && !post.is_published && (
+            <Badge variant="outline" className="gap-1 border-primary/40 text-primary">
+              <Sparkles className="h-3 w-3" />
+              AI generated — needs review
+            </Badge>
+          )}
         </div>
         <p className="truncate text-sm font-semibold text-foreground">{post.title}</p>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -85,6 +93,7 @@ export function BlogView() {
   const [sortByViews, setSortByViews] = useState(false);
   const [deleting, setDeleting] = useState<{ id: number; title: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const deletingRef = useRef(false);
 
   const fetchedRef = useRef(false);
@@ -139,12 +148,20 @@ export function BlogView() {
           <p className="mt-1 text-muted-foreground">{posts.length} total posts</p>
         </div>
         {tab !== "keywords" && (
-          <Button className="h-10 gap-1.5" onClick={() => router.push("/admin/marketing/blog/new")}>
-            <Plus className="h-4 w-4" />
-            New Post
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="h-10 gap-1.5" onClick={() => setGenerateOpen(true)}>
+              <Sparkles className="h-4 w-4" />
+              Generate with AI
+            </Button>
+            <Button className="h-10 gap-1.5" onClick={() => router.push("/admin/marketing/blog/new")}>
+              <Plus className="h-4 w-4" />
+              New Post
+            </Button>
+          </div>
         )}
       </div>
+
+      {tab !== "keywords" && <GenerationProgress />}
 
       {tab !== "keywords" && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -221,6 +238,8 @@ export function BlogView() {
         onConfirm={handleConfirmDelete}
         deleting={busy}
       />
+
+      <GenerateDialog open={generateOpen} onOpenChange={setGenerateOpen} onStarted={() => setTab("all")} />
     </div>
   );
 }
