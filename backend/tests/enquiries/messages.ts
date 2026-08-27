@@ -37,6 +37,10 @@ import * as messages from "../../src/modules/enquiries/services/messages.service
 import * as media from "../../src/modules/enquiries/services/message-media.service.js";
 import { UNLOCK_GREETING } from "../../src/modules/enquiries/services/messages.service.js";
 
+/** The services now address a recipient (business or institution) rather than a bare id. */
+const asBiz = (id: number) => ({ kind: "business" as const, id });
+
+
 let passed = 0;
 let failed = 0;
 
@@ -203,7 +207,7 @@ async function scenario(businessCount: number) {
     /** distribution id for the Nth business */
     dist: async (n: number) => (await distributionFor(enquiry.id, businesses[n]!.id)).id,
     unlock: async (n: number) =>
-      distributions.unlock(businesses[n]!.id, (await distributionFor(enquiry.id, businesses[n]!.id)).id, agentId),
+      distributions.unlock(asBiz(businesses[n]!.id), (await distributionFor(enquiry.id, businesses[n]!.id)).id, agentId),
     cleanup: async () => {
       const distIds = (
         await masterKnex("enquiry_distributions").where({ enquiry_id: enquiry.id }).select("id")
@@ -246,12 +250,12 @@ async function main() {
         "student send",
       );
       await rejectsWith(
-        () => messages.listForBusiness(distId, biz.id, s.agentId),
+        () => messages.listForBusiness(distId, asBiz(biz.id), s.agentId),
         "ConflictError",
         "business read",
       );
       await rejectsWith(
-        () => messages.sendAsBusiness(distId, biz.id, s.agentId, "hi there"),
+        () => messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "hi there"),
         "ConflictError",
         "business send",
       );
@@ -271,15 +275,15 @@ async function main() {
       // Unlocking already posted the greeting, so the thread is never empty.
       eq((await messages.listForStudent(distId, s.studentId)).length, 1, "opens with the greeting");
 
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "Hi! Happy to help with this course.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "Hi! Happy to help with this course.");
       await messages.sendAsStudent(distId, s.studentId, "Great — what are the fees?");
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "About AUD 40k per year.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "About AUD 40k per year.");
 
       const studentView = await messages.listForStudent(distId, s.studentId);
       eq(studentView.length, 4, "student sees the greeting plus all three");
       eq(studentView.map((m) => m.body)[2], "Great — what are the fees?", "chronological order");
 
-      const businessView = await messages.listForBusiness(distId, biz.id, s.agentId);
+      const businessView = await messages.listForBusiness(distId, asBiz(biz.id), s.agentId);
       eq(businessView.length, 4, "business sees the same four");
       eq(
         businessView.map((m) => m.id).join(","),
@@ -298,7 +302,7 @@ async function main() {
       await s.unlock(0);
       const distId = await s.dist(0);
       await messages.sendAsStudent(distId, s.studentId, "From the student.");
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "From the business.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "From the business.");
 
       // Index 0 is the unlock greeting; the two sent above follow it.
       const studentView = await messages.listForStudent(distId, s.studentId);
@@ -307,7 +311,7 @@ async function main() {
       eq(studentView[1]!.sender_role, "student", "role of the first");
       eq(studentView[2]!.sender_role, "business", "role of the second");
 
-      const businessView = await messages.listForBusiness(distId, biz.id, s.agentId);
+      const businessView = await messages.listForBusiness(distId, asBiz(biz.id), s.agentId);
       eq(businessView[1]!.is_mine, false, "same message, not mine to the business");
       eq(businessView[2]!.is_mine, true, "its own message is mine to the business");
       // Roles describe the sender, so they do NOT depend on who is looking.
@@ -325,22 +329,22 @@ async function main() {
       await s.unlock(0);
       await s.unlock(1);
       const distA = await s.dist(0);
-      await messages.sendAsBusiness(distA, a.id, s.agentId, "Private to A and the student.");
+      await messages.sendAsBusiness(distA, asBiz(a.id), s.agentId, "Private to A and the student.");
 
       // 404 not 403 — B must not learn that A's thread exists.
       await rejectsWith(
-        () => messages.listForBusiness(distA, b.id, s.agentId),
+        () => messages.listForBusiness(distA, asBiz(b.id), s.agentId),
         "NotFoundError",
         "cross-business read",
       );
       await rejectsWith(
-        () => messages.sendAsBusiness(distA, b.id, s.agentId, "butting in"),
+        () => messages.sendAsBusiness(distA, asBiz(b.id), s.agentId, "butting in"),
         "NotFoundError",
         "cross-business send",
       );
 
       eq(
-        (await messages.listForBusiness(await s.dist(1), b.id, s.agentId)).length,
+        (await messages.listForBusiness(await s.dist(1), asBiz(b.id), s.agentId)).length,
         1,
         "B sees only its own greeting",
       );
@@ -356,7 +360,7 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "For the real student only.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "For the real student only.");
 
       await rejectsWith(() => messages.listForStudent(distId, outsiderId), "NotFoundError", "outsider read");
       await rejectsWith(
@@ -377,12 +381,12 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "Before closing.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "Before closing.");
 
-      await distributions.close(biz.id, distId, "Student went elsewhere.", s.agentId);
+      await distributions.close(asBiz(biz.id), distId, "Student went elsewhere.", s.agentId);
 
       eq((await messages.listForStudent(distId, s.studentId)).length, 2, "student still reads history");
-      eq((await messages.listForBusiness(distId, biz.id, s.agentId)).length, 2, "business still reads history");
+      eq((await messages.listForBusiness(distId, asBiz(biz.id), s.agentId)).length, 2, "business still reads history");
 
       await rejectsWith(
         () => messages.sendAsStudent(distId, s.studentId, "one more thing"),
@@ -390,7 +394,7 @@ async function main() {
         "student send after close",
       );
       await rejectsWith(
-        () => messages.sendAsBusiness(distId, biz.id, s.agentId, "one more thing"),
+        () => messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "one more thing"),
         "ConflictError",
         "business send after close",
       );
@@ -411,12 +415,12 @@ async function main() {
       // enquiry_messages_body_chk as the backstop that does not depend on the caller.
       let threw = false;
       try {
-        await messages.sendAsBusiness(distId, biz.id, s.agentId, "   ");
+        await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "   ");
       } catch {
         threw = true;
       }
       eq(threw, true, "whitespace body rejected");
-      eq((await messages.listForBusiness(distId, biz.id, s.agentId)).length, 1, "only the greeting is stored");
+      eq((await messages.listForBusiness(distId, asBiz(biz.id), s.agentId)).length, 1, "only the greeting is stored");
     } finally {
       await s.cleanup();
     }
@@ -442,13 +446,13 @@ async function main() {
       );
 
       // Activity, not unlock time, decides the order once someone speaks.
-      await messages.sendAsBusiness(distA, a.id, s.agentId, "First contact.");
+      await messages.sendAsBusiness(distA, asBiz(a.id), s.agentId, "First contact.");
       const ordered = await messages.listThreadsForStudent(s.studentId);
       eq(ordered[0]!.distribution_id, distA, "most recent activity first");
       eq(ordered[0]!.last_message_at !== null, true, "carries the last message time");
       eq(ordered[0]!.is_closed, false, "still open");
 
-      await distributions.close(b.id, distB, "Not a fit.", s.agentId);
+      await distributions.close(asBiz(b.id), distB, "Not a fit.", s.agentId);
       const afterClose = await messages.listThreadsForStudent(s.studentId);
       eq(afterClose.length, 2, "a closed thread stays in the inbox");
       eq(afterClose.find((t) => t.distribution_id === distB)!.is_closed, true, "flagged closed");
@@ -472,7 +476,7 @@ async function main() {
       eq(greeting!.sender_id, s.agentId, "sent by the unlocking agent");
       eq(greeting!.sender_role, "business", "on the business side of the thread");
       eq(greeting!.is_mine, false, "not the student's own message");
-      eq((await messages.listForBusiness(distId, biz.id, s.agentId))[0]!.is_mine, true, "is the agent's own");
+      eq((await messages.listForBusiness(distId, asBiz(biz.id), s.agentId))[0]!.is_mine, true, "is the agent's own");
 
       // Idempotent unlock must not post it twice.
       await s.unlock(0);
@@ -501,7 +505,7 @@ async function main() {
       await messages.sendAsStudent(distId, s.studentId, "Thanks!");
       eq((await messages.listThreadsForStudent(s.studentId))[0]!.unread_count, 0, "own message is not unread");
 
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "You're welcome.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "You're welcome.");
       eq((await messages.listThreadsForStudent(s.studentId))[0]!.unread_count, 1, "a business reply is unread again");
 
       // Idempotent — re-reading an already-read thread is not an error.
@@ -529,7 +533,7 @@ async function main() {
       eq(mine.last_message_body, "What are the fees?", "preview follows the newest message");
       eq(mine.last_message_is_mine, true, "flagged as the student's own");
 
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "About AUD 40k.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "About AUD 40k.");
       eq((await messages.listThreadsForStudent(s.studentId))[0]!.last_message_is_mine, false, "and back again");
     } finally {
       await s.cleanup();
@@ -561,7 +565,7 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "About AUD 40k per year.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "About AUD 40k per year.");
 
       const [greeting, fees] = await messages.listForStudent(distId, s.studentId);
       eq(greeting!.is_starred, false, "nothing starred to begin with");
@@ -606,7 +610,7 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
-      await messages.sendAsBusiness(distId, biz.id, s.agentId, "Intake closes 30 September.");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "Intake closes 30 September.");
 
       const [greeting, intake] = await messages.listForStudent(distId, s.studentId);
       eq(greeting!.is_pinned, false, "nothing pinned to begin with");
@@ -617,7 +621,7 @@ async function main() {
       const studentView = await messages.listForStudent(distId, s.studentId);
       eq(studentView[1]!.is_pinned, true, "the student sees the pin");
       eq(studentView[0]!.is_pinned, false, "its neighbour is untouched");
-      const businessView = await messages.listForBusiness(distId, biz.id, s.agentId);
+      const businessView = await messages.listForBusiness(distId, asBiz(biz.id), s.agentId);
       eq(businessView[1]!.is_pinned, true, "and so does the business");
 
       // Still gated on being a participant.
@@ -630,13 +634,13 @@ async function main() {
       eq(await messages.togglePinAsStudent(intake!.id, s.studentId), false, "unpinning reports false");
       eq((await messages.listForStudent(distId, s.studentId))[1]!.is_pinned, false, "and clears for the student");
       eq(
-        (await messages.listForBusiness(distId, biz.id, s.agentId))[1]!.is_pinned,
+        (await messages.listForBusiness(distId, asBiz(biz.id), s.agentId))[1]!.is_pinned,
         false,
         "and for the business",
       );
 
       // Closing makes the thread read-only, and a pin changes what both sides see.
-      await distributions.close(biz.id, distId, "Not a fit.", s.agentId);
+      await distributions.close(asBiz(biz.id), distId, "Not a fit.", s.agentId);
       await rejectsWith(
         () => messages.togglePinAsStudent(intake!.id, s.studentId),
         "ConflictError",
@@ -711,7 +715,7 @@ async function main() {
       // And it round-trips to both sides of the thread.
       const reread = await messages.listForStudent(distId, s.studentId);
       eq(reread.at(-1)!.attachments.length, 1, "the student sees it on re-read");
-      const bizView = await messages.listForBusiness(distId, s.businesses[0]!.id, s.agentId);
+      const bizView = await messages.listForBusiness(distId, asBiz(s.businesses[0]!.id), s.agentId);
       eq(bizView.at(-1)!.attachments.length, 1, "and so does the business");
 
       // Neither text nor files is still rejected — by the service, not by a raw
@@ -763,7 +767,7 @@ async function main() {
 
       // ...and the business sees the same chip, but not as theirs. This is what
       // separates a reaction from a star (private) and a pin (no owner).
-      const theirs = (await messages.listForBusiness(distId, biz.id, s.agentId))[0]!;
+      const theirs = (await messages.listForBusiness(distId, asBiz(biz.id), s.agentId))[0]!;
       eq(theirs.reactions.length, 1, "the business sees the chip");
       eq(theirs.reactions[0]!.count, 1, "with the same count");
       eq(theirs.reactions[0]!.mine, false, "but not as their own");
@@ -785,7 +789,7 @@ async function main() {
         "outsider reaction",
       );
 
-      await distributions.close(biz.id, distId, "Not a fit.", s.agentId);
+      await distributions.close(asBiz(biz.id), distId, "Not a fit.", s.agentId);
       await rejectsWith(
         () => messages.toggleReactionAsStudent(greeting!.id, s.studentId, "\u{2764}"),
         "ConflictError",
@@ -830,10 +834,10 @@ async function main() {
       eq(list.some((m) => m.id === first.id), false, "the reply itself is absent from the main list");
 
       // The business can reply into the same thread and the student sees it.
-      const bizReply = await messages.sendAsBusiness(distId, biz.id, s.agentId, "Sure — here are the details.");
+      const bizReply = await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "Sure — here are the details.");
       eq(bizReply.reply_to_id, null, "a plain send is not a reply");
 
-      await distributions.close(biz.id, distId, "Done.", s.agentId);
+      await distributions.close(asBiz(biz.id), distId, "Done.", s.agentId);
       await rejectsWith(
         () => messages.sendReplyAsStudent(greeting!.id, s.studentId, "one more?"),
         "ConflictError",
@@ -855,7 +859,7 @@ async function main() {
       await s.unlock(0);
       const distId = await s.dist(0);
 
-      const mine = await messages.listThreadsForBusiness(first.id, s.agentId);
+      const mine = await messages.listThreadsForBusiness(asBiz(first.id), s.agentId);
       eq(mine.length, 1, "one unlocked thread");
       eq(mine[0]!.distribution_id, distId, "the one it unlocked");
       eq(mine[0]!.course_name.length > 0, true, "carries the course");
@@ -864,7 +868,7 @@ async function main() {
 
       // The second business matched but never paid, so it has no thread at all — the
       // inbox IS the set of conversations that exist.
-      eq((await messages.listThreadsForBusiness(second.id, s.agentId)).length, 0, "no unlock, no thread");
+      eq((await messages.listThreadsForBusiness(asBiz(second.id), s.agentId)).length, 0, "no unlock, no thread");
     } finally {
       await s.cleanup();
     }
@@ -881,19 +885,19 @@ async function main() {
       const distId = await s.dist(0);
 
       // The unlock greeting was sent BY this business, so it is not unread for it.
-      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.unread_count, 0, "own greeting");
+      eq((await messages.listThreadsForBusiness(asBiz(biz.id), s.agentId))[0]!.unread_count, 0, "own greeting");
 
       await messages.sendAsStudent(distId, s.studentId, "When does the February intake close?");
-      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.unread_count, 1, "student's message");
+      eq((await messages.listThreadsForBusiness(asBiz(biz.id), s.agentId))[0]!.unread_count, 1, "student's message");
 
       // Per-agent cursors: reading as one agent must not clear the other's badge.
-      await messages.markReadAsBusiness(distId, biz.id, s.agentId);
-      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.unread_count, 0, "cleared for me");
-      eq((await messages.listThreadsForBusiness(biz.id, mateId))[0]!.unread_count, 1, "still unread for my colleague");
+      await messages.markReadAsBusiness(distId, asBiz(biz.id), s.agentId);
+      eq((await messages.listThreadsForBusiness(asBiz(biz.id), s.agentId))[0]!.unread_count, 0, "cleared for me");
+      eq((await messages.listThreadsForBusiness(asBiz(biz.id), mateId))[0]!.unread_count, 1, "still unread for my colleague");
 
       // A teammate's own reply is not something the other agents have to action.
-      await messages.sendAsBusiness(distId, biz.id, mateId, "It closes on the 30th.");
-      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.unread_count, 0, "teammate's reply is not unread");
+      await messages.sendAsBusiness(distId, asBiz(biz.id), mateId, "It closes on the 30th.");
+      eq((await messages.listThreadsForBusiness(asBiz(biz.id), s.agentId))[0]!.unread_count, 0, "teammate's reply is not unread");
       // ...but the student does see it as unread.
       const studentInbox = await messages.listThreadsForStudent(s.studentId);
       eq(studentInbox[0]!.unread_count > 0, true, "unread for the student");
@@ -909,34 +913,34 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
-      const [greeting] = await messages.listForBusiness(distId, mine.id, s.agentId);
+      const [greeting] = await messages.listForBusiness(distId, asBiz(mine.id), s.agentId);
 
       // 404 rather than 403 throughout: a non-participant gets no confirmation the
       // conversation exists.
-      await rejectsWith(() => messages.listForBusiness(distId, theirs.id, s.agentId), "NotFoundError", "read");
+      await rejectsWith(() => messages.listForBusiness(distId, asBiz(theirs.id), s.agentId), "NotFoundError", "read");
       await rejectsWith(
-        () => messages.sendAsBusiness(distId, theirs.id, s.agentId, "poaching"),
+        () => messages.sendAsBusiness(distId, asBiz(theirs.id), s.agentId, "poaching"),
         "NotFoundError",
         "send",
       );
-      await rejectsWith(() => messages.markReadAsBusiness(distId, theirs.id, s.agentId), "NotFoundError", "read cursor");
+      await rejectsWith(() => messages.markReadAsBusiness(distId, asBiz(theirs.id), s.agentId), "NotFoundError", "read cursor");
       await rejectsWith(
-        () => messages.toggleStarAsBusiness(greeting!.id, theirs.id, s.agentId),
+        () => messages.toggleStarAsBusiness(greeting!.id, asBiz(theirs.id), s.agentId),
         "NotFoundError",
         "star",
       );
       await rejectsWith(
-        () => messages.togglePinAsBusiness(greeting!.id, theirs.id, s.agentId),
+        () => messages.togglePinAsBusiness(greeting!.id, asBiz(theirs.id), s.agentId),
         "NotFoundError",
         "pin",
       );
       await rejectsWith(
-        () => messages.editAsBusiness(greeting!.id, theirs.id, s.agentId, "rewritten"),
+        () => messages.editAsBusiness(greeting!.id, asBiz(theirs.id), s.agentId, "rewritten"),
         "NotFoundError",
         "edit",
       );
       await rejectsWith(
-        () => messages.listRepliesForBusiness(greeting!.id, theirs.id, s.agentId),
+        () => messages.listRepliesForBusiness(greeting!.id, asBiz(theirs.id), s.agentId),
         "NotFoundError",
         "replies",
       );
@@ -952,33 +956,33 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
-      const mine = await messages.sendAsBusiness(distId, biz.id, s.agentId, "Happy to help with that.");
+      const mine = await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "Happy to help with that.");
       const studentMsg = await messages.sendAsStudent(distId, s.studentId, "Thanks!");
 
-      const edited = await messages.editAsBusiness(mine.id, biz.id, s.agentId, "Happy to help — anything else?");
+      const edited = await messages.editAsBusiness(mine.id, asBiz(biz.id), s.agentId, "Happy to help — anything else?");
       eq(edited.body, "Happy to help — anything else?", "own message edited");
       eq(edited.edited_at !== null, true, "and marked edited");
 
       // Same 404-not-403 rule: being in the thread is not being the author.
       await rejectsWith(
-        () => messages.editAsBusiness(studentMsg.id, biz.id, s.agentId, "putting words in their mouth"),
+        () => messages.editAsBusiness(studentMsg.id, asBiz(biz.id), s.agentId, "putting words in their mouth"),
         "NotFoundError",
         "editing the student's message",
       );
       await rejectsWith(
-        () => messages.editAsBusiness(mine.id, biz.id, mateId, "not mine to edit"),
+        () => messages.editAsBusiness(mine.id, asBiz(biz.id), mateId, "not mine to edit"),
         "NotFoundError",
         "editing a teammate's message",
       );
       await rejectsWith(
-        () => messages.deleteAsBusiness(studentMsg.id, biz.id, s.agentId),
+        () => messages.deleteAsBusiness(studentMsg.id, asBiz(biz.id), s.agentId),
         "NotFoundError",
         "deleting the student's message",
       );
 
-      await messages.deleteAsBusiness(mine.id, biz.id, s.agentId);
+      await messages.deleteAsBusiness(mine.id, asBiz(biz.id), s.agentId);
       eq(
-        (await messages.listForBusiness(distId, biz.id, s.agentId)).some((m) => m.id === mine.id),
+        (await messages.listForBusiness(distId, asBiz(biz.id), s.agentId)).some((m) => m.id === mine.id),
         false,
         "own message gone from the thread",
       );
@@ -997,24 +1001,24 @@ async function main() {
       const distId = await s.dist(0);
       const studentMsg = await messages.sendAsStudent(distId, s.studentId, "Do you offer scholarships?");
 
-      eq(await messages.toggleStarAsBusiness(studentMsg.id, biz.id, s.agentId), true, "starred");
-      const starred = await messages.listStarredForBusiness(biz.id, s.agentId);
+      eq(await messages.toggleStarAsBusiness(studentMsg.id, asBiz(biz.id), s.agentId), true, "starred");
+      const starred = await messages.listStarredForBusiness(asBiz(biz.id), s.agentId);
       eq(starred.length, 1, "in my starred list");
       eq(starred[0]!.student_name.length > 0, true, "badged with the student, not the business");
       eq(starred[0]!.sender_role, "student", "sender_role derived against the thread's student");
       eq(starred[0]!.is_mine, false, "the student's message is not mine");
 
       // A star is one person's bookmark — invisible to a colleague and to the student.
-      eq((await messages.listStarredForBusiness(biz.id, mateId)).length, 0, "not my colleague's star");
+      eq((await messages.listStarredForBusiness(asBiz(biz.id), mateId)).length, 0, "not my colleague's star");
       eq((await messages.listStarredForStudent(s.studentId)).length, 0, "not the student's star");
       eq(
-        (await messages.listForBusiness(distId, biz.id, mateId)).find((m) => m.id === studentMsg.id)!.is_starred,
+        (await messages.listForBusiness(distId, asBiz(biz.id), mateId)).find((m) => m.id === studentMsg.id)!.is_starred,
         false,
         "and not flagged for them in the thread",
       );
 
       // A pin, by contrast, is on the conversation: both sides see it.
-      eq(await messages.togglePinAsBusiness(studentMsg.id, biz.id, s.agentId), true, "pinned");
+      eq(await messages.togglePinAsBusiness(studentMsg.id, asBiz(biz.id), s.agentId), true, "pinned");
       eq(
         (await messages.listForStudent(distId, s.studentId)).find((m) => m.id === studentMsg.id)!.is_pinned,
         true,
@@ -1032,33 +1036,33 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
-      const mine = await messages.sendAsBusiness(distId, biz.id, s.agentId, "Details attached.");
-      const [greeting] = await messages.listForBusiness(distId, biz.id, s.agentId);
+      const mine = await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "Details attached.");
+      const [greeting] = await messages.listForBusiness(distId, asBiz(biz.id), s.agentId);
 
-      await distributions.close(biz.id, distId, "Converted.", s.agentId);
+      await distributions.close(asBiz(biz.id), distId, "Converted.", s.agentId);
 
-      await rejectsWith(() => messages.sendAsBusiness(distId, biz.id, s.agentId, "one more"), "ConflictError", "send");
+      await rejectsWith(() => messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "one more"), "ConflictError", "send");
       await rejectsWith(
-        () => messages.editAsBusiness(mine.id, biz.id, s.agentId, "amended"),
+        () => messages.editAsBusiness(mine.id, asBiz(biz.id), s.agentId, "amended"),
         "ConflictError",
         "edit",
       );
-      await rejectsWith(() => messages.deleteAsBusiness(mine.id, biz.id, s.agentId), "ConflictError", "delete");
+      await rejectsWith(() => messages.deleteAsBusiness(mine.id, asBiz(biz.id), s.agentId), "ConflictError", "delete");
       await rejectsWith(
-        () => messages.togglePinAsBusiness(greeting!.id, biz.id, s.agentId),
+        () => messages.togglePinAsBusiness(greeting!.id, asBiz(biz.id), s.agentId),
         "ConflictError",
         "pin",
       );
       await rejectsWith(
-        () => messages.toggleReactionAsBusiness(greeting!.id, biz.id, s.agentId, "👍"),
+        () => messages.toggleReactionAsBusiness(greeting!.id, asBiz(biz.id), s.agentId, "👍"),
         "ConflictError",
         "react",
       );
 
       // Reading, and private bookmarking, both survive the close.
-      eq((await messages.listForBusiness(distId, biz.id, s.agentId)).length >= 1, true, "history still readable");
-      eq(await messages.toggleStarAsBusiness(greeting!.id, biz.id, s.agentId), true, "starring still allowed");
-      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.is_closed, true, "inbox shows it closed");
+      eq((await messages.listForBusiness(distId, asBiz(biz.id), s.agentId)).length >= 1, true, "history still readable");
+      eq(await messages.toggleStarAsBusiness(greeting!.id, asBiz(biz.id), s.agentId), true, "starring still allowed");
+      eq((await messages.listThreadsForBusiness(asBiz(biz.id), s.agentId))[0]!.is_closed, true, "inbox shows it closed");
     } finally {
       await s.cleanup();
     }
@@ -1072,10 +1076,10 @@ async function main() {
       await s.unlock(0);
       const distId = await s.dist(0);
 
-      eq(await messages.toggleFavoriteAsBusiness(distId, biz.id, s.agentId), true, "favourited");
-      eq((await messages.listThreadsForBusiness(biz.id, s.agentId))[0]!.is_favorite, true, "shows in my inbox");
-      eq((await messages.listThreadsForBusiness(biz.id, mateId))[0]!.is_favorite, false, "not my colleague's");
-      eq(await messages.toggleFavoriteAsBusiness(distId, biz.id, s.agentId), false, "toggles back off");
+      eq(await messages.toggleFavoriteAsBusiness(distId, asBiz(biz.id), s.agentId), true, "favourited");
+      eq((await messages.listThreadsForBusiness(asBiz(biz.id), s.agentId))[0]!.is_favorite, true, "shows in my inbox");
+      eq((await messages.listThreadsForBusiness(asBiz(biz.id), mateId))[0]!.is_favorite, false, "not my colleague's");
+      eq(await messages.toggleFavoriteAsBusiness(distId, asBiz(biz.id), s.agentId), false, "toggles back off");
     } finally {
       await s.cleanup();
       await masterKnex("platform_users").where({ id: mateId }).delete();

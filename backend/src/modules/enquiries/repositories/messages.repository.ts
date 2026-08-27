@@ -9,6 +9,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { recipientFilter, type Recipient } from "../shared/recipient.js";
 
 const T = "enquiry_messages";
 
@@ -159,6 +160,7 @@ export async function findThreadContext(distributionId: string) {
     .first(
       "d.id as distribution_id",
       "d.business_id",
+      "d.institution_id",
       "d.status",
       "d.unlocked_at",
       "e.id as enquiry_id",
@@ -207,7 +209,10 @@ export async function listThreadsForStudent(studentId: number): Promise<ThreadSu
 
   return masterKnex("enquiry_distributions as d")
     .join("enquiries as e", "e.id", "d.enquiry_id")
-    .join("businesses as b", "b.id", "d.business_id")
+    // LEFT, and to both recipient tables: a fallback distribution belongs to an institution
+    // and has no business row, which an inner join would drop from the student's inbox.
+    .leftJoin("businesses as b", "b.id", "d.business_id")
+    .leftJoin("institutions as i", "i.id", "d.institution_id")
     .join("superadmin.extraction_courses as c", "c.id", "e.course_id")
     .joinRaw(
       `left join lateral (
@@ -232,8 +237,8 @@ export async function listThreadsForStudent(studentId: number): Promise<ThreadSu
       "e.id as enquiry_id",
       "d.status",
       "d.unlocked_at",
-      "b.business_name",
-      "b.logo_url",
+      masterKnex.raw("coalesce(b.business_name, i.institution_name) as business_name"),
+      masterKnex.raw("coalesce(b.logo_url, i.logo_url) as logo_url"),
       "c.name as course_name",
       "ts.favorited_at",
       masterKnex.raw("lastmsg.created_at as last_message_at"),
@@ -265,7 +270,7 @@ export interface BusinessThreadSummaryRow
  * agents each have their own cursor over the same thread.
  */
 export async function listThreadsForBusiness(
-  businessId: number,
+  recipient: Recipient,
   viewerUserId: number,
 ): Promise<BusinessThreadSummaryRow[]> {
   const unread = masterKnex.raw(
@@ -293,7 +298,7 @@ export async function listThreadsForBusiness(
     .leftJoin("enquiry_thread_states as ts", (join) =>
       join.on("ts.distribution_id", "d.id").andOn("ts.user_id", masterKnex.raw("?", [viewerUserId])),
     )
-    .where("d.business_id", businessId)
+    .where(recipientFilter(recipient, "d"))
     .whereNotNull("d.unlocked_at")
     .whereNull("d.deleted_at")
     .whereNull("e.deleted_at")
@@ -468,7 +473,7 @@ export interface BusinessStarredMessageRow extends Omit<StarredMessageRow, "busi
  * threads leak into this one's view.
  */
 export async function listStarredForBusiness(
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<BusinessStarredMessageRow[]> {
   return messageQuery()
@@ -478,7 +483,7 @@ export async function listStarredForBusiness(
     .join("platform_users as s", "s.id", "e.student_id")
     .join("superadmin.extraction_courses as c", "c.id", "e.course_id")
     .where("st.user_id", userId)
-    .where("d.business_id", businessId)
+    .where(recipientFilter(recipient, "d"))
     .whereNull("m.deleted_at")
     .orderBy("st.created_at", "desc")
     .select(

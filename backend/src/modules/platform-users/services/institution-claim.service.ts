@@ -23,6 +23,7 @@ import * as repo from "../repositories/platform-users.repository.js";
 import * as institutionMembers from "./institution-members.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
 import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
+import { backfillInstitutionDistributions } from "../../enquiries/services/tenant-sync.service.js";
 
 const logger = createChildLogger("institution-claim-service");
 const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
@@ -71,6 +72,21 @@ async function resolveClaimant(
 }
 
 /**
+ * Issues a fresh claim link for an institution nobody owns yet.
+ *
+ * Exported because the claim page is not the only thing that needs one: an enquiry falling back
+ * to an unclaimed institution has to put a way in inside its notification, or the mail asks
+ * someone to sign into an account that cannot be signed into.
+ *
+ * A new token supersedes the previous one — the newest link is always the live one.
+ */
+export async function mintInstitutionClaimUrl(institutionId: number): Promise<string> {
+  const token = randomBytes(32).toString("hex");
+  await repo.setInstitutionClaimPending(institutionId, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
+  return `${config.WEB_APP_URL}/invite/institution/accept?token=${token}`;
+}
+
+/**
  * Self-serve claim trigger. Resolves silently either way — no found/not-found signal, same
  * anti-enumeration stance as requestClaimByEmail on the business side.
  */
@@ -79,10 +95,7 @@ export async function requestInstitutionClaim(email: string): Promise<void> {
   const institution = await repo.findUnclaimedInstitutionByContactEmail(email);
   if (!institution) return;
 
-  const token = randomBytes(32).toString("hex");
-  await repo.setInstitutionClaimPending(institution.id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-
-  const claimUrl = `${config.WEB_APP_URL}/invite/institution/accept?token=${token}`;
+  const claimUrl = await mintInstitutionClaimUrl(institution.id);
   // Personalise only if someone already registered on this address.
   const existingUser = await repo.findByEmail(email);
   const ownerName =
@@ -147,6 +160,10 @@ export async function acceptInstitutionClaim(
     // makes the institution resolvable by findInstitutionBySchemaName and
     // listUserInstitutions, so it must not flip until the schema and the owner member exist.
     await repo.updateInstitution(institution.id, { account_status: 1 });
+
+    // Leads that arrived while nobody could sign in — the enquiry fallback mails unclaimed
+    // institutions precisely to get them here, so the schema starts with them already in it.
+    await backfillInstitutionDistributions(Number(institution.id));
 
     logger.info("Promoted institution claimed", { institutionId: institution.id, jobId: institution.source_job_id });
 
