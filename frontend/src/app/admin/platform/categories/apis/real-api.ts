@@ -1,8 +1,8 @@
-import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from "@/lib/api/http";
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CityOption, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
+  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams, Test, TestInput,
 } from "./types";
 
 type CountryDto = { id: number; name: string; iso2: string; phone_code: string | null };
@@ -58,6 +58,17 @@ export const categoriesRealApi = {
     httpPost(`${BASE}/${kind}`, input),
   updateLookup: (kind: LookupKind, id: number, input: Partial<LookupInput>): Promise<Lookup> =>
     httpPatch(`${BASE}/${kind}/${id}`, input),
+
+  getTests: (params: SearchListParams = {}): Promise<Paginated<Test>> =>
+    httpGet(`${BASE}/tests${toQuery(params)}`),
+  createTest: (input: TestInput): Promise<Test> => httpPost(`${BASE}/tests`, input),
+  updateTest: (id: number, input: Partial<TestInput>): Promise<Test> => httpPatch(`${BASE}/tests/${id}`, input),
+  // The logo goes up on pick so the row itself stays a plain JSON save, like every other lookup.
+  uploadTestImage: (file: File): Promise<{ image_url: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm(`${BASE}/tests/image`, form);
+  },
 
   getFeeTypes: (params: ListParams = {}): Promise<Paginated<FeeType>> =>
     httpGet(`${BASE}/fee-types${toQuery(params)}`),

@@ -1,5 +1,7 @@
 import { uuid } from "@/lib/utils";
 import type { Lookup, Paginated, SearchListParams } from "@/app/admin/platform/categories/apis/types";
+import { SEEDED_TESTS } from "@/lib/tests-catalog";
+import type { PlatformTest } from "@/lib/tests-catalog";
 import { DEGREE_LEVELS, FIELDS_OF_STUDY } from "../static/onboarding-content";
 import type {
   AcademicTest,
@@ -198,5 +200,11 @@ export const personalMockApi = {
     console.log("[mock] GET /platform-users/areas-of-study", params);
     await delay(150);
     return filterLookup(mockAreasOfStudy, params);
+  },
+
+  getTests: async (): Promise<PlatformTest[]> => {
+    console.log("[mock] GET /search/tests");
+    await delay(150);
+    return SEEDED_TESTS;
   },
 };

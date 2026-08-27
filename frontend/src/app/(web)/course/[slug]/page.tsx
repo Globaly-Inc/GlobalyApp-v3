@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCourseBySlug } from "../../search/api";
+import { getCourseBySlug, getTests } from "../../search/api";
 import { ProfileLocationsCard } from "../../components/profile/profile-locations-card";
 import { ProfileGallery, type GalleryItem } from "../../components/profile/profile-gallery";
 import type { ProfileLocation } from "../../components/profile/profile-data";
@@ -51,7 +51,7 @@ function toGalleryItems(course: CourseDetail): GalleryItem[] {
 
 export default async function CoursePage({ params }: CoursePageProps) {
   const { slug } = await params;
-  const course = await getCourseBySlug(slug);
+  const [course, tests] = await Promise.all([getCourseBySlug(slug), getTests()]);
   if (!course) notFound();
 
   return (
@@ -79,7 +79,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
           <CourseConnectCard institution={course.institution} />
           {/* Anchor target for the hero CTA and the search card's Eligibility button. */}
           <div id="eligibility" className="scroll-mt-24">
-            <CourseEntryRequirementsCard eligibility={course.eligibility} englishRequirements={course.englishRequirements} />
+            <CourseEntryRequirementsCard eligibility={course.eligibility} englishRequirements={course.englishRequirements} tests={tests} />
           </div>
         </div>
       </div>

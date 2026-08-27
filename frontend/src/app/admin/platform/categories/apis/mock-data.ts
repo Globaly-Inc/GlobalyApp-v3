@@ -1,7 +1,7 @@
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CityOption, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
+  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams, Test, TestInput,
 } from "./types";
 
 function delay(ms: number) {
@@ -69,6 +69,12 @@ const degreeLevels: Lookup[] = [
 const areasOfStudy: Lookup[] = [
   { id: 1, name: "Business and Management", slug: "business_and_management", sort_order: 0, is_active: true },
   { id: 2, name: "Information Technology", slug: "information_technology", sort_order: 1, is_active: true },
+];
+
+const tests: Test[] = [
+  { id: 1, name: "IELTS", slug: "ielts", category: "language", image_url: "/logos/IELTS.svg", sort_order: 1, is_active: true },
+  { id: 2, name: "TOEFL", slug: "toefl", category: "language", image_url: "/logos/TOEFL.svg", sort_order: 2, is_active: true },
+  { id: 3, name: "GRE", slug: "gre", category: "academic", image_url: "/logos/GRE.webp", sort_order: 3, is_active: true },
 ];
 
 const feeTypes: FeeType[] = [
@@ -207,6 +213,29 @@ export const categoriesMockApi = {
     console.log("[mock] updateLookup", kind, id, input);
     await delay(300);
     return patchRow(lookupTable(kind), id, input);
+  },
+
+  getTests: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Test>> => {
+    console.log("[mock] getTests", search, params);
+    await delay(300);
+    return paginate(searchByName(tests, search), params);
+  },
+  createTest: async (input: TestInput): Promise<Test> => {
+    console.log("[mock] createTest", input);
+    await delay(300);
+    const row = { ...input, id: newId() };
+    tests.push(row);
+    return row;
+  },
+  updateTest: async (id: number, input: Partial<TestInput>): Promise<Test> => {
+    console.log("[mock] updateTest", id, input);
+    await delay(300);
+    return patchRow(tests, id, input);
+  },
+  uploadTestImage: async (file: File): Promise<{ image_url: string }> => {
+    console.log("[mock] uploadTestImage", file.name);
+    await delay(300);
+    return { image_url: URL.createObjectURL(file) };
   },
 
   getFeeTypes: async (params: ListParams = {}): Promise<Paginated<FeeType>> => {

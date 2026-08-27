@@ -3,6 +3,7 @@ import type {
   SearchJob, SearchService, VisaServiceProviderDetail,
 } from "./types";
 import type { SearchFilterParams } from "./api";
+import { SEEDED_TESTS, type PlatformTest } from "@/lib/tests-catalog";
 
 function slugifyName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -523,4 +524,9 @@ export function mockGetInstitutionCourses(
     rows = rows.filter((c) => c.name.toLowerCase().includes(q));
   }
   return paginate(rows, params);
+}
+
+export function mockGetTests(): PlatformTest[] {
+  console.log("[mock] getTests");
+  return SEEDED_TESTS;
 }

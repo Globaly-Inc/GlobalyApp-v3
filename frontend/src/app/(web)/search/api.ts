@@ -3,10 +3,11 @@ import type {
   Paginated, SearchBusiness, SearchCourse, SearchScholarship,
   SearchJob, SearchService, VisaServiceProviderDetail,
 } from "./types";
+import type { PlatformTest } from "@/lib/tests-catalog";
 import {
   mockGetBusinessBySubdomain, mockGetCourseBySlug, mockGetCourseFilters, mockGetCourses, mockGetEducationAgencies,
   mockGetInstitutionBySlug, mockGetInstitutionCourses, mockGetInstitutions, mockGetMigrationAgents,
-  mockGetStudentJobs, mockGetVisaServices, mockGetVisaServiceProviderBySlug, mockGetScholarships, mockGetServices
+  mockGetStudentJobs, mockGetTests, mockGetVisaServices, mockGetVisaServiceProviderBySlug, mockGetScholarships, mockGetServices
 } from "./mock-data";
 
 const API_BASE = `${(process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "")}/api/v3`;
@@ -120,6 +121,18 @@ export async function getCourseFilters(): Promise<CourseFilterOptions> {
   if (USE_MOCK_DATA) return mockGetCourseFilters();
   const res = await fetch(`${API_BASE}/search/courses/filters`, { next: { revalidate: 60 } });
   if (!res.ok) throw new Error("Failed to load course filters");
+  return res.json();
+}
+
+/**
+ * The platform test catalogue. Short, changes rarely and is read by every course page, so it is
+ * cached for five minutes rather than fetched per render.
+ */
+export async function getTests(): Promise<PlatformTest[]> {
+  if (USE_MOCK_DATA) return mockGetTests();
+  const res = await fetch(`${API_BASE}/search/tests`, { next: { revalidate: 300 } });
+  // A missing logo is cosmetic — never fail a course page over it.
+  if (!res.ok) return [];
   return res.json();
 }
 

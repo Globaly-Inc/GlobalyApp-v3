@@ -6,6 +6,8 @@ import { PrivacyBadge } from "@/components/privacy-badge";
 import { OneToManySection } from "./section-card";
 import { ItemRow } from "./item-row";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
+import { useTests } from "./use-tests";
+import { testImage } from "@/lib/tests-catalog";
 import type { AcademicTest, LanguageTest, Qualification, WorkExperience } from "../apis/types";
 
 function formatMonthYear(value: string | null): string | null {
@@ -64,6 +66,8 @@ export function RecordSections({
   onDeleteLanguageTest: (id: string) => void;
 }>) {
   const [pendingDelete, setPendingDelete] = useState<{ label: string; onConfirm: () => void } | null>(null);
+  // The logo an admin uploaded for this test, matched on the name the person picked.
+  const tests = useTests();
 
   return (
     <>
@@ -124,6 +128,7 @@ export function RecordSections({
             <ItemRow
               key={t.id}
               title={t.test_type ?? "Test"}
+              imageUrl={testImage(t.test_type, tests)}
               subtitle={t.test_status === "completed" ? `Score: ${t.overall_score ?? "—"}` : "Awaiting results"}
               meta={formatDate(t.test_date)}
               onEdit={() => onEditAcademicTest(t)}
@@ -146,6 +151,7 @@ export function RecordSections({
             <ItemRow
               key={t.id}
               title={t.test_type ?? "Test"}
+              imageUrl={testImage(t.test_type, tests)}
               subtitle={t.test_status === "completed" ? `Score: ${t.overall_score ?? "—"}` : "Awaiting results"}
               meta={formatDate(t.test_date)}
               onEdit={() => onEditLanguageTest(t)}
