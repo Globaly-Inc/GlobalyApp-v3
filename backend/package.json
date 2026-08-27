@@ -25,6 +25,7 @@
     "test:enquiry-messages": "node --import tsx tests/enquiries/messages.ts",
     "test:scraper-cascade": "node --import tsx tests/scraper-cascade.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",
+    "test:error-status": "node --import tsx tests/error-status-passthrough.ts",
     "test:rack-chunk-budget": "node --import tsx tests/rack-chunk-budget.ts",
     "test:ai-tool-loop": "node --import tsx tests/ai-tool-loop.ts",
     "test:counselling-context": "node --import tsx tests/counselling-context.ts",

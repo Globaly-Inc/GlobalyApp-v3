@@ -43,7 +43,14 @@ export async function buildServer() {
 
   // --- Framework plugins ---
   await app.register(cors, { origin: config.CORS_ORIGINS, credentials: true });
-  await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+  // ponytail: 100/min per IP could not survive a single portal page load (a dozen endpoints, ×2 for
+  // Strict Mode, × every open tab) — and IP is the wrong key twice over: every dev tab is 127.0.0.1,
+  // and in production a whole office behind one NAT shared one bucket. Brute-force protection is not
+  // here anyway; it is the tight per-route limits in modules/auth/consts.ts, which are untouched.
+  await app.register(rateLimit, {
+    max: config.NODE_ENV === "production" ? 600 : 5000,
+    timeWindow: "1 minute",
+  });
   await app.register(multipart, { limits: { fileSize: config.GCS_MAX_FILE_SIZE_MB * 1024 * 1024 } });
   await app.register(errorHandlerPlugin);
   await app.register(requestContextPlugin);

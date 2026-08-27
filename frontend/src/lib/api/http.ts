@@ -16,26 +16,36 @@ export function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-let refreshPromise: Promise<boolean> | null = null;
+/**
+ * "rejected" = the server refused the refresh token, so the session really is over.
+ * "transient" = rate limit, 5xx or offline — the refresh token is probably still good.
+ * The old code collapsed both into `false` and cleared the tokens either way, so a single
+ * rate-limited /auth/refresh signed the user out — and the sign-in page then hit the same
+ * exhausted limit. Never destroy a session because a request could not be delivered.
+ */
+type RefreshResult = "ok" | "rejected" | "transient";
 
-export function refreshAccessToken(): Promise<boolean> {
+let refreshPromise: Promise<RefreshResult> | null = null;
+
+export function refreshAccessToken(): Promise<RefreshResult> {
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return Promise.resolve(false);
+  if (!refreshToken) return Promise.resolve("rejected");
 
   refreshPromise ??= fetch(`${BASE_URL}/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refreshToken }),
   })
-    .then(async (res) => {
-      if (!res.ok) throw new Error("refresh failed");
+    .then(async (res): Promise<RefreshResult> => {
+      if (!res.ok) return res.status === 401 || res.status === 403 ? "rejected" : "transient";
       const tokens = (await res.json()) as { access_token: string; refresh_token: string };
       saveTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
-      return true;
+      return "ok";
     })
-    .catch(() => {
-      clearTokens();
-      return false;
+    .catch((): RefreshResult => "transient")
+    .then((result) => {
+      if (result === "rejected") clearTokens();
+      return result;
     })
     .finally(() => {
       refreshPromise = null;
@@ -164,17 +174,22 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
   return switchPromise;
 }
 
+/** A refused refresh token ends the session; an undeliverable refresh must not. */
+function handleRefresh(result: RefreshResult): void {
+  if (result === "rejected") forceSignIn();
+  if (result === "transient") throw new ApiError("Couldn't reach the server. Please try again in a moment.");
+}
+
 /** Exported for raw-fetch callers — the attempt closure MUST rebuild headers via authHeaders() so a refreshed token is picked up on retry. */
 export async function withRefreshRetry(attempt: () => Promise<Response>): Promise<Response> {
   const token = getAccessToken();
   if (token && isTokenExpired(token)) {
-    if (!(await refreshAccessToken())) forceSignIn();
+    handleRefresh(await refreshAccessToken());
   }
   let res = await attempt();
 
   if (res.status === 401) {
-    const refreshed = await refreshAccessToken();
-    if (!refreshed) forceSignIn();
+    handleRefresh(await refreshAccessToken());
     res = await attempt();
     if (res.status === 401) forceSignIn();
   }

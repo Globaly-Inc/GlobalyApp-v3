@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchFullProfile } from "@/app/personal/store/profile-slice";
+import { useAppSelector } from "@/lib/hooks";
 import { FeedComposer } from "@/components/feed/components/feed-composer";
 import { FeedTimeline } from "@/components/feed/components/feed-timeline";
 import { HomeHero } from "./home-hero";
@@ -17,13 +15,9 @@ import { RegionBoundary } from "./region-boundary";
  * personal-home aggregator and the backend completion service). The profile page keeps its own progress bar.
  */
 export function HomeView() {
-  const dispatch = useAppDispatch();
+  // ponytail: no fetch here — PersonalShell, which wraps this route, already loads the profile on
+  // mount. The duplicate dispatch was always skipped by the thunk's `condition` guard anyway.
   const profile = useAppSelector((state) => state.profile.profile);
-
-  useEffect(() => {
-    if (!profile) dispatch(fetchFullProfile());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <div className="space-y-4 md:space-y-6">
