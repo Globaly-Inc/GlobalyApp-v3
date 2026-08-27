@@ -19,6 +19,8 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { config } from "../../../config.js";
 import { mailerService } from "../../../shared/mail/mailerService.js";
+import { emailLayout, enquiryDistributedEmail, enquiryInstitutionFallbackEmail } from "../../../shared/mail/templates.js";
+import { mintInstitutionClaimUrl } from "../../platform-users/services/institution-claim.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as emailQueueRepo from "../repositories/email-queue.repository.js";
 
@@ -68,28 +70,46 @@ export async function enqueue(opts: EnqueueOpts) {
   return row;
 }
 
-/** Templates render as plain-text subject/body — v1 has no HTML template engine (out of scope). */
-function renderEmail(template: string, payload: Record<string, unknown>): { subject: string; text: string } {
+/**
+ * Renders a queued row through the shared mail templates, so an enquiry notification looks
+ * like the OTP and invitation mails rather than a debug dump. Both parts come back: text-only
+ * clients and spam filters both want the plain one.
+ *
+ * Old rows are safe to render — every field the templates read is optional, so a payload
+ * queued before a field existed just renders without that line.
+ */
+function renderEmail(
+  template: string,
+  payload: Record<string, unknown>,
+): { subject: string; text: string; html: string } {
+  const str = (key: string) => (payload[key] as string | null) ?? null;
+
   switch (template) {
-    case "enquiry_distributed": {
-      const courseName = (payload.course_name as string | null) ?? null;
-      const institutionName = (payload.institution_name as string | null) ?? null;
-      const subjectLine = courseName
-        ? `New student enquiry — ${courseName}`
-        : "New student enquiry available";
-      const lines = [
-        "You have received a new student enquiry.",
-        "",
-        courseName ? `Course: ${courseName}` : null,
-        institutionName ? `Institution: ${institutionName}` : null,
-        "",
-        // CTA per Flow B step 6 — no direct-unlock link, unlock is out of scope.
-        `View Enquiries → ${config.APP_URL}/business/enquiries`,
-      ].filter((l) => l !== null);
-      return { subject: subjectLine, text: lines.join("\n") };
-    }
+    case "enquiry_distributed":
+      return enquiryDistributedEmail({
+        courseName: str("course_name"),
+        institutionName: str("institution_name"),
+        intake: str("intake"),
+        businessName: str("business_name"),
+      });
+    case "enquiry_institution_fallback":
+      return enquiryInstitutionFallbackEmail({
+        courseName: str("course_name"),
+        institutionName: str("institution_name"),
+        intake: str("intake"),
+        isClaimed: payload.is_claimed === true,
+        claimUrl: str("claim_url"),
+      });
     default:
-      return { subject: "Enquiry update", text: "You have an enquiry update." };
+      return {
+        subject: "Enquiry update",
+        text: `You have an enquiry update. View enquiries → ${config.APP_URL}/business/enquiries`,
+        html: emailLayout({
+          heading: "Enquiry update",
+          body: `<p style="margin:0">There's an update waiting on one of your enquiries.</p>`,
+          cta: { label: "View enquiries", href: `${config.APP_URL}/business/enquiries` },
+        }),
+      };
   }
 }
 
@@ -124,8 +144,8 @@ export async function sendQueuedRow(id: string): Promise<void> {
     await emailQueueRepo.markSending(trx, id);
 
     try {
-      const { subject, text } = renderEmail(row.template, row.payload ?? {});
-      await mailerService.sendMail({ to: row.recipient_email, subject, text });
+      const { subject, text, html } = renderEmail(row.template, row.payload ?? {});
+      await mailerService.sendMail({ to: row.recipient_email, subject, text, html });
       await emailQueueRepo.markSent(trx, id);
     } catch (err) {
       logger.error("Failed to send queued enquiry email", { id, error: err });
@@ -141,14 +161,18 @@ export async function sendQueuedRow(id: string): Promise<void> {
  * has no platform user, so its `userId` is null — the dedup key falls back to
  * "business" for it, keeping one row per distribution per address.
  */
-async function resolveBusinessRecipients(businessId: number): Promise<{ userId: number | null; email: string }[]> {
+async function resolveBusinessRecipients(
+  businessId: number,
+): Promise<{ recipients: { userId: number | null; email: string }[]; businessName: string | null }> {
   const members = await masterKnex("user_business_index as ubi")
     .join("platform_users as pu", "pu.id", "ubi.platform_user_id")
     .where("ubi.business_id", businessId)
     .whereNull("ubi.deleted_at")
     .select("pu.id as userId", "pu.email");
 
-  const business = await masterKnex("businesses").where({ id: businessId }).first("email");
+  // business_name comes back on the same row the shared inbox does — the mail names the
+  // business it was sent to, since one person can hold several.
+  const business = await masterKnex("businesses").where({ id: businessId }).first("email", "business_name");
 
   const recipients: { userId: number | null; email: string }[] = [...members];
   const sharedInbox = business?.email?.trim();
@@ -157,12 +181,12 @@ async function resolveBusinessRecipients(businessId: number): Promise<{ userId: 
   if (sharedInbox && !members.some((m) => m.email?.toLowerCase() === sharedInbox.toLowerCase())) {
     recipients.push({ userId: null, email: sharedInbox });
   }
-  return recipients;
+  return { recipients, businessName: business?.business_name ?? null };
 }
 
 /** Enqueues one `enquiry_distributed` row per recipient of a newly-distributed business. */
 export async function enqueueDistributionEmails(enquiryId: string, distributionId: string, businessId: number) {
-  const recipients = await resolveBusinessRecipients(businessId);
+  const { recipients, businessName } = await resolveBusinessRecipients(businessId);
 
   // Names, not raw ids — the email is read by a human.
   const enquiry = await masterKnex("enquiries as e")
@@ -171,7 +195,17 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
     // and the same one the public search page shows the student.
     .leftJoin("institutions as i", "i.id", "e.institution_id")
     .where("e.id", enquiryId)
-    .first("e.course_id", "c.name as course_name", "i.institution_name as institution_name");
+    .first(
+      "e.course_id",
+      "e.preferred_intake",
+      "e.preferred_year",
+      "c.name as course_name",
+      "i.institution_name as institution_name",
+    );
+
+  // One label rather than two payload fields: the mail prints "April 2027", and either half
+  // can be missing.
+  const intake = [enquiry?.preferred_intake, enquiry?.preferred_year].filter(Boolean).join(" ") || null;
 
   for (const r of recipients) {
     await enqueue({
@@ -181,11 +215,78 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
         course_id: enquiry?.course_id ?? null,
         course_name: enquiry?.course_name ?? null,
         institution_name: enquiry?.institution_name ?? null,
+        intake,
+        business_name: businessName,
         distribution_id: distributionId,
       },
       recipientEmail: r.email,
       recipientUserId: r.userId,
       businessId,
+      enquiryId,
+      distributionId,
+    });
+  }
+}
+
+/**
+ * The institution-fallback notice: one row per institution member, plus the institution's own
+ * contact address — the same shape as a business's recipients, read from user_institution_index
+ * instead of user_business_index.
+ *
+ * An unclaimed institution has no members at all, so the contact address is the whole audience
+ * and the mail carries a claim link. A fresh link is minted per fallback rather than reused: the
+ * token has a 72-hour life, and an enquiry can land long after the last one expired.
+ *
+ * `business_id` on the queue row stays NULL — it FKs to businesses, and this recipient is not one.
+ */
+export async function enqueueInstitutionFallbackEmail(
+  enquiryId: string,
+  distributionId: string,
+  institutionId: number,
+) {
+  const institution = await masterKnex("institutions")
+    .where({ id: institutionId })
+    .whereNull("deleted_at")
+    .first("id", "email", "institution_name", "account_status");
+  if (!institution) return;
+
+  const members = await masterKnex("user_institution_index as uii")
+    .join("platform_users as pu", "pu.id", "uii.platform_user_id")
+    .where("uii.institution_id", institutionId)
+    .whereNull("uii.deleted_at")
+    .select("pu.id as userId", "pu.email");
+
+  const recipients: { userId: number | null; email: string }[] = [...members];
+  const contact = institution.email?.trim();
+  if (contact && !members.some((m) => m.email?.toLowerCase() === contact.toLowerCase())) {
+    recipients.push({ userId: null, email: contact });
+  }
+  if (recipients.length === 0) return;
+
+  const isClaimed = Number(institution.account_status) === 1;
+  const claimUrl = isClaimed ? null : await mintInstitutionClaimUrl(institutionId);
+
+  const enquiry = await masterKnex("enquiries as e")
+    .leftJoin("superadmin.extraction_courses as c", "c.id", "e.course_id")
+    .where("e.id", enquiryId)
+    .first("e.preferred_intake", "e.preferred_year", "c.name as course_name");
+  const intake = [enquiry?.preferred_intake, enquiry?.preferred_year].filter(Boolean).join(" ") || null;
+
+  for (const r of recipients) {
+    await enqueue({
+      dedupKey: `enquiry_institution_fallback:${distributionId}:${r.userId ?? "institution"}`,
+      template: "enquiry_institution_fallback",
+      payload: {
+        course_name: enquiry?.course_name ?? null,
+        institution_name: institution.institution_name ?? null,
+        intake,
+        is_claimed: isClaimed,
+        claim_url: claimUrl,
+        distribution_id: distributionId,
+      },
+      recipientEmail: r.email,
+      recipientUserId: r.userId,
+      businessId: null,
       enquiryId,
       distributionId,
     });

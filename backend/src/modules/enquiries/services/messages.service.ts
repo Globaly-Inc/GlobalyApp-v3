@@ -15,6 +15,8 @@ import { BadRequestError, ConflictError, NotFoundError } from "../../../shared/e
 import * as storage from "../../../shared/storage/storageService.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
 import * as media from "./message-media.service.js";
+import { markInConversation } from "./tenant-sync.service.js";
+import { recipientOf, sameRecipient, type Recipient } from "../shared/recipient.js";
 
 export type SenderRole = "student" | "business";
 
@@ -86,7 +88,10 @@ function groupReactions(rows: messagesRepo.ReactionRow[], viewerUserId: number):
 
 type ThreadContext = {
   distribution_id: string;
-  business_id: number;
+  // Exactly one is set — a distribution belongs to a business or, via the fallback, to an
+  // institution. Use `recipientOf(ctx)` rather than reading either directly.
+  business_id: number | null;
+  institution_id: number | null;
   status: string;
   unlocked_at: Date | null;
   enquiry_id: string;
@@ -110,9 +115,9 @@ async function assertStudentParticipant(distributionId: string, userId: number):
   return ctx;
 }
 
-async function assertBusinessParticipant(distributionId: string, businessId: number): Promise<ThreadContext> {
+async function assertBusinessParticipant(distributionId: string, recipient: Recipient): Promise<ThreadContext> {
   const ctx = await loadThread(distributionId);
-  if (ctx.business_id !== businessId) throw new NotFoundError("Conversation not found");
+  if (!sameRecipient(recipientOf(ctx), recipient)) throw new NotFoundError("Conversation not found");
   return ctx;
 }
 
@@ -134,9 +139,9 @@ const asStudent =
     assertStudentParticipant(distributionId, userId);
 
 const asBusiness =
-  (businessId: number): Guard =>
+  (recipient: Recipient): Guard =>
   (distributionId) =>
-    assertBusinessParticipant(distributionId, businessId);
+    assertBusinessParticipant(distributionId, recipient);
 
 /** A message in a thread the caller belongs to. Used by star/pin/react. */
 async function loadMessageThread(messageId: number, guard: Guard): Promise<ThreadContext> {
@@ -233,6 +238,9 @@ async function appendMessage(
     attachments,
     reply_to_id: replyToId,
   });
+  // Every message writes through here — student or business, top-level or reply — so
+  // this is the one place that can keep the business's own row on 'in_conversation'.
+  await markInConversation(recipientOf(ctx), ctx.enquiry_id);
   return toDto(
     row,
     senderUserId,
@@ -549,22 +557,22 @@ export async function sendAsStudent(
 
 export async function listForBusiness(
   distributionId: string,
-  businessId: number,
+  recipient: Recipient,
   viewerUserId: number,
 ): Promise<EnquiryMessageDto[]> {
-  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  const ctx = await assertBusinessParticipant(distributionId, recipient);
   assertUnlocked(ctx, "business");
   return readThread(ctx, viewerUserId);
 }
 
 export async function sendAsBusiness(
   distributionId: string,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
   body: string,
   attachmentPaths: string[] = [],
 ): Promise<EnquiryMessageDto> {
-  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  const ctx = await assertBusinessParticipant(distributionId, recipient);
   assertUnlocked(ctx, "business");
   assertWritable(ctx);
   return appendMessage(ctx, userId, body, attachmentPaths);
@@ -591,10 +599,10 @@ export interface BusinessThreadSummaryDto {
  * has no thread, so it never appears — the list IS the set of conversations that exist.
  */
 export async function listThreadsForBusiness(
-  businessId: number,
+  recipient: Recipient,
   viewerUserId: number,
 ): Promise<BusinessThreadSummaryDto[]> {
-  const rows = await messagesRepo.listThreadsForBusiness(businessId, viewerUserId);
+  const rows = await messagesRepo.listThreadsForBusiness(recipient, viewerUserId);
   return Promise.all(
     rows.map(async (r) => ({
       distribution_id: r.distribution_id,
@@ -617,20 +625,20 @@ export async function listThreadsForBusiness(
 
 export async function markReadAsBusiness(
   distributionId: string,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<void> {
-  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  const ctx = await assertBusinessParticipant(distributionId, recipient);
   assertUnlocked(ctx, "business");
   await messagesRepo.markThreadRead(distributionId, userId);
 }
 
 export async function toggleFavoriteAsBusiness(
   distributionId: string,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<boolean> {
-  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  const ctx = await assertBusinessParticipant(distributionId, recipient);
   assertUnlocked(ctx, "business");
   return messagesRepo.toggleFavorite(distributionId, userId);
 }
@@ -643,10 +651,10 @@ export interface BusinessStarredMessageDto extends EnquiryMessageDto {
 
 /** Every message this agent starred, across the business's threads, newest star first. */
 export async function listStarredForBusiness(
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<BusinessStarredMessageDto[]> {
-  const rows = await messagesRepo.listStarredForBusiness(businessId, userId);
+  const rows = await messagesRepo.listStarredForBusiness(recipient, userId);
   return Promise.all(
     rows.map(async (r) => ({
       // student_id comes from the row, not from the viewer: on this side the viewer is a
@@ -669,64 +677,64 @@ export async function listStarredForBusiness(
 
 export async function editAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
   body: string,
 ): Promise<EnquiryMessageDto> {
-  return editMessage(messageId, userId, body, asBusiness(businessId));
+  return editMessage(messageId, userId, body, asBusiness(recipient));
 }
 
 export async function deleteAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<void> {
-  await loadOwnMessage(messageId, userId, asBusiness(businessId));
+  await loadOwnMessage(messageId, userId, asBusiness(recipient));
   await messagesRepo.softDelete(messageId);
 }
 
 export async function listRepliesForBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<EnquiryMessageDto[]> {
-  return listReplies(messageId, userId, asBusiness(businessId), "business");
+  return listReplies(messageId, userId, asBusiness(recipient), "business");
 }
 
 export async function sendReplyAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
   body: string,
   attachmentPaths: string[] = [],
 ): Promise<EnquiryMessageDto> {
-  return sendReply(messageId, userId, body, attachmentPaths, asBusiness(businessId), "business");
+  return sendReply(messageId, userId, body, attachmentPaths, asBusiness(recipient), "business");
 }
 
 export async function toggleReactionAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
   emoji: string,
 ): Promise<boolean> {
-  assertWritable(await loadMessageThread(messageId, asBusiness(businessId)));
+  assertWritable(await loadMessageThread(messageId, asBusiness(recipient)));
   return messagesRepo.toggleReaction(messageId, userId, emoji);
 }
 
 export async function togglePinAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<boolean> {
-  assertWritable(await loadMessageThread(messageId, asBusiness(businessId)));
+  assertWritable(await loadMessageThread(messageId, asBusiness(recipient)));
   return messagesRepo.togglePin(messageId, userId);
 }
 
 export async function toggleStarAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<boolean> {
-  await loadMessageThread(messageId, asBusiness(businessId));
+  await loadMessageThread(messageId, asBusiness(recipient));
   return messagesRepo.toggleStar(messageId, userId);
 }

@@ -9,6 +9,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { recipientFilter, type Recipient } from "../shared/recipient.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("enquiry-distributions");
@@ -185,8 +186,12 @@ export async function findById(id: string) {
  * business can act on another's row (a foreign id simply returns undefined, which
  * callers surface as 404 rather than 403 — no existence leak).
  */
-export async function findForBusinessForUpdate(trx: Knex.Transaction, id: string, businessId: number) {
-  return trx(T).where({ id, business_id: businessId }).whereNull("deleted_at").forUpdate().first();
+export async function findForRecipientForUpdate(trx: Knex.Transaction, id: string, recipient: Recipient) {
+  return trx(T)
+    .where({ id, ...recipientFilter(recipient) })
+    .whereNull("deleted_at")
+    .forUpdate()
+    .first();
 }
 
 export async function markUnlocked(

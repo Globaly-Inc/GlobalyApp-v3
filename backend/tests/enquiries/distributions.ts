@@ -23,6 +23,10 @@ import { runMatching } from "../../src/modules/enquiries/services/matching.servi
 import * as service from "../../src/modules/enquiries/services/distributions.service.js";
 import * as creditsService from "../../src/modules/enquiries/services/credits.service.js";
 
+/** The services now address a recipient (business or institution) rather than a bare id. */
+const asBiz = (id: number) => ({ kind: "business" as const, id });
+
+
 let passed = 0;
 let failed = 0;
 
@@ -225,8 +229,7 @@ async function main() {
     const biz = s.businesses[0]!;
     try {
       const before = creditsService.getBalance();
-      const result: any = await service.unlock(
-        biz.id,
+      const result: any = await service.unlock(asBiz(biz.id),
         (await distributionFor(s.enquiry.id, biz.id)).id,
         s.studentId,
       );
@@ -244,7 +247,14 @@ async function main() {
       eq(row.unlocked_by, s.studentId, "unlocked_by recorded");
       eq(Number(row.coin_cost), creditsService.UNLOCK_COST, "coin_cost persisted");
 
-      eq(await tenantStatus(biz.id, biz.schemaUuid, s.enquiry.id), "unlocked", "tenant row status");
+      // Not 'unlocked': the unlock seeds the thread's greeting, and a thread with a
+      // message in it is a conversation. The central row above stays on 'unlocked' —
+      // that one tracks the platform's side, this one the business's workflow.
+      eq(
+        await tenantStatus(biz.id, biz.schemaUuid, s.enquiry.id),
+        "in_conversation",
+        "tenant row status after the greeting",
+      );
     } finally {
       await s.cleanup();
     }
@@ -255,10 +265,10 @@ async function main() {
     const biz = s.businesses[0]!;
     try {
       const distId = (await distributionFor(s.enquiry.id, biz.id)).id;
-      await service.unlock(biz.id, distId, s.studentId);
+      await service.unlock(asBiz(biz.id), distId, s.studentId);
       const afterFirst = creditsService.getBalance();
 
-      const second: any = await service.unlock(biz.id, distId, s.studentId);
+      const second: any = await service.unlock(asBiz(biz.id), distId, s.studentId);
       eq(second.already_unlocked, true, "flagged as already unlocked");
       eq(second.student_email != null, true, "contact still returned");
       eq(creditsService.getBalance(), afterFirst, "balance unchanged on repeat");
@@ -278,13 +288,13 @@ async function main() {
       eq(s.businesses.length, 4, "four businesses received it");
 
       for (const biz of s.businesses.slice(0, 3)) {
-        await service.unlock(biz.id, (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId);
+        await service.unlock(asBiz(biz.id), (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId);
       }
 
       const fourth = s.businesses[3]!;
       const balanceBefore = creditsService.getBalance();
       await rejectsWith(
-        async () => service.unlock(fourth.id, (await distributionFor(s.enquiry.id, fourth.id)).id, s.studentId),
+        async () => service.unlock(asBiz(fourth.id), (await distributionFor(s.enquiry.id, fourth.id)).id, s.studentId),
         "ConflictError",
         "4th unlock",
       );
@@ -304,7 +314,7 @@ async function main() {
       creditsService.resetForTests(creditsService.UNLOCK_COST - 1);
 
       const err: any = await rejectsWith(
-        async () => service.unlock(biz.id, (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId),
+        async () => service.unlock(asBiz(biz.id), (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId),
         "PaymentRequiredError",
         "unlock with no credits",
       );
@@ -324,9 +334,9 @@ async function main() {
       const aDist = (await distributionFor(s.enquiry.id, a.id)).id;
       const balanceBefore = creditsService.getBalance();
 
-      await rejectsWith(() => service.unlock(b.id, aDist, s.studentId), "NotFoundError", "cross-business unlock");
+      await rejectsWith(() => service.unlock(asBiz(b.id), aDist, s.studentId), "NotFoundError", "cross-business unlock");
       await rejectsWith(
-        () => service.close(b.id, aDist, "not mine", s.studentId),
+        () => service.close(asBiz(b.id), aDist, "not mine", s.studentId),
         "NotFoundError",
         "cross-business close",
       );
@@ -350,7 +360,7 @@ async function main() {
       eq(locked!.student_email, null, "no contact while locked");
       eq(locked!.student_name, null, "no name while locked");
 
-      await service.unlock(biz.id, (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId);
+      await service.unlock(asBiz(biz.id), (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId);
 
       const [unlocked] = await listFor(biz.id, biz.schemaUuid);
       eq(unlocked!.is_unlocked, true, "now unlocked");
@@ -368,8 +378,7 @@ async function main() {
     const s = await scenario(1);
     const biz = s.businesses[0]!;
     try {
-      const result: any = await service.close(
-        biz.id,
+      const result: any = await service.close(asBiz(biz.id),
         (await distributionFor(s.enquiry.id, biz.id)).id,
         "Student is outside the regions we service.",
         s.studentId,
@@ -395,8 +404,8 @@ async function main() {
     const s = await scenario(2);
     const [a, b] = s.businesses as [{ id: number }, { id: number }];
     try {
-      await service.close(a.id, (await distributionFor(s.enquiry.id, a.id)).id, "Out of our catchment area.", s.studentId);
-      await service.close(b.id, (await distributionFor(s.enquiry.id, b.id)).id, "No capacity for this intake.", s.studentId);
+      await service.close(asBiz(a.id), (await distributionFor(s.enquiry.id, a.id)).id, "Out of our catchment area.", s.studentId);
+      await service.close(asBiz(b.id), (await distributionFor(s.enquiry.id, b.id)).id, "No capacity for this intake.", s.studentId);
 
       eq((await distributionFor(s.enquiry.id, a.id)).close_reason, "Out of our catchment area.", "A's reason");
       eq((await distributionFor(s.enquiry.id, b.id)).close_reason, "No capacity for this intake.", "B's reason");
@@ -410,15 +419,15 @@ async function main() {
     const biz = s.businesses[0]!;
     try {
       const distId = (await distributionFor(s.enquiry.id, biz.id)).id;
-      await service.close(biz.id, distId, "Not a fit for us.", s.studentId);
+      await service.close(asBiz(biz.id), distId, "Not a fit for us.", s.studentId);
 
       eq((await distributionFor(s.enquiry.id, biz.id)).unlocked_at, null, "closed without ever unlocking");
 
       const balanceBefore = creditsService.getBalance();
-      await rejectsWith(() => service.unlock(biz.id, distId, s.studentId), "ConflictError", "unlock after close");
+      await rejectsWith(() => service.unlock(asBiz(biz.id), distId, s.studentId), "ConflictError", "unlock after close");
       eq(creditsService.getBalance(), balanceBefore, "no charge for unlocking a closed row");
 
-      await rejectsWith(() => service.close(biz.id, distId, "again", s.studentId), "ConflictError", "double close");
+      await rejectsWith(() => service.close(asBiz(biz.id), distId, "again", s.studentId), "ConflictError", "double close");
     } finally {
       await s.cleanup();
     }
@@ -441,7 +450,7 @@ async function main() {
       eq(Number((await db("business_enquiries").count("id as c").first())!.c), 1, "tenant row still there");
 
       eq((await listFor(biz.id, biz.schemaUuid)).length, 0, "orphan is skipped, not rendered");
-      await rejectsWith(() => service.unlock(biz.id, distId, s.studentId), "NotFoundError", "unlock the orphan");
+      await rejectsWith(() => service.unlock(asBiz(biz.id), distId, s.studentId), "NotFoundError", "unlock the orphan");
     } finally {
       await s.cleanup();
     }
@@ -452,7 +461,7 @@ async function main() {
     const biz = s.businesses[0]!;
     try {
       const distId = (await distributionFor(s.enquiry.id, biz.id)).id;
-      await rejectsWith(() => service.close(biz.id, distId, "   ", s.studentId), "BadRequestError", "whitespace reason");
+      await rejectsWith(() => service.close(asBiz(biz.id), distId, "   ", s.studentId), "BadRequestError", "whitespace reason");
       eq((await distributionFor(s.enquiry.id, biz.id)).status, "distributed", "row untouched");
     } finally {
       await s.cleanup();

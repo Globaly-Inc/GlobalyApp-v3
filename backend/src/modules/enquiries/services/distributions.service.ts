@@ -13,7 +13,8 @@ import { logEnquiryAudit } from "../shared/audit.js";
 import * as distributionsRepo from "../repositories/distributions.repository.js";
 import * as creditsService from "./credits.service.js";
 import * as messagesService from "./messages.service.js";
-import { syncStatusToTenant } from "./tenant-sync.service.js";
+import { markInConversation, syncStatusToTenant } from "./tenant-sync.service.js";
+import type { Recipient } from "../shared/recipient.js";
 
 export async function listForBusiness(
   db: Knex,
@@ -43,13 +44,13 @@ export function getCreditBalance() {
  * makes concurrent unlocks safe. The old system counted without a lock and could
  * exceed max_accepts (PRD §5, "known gaps").
  */
-export async function unlock(businessId: number, distributionId: string, userId: number) {
+export async function unlock(recipient: Recipient, distributionId: string, userId: number) {
   const cost = creditsService.UNLOCK_COST;
   let charged = false;
 
   try {
     const result = await masterKnex.transaction(async (trx) => {
-      const distribution = await distributionsRepo.findForBusinessForUpdate(trx, distributionId, businessId);
+      const distribution = await distributionsRepo.findForRecipientForUpdate(trx, distributionId, recipient);
       // Also covers the cross-business case: another business's id won't match.
       if (!distribution) throw new NotFoundError("Enquiry not found");
 
@@ -95,7 +96,7 @@ export async function unlock(businessId: number, distributionId: string, userId:
         details: {
           old_status: distribution.status,
           new_status: "unlocked",
-          business_id: businessId,
+          recipient,
           coin_cost: cost,
         },
       });
@@ -106,7 +107,12 @@ export async function unlock(businessId: number, distributionId: string, userId:
     // After commit: the tenant write is a different connection and cannot join the
     // transaction, so it must never run before the central row is durable.
     if (!result.alreadyUnlocked) {
-      await syncStatusToTenant(businessId, result.distribution.enquiry_id, "unlocked");
+      await syncStatusToTenant(recipient, result.distribution.enquiry_id, "unlocked");
+      // The unlock seeded the thread's first message (seedOnUnlock above), so the
+      // business's row is already past 'unlocked' by the time it can look at it. Written
+      // as two steps rather than one so the tenant row is still correct if the greeting
+      // ever stops being part of unlocking.
+      await markInConversation(recipient, result.distribution.enquiry_id);
     }
 
     const contact = await distributionsRepo.findStudentContact(result.distribution.enquiry_id);
@@ -135,7 +141,7 @@ export async function unlock(businessId: number, distributionId: string, userId:
  * legitimate action.
  */
 export async function close(
-  businessId: number,
+  recipient: Recipient,
   distributionId: string,
   closeReason: string,
   userId: number,
@@ -144,7 +150,7 @@ export async function close(
   if (!reason) throw new BadRequestError("A close reason is required");
 
   const result = await masterKnex.transaction(async (trx) => {
-    const distribution = await distributionsRepo.findForBusinessForUpdate(trx, distributionId, businessId);
+    const distribution = await distributionsRepo.findForRecipientForUpdate(trx, distributionId, recipient);
     if (!distribution) throw new NotFoundError("Enquiry not found");
     if (distribution.status === "closed") throw new ConflictError("This enquiry is already closed");
 
@@ -157,7 +163,7 @@ export async function close(
       details: {
         old_status: distribution.status,
         new_status: "closed",
-        business_id: businessId,
+        recipient,
         close_reason: reason,
       },
     });
@@ -165,7 +171,7 @@ export async function close(
     return updated;
   });
 
-  await syncStatusToTenant(businessId, result.enquiry_id, "closed");
+  await syncStatusToTenant(recipient, result.enquiry_id, "closed");
 
   return {
     distribution_id: distributionId,

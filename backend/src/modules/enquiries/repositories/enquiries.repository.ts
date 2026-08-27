@@ -174,7 +174,12 @@ export async function countForStudent(studentId: number, opts: { status?: string
  */
 export async function listUnlockedBusinessesForEnquiry(enquiryId: string) {
   return masterKnex("enquiry_distributions as d")
-    .join("businesses as b", "b.id", "d.business_id")
+    // LEFT joins to both recipient tables, not an inner join to businesses: a fallback
+    // distribution has no business, and an inner join silently dropped it — leaving the
+    // student with an empty "who has my details" list while an institution was already
+    // messaging them.
+    .leftJoin("businesses as b", "b.id", "d.business_id")
+    .leftJoin("institutions as i", "i.id", "d.institution_id")
     .where("d.enquiry_id", enquiryId)
     .whereNotNull("d.unlocked_at")
     .whereNull("d.deleted_at")
@@ -182,10 +187,13 @@ export async function listUnlockedBusinessesForEnquiry(enquiryId: string) {
     .select(
       // The thread is addressed by distribution, so the client needs this to open chat.
       "d.id as distribution_id",
-      "b.id as business_id",
-      "b.business_name",
-      "b.logo_url",
-      "b.city",
+      // One id field for two id spaces, which is why the kind travels with it. The student
+      // UI only labels and links by distribution, so nothing joins back on this.
+      masterKnex.raw("coalesce(b.id, i.id) as business_id"),
+      masterKnex.raw("case when d.institution_id is null then 'business' else 'institution' end as recipient_kind"),
+      masterKnex.raw("coalesce(b.business_name, i.institution_name) as business_name"),
+      masterKnex.raw("coalesce(b.logo_url, i.logo_url) as logo_url"),
+      masterKnex.raw("coalesce(b.city, i.city) as city"),
       "d.unlocked_at",
       "d.status",
     );

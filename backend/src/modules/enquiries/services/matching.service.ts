@@ -38,7 +38,7 @@ import { logEnquiryAudit } from "../shared/audit.js";
 import * as distributionsRepo from "../repositories/distributions.repository.js";
 import * as representationsRepo from "../repositories/representations.repository.js";
 import * as emailQueueService from "./email-queue.service.js";
-import { syncDistributionToTenant } from "./tenant-sync.service.js";
+import { syncDistributionToTenant, syncInstitutionDistributionToTenant } from "./tenant-sync.service.js";
 
 export const MAX_DISTRIBUTIONS = Number(process.env.ENQUIRY_MAX_DISTRIBUTIONS) || 6;
 
@@ -275,6 +275,19 @@ async function matchAndCommit(enquiry: any, excludeBusinessIds: number[]): Promi
     maxDistributions: MAX_DISTRIBUTIONS,
   });
 
+  // Two last-resort paths, and the order between them is the whole policy.
+  //
+  // The institution that owns the course goes first. The other one — findInstitutionFallback —
+  // routes to the agent flagged `is_institution_contact`, which it earns by being an
+  // institution's SOLE representer, and it matches on job_id alone: any active representation
+  // for any course at that institution makes it eligible for every other course there. That is
+  // a wider net than "represents this course", so an agent was taking leads for courses it does
+  // not represent while the institution itself heard nothing.
+  //
+  // It stays as the next step down, for a job promoted to a business rather than an institution
+  // — there is no institution to fall back to in that case.
+  if (selected.length === 0 && (await commitInstitutionFallback(enquiry, studentCountryCode))) return;
+
   if (selected.length === 0 && enquiry.extraction_job_id) {
     const fallback = await findInstitutionFallback(enquiry.extraction_job_id);
     if (fallback != null && !excluded.has(fallback.business_id)) {
@@ -295,6 +308,79 @@ async function matchAndCommit(enquiry: any, excludeBusinessIds: number[]): Promi
   }
 
   await commitDistributions(enquiry, selected, studentCountryCode);
+}
+
+/**
+ * Sends the enquiry to `enquiries.institution_id` — the institution the course was extracted
+ * from — as a single distribution with no business behind it.
+ *
+ * Returns false when there is nothing to fall back to (the course's job was promoted to a
+ * business rather than an institution, so institution_id is NULL, or the row is gone). The caller
+ * then marks no_match exactly as before.
+ *
+ * Tier 4: an institution is not a ranked, verified, nearby representative — it is the bottom of
+ * the ladder by definition, and the tier is what the admin screen reads to explain a match.
+ *
+ * An unclaimed institution is still a valid recipient. It gets the mail with a claim CTA, and the
+ * distribution waits for it — which is why this does not gate on account_status.
+ */
+async function commitInstitutionFallback(enquiry: any, studentCountryCode: string | null): Promise<boolean> {
+  const institutionId: number | null = enquiry.institution_id ?? null;
+  if (institutionId == null) return false;
+
+  const institution = await masterKnex("institutions")
+    .where({ id: institutionId })
+    .whereNull("deleted_at")
+    .first("id");
+  if (!institution) return false;
+
+  // No ON CONFLICT: matching only ever runs on a 'pending' enquiry and flips the status in this
+  // same transaction, so a second run cannot reach the insert. The partial unique index on
+  // (enquiry_id, institution_id) is what would catch it if that guard were ever bypassed.
+  const row = await masterKnex.transaction(async (trx: Knex.Transaction) => {
+    const [inserted] = await trx("enquiry_distributions")
+      .insert({
+        enquiry_id: enquiry.id,
+        business_id: null,
+        institution_id: institutionId,
+        representation_id: null,
+        tier: 4,
+        match_rank: 1,
+        match_distance_km: null,
+        status: "distributed",
+      })
+      .returning("*");
+
+    await trx("enquiries")
+      .where({ id: enquiry.id })
+      .update({
+        status: "distributed",
+        ...(studentCountryCode !== null ? { student_country_code: studentCountryCode } : {}),
+        distribution_count: 1,
+        last_distributed_at: trx.fn.now(),
+        updated_at: trx.fn.now(),
+      });
+
+    await logEnquiryAudit(enquiry.student_id, "enquiry.distributed", {
+      entityType: "enquiry",
+      entityId: enquiry.id,
+      trx,
+      details: {
+        institution_id: institutionId,
+        institution_fallback: true,
+        old_status: "pending",
+        new_status: "distributed",
+      },
+    });
+
+    return inserted;
+  });
+
+  // Both fire-and-forget, per PRD §17 — never blocking distribution.
+  await syncInstitutionDistributionToTenant(institutionId, enquiry.id, row.id).catch(() => {});
+  await emailQueueService.enqueueInstitutionFallbackEmail(enquiry.id, row.id, institutionId).catch(() => {});
+
+  return true;
 }
 
 async function markNoMatch(enquiryId: string, studentId: number, studentCountryCode: string | null) {
