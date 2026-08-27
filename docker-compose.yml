@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: globalyapp-postgres
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     ports:
       - "5432:5432"
     environment:
@@ -85,6 +85,37 @@ services:
       - /globalyapp/backend/node_modules
     networks:
       - globalyapp
+
+  migrator:
+    container_name: globalyapp-migrator
+    image: globalyapp-backend:local
+    profiles: ["migrator"]
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+    tty: true
+    stdin_open: true
+    command: >
+      /bin/bash -c "
+        echo '🔁 Bootstrapping schema/extension and running Knex migrations...' &&
+        PGPASSWORD=\"\$${DB_PASSWORD}\" psql -h \"\$${DB_HOST}\" -p \"\$${DB_PORT}\" -U \"\$${DB_USERNAME}\" -d \"\$${DB_NAME}\" -v ON_ERROR_STOP=1 -c \"CREATE SCHEMA IF NOT EXISTS superadmin AUTHORIZATION globalyapp;\" -c \"CREATE EXTENSION IF NOT EXISTS vector;\" &&
+        npm run migrate:globalyapp &&
+        npm run migrate:superadmin &&
+        read -p '❓ Do you want to seed the database? (y/N): ' seed_choice &&
+        if [ \"\$${seed_choice}\" = \"y\" ] || [ \"\$${seed_choice}\" = \"Y\" ]; then
+          npm run seed:globalyapp &&
+          npm run seed:superadmin &&
+          echo '✅ Database seeded successfully.';
+        fi &&
+        echo '✅ Database setup completed successfully.'
+      "
 
   auth-worker:
     container_name: globalyapp-auth-worker

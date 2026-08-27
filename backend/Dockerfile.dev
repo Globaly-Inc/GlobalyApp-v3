@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y nginx \
         software-properties-common \
         zip \
         cron \
-        gpg
+        gpg \
+        postgresql-client
 
 COPY package.json package-lock.json ./
 RUN npm ci
