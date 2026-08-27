@@ -17,7 +17,7 @@ env:
   GREEN_COLOR_MESSAGE: "\e[32m"
   YELLOW_COLOR_MESSAGE: "\e[33m"
   RESET_COLOR_MESSAGE: "\e[0m"
-  SERVICE_NAME: "scrapling"
+  SERVICE_NAME: "scrapling-mcp"
 
 concurrency:
   group: build-push-scrapling-${{ github.ref }}
@@ -148,7 +148,7 @@ jobs:
            cd repo
 
            echo "Updating image tag in $VALUES_FILE_PATH..."
-           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/scrapling-mcp.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/third-party-services/scrapling-mcp.yml"
 
            echo "updating globalyapp-images..."
            echo "Committing as: ${GIT_AUTHOR_NAME} <${GIT_AUTHOR_EMAIL}>"
