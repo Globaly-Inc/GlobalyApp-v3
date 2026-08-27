@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Sparkles, ChevronDown, User as UserIcon, ShieldCheck, LogOut } from "lucide-react";
+import { Menu, X, Sparkles, ChevronDown, User as UserIcon, ShieldCheck, LogOut, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { ensureBusinessContext } from "@/lib/api/http";
+import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
@@ -115,11 +117,31 @@ export function Navbar() {
                     <UserIcon /> My Profile
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  {/* Keyed on `type`, the only field getMe actually populates. Every platform user can enter
-                      the Personal Portal — its shell gates on authentication, not on a category. */}
-                  {user.type === "platform_user" && (
-                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/portal")}>
-                      <UserIcon /> Personal Portal
+                  {/* Every signed-in user gets the Personal Portal, with no type gate: its shell gates on
+                      authentication, not on a category, and an admin is still a person with a profile. This
+                      used to require type === "platform_user", which hid it from admins entirely. */}
+                  <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/portal")}>
+                    <UserIcon /> Personal Portal
+                  </DropdownMenuItem>
+                  {/* Business Portal appears whenever the user is a member of at least one business.
+                      getMe() returns `businesses` (auth.service.ts getMe -> listUserBusinesses), so the
+                      membership is already in hand — the previous comment here claimed `type` was the only
+                      populated field, which was stale, and the entry was missing altogether.
+
+                      Entering needs an ORG-SCOPED token, not just a route change: ensureBusinessContext()
+                      reads the memberships, picks the user's selected org (or the lowest id), and calls
+                      /auth/switch-account. Navigating without it lands on a 403. */}
+                  {(user.businesses?.length ?? 0) > 0 && (
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onClick={async () => {
+                        if (await ensureBusinessContext()) router.push("/business/portal");
+                        else toast.error("Could not open the Business Portal", {
+                          description: "Your business membership could not be confirmed. Please sign in again.",
+                        });
+                      }}
+                    >
+                      <Building2 /> Business Portal
                     </DropdownMenuItem>
                   )}
                   {user.type === "admin" && (
@@ -192,18 +214,45 @@ export function Navbar() {
                       // The drawer replaces the dropdown below lg, so it offers the same destinations rather
                       // than a single "Dashboard" whose target was never well defined.
                       <>
+                        {/* One button per destination the user actually has, not an either/or. This was
+                            `admin ? "Super Admin" : "Personal Portal"`, which gave an admin no way to reach
+                            their own Personal Portal and offered nobody the Business Portal. */}
                         <Button
                           className="btn-gold h-10"
                           nativeButton={false}
-                          render={
-                            <Link
-                              href={user.type === "admin" ? "/admin/overview" : "/personal/portal"}
-                              onClick={() => setMobileOpen(false)}
-                            />
-                          }
+                          render={<Link href="/personal/portal" onClick={() => setMobileOpen(false)} />}
                         >
-                          {user.type === "admin" ? "Super Admin" : "Personal Portal"}
+                          Personal Portal
                         </Button>
+                        {(user.businesses?.length ?? 0) > 0 && (
+                          <Button
+                            variant="outline"
+                            className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                            onClick={async () => {
+                              // Same org-scoped-token requirement as the dropdown: switch first, then navigate.
+                              if (await ensureBusinessContext()) {
+                                setMobileOpen(false);
+                                router.push("/business/portal");
+                              } else {
+                                toast.error("Could not open the Business Portal", {
+                                  description: "Your business membership could not be confirmed. Please sign in again.",
+                                });
+                              }
+                            }}
+                          >
+                            Business Portal
+                          </Button>
+                        )}
+                        {user.type === "admin" && (
+                          <Button
+                            variant="outline"
+                            className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                            nativeButton={false}
+                            render={<Link href="/admin/overview" onClick={() => setMobileOpen(false)} />}
+                          >
+                            Super Admin
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
