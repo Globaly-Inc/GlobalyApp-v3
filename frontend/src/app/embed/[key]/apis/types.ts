@@ -1,6 +1,6 @@
 /** Wire types for the public embed widget API. */
 
-import type { CourseCard } from "@/app/personal/ai/apis/types";
+import type { CourseCard } from "@/app/ai/apis/types";
 
 /** Public branding subset of an embed config — all the widget ever sees. */
 export type EmbedPublicConfig = {

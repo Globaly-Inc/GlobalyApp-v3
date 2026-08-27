@@ -1,4 +1,4 @@
-import type { AttachmentUpload, ChatSession, CourseCard, CreditBalance, Message, SendMessageInput, SSEEvent } from "./types";
+import type { AttachmentUpload, ChatSession, CourseCard, CreditBalance, GuestSSEEvent, Message, SendMessageInput, SSEEvent } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -160,6 +160,22 @@ export const aiMockApi = {
     console.log("[mock] GET /ai/credits/balance");
     await delay(200);
     return { free: 7, subscription: 0, purchased: 0, total: 7 };
+  },
+
+  sendGuestMessage: async (
+    content: string,
+    _fingerprint: string,
+    onEvent: (event: GuestSSEEvent) => void,
+    _signal?: AbortSignal,
+  ): Promise<void> => {
+    console.log("[mock] POST /ai-chat/guest/messages", { content });
+    onEvent({ type: "guest-meta", replies_remaining: 0, fingerprint_hash: "mock-hash" });
+    await delay(300);
+    const words = "As a guest you can ask one question. Sign up for personalised advice and saved history!".split(" ");
+    for (const word of words) {
+      onEvent({ type: "delta", text: word + " " });
+      await delay(50);
+    }
   },
 
   sendMessage: async (

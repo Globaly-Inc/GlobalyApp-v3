@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { ChatInput } from "@/app/personal/ai/components/chat-input";
-import { ChatMessage, StreamingMessage } from "@/app/personal/ai/components/chat-message";
-import { ThinkingIndicator } from "@/app/personal/ai/components/thinking-indicator";
+import { ChatInput } from "@/app/ai/components/chat-input";
+import { ChatMessage, StreamingMessage } from "@/app/ai/components/chat-message";
+import { ThinkingIndicator } from "@/app/ai/components/thinking-indicator";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { CourseCard, Message } from "@/app/personal/ai/apis/types";
+import type { CourseCard, Message } from "@/app/ai/apis/types";
 import { embedApi, type EmbedPublicConfig } from "../apis";
 import { uuid } from "@/lib/utils";
 

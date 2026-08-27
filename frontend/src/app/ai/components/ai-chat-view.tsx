@@ -1,16 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
   fetchSessions,
-  fetchMessages,
   sendMessage,
+  sendGuestMessage,
   setActiveSession,
   addOptimisticUserMessage,
+  GUEST_SESSION_ID,
 } from "../store/ai-chat-slice";
 import { ChatSidebar } from "./chat-sidebar";
 import { ChatMessages } from "./chat-messages";
@@ -19,30 +22,47 @@ import { SuggestedStarters } from "./suggested-starters";
 import { CreditBanner } from "./credit-banner";
 import { ProfileCompletionBanner } from "./profile-completion-banner";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
+import { useAuthState } from "@/app/auth/store/auth-slice";
+import { LoginPromptModal } from "./login-prompt-modal";
 
-export function AiChatView({ initialQuery }: Readonly<{ initialQuery?: string }> = {}) {
+export function AiChatView({ initialQuery, redirectIfAuthenticated = false }: Readonly<{ initialQuery?: string; redirectIfAuthenticated?: boolean }> = {}) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const activeSessionId = useAppSelector((s) => s.aiChat.activeSessionId);
   const messages = useAppSelector((s) => (activeSessionId ? s.aiChat.messages[activeSessionId] ?? [] : []));
   const sendStatus = useAppSelector((s) => s.aiChat.sendStatus);
   const error = useAppSelector((s) => s.aiChat.error);
-  // PersonalShell already fetches this — the hero just greets with whatever's in the store.
   const profile = useAppSelector((s) => s.profile.profile);
+  const { user, initializing } = useAuthState();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Prefills from the landing page's Ask AI bar (/ai?q=...) — fills the box, doesn't auto-send.
+  const [loginPromptDismissed, setLoginPromptDismissed] = useState(false);
   const [draft, setDraft] = useState(initialQuery ?? "");
 
-  // Guard against double-fetch in React Strict Mode
+  const guestFingerprint = useRef<string | null>(null);
+
+  // Logged-in users on the public /ai page belong in the personal portal.
+  useEffect(() => {
+    if (redirectIfAuthenticated && !initializing && user) router.replace("/personal/ai");
+  }, [redirectIfAuthenticated, initializing, user, router]);
+
+  // Guard against double-fetch in React Strict Mode; skip for guests (no auth → 401).
   const fetchedRef = useRef(false);
   useEffect(() => {
+    if (initializing || !user) return;
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     dispatch(fetchSessions());
-  }, [dispatch]);
+  }, [dispatch, user, initializing]);
 
   const handleSend = useCallback(
     (content: string, files?: File[]) => {
-      if (activeSessionId) {
+      if (!user) {
+        guestFingerprint.current ??= crypto.randomUUID();
+        dispatch(sendGuestMessage({ content, fingerprint: guestFingerprint.current }));
+        setDraft("");
+        return;
+      }
+      if (activeSessionId && activeSessionId !== GUEST_SESSION_ID) {
         dispatch(addOptimisticUserMessage({
           sessionId: activeSessionId,
           content,
@@ -52,7 +72,7 @@ export function AiChatView({ initialQuery }: Readonly<{ initialQuery?: string }>
       dispatch(sendMessage({ sessionId: activeSessionId, content, files }));
       setDraft("");
     },
-    [dispatch, activeSessionId],
+    [dispatch, activeSessionId, user],
   );
 
   const handleNewChat = useCallback(() => {
@@ -60,57 +80,57 @@ export function AiChatView({ initialQuery }: Readonly<{ initialQuery?: string }>
     setSidebarOpen(false);
   }, [dispatch]);
 
-  // Suggestions (starters and follow-up chips) fill the box instead of sending straight away, so
-  // the user can tweak the wording before committing to it.
   const handleSuggestion = useCallback((text: string) => setDraft(text), []);
 
   const isChatting = messages.length > 0 || sendStatus === "loading";
 
+  const hasCompletedAiResponse =
+    sendStatus === "idle" && messages.some((m) => m.role === "assistant");
+  // ponytail: guestBlocked is the single gate — disables input + drives modal visibility
+  const guestBlocked = !initializing && !user && hasCompletedAiResponse;
+  const showLoginPrompt = guestBlocked && !loginPromptDismissed;
+
   const sidebar = <ChatSidebar onNewChat={handleNewChat} />;
 
-  // Same composer in both slots — only its chrome differs (docked to the bottom vs floating in the hero).
   const composer = (bare: boolean) => (
     <ChatInput
       value={draft}
       onChange={setDraft}
       onSend={handleSend}
-      disabled={sendStatus === "loading"}
+      disabled={sendStatus === "loading" || guestBlocked}
       allowAttachments
       bare={bare}
     />
   );
 
   return (
-    // Full-bleed under the shell header (PersonalShell drops its content column for this route),
-    // so the only chrome left to subtract is that 4rem header plus, on mobile, the fixed bottom
-    // nav. dvh so collapsing mobile browser chrome doesn't reintroduce a gap.
-    <div className="flex h-[calc(100dvh-8rem)] overflow-hidden bg-background md:h-[calc(100dvh-4rem)]">
-      {/* Desktop sidebar */}
-      <div className="hidden w-64 shrink-0 bg-muted/40 md:block">{sidebar}</div>
+    <div className={cn("flex h-[calc(100dvh-4rem)] overflow-hidden bg-background")}>
+      {/* Sidebar — hidden only once we know for certain the visitor is a guest */}
+      {(user || initializing) && <div className="hidden w-64 shrink-0 bg-muted/40 md:block">{sidebar}</div>}
 
       {/* Chat area */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile header with sheet trigger */}
+        {/* Mobile header — hamburger only for authenticated (or still-loading) users */}
         <div className="flex items-center gap-2 border-b p-2 md:hidden">
-          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            <SheetTrigger>
-              <Button variant="ghost" size="icon-sm" render={<span />}>
-                <Menu />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0">
-              <SheetTitle className="sr-only">Chat history</SheetTitle>
-              {sidebar}
-            </SheetContent>
-          </Sheet>
+          {(user || initializing) && (
+            <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+              <SheetTrigger>
+                <Button variant="ghost" size="icon-sm" render={<span />}>
+                  <Menu />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 p-0">
+                <SheetTitle className="sr-only">Chat history</SheetTitle>
+                {sidebar}
+              </SheetContent>
+            </Sheet>
+          )}
           <span className="text-sm font-medium">AI Counsellor</span>
         </div>
 
         <CreditBanner />
         <ProfileCompletionBanner />
 
-        {/* Messages, or the empty-state hero. The composer only docks to the bottom once a
-            conversation exists — before that it sits inside the hero, under the greeting. */}
         {isChatting ? (
           <ChatMessages onChipClick={handleSuggestion} />
         ) : (
@@ -122,7 +142,15 @@ export function AiChatView({ initialQuery }: Readonly<{ initialQuery?: string }>
         )}
 
         <CompareTray />
-        {/* A failed send used to be invisible — the page just sat there. Surface it. */}
+        {guestBlocked && loginPromptDismissed && (
+          <button
+            type="button"
+            className="w-full border-t bg-primary/5 px-4 py-2 text-center text-sm text-primary hover:bg-primary/10"
+            onClick={() => setLoginPromptDismissed(false)}
+          >
+            Sign in or create a free account to continue chatting →
+          </button>
+        )}
         {error && sendStatus === "failed" && (
           <p className="border-t bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
             {error}
@@ -130,6 +158,11 @@ export function AiChatView({ initialQuery }: Readonly<{ initialQuery?: string }>
         )}
         {isChatting && composer(false)}
       </div>
+
+      <LoginPromptModal
+        open={showLoginPrompt}
+        onOpenChange={(open) => { if (!open) setLoginPromptDismissed(true); }}
+      />
     </div>
   );
 }

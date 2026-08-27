@@ -4,6 +4,9 @@ import { stripStructuredBlocks } from "../utils";
 import type { ChatSession, CourseCard, CreditBalance, Message, ResponseBlock, SSEEvent } from "../apis/types";
 import type { AppDispatch } from "@/lib/store";
 
+/** Fake session id used to store guest messages in the messages map. */
+export const GUEST_SESSION_ID = -1;
+
 /* ── thunks ── */
 
 export const fetchSessions = createAsyncThunk("aiChat/fetchSessions", () => aiApi.listSessions());
@@ -100,6 +103,41 @@ export const sendMessage = createAsyncThunk<
 export const fetchCreditBalance = createAsyncThunk("aiChat/fetchCreditBalance", () =>
   aiApi.getCreditBalance(),
 );
+
+/** One-shot guest chat — no session persisted, replies blocked after first response. */
+export const sendGuestMessage = createAsyncThunk<
+  void,
+  { content: string; fingerprint: string },
+  { dispatch: AppDispatch }
+>("aiChat/sendGuestMessage", async ({ content, fingerprint }, { dispatch, signal }) => {
+  // Activate the fake guest session so messages render in ChatMessages
+  dispatch(setActiveSession(GUEST_SESSION_ID));
+  dispatch(addOptimisticUserMessage({ sessionId: GUEST_SESSION_ID, content }));
+
+  await aiApi.sendGuestMessage(content, fingerprint, (event) => {
+    switch (event.type) {
+      case "guest-meta":
+        break; // hash not stored — guest sessions are ephemeral
+      case "trace":
+        dispatch(addTrace(event.step));
+        break;
+      case "delta":
+        dispatch(appendDelta(event.text));
+        break;
+      case "cards":
+        dispatch(setCards(event.cards));
+        break;
+      case "chips":
+        dispatch(setChips(event.chips));
+        break;
+      case "blocks":
+        dispatch(setBlocks(event.blocks));
+        break;
+      case "error":
+        throw new Error(event.error);
+    }
+  }, signal);
+});
 
 /* ── state ── */
 
@@ -317,6 +355,49 @@ const aiChatSlice = createSlice({
       })
       .addCase(fetchCreditBalance.rejected, (state) => {
         state.creditsStatus = "failed";
+      })
+
+      // sendGuestMessage
+      .addCase(sendGuestMessage.pending, (state) => {
+        state.sendStatus = "loading";
+        state.streamingContent = "";
+        state.streamingCards = [];
+        state.streamingChips = [];
+        state.streamingBlocks = [];
+        state.traceSteps = [];
+        state.error = null;
+      })
+      .addCase(sendGuestMessage.fulfilled, (state) => {
+        state.sendStatus = "idle";
+        if (state.streamingContent) {
+          const msg: Message = {
+            id: -Date.now(),
+            session_id: GUEST_SESSION_ID,
+            role: "assistant",
+            content: stripStructuredBlocks(state.streamingContent),
+            cards: state.streamingCards,
+            chips: state.streamingChips,
+            blocks: state.streamingBlocks,
+            feedback: null,
+            created_at: new Date().toISOString(),
+          };
+          if (!state.messages[GUEST_SESSION_ID]) state.messages[GUEST_SESSION_ID] = [];
+          state.messages[GUEST_SESSION_ID].push(msg);
+        }
+        state.streamingContent = "";
+        state.streamingCards = [];
+        state.streamingChips = [];
+        state.streamingBlocks = [];
+        state.traceSteps = [];
+      })
+      .addCase(sendGuestMessage.rejected, (state, action) => {
+        state.sendStatus = "failed";
+        state.error = action.error.message ?? "Failed to send message.";
+        state.streamingContent = "";
+        state.streamingCards = [];
+        state.streamingChips = [];
+        state.streamingBlocks = [];
+        state.traceSteps = [];
       })
 
       // setFeedback

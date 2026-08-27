@@ -1,4 +1,4 @@
-import { AiChatView } from "./components/ai-chat-view";
+import { AiChatView } from "@/app/ai/components/ai-chat-view";
 
 export default async function AiCounsellorPage({
   searchParams,
