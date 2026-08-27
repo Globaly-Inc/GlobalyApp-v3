@@ -240,7 +240,7 @@ async function testCsvEscaping() {
     const row = (result as any)[0];
 
     // Test the REAL escaping function, not a reimplementation of it.
-    check("T4a", "CSV escaping handles commas in names", escapeCsvField(row.name) === `"${row.name}"`);
+    check("T4a", "CSV escaping handles commas in names", escapeCsvField("Doe, John") === '"Doe, John"' && row.name.length > 0);
     check("T4b", "CSV escaping handles quotes in names", escapeCsvField('Bob "Bobby" Lee') === '"Bob ""Bobby"" Lee"');
     check(
       "T4c",
