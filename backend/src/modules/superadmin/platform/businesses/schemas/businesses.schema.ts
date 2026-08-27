@@ -26,6 +26,31 @@ export const InstitutionMemberStatusSchema = z.object({
   account_status: z.number().int(),
 });
 
+export const InstitutionPartnerParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  partnerId: z.string().uuid(),
+});
+
+// "Link consultancy" from the institution's own page: pick a business, the rest of the
+// row (originator/target pair) is filled in server-side — see business-representations.service.ts.
+export const InstitutionPartnerInputSchema = z.object({
+  business_id: z.number().int().positive(),
+  country_ids: z.array(z.number().int().positive()).default([]),
+  valid_from: z.string().nullable().optional(),
+  valid_until: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+export const InstitutionPartnerPatchSchema = z.object({
+  country_ids: z.array(z.number().int().positive()).optional(),
+  valid_from: z.string().nullable().optional(),
+  valid_until: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+export type InstitutionPartnerInput = z.infer<typeof InstitutionPartnerInputSchema>;
+export type InstitutionPartnerPatch = z.infer<typeof InstitutionPartnerPatchSchema>;
+
 export const MemberInviteSchema = z.object({
   first_name: z.string().min(1).max(100),
   last_name: z.string().min(1).max(100),
@@ -47,11 +72,18 @@ export const MemberListQuerySchema = PaginationSchema.extend({
   search: z.string().optional(),
 });
 
+export const BusinessSortOptions = ["name_asc", "name_desc", "created_desc", "created_asc"] as const;
+
 export const ListQuerySchema = PaginationSchema.extend({
   search: z.string().optional(),
   status: z.string().optional(),
   category: z.coerce.number().int().positive().optional(),
   category_slug: z.string().optional(),
+  // Independent of category: forces which table(s) to query without also filtering by a
+  // specific business category (e.g. a consultancy picker that wants ALL businesses, no
+  // category restriction, and never institutions).
+  kind: z.enum(["business", "institution"]).optional(),
+  sort: z.enum(BusinessSortOptions).default("name_asc"),
 });
 
 export const StatusPatchSchema = z.object({
@@ -113,7 +145,6 @@ export const BusinessPatchSchema = z.object({
 export const BusinessCreateSchema = z.object({
   business_name: z.string().min(1),
   business_category_id: z.number().int().positive(),
-  subdomain: z.string().min(1),
   description: z.string().nullable().optional(),
   email: z.string().email(),
   first_name: z.string().min(1).max(100).nullable().optional(),
@@ -135,6 +166,25 @@ export const BusinessCreateSchema = z.object({
   twitter_url: z.string().nullable().optional(),
 });
 
+// ── Institution role management ──
+
+export const InstitutionRoleParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  roleId: z.coerce.number().int().positive(),
+});
+
+export const RoleCreateSchema = z.object({
+  display_name: z.string().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
+  permission_ids: z.array(z.number().int()).default([]),
+});
+
+export const RolePatchSchema = z.object({
+  display_name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+  permission_ids: z.array(z.number().int()).optional(),
+}).strict();
+
 export type BusinessCreateInput = z.infer<typeof BusinessCreateSchema>;
 export type BusinessPatchInput = z.infer<typeof BusinessPatchSchema>;
 export type EnquirySettingsPatchInput = z.infer<typeof EnquirySettingsPatchSchema>;
@@ -143,3 +193,5 @@ export type BulkClaimRequestInput = z.infer<typeof BulkClaimRequestSchema>;
 export type MemberInviteInput = z.infer<typeof MemberInviteSchema>;
 export type MemberPatchInput = z.infer<typeof MemberPatchSchema>;
 export type InstitutionPatchInput = z.infer<typeof InstitutionPatchSchema>;
+export type RoleCreateInput = z.infer<typeof RoleCreateSchema>;
+export type RolePatchInput = z.infer<typeof RolePatchSchema>;

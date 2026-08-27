@@ -97,6 +97,8 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
 
   const location = [business.address, business.city, business.state, business.country_name].filter(Boolean).join(", ");
   const canVerify = !(business.status === "unverified" && business.is_unclaimed);
+  // The owner has claimed this business — superadmin can view its details but not edit them.
+  const readOnly = !business.is_unclaimed;
 
   const handleSave = async (patch: BusinessPatch) => {
     setSaving(true);
@@ -162,7 +164,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
               <XCircle className="mr-1.5 h-3.5 w-3.5" /> Suspend
             </Button>
           )}
-          {/* {business.is_published ? (
+          {business.is_published ? (
             <Button className="h-10" variant="outline" disabled={publishBusy} onClick={runTogglePublish}>
               <EyeOff className="mr-1.5 h-3.5 w-3.5" /> Unpublish
             </Button>
@@ -170,11 +172,17 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
             <Button className="h-10" disabled={publishBusy || business.status !== "verified"} onClick={runTogglePublish}>
               <Globe className="mr-1.5 h-3.5 w-3.5" /> Publish
             </Button>
-          )} */}
+          )}
         </div>
       </div>
 
-      <BusinessHeaderCard business={business} location={location} onSave={handleSave} onEdit={() => setHeaderOpen(true)} />
+      <BusinessHeaderCard
+        business={business}
+        location={location}
+        onSave={handleSave}
+        onEdit={() => setHeaderOpen(true)}
+        readOnly={readOnly}
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-1">
@@ -194,9 +202,11 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
 
               <div className="mt-4 flex items-start justify-between gap-2">
                 <p className="text-xs text-muted-foreground">Description</p>
-                <Button variant="ghost" size="icon-sm" onClick={() => setOverviewOpen(true)} aria-label="Edit description">
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
+                {!readOnly && (
+                  <Button variant="ghost" size="icon-sm" onClick={() => setOverviewOpen(true)} aria-label="Edit description">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
               {business.description ? (
                 <>
@@ -250,11 +260,13 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
           <AdminSegmentedTabs options={TABS} value={tab} onChange={setTab} />
           <Card>
             <CardContent>
-              {tab === "branches" && <BranchesTab businessId={business.id} />}
-              {tab === "partners" && <PartnersTab businessId={business.id} businessName={business.business_name} />}
-              {tab === "members" && <MembersTab businessId={business.id} />}
-              {tab === "contacts" && <ContactsTab businessId={business.id} />}
-              {tab === "services" && <ServicesTab businessId={business.id} />}
+              {tab === "branches" && <BranchesTab businessId={business.id} readOnly={readOnly} />}
+              {tab === "partners" && (
+                <PartnersTab businessId={business.id} businessName={business.business_name} readOnly={readOnly} />
+              )}
+              {tab === "members" && <MembersTab businessId={business.id} readOnly={readOnly} />}
+              {tab === "contacts" && <ContactsTab businessId={business.id} readOnly={readOnly} />}
+              {tab === "services" && <ServicesTab businessId={business.id} readOnly={readOnly} />}
               {tab === "activity" && <ActivityTab businessId={business.id} />}
             </CardContent>
           </Card>

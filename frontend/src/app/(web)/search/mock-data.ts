@@ -1,14 +1,27 @@
 import type {
   BusinessDetail, CourseDetail, CourseFilterOptions, InstitutionDetail, Paginated, SearchBusiness, SearchCourse, SearchScholarship,
-  SearchJob, SearchService,
+  SearchJob, SearchService, VisaServiceProviderDetail,
 } from "./types";
 import type { SearchFilterParams } from "./api";
+import { SEEDED_TESTS, type PlatformTest } from "@/lib/tests-catalog";
 
 function slugifyName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-const MOCK_COURSE_SEEDS: Omit<SearchCourse, "slug">[] = [
+// Card-only fields default to "nothing extracted" so a seed only spells them out when it wants
+// to exercise the flag / location chips / per-installment price.
+type CourseCardFields = "country_code" | "institution_logo_url" | "campus_locations"
+  | "domestic_fee_installment" | "international_fee_installment";
+
+const COURSE_CARD_DEFAULTS: Pick<SearchCourse, CourseCardFields> = {
+  country_code: null, institution_logo_url: null, campus_locations: [],
+  domestic_fee_installment: null, international_fee_installment: null,
+};
+
+type CourseSeed = Omit<SearchCourse, "slug" | CourseCardFields> & Partial<Pick<SearchCourse, CourseCardFields>>;
+
+const MOCK_COURSE_SEEDS: CourseSeed[] = [
   {
     id: "c1", name: "Bachelor of Business Administration", short_name: null, degree_level: "bachelor",
     subject_area: "Business & Management", duration_weeks: 156, study_mode: "full_time",
@@ -16,6 +29,9 @@ const MOCK_COURSE_SEEDS: Omit<SearchCourse, "slug">[] = [
     domestic_fee_total: "28500", domestic_currency: "AUD", international_fee_total: null, international_currency: null,
     awarding_institution: "Sydney Metropolitan University", image_url: null, country_name: "Australia",
     next_intake_year: 2026, next_intake_month: 2,
+    country_code: "AU", institution_logo_url: null,
+    campus_locations: ["Sydney", "Parramatta", "Newcastle"],
+    domestic_fee_installment: "9500", international_fee_installment: null,
   },
   {
     id: "c2", name: "Master of Information Technology", short_name: null, degree_level: "master",
@@ -182,7 +198,9 @@ const MOCK_COURSE_SEEDS: Omit<SearchCourse, "slug">[] = [
   },
 ];
 
-const MOCK_COURSES: SearchCourse[] = MOCK_COURSE_SEEDS.map((c) => ({ ...c, slug: `${slugifyName(c.name)}-${c.id}` }));
+const MOCK_COURSES: SearchCourse[] = MOCK_COURSE_SEEDS.map((c) => ({
+  ...COURSE_CARD_DEFAULTS, ...c, slug: `${slugifyName(c.name)}-${c.id}`,
+}));
 
 // Detail-only fixtures (intakes/eligibility/English tests) for the first two
 // courses — enough to exercise every section of the course detail page.
@@ -201,22 +219,26 @@ const MOCK_COURSE_ELIGIBILITY: Record<string, CourseDetail["eligibility"]> = {
     {
       id: "e1", applicable_to: "domestic", min_degree_level: "diploma", min_score_percent: "65",
       min_score_grade: null, description: "Completion of a relevant diploma or equivalent work experience.",
+      academic_tests: [], language_tests: [],
     },
     {
       id: "e2", applicable_to: "international", min_degree_level: "diploma", min_score_percent: "70",
       min_score_grade: null, description: "Completion of a relevant diploma; international qualifications assessed individually.",
+      academic_tests: [], language_tests: [{ test_type_name: "IELTS Academic", overall_score: "6.5" }],
     },
   ],
 };
 
+const NO_BAND_SCORES = { listening_score: null, reading_score: null, writing_score: null, speaking_score: null };
+
 const MOCK_COURSE_ENGLISH_REQUIREMENTS: Record<string, CourseDetail["englishRequirements"]> = {
   c1: [
-    { id: "en1", test_type_name: "IELTS", overall_score: "6.5" },
-    { id: "en2", test_type_name: "TOEFL", overall_score: "79" },
-    { id: "en3", test_type_name: "PTE", overall_score: "58" },
+    { id: "en1", test_type_name: "IELTS", overall_score: "6.5", listening_score: "6.0", reading_score: "6.0", writing_score: "6.0", speaking_score: "6.0" },
+    { id: "en2", test_type_name: "TOEFL", overall_score: "79", ...NO_BAND_SCORES },
+    { id: "en3", test_type_name: "PTE", overall_score: "58", ...NO_BAND_SCORES },
   ],
   c2: [
-    { id: "en4", test_type_name: "IELTS", overall_score: "6.5" },
+    { id: "en4", test_type_name: "IELTS", overall_score: "6.5", ...NO_BAND_SCORES },
   ],
 };
 
@@ -442,6 +464,8 @@ export function mockGetCourseBySlug(slug: string): CourseDetail | null {
     intakes: MOCK_COURSE_INTAKES[course.id] ?? [],
     eligibility: MOCK_COURSE_ELIGIBILITY[course.id] ?? [],
     englishRequirements: MOCK_COURSE_ENGLISH_REQUIREMENTS[course.id] ?? [],
+    institution: null, campuses: [], weather: null,
+    domestic_fee_installments: null, international_fee_installments: null, city_link: null,
   };
 }
 
@@ -450,8 +474,23 @@ export function mockGetInstitutionBySlug(slug: string): InstitutionDetail | null
   const institution = MOCK_BUSINESSES.institutions.find((b) => b.slug === slug);
   if (!institution) return null;
   return {
-    ...institution, phone: null, address: null,
+    ...institution, cover_url: null, phone: null, address: null, state: null, postcode: null,
+    registration_number: null, registration_licenses: null,
     facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
+    company_size: null, created_at: null, video_urls: null,
+    campuses: [], members: [], subject_areas: [], degree_levels: [],
+  };
+}
+
+export function mockGetVisaServiceProviderBySlug(slug: string): VisaServiceProviderDetail | null {
+  console.log("[mock] getVisaServiceProviderBySlug", slug);
+  const provider = MOCK_BUSINESSES["visa-services"].find((b) => b.slug === slug);
+  if (!provider) return null;
+  return {
+    id: String(provider.id), slug: provider.slug!, business_name: provider.business_name,
+    logo_url: provider.logo_url, description: provider.description, address: null,
+    city: provider.city, state: null, country_name: provider.country_name,
+    website: provider.website, email: provider.email, phone: null, source_url: null, services: [],
   };
 }
 
@@ -462,7 +501,9 @@ export function mockGetBusinessBySubdomain(subdomain: string): BusinessDetail | 
     const business = MOCK_BUSINESSES[category].find((b) => b.subdomain === subdomain);
     if (business) {
       return {
-        ...business, cover_url: null, phone: null, address: null, category_name: category,
+        ...business, cover_url: null, phone: null, address: null, state: null, postcode: null,
+        latitude: null, longitude: null, business_registration_number: null, registration_licenses: null,
+        category_name: category,
         facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
         branches: [], members: [], services: [], representations: [],
       };
@@ -483,4 +524,9 @@ export function mockGetInstitutionCourses(
     rows = rows.filter((c) => c.name.toLowerCase().includes(q));
   }
   return paginate(rows, params);
+}
+
+export function mockGetTests(): PlatformTest[] {
+  console.log("[mock] getTests");
+  return SEEDED_TESTS;
 }

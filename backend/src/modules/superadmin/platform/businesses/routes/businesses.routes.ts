@@ -9,8 +9,9 @@ import * as service from "../services/businesses.service.js";
 import {
   ActivityListQuerySchema, BulkClaimRequestSchema, BusinessCreateSchema, BusinessPatchSchema, EnquirySettingsPatchSchema,
   IdParamSchema, InstitutionInvitationParamsSchema, InstitutionMemberParamsSchema, InstitutionMemberStatusSchema,
-  InstitutionPatchSchema, ListQuerySchema, MemberInviteSchema, MemberListQuerySchema, MemberParamsSchema, MemberPatchSchema,
-  PublishedPatchSchema, StatusPatchSchema,
+  InstitutionPartnerInputSchema, InstitutionPartnerParamsSchema, InstitutionPartnerPatchSchema,
+  InstitutionPatchSchema, InstitutionRoleParamsSchema, ListQuerySchema, MemberInviteSchema, MemberListQuerySchema,
+  MemberParamsSchema, MemberPatchSchema, PublishedPatchSchema, RoleCreateSchema, RolePatchSchema, StatusPatchSchema,
 } from "../schemas/businesses.schema.js";
 
 export async function adminBusinessRoutes(app: FastifyInstance) {
@@ -39,12 +40,18 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   });
 
   // GET /businesses — supports filtering by numeric category id (main list's category
-  // dropdown) or by category_slug (e.g. partner-pairing lookups that only know a slug).
+  // dropdown), by category_slug (e.g. partner-pairing lookups that only know a slug), or by
+  // `kind` (a consultancy/partner picker that wants one table, no category restriction).
   app.get("/businesses", async (req, reply) => {
-    const { search, status, category, category_slug, ...pagination } = ListQuerySchema.parse(req.query);
+    const { search, status, category, category_slug, sort, kind, ...pagination } = ListQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug);
+    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug, kind, sort);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.get("/listings/:id/kind", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    return reply.send(await service.resolveListingKind(id));
   });
 
   // GET /businesses/:id
@@ -154,6 +161,51 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
+  // GET /institutions/:id/branches — extraction_campuses filed under the institution's source_job_id.
+  app.get("/institutions/:id/branches", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listInstitutionBranches(id, { search, limit, offset });
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  // GET /institutions/:id/partners — manually-linked consultancies (business_representations)
+  // merged with extraction_agents filed under the institution's source_job_id, tagged by `source`.
+  app.get("/institutions/:id/partners", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listInstitutionPartners(id, { search, limit, offset });
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  // POST /institutions/:id/partners — "Link consultancy": institution picks a business to link.
+  app.post("/institutions/:id/partners", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const data = InstitutionPartnerInputSchema.parse(req.body);
+    const partner = await service.createInstitutionPartner(id, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_PARTNER_ADDED", "institution", undefined, {
+      institution_id: id, business_id: data.business_id,
+    });
+    return reply.status(201).send(partner);
+  });
+
+  app.patch("/institutions/:id/partners/:partnerId", async (req, reply) => {
+    const { id, partnerId } = InstitutionPartnerParamsSchema.parse(req.params);
+    const data = InstitutionPartnerPatchSchema.parse(req.body);
+    const partner = await service.updateInstitutionPartner(id, partnerId, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_PARTNER_UPDATED", "institution", undefined, { institution_id: id, partner_id: partnerId });
+    return reply.send(partner);
+  });
+
+  app.delete("/institutions/:id/partners/:partnerId", async (req, reply) => {
+    const { id, partnerId } = InstitutionPartnerParamsSchema.parse(req.params);
+    await service.deleteInstitutionPartner(id, partnerId);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_PARTNER_REMOVED", "institution", undefined, { institution_id: id });
+    return reply.status(204).send();
+  });
+
   // POST /institutions/:id/invite — admin invites a member; they land in the tenant `members`
   // table once they accept (institutions' twin of POST /businesses/:id/members).
   app.post("/institutions/:id/invite", async (req, reply) => {
@@ -193,6 +245,41 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     const { account_status } = InstitutionMemberStatusSchema.parse(req.body);
     await service.setInstitutionMemberStatus(id, platformUserId, account_status);
     await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_MEMBER_STATUS_UPDATED", "institution", undefined, { institution_id: id, platform_user_id: platformUserId, account_status });
+    return reply.status(204).send();
+  });
+
+  // ── Institution roles management ──
+
+  app.get("/institutions/:id/roles", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    return reply.send(await service.listInstitutionRoles(id));
+  });
+
+  app.get("/institutions/:id/roles/permissions", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    return reply.send(await service.listInstitutionPermissions(id));
+  });
+
+  app.post("/institutions/:id/roles", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const input = RoleCreateSchema.parse(req.body);
+    const role = await service.createInstitutionRole(id, input);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_ROLE_CREATED", "institution", undefined, { institution_id: id, name: role.name });
+    return reply.status(201).send(role);
+  });
+
+  app.patch("/institutions/:id/roles/:roleId", async (req, reply) => {
+    const { id, roleId } = InstitutionRoleParamsSchema.parse(req.params);
+    const patch = RolePatchSchema.parse(req.body);
+    const role = await service.updateInstitutionRole(id, roleId, patch);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_ROLE_UPDATED", "institution", undefined, { institution_id: id, role_id: roleId });
+    return reply.send(role);
+  });
+
+  app.delete("/institutions/:id/roles/:roleId", async (req, reply) => {
+    const { id, roleId } = InstitutionRoleParamsSchema.parse(req.params);
+    await service.deleteInstitutionRole(id, roleId);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_ROLE_DELETED", "institution", undefined, { institution_id: id, role_id: roleId });
     return reply.status(204).send();
   });
 

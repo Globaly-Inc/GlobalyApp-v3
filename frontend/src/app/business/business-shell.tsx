@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, Coins, GraduationCap, LogOut, Loader2, Sparkles, User } from "lucide-react";
+import { Bell, ChevronDown, Coins, Loader2, Sparkles } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -14,14 +14,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { ensureBusinessContext } from "@/lib/api/http";
+import { ensureBusinessContext, refreshAccessToken } from "@/lib/api/http";
 import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
 import { authApi } from "@/app/auth/apis";
-import type { AuthMeBusiness, AuthMeInstitution } from "@/app/auth/apis";
-import { logout } from "@/app/auth/store/auth-slice";
+import type { AuthMeInstitution } from "@/app/auth/apis";
+import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
-import { BUSINESS_NAV_GROUPS } from "./const";
-import { BusinessSwitcher } from "./components/business-switcher";
+import { BUSINESS_NAV_GROUPS, INSTITUTION_SCHOLARSHIPS_ITEM, withBusinessId } from "./const";
+import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
 
@@ -33,9 +33,10 @@ const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
  * header and does its own bottom-nav math. Mirrors PersonalShell's list.
  */
 const FULL_BLEED_ROUTES = ["/business/messages"] as const;
-// Institution accounts act as businesses throughout this shell — they never have any
-// `businesses[]` rows, so their institutions stand in wherever a business list is needed.
-function institutionsAsBusinesses(institutions: AuthMeInstitution[]): AuthMeBusiness[] {
+// Institution accounts act as businesses throughout this shell — their records are adapted
+// to the SwitcherOrg shape so the switcher can render them uniformly, with kind="institution"
+// to distinguish them visually and drive the nav-group filter.
+function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
   return institutions.map((inst) => ({
     id: inst.id,
     org_id: inst.org_id,
@@ -45,24 +46,22 @@ function institutionsAsBusinesses(institutions: AuthMeInstitution[]): AuthMeBusi
     owner_id: 0,
     role: inst.role,
     is_owner: inst.is_owner,
+    kind: "institution" as const,
   }));
 }
 
-// Branches, Partners, and Scholarships have no institution-side data — only Business Profile,
-// Team (institutions' own `members` table), and Services (their extracted courses) apply.
-const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Team", "Services"]);
+const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Representative", "Team", "Services"]);
 // Enquiries and Messages are the only other items backed by real pages, and both call
 // requireBusinessContext routes — offering them to an institution just produced a 403
 // ("This endpoint requires a business context"). Everything else in the sidebar is a
 // ComingSoon placeholder that makes no requests, so it stays.
 const INSTITUTION_HIDDEN_ITEMS = new Set(["Enquiries", "Messages"]);
-const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => ({
-  ...group,
-  items: group.items.filter((item) =>
-    group.label === "Business" ? INSTITUTION_BUSINESS_ITEMS.has(item.label) : !INSTITUTION_HIDDEN_ITEMS.has(item.label),
-  ),
-  // Messages is a single-item group, so filtering its item empties the group.
-})).filter((group) => group.items.length > 0);
+const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => {
+  if (group.label !== "Business") {
+    return { ...group, items: group.items.filter((item) => !INSTITUTION_HIDDEN_ITEMS.has(item.label)) };
+  }
+  return { ...group, items: [...group.items.filter((item) => INSTITUTION_BUSINESS_ITEMS.has(item.label)), INSTITUTION_SCHOLARSHIPS_ITEM] };
+}).filter((group) => group.items.length > 0);
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
@@ -70,6 +69,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const isFullBleed = FULL_BLEED_ROUTES.some((route) => pathname?.startsWith(route)) ?? false;
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
+  const { user } = useAuthState();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
 
   // Tenant-scoped endpoints 403 without an `orgId` claim, and login never issues
@@ -77,8 +77,8 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   // freely — and hold them back until it resolves, or their mount-time fetch
   // races the switch and 403s.
   const [contextReady, setContextReady] = useState(false);
-  const [businesses, setBusinesses] = useState<AuthMeBusiness[]>([]);
-  const [isInstitution, setIsInstitution] = useState(false);
+  const [businesses, setBusinesses] = useState<SwitcherOrg[]>([]);
+  const [institutionOrgIds, setInstitutionOrgIds] = useState<Set<string>>(new Set());
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
   // that has since moved on (e.g. after a back/forward navigation) — `status`/`profile` in that cached
@@ -91,20 +91,22 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     let active = true;
     ensureBusinessContext()
       .catch(() => false)
-      .then(() => (active ? authApi.listMyBusinesses().catch(() => []) : []))
-      .then(async (list) => {
-        if (!active || list.length > 0) return list;
-        const institutions = await authApi.listMyInstitutions().catch(() => []);
-        if (institutions.length > 0) setIsInstitution(true);
-        return institutionsAsBusinesses(institutions);
-      })
-      .then((list) => {
+      .then(async () => {
         if (!active) return;
-        setBusinesses(list);
-        setActiveOrgId(getSelectedOrgId() ?? [...list].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
-        // A zero-business user has nothing for /businesses/me to return — fetching
-        // it would just 403. onboarding-view.tsx handles the empty case itself.
-        if (list.length > 0) dispatch(fetchMyProfile());
+        const [bizList, instList] = await Promise.all([
+          authApi.listMyBusinesses().catch(() => []),
+          authApi.listMyInstitutions().catch(() => []),
+        ]);
+        const bizOrgs: SwitcherOrg[] = bizList.map((b) => ({ ...b, kind: "business" as const }));
+        const instOrgs = institutionsAsOrgs(instList);
+        const merged = [...bizOrgs, ...instOrgs];
+        if (!active) return;
+        setBusinesses(merged);
+        setInstitutionOrgIds(new Set(instOrgs.map((o) => o.org_id)));
+        setActiveOrgId(getSelectedOrgId() ?? [...merged].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
+        // A zero-org user has nothing for /businesses/me or /institutions/me to return.
+        // onboarding-view.tsx handles the empty case itself.
+        if (merged.length > 0) dispatch(fetchMyProfile());
       })
       .finally(() => {
         if (active) setContextReady(true);
@@ -185,7 +187,10 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     );
   }
 
+  const isInstitution = institutionOrgIds.has(activeOrgId ?? "");
   const initial = profile?.business_name?.[0]?.toUpperCase() ?? "B";
+  const activeBusinessId = businesses.find((b) => b.org_id === activeOrgId)?.id ?? null;
+  const navGroups = withBusinessId(isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS, activeBusinessId);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -234,25 +239,45 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <button className="mr-3 sm:mr-4 md:mr-6 flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted cursor-pointer" type="button" />
+                <button
+                  className="mr-3 sm:mr-4 md:mr-6 flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                  type="button"
+                  aria-label="Account menu"
+                />
               }
             >
-              <Avatar className="size-8">
+              <Avatar className="size-7">
                 {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
                 <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/business/profile")}>
-                <User /> My Profile
-              </DropdownMenuItem>
+            <DropdownMenuContent align="end" className="w-56 p-1.5">
+              <div className="px-1.5 py-1.5">
+                <p className="text-sm font-medium truncate">{profile?.business_name || "Business"}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+              </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/portal")}>
-                <GraduationCap /> Personal Portal
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/profile")}>
+                My Profile
               </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                Personal Portal
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
+                Business Portal
+              </DropdownMenuItem>
+              {user?.is_admin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={async () => { await refreshAccessToken(); window.location.assign("/admin/overview"); }}>
+                    Super Admin
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-                <LogOut /> Sign Out
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
+                Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -260,7 +285,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
       </header>
 
       <div className="flex flex-1">
-        <PortalSidebar groups={isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS} />
+        <PortalSidebar groups={navGroups} />
 
         <main className={cn("min-w-0 flex-1 overflow-x-clip", isFullBleed ? "" : "py-4 md:py-6")}>
           {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}

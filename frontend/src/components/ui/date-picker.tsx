@@ -16,7 +16,7 @@ function toIsoDate(date: Date): string {
 }
 
 function fromIsoDate(value: string): Date | undefined {
-  const [y, m, d] = value.split("-").map(Number)
+  const [y, m, d] = value.slice(0, 10).split("-").map(Number)
   return y && m && d ? new Date(y, m - 1, d) : undefined
 }
 
@@ -26,12 +26,14 @@ export type DatePickerProps = {
   placeholder?: string
   fromYear?: number
   toYear?: number
+  /** Month/year to open on when `value` is empty — see Calendar's defaultMonth. */
+  defaultMonth?: Date
   disabled?: boolean | ((date: Date) => boolean)
   "aria-invalid"?: boolean
   className?: string
 }
 
-function DatePicker({ value, onChange, placeholder = "Pick a date", fromYear, toYear, disabled, className, ...props }:  Readonly<DatePickerProps>) {
+function DatePicker({ value, onChange, placeholder = "Pick a date", fromYear, toYear, defaultMonth, disabled, className, ...props }:  Readonly<DatePickerProps>) {
   const [open, setOpen] = React.useState(false)
   const selected = fromIsoDate(value)
   const controlDisabled = disabled === true
@@ -62,6 +64,7 @@ function DatePicker({ value, onChange, placeholder = "Pick a date", fromYear, to
           }}
           fromYear={fromYear}
           toYear={toYear}
+          defaultMonth={defaultMonth}
           disabled={dayDisabled}
         />
       </PopoverContent>

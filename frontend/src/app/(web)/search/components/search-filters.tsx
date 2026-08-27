@@ -70,8 +70,14 @@ export function SearchFilters({
   countryOptions,
   cityOptions,
   licensedOnly,
+  basePath = "/search",
+  institutionType,
+  institutionTypes,
+  intakeFrom,
+  intakeMonths,
 }: Readonly<{
   activeTab: SearchTabKey;
+  basePath?: string;
   country?: string;
   city?: string;
   search?: string;
@@ -90,9 +96,13 @@ export function SearchFilters({
   countryOptions?: { value: string; label: string }[];
   cityOptions?: { value: string; label: string }[];
   licensedOnly?: boolean;
+  institutionType?: string;
+  institutionTypes?: string[];
+  intakeFrom?: string;
+  intakeMonths?: string[];
 }>) {
   return (
-    <form method="get" action="/search" className="rounded-xl border border-border bg-card p-5">
+    <form method="get" action={basePath} className="rounded-xl border border-border bg-card p-5">
       <input type="hidden" name="tab" value={activeTab} />
       {search && <input type="hidden" name="search" value={search} />}
       {currency && <input type="hidden" name="currency" value={currency} />}
@@ -155,6 +165,32 @@ export function SearchFilters({
           )}
           <FilterSection letter={intakeYears && intakeYears.length > 0 ? "D" : "C"} title="Budget">
             <BudgetFilter min={feeMin} max={feeMax} />
+          </FilterSection>
+        </>
+      )}
+
+      {activeTab === "institutions" && (
+        <>
+          {institutionTypes && institutionTypes.length > 0 && (
+            <FilterSection letter="B" title="Institution Type">
+              <RadioList
+                name="institution_type"
+                value={institutionType}
+                options={institutionTypes.map((value) => ({ value, label: value }))}
+              />
+            </FilterSection>
+          )}
+          <FilterSection letter={institutionTypes && institutionTypes.length > 0 ? "C" : "B"} title="Upcoming Intake">
+            {/* Native month input: mm/yyyy with the browser's own picker, no date library. */}
+            <input
+              type="month"
+              name="intake_from"
+              defaultValue={intakeFrom}
+              min={intakeMonths?.[0]}
+              max={intakeMonths?.[intakeMonths.length - 1]}
+              className={fieldClass}
+            />
+            <p className="mt-2 text-[11px] text-muted-foreground">Shows institutions with an intake from this month onwards.</p>
           </FilterSection>
         </>
       )}

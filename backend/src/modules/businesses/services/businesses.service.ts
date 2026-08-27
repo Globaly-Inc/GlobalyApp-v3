@@ -15,10 +15,25 @@ import * as userRepo from "../../platform-users/repositories/platform-users.repo
 import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
+import { createSystemPost } from "../../feed/services/feed.service.js";
+import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
 import type { BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput } from "../schemas/businesses.schema.js";
+import { generateSubdomain } from "../../../shared/subdomain.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
+const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
+
+// Subdomain is internal (routing now identifies a business by id, not subdomain) so it's
+// derived from the name instead of user-typed. Businesses and institutions share the
+// namespace — same reason the extraction promote pipeline's claimSubdomain checks both.
+async function subdomainTaken(subdomain: string): Promise<boolean> {
+  const [biz, inst] = await Promise.all([
+    repo.findBusinessBySubdomain(subdomain),
+    userRepo.findInstitutionBySubdomain(subdomain),
+  ]);
+  return Boolean(biz || inst);
+}
 
 /**
  * Register a business — owner is the authenticated platform_user.
@@ -28,28 +43,34 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   const user = await userRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
-  let business;
-  try {
-    business = await repo.insertBusiness({
-      owner_id: userId,
-      subdomain: input.subdomain,
-      business_name: input.business_name,
-      account_status: 0,
-      business_type: input.business_type,
-      business_category_id: input.business_category_id,
-      description: input.description,
-      phone: input.phone,
-      country_id: input.country_id,
-      state: input.state,
-      city: input.city,
-      address: input.address,
-      postcode: input.postcode,
-      registration_licenses: input.registration_licenses,
-    });
-  } catch (err: any) {
-    if (err.code === "23505") throw new ConflictError("Subdomain already taken");
-    throw err;
+  // There's no subdomain field left for a user to fix, so a collision (including the
+  // check-then-insert race between two signups) is retried with a freshly generated
+  // subdomain instead of ever surfacing as an error.
+  let business: BusinessRecord | undefined;
+  for (let attempt = 0; !business && attempt < 5; attempt++) {
+    const subdomain = await generateSubdomain(input.business_name, subdomainTaken);
+    try {
+      business = await repo.insertBusiness({
+        owner_id: userId,
+        subdomain,
+        business_name: input.business_name,
+        account_status: 0,
+        business_type: input.business_type,
+        business_category_id: input.business_category_id,
+        description: input.description,
+        phone: input.phone,
+        country_id: input.country_id,
+        state: input.state,
+        city: input.city,
+        address: input.address,
+        postcode: input.postcode,
+        registration_licenses: input.registration_licenses,
+      });
+    } catch (err: any) {
+      if (err.code !== "23505" || attempt === 4) throw err;
+    }
   }
+  if (!business) throw new Error("Could not create business after retrying subdomain collisions");
 
   try {
     await provisionBusinessSchema(business.schema_name);
@@ -77,21 +98,27 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   });
 
   await repo.updateBusinessStatus(business.id, 1);
-
-  // A business entity gets its OWN referral code, separate from the owner's personal code — the two
-  // credit different wallets. Idempotent and never throws; a failure is repaired by
-  // `npm run job:referral-codes` rather than rolling back a provisioned business (INV-10).
-  //
-  // Business CREATION is deliberately not a qualification trigger: only verification pays out.
   issueCode("business", Number(business.id)).catch((err) =>
     logger.warn("Referral code issuance error", { businessId: business.id, err: err.message }),
   );
+  createSystemPost({
+    authorId: userId,
+    businessId: Number(business.id),
+    content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    media: [
+      {
+        storage_path: business.logo_url ?? WELCOME_POST_IMAGE,
+        type: "image",
+        mime_type: business.logo_url ? guessImageMimeType(business.logo_url) : "image/png",
+      },
+    ],
+  }).catch((err) => logger.warn("Welcome post creation error", { businessId: business.id, err: err.message }));
 
   // Mark user as a business account holder + track category
   await userRepo.updateUser(userId, { is_business_account: true });
   await userRepo.addAccountCategory(userId, { type: "business", role: input.business_type ?? "business" });
 
-  logger.info("Business registered", { orgId: business.id, subdomain: input.subdomain, userId });
+  logger.info("Business registered", { orgId: business.id, subdomain: business.subdomain, userId });
 
   const access_token = issueScopedAccessToken({ id: userId, email: user.email }, business.schema_name, "owner");
 
@@ -102,20 +129,13 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   };
 }
 
-/** Search other businesses by name for cross-business pickers (e.g. linking a partner). */
-export async function searchBusinesses(orgId: string, search: string | undefined, limit: number) {
-  const caller = await repo.findBusinessByDbName(orgId);
+export async function searchBusinesses(auth: { orgId?: string; orgType?: string }, search: string | undefined, limit: number) {
+  if (auth.orgType === "institution") return repo.searchBusinesses(search, undefined, limit);
+  const caller = await repo.findBusinessByDbName(auth.orgId!);
   if (!caller) throw new NotFoundError("Business not found");
   return repo.searchBusinesses(search, caller.id, limit);
 }
 
-/**
- * Resolve stored logo/cover paths to signed, viewable URLs — mirrors the admin-side helper.
- * `gallery_images` itself is left untouched (raw storage paths) since the gallery editor reads,
- * modifies, and PATCHes that array back — resolving it in place would mean a save-without-editing
- * silently persists temporary signed URLs instead of the paths. A parallel `gallery_image_urls`
- * carries the resolved, display-only URLs instead; it's never sent back on PATCH.
- */
 export async function withImagePreviews<
   T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null },
 >(biz: T): Promise<T & { gallery_image_urls?: (string | null)[] }> {
@@ -290,7 +310,7 @@ async function activateClaimedListing(business: BusinessRecord, owner: Awaited<R
     role: "owner",
     is_owner: true,
   });
-  await userRepo.updateUser(ownerId, { is_business_account: true });
+  await userRepo.updateUser(ownerId, { is_business_account: true, is_personal_account: true });
   await userRepo.addAccountCategory(ownerId, {
     type: "business",
     role: business.business_type ?? "business",

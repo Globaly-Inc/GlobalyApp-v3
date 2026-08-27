@@ -21,6 +21,7 @@ export function CoverLogoEditor({
   logoUploading = false,
   className,
   hideLogo = false,
+  roundPhoto = false,
 }: Readonly<{
   coverUrl?: string | null;
   onCoverFile?: (file: File) => void;
@@ -32,6 +33,8 @@ export function CoverLogoEditor({
   className?: string;
   /** Skip the overlapping logo button — for callers that render the logo themselves alongside other header content. */
   hideLogo?: boolean;
+  /** A person's photo: full-bleed circle (object-cover, no padding/background) instead of a padded square logo tile. */
+  roundPhoto?: boolean;
 }>) {
   const coverInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -71,8 +74,16 @@ export function CoverLogoEditor({
           onClick={() => logoInputRef.current?.click()}
           aria-label="Edit logo"
         >
-          <Avatar className="size-24 rounded-xl border-4 border-background">
-            {logoUrl && <AvatarImage src={logoUrl} alt="" className="rounded-lg object-contain p-1" />}
+          <Avatar
+            className={cn("size-24 rounded-xl border-4 border-background shadow-lg", !roundPhoto && "bg-white")}
+          >
+            {logoUrl && (
+              <AvatarImage
+                src={logoUrl}
+                alt=""
+                className={cn("rounded-lg", roundPhoto ? "object-cover" : "object-contain p-1")}
+              />
+            )}
             <AvatarFallback className="rounded-lg text-2xl">{logoFallback}</AvatarFallback>
           </Avatar>
           <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">

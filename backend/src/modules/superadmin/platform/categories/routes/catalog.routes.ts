@@ -1,12 +1,15 @@
-// Catalog routes — degree levels, areas of study, fee types,
+// Catalog routes — degree levels, areas of study, tests, fee types,
 // accreditations, and issuing organizations.
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { config } from "../../../../../config.js";
+import { BadRequestError } from "../../../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../../../shared/pagination.js";
+import * as storage from "../../../../../shared/storage/storageService.js";
 import {
   AccreditationInputSchema, FeeTypeInputSchema, IdParamSchema,
-  IssuingOrgInputSchema, LookupInputSchema, ReviewInputSchema,
+  IssuingOrgInputSchema, LookupInputSchema, ReviewInputSchema, TestInputSchema,
 } from "../schemas/categories.schema.js";
 import * as service from "../services/categories.service.js";
 
@@ -15,12 +18,16 @@ const IssuingOrgListQuery = PaginationSchema.extend({
   search: z.string().trim().min(1).optional(),
 });
 
+const TEST_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"]);
+
 export async function catalogRoutes(app: FastifyInstance) {
-  // ── Degree Levels & Areas of Study ──
-  // Same columns and same behaviour, so both mount from one definition.
-  for (const [path, table] of [
-    ["degree-levels", "degree_levels"],
-    ["areas-of-study", "areas_of_study"],
+  // ── Degree Levels, Areas of Study & Tests ──
+  // One list/create/update shape over three lookup tables. Tests carry two extra columns
+  // (category, image_url); nothing else about the CRUD differs, so they ride the same definition.
+  for (const { path, table, create, patch } of [
+    { path: "degree-levels", table: "degree_levels", create: LookupInputSchema, patch: LookupInputSchema.partial() },
+    { path: "areas-of-study", table: "areas_of_study", create: LookupInputSchema, patch: LookupInputSchema.partial() },
+    { path: "tests", table: "tests", create: TestInputSchema, patch: TestInputSchema.partial() },
   ] as const) {
     app.get(`/${path}`, async (req, reply) => {
       const pagination = PaginationSchema.parse(req.query);
@@ -33,17 +40,37 @@ export async function catalogRoutes(app: FastifyInstance) {
     });
 
     app.post(`/${path}`, async (req, reply) => {
-      const data = LookupInputSchema.parse(req.body);
+      const data = create.parse(req.body);
       return reply.status(201).send(await service.createLookup(table, data));
     });
 
     app.patch(`/${path}/:id`, async (req, reply) => {
       const { id } = IdParamSchema.parse(req.params);
-      const data = LookupInputSchema.partial().parse(req.body);
+      const data = patch.parse(req.body);
       const row = await service.updateLookup(table, id, data);
       return reply.send(row);
     });
   }
+
+  /**
+   * Test logo upload. The row itself is saved as JSON like every other lookup, so the dialog
+   * uploads the picked file here first and stores the returned URL — rather than turning the
+   * whole tests CRUD into multipart for one optional field.
+   *
+   * Written under `public/` because these logos are read by unauthenticated course pages.
+   */
+  app.post("/tests/image", async (req, reply) => {
+    const file = await req.file();
+    if (!file) throw new BadRequestError("No file uploaded");
+
+    const buffer = await file.toBuffer();
+    storage.validateFile(file.mimetype, buffer.length, TEST_IMAGE_MIME_TYPES);
+
+    const storagePath = storage.buildPath("public/tests", file.filename);
+    await storage.uploadFile(storagePath, buffer, file.mimetype);
+
+    return reply.send({ image_url: `https://storage.googleapis.com/${config.GCS_BUCKET_NAME}/${storagePath}` });
+  });
 
   // ── Fee Types ──
 

@@ -60,6 +60,7 @@ export async function insert(data: {
   email: string;
   account_status: number;
   phone?: string;
+  is_personal_account?: boolean;
   /** Arbitrary jsonb. Registration uses it to stash a validated `pending_referral` for the OTP step. */
   meta?: Record<string, unknown>;
 }, db: Knex = masterKnex) {

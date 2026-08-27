@@ -379,7 +379,12 @@ services:
           memory: 256m
 
   scrapling-mcp:
-    image: pyd4vinci/scrapling:latest
+    build:
+      context: ./devops/docker/scrapling
+      args:
+        # Replace with your own generated value in .env, e.g. `openssl rand -hex 32`.
+        SCRAPLING_MCP_AUTH_TOKEN: ${SCRAPLING_MCP_AUTH_TOKEN}
+    image: globalyapp-scrapling-mcp:local
     container_name: scrapling-mcp
     restart: unless-stopped
     command:
@@ -398,10 +403,7 @@ services:
       # - "scrapling.internal.example.com:8000"
     ports:
       - "8123:8000"
-    environment:
-      # Hardcoded auth token for HTTP transport (ignored on stdio).
-      # Replace with your own generated value, e.g. `openssl rand -hex 32`.
-      SCRAPLING_MCP_AUTH_TOKEN: "devkey"
+    # environment:
       # Optional: only needed if you want a non-bundled Chromium build
       # SCRAPLING_EXECUTABLE_PATH: /path/to/chromium
     # Chromium needs more than Docker's default 64MB /dev/shm or it crashes

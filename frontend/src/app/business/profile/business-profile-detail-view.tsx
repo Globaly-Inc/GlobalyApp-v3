@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
+// import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
@@ -45,24 +45,38 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
   const isInstitution = authUser?.user_category === "institution";
+  // Membership lists are the authoritative source for whether THIS businessId is a business or
+  // institution — user_category only gives the primary role, so a dual-role user always resolves
+  // to "business" even when they're viewing an institution profile.
+  const isViewingInstitution =
+    !authUser?.businesses.some((b) => b.id === businessId) &&
+    !!authUser?.institutions.some((i) => i.id === businessId);
   const parsedTab = parseTab(searchParams.get("tab"));
   // Branches/Partners/Scholarships/Activity have no institution-side data — the sidebar never
   // links there for an institution, but fall back to profile if the URL is edited directly.
-  const tab = isInstitution && !["profile", "team", "services"].includes(parsedTab) ? "profile" : parsedTab;
+  const institutionTabAllowed = ["profile", "team", "services", "partners", "scholarships"].includes(parsedTab);
+  const isDisallowedForRole = (isInstitution && !institutionTabAllowed) || (isBusiness && parsedTab === "scholarships");
+  const tab = isDisallowedForRole ? "profile" : parsedTab;
 
   useEffect(() => {
     if (initializing) return;
     if (!authUser) router.replace("/auth/sign-in");
+    // A business/institution membership takes priority over `type` — a super-admin who
+    // also owns or manages a business must still be able to view it, not get bounced to
+    // the admin dashboard just because their session is admin-typed.
+    else if (isBusiness || isInstitution) return;
     else if (authUser.type === "admin") router.replace("/admin/overview");
-    else if (!isBusiness && !isInstitution) router.replace("/personal/profile");
+    else router.replace("/personal/profile");
   }, [initializing, authUser, isBusiness, isInstitution, router]);
 
   const switchedRef = useRef(false);
   useEffect(() => {
     if (initializing || (!isBusiness && !isInstitution) || switchedRef.current) return;
-    const target = isBusiness
-      ? authUser?.businesses.find((b) => b.id === businessId)
-      : authUser?.institutions.find((i) => i.id === businessId);
+    // Search both lists — user_category picks the primary role, so a dual-role user has
+    // isBusiness=true even when navigating to an institution profile.
+    const target =
+      authUser?.businesses.find((b) => b.id === businessId) ??
+      authUser?.institutions.find((i) => i.id === businessId);
     if (!target) return;
     switchedRef.current = true;
     if (target.org_id === authUser?.orgId) {
@@ -116,14 +130,14 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     }
   };
 
-  const handleTogglePublished = async (is_published: boolean) => {
-    const result = await dispatch(updateMyProfile({ is_published }));
-    if (updateMyProfile.rejected.match(result)) {
-      toast.error("Couldn't update", { description: result.error.message ?? "Please try again." });
-      return;
-    }
-    toast.success(is_published ? "Profile published" : "Profile unpublished");
-  };
+  // const handleTogglePublished = async (is_published: boolean) => {
+  //   const result = await dispatch(updateMyProfile({ is_published }));
+  //   if (updateMyProfile.rejected.match(result)) {
+  //     toast.error("Couldn't update", { description: result.error.message ?? "Please try again." });
+  //     return;
+  //   }
+  //   toast.success(is_published ? "Profile published" : "Profile unpublished");
+  // };
 
   return (
     <div className="space-y-4">
@@ -159,7 +173,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
             {tab === "branches" && <BranchesTab businessId={businessId} />}
             {tab === "partners" && <PartnersTab businessId={businessId} businessName={profile.business_name} />}
             {tab === "team" && <MembersTab businessId={businessId} />}
-            {tab === "services" && <ServicesTab businessId={businessId} readOnly={isInstitution} />}
+            {tab === "services" && <ServicesTab businessId={businessId} readOnly={isViewingInstitution} />}
             {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
             {tab === "activity" && <ActivityTab businessId={businessId} />}
           </CardContent>

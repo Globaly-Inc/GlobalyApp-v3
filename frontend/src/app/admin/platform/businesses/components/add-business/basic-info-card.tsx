@@ -12,18 +12,12 @@ export function BasicInfoCard({
   nameError,
   description,
   onDescriptionChange,
-  subdomain,
-  onSubdomainChange,
-  subdomainError,
 }: Readonly<{
   businessName: string;
   onNameChange: (value: string) => void;
   nameError?: string;
   description: string;
   onDescriptionChange: (value: string) => void;
-  subdomain: string;
-  onSubdomainChange: (value: string) => void;
-  subdomainError?: string;
 }>) {
   return (
     <Card className="space-y-4 p-6">
@@ -48,18 +42,6 @@ export function BasicInfoCard({
           rows={3}
           className="min-h-20"
         />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label>Slug (URL identifier) *</Label>
-        <Input
-          className="h-10"
-          aria-invalid={!!subdomainError}
-          value={subdomain}
-          onChange={(e) => onSubdomainChange(e.target.value)}
-          placeholder="auto-generated-from-name"
-        />
-        <p className="text-xs text-muted-foreground">Auto-generated from name. Edit to customise.</p>
-        <FieldError message={subdomainError} />
       </div>
     </Card>
   );

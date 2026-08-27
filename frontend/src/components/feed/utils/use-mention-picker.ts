@@ -24,13 +24,16 @@ export function useMentionPicker() {
   const [query, setQuery] = useState<{ start: number; query: string } | null>(null);
   const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  // Debounced server search — mirrors the 300ms pattern used by the admin members search box.
   useEffect(() => {
-    fetchMentionCandidates().then(setCandidates);
-  }, []);
+    if (!query) return;
+    const timer = setTimeout(() => {
+      fetchMentionCandidates(query.query || undefined).then(setCandidates);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query?.query]);
 
-  const matches = query
-    ? candidates.filter((c) => mentionDisplayName(c).toLowerCase().includes(query.query.toLowerCase())).slice(0, 6)
-    : [];
+  const matches = query ? candidates.slice(0, 6) : [];
 
   /** Call on every change/caret move. `el` positions the portal dropdown — pass the live textarea element. */
   const onTextChange = (text: string, caret: number, el: HTMLTextAreaElement | null) => {

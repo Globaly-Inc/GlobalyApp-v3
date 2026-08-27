@@ -1,11 +1,13 @@
 // Extraction queue service.
 
-import { NotFoundError } from "../../../../shared/errors.js";
+import { NotFoundError, BadRequestError } from "../../../../shared/errors.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { queueService as pipelineQueue } from "../../../../shared/queue/queueService.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/queue.repository.js";
+import { findJobById } from "../repositories/jobs.repository.js";
+import { importAgentCIS } from "./agentcis.service.js";
 
 const logger = createChildLogger("extraction-queue-service");
 
@@ -97,7 +99,27 @@ export async function resetPipeline(jobId: string, adminId: number) {
 
 // Resets progress/queue like resetPipeline, then re-dispatches to the job worker
 // so a failed job re-crawls from scratch instead of sitting at "pending".
+//
+// An AgentCIS-sourced job was never crawled from the institution's own website — it was
+// imported wholesale from the AgentCIS API — so re-crawling its institution_url (the real
+// site, e.g. concordia.ab.ca) is wrong on its face and was hitting Firecrawl rate limits for
+// no reason. Re-run it the same way it was created: re-dispatch the AgentCIS import for the
+// same institution (importAgentCIS creates a fresh job row; resetPipeline never applies here).
 export async function rerunJob(jobId: string, adminId: number) {
+  const job = await findJobById(jobId);
+  if (!job) throw new NotFoundError("Extraction job not found");
+
+  if (job.source_type === "agentcis") {
+    const progress = typeof job.pipeline_progress === "string"
+      ? JSON.parse(job.pipeline_progress) : (job.pipeline_progress || {});
+    const agentcisId = progress.agentcis_id;
+    if (!agentcisId) {
+      throw new BadRequestError("This AgentCIS job has no agentcis_id on record — cannot re-import");
+    }
+    await importAgentCIS([agentcisId], adminId);
+    return { updated: true, reimport: true };
+  }
+
   const found = await repo.resetPipeline(jobId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, "JOB_RERUN", { entityType: "extraction_jobs", entityId: jobId });

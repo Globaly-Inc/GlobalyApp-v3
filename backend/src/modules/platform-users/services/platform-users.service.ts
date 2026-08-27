@@ -1,6 +1,8 @@
 // Platform user service — profile management and sub-resources (registration + OTP auth handled by auth module).
 
 import { NotFoundError, ConflictError, BadRequestError } from "../../../shared/errors.js";
+import { config } from "../../../config.js";
+import { generateSubdomain } from "../../../shared/subdomain.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import { computeCompletion, syncCompletion } from "./completion.js";
 import * as repo from "../repositories/platform-users.repository.js";
@@ -12,11 +14,17 @@ import { provisionInstitutionSchema } from "../../../core/business/provisioner.j
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
+import { createSystemPost } from "../../feed/services/feed.service.js";
+import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
+import { createChildLogger } from "../../../shared/logger.js";
 import type {
   ProfilePatchInput,
   OnboardingPersonalInput, OnboardingBusinessInput, OnboardingInstitutionInput,
   QualificationInput, LanguageTestInput, AcademicTestInput, WorkExperienceInput,
 } from "../schemas/platform-users.schema.js";
+
+const logger = createChildLogger("platform-users-service");
+const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
 
 // ── Profile ──
 
@@ -98,7 +106,6 @@ export async function onboardPersonal(userId: number, data: OnboardingPersonalIn
 /** Business onboarding — delegates to businesses service (provisions tenant DB). */
 export async function onboardBusiness(userId: number, data: OnboardingBusinessInput) {
   return registerBusiness(userId, {
-    subdomain: data.subdomain,
     business_name: data.business_name,
     business_type: data.business_type,
     phone: data.phone,
@@ -112,15 +119,17 @@ export async function onboardBusiness(userId: number, data: OnboardingBusinessIn
 
 /** Institution onboarding — inserts into institutions table, provisions tenant schema (members, member_invitations). */
 export async function onboardInstitution(userId: number, data: OnboardingInstitutionInput) {
-  // Subdomain must be unique across both businesses and institutions
-  const [existingInst, existingBiz] = await Promise.all([
-    repo.findInstitutionBySubdomain(data.subdomain),
-    bizRepo.findBusinessBySubdomain(data.subdomain),
-  ]);
-  if (existingInst || existingBiz) throw new ConflictError("Subdomain already taken");
-
   const user = await repo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
+
+  // Auto-generate subdomain from institution name, unique across businesses + institutions.
+  const subdomain = await generateSubdomain(data.institution_name, async (candidate) => {
+    const [inst, biz] = await Promise.all([
+      repo.findInstitutionBySubdomain(candidate),
+      bizRepo.findBusinessBySubdomain(candidate),
+    ]);
+    return Boolean(inst || biz);
+  });
 
   const institution = await repo.insertInstitution({
     platform_user_id: userId,
@@ -128,7 +137,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     last_name: user.last_name,
     email: data.email ?? user.email,
     phone: data.phone,
-    subdomain: data.subdomain,
+    subdomain,
     institution_name: data.institution_name,
     institution_type: data.institution_type,
     country_id: data.country_id,
@@ -159,6 +168,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     phone: data.phone,
   });
 
+  await repo.updateUser(userId, { is_institution_account: true });
   await repo.addAccountCategory(userId, { type: "institution", role: institution.institution_type ?? "institution" });
 
   // Last, as registerBusiness does with its own account_status: 1 is what makes the
@@ -166,6 +176,19 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   // not flip until the schema and the owner member exist. Without it the scoped token below
   // would be handed out for an institution the tenant plugin then refuses to resolve.
   await repo.updateInstitution(institution.id, { account_status: 1 });
+
+  createSystemPost({
+    authorId: userId,
+    institutionId: Number(institution.id),
+    content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    media: [
+      {
+        storage_path: institution.logo_url ?? WELCOME_POST_IMAGE,
+        type: "image",
+        mime_type: institution.logo_url ? guessImageMimeType(institution.logo_url) : "image/png",
+      },
+    ],
+  }).catch((err) => logger.warn("Welcome post creation error", { institutionId: institution.id, err: err.message }));
 
   // Scoped token, as registerBusiness does — otherwise the user has just created an
   // institution and still has to log out and back in to enter it.

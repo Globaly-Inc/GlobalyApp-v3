@@ -9,17 +9,17 @@ import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
 import { categoriesApi } from "../apis";
-import { ADD_LABEL, CATEGORY_TABS, ROUTE_SEGMENT, TAB_DESCRIPTION } from "../const";
+import { ADD_LABEL, CATEGORY_TABS, LOOKUP_KIND, LOOKUP_TITLE, ROUTE_SEGMENT, TAB_DESCRIPTION } from "../const";
 import {
   fetchAccreditations, fetchBusinessCategories, fetchCatalog, fetchFeeTypes, fetchIssuingOrganizations,
-  fetchLookup, fetchOtherServiceCategories, fetchServiceCategories, removeAccreditation, removeFeeType, reviewAccreditation, reviewFeeType,
-  saveAccreditation, saveCategory, saveFeeType, saveLookup,
-  toggleCategory, toggleLookup,
+  fetchLookup, fetchOtherServiceCategories, fetchServiceCategories, fetchTests, removeAccreditation, removeFeeType, reviewAccreditation, reviewFeeType,
+  saveAccreditation, saveCategory, saveFeeType, saveLookup, saveTest,
+  toggleCategory, toggleLookup, toggleTest,
 } from "../store/categories-slice";
 import type { CategoryKind } from "../store/categories-slice";
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, FeeType, FeeTypeInput,
-  Lookup, LookupInput, LookupKind, ModerationStatus,
+  Lookup, LookupInput, ModerationStatus, Test, TestInput,
 } from "../apis/types";
 import type { CategoryTab } from "../types";
 import { AccreditationDialog } from "./accreditation-dialog";
@@ -31,16 +31,8 @@ import { FeeTypeDialog } from "./fee-type-dialog";
 import { FeeTypeList } from "./fee-type-list";
 import { LookupDialog } from "./lookup-dialog";
 import { LookupList } from "./lookup-list";
-
-const LOOKUP_KIND: Record<"degree_levels" | "areas_of_study", LookupKind> = {
-  degree_levels: "degree-levels",
-  areas_of_study: "areas-of-study",
-};
-
-const LOOKUP_TITLE: Record<"degree_levels" | "areas_of_study", string> = {
-  degree_levels: "degree level",
-  areas_of_study: "area of study",
-};
+import { TestDialog } from "./test-dialog";
+import { TestList } from "./test-list";
 
 type Deleting = { kind: "fee_type" | "accreditation"; id: number; name: string };
 
@@ -55,6 +47,7 @@ export function CategoriesView() {
   const [lookupDialog, setLookupDialog] = useState<{ open: boolean; editing: Lookup | null }>({ open: false, editing: null });
   const [feeTypeDialog, setFeeTypeDialog] = useState<{ open: boolean; editing: FeeType | null }>({ open: false, editing: null });
   const [accreditationDialog, setAccreditationDialog] = useState<{ open: boolean; editing: Accreditation | null }>({ open: false, editing: null });
+  const [testDialog, setTestDialog] = useState<{ open: boolean; editing: Test | null }>({ open: false, editing: null });
   const [deleting, setDeleting] = useState<Deleting | null>(null);
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -93,6 +86,7 @@ export function CategoriesView() {
   const handleTabChange = (next: CategoryTab) => {
     setTab(next);
     if (next === "other_service") dispatch(fetchOtherServiceCategories({}));
+    if (next === "tests") dispatch(fetchTests({}));
   };
   const lookupTab = tab === "degree_levels" || tab === "areas_of_study" ? tab : null;
   const lookupList = lookupTab === "degree_levels" ? catalog.degreeLevels : catalog.areasOfStudy;
@@ -103,6 +97,7 @@ export function CategoriesView() {
     else if (tab === "service") dispatch(fetchServiceCategories({ page }));
     else if (tab === "other_service") dispatch(fetchOtherServiceCategories({ page }));
     else if (lookupTab) dispatch(fetchLookup({ kind: LOOKUP_KIND[lookupTab], page }));
+    else if (tab === "tests") dispatch(fetchTests({ page }));
     else if (tab === "fee_types") dispatch(fetchFeeTypes({ page }));
     else if (tab === "accreditations") dispatch(fetchAccreditations({ page }));
   };
@@ -111,13 +106,16 @@ export function CategoriesView() {
     ? categoryList
     : lookupTab
       ? lookupList
-      : tab === "fee_types"
-        ? catalog.feeTypes
-        : catalog.accreditations;
+      : tab === "tests"
+        ? catalog.tests
+        : tab === "fee_types"
+          ? catalog.feeTypes
+          : catalog.accreditations;
 
   const handleAdd = () => {
     if (isCategoryTab) setCategoryDialog({ open: true, editing: null });
     else if (lookupTab) setLookupDialog({ open: true, editing: null });
+    else if (tab === "tests") setTestDialog({ open: true, editing: null });
     else if (tab === "fee_types") setFeeTypeDialog({ open: true, editing: null });
     else if (tab === "accreditations") setAccreditationDialog({ open: true, editing: null });
   };
@@ -132,6 +130,12 @@ export function CategoriesView() {
     run(
       dispatch(saveLookup({ kind: LOOKUP_KIND[lookupTab!], id: lookupDialog.editing?.id ?? null, input })),
       lookupDialog.editing ? "Item updated" : "Item created",
+    );
+
+  const handleSaveTest = (input: TestInput) =>
+    run(
+      dispatch(saveTest({ id: testDialog.editing?.id ?? null, input })),
+      testDialog.editing ? "Test updated" : "Test created",
     );
 
   const handleSaveFeeType = (input: FeeTypeInput) =>
@@ -197,6 +201,14 @@ export function CategoriesView() {
               void run(dispatch(toggleLookup({ kind: LOOKUP_KIND[lookupTab], id, is_active })), "Item updated")
             }
             onEdit={(editing) => setLookupDialog({ open: true, editing })}
+          />
+        )}
+
+        {tab === "tests" && (
+          <TestList
+            items={catalog.tests.data}
+            onToggle={(id, is_active) => void run(dispatch(toggleTest({ id, is_active })), "Test updated")}
+            onEdit={(editing) => setTestDialog({ open: true, editing })}
           />
         )}
 
@@ -279,6 +291,15 @@ export function CategoriesView() {
           saving={saving}
         />
       )}
+
+      <TestDialog
+        open={testDialog.open}
+        onOpenChange={(open) => setTestDialog((s) => ({ ...s, open }))}
+        editing={testDialog.editing}
+        nextSortOrder={catalog.tests.total}
+        onSave={handleSaveTest}
+        saving={saving}
+      />
 
       <FeeTypeDialog
         open={feeTypeDialog.open}

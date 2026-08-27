@@ -9,6 +9,7 @@ import { createChildLogger } from "../../shared/logger.js";
 import { AppError, ForbiddenError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
 import { queueService } from "../../shared/queue/queueService.js";
 import { mailerService } from "../../shared/mail/mailerService.js";
+import * as storage from "../../shared/storage/storageService.js";
 import { emailLayout, otpEmail, esc } from "../../shared/mail/templates.js";
 
 import * as platformUserRepo from "../platform-users/repositories/platform-users.repository.js";
@@ -242,6 +243,7 @@ export async function registerUser(
     last_name: lastName,
     email,
     account_status: 0, // inactive until OTP verified
+    is_personal_account: true,
     meta: pendingReferral ? { pending_referral: pendingReferral } : undefined,
   });
 
@@ -484,7 +486,7 @@ export async function switchAccount(userId: number, orgId: string, refreshToken?
   const rememberOnSession = async () => {
     if (!refreshToken) return;
     const session = await authRepo.findSessionByRefreshToken(hashToken(refreshToken));
-    if (session && session.platform_user_id === userId) {
+    if (session?.platform_user_id === userId) {
       await authRepo.updateSessionOrgId(session.id, orgId);
     }
   };
@@ -555,18 +557,29 @@ export async function getMe(auth: AuthClaims) {
   const user = await platformUserRepo.findById(id);
   if (!user) throw new NotFoundError("User not found");
 
+  // platform_users.photo_url/cover_url are storage paths, not URLs — sign them the same way
+  // platform-users.service.ts does, so every /me-shaped response resolves to a viewable image.
+  const [photo_url, cover_url] = await Promise.all([
+    storage.resolvePreviewUrl(user.photo_url),
+    storage.resolvePreviewUrl(user.cover_url),
+  ]);
+
+  // Looked up unconditionally, not gated on `auth.type === "admin"`: `type` reflects what the
+  // CURRENT token can do (a business-scoped token reads "platform_user" even for an admin who
+  // switched into a business they own), but `is_admin`/`admin_role` answer "is this person also
+  // an admin" independent of that scoping, so the frontend can still show a "Super Admin" entry
+  // after a switch instead of losing it.
+  const adminRecord = await adminRepo.findAdminByPlatformUserId(id);
+
   const result: Record<string, unknown> = {
     ...user,
+    photo_url,
+    cover_url,
     type: auth.type,
+    is_admin: !!adminRecord,
+    admin_role: adminRecord?.role ?? null,
+    admin_id: adminRecord?.id ?? null,
   };
-
-  if (auth.type === "admin") {
-    const adminRecord = await adminRepo.findAdminByPlatformUserId(id);
-    if (adminRecord) {
-      result.admin_role = adminRecord.role;
-      result.admin_id = adminRecord.id;
-    }
-  }
 
   if (auth.orgId) {
     result.orgId = auth.orgId;
@@ -581,8 +594,12 @@ export async function getMe(auth: AuthClaims) {
     platformUserRepo.listUserBusinesses(id),
     platformUserRepo.listUserInstitutions(id),
   ]);
-  result.businesses = businesses;
-  result.institutions = institutions;
+  result.businesses = await Promise.all(
+    businesses.map(async (b) => ({ ...b, logo_url: await storage.resolvePreviewUrl(b.logo_url) })),
+  );
+  result.institutions = await Promise.all(
+    institutions.map(async (i) => ({ ...i, logo_url: await storage.resolvePreviewUrl(i.logo_url) })),
+  );
 
   return { user: result };
 }

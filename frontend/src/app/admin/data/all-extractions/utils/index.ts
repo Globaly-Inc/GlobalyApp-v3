@@ -26,6 +26,13 @@ function norm(v: unknown): unknown {
   return v;
 }
 
+// A fee the LLM couldn't confidently parse a number/currency for (a range, "Contact us", etc.)
+// is stored with a null amount/currency rather than a fake $0 — fall back to the fee's own name
+// instead of rendering "0", which would look like a real, confirmed zero-cost fee.
+export function feeAmount(f: { currency: string | null; total_amount: number | null; name: string | null }): string {
+  return f.total_amount != null ? `${f.currency ?? ""} ${f.total_amount}`.trim() : (f.name ?? "Fee");
+}
+
 export function fmtTime(iso: string | null | undefined): string {
   if (!iso) return "Never";
   const d = new Date(iso);

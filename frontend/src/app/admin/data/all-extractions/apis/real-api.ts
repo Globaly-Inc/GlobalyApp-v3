@@ -1,5 +1,6 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import type { SortOrder } from "../const";
 import type {
   Accreditation,
   AgentFull,
@@ -140,6 +141,7 @@ export const allExtractionsRealApi = {
       campuses: campusesRes.campuses,
       agents: agentsRes.agents,
       courses: coursesRes.data,
+      coursesTotal: coursesRes.meta?.total ?? coursesRes.data.length,
       courseLinks,
       visaServices,
     };
@@ -152,13 +154,14 @@ export const allExtractionsRealApi = {
 
   getCourses: (
     jobId: string,
-    params: { page?: number; limit?: number; search?: string; status?: string } = {},
+    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } = {},
   ): Promise<Paginated<CourseFull>> => {
     const query = new URLSearchParams();
     if (params.page) query.set("page", String(params.page));
     if (params.limit) query.set("limit", String(params.limit));
     if (params.search) query.set("search", params.search);
     if (params.status) query.set("status", params.status);
+    if (params.sort) query.set("sort", params.sort);
     return httpGet<Paginated<CourseFull>>(`/admin/data-extraction/jobs/${jobId}/courses?${query}`);
   },
 
@@ -199,6 +202,18 @@ export const allExtractionsRealApi = {
     return campuses;
   },
 
+  // Paginated + searchable, unlike getCampuses' full dump (used elsewhere for campus-linking pickers).
+  getCampusesFiltered: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<CampusFull>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<CampusFull>>(`/admin/data-extraction/jobs/${jobId}/campuses-filtered?${query}`);
+  },
+
   createCampus: async (params: CreateCampusParams): Promise<CampusFull> => {
     const res = await httpPost<{ id: string; created_at: string }>(`/admin/data-extraction/campuses`, params);
     return { id: res.id, name: params.name ?? null, address: null, city: params.city ?? null, state: null, country: params.country ?? null, phone: null, email: null, map_link: null, source_url: null, postcode: null, created_at: res.created_at, updated_at: res.created_at };
@@ -215,6 +230,18 @@ export const allExtractionsRealApi = {
   getAgents: async (jobId: string): Promise<AgentFull[]> => {
     const { agents } = await httpGet<{ agents: AgentFull[] }>(`/admin/data-extraction/jobs/${jobId}/agents`);
     return agents;
+  },
+
+  // Paginated + searchable, unlike getAgents' full dump.
+  getAgentsFiltered: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<AgentFull>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<AgentFull>>(`/admin/data-extraction/jobs/${jobId}/agents-filtered?${query}`);
   },
 
   createAgent: async (params: CreateAgentParams): Promise<AgentFull> => {
@@ -300,9 +327,15 @@ export const allExtractionsRealApi = {
 
   // ── Intakes ────────────────────────────────────────────────────
 
-  getIntakes: async (jobId: string): Promise<Intake[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/intakes
-    return [] as Intake[];
+  getIntakes: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<Intake>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<Intake>>(`/admin/data-extraction/jobs/${jobId}/intakes?${query}`);
   },
 
   createIntake: async (params: { job_id: string } & IntakeParams): Promise<Intake> => {
@@ -321,9 +354,15 @@ export const allExtractionsRealApi = {
 
   // ── Eligibility Requirements ───────────────────────────────────
 
-  getEligibilityRequirements: async (jobId: string): Promise<EligibilityRequirement[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/eligibility-requirements
-    return [] as EligibilityRequirement[];
+  getEligibilityRequirements: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<EligibilityRequirement>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<EligibilityRequirement>>(`/admin/data-extraction/jobs/${jobId}/eligibility-requirements?${query}`);
   },
 
   createEligibilityRequirement: async (params: { job_id: string } & EligibilityParams): Promise<EligibilityRequirement> => {
@@ -347,9 +386,15 @@ export const allExtractionsRealApi = {
 
   // ── Study Units ──────────────────────────────────────────────────
 
-  getStudyUnits: async (jobId: string): Promise<StudyUnit[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/study-units
-    return [] as StudyUnit[];
+  getStudyUnits: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<StudyUnit>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<StudyUnit>>(`/admin/data-extraction/jobs/${jobId}/study-units?${query}`);
   },
 
   createStudyUnit: async (params: { job_id: string } & StudyUnitParams & { unit_name: string }): Promise<StudyUnit> => {
@@ -371,9 +416,15 @@ export const allExtractionsRealApi = {
 
   // ── Study Options ────────────────────────────────────────────────
 
-  getStudyOptions: async (jobId: string): Promise<StudyOption[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/study-options
-    return [] as StudyOption[];
+  getStudyOptions: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<StudyOption>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<StudyOption>>(`/admin/data-extraction/jobs/${jobId}/study-options?${query}`);
   },
 
   createStudyOption: async (params: { job_id: string; course_id?: string } & StudyOptionParams): Promise<StudyOption> => {

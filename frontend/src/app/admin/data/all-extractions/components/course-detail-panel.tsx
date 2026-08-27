@@ -18,14 +18,12 @@ import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { allExtractionsApi } from "../apis";
 import { saveFormAndLearn } from "./editable-field";
 import { StudyOptionForm } from "./study-option-form";
+import { feeAmount } from "../utils";
 import type {
   CampusFull, CourseAssignment, CourseFull, CourseLinks, JunctionSlug, StudyOption,
 } from "../apis/types";
 
 const humanize = (v: string | null | undefined) => (v ? v.replaceAll("_", " ") : "");
-
-const feeAmount = (f: { currency: string | null; total_amount: number | null; name: string | null }) =>
-  f.total_amount != null ? `${f.currency ?? ""} ${f.total_amount}`.trim() : (f.name ?? "Fee");
 
 
 /** One linkable section: the rows already attached to this course + a picker to attach more. */

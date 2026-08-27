@@ -13,6 +13,7 @@ export async function seed(knex: Knex): Promise<void> {
         email: adminEmail,
         account_status: 1,
         is_email_verified: true,
+        is_personal_account: true,
       })
       .returning("*");
   }

@@ -129,7 +129,17 @@ export async function listReferralsByReferrer(
 export async function referrerStats(referrerType: OwnerType, referrerId: number) {
   const row = await masterKnex("referrals")
     .where({ referrer_type: referrerType, referrer_id: referrerId })
-    .count({ n: "*" })
-    .first<{ n: string }>();
-  return { total_referred: Number(row?.n ?? 0) };
+    .select({
+      total_referred: masterKnex.raw("count(*)"),
+      total_credits: masterKnex.raw("coalesce(sum(credits_awarded), 0)"),
+      students_referred: masterKnex.raw("count(*) filter (where action_type = 'student_referral')"),
+      businesses_referred: masterKnex.raw("count(*) filter (where action_type = 'business_referral')"),
+    })
+    .first<{ total_referred: string; total_credits: string; students_referred: string; businesses_referred: string }>();
+  return {
+    total_referred: Number(row?.total_referred ?? 0),
+    total_credits: Number(row?.total_credits ?? 0),
+    students_referred: Number(row?.students_referred ?? 0),
+    businesses_referred: Number(row?.businesses_referred ?? 0),
+  };
 }

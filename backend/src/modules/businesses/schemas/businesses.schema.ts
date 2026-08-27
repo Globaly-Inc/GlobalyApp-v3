@@ -4,7 +4,6 @@ import { z } from "zod";
 import { BUSINESS_TYPES } from "../consts.js";
 
 export const BusinessRegisterSchema = z.object({
-  subdomain: z.string().min(3).max(20).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Lowercase alphanumeric with hyphens"),
   business_name: z.string().min(1).max(200),
   business_type: z.enum(BUSINESS_TYPES).optional(),
   business_category_id: z.number().int().positive().optional(),

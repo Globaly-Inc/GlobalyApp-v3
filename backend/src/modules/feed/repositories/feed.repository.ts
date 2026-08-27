@@ -1,6 +1,3 @@
-// Feed repository — feed_posts / feed_reactions in the globalyapp DB.
-// Visibility is enforced HERE in the query, never in the client: V3 has no RLS, so the WHERE clause is the
-// only thing standing between a private post and another user.
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 
@@ -8,6 +5,7 @@ export interface FeedPostRow {
   id: number;
   author_platform_user_id: number;
   business_id: number | null;
+  institution_id: number | null;
   post_type: string;
   visibility: string;
   content: string;
@@ -77,6 +75,7 @@ function hydratedPostQuery(viewerId: number) {
   return masterKnex("feed_posts as p")
     .leftJoin("platform_users as u", "u.id", "p.author_platform_user_id")
     .leftJoin("businesses as b", "b.id", "p.business_id")
+    .leftJoin("institutions as inst", "inst.id", "p.institution_id")
     .leftJoin("feed_reactions as mine", function () {
       this.on("mine.post_id", "=", "p.id").andOn("mine.platform_user_id", "=", masterKnex.raw("?", [viewerId]));
     })
@@ -85,6 +84,7 @@ function hydratedPostQuery(viewerId: number) {
       "p.id",
       "p.author_platform_user_id",
       "p.business_id",
+      "p.institution_id",
       "p.post_type",
       "p.visibility",
       "p.content",
@@ -101,6 +101,8 @@ function hydratedPostQuery(viewerId: number) {
       "u.photo_url as author_photo_url",
       "b.business_name",
       "b.logo_url as business_logo_url",
+      "inst.institution_name",
+      "inst.logo_url as institution_logo_url",
       "mine.emoji as my_reaction",
       // Authorship is decided here, not inferred by the client. Deletion is still authorized server-side.
       masterKnex.raw("(p.author_platform_user_id = ?) as is_mine", [viewerId]),
@@ -143,6 +145,15 @@ export async function listPosts(input: {
             "p.business_id",
             masterKnex("user_business_index")
               .select("business_id")
+              .where({ platform_user_id: viewerId })
+              .whereNull("deleted_at"),
+          ),
+        )
+        .orWhere((inst) =>
+          inst.where("p.visibility", "business").whereIn(
+            "p.institution_id",
+            masterKnex("user_institution_index")
+              .select("institution_id")
               .where({ platform_user_id: viewerId })
               .whereNull("deleted_at"),
           ),
@@ -230,6 +241,15 @@ export async function isBusinessMember(platformUserId: number, businessId: numbe
   return !!row;
 }
 
+/** Same as isBusinessMember, but for an institution — needed for institution feed posts. */
+export async function isInstitutionMember(platformUserId: number, institutionId: number): Promise<boolean> {
+  const row = await masterKnex("user_institution_index")
+    .where({ platform_user_id: platformUserId, institution_id: institutionId })
+    .whereNull("deleted_at")
+    .first();
+  return !!row;
+}
+
 export async function findPost(id: number) {
   return masterKnex("feed_posts").where({ id }).whereNull("deleted_at").first() as Promise<FeedPostRow | undefined>;
 }
@@ -252,6 +272,12 @@ export async function findVisiblePost(id: number, viewerId: number) {
             "business_id",
             masterKnex("user_business_index").select("business_id").where({ platform_user_id: viewerId }).whereNull("deleted_at"),
           ),
+        )
+        .orWhere((inst) =>
+          inst.where("visibility", "business").whereIn(
+            "institution_id",
+            masterKnex("user_institution_index").select("institution_id").where({ platform_user_id: viewerId }).whereNull("deleted_at"),
+          ),
         );
     })
     .first() as Promise<FeedPostRow | undefined>;
@@ -260,6 +286,7 @@ export async function findVisiblePost(id: number, viewerId: number) {
 export async function insertPost(data: {
   author_platform_user_id: number;
   business_id: number | null;
+  institution_id: number | null;
   post_type: string;
   visibility: string;
   content: string;

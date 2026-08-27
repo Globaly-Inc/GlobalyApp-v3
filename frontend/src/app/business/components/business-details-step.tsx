@@ -8,20 +8,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import type { SelectOption } from "../apis/types";
+import { AddressAutocomplete } from "@/components/address-autocomplete";
+import type { ComboboxOption } from "@/components/combobox";
+import type { PlaceDetails } from "@/lib/api/places";
 
 export function BusinessDetailsStep({
   isInstitution,
   businessName,
   onBusinessNameChange,
-  subdomain,
-  onSubdomainChange,
-  phone,
-  onPhoneChange,
+  phoneCountryId,
+  onPhoneCountryChange,
+  phoneNumber,
+  onPhoneNumberChange,
+  phoneCountryOptions,
   countryId,
   onCountryChange,
   countryOptions,
+  countryIso2,
   address,
   onAddressChange,
+  onPlaceResolved,
   state,
   onStateChange,
   city,
@@ -38,15 +44,18 @@ export function BusinessDetailsStep({
   isInstitution: boolean;
   businessName: string;
   onBusinessNameChange: (value: string) => void;
-  subdomain: string;
-  onSubdomainChange: (value: string) => void;
-  phone: string;
-  onPhoneChange: (value: string) => void;
+  phoneCountryId: string;
+  onPhoneCountryChange: (value: string) => void;
+  phoneNumber: string;
+  onPhoneNumberChange: (value: string) => void;
+  phoneCountryOptions: ComboboxOption[];
   countryId: string;
   onCountryChange: (value: string) => void;
   countryOptions: SelectOption[];
+  countryIso2?: string | null;
   address: string;
   onAddressChange: (value: string) => void;
+  onPlaceResolved: (details: PlaceDetails) => void;
   state: string;
   onStateChange: (value: string) => void;
   city: string;
@@ -79,52 +88,48 @@ export function BusinessDetailsStep({
             />
             {fieldErrors.businessName && <p className="text-sm text-destructive">{fieldErrors.businessName}</p>}
           </div>
-          {!isInstitution && (
-            <div className="space-y-2">
-              <Label>Subdomain *</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  className="h-10"
-                  value={subdomain}
-                  onChange={(e) => onSubdomainChange(e.target.value.toLowerCase())}
-                  placeholder="your-agency"
-                  aria-invalid={!!fieldErrors.subdomain}
-                />
-                <span className="text-sm text-muted-foreground whitespace-nowrap">.globalyhub.com</span>
-              </div>
-              {fieldErrors.subdomain && <p className="text-sm text-destructive">{fieldErrors.subdomain}</p>}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Phone *</Label>
-              <Input
-                className="h-10"
-                value={phone}
-                onChange={(e) => onPhoneChange(e.target.value)}
-                aria-invalid={!!fieldErrors.phone}
-              />
-              {fieldErrors.phone && <p className="text-sm text-destructive">{fieldErrors.phone}</p>}
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Country *</Label>
+          <div className="space-y-2">
+            <Label>Phone *</Label>
+            <div className="grid grid-cols-3 gap-3">
               <Combobox
-                value={countryId}
-                onChange={onCountryChange}
-                placeholder="Select country"
+                value={phoneCountryId}
+                onChange={onPhoneCountryChange}
+                options={phoneCountryOptions}
+                placeholder="Code"
                 searchPlaceholder="Search countries..."
-                options={countryOptions}
-                aria-invalid={!!fieldErrors.countryId}
+                aria-invalid={!!fieldErrors.phoneCountryId}
               />
-              {fieldErrors.countryId && <p className="text-sm text-destructive">{fieldErrors.countryId}</p>}
+              <Input
+                className="h-10 col-span-2"
+                value={phoneNumber}
+                onChange={(e) => onPhoneNumberChange(e.target.value)}
+                placeholder="984 1234567"
+                aria-invalid={!!fieldErrors.phoneNumber}
+              />
             </div>
+            {(fieldErrors.phoneCountryId ?? fieldErrors.phoneNumber) && (
+              <p className="text-sm text-destructive">{fieldErrors.phoneCountryId ?? fieldErrors.phoneNumber}</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>Country *</Label>
+            <Combobox
+              value={countryId}
+              onChange={onCountryChange}
+              placeholder="Select country"
+              searchPlaceholder="Search countries..."
+              options={countryOptions}
+              aria-invalid={!!fieldErrors.countryId}
+            />
+            {fieldErrors.countryId && <p className="text-sm text-destructive">{fieldErrors.countryId}</p>}
           </div>
           <div className="space-y-2">
             <Label>Address *</Label>
-            <Input
-              className="h-10"
+            <AddressAutocomplete
               value={address}
-              onChange={(e) => onAddressChange(e.target.value)}
+              onChange={onAddressChange}
+              onResolved={onPlaceResolved}
+              countryIso2={countryIso2}
               aria-invalid={!!fieldErrors.address}
             />
             {fieldErrors.address && <p className="text-sm text-destructive">{fieldErrors.address}</p>}
@@ -143,7 +148,7 @@ export function BusinessDetailsStep({
             <Label>Postcode</Label>
             <Input className="h-10" value={postcode} onChange={(e) => onPostcodeChange(e.target.value)} />
           </div>
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Label>Company Registration Document</Label>
             <Input
               type="file"
@@ -153,7 +158,7 @@ export function BusinessDetailsStep({
             {companyRegistrationFile && (
               <p className="text-sm text-muted-foreground">Selected: {companyRegistrationFile.name}</p>
             )}
-          </div>
+          </div> */}
         </CardContent>
       </Card>
       <div className="flex gap-3">

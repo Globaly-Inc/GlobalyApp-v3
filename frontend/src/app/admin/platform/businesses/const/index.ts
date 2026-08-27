@@ -34,6 +34,13 @@ export const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "user-created", label: "User created" },
 ];
 
+export const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "name_asc", label: "Name (A-Z)" },
+  { value: "name_desc", label: "Name (Z-A)" },
+  { value: "created_desc", label: "Created (newest)" },
+  { value: "created_asc", label: "Created (oldest)" },
+];
+
 export const OWNERSHIP_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All ownership" },
   { value: "owned", label: "Owned" },

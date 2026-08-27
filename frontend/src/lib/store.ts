@@ -39,7 +39,7 @@ import { trainingReducer } from "@/app/admin/monitoring/training/store/training-
 import { ambassadorProgramsReducer } from "@/app/admin/monitoring/ambassador-programs/store/ambassador-programs-slice"
 import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-slice"
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
-import { aiChatReducer } from "@/app/personal/ai/store/ai-chat-slice"
+import { aiChatReducer } from "@/app/ai/store/ai-chat-slice"
 import { aiWidgetReducer } from "@/app/business/ai-widget/store/ai-widget-slice"
 import { enquiriesReducer as monitoringEnquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 

@@ -7,6 +7,23 @@ import { SUPERADMIN_SCHEMA as S } from "../../../consts.js";
 
 const now = () => masterKnex.fn.now();
 
+export type BusinessSort = "name_asc" | "name_desc" | "created_desc" | "created_asc";
+
+
+function applySort<T extends { orderBy: (col: string, dir: "asc" | "desc") => T }>(
+  q: T,
+  sort: BusinessSort,
+  nameCol: string,
+  createdCol: string,
+): T {
+  switch (sort) {
+    case "name_desc": return q.orderBy(nameCol, "desc");
+    case "created_desc": return q.orderBy(createdCol, "desc");
+    case "created_asc": return q.orderBy(createdCol, "asc");
+    default: return q.orderBy(nameCol, "asc");
+  }
+}
+
 function businessListQuery() {
   return masterKnex("businesses as b")
     .leftJoin("platform_users as owner", "owner.id", "b.owner_id")
@@ -37,24 +54,45 @@ function applyBusinessFilters<T extends ReturnType<typeof businessListQuery>>(
 
 export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
+  sort: BusinessSort = "name_asc",
 ) {
-  const q = applyBusinessFilters(businessListQuery(), search, status, category, categorySlug)
-    .select(
+  const q = applySort(
+    applyBusinessFilters(businessListQuery(), search, status, category, categorySlug).select(
       "b.id", "b.business_name", "b.subdomain", "b.business_type", "b.business_category_id",
       "b.email", "b.phone", "b.status", "b.claim_status", "b.is_published", "b.country_id", "b.city",
       "b.logo_url", "b.account_status", "b.created_at",
-      "b.owner_id", "b.schema_name", "b.profile_views",
+      "b.owner_id", "b.schema_name", "b.profile_views", "b.source_job_id",
       masterKnex.raw("b.owner_id IS NULL as is_unclaimed"),
       "cat.name as category_name",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
-    )
-    .orderBy("b.created_at", "desc")
-    .limit(limit).offset(offset);
+    ),
+    sort,
+    "b.business_name",
+    "b.created_at",
+  ).limit(limit).offset(offset);
   const rows = await q;
+
+  // Same borrowing institutions do: a pre-seeded business (account_status 0, never provisioned)
+  // has no business_branches/business_services rows of its own — its real counts are the source
+  // extraction job's scraped campuses/courses instead of a permanent, meaningless zero.
+  const preSeededJobIds = rows.filter((r: any) => r.account_status === 0 && r.source_job_id).map((r: any) => r.source_job_id);
+  const [courseCounts, campusCounts] = preSeededJobIds.length
+    ? await Promise.all([
+        masterKnex(`${S}.extraction_jobs`).whereIn("id", preSeededJobIds).select("id", "courses_extracted"),
+        masterKnex(`${S}.extraction_campuses`).whereIn("job_id", preSeededJobIds).groupBy("job_id").select("job_id").count("id as count"),
+      ])
+    : [[], []];
+  const courseCountByJob = new Map(courseCounts.map((r: any) => [r.id, Number(r.courses_extracted) || 0]));
+  const campusCountByJob = new Map(campusCounts.map((r: any) => [r.job_id, Number(r.count)]));
 
   await Promise.all(
     rows.map(async (row: any) => {
+      if (row.account_status === 0 && row.source_job_id) {
+        row.branch_count = campusCountByJob.get(row.source_job_id) ?? 0;
+        row.service_count = courseCountByJob.get(row.source_job_id) ?? 0;
+        return;
+      }
       try {
         const tenantDb = await getKnex(row.id, row.schema_name);
         const [[{ count: branchCount }], [{ count: serviceCount }]] = await Promise.all([
@@ -113,13 +151,15 @@ function applyInstitutionFilters<T extends ReturnType<typeof institutionListQuer
   return q;
 }
 
-export async function listInstitutions(limit: number, offset: number, search?: string, status?: string) {
+export async function listInstitutions(
+  limit: number, offset: number, search?: string, status?: string, sort: BusinessSort = "name_asc",
+) {
   const category = await masterKnex("business_categories")
     .where({ slug: INSTITUTION_CATEGORY_SLUG })
     .first("id", "name");
 
-  const rows = await applyInstitutionFilters(institutionListQuery(), search, status)
-    .select(
+  const rows = await applySort(
+    applyInstitutionFilters(institutionListQuery(), search, status).select(
       "i.id",
       // Aliased into the business column names so one row type and one card serve both.
       "i.institution_name as business_name",
@@ -127,18 +167,31 @@ export async function listInstitutions(limit: number, offset: number, search?: s
       "i.institution_type as business_type",
       "i.email", "i.phone", "i.status", "i.claim_status", "i.is_published", "i.country_id", "i.city",
       "i.logo_url", "i.account_status", "i.created_at",
-      "i.platform_user_id as owner_id", "i.schema_name",
+      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
       masterKnex.raw("i.platform_user_id IS NULL as is_unclaimed"),
       masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
       masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
-    )
-    .orderBy("i.created_at", "desc")
-    .limit(limit).offset(offset);
+    ),
+    sort,
+    "i.institution_name",
+    "i.created_at",
+  ).limit(limit).offset(offset);
 
-  // institutions have no profile_views/branches/services tables — reported as 0 rather than
-  // omitted, so the shared card doesn't have to special-case a missing field.
+  // institutions have no profile_views/branches/services tables of their own — "services" and
+  // "branches" borrow the source extraction job's course/campus counts instead, so a promoted
+  // institution shows real numbers rather than a permanent, meaningless zero.
+  const jobIds = rows.map((r: any) => r.source_job_id).filter(Boolean);
+  const [courseCounts, campusCounts] = jobIds.length
+    ? await Promise.all([
+        masterKnex(`${S}.extraction_jobs`).whereIn("id", jobIds).select("id", "courses_extracted"),
+        masterKnex(`${S}.extraction_campuses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
+      ])
+    : [[], []];
+  const courseCountByJob = new Map(courseCounts.map((r: any) => [r.id, Number(r.courses_extracted) || 0]));
+  const campusCountByJob = new Map(campusCounts.map((r: any) => [r.job_id, Number(r.count)]));
+
   return rows.map((row: any) => ({
     ...row,
     kind: "institution" as const,
@@ -147,8 +200,8 @@ export async function listInstitutions(limit: number, offset: number, search?: s
     // blank. Mapped onto the shared vocabulary; every other value already matches.
     status: row.status === "pending" ? "unverified" : row.status,
     profile_views: 0,
-    branch_count: 0,
-    service_count: 0,
+    branch_count: campusCountByJob.get(row.source_job_id) ?? 0,
+    service_count: courseCountByJob.get(row.source_job_id) ?? 0,
   }));
 }
 
@@ -184,8 +237,22 @@ export async function findInstitutionDetail(id: number) {
     )
     .first();
   if (!row) return row;
+
+  // Same borrowed-from-the-source-job counts as listInstitutions, so the detail page agrees
+  // with the list card instead of omitting the fields entirely.
+  let branch_count = 0;
+  let service_count = 0;
+  if (row.source_job_id) {
+    const [job, [{ count }]] = await Promise.all([
+      masterKnex(`${S}.extraction_jobs`).where({ id: row.source_job_id }).first("courses_extracted"),
+      masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
+    ]);
+    service_count = Number(job?.courses_extracted) || 0;
+    branch_count = Number(count) || 0;
+  }
+
   // Same status-vocabulary mapping as listInstitutions.
-  return { ...row, status: row.status === "pending" ? "unverified" : row.status };
+  return { ...row, status: row.status === "pending" ? "unverified" : row.status, branch_count, service_count };
 }
 
 export async function listInstitutionMembers(

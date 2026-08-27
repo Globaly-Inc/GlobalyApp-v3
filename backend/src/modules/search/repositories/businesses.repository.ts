@@ -5,11 +5,54 @@ import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 
 // The public catalog row shape the institution detail page expects — `job_id` (from
 // source_job_id) is what the /courses endpoint uses to find the scraped course catalog.
+/**
+ * The institution's crest. Promote copies the scraped logo into `institutions.logo_url`, but a
+ * job re-scraped or enriched after that leaves the copy stale or null — falling back to the
+ * extraction overview keeps the public pages on the authentic scraped crest.
+ *
+ * A correlated subquery rather than a join: `extraction_institution_overview` has no unique
+ * index on job_id, so joining it could fan one institution out into several rows.
+ */
+const INSTITUTION_CREST = masterKnex.raw(
+  `coalesce(i.logo_url, (select ei.logo_url from ${S}.extraction_institution_overview ei
+      where ei.job_id = i.source_job_id and ei.logo_url is not null limit 1)) as logo_url`,
+);
+
 const INSTITUTION_COLUMNS = [
-  "i.id", "i.source_job_id as job_id", "i.institution_name as business_name", "i.logo_url", "i.description",
-  "i.city", "c.name as country_name", "i.website", "i.email",
+  "i.id", "i.source_job_id as job_id", "i.institution_name as business_name", INSTITUTION_CREST, "i.cover_url", "i.description",
+  "i.city", "i.state", "i.postcode", "c.name as country_name", "i.website", "i.email",
   "i.phone", "i.address", "i.facebook_url", "i.instagram_url", "i.twitter_url", "i.linkedin_url", "i.youtube_url",
+  // Header/sidebar fields the shared entity profile renders: the Verified badge, the category
+  // label and the Registration & Licenses card (see EntityProfile on the frontend).
+  "i.status", "i.institution_type as category_name", "i.registration_number", "i.registration_licenses",
+  // Profile-page extras: the media strips and the "Other Information" sidebar rows.
+  "i.gallery_images", "i.video_urls", "i.company_size", "i.created_at",
 ];
+
+/**
+ * Campuses of a promoted institution. They hang off the extraction job, so an institution
+ * registered by hand (no source_job_id) has none and the page falls back to its own address.
+ */
+export async function listInstitutionCampuses(jobId: string) {
+  return masterKnex(`${S}.extraction_campuses`)
+    .where({ job_id: jobId })
+    .select("id", "name", "address", "city", "state", "country", "phone", "email")
+    .orderBy("created_at");
+}
+
+/**
+ * The institution's team, read from the master-DB membership index rather than the tenant
+ * `members` table — this public endpoint has no tenant connection to open.
+ */
+export async function listInstitutionMembers(institutionId: number) {
+  return masterKnex("user_institution_index as ui")
+    .join("platform_users as pu", "pu.id", "ui.platform_user_id")
+    .where("ui.institution_id", institutionId)
+    .whereNull("ui.deleted_at")
+    .whereNull("pu.deleted_at")
+    .select("pu.id", "pu.first_name", "pu.last_name", "pu.photo_url", "ui.role", "ui.is_owner")
+    .orderBy([{ column: "ui.is_owner", order: "desc" }, { column: "pu.first_name" }]);
+}
 
 function overviewQuery(
   { country, city, search }: Omit<BusinessSearchFilters, "businessType">,
@@ -38,7 +81,13 @@ function overviewQuery(
  * other tabs. Raw extraction rows are no longer served directly: an exported job becomes
  * visible by being promoted (→ institutions row) and published.
  */
-function institutionsQuery({ country, city, search }: Omit<BusinessSearchFilters, "businessType">) {
+export type InstitutionFilters = Omit<BusinessSearchFilters, "businessType"> & {
+  institutionType?: string;
+  /** "YYYY-MM" — keeps institutions whose catalog has an intake in that month or later. */
+  intakeFrom?: string;
+};
+
+function institutionsQuery({ country, city, search, institutionType, intakeFrom }: InstitutionFilters) {
   const q = masterKnex("institutions as i")
     .leftJoin("countries as c", "c.id", "i.country_id")
     .where("i.is_published", true)
@@ -53,7 +102,51 @@ function institutionsQuery({ country, city, search }: Omit<BusinessSearchFilters
   if (search) {
     q.where((b) => b.whereILike("i.institution_name", `%${search}%`).orWhereILike("i.description", `%${search}%`));
   }
+  if (institutionType) q.whereRaw("lower(i.institution_type) = lower(?)", [institutionType]);
+  if (intakeFrom) {
+    // "Upcoming" reads as on-or-after the chosen month, not that month exactly — a picker that
+    // only matched one month would return nothing for most institutions. A month-less intake
+    // counts as January so a year-only row still lands in the right year.
+    const [year, month] = intakeFrom.split("-").map(Number);
+    q.whereRaw(
+      `exists (
+        select 1 from ${S}.extraction_courses ec
+          join ${S}.extraction_intakes ei on ei.course_id = ec.id
+         where ec.job_id = i.source_job_id
+           and ei.intake_year is not null
+           and (ei.intake_year > ? or (ei.intake_year = ? and coalesce(ei.intake_month, 1) >= ?))
+      )`,
+      [year, year, month],
+    );
+  }
   return q;
+}
+
+/** Distinct institution types actually present in the catalog — the type filter's options. */
+export async function listInstitutionTypes() {
+  const rows = await masterKnex("institutions as i")
+    .where("i.is_published", true)
+    .whereNull("i.deleted_at")
+    .whereNotNull("i.institution_type")
+    .distinct("i.institution_type")
+    .orderBy("i.institution_type");
+  return rows.map((r: { institution_type: string }) => r.institution_type);
+}
+
+/** Intake months across every published institution's catalog, earliest first — "YYYY-MM". */
+export async function listInstitutionIntakeMonths() {
+  const rows = await masterKnex.raw(
+    `select distinct ei.intake_year, coalesce(ei.intake_month, 1) as intake_month
+       from ${S}.extraction_intakes ei
+       join ${S}.extraction_courses ec on ec.id = ei.course_id
+      where ei.intake_year is not null
+        and exists (select 1 from institutions i
+                     where i.source_job_id = ec.job_id and i.is_published = true and i.deleted_at is null)
+      order by 1, 2`,
+  );
+  return (rows.rows as { intake_year: number; intake_month: number }[]).map(
+    (r) => `${r.intake_year}-${String(r.intake_month).padStart(2, "0")}`,
+  );
 }
 
 /** Confirmed scraped courses for a promoted institution, via its source job. */
@@ -63,6 +156,34 @@ function institutionCourseCount() {
       where ec.job_id = i.source_job_id and ec.verification_status = 'confirmed') as course_count`,
   );
 }
+
+// Card facts derived from the institution's own scraped catalog and campuses — all keyed off the
+// same source job, so none of them needs a separate round trip per row.
+const INSTITUTION_CARD_COLUMNS = [
+  masterKnex.raw(
+    `(select count(distinct ec.subject_area) from ${S}.extraction_courses ec
+       where ec.job_id = i.source_job_id and ec.subject_area is not null) as subject_area_count`,
+  ),
+  masterKnex.raw(
+    `(select array_agg(distinct ec.study_mode order by ec.study_mode) from ${S}.extraction_courses ec
+       where ec.job_id = i.source_job_id and ec.study_mode is not null) as study_modes`,
+  ),
+  masterKnex.raw(
+    `(select array_agg(distinct coalesce(cam.city, cam.state) order by coalesce(cam.city, cam.state))
+        from ${S}.extraction_campuses cam
+       where cam.job_id = i.source_job_id and coalesce(cam.city, cam.state) is not null) as campus_locations`,
+  ),
+];
+
+type PublicInstitutionRow = {
+  id: number;
+  business_name: string;
+  logo_url: string | null;
+  course_count: string;
+  subject_area_count: string;
+  study_modes: string[] | null;
+  campus_locations: string[] | null;
+};
 
 export type VisaServiceFilters = Omit<BusinessSearchFilters, "businessType"> & { licensedOnly?: boolean };
 
@@ -85,21 +206,44 @@ function businessIdFragment(id: number): string {
   return String(id).padStart(6, "0");
 }
 
-export async function listPublicInstitutions(filters: Omit<BusinessSearchFilters, "businessType">, limit: number, offset: number) {
+const INSTITUTION_LIST_COLUMNS = [
+  "i.id", "i.institution_name as business_name", INSTITUTION_CREST, "i.description",
+  "i.city", "i.state", "c.name as country_name", "c.iso2 as country_code", "i.website", "i.email",
+  // Verified tick and the Institution Type stat on the card.
+  "i.status", "i.institution_type",
+];
+
+function toPublicInstitution(r: PublicInstitutionRow) {
+  return withSlug({
+    ...r,
+    id: businessIdFragment(r.id),
+    course_count: Number(r.course_count),
+    subject_area_count: Number(r.subject_area_count),
+    study_modes: r.study_modes ?? [],
+    campus_locations: r.campus_locations ?? [],
+  });
+}
+
+export async function listPublicInstitutions(filters: InstitutionFilters, limit: number, offset: number) {
   const rows = await institutionsQuery(filters)
-    .select(
-      "i.id", "i.institution_name as business_name", "i.logo_url", "i.description",
-      "i.city", "c.name as country_name", "i.website", "i.email",
-      institutionCourseCount(),
-    )
+    .select(...INSTITUTION_LIST_COLUMNS, institutionCourseCount(), ...INSTITUTION_CARD_COLUMNS)
     .orderBy("i.institution_name")
     .limit(limit)
     .offset(offset);
-  return rows.map((r: { id: number; business_name: string; logo_url: string | null; course_count: string }) =>
-    withSlug({ ...r, id: businessIdFragment(r.id), course_count: Number(r.course_count) }));
+  return rows.map(toPublicInstitution);
 }
 
-export async function countPublicInstitutions(filters: Omit<BusinessSearchFilters, "businessType">) {
+/** The saved-items lookup: institutions are shortlisted by the padded id fragment the API exposes. */
+export async function listPublicInstitutionsByFragments(fragments: string[]) {
+  if (fragments.length === 0) return [];
+  const rows = await institutionsQuery({})
+    .whereRaw("lpad(i.id::text, 6, '0') = any(?)", [fragments])
+    .select(...INSTITUTION_LIST_COLUMNS, institutionCourseCount(), ...INSTITUTION_CARD_COLUMNS)
+    .orderBy("i.institution_name");
+  return rows.map(toPublicInstitution);
+}
+
+export async function countPublicInstitutions(filters: InstitutionFilters) {
   const [row] = await institutionsQuery(filters).count("i.id as count");
   return Number(row.count);
 }
@@ -197,6 +341,40 @@ export async function findPublicInstitutionBySlug(slug: string) {
   return withSlug({ ...institution, id: businessIdFragment(institution.id) });
 }
 
+/**
+ * A scraped visa-service provider's profile row. These live only in the extraction catalog (no
+ * `businesses` row, so no subdomain) and are addressed by the same `{name}-{id-fragment}` slug
+ * the search list emits through withSlug().
+ */
+export async function findPublicVisaServiceProviderBySlug(slug: string) {
+  const fragment = parseCourseIdFragment(slug);
+  if (!fragment) return null;
+
+  const provider = await visaServiceProvidersQuery({})
+    .whereRaw("left(replace(ei.id::text, '-', ''), 6) = ?", [fragment])
+    .select(
+      "ei.id", "ei.job_id", "ei.name as business_name", "ei.logo_url", "ei.description",
+      "ei.address", "ei.city", "ei.state", "ei.country as country_name",
+      "ei.website", "ei.email", "ei.phone", "ei.source_url",
+    )
+    .first();
+  if (!provider) return null;
+  return withSlug(provider) as typeof provider & { slug: string };
+}
+
+/** The scraped visa services filed under a provider's extraction job. */
+export async function listPublicVisaServicesForJob(jobId: string) {
+  return masterKnex(`${S}.extraction_visa_services`)
+    .where("job_id", jobId)
+    .select(
+      "id", "name", "type", "description", "registration_number", "registration_body",
+      "registration_status", "registration_expiry", "visa_types_handled", "specializations",
+      "languages_spoken", "fee_amount", "fee_currency", "fee_type", "fee_from", "fee_to",
+      "consultation_fee", "consultation_free", "years_experience", "countries_serviced",
+    )
+    .orderBy("name");
+}
+
 export type BusinessSearchFilters = {
   // The signup-time `business_type` (agent/institution/service_provider/...) — not
   // `business_category_id`, which is a separate, optionally-set field the owner may never fill
@@ -210,9 +388,12 @@ export type BusinessSearchFilters = {
 
 const BUSINESS_COLUMNS = [
   "b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.schema_provisioned_at", "b.logo_url", "b.cover_url", "b.description",
-  "b.city", "c.name as country_name", "b.website", "b.email",
+  "b.city", "b.state", "b.postcode", "c.name as country_name", "b.website", "b.email",
   "b.phone", "b.address", "cat.name as category_name", "b.public_visibility",
   "b.facebook_url", "b.instagram_url", "b.twitter_url", "b.linkedin_url", "b.youtube_url",
+  // Header/sidebar fields the shared entity profile renders: the Verified badge, the Locations
+  // map and the Registration & Licenses card (see EntityProfile on the frontend).
+  "b.status", "b.latitude", "b.longitude", "b.business_registration_number", "b.registration_licenses",
 ];
 
 function baseQuery({ businessType, country, city, search }: BusinessSearchFilters) {
@@ -359,10 +540,18 @@ export async function listPublicServicesAcrossBusinesses(
 }
 
 export async function listPublicRepresentations(businessId: number) {
-  return masterKnex("business_representations")
-    .whereNull("deleted_at")
-    .where("business_id", businessId)
-    .where("status", "active")
-    .select("uuid as id", "partner_business_id", "partner_business_name", "partner_business_logo_url", "relation_type")
-    .orderBy("partner_business_name");
+  return masterKnex("business_representations as r")
+    .leftJoin("businesses as tb", (join) => join.on("tb.id", "r.target_id").andOnVal("r.target_type", "business"))
+    .leftJoin("institutions as ti", (join) => join.on("ti.id", "r.target_id").andOnVal("r.target_type", "institution"))
+    .whereNull("r.deleted_at")
+    .where({ "r.originator_id": businessId, "r.originator_type": "business" })
+    .where("r.status", "active")
+    .select(
+      "r.uuid as id",
+      "r.target_type as partner_kind",
+      "r.target_id as partner_id",
+      masterKnex.raw("COALESCE(tb.business_name, ti.institution_name) as partner_name"),
+      masterKnex.raw("COALESCE(tb.logo_url, ti.logo_url) as partner_logo_url"),
+    )
+    .orderBy("partner_name");
 }

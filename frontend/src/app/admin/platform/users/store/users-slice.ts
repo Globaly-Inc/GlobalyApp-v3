@@ -1,9 +1,21 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { usersApi } from "../apis";
-import type { AdminInvitation, AdminUser, InviteAdminParams, ListParams, UpdateAdminParams } from "../apis/types";
+import type {
+  AdminInvitation, AdminUser, InviteAdminParams, ListParams, PlatformUser, UpdateAdminParams,
+  UpdatePlatformUserParams,
+} from "../apis/types";
 
 export const fetchUsers = createAsyncThunk("adminUsers/fetchUsers", (params: ListParams = {}) =>
   usersApi.listUsers(params),
+);
+
+export const fetchPlatformUsers = createAsyncThunk("adminUsers/fetchPlatformUsers", (params: ListParams = {}) =>
+  usersApi.listPlatformUsers(params),
+);
+
+export const updatePlatformUser = createAsyncThunk(
+  "adminUsers/updatePlatformUser",
+  ({ id, patch }: { id: number; patch: UpdatePlatformUserParams }) => usersApi.updatePlatformUser(id, patch),
 );
 
 export const updateAdmin = createAsyncThunk(
@@ -32,6 +44,10 @@ type UsersState = {
   usersStatus: ListStatus;
   usersError: string | null;
 
+  platformUsers: PaginatedList<PlatformUser>;
+  platformUsersStatus: ListStatus;
+  platformUsersError: string | null;
+
   invitations: PaginatedList<AdminInvitation>;
   invitationsStatus: ListStatus | "inviting";
   invitationsError: string | null;
@@ -43,6 +59,10 @@ const initialState: UsersState = {
   users: { ...emptyList },
   usersStatus: "idle",
   usersError: null,
+
+  platformUsers: { ...emptyList },
+  platformUsersStatus: "idle",
+  platformUsersError: null,
 
   invitations: { ...emptyList },
   invitationsStatus: "idle",
@@ -66,6 +86,18 @@ const usersSlice = createSlice({
       .addCase(fetchUsers.rejected, (state, action) => {
         state.usersStatus = "failed";
         state.usersError = action.error.message ?? "Failed to load users.";
+      })
+      .addCase(fetchPlatformUsers.pending, (state) => {
+        state.platformUsersStatus = "loading";
+        state.platformUsersError = null;
+      })
+      .addCase(fetchPlatformUsers.fulfilled, (state, action) => {
+        state.platformUsersStatus = "idle";
+        state.platformUsers = { ...action.payload.meta, data: action.payload.data };
+      })
+      .addCase(fetchPlatformUsers.rejected, (state, action) => {
+        state.platformUsersStatus = "failed";
+        state.platformUsersError = action.error.message ?? "Failed to load platform users.";
       })
       .addCase(fetchInvitations.pending, (state) => {
         state.invitationsStatus = "loading";

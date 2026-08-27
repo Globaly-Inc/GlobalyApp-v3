@@ -36,6 +36,7 @@ import type {
 } from "./types";
 
 import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import type { SortOrder } from "../const";
 import type { ExtractionStatus, GetJobsParams, GetJobsResult } from "./types";
 
 function delay(ms: number) {
@@ -230,7 +231,7 @@ export const allExtractionsMockApi = {
 
   getCourses: async (
     jobId: string,
-    params: { page?: number; limit?: number; search?: string; status?: string } = {},
+    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } = {},
   ): Promise<Paginated<CourseFull>> => {
     console.log("[mock] GET courses for job", jobId, params);
     await delay(300);
@@ -260,6 +261,9 @@ export const allExtractionsMockApi = {
     const filtered = all
       .filter((c) => !params.search || c.name.toLowerCase().includes(params.search.toLowerCase()))
       .filter((c) => !params.status || c.verification_status === params.status);
+    if (params.sort === "name_asc") filtered.sort((a, b) => a.name.localeCompare(b.name));
+    else if (params.sort === "name_desc") filtered.sort((a, b) => b.name.localeCompare(a.name));
+    else if (params.sort === "newest") filtered.reverse();
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
     const statusCounts = Object.entries(
@@ -324,6 +328,29 @@ export const allExtractionsMockApi = {
     ];
   },
 
+  // Paginated + searchable, unlike getCampuses' full dump.
+  getCampusesFiltered: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<CampusFull>> => {
+    console.log("[mock] GET campuses-filtered for job", jobId, params);
+    await delay(250);
+    const now = new Date().toISOString();
+    const all: CampusFull[] = [
+      { id: "campus-1", name: "Main Campus", address: "123 University Ave", city: "Edmonton", state: "AB", country: "Canada", phone: "+1 555 0100", email: "campus@example.edu", map_link: null, source_url: null, postcode: "T5J 1Z1", created_at: now, updated_at: now },
+      { id: "campus-2", name: "Downtown Campus", address: "456 College St", city: "Edmonton", state: "AB", country: "Canada", phone: null, email: null, map_link: null, source_url: null, postcode: null, created_at: now, updated_at: now },
+    ];
+    const filtered = params.search
+      ? all.filter((c) => (c.name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
+  },
+
   createCampus: async (params: CreateCampusParams): Promise<CampusFull> => {
     console.log("[mock] POST campus", params);
     await delay(300);
@@ -370,6 +397,33 @@ export const allExtractionsMockApi = {
       created_at: now,
       updated_at: now,
     }));
+  },
+
+  // Paginated + searchable, unlike getAgents' full dump.
+  getAgentsFiltered: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<AgentFull>> => {
+    console.log("[mock] GET agents-filtered for job", jobId, params);
+    await delay(250);
+    const job = mockJobs.find((j) => j.id === jobId);
+    const count = job?.agent_count ?? 1;
+    const now = new Date().toISOString();
+    const all: AgentFull[] = Array.from({ length: count }, (_, i) => ({
+      id: `agent-${i}`, name: `Agent ${i + 1}`, country: "Canada", email: `agent${i + 1}@example.com`,
+      phone: null, website: null, source_url: null, external_id: null, source_status: "active",
+      address: null, city: null, state: null, postcode: null, created_at: now, updated_at: now,
+    }));
+    const search = params.search?.toLowerCase();
+    const filtered = search
+      ? all.filter((a) => [a.name, a.country, a.email, a.city].some((f) => (f ?? "").toLowerCase().includes(search)))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
   },
 
   createAgent: async (params: CreateAgentParams): Promise<AgentFull> => {
@@ -483,14 +537,27 @@ export const allExtractionsMockApi = {
 
   // ── Intakes ────────────────────────────────────────────────────
 
-  getIntakes: async (jobId: string): Promise<Intake[]> => {
-    console.log("[mock] GET intakes for job", jobId);
+  getIntakes: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<Intake>> => {
+    console.log("[mock] GET intakes for job", jobId, params);
     await delay(250);
     const now = new Date().toISOString();
-    return [
+    const all: Intake[] = [
       { id: "intake-1", intake_name: "Semester 1 2026", start_date: "2026-02-15", end_date: "2026-06-30", orientation_date: "2026-02-10", admission_deadline: "2026-01-15", intake_month: 2, intake_year: 2026, created_at: now },
       { id: "intake-2", intake_name: "Semester 2 2026", start_date: "2026-07-20", end_date: "2026-11-30", orientation_date: "2026-07-15", admission_deadline: "2026-06-20", intake_month: 7, intake_year: 2026, created_at: now },
+      { id: "intake-3", intake_name: "Summer Intensive 2027", start_date: "2027-01-05", end_date: "2027-02-20", orientation_date: "2027-01-02", admission_deadline: "2026-12-01", intake_month: 1, intake_year: 2027, created_at: now },
     ];
+    const filtered = params.search
+      ? all.filter((i) => (i.intake_name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
   },
 
   createIntake: async (params: { job_id: string } & IntakeParams): Promise<Intake> => {
@@ -511,14 +578,27 @@ export const allExtractionsMockApi = {
 
   // ── Eligibility Requirements ───────────────────────────────────
 
-  getEligibilityRequirements: async (jobId: string): Promise<EligibilityRequirement[]> => {
-    console.log("[mock] GET eligibility-requirements for job", jobId);
+  getEligibilityRequirements: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<EligibilityRequirement>> => {
+    console.log("[mock] GET eligibility-requirements for job", jobId, params);
     await delay(250);
     const now = new Date().toISOString();
-    return [
+    const all: EligibilityRequirement[] = [
       { id: "elig-1", name: "Standard Academic Entry", applicable_to: "international", min_degree_level: "High School Diploma", score_type: "percentage", min_score: 65, min_score_percent: 65, description: "Minimum academic requirement for international applicants.", created_at: now },
       { id: "elig-2", name: "Domestic Entry", applicable_to: "domestic", min_degree_level: "High School Diploma", score_type: "percentage", min_score: 55, min_score_percent: 55, description: null, created_at: now },
+      { id: "elig-3", name: "English Proficiency", applicable_to: "international", min_degree_level: null, score_type: null, min_score: null, min_score_percent: null, description: "IELTS 6.5 overall, no band below 6.0.", created_at: now },
     ];
+    const filtered = params.search
+      ? all.filter((r) => (r.name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
   },
 
   createEligibilityRequirement: async (params: { job_id: string } & EligibilityParams): Promise<EligibilityRequirement> => {
@@ -545,14 +625,33 @@ export const allExtractionsMockApi = {
 
   // ── Study Units ──────────────────────────────────────────────────
 
-  getStudyUnits: async (jobId: string): Promise<StudyUnit[]> => {
-    console.log("[mock] GET study-units for job", jobId);
+  getStudyUnits: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<StudyUnit>> => {
+    console.log("[mock] GET study-units for job", jobId, params);
     await delay(250);
     const now = new Date().toISOString();
-    return [
-      { id: "su-1", unit_code: "COMP1010", unit_name: "Introduction to Computer Science", credit_points: 6, unit_type: "compulsory", description: null, created_at: now },
-      { id: "su-2", unit_code: "MATH2020", unit_name: "Linear Algebra", credit_points: 3, unit_type: "elective", description: null, created_at: now },
-    ];
+    const names = ["Introduction to Computer Science", "Linear Algebra", "Data Structures", "Organic Chemistry",
+      "Microeconomics", "Academic Writing", "Statistics for Business", "Thermodynamics", "Cell Biology", "World History"];
+    const all: StudyUnit[] = names.map((unit_name, i) => ({
+      id: `su-${i}`,
+      unit_code: `UNIT${1000 + i}`,
+      unit_name,
+      credit_points: i % 2 === 0 ? 6 : 3,
+      unit_type: i % 3 === 0 ? "elective" : "compulsory",
+      description: null,
+      created_at: now,
+    }));
+    const filtered = params.search
+      ? all.filter((u) => `${u.unit_name} ${u.unit_code ?? ""}`.toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
   },
 
   createStudyUnit: async (params: { job_id: string } & StudyUnitParams & { unit_name: string }): Promise<StudyUnit> => {
@@ -577,14 +676,35 @@ export const allExtractionsMockApi = {
 
   // ── Study Options ────────────────────────────────────────────────
 
-  getStudyOptions: async (jobId: string): Promise<StudyOption[]> => {
-    console.log("[mock] GET study-options for job", jobId);
+  getStudyOptions: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<StudyOption>> => {
+    console.log("[mock] GET study-options for job", jobId, params);
     await delay(250);
     const now = new Date().toISOString();
-    return [
-      { id: "so-1", name: "On Campus Full-Time", study_mode: "on_campus", study_load: "full_time", duration_value: 3, duration_unit: "years", applicable_to: "both", created_at: now },
-      { id: "so-2", name: "Online Part-Time", study_mode: "online", study_load: "part_time", duration_value: 6, duration_unit: "years", applicable_to: "international", created_at: now },
+    const modes: Array<[string, string]> = [
+      ["on_campus", "full_time"], ["online", "part_time"], ["hybrid", "full_time"], ["on_campus", "part_time"],
     ];
+    const all: StudyOption[] = modes.map(([study_mode, study_load], i) => ({
+      id: `so-${i}`,
+      name: `${study_mode === "on_campus" ? "On Campus" : study_mode === "online" ? "Online" : "Hybrid"} ${study_load === "full_time" ? "Full-Time" : "Part-Time"}`,
+      study_mode,
+      study_load,
+      duration_value: study_load === "full_time" ? 3 : 6,
+      duration_unit: "years",
+      applicable_to: i % 2 === 0 ? "both" : "international",
+      created_at: now,
+    }));
+    const filtered = params.search
+      ? all.filter((o) => `${o.name} ${o.study_mode ?? ""} ${o.applicable_to ?? ""}`.toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
   },
 
   createStudyOption: async (params: { job_id: string; course_id?: string } & StudyOptionParams): Promise<StudyOption> => {
@@ -724,6 +844,7 @@ export const allExtractionsMockApi = {
         verification_status: i % 3 === 0 ? "confirmed" : "pending",
         updated_at: now,
       })),
+      coursesTotal: job.courses_extracted,
       courseLinks: EMPTY_COURSE_LINKS,
       visaServices: [],
     };

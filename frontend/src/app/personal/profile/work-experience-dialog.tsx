@@ -28,7 +28,7 @@ function toInput(item: WorkExperience | null): WorkExperienceInput {
     job_title: item?.job_title ?? "",
     organization_name: item?.organization_name ?? "",
     is_current: item?.is_current ?? false,
-    start_date: item?.start_date ?? "",
+    start_date: item?.start_date ?? new Date().toISOString().slice(0, 10),
     end_date: item?.end_date ?? "",
     sort_order: item?.sort_order ?? 0,
   };

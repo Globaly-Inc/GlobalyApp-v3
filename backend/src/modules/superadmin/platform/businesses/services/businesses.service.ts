@@ -13,16 +13,22 @@ import { queueService } from "../../../../../shared/queue/queueService.js";
 import { queueEmail } from "../../../../auth/auth.service.js";
 import { claimBusinessEmail } from "../../../../../shared/mail/templates.js";
 import * as repo from "../repositories/businesses.repository.js";
+import type { BusinessSort } from "../repositories/businesses.repository.js";
 import * as userRepo from "../../../../platform-users/repositories/platform-users.repository.js";
+import { findBusinessBySubdomain } from "../../../../businesses/repositories/businesses.repository.js";
+import { generateSubdomain } from "../../../../../shared/subdomain.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
 import * as agentsService from "../../../../agents/services/agents.service.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
+import * as reviewRepo from "../../../data-extraction/repositories/review.repository.js";
+import { courseSlug } from "../../../../search/utils/slug.js";
 import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
 import type { InstitutionInviteInput } from "../../../../platform-users/services/institution-members.service.js";
+import * as representationsService from "../../business-representations/services/business-representations.service.js";
 import type { PaginationInput } from "../../../../../shared/pagination.js";
 import type {
-  BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPatchInput,
-  MemberInviteInput, MemberPatchInput,
+  BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPartnerInput, InstitutionPartnerPatch,
+  InstitutionPatchInput, MemberInviteInput, MemberPatchInput, RoleCreateInput, RolePatchInput,
 } from "../schemas/businesses.schema.js";
 
 const logger = createChildLogger("superadmin-businesses-service");
@@ -43,6 +49,20 @@ async function requireBusiness(id: number) {
   return biz;
 }
 
+export async function resolveListingKind(id: number): Promise<{ kind: "business" | "institution" }> {
+  if (await repo.findInstitutionById(id)) return { kind: "institution" };
+  if (await repo.findBusinessById(id)) return { kind: "business" };
+  throw new NotFoundError("Listing not found");
+}
+
+async function subdomainTaken(subdomain: string): Promise<boolean> {
+  const [biz, inst] = await Promise.all([
+    findBusinessBySubdomain(subdomain),
+    userRepo.findInstitutionBySubdomain(subdomain),
+  ]);
+  return Boolean(biz || inst);
+}
+
 export async function createBusiness(input: BusinessCreateInput) {
   const existingOwner = await userRepo.findByEmail(input.email);
   if (existingOwner) throw new ConflictError("This email is already in use");
@@ -50,25 +70,30 @@ export async function createBusiness(input: BusinessCreateInput) {
 
   const { first_name, last_name, ...businessInput } = input;
 
-
-  let owner: Awaited<ReturnType<typeof userRepo.insert>>;
-  let business: Awaited<ReturnType<typeof repo.insertBusiness>>;
-  try {
-    ({ owner, business } = await masterKnex.transaction(async (trx) => {
-      const trxOwner = await userRepo.insert({
-        first_name: first_name || input.business_name,
-        last_name: last_name ?? "",
-        email: input.email,
-        phone: input.phone ?? undefined,
-        account_status: 1,
-      }, trx);
-      const trxBusiness = await repo.insertBusiness({ ...businessInput, owner_id: trxOwner.id }, trx);
-      return { owner: trxOwner, business: trxBusiness };
-    }));
-  } catch (err: any) {
-    if (err.code === "23505") throw new ConflictError("Subdomain already taken");
-    throw err;
+  // No subdomain field for an admin to fix, so a collision (including the check-then-insert
+  // race between two concurrent creates) is retried with a freshly generated subdomain instead
+  // of ever surfacing as an error — same handling as the self-service registration flow.
+  let owner: Awaited<ReturnType<typeof userRepo.insert>> | undefined;
+  let business: Awaited<ReturnType<typeof repo.insertBusiness>> | undefined;
+  for (let attempt = 0; !business && attempt < 5; attempt++) {
+    const subdomain = await generateSubdomain(input.business_name, subdomainTaken);
+    try {
+      ({ owner, business } = await masterKnex.transaction(async (trx) => {
+        const trxOwner = await userRepo.insert({
+          first_name: first_name || input.business_name,
+          last_name: last_name ?? "",
+          email: input.email,
+          phone: input.phone ?? undefined,
+          account_status: 1,
+        }, trx);
+        const trxBusiness = await repo.insertBusiness({ ...businessInput, subdomain, owner_id: trxOwner.id }, trx);
+        return { owner: trxOwner, business: trxBusiness };
+      }));
+    } catch (err: any) {
+      if (err.code !== "23505" || attempt === 4) throw err;
+    }
   }
+  if (!owner || !business) throw new Error("Could not create business after retrying subdomain collisions");
 
   try {
     await provisionBusinessSchema(business.schema_name);
@@ -119,21 +144,37 @@ export async function createBusiness(input: BusinessCreateInput) {
  *   no category ("All")        -> both
  *
  * The "both" case pages over the two tables together. It over-fetches — `limit + offset` from
- * each side, merged, sorted by created_at, then sliced — because a row's position in the
+ * each side, merged, sorted alphabetically by name, then sliced — because a row's position in the
  * combined order can't be known from either table alone. Correct for any page, and bounded by
  * page depth rather than table size.
  *
  * ponytail: a SQL UNION ALL would push the merge into Postgres. Worth doing when admins page
  * deep; at a few hundred listings this is cheaper to read than to optimise.
  */
+/** Same comparator the DB-side ORDER BY uses per sort option, for the merged both-tables case. */
+function sortComparator(sort: BusinessSort) {
+  switch (sort) {
+    case "name_desc":
+      return (a: any, b: any) => b.business_name.localeCompare(a.business_name);
+    case "created_desc":
+      return (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    case "created_asc":
+      return (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    default:
+      return (a: any, b: any) => a.business_name.localeCompare(b.business_name);
+  }
+}
+
 export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
+  kind?: "business" | "institution",
+  sort: BusinessSort = "name_asc",
 ) {
-  const scope = await resolveListScope(category, categorySlug);
+  const scope = kind ? (kind === "institution" ? "institutions" : "businesses") : await resolveListScope(category, categorySlug);
 
   if (scope === "institutions") {
     const [rawRows, total] = await Promise.all([
-      repo.listInstitutions(limit, offset, search, status),
+      repo.listInstitutions(limit, offset, search, status, sort),
       repo.countInstitutions(search, status),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
@@ -141,7 +182,7 @@ export async function listBusinesses(
 
   if (scope === "businesses") {
     const [rawRows, total] = await Promise.all([
-      repo.listBusinesses(limit, offset, search, status, category, categorySlug),
+      repo.listBusinesses(limit, offset, search, status, category, categorySlug, sort),
       repo.countBusinesses(search, status, category, categorySlug),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
@@ -149,15 +190,13 @@ export async function listBusinesses(
 
   const depth = limit + offset;
   const [bizRows, instRows, bizTotal, instTotal] = await Promise.all([
-    repo.listBusinesses(depth, 0, search, status),
-    repo.listInstitutions(depth, 0, search, status),
+    repo.listBusinesses(depth, 0, search, status, undefined, undefined, sort),
+    repo.listInstitutions(depth, 0, search, status, sort),
     repo.countBusinesses(search, status),
     repo.countInstitutions(search, status),
   ]);
 
-  const merged = [...bizRows, ...instRows]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(offset, offset + limit);
+  const merged = [...bizRows, ...instRows].sort(sortComparator(sort)).slice(offset, offset + limit);
 
   return {
     rows: await Promise.all(merged.map(withImagePreviews)),
@@ -268,9 +307,11 @@ export async function sendInstitutionClaimRequest(id: number) {
 
   const token = randomBytes(32).toString("hex");
   // setInstitutionClaimPending writes claim_status; the admin badge reads `status`, so both move
-  // together here for the same reason as the business path above.
+  // together here for the same reason as the business path above — but only from "unverified",
+  // so resending a claim request can't quietly downgrade an institution that is already verified
+  // or suspended.
   await userRepo.setInstitutionClaimPending(id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-  await userRepo.updateInstitution(id, { status: "claim_pending" });
+  if (inst.status === "unverified") await userRepo.updateInstitution(id, { status: "claim_pending" });
 
   const claimUrl = `${config.WEB_APP_URL}/invite/institution/accept?token=${token}`;
   const ownerName = `${inst.first_name ?? ""} ${inst.last_name ?? ""}`.trim() || "there";
@@ -349,7 +390,8 @@ export async function deleteInstitution(id: number) {
 export async function getInstitutionDetail(id: number) {
   const inst = await repo.findInstitutionDetail(id);
   if (!inst) throw new NotFoundError("Institution not found");
-  return withImagePreviews({ ...inst, kind: "institution" as const });
+  const slug = courseSlug(inst.business_name, String(inst.id).padStart(6, "0"));
+  return withImagePreviews({ ...inst, kind: "institution" as const, slug });
 }
 
 export async function updateInstitutionDetail(id: number, patch: InstitutionPatchInput) {
@@ -375,11 +417,6 @@ export async function listInstitutionMembers(id: number, opts: { search?: string
   }
 }
 
-/**
- * An institution promoted from an extraction job carries that job's id (`source_job_id`), which
- * is also the key `extraction_courses` is filed under — so the job's courses ARE this
- * institution's courses. Self-registered institutions have no job, hence no courses.
- */
 export async function listInstitutionCourses(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
   if (!inst.source_job_id) return { rows: [], total: 0 };
@@ -388,7 +425,88 @@ export async function listInstitutionCourses(id: number, opts: { search?: string
     coursesRepo.listCoursesByJob(inst.source_job_id, opts.limit, opts.offset, filters),
     coursesRepo.countCoursesByJob(inst.source_job_id, filters),
   ]);
+  return { rows: rows.map((r) => ({ ...r, slug: courseSlug(r.name, r.id) })), total };
+}
+
+async function requirePartnerInstitution(businessId: number, institutionId: number) {
+  const isPartner = await representationsService.isActivePartner(businessId, institutionId);
+  if (!isPartner) throw new NotFoundError("Institution is not a partner of this business");
+  return requireInstitution(institutionId);
+}
+
+export async function getPartnerInstitutionDetail(businessId: number, institutionId: number) {
+  const inst = await requirePartnerInstitution(businessId, institutionId);
+  const { logo_url, cover_url } = await withImagePreviews(inst);
+  return {
+    id: inst.id,
+    institution_name: inst.institution_name,
+    email: inst.email,
+    phone: inst.phone,
+    website: inst.website,
+    description: inst.description,
+    country_id: inst.country_id,
+    state: inst.state,
+    city: inst.city,
+    address: inst.address,
+    logo_url,
+    cover_url,
+  };
+}
+
+export async function listPartnerInstitutionCourses(
+  businessId: number,
+  institutionId: number,
+  opts: { search?: string; limit: number; offset: number },
+) {
+  await requirePartnerInstitution(businessId, institutionId);
+  return listInstitutionCourses(institutionId, opts);
+}
+
+export async function listInstitutionBranches(id: number, opts: { search?: string; limit: number; offset: number }) {
+  const inst = await requireInstitution(id);
+  if (!inst.source_job_id) return { rows: [], total: 0 };
+  const filters = { search: opts.search };
+  const [rows, total] = await Promise.all([
+    reviewRepo.listCampusesByJobPaged(inst.source_job_id, opts.limit, opts.offset, filters),
+    reviewRepo.countCampusesByJob(inst.source_job_id, filters),
+  ]);
   return { rows, total };
+}
+
+// Merges manually-linked consultancies (business_representations, real CRUD) with the
+// read-only extraction_agents scraped for this institution's source job — one list, tagged by
+// `source` so the frontend only offers edit/delete on the manual rows. Both sides are fetched
+// search-filtered but otherwise unbounded, then paginated here in the service layer, since a
+// single SQL query can't span the two tables — see project memory on this feature for why.
+const MAX_INSTITUTION_PARTNERS = 1000;
+
+export async function listInstitutionPartners(id: number, opts: { search?: string; limit: number; offset: number }) {
+  const inst = await requireInstitution(id);
+  const [manual, extracted] = await Promise.all([
+    representationsService.listInstitutionRelations(id, MAX_INSTITUTION_PARTNERS, 0, opts.search),
+    inst.source_job_id
+      ? reviewRepo.listAgentsByJob(inst.source_job_id, opts.search).then((r) => r.agents)
+      : Promise.resolve([]),
+  ]);
+  const merged = [
+    ...manual.rows.map((r) => ({ ...r, source: "manual" as const })),
+    ...extracted.map((a) => ({ ...a, source: "extracted" as const })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  return { rows: merged.slice(opts.offset, opts.offset + opts.limit), total: merged.length };
+}
+
+export async function createInstitutionPartner(id: number, data: InstitutionPartnerInput) {
+  const { business_id, ...rest } = data;
+  return representationsService.createInstitutionRelation(id, business_id, rest);
+}
+
+export async function updateInstitutionPartner(id: number, partnerId: string, data: InstitutionPartnerPatch) {
+  return representationsService.updateInstitutionRelation(id, partnerId, data);
+}
+
+export async function deleteInstitutionPartner(id: number, partnerId: string) {
+  return representationsService.deleteInstitutionRelation(id, partnerId);
 }
 
 export async function updateEnquirySettings(id: number, data: EnquirySettingsPatchInput) {
@@ -465,4 +583,37 @@ export async function removeMember(id: number, memberId: number) {
 export async function listActivity(id: number, limit: number, offset: number) {
   await requireBusiness(id);
   return repo.listBusinessActivity(id, limit, offset);
+}
+
+// ── Institution role management ──
+// Thin wrappers: resolve institution → tenant DB, delegate to institution-members.service.ts.
+
+export async function listInstitutionRoles(id: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.listRolesWithDetails(tenantDb);
+}
+
+export async function listInstitutionPermissions(id: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.listPermissions(tenantDb);
+}
+
+export async function createInstitutionRole(id: number, input: RoleCreateInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.createRole(tenantDb, input);
+}
+
+export async function updateInstitutionRole(id: number, roleId: number, patch: RolePatchInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.updateRole(tenantDb, roleId, patch);
+}
+
+export async function deleteInstitutionRole(id: number, roleId: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  await institutionMembersService.deleteRole(tenantDb, roleId);
 }

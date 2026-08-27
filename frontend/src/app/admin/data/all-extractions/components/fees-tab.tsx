@@ -13,12 +13,12 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { latestTimestamp } from "../utils";
+import { feeAmount, latestTimestamp } from "../utils";
 import { EditableField, saveFormAndLearn, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { FeeForm } from "./fee-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
-import type { CourseFee, CourseFeeParams, CourseFull, CourseLinks, ExtractionJob } from "../apis/types";
+import type { CourseFee, CourseFeeParams, CourseLinks, CourseRow, ExtractionJob } from "../apis/types";
 
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
@@ -50,7 +50,7 @@ function FeeCard({
   onSaveField,
 }: Readonly<{
   fee: CourseFee;
-  courses: CourseFull[];
+  courses: CourseRow[];
   linkedCourseIds: string[];
   selected: boolean;
   busy: boolean;
@@ -80,7 +80,7 @@ function FeeCard({
           {fee.period_type && <Badge variant="outline" className="text-xs">{fee.period_type}</Badge>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-sm font-semibold text-foreground">{fee.currency} {fee.total_amount ?? 0}</span>
+          <span className="text-sm font-semibold text-foreground">{feeAmount(fee)}</span>
           <Button
             variant="ghost" size="icon-sm" className="cursor-pointer opacity-0 transition-opacity group-hover:opacity-100"
             title="Edit fee" disabled={busy} onClick={onEdit}
@@ -158,16 +158,17 @@ function FeeCard({
 export function FeesTab({
   jobId,
   job,
+  courses,
   onReload,
   onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
+  courses: CourseRow[];
   onReload: () => void;
   onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
-  const [courses, setCourses] = useState<CourseFull[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -179,12 +180,7 @@ export function FeesTab({
 
   const load = useCallback(async () => {
     try {
-      const [courseLinks, courseRows] = await Promise.all([
-        allExtractionsApi.getCourseLinks(jobId),
-        allExtractionsApi.getCourses(jobId, { limit: 100 }).then((r) => r.data),
-      ]);
-      setLinks(courseLinks);
-      setCourses(courseRows);
+      setLinks(await allExtractionsApi.getCourseLinks(jobId));
     } catch (e) {
       toast.error("Failed to load fees", { description: (e as Error).message });
     } finally {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Building2, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/combobox";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Textarea } from "@/components/ui/textarea";
 import { useAppDispatch } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
-import { CountryMultiSelect } from "@/app/admin/platform/businesses/components/shared/country-multi-select";
+// import { CountryMultiSelect } from "@/app/admin/platform/businesses/components/shared/country-multi-select";
 import type { BusinessRelation, BusinessSearchResult } from "../../apis/types";
 import { businessProfileDetailApi } from "../../apis";
 import { createRelation, updateRelation } from "../../store/business-profile-detail-slice";
@@ -58,7 +58,7 @@ export function LinkConsultancyDialog({
   useEffect(() => {
     if (!open) return;
     if (editRelation) {
-      setPartnerBusinessId(String(editRelation.business_id));
+      setPartnerBusinessId(String(editRelation.partner_id));
       setCountryIds(editRelation.country_ids ?? []);
       setValidFrom(editRelation.valid_from ?? "");
       setValidUntil(editRelation.valid_until ?? "");
@@ -99,7 +99,6 @@ export function LinkConsultancyDialog({
             id: businessId,
             input: {
               partner_business_id: Number(partnerBusinessId),
-              relation_type: "partner",
               country_ids: countryIds,
               valid_from: validFrom || null,
               valid_until: validUntil || null,
@@ -128,7 +127,7 @@ export function LinkConsultancyDialog({
           <SheetDescription>
             {isEdit ? (
               <>
-                Update the partnership with <strong>{editRelation?.business_name}</strong>.
+                Update the partnership with <strong>{editRelation?.partner_name}</strong>.
               </>
             ) : (
               <>
@@ -144,7 +143,17 @@ export function LinkConsultancyDialog({
               Consultancy <span className="text-destructive">*</span>
             </Label>
             {isEdit ? (
-              <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{editRelation?.business_name}</div>
+              <div className="flex h-10 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted">
+                  {editRelation?.partner_logo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={editRelation.partner_logo_url} alt="" className="h-full w-full rounded object-contain" />
+                  ) : (
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </div>
+                {editRelation?.partner_name}
+              </div>
             ) : (
               <Combobox
                 value={partnerBusinessId}
@@ -158,14 +167,14 @@ export function LinkConsultancyDialog({
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
+          {/* <div className="flex flex-col gap-2">
             <Label>Countries</Label>
             <CountryMultiSelect
               options={countries.map((c) => ({ value: c.id, label: c.name }))}
               value={countryIds}
               onChange={setCountryIds}
             />
-          </div>
+          </div> */}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">

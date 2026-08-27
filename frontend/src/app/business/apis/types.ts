@@ -61,10 +61,6 @@ export type BusinessProfilePatch = Partial<
   >
 >;
 
-export type UpdateSubCategoryParams = {
-  sub_category: BusinessType;
-};
-
 export type SelectOption = { value: string; label: string };
 
 /** A business_categories row shaped for pickers — superset of SelectOption so
@@ -76,7 +72,6 @@ export type BusinessCategoryOption = SelectOption & {
 };
 
 export type BusinessRegisterInput = {
-  subdomain: string;
   business_name: string;
   business_category_id: number;
   phone: string;
@@ -89,6 +84,22 @@ export type BusinessRegisterInput = {
 
 export type RegisterBusinessResult = {
   org: { id: number; org_id: string; subdomain: string; business_name: string };
+  access_token: string;
+  message: string;
+};
+
+export type InstitutionRegisterInput = {
+  institution_name: string;
+  phone?: string;
+  country_id?: number;
+  address?: string;
+  state?: string;
+  city?: string;
+  postcode?: string;
+};
+
+export type RegisterInstitutionResult = {
+  institution: { id: number; org_id: string; subdomain: string; institution_name: string };
   access_token: string;
   message: string;
 };

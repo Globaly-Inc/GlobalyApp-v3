@@ -5,10 +5,10 @@ import type { MentionCandidate } from "../apis/types";
  * membership to mention. Dynamic import + swallow-on-failure keeps that context optional instead
  * of making the shared feed module hard-depend on a business feature.
  */
-export async function fetchMentionCandidates(): Promise<MentionCandidate[]> {
+export async function fetchMentionCandidates(search?: string): Promise<MentionCandidate[]> {
   try {
     const { businessProfileDetailApi } = await import("@/app/business/profile/apis");
-    const { data } = await businessProfileDetailApi.getMembers({ limit: 100 });
+    const { data } = await businessProfileDetailApi.getMembers({ limit: 10, search });
     return data.map((m) => ({
       platform_user_id: m.platform_user_id,
       first_name: m.first_name,

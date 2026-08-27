@@ -1,23 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuthState } from "@/app/auth/store/auth-slice";
-
-export default function BusinessProfileResolverPage() {
+export default function BusinessProfilePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { user, initializing } = useAuthState();
+
+  const target = user
+    ? (user.businesses.find((b) => b.org_id === user.orgId) ?? user.businesses[0]
+        ?? user.institutions.find((i) => i.org_id === user.orgId) ?? user.institutions[0])
+    : null;
 
   useEffect(() => {
     if (initializing || !user) return;
-    const target = user.businesses.find((b) => b.org_id === user.orgId) ?? user.businesses[0]
-      ?? user.institutions.find((i) => i.org_id === user.orgId) ?? user.institutions[0];
-    const query = searchParams.toString();
-    if (target) router.replace(`/business/profile/${target.id}${query ? `?${query}` : ""}`);
-    else router.replace("/business/portal");
-  }, [initializing, user, router, searchParams]);
+    router.replace(target ? `/business/profile/${target.id}` : "/business/portal");
+  }, [initializing, user, target, router]);
 
   return (
     <div className="flex min-h-[50vh] items-center justify-center">

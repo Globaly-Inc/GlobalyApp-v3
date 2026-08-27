@@ -46,21 +46,20 @@ import { QualificationDialog } from "./qualification-dialog";
 import { WorkExperienceDialog } from "./work-experience-dialog";
 import { TestScoreDialog } from "./test-score-dialog";
 import { AcademicTestDialog } from "./academic-test-dialog";
+import { SectionError } from "@/components/feed/components/section-error";
 
 export function ProfileView() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { profile, qualifications, languageTests, academicTests, workExperiences, status } = useAppSelector((state) => state.profile);
+  const { profile, qualifications, languageTests, academicTests, workExperiences, status, error } = useAppSelector((state) => state.profile);
   const [countries, setCountries] = useState<Country[]>([]);
 
   const { user: authUser, initializing } = useAuthState();
-  const isBusiness = authUser?.user_category === "business";
-  const isInstitution = authUser?.user_category === "institution";
 
   useEffect(() => {
     if (initializing) return;
-    if (isBusiness || isInstitution) router.replace("/business/profile");
-  }, [initializing, isBusiness, isInstitution, router]);
+    if (!authUser?.is_personal_account) router.replace("/business/profile");
+  }, [initializing, authUser?.is_personal_account, router]);
 
   const [personalOpen, setPersonalOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -88,7 +87,21 @@ export function ProfileView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!profile || initializing || isBusiness || isInstitution) {
+  // A failed load has to say so and offer a retry. Falling through to the spinner below meant any
+  // backend error on GET /platform-users/me left the page spinning forever with nothing to click,
+  // and the mount effect only refetches from "idle" — so a reload could not recover it either.
+  if (!profile && status === "failed") {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <SectionError
+          message={error ?? "Couldn't load your profile."}
+          onRetry={() => dispatch(fetchFullProfile())}
+        />
+      </div>
+    );
+  }
+
+  if (!profile || initializing || !authUser?.is_personal_account) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -171,11 +184,18 @@ export function ProfileView() {
   };
 
   const completion = profile.completion ?? { percentage: 0, items: [] };
-  const initial = profile.first_name?.[0]?.toUpperCase() ?? "U";
+  const initial =
+    `${profile.first_name?.[0] ?? ""}${profile.last_name?.[0] ?? ""}`.toUpperCase() || "U";
 
   return (
     <div className="space-y-6">
-      <ProfileHeroCard profile={profile} initial={initial} imageUploading={imageUploading} onImageFile={handleImageFile} />
+      <ProfileHeroCard
+        profile={profile}
+        initial={initial}
+        imageUploading={imageUploading}
+        onImageFile={handleImageFile}
+        countries={countries}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

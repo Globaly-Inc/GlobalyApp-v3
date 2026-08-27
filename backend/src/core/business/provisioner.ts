@@ -57,10 +57,11 @@ export async function provisionBusinessSchema(schemaUuid: string): Promise<void>
 /**
  * Provision a new institution schema:
  * 1. CREATE SCHEMA using the UUID schema_name
- * 2. Run institution migrations (members, member_invitations)
+ * 2. Run institution migrations (members, member_invitations, roles)
+ * 3. Seed default roles
  */
 export async function provisionInstitutionSchema(schemaUuid: string): Promise<void> {
-  await provisionSchema("institutions", schemaUuid, "./database/migrations/institution");
+  await provisionSchema("institutions", schemaUuid, "./database/migrations/institution", "./database/seeders/institution");
 }
 
 export interface ClaimTarget {

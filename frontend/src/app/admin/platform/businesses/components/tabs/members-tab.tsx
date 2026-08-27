@@ -14,7 +14,10 @@ import { AddMemberDrawer } from "../members/add-member-drawer";
 
 const PAGE_SIZE = 10;
 
-export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
+export function MembersTab({
+  businessId,
+  readOnly = false,
+}: Readonly<{ businessId: number; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: members, status, total } = useAppSelector((state) => state.platformBusinesses.members);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -80,16 +83,18 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
                 <p className="text-xs text-muted-foreground">{[m.user?.email, m.user?.phone].filter(Boolean).join(" • ") || "—"}</p>
               </div>
             </div>
-            <div className="flex gap-1">
-              <Button size="icon-sm" variant="ghost" onClick={() => { setEditingMember(m); setDrawerOpen(true); }} aria-label="Edit member">
-                <Pencil className="h-4 w-4" />
-              </Button>
-              {!m.is_owner && (
-                <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(m.id)} aria-label="Remove member">
-                  <Trash2 className="h-4 w-4" />
+            {!readOnly && (
+              <div className="flex gap-1">
+                <Button size="icon-sm" variant="ghost" onClick={() => { setEditingMember(m); setDrawerOpen(true); }} aria-label="Edit member">
+                  <Pencil className="h-4 w-4" />
                 </Button>
-              )}
-            </div>
+                {!m.is_owner && (
+                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(m.id)} aria-label="Remove member">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -104,9 +109,11 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
           <span className="text-sm font-semibold">Members</span>
           <Badge variant="secondary">{total}</Badge>
         </div>
-        <Button className="h-10" onClick={() => { setEditingMember(null); setDrawerOpen(true); }}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add member
-        </Button>
+        {!readOnly && (
+          <Button className="h-10" onClick={() => { setEditingMember(null); setDrawerOpen(true); }}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add member
+          </Button>
+        )}
       </div>
 
       <div className="relative mb-3 w-1/3">

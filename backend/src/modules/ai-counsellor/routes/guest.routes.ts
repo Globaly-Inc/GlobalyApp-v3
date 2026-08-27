@@ -20,6 +20,7 @@ export async function guestRoutes(app: FastifyInstance) {
     const input = GuestMessageSchema.parse(req.body ?? {});
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip;
     const fingerprintHash = guestService.hashFingerprint(input.fingerprint, ip);
+    const ipHash = guestService.hashIp(ip);
 
     // Embed visitors are gated by the business's monthly quota, not the
     // one-reply fingerprint wall — the widget is useless at 1 message/visitor.
@@ -27,7 +28,7 @@ export async function guestRoutes(app: FastifyInstance) {
       ? await embedService.buildEmbedContext(await embedService.resolveActiveConfig(input.embed_key))
       : undefined;
     if (!embed) {
-      const gate = await guestService.checkGuestGate(fingerprintHash);
+      const gate = await guestService.checkGuestGate(fingerprintHash, ipHash);
       if (!gate.allowed) {
         throw new ForbiddenError("Guest limit reached. Create a free account to continue chatting.");
       }
@@ -89,6 +90,7 @@ export async function guestRoutes(app: FastifyInstance) {
       // Persist guest session (fire-and-forget)
       guestService.createGuestSession({
         fingerprintHash,
+        ipHash,
         messageContent: input.content,
         responseContent: cleanText,
         responseSources: ragOutput.sources,

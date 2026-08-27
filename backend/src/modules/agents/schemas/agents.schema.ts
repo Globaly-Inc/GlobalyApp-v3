@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { PaginationSchema } from "../../../shared/pagination.js";
+
+export const MemberListQuerySchema = PaginationSchema.extend({
+  search: z.string().optional(),
+});
 
 export const InviteAgentSchema = z.object({
   first_name: z.string().min(1).max(100),
@@ -31,5 +36,25 @@ export const AgentPatchSchema = z.object({
   is_public: z.boolean().optional(),
 }).strict();
 
+// ── Custom roles (Settings → Roles) ──
+
+export const RoleParamsSchema = z.object({
+  id: z.coerce.number().int(),
+});
+
+export const RoleCreateSchema = z.object({
+  display_name: z.string().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
+  permission_ids: z.array(z.number().int()).default([]),
+});
+
+export const RolePatchSchema = z.object({
+  display_name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+  permission_ids: z.array(z.number().int()).optional(),
+}).strict();
+
 export type InviteAgentInput = z.infer<typeof InviteAgentSchema>;
 export type AgentPatchInput = z.infer<typeof AgentPatchSchema>;
+export type RoleCreateInput = z.infer<typeof RoleCreateSchema>;
+export type RolePatchInput = z.infer<typeof RolePatchSchema>;

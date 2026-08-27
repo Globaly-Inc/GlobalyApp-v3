@@ -13,7 +13,10 @@ import { fetchInstitutionMembers, setInstitutionMemberStatus } from "../../store
 
 const PAGE_SIZE = 10;
 
-export function InstitutionMembersList({ institutionId }: Readonly<{ institutionId: number }>) {
+export function InstitutionMembersList({
+  institutionId,
+  readOnly = false,
+}: Readonly<{ institutionId: number; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: members, status, total } = useAppSelector((state) => state.platformInstitutionDetail.members);
   const [search, setSearch] = useState("");
@@ -79,7 +82,7 @@ export function InstitutionMembersList({ institutionId }: Readonly<{ institution
                   <p className="text-xs text-muted-foreground">{[m.user?.email, m.user?.phone].filter(Boolean).join(" • ") || "—"}</p>
                 </div>
               </div>
-              {!m.is_owner && (
+              {!m.is_owner && !readOnly && (
                 <DropdownMenu>
                   <DropdownMenuTrigger className="flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground">
                     <MoreVertical className="h-3.5 w-3.5" />

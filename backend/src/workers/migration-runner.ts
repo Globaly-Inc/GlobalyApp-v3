@@ -1,18 +1,24 @@
-// CLI tool — applies tenant migrations to ALL active business and institution schemas.
-// Run with: npm run migrate:tenants
+// CLI tool — applies tenant migrations AND seeders to ALL active business and institution
+// schemas. Run with: npm run migrate:tenants
+//
+// Seeders run on EVERY invocation for EVERY tenant (knex seeds have no "already ran" ledger
+// like migrations), so every tenant seeder MUST be idempotent — insert only what's missing.
+// This is what carries new seed data (e.g. a new default role/permission) to existing
+// tenants; provisioning only seeds a tenant once, at creation.
 
 import { masterKnex } from "../core/db/master-pool.js";
 import { createSchemaKnex, schemaName } from "../core/db/knex.js";
 
 const results: Array<{ tenant: string; applied?: string[]; error?: string }> = [];
 
-async function migrateTenants(rows: Array<{ subdomain: string; schema_name: string }>, directory: string) {
+async function migrateTenants(rows: Array<{ subdomain: string; schema_name: string }>, directory: string, seedersDir: string) {
   for (const b of rows) {
     const schema = schemaName(b.schema_name);
     const tenantDb = createSchemaKnex(schema, { min: 0, max: 1 });
 
     try {
       const [, applied] = await tenantDb.migrate.latest({ directory, schemaName: schema });
+      await tenantDb.seed.run({ directory: seedersDir });
       results.push({ tenant: b.subdomain, applied });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -29,13 +35,22 @@ const businesses = await masterKnex("businesses")
   .select("subdomain", "schema_name")
   .where("account_status", 1)
   .whereNotNull("schema_provisioned_at");
-await migrateTenants(businesses, "./database/migrations/business");
+await migrateTenants(businesses, "./database/migrations/business", "./database/seeders/business");
 
 const institutions = await masterKnex("institutions")
   .select("subdomain", "schema_name")
   .whereNull("deleted_at")
   .whereNotNull("schema_provisioned_at");
-await migrateTenants(institutions, "./database/migrations/institution");
+await migrateTenants(institutions, "./database/migrations/institution", "./database/seeders/institution");
 
-console.table(results);
+for (const r of results) {
+  if (r.error) {
+    console.error(`[${r.tenant}] ERROR: ${r.error}`);
+  } else if (r.applied?.length) {
+    console.log(`[${r.tenant}] ${r.applied.length} migration(s):`);
+    for (const f of r.applied) console.log(`  + ${f}`);
+  } else {
+    console.log(`[${r.tenant}] already up to date`);
+  }
+}
 await masterKnex.destroy();

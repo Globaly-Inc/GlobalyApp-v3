@@ -50,7 +50,7 @@ function toInput(item: Qualification | null): QualificationInput {
     grading_system: item?.grading_system ?? "",
     grade_value: item?.grade_value ?? "",
     is_current: item?.is_current ?? false,
-    start_date: item?.start_date ?? "",
+    start_date: item?.start_date ?? new Date().toISOString().slice(0, 10),
     end_date: item?.end_date ?? "",
     sort_order: item?.sort_order ?? 0,
   };

@@ -78,9 +78,8 @@ export const OnboardingBusinessSchema = z.object({
   postcode: z.string().max(20).optional(),
 });
 
-// Institution accounts — no tenant DB
+// Institution accounts — subdomain is auto-generated from institution_name (same as registerBusiness)
 export const OnboardingInstitutionSchema = z.object({
-  subdomain: z.string().min(3).max(20).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Lowercase alphanumeric with hyphens"),
   institution_name: z.string().min(1).max(200),
   institution_type: z.string().optional(),
   phone: z.string().max(50).optional(),

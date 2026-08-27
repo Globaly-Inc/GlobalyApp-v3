@@ -6,7 +6,11 @@ import type { SearchBusiness } from "../types";
 
 export function BusinessCard({ business }: Readonly<{ business: SearchBusiness }>) {
   const location = [business.city, business.country_name].filter(Boolean).join(", ");
-  const profileHref = business.subdomain ? `/business/${business.subdomain}` : "#";
+  // Education agents and migration agents are always real businesses (hence a subdomain); the
+  // Visa Services tab also lists scraped catalog providers, which only have a slug.
+  const profileHref = business.subdomain
+    ? `/business/${business.subdomain}`
+    : `/visa-service/${business.slug}`;
 
   return (
     <div className="group relative bg-card border border-border rounded-xl hover:shadow-md hover:border-primary/40 transition-all overflow-hidden">

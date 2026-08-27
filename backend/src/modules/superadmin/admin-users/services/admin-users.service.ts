@@ -35,6 +35,22 @@ export async function listAdmins(pagination: PaginationInput, search?: string) {
   return buildPaginatedResponse(rows, total, pagination);
 }
 
+/** Every signed-up platform_user — students, business/institution owners, everyone — not just admins. */
+export async function listPlatformUsers(pagination: PaginationInput, search?: string) {
+  const { limit, offset } = paginationToOffset(pagination);
+  const [rows, total] = await Promise.all([
+    repo.listPlatformUsers(limit, offset, search),
+    repo.countPlatformUsers(search),
+  ]);
+  return buildPaginatedResponse(rows, total, pagination);
+}
+
+export async function updatePlatformUser(id: number, data: { account_status?: number; is_email_verified?: boolean }) {
+  const row = await repo.updatePlatformUserStatus(id, data);
+  if (!row) throw new NotFoundError("Platform user not found");
+  return row;
+}
+
 export async function getAdmin(id: number) {
   const admin = await repo.findAdminById(id);
   if (!admin) throw new NotFoundError("Admin not found");
@@ -159,6 +175,7 @@ export async function acceptInvitation(token: string) {
     last_name: invitation.last_name,
     email: invitation.email,
     account_status: 1,
+    is_personal_account: true,
   });
 
   // Create admin role-link synchronously — one cheap insert, no queue needed

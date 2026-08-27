@@ -39,12 +39,18 @@ export type Business = {
   service_count: number;
 };
 
+export type BusinessSort = "name_asc" | "name_desc" | "created_desc" | "created_asc";
+
 export type BusinessListParams = {
   search?: string;
   status?: string;
   category?: number;
+  /** Forces which table(s) to query, independent of `category` — e.g. a consultancy picker
+   *  that wants every business, no category restriction, and never institutions. */
+  kind?: ListingKind;
   page?: number;
   limit?: number;
+  sort?: BusinessSort;
 };
 
 export type BusinessListResult = { data: Business[]; total: number };
@@ -74,6 +80,7 @@ export type BusinessDetail = Business & {
 export type InstitutionDetail = {
   kind: "institution";
   id: number;
+  slug: string;
   business_name: string;
   subdomain: string;
   business_type: string | null;
@@ -112,6 +119,9 @@ export type InstitutionDetail = {
   owner_last_name: string | null;
   owner_email: string | null;
   source_job_id: string | null;
+  /** Borrowed from the source extraction job (course/campus counts) — 0 when there's no source_job_id. */
+  branch_count: number;
+  service_count: number;
 };
 
 export type InstitutionPatch = Partial<{
@@ -125,12 +135,15 @@ export type InstitutionPatch = Partial<{
   city: string | null;
   address: string | null;
   postcode: string | null;
+  logo_url: string | null;
+  cover_url: string | null;
 }>;
 
 /** A subset of `extraction_courses` columns — the institution's courses if it was promoted from
  *  an extraction job (source_job_id), read-only here (editing happens in the extraction admin). */
 export type InstitutionCourse = {
   id: string;
+  slug: string;
   name: string;
   degree_level: string | null;
   subject_area: string | null;
@@ -142,9 +155,56 @@ export type InstitutionCourse = {
   source_url: string | null;
 };
 
+/** A subset of `extraction_campuses` columns — same provenance rule as InstitutionCourse. */
+export type InstitutionBranch = {
+  id: string;
+  name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  source_url: string | null;
+};
+
+/** A subset of `extraction_agents` columns — same provenance rule as InstitutionCourse. */
+export type InstitutionPartner = {
+  id: string;
+  name: string | null;
+  country: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  source_url: string | null;
+};
+
+/** GET /institutions/:id/partners merges manually-linked consultancies (real CRUD, same
+ *  business_representations row shape as BusinessRelation) with read-only scraped agents —
+ *  `source` says which, and only "manual" rows get edit/delete affordances. */
+export type InstitutionPartnerRow = (BusinessRelation & { source: "manual" }) | (InstitutionPartner & { source: "extracted" });
+
+export type InstitutionPartnerInput = {
+  business_id: number;
+  country_ids?: number[];
+  valid_from?: string | null;
+  valid_until?: string | null;
+  notes?: string | null;
+};
+
+export type InstitutionPartnerPatch = Partial<Pick<InstitutionPartnerInput, "country_ids" | "valid_from" | "valid_until" | "notes">>;
+
+export type InstitutionPartnerListParams = { search?: string; page?: number; limit?: number };
+
+export type InstitutionPartnerListResult = { data: InstitutionPartnerRow[]; total: number };
+
 export type InstitutionCourseListParams = { search?: string; page?: number; limit?: number };
 
 export type InstitutionCourseListResult = { data: InstitutionCourse[]; total: number };
+
+export type InstitutionBranchListParams = { search?: string; page?: number; limit?: number };
+
+export type InstitutionBranchListResult = { data: InstitutionBranch[]; total: number };
 
 export type InstitutionInviteInput = {
   first_name: string;
@@ -166,6 +226,33 @@ export type InstitutionInvitation = {
 };
 
 export type InstitutionInvitationListParams = { page?: number; limit?: number };
+
+export type InstitutionPermission = {
+  id: number;
+  module: string;
+  action: string;
+  display_name: string;
+  description: string | null;
+};
+
+export type InstitutionRole = {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+  is_system: boolean;
+  sort_order: number;
+  permission_ids: number[];
+  members_count: number;
+};
+
+export type InstitutionRoleCreateInput = {
+  display_name: string;
+  description?: string | null;
+  permission_ids: number[];
+};
+
+export type InstitutionRolePatch = Partial<InstitutionRoleCreateInput>;
 
 export type InstitutionInvitationListResult = { data: InstitutionInvitation[]; total: number };
 
@@ -301,17 +388,16 @@ export type MemberPatch = Partial<{
   is_owner: boolean;
 }>;
 
-// Subsidiary/franchise/partner links between businesses (business_representations) — "partner" type shown in the Partners tab.
-export type RelationType = "partner" | "subsidiary" | "franchise";
+export type PartnerKind = "business" | "institution";
 
 export type BusinessRelation = {
   id: string;
   status: string;
-  relation_type: RelationType;
   created_at: string;
-  business_id: number;
-  business_name: string;
-  logo_url: string | null;
+  partner_kind: PartnerKind;
+  partner_id: number;
+  partner_name: string;
+  partner_logo_url: string | null;
   business_type: string | null;
   country_ids: number[] | null;
   valid_from: string | null;
@@ -321,7 +407,6 @@ export type BusinessRelation = {
 
 export type RelationInput = {
   partner_business_id: number;
-  relation_type: RelationType;
   country_ids?: number[];
   valid_from?: string | null;
   valid_until?: string | null;
@@ -331,7 +416,7 @@ export type RelationInput = {
 
 export type RelationPatch = Partial<Pick<RelationInput, "country_ids" | "valid_from" | "valid_until" | "notes">>;
 
-export type RelationListParams = { page?: number; limit?: number };
+export type RelationListParams = { search?: string; page?: number; limit?: number };
 
 export type RelationListResult = { data: BusinessRelation[]; total: number };
 
@@ -351,7 +436,6 @@ export type ActivityListResult = { data: ActivityLogEntry[]; total: number };
 export type BusinessCreateInput = {
   business_name: string;
   business_category_id: number;
-  subdomain: string;
   description?: string | null;
   email: string; // also used to create/find the business owner account
   first_name?: string | null;

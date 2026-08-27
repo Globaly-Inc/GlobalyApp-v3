@@ -1,12 +1,15 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
-  BusinessStatus, InstitutionCourse, InstitutionCourseListParams, InstitutionDetail, InstitutionInvitation,
-  InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPatch, Member, MemberListParams,
+  BusinessStatus, InstitutionBranch, InstitutionBranchListParams, InstitutionCourse, InstitutionCourseListParams, InstitutionDetail, InstitutionInvitation,
+  InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPartnerInput, InstitutionPartnerListParams, InstitutionPartnerPatch, InstitutionPartnerRow,
+  InstitutionPatch, InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch, Member, MemberListParams,
 } from "../apis/types";
 
-// Separate from businesses-slice.ts: institutions have no branches/partners/contacts/services/
-// activity/enquiry-settings backend, so this only tracks the header detail + members tab.
+// Separate from businesses-slice.ts: institutions have no real contacts/activity/enquiry-settings
+// backend yet. Branches here aren't a real CRUD either — they're read-only projections of the
+// source extraction job's campuses (see businesses.service.ts on the backend). Partners IS real
+// CRUD (business_representations), merged with the same read-only extraction_agents projection.
 
 export const fetchInstitutionDetail = createAsyncThunk("institutionDetail/fetch", (id: number) =>
   businessesApi.getInstitutionDetail(id),
@@ -25,6 +28,33 @@ export const fetchInstitutionMembers = createAsyncThunk(
 export const fetchInstitutionCourses = createAsyncThunk(
   "institutionDetail/fetchCourses",
   ({ id, params }: { id: number; params?: InstitutionCourseListParams }) => businessesApi.getInstitutionCourses(id, params),
+);
+
+export const fetchInstitutionBranches = createAsyncThunk(
+  "institutionDetail/fetchBranches",
+  ({ id, params }: { id: number; params?: InstitutionBranchListParams }) => businessesApi.getInstitutionBranches(id, params),
+);
+
+export const fetchInstitutionPartners = createAsyncThunk(
+  "institutionDetail/fetchPartners",
+  ({ id, params }: { id: number; params?: InstitutionPartnerListParams }) => businessesApi.getInstitutionPartners(id, params),
+);
+
+export const createInstitutionPartner = createAsyncThunk(
+  "institutionDetail/createPartner",
+  ({ id, input }: { id: number; input: InstitutionPartnerInput }) => businessesApi.createInstitutionPartner(id, input),
+);
+export const updateInstitutionPartner = createAsyncThunk(
+  "institutionDetail/updatePartner",
+  ({ id, partnerId, patch }: { id: number; partnerId: string; patch: InstitutionPartnerPatch }) =>
+    businessesApi.updateInstitutionPartner(id, partnerId, patch),
+);
+export const deleteInstitutionPartner = createAsyncThunk(
+  "institutionDetail/deletePartner",
+  async ({ id, partnerId }: { id: number; partnerId: string }) => {
+    await businessesApi.deleteInstitutionPartner(id, partnerId);
+    return partnerId;
+  },
 );
 
 export const inviteInstitutionMember = createAsyncThunk(
@@ -50,6 +80,32 @@ export const resendInstitutionInvitation = createAsyncThunk(
   async ({ id, invitationId }: { id: number; invitationId: string }) => {
     await businessesApi.resendInstitutionInvitation(id, invitationId);
     return invitationId;
+  },
+);
+
+// ── Roles ─────────────────────────────────────────────────────────────────────
+export const fetchInstitutionRoles = createAsyncThunk(
+  "institutionDetail/fetchRoles",
+  (id: number) => businessesApi.getInstitutionRoles(id),
+);
+export const fetchInstitutionPermissions = createAsyncThunk(
+  "institutionDetail/fetchPermissions",
+  (id: number) => businessesApi.getInstitutionPermissions(id),
+);
+export const createInstitutionRole = createAsyncThunk(
+  "institutionDetail/createRole",
+  ({ id, input }: { id: number; input: InstitutionRoleCreateInput }) => businessesApi.createInstitutionRole(id, input),
+);
+export const updateInstitutionRole = createAsyncThunk(
+  "institutionDetail/updateRole",
+  ({ id, roleId, patch }: { id: number; roleId: number; patch: InstitutionRolePatch }) =>
+    businessesApi.updateInstitutionRole(id, roleId, patch),
+);
+export const deleteInstitutionRole = createAsyncThunk(
+  "institutionDetail/deleteRole",
+  async ({ id, roleId }: { id: number; roleId: number }) => {
+    await businessesApi.deleteInstitutionRole(id, roleId);
+    return roleId;
   },
 );
 
@@ -86,6 +142,10 @@ type InstitutionDetailState = {
   members: PagedState<Member>;
   courses: PagedState<InstitutionCourse>;
   invitations: PagedState<InstitutionInvitation>;
+  branches: PagedState<InstitutionBranch>;
+  partners: PagedState<InstitutionPartnerRow>;
+  roles: PagedState<InstitutionRole>;
+  permissions: InstitutionPermission[];
 };
 
 const emptyPaged = <T,>(): PagedState<T> => ({ items: [], total: 0, status: "idle", error: null });
@@ -97,6 +157,10 @@ const initialState: InstitutionDetailState = {
   members: emptyPaged(),
   courses: emptyPaged(),
   invitations: emptyPaged(),
+  branches: emptyPaged(),
+  partners: emptyPaged(),
+  roles: emptyPaged(),
+  permissions: [],
 };
 
 const institutionDetailSlice = createSlice({
@@ -164,6 +228,59 @@ const institutionDetailSlice = createSlice({
       .addCase(setInstitutionMemberStatus.fulfilled, (state, action) => {
         const member = state.members.items.find((m) => m.platform_user_id === action.payload.platformUserId);
         if (member) member.account_status = action.payload.accountStatus;
+      })
+      .addCase(fetchInstitutionRoles.pending, (state) => { state.roles.status = "loading"; })
+      .addCase(fetchInstitutionRoles.fulfilled, (state, action) => {
+        state.roles = { items: action.payload, total: action.payload.length, status: "idle", error: null };
+      })
+      .addCase(fetchInstitutionRoles.rejected, (state, action) => {
+        state.roles.status = "failed"; state.roles.error = action.error.message ?? "Failed to load roles.";
+      })
+      .addCase(fetchInstitutionPermissions.fulfilled, (state, action) => { state.permissions = action.payload; })
+      .addCase(createInstitutionRole.fulfilled, (state, action) => {
+        state.roles.items.push(action.payload); state.roles.total += 1;
+      })
+      .addCase(updateInstitutionRole.fulfilled, (state, action) => {
+        const i = state.roles.items.findIndex((r) => r.id === action.payload.id);
+        if (i >= 0) state.roles.items[i] = action.payload;
+      })
+      .addCase(deleteInstitutionRole.fulfilled, (state, action) => {
+        const wasPresent = state.roles.items.some((r) => r.id === action.payload);
+        state.roles.items = state.roles.items.filter((r) => r.id !== action.payload);
+        if (wasPresent) state.roles.total = Math.max(0, state.roles.total - 1);
+      })
+      .addCase(fetchInstitutionBranches.pending, (state) => {
+        state.branches.status = "loading";
+      })
+      .addCase(fetchInstitutionBranches.fulfilled, (state, action) => {
+        state.branches = { items: action.payload.data, total: action.payload.total, status: "idle", error: null };
+      })
+      .addCase(fetchInstitutionBranches.rejected, (state, action) => {
+        state.branches.status = "failed";
+        state.branches.error = action.error.message ?? "Failed to load branches.";
+      })
+      .addCase(fetchInstitutionPartners.pending, (state) => {
+        state.partners.status = "loading";
+      })
+      .addCase(fetchInstitutionPartners.fulfilled, (state, action) => {
+        state.partners = { items: action.payload.data, total: action.payload.total, status: "idle", error: null };
+      })
+      .addCase(fetchInstitutionPartners.rejected, (state, action) => {
+        state.partners.status = "failed";
+        state.partners.error = action.error.message ?? "Failed to load partners.";
+      })
+      .addCase(createInstitutionPartner.fulfilled, (state, action) => {
+        state.partners.items.push({ ...action.payload, source: "manual" });
+        state.partners.total += 1;
+      })
+      .addCase(updateInstitutionPartner.fulfilled, (state, action) => {
+        const i = state.partners.items.findIndex((p) => p.id === action.payload.id);
+        if (i !== -1) state.partners.items[i] = { ...action.payload, source: "manual" };
+      })
+      .addCase(deleteInstitutionPartner.fulfilled, (state, action) => {
+        const wasPresent = state.partners.items.some((p) => p.id === action.payload);
+        state.partners.items = state.partners.items.filter((p) => p.id !== action.payload);
+        if (wasPresent) state.partners.total = Math.max(0, state.partners.total - 1);
       });
   },
 });

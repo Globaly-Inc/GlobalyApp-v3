@@ -12,9 +12,13 @@ export function hashFingerprint(fingerprint: string, ip: string): string {
   return createHash("sha256").update(fingerprint + ip).digest("hex");
 }
 
-/** Check if a guest with this fingerprint is allowed to send a message. */
-export async function checkGuestGate(fingerprintHash: string): Promise<{ allowed: boolean; existingSession?: guestRepo.GuestSessionRow }> {
-  const existing = await guestRepo.findByFingerprint(fingerprintHash);
+export function hashIp(ip: string): string {
+  return createHash("sha256").update(ip).digest("hex");
+}
+
+/** Check if a guest with this fingerprint or IP is allowed to send a message. */
+export async function checkGuestGate(fingerprintHash: string, ipHash: string): Promise<{ allowed: boolean; existingSession?: guestRepo.GuestSessionRow }> {
+  const existing = await guestRepo.findByFingerprintOrIp(fingerprintHash, ipHash);
   if (existing) return { allowed: false, existingSession: existing };
   return { allowed: true };
 }
@@ -22,6 +26,7 @@ export async function checkGuestGate(fingerprintHash: string): Promise<{ allowed
 /** Persist a guest's message + AI response after streaming completes. */
 export async function createGuestSession(data: {
   fingerprintHash: string;
+  ipHash: string;
   messageContent: string;
   responseContent: string;
   responseSources?: unknown;
@@ -32,6 +37,7 @@ export async function createGuestSession(data: {
 
   return guestRepo.create({
     fingerprint_hash: data.fingerprintHash,
+    ip_hash: data.ipHash,
     message_content: data.messageContent,
     response_content: data.responseContent,
     response_sources: data.responseSources,

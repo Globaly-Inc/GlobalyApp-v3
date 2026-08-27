@@ -1,7 +1,7 @@
 // Plain fetch throughout — the widget runs on partner sites with no auth
 // session, so it must never import the token/refresh HTTP client.
 
-import type { CourseCard } from "@/app/personal/ai/apis/types";
+import type { CourseCard } from "@/app/ai/apis/types";
 import type { EmbedChatEvent, EmbedPublicConfig, GuestMessageRequest, WireCourseCard } from "./types";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -9,7 +9,7 @@ const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3/ai-chat`;
 
 /** Postgres NUMERIC arrives as a string, and String#toLocaleString is a no-op — the
  * card then shows "AUD 16041" with no thousands separator. Coerce to a real number.
- * Mirror of personal/ai/apis/real-api.ts (this file must stay import-free of it). */
+ * Mirror of ai/apis/real-api.ts (this file must stay import-free of it). */
 function toFee(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;

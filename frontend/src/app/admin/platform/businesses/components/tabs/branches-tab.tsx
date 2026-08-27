@@ -23,7 +23,10 @@ const FILTER_OPTIONS: { value: BranchFilter; label: string }[] = [
   { value: "linked_branches", label: "Linked branches" },
 ];
 
-export function BranchesTab({ businessId }: Readonly<{ businessId: number }>) {
+export function BranchesTab({
+  businessId,
+  readOnly = false,
+}: Readonly<{ businessId: number; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: branches, status, total: branchesTotal } = useAppSelector((state) => state.platformBusinesses.branches);
   const [createOpen, setCreateOpen] = useState(false);
@@ -101,29 +104,31 @@ export function BranchesTab({ businessId }: Readonly<{ businessId: number }>) {
                 <p className="text-xs text-muted-foreground">{[b.city, b.state, b.country].filter(Boolean).join(", ") || "—"}</p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => {
-                  if (b.linked_business_id != null) {
-                    setEditingLinkedBranch(b);
-                    setLinkOpen(true);
-                  } else {
-                    setEditingBranch(b);
-                    setCreateOpen(true);
-                  }
-                }}
-                aria-label="Edit branch"
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              {!b.is_primary && (
-                <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingBranch(b)} aria-label="Remove branch">
-                  <Trash2 className="h-4 w-4" />
+            {!readOnly && (
+              <div className="flex items-center gap-1">
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (b.linked_business_id != null) {
+                      setEditingLinkedBranch(b);
+                      setLinkOpen(true);
+                    } else {
+                      setEditingBranch(b);
+                      setCreateOpen(true);
+                    }
+                  }}
+                  aria-label="Edit branch"
+                >
+                  <Pencil className="h-4 w-4" />
                 </Button>
-              )}
-            </div>
+                {!b.is_primary && (
+                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingBranch(b)} aria-label="Remove branch">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -138,14 +143,16 @@ export function BranchesTab({ businessId }: Readonly<{ businessId: number }>) {
           <span className="text-sm font-semibold">Branches</span>
           <Badge variant="secondary">{branchesTotal}</Badge>
         </div>
-        <div className="flex gap-2">
-          <Button className="h-10" variant="outline" onClick={() => { setEditingLinkedBranch(null); setLinkOpen(true); }}>
-            <Link2 className="mr-1.5 h-3.5 w-3.5" /> Link existing
-          </Button>
-          <Button className="h-10" onClick={() => { setEditingBranch(null); setCreateOpen(true); }}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Create branch
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-2">
+            <Button className="h-10" variant="outline" onClick={() => { setEditingLinkedBranch(null); setLinkOpen(true); }}>
+              <Link2 className="mr-1.5 h-3.5 w-3.5" /> Link existing
+            </Button>
+            <Button className="h-10" onClick={() => { setEditingBranch(null); setCreateOpen(true); }}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Create branch
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="mb-3 flex items-center justify-end gap-2">

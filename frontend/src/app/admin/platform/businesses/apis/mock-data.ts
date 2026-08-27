@@ -1,12 +1,16 @@
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, EnquirySettingsPatch, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
-  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput, InstitutionPatch,
+  BusinessService, EnquirySettingsPatch, InstitutionBranch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  ListingKind,
+  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput,
+  InstitutionPartner, InstitutionPartnerInput, InstitutionPartnerListParams, InstitutionPartnerListResult, InstitutionPartnerPatch, InstitutionPartnerRow, InstitutionPatch,
+  InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult, ListingRef,} from "./types";
+import { toSlug } from "../utils";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -67,13 +71,17 @@ const mockRoles: MemberRole[] = [
 ];
 
 function paginateRelations(items: BusinessRelation[], params: RelationListParams): RelationListResult {
+  const filtered = params.search
+    ? items.filter((r) => r.partner_name.toLowerCase().includes(params.search!.toLowerCase()))
+    : items;
   const limit = params.limit ?? 20;
   const page = params.page ?? 1;
   const start = (page - 1) * limit;
-  return { data: items.slice(start, start + limit), total: items.length };
+  return { data: filtered.slice(start, start + limit), total: filtered.length };
 }
 
 const mockRelations: Record<number, BusinessRelation[]> = {};
+const mockInstitutionRelations: Record<number, BusinessRelation[]> = {};
 const mockActivity: Record<number, ActivityLogEntry[]> = {
   1: [
     { id: "log-1", action: "BUSINESS_UPDATED", details: { business_id: 1 }, created_at: "2026-06-02T09:00:00Z", admin_first_name: "Super", admin_last_name: "Admin" },
@@ -125,7 +133,7 @@ const mockBusinesses: BusinessDetail[] = [
 
 const mockInstitutions: InstitutionDetail[] = [
   {
-    kind: "institution", id: 1, business_name: "Global Study Institute", subdomain: "gsi", business_type: "university",
+    kind: "institution", id: 1, slug: "global-study-institute-000001", business_name: "Global Study Institute", subdomain: "gsi", business_type: "university",
     description: "A leading study destination institute.", website: "https://gsi.edu",
     email: "admissions@gsi.edu", phone: "+1 604 555 0110", status: "unverified", claim_status: "unclaimed",
     is_published: false, country_id: 3, country_name: "Canada", state: "British Columbia", city: "Vancouver",
@@ -134,20 +142,39 @@ const mockInstitutions: InstitutionDetail[] = [
     gallery_images: [], video_urls: [], account_status: 1, created_at: "2026-05-20T09:00:00Z", updated_at: "2026-05-20T09:00:00Z",
     verified_at: null, owner_id: null, is_unclaimed: true, business_category_id: null, category_name: "Institutions",
     owner_first_name: null, owner_last_name: null, owner_email: null, source_job_id: "mock-job-1",
+    branch_count: 0, service_count: 3,
   },
 ];
 
 const mockInstitutionCourses: Record<string, InstitutionCourse[]> = {
   "mock-job-1": [
     {
-      id: "course-1", name: "Bachelor of Computer Science", degree_level: "Bachelor", subject_area: "Computer Science",
+      id: "course-1", slug: "bachelor-of-computer-science-course1", name: "Bachelor of Computer Science", degree_level: "Bachelor", subject_area: "Computer Science",
       duration_weeks: 156, study_mode: "Full-time", domestic_fee_total: 28000, domestic_currency: "CAD",
       verification_status: "verified", source_url: "https://gsi.edu/courses/bcs",
     },
     {
-      id: "course-2", name: "Master of Business Administration", degree_level: "Master", subject_area: "Business",
+      id: "course-2", slug: "master-of-business-administration-course2", name: "Master of Business Administration", degree_level: "Master", subject_area: "Business",
       duration_weeks: 104, study_mode: "Full-time", domestic_fee_total: 42000, domestic_currency: "CAD",
       verification_status: "unverified", source_url: null,
+    },
+  ],
+};
+
+const mockInstitutionBranches: Record<string, InstitutionBranch[]> = {
+  "mock-job-1": [
+    {
+      id: "campus-1", name: "Main Campus", address: "100 Institute Way", city: "Vancouver", state: "British Columbia",
+      country: "Canada", phone: "+1 604 555 0110", email: "admissions@gsi.edu", source_url: "https://gsi.edu/campuses",
+    },
+  ],
+};
+
+const mockInstitutionPartners: Record<string, InstitutionPartner[]> = {
+  "mock-job-1": [
+    {
+      id: "agent-1", name: "Global Study Consultants", country: "India", email: "info@gsc.example",
+      phone: "+91 22 5550 1234", website: "https://gsc.example", source_url: "https://gsi.edu/agents",
     },
   ],
 };
@@ -184,6 +211,15 @@ function applyFilters(rows: Business[], params: BusinessListParams): Business[] 
   }
   if (params.status) out = out.filter((b) => b.status === params.status);
   if (params.category) out = out.filter((b) => b.business_category_id === params.category);
+  if (params.kind) out = out.filter((b) => b.kind === params.kind);
+  out = [...out].sort((a, b) => {
+    switch (params.sort) {
+      case "name_desc": return b.business_name.localeCompare(a.business_name);
+      case "created_desc": return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      case "created_asc": return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      default: return a.business_name.localeCompare(b.business_name);
+    }
+  });
   return out;
 }
 
@@ -243,7 +279,7 @@ export const businessesMockApi = {
     const id = Math.max(0, ...mockBusinesses.map((b) => b.id)) + 1;
     const now = new Date().toISOString();
     const business: BusinessDetail = {
-      kind: "business", id, business_name: input.business_name, subdomain: input.subdomain, business_type: null,
+      kind: "business", id, business_name: input.business_name, subdomain: toSlug(input.business_name), business_type: null,
       business_category_id: input.business_category_id, category_name: null,
       email: input.email ?? null, phone: input.phone ?? null, status: "unverified", claim_status: "unclaimed", is_published: false,
       country_id: input.country_id ?? null, country_name: null, city: input.city ?? null,
@@ -273,6 +309,13 @@ export const businessesMockApi = {
     const inst = mockInstitutions.find((x) => x.id === id);
     if (!inst) throw new Error("Institution not found");
     return inst;
+  },
+  getListingKind: async (id: number): Promise<{ kind: ListingKind }> => {
+    console.log("[mock] GET /admin/platform/listings/:id/kind", id);
+    await delay(100);
+    if (mockInstitutions.some((x) => x.id === id)) return { kind: "institution" };
+    if (mockBusinesses.some((x) => x.id === id)) return { kind: "business" };
+    throw new Error("Listing not found");
   },
   updateInstitution: async (id: number, patch: InstitutionPatch): Promise<InstitutionDetail> => {
     console.log("[mock] PATCH /admin/platform/institutions/:id", id, patch);
@@ -308,6 +351,62 @@ export const businessesMockApi = {
     const page = params.page ?? 1;
     const start = (page - 1) * limit;
     return { data: items.slice(start, start + limit), total: items.length };
+  },
+  getInstitutionBranches: async (id: number, params: InstitutionBranchListParams = {}): Promise<InstitutionBranchListResult> => {
+    console.log("[mock] GET /admin/platform/institutions/:id/branches", id);
+    await delay(150);
+    const inst = mockInstitutions.find((x) => x.id === id);
+    let items = inst?.source_job_id ? (mockInstitutionBranches[inst.source_job_id] ?? []) : [];
+    if (params.search) items = items.filter((b) => b.name?.toLowerCase().includes(params.search!.toLowerCase()));
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const start = (page - 1) * limit;
+    return { data: items.slice(start, start + limit), total: items.length };
+  },
+  getInstitutionPartners: async (id: number, params: InstitutionPartnerListParams = {}): Promise<InstitutionPartnerListResult> => {
+    console.log("[mock] GET /admin/platform/institutions/:id/partners", id, params);
+    await delay(150);
+    const inst = mockInstitutions.find((x) => x.id === id);
+    const extracted = inst?.source_job_id ? (mockInstitutionPartners[inst.source_job_id] ?? []) : [];
+    let rows: InstitutionPartnerRow[] = [
+      ...(mockInstitutionRelations[id] ?? []).map((r): InstitutionPartnerRow => ({ ...r, source: "manual" })),
+      ...extracted.map((a): InstitutionPartnerRow => ({ ...a, source: "extracted" })),
+    ];
+    if (params.search) {
+      const q = params.search.toLowerCase();
+      rows = rows.filter((r) => (r.source === "manual" ? r.partner_name : (r.name ?? "")).toLowerCase().includes(q));
+    }
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 10;
+    const start = (page - 1) * limit;
+    return { data: rows.slice(start, start + limit), total: rows.length };
+  },
+  createInstitutionPartner: async (id: number, input: InstitutionPartnerInput): Promise<BusinessRelation> => {
+    console.log("[mock] POST /admin/platform/institutions/:id/partners", id, input);
+    await delay(150);
+    const biz = mockBusinesses.find((x) => x.id === input.business_id);
+    if (!biz) throw new Error("Business not found");
+    const relation: BusinessRelation = {
+      id: uuid(), status: "active", created_at: new Date().toISOString(),
+      partner_kind: "business", partner_id: biz.id, partner_name: biz.business_name, partner_logo_url: biz.logo_url, business_type: biz.business_type,
+      country_ids: input.country_ids ?? [], valid_from: input.valid_from ?? null,
+      valid_until: input.valid_until ?? null, notes: input.notes ?? null,
+    };
+    mockInstitutionRelations[id] = [...(mockInstitutionRelations[id] ?? []), relation];
+    return relation;
+  },
+  updateInstitutionPartner: async (id: number, partnerId: string, patch: InstitutionPartnerPatch): Promise<BusinessRelation> => {
+    console.log("[mock] PATCH /admin/platform/institutions/:id/partners/:partnerId", id, partnerId, patch);
+    await delay(150);
+    const relation = (mockInstitutionRelations[id] ?? []).find((r) => r.id === partnerId);
+    if (!relation) throw new Error("Partner not found");
+    Object.assign(relation, patch);
+    return relation;
+  },
+  deleteInstitutionPartner: async (id: number, partnerId: string): Promise<void> => {
+    console.log("[mock] DELETE /admin/platform/institutions/:id/partners/:partnerId", id, partnerId);
+    await delay(150);
+    mockInstitutionRelations[id] = (mockInstitutionRelations[id] ?? []).filter((r) => r.id !== partnerId);
   },
   inviteInstitutionMember: async (id: number, input: InstitutionInviteInput): Promise<{ id: string; email: string; status: string }> => {
     console.log("[mock] POST /admin/platform/institutions/:id/invite", id, input);
@@ -477,7 +576,7 @@ export const businessesMockApi = {
   // ponytail: mock skips the invite/accept round-trip and adds the member immediately.
   inviteMember: async (id: number, input: MemberInviteInput): Promise<{ id: string; email: string; status: string }> => {
     await delay(150);
-    const role = mockRoles.find((r) => r.name === input.role) ?? mockRoles[mockRoles.length - 1]!;
+    const role = mockRoles.find((r) => r.name === input.role) ?? mockRoles[mockRoles?.length - 1]!;
     const existing = mockMembers[id] ?? [];
     const nextId = existing.reduce((max, m) => Math.max(max, m.id), 0) + 1;
     const member: Member = {
@@ -521,8 +620,8 @@ export const businessesMockApi = {
       const biz = mockBusinesses.find((x) => x.id === input.partner_business_id);
       if (!biz) throw new Error("Business not found");
       const relation: BusinessRelation = {
-        id: uuid(), status: "active", relation_type: input.relation_type, created_at: new Date().toISOString(),
-        business_id: biz.id, business_name: biz.business_name, logo_url: biz.logo_url, business_type: biz.business_type,
+        id: uuid(), status: "active", created_at: new Date().toISOString(),
+        partner_kind: "business", partner_id: biz.id, partner_name: biz.business_name, partner_logo_url: biz.logo_url, business_type: biz.business_type,
         country_ids: input.country_ids ?? [], valid_from: input.valid_from ?? null,
         valid_until: input.valid_until ?? null, notes: input.notes ?? null,
       };
@@ -557,5 +656,33 @@ export const businessesMockApi = {
     const page = params.page ?? 1;
     const start = (page - 1) * limit;
     return { data: items.slice(start, start + limit), total: items.length };
+  },
+
+  getInstitutionRoles: async (_id: number): Promise<InstitutionRole[]> => {
+    await delay(150);
+    return [
+      { id: 1, name: "owner", display_name: "Owner", description: null, is_system: true, sort_order: 0, permission_ids: [1, 2, 3], members_count: 1 },
+      { id: 2, name: "admin", display_name: "Admin", description: null, is_system: true, sort_order: 1, permission_ids: [1, 2], members_count: 2 },
+      { id: 3, name: "member", display_name: "Member", description: null, is_system: true, sort_order: 3, permission_ids: [], members_count: 3 },
+    ];
+  },
+  getInstitutionPermissions: async (_id: number): Promise<InstitutionPermission[]> => {
+    await delay(150);
+    return [
+      { id: 1, module: "members", action: "read", display_name: "View Members", description: null },
+      { id: 2, module: "members", action: "write", display_name: "Manage Members", description: null },
+      { id: 3, module: "courses", action: "read", display_name: "View Courses", description: null },
+    ];
+  },
+  createInstitutionRole: async (_id: number, input: InstitutionRoleCreateInput): Promise<InstitutionRole> => {
+    await delay(200);
+    return { id: Math.floor(Math.random() * 1000) + 10, name: input.display_name.toLowerCase().replace(/\s+/g, "_"), display_name: input.display_name, description: input.description ?? null, is_system: false, sort_order: 99, permission_ids: input.permission_ids, members_count: 0 };
+  },
+  updateInstitutionRole: async (_id: number, roleId: number, patch: InstitutionRolePatch): Promise<InstitutionRole> => {
+    await delay(200);
+    return { id: roleId, name: "custom", display_name: patch.display_name ?? "Custom", description: patch.description ?? null, is_system: false, sort_order: 99, permission_ids: patch.permission_ids ?? [], members_count: 0 };
+  },
+  deleteInstitutionRole: async (_id: number, _roleId: number): Promise<void> => {
+    await delay(200);
   },
 };

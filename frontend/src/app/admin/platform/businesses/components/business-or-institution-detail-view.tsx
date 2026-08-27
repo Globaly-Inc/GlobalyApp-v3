@@ -2,31 +2,33 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { useAppDispatch } from "@/lib/hooks";
-import { fetchBusinessDetail } from "../store/businesses-slice";
-import { BusinessDetailView } from "./business-detail-view";
-import { InstitutionDetailView } from "./institution-detail-view";
+import { businessesApi } from "../apis";
+import { DetailView } from "./detail-view";
 
-/**
- * `/admin/platform/businesses/:id` serves both tables under the exact same URL, with no
- * suffix or query param to tell them apart — business and institution ids are separate
- * sequences that can collide, so the only way to know which one `id` names is to ask:
- * try it as a business first, and fall back to institution on a 404.
- */
-export function BusinessOrInstitutionDetailView({ id }: Readonly<{ id: number }>) {
-  const dispatch = useAppDispatch();
-  const [kind, setKind] = useState<"business" | "institution" | null>(null);
+export function BusinessOrInstitutionDetailView({ id, kind: kindProp }: Readonly<{ id: number; kind?: "business" | "institution" }>) {
+  const [kind, setKind] = useState<"business" | "institution" | null>(kindProp ?? null);
+  const [notFound, setNotFound] = useState(false);
 
   const resolvedRef = useRef<number | null>(null);
   useEffect(() => {
+    if (kindProp) { setKind(kindProp); return; }
     if (resolvedRef.current === id) return;
     resolvedRef.current = id;
     setKind(null);
-    dispatch(fetchBusinessDetail(id))
-      .unwrap()
-      .then(() => setKind("business"))
-      .catch(() => setKind("institution"));
-  }, [dispatch, id]);
+    setNotFound(false);
+    businessesApi
+      .getListingKind(id)
+      .then((r) => setKind(r.kind))
+      .catch(() => setNotFound(true));
+  }, [id, kindProp]);
+
+  if (notFound) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <p className="text-sm text-destructive">Not found.</p>
+      </div>
+    );
+  }
 
   if (kind === null) {
     return (
@@ -36,5 +38,5 @@ export function BusinessOrInstitutionDetailView({ id }: Readonly<{ id: number }>
     );
   }
 
-  return kind === "institution" ? <InstitutionDetailView id={id} /> : <BusinessDetailView id={id} />;
+  return <DetailView kind={kind} id={id} />;
 }

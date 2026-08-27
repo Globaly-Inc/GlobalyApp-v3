@@ -4,9 +4,10 @@ import type { SearchTabKey } from "../types";
 
 export function SearchBar({
   activeTab, search, country, city, degreeLevel, subjectArea, jobType, isRemote, feeMin, feeMax, currency, sort,
-  intakeYear, basis, licensedOnly,
+  intakeYear, basis, licensedOnly, basePath = "/search",
 }: Readonly<{
   activeTab: SearchTabKey;
+  basePath?: string;
   search?: string;
   country?: string;
   city?: string;
@@ -23,7 +24,7 @@ export function SearchBar({
   licensedOnly?: boolean;
 }>) {
   return (
-    <form method="get" action="/search" className="flex items-center gap-2 flex-1">
+    <form method="get" action={basePath} className="flex items-center gap-2 flex-1">
       <input type="hidden" name="tab" value={activeTab} />
       {country && <input type="hidden" name="country" value={country} />}
       {city && <input type="hidden" name="city" value={city} />}
@@ -38,14 +39,18 @@ export function SearchBar({
       {intakeYear != null && <input type="hidden" name="intake_year" value={intakeYear} />}
       {basis && <input type="hidden" name="basis" value={basis} />}
       {licensedOnly && <input type="hidden" name="licensed_only" value="true" />}
-      <input
-        type="text"
-        name="search"
-        defaultValue={search}
-        placeholder={`Search ${activeTab.replace("-", " ")}...`}
-        className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-      />
-      <Button type="submit" className="h-10 gap-1.5 shrink-0">
+      {/* V1 puts the magnifier inside the field and pairs it with a full-height Search button. */}
+      <div className="relative min-w-0 flex-1">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          name="search"
+          defaultValue={search}
+          placeholder={`Search ${activeTab.replace("-", " ")}...`}
+          className="h-11 w-full rounded-md border border-input bg-background pl-10 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
+      <Button type="submit" className="h-11 shrink-0 gap-2 px-3 sm:px-6">
         <Search className="h-4 w-4" />
         <span className="hidden sm:inline">Search</span>
       </Button>

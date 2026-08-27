@@ -5,6 +5,12 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** ISO 3166-1 alpha-2 to its flag emoji; empty string for anything that isn't a two-letter code. */
+export function flagFromIso2(iso2: string) {
+  if (!/^[A-Za-z]{2}$/.test(iso2)) return "";
+  return String.fromCodePoint(...[...iso2.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+}
+
 /** crypto.randomUUID() only exists in secure contexts (HTTPS/localhost) — falls back to Math.random for plain-HTTP dev/LAN access. */
 export function uuid(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
