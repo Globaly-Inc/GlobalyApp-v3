@@ -387,34 +387,25 @@ services:
     image: globalyapp-scrapling-mcp:local
     container_name: scrapling-mcp
     restart: unless-stopped
-    # The image ships regular Playwright's Chromium but NOT Patchright's — the
-    # separate, patched build that stealthy_fetch/bulk_stealthy_fetch actually launch
-    # for anti-bot bypass. Without it every stealthy_fetch call fails immediately
-    # ("BrowserType.launch_persistent_context: Executable doesn't exist at
-    # .../chromium-1228/..."), silently degrading our 3-tier cascade (get →
-    # stealthy_fetch → fetch) down to the two weakest tiers — real bug, confirmed
-    # live: 0/385 pages in job b373143d succeeded via Scrapling, 100% fell through
-    # to Firecrawl. `patchright install` is idempotent (no-op if already present),
-    # so running it before every start self-heals if the browsers-cache volume is
-    # ever wiped, without re-downloading on a normal restart.
-    entrypoint: ["/bin/sh", "-c"]
     command:
-      - >
-        uv run patchright install chromium &&
-        uv run scrapling mcp --http --host 0.0.0.0 --port 8000
-        --allowed-host localhost:8000 --allowed-host localhost:8123
+      - mcp
+      - --http
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --allowed-host
+      - "localhost:8000"
+      - --allowed-host
+      - "localhost:8123"
       # Add every hostname/port clients will use to reach this server, e.g.:
-      # --allowed-host scrapling.internal.example.com:8000
+      # - --allowed-host
+      # - "scrapling.internal.example.com:8000"
     ports:
       - "8123:8000"
     # environment:
       # Optional: only needed if you want a non-bundled Chromium build
       # SCRAPLING_EXECUTABLE_PATH: /path/to/chromium
-    volumes:
-      # Persists both Playwright's and Patchright's downloaded browser builds across
-      # container recreation — without this, every fresh container re-downloads
-      # ~300MB before stealthy_fetch can serve its first request.
-      - scrapling-browsers:/root/.cache/ms-playwright
     # Chromium needs more than Docker's default 64MB /dev/shm or it crashes
     # under load (dynamic/stealthy fetch tools spawn real browser tabs).
     shm_size: "1gb"
@@ -439,4 +430,3 @@ networks:
 
 volumes:
   dragonfly-data:
-  scrapling-browsers:
