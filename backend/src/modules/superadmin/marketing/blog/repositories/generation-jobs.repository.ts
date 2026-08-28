@@ -55,6 +55,18 @@ export async function claimJob(id: number): Promise<GenerationJobRow | undefined
   return row;
 }
 
+/** Sweep: atomically claim the oldest pending job (SKIP LOCKED — safe under concurrent sweepers). */
+export async function claimNextPending(): Promise<GenerationJobRow | undefined> {
+  const [row] = await masterKnex(TABLE)
+    .whereIn(
+      "id",
+      masterKnex(TABLE).select("id").where({ status: "pending" }).orderBy("id").limit(1).forUpdate().skipLocked(),
+    )
+    .update({ status: "running", updated_at: masterKnex.fn.now() })
+    .returning("*");
+  return row;
+}
+
 export async function findJobsByIds(ids: number[]): Promise<GenerationJobStatusRow[]> {
   if (ids.length === 0) return [];
   return masterKnex(TABLE).whereIn("id", ids).select("id", "status", "error", "blog_post_id");

@@ -126,9 +126,34 @@ async function processJob(job: GenerationJobRow): Promise<void> {
   logger.info("Blog generation job complete", { jobId: job.id, blogPostId: post.id, cover: cover.note });
 }
 
-// ── Consumer ──
+async function runJobSafely(job: Awaited<ReturnType<typeof jobsRepo.claimJob>> & object) {
+  try {
+    await processJob(job);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await jobsRepo.markFailed(job.id, message);
+    logger.error("Blog generation job failed", { jobId: job.id, error: message });
+  }
+}
 
-await queueService.consume(BLOG_GENERATE_QUEUE, async (msg) => {
+// ── Startup sweep ──
+// The DB is the queue of record: createGeneration's publish is non-fatal, so jobs
+// created while LavinMQ was down (or messages lost) sit `pending`. Drain them first.
+let swept = 0;
+for (;;) {
+  const job = await jobsRepo.claimNextPending();
+  if (!job) break;
+  logger.info("Sweeping pending blog generation job", { jobId: job.id });
+  await runJobSafely(job);
+  swept++;
+}
+if (swept) logger.info(`Startup sweep processed ${swept} pending job(s)`);
+
+// ── Consumer ──
+// Live trigger path. When LavinMQ is unreachable, the sweep above already did the
+// work — exit 0 like the cron-style workers instead of crashing.
+try {
+  await queueService.consume(BLOG_GENERATE_QUEUE, async (msg) => {
   let jobId: number;
   try {
     ({ jobId } = JSON.parse(msg!.content.toString()));
@@ -148,13 +173,12 @@ await queueService.consume(BLOG_GENERATE_QUEUE, async (msg) => {
   }
 
   logger.info("Received blog generation job", { jobId });
-  try {
-    await processJob(job);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await jobsRepo.markFailed(job.id, message);
-    logger.error("Blog generation job failed", { jobId: job.id, error: message });
-  }
-});
-
-logger.info(`Blog generation worker started — consuming "${BLOG_GENERATE_QUEUE}" queue`);
+  await runJobSafely(job);
+  });
+  logger.info(`Blog generation worker started — consuming "${BLOG_GENERATE_QUEUE}" queue`);
+} catch (err) {
+  logger.warn("LavinMQ unreachable — ran as a one-shot sweep; start LavinMQ for live consumption", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+  process.exit(0);
+}
