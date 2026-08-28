@@ -154,7 +154,7 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
       <div className="flex-1 overflow-y-auto">
         {groups.map((group) => (
           <div key={group.label} className="px-2 py-2">
-            <p className="mb-1 px-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            <p className="mb-1 px-2 text-[10px] font-semibold text-foreground uppercase tracking-wider">
               {group.label}
             </p>
             {group.sessions.map((session) => (

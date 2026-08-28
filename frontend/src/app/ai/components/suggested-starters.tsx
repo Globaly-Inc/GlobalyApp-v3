@@ -44,7 +44,7 @@ export function SuggestedStarters({ onSelect, name, children }: Readonly<Suggest
 
         {children}
 
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="flex flex-wrap justify-center gap-2.5">
           {STARTER_CATEGORIES.map(({ label, Icon }) => (
             <button
               key={label}
@@ -52,29 +52,36 @@ export function SuggestedStarters({ onSelect, name, children }: Readonly<Suggest
               onClick={() => setOpenLabel((cur) => (cur === label ? null : label))}
               aria-pressed={openLabel === label}
               className={cn(
-                "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                "flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium shadow-sm backdrop-blur-sm transition-all",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "active:scale-95",
                 openLabel === label
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "bg-card text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                  ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                  : "border-border/70 bg-card/85 text-foreground hover:border-primary/50 hover:bg-accent hover:shadow-md",
               )}
             >
-              <Icon className="size-3.5" />
+              <Icon className="size-4 shrink-0" />
               {label}
             </button>
           ))}
         </div>
 
         {openQuestions.length > 0 && (
-          <div className="mx-auto flex w-full max-w-xl flex-col gap-0.5">
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-1.5">
             {openQuestions.map((q) => (
               <button
                 key={q}
                 type="button"
                 onClick={() => onSelect(q)}
-                className="group flex items-start gap-2 rounded-xl border border-transparent px-2.5 py-2 text-left text-sm text-muted-foreground transition-all hover:border-border hover:bg-card hover:text-foreground hover:shadow-xs"
+                className={cn(
+                  "group flex items-center gap-3 rounded-xl border border-border/60 bg-card/85 px-4 py-3 text-left text-sm text-foreground shadow-sm backdrop-blur-sm",
+                  "transition-all hover:border-primary/40 hover:bg-card hover:shadow-md",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "active:scale-[0.99]",
+                )}
               >
                 <span className="flex-1 leading-snug">{q}</span>
-                <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                <ArrowUpRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
               </button>
             ))}
           </div>

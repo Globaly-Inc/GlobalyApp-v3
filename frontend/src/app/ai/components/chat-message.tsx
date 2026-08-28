@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, CornerUpLeft, Paperclip, Sparkles } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Paperclip, Sparkles } from "lucide-react";
 import type { CourseCard as CourseCardType, Message, ResponseBlock } from "../apis/types";
 import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
@@ -11,6 +11,7 @@ import { setReplyTo } from "../store/ai-chat-slice";
 import { splitQuote } from "../utils";
 import { useAppDispatch } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type ChatMessageProps = {
   message: Message;
@@ -110,27 +111,58 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
   };
 
   return (
-    <div className="flex flex-col gap-2 pt-1">
-      <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-col gap-3 pt-2">
+      <div className="flex flex-wrap gap-2">
         {chips.map((chip) => {
           const active = selected.includes(chip);
           return (
-            <Button
+            <button
               key={chip}
-              variant={active ? "default" : "outline"}
-              size="sm"
-              className="h-7 rounded-full text-xs font-normal"
+              type="button"
               onClick={() => toggle(chip)}
+              className={cn(
+                "rounded-2xl border-2 px-5 py-3 text-base font-semibold shadow-sm transition-all",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "active:scale-[0.97]",
+                active
+                  ? "border-primary bg-primary/15 text-primary shadow-primary/20 shadow-md scale-[1.02]"
+                  : "border-border/80 bg-card text-foreground hover:border-primary/60 hover:bg-primary/8 hover:shadow-md hover:scale-[1.01]",
+              )}
             >
               {chip}
-            </Button>
+            </button>
           );
         })}
       </div>
       {selected.length > 0 && (
-        <Button size="sm" className="self-start rounded-full" onClick={sendSelected}>
+        <Button size="sm" className="self-start rounded-full px-4" onClick={sendSelected}>
           Ask ({selected.length})
         </Button>
+      )}
+    </div>
+  );
+}
+
+const CARD_PAGE = 5;
+
+function CourseCardList({ cards }: { cards: CourseCardType[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? cards : cards.slice(0, CARD_PAGE);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className={CARD_GRID}>
+        {visible.map((card, i) => (
+          <CourseCard key={card.id ?? i} card={card} />
+        ))}
+      </div>
+      {cards.length > CARD_PAGE && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-1.5 self-start rounded-full border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+        >
+          {expanded ? <><ChevronUp className="size-3.5" /> Show less</> : <><ChevronDown className="size-3.5" /> View {cards.length - CARD_PAGE} more</>}
+        </button>
       )}
     </div>
   );
@@ -167,13 +199,7 @@ function AssistantTurn({
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {content && <MessageMarkdown text={content} />}
         {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} />}
-        {cards.length > 0 && (
-          <div className={CARD_GRID}>
-            {cards.map((card, i) => (
-              <CourseCard key={card.id ?? i} card={card} />
-            ))}
-          </div>
-        )}
+        {cards.length > 0 && <CourseCardList cards={cards} />}
         {chips.length > 0 && !hasQuickReplies && <Chips chips={chips} onChipClick={onChipClick} />}
         {footer}
       </div>
