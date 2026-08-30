@@ -48,7 +48,7 @@ export function AiPopover({ onClose }: AiPopoverProps) {
 
       {/* Messages */}
       {hasMessages || sendStatus === "loading" ? (
-        <ChatMessages onChipClick={handleSuggestion} />
+        <ChatMessages onChipClick={handleSuggestion} onSend={handleSend} />
       ) : (
         <div className="flex-1 overflow-y-auto">
           <SuggestedStarters onSelect={handleSuggestion} />
