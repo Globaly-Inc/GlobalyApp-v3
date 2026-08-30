@@ -46,6 +46,13 @@ export type InstitutionFilterOptions = {
   study_modes: string[];
 };
 
+/** One row of the admin-managed business category catalog, as the public switcher reads it. */
+export type BusinessCategory = {
+  slug: string;
+  name: string;
+  icon: string | null;
+};
+
 export type VisaServiceFilterOptions = {
   /** What kind of work the provider does: visa_application, appeal, … */
   service_types: string[];

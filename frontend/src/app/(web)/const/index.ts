@@ -95,13 +95,30 @@ import { GraduationCap, Building2, Users, Stamp, Handshake } from "lucide-react"
 
 // The hero search switcher. Every slug but `other-services` resolves to /search?tab=<slug>; that one goes to
 // the peer-to-peer marketplace instead — see SEARCH_DESTINATIONS below and unified-search-bar's submit().
+//
+// Courses and Other Services are not businesses, so they stay hardcoded; the entries between them
+// mirror the admin-managed business_categories catalog, fetched at runtime. This list is also what
+// the switcher falls back to when that request fails.
 export const CATEGORIES = [
   { slug: "courses", name: "Courses", Icon: GraduationCap },
   { slug: "institutions", name: "Institutions", Icon: Building2 },
   { slug: "education-agencies", name: "Education Counselors", Icon: Users },
-  { slug: "visas", name: "Visas", Icon: Stamp },
+  { slug: "visa-services", name: "Visa Services", Icon: Stamp },
   { slug: "other-services", name: "Other Services", Icon: Handshake },
 ];
+
+/**
+ * business_categories.slug → the search tab that serves it.
+ *
+ * A category with no entry here (accreditation_body, immigration_departments) has nowhere to
+ * search, so the switcher drops it — as it does any tab that is not currently in the rail.
+ */
+export const CATEGORY_SLUG_TO_TAB: Record<string, string> = {
+  institutions: "institutions",
+  education_agency: "education-agencies",
+  visa_services: "visa-services",
+  migration_agents: "migration-agents",
+};
 
 /**
  * Slugs whose search lives outside /search, as `[path, queryParam]`.
@@ -132,7 +149,7 @@ export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
     "How are education counselors paid?",
     "Find education counselors who place students in the USA.",
   ],
-  visas: [
+  "visa-services": [
     "What is a student visa and how does it work?",
     "What documents are needed for a student visa?",
     "Can international students work on a student visa?",
@@ -159,6 +176,6 @@ export const SEARCH_SUGGESTIONS_BY_SLUG: Record<string, string[]> = {
   courses: ["MBA", "MSc Information Technology", "Nursing", "Data Science"],
   institutions: ["University of Melbourne", "University of Toronto", "TAFE", "Community colleges"],
   "education-agencies": ["Education Counselors for Australia", "Education Counselors for Canada", "Education Counselors for the UK", "Education Counselors for the USA"],
-  visas: ["Student visa", "Post-study work visa", "Dependent visa", "Visitor visa"],
+  "visa-services": ["Student visa", "Post-study work visa", "Dependent visa", "Visitor visa"],
   "other-services": ["Airport pickup", "Accommodation", "Tutoring", "SIM card"],
 };

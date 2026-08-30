@@ -101,6 +101,12 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
+  // The category catalog behind the public search switcher — admins manage these rows, so the
+  // switcher should follow them rather than a hardcoded list.
+  app.get("/search/business-categories", async (_req, reply) =>
+    reply.send({ categories: await repo.listPublicBusinessCategories() }),
+  );
+
   // Facet options for the visa-services filter panel.
   app.get("/search/visa-services/filters", async (_req, reply) =>
     reply.send(await repo.listVisaServiceFacets()),
@@ -189,3 +195,4 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     });
   });
 }
+

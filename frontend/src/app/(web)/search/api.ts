@@ -1,6 +1,6 @@
 import type {
   BusinessDetail, CourseDetail, CourseFilterOptions, InstitutionDetail, InstitutionFilterOptions,
-  Paginated, SearchBusiness, SearchCourse, SearchScholarship, VisaServiceFilterOptions,
+  BusinessCategory, Paginated, SearchBusiness, SearchCourse, SearchScholarship, VisaServiceFilterOptions,
   SearchJob, SearchService, VisaServiceProviderDetail,
 } from "./types";
 import type { PlatformTest } from "@/lib/tests-catalog";
@@ -100,6 +100,21 @@ export async function getInstitutionFilters(): Promise<InstitutionFilterOptions>
 }
 
 const NO_VISA_FILTERS: VisaServiceFilterOptions = { service_types: [] };
+
+/**
+ * The category catalog behind the hero switcher. Public, so an anonymous visitor sees the same
+ * list a signed-in one does; an empty result leaves the switcher on its hardcoded fallback.
+ */
+export async function getBusinessCategories(): Promise<BusinessCategory[]> {
+  if (USE_MOCK_DATA) return [];
+  try {
+    const res = await fetch(`${API_BASE}/search/business-categories`, { next: { revalidate: 300 } });
+    if (!res.ok) return [];
+    return (await res.json()).categories ?? [];
+  } catch {
+    return [];
+  }
+}
 
 /** Facets for the visa-services panel. Optional controls, so a failure just empties them. */
 export async function getVisaServiceFilters(): Promise<VisaServiceFilterOptions> {

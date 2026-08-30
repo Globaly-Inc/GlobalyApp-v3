@@ -148,6 +148,21 @@ function institutionsQuery({
   return q;
 }
 
+/**
+ * The business category catalog, for the public hero search switcher.
+ *
+ * The authenticated lookup in businesses/lookups.routes.ts serves the same table to signed-in
+ * business users; this one is read by anonymous visitors, so it is a deliberate column allow-list
+ * rather than a row spread — no description, no ids, no timestamps.
+ */
+export async function listPublicBusinessCategories() {
+  return masterKnex("business_categories")
+    .where("is_active", true)
+    .whereNull("deleted_at")
+    .orderBy([{ column: "sort_order" }, { column: "name" }])
+    .select("slug", "name", "icon");
+}
+
 /** Distinct institution types actually present in the catalog — the type filter's options. */
 export async function listInstitutionTypes() {
   const rows = await masterKnex("institutions as i")
