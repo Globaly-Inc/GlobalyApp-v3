@@ -33,6 +33,8 @@ export const authRealApi = {
     // (only a later /auth/switch-account can turn `type` into "platform_user" for an admin).
     return {
       email,
+      first_name: null,
+      last_name: null,
       type: data.user.type,
       role: data.user.role,
       is_admin: data.user.type === "admin",
@@ -61,6 +63,8 @@ export const authRealApi = {
     const data = await httpGet<{ user: AuthMeUser }>("/auth/me");
     return {
       email: data.user.email,
+      first_name: data.user.first_name,
+      last_name: data.user.last_name,
       type: data.user.type,
       role: data.user.admin_role ?? null,
       is_admin: data.user.is_admin,
