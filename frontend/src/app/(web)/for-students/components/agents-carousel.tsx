@@ -11,7 +11,7 @@ import type { SearchBusiness } from "../../search/types";
 // education-agencies tab of /search instead (the real tab key — not "agents", see search/types.ts).
 export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBusiness[]; loading: boolean }>) {
   return (
-    <section className="py-16 bg-muted/30">
+    <section className="py-16 bg-primary/5">
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-3">

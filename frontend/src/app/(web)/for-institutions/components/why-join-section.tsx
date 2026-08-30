@@ -4,7 +4,7 @@ import { WHY_JOIN } from "../static/for-institutions-content";
 
 export function WhyJoinSection() {
   return (
-    <section className="py-16 bg-background">
+    <section className="py-16 bg-primary/5">
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold mb-3">

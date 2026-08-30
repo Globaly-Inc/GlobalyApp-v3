@@ -13,13 +13,12 @@ import { getFeaturedCountries } from "../data/countries-api";
 import type { Destination } from "../data/destinations";
 import { getEducationAgencies, getInstitutions } from "../search/api";
 import type { SearchBusiness } from "../search/types";
-import { getPosts } from "../blog/api";
+import { LatestBlogSection } from "../components/latest-blog-section";
 import { DestinationsCarousel } from "./components/destinations-carousel";
 import { InstitutionsCarousel } from "./components/institutions-carousel";
 import { HowItWorks } from "./components/how-it-works";
 import { AgentsCarousel } from "./components/agents-carousel";
-import { BlogCarousel } from "./components/blog-carousel";
-import { STATIC_BLOG_POSTS, STUDENT_TYPING_PHRASES, type BlogCardData } from "./static-content";
+import { STUDENT_TYPING_PHRASES } from "./static-content";
 
 export default function ForStudentsPage() {
   const { displayText, showCursor } = useTypingEffect(STUDENT_TYPING_PHRASES);
@@ -30,7 +29,6 @@ export default function ForStudentsPage() {
   const [institutionsLoading, setInstitutionsLoading] = useState(true);
   const [agents, setAgents] = useState<SearchBusiness[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
-  const [blogPosts, setBlogPosts] = useState<BlogCardData[]>([]);
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -51,13 +49,7 @@ export default function ForStudentsPage() {
       .then((res) => setAgents(res.data.slice(0, 8)))
       .catch(() => {})
       .finally(() => setAgentsLoading(false));
-
-    getPosts({})
-      .then((res) => setBlogPosts(res.data.slice(0, 5)))
-      .catch(() => {});
   }, []);
-
-  const displayedBlogPosts: BlogCardData[] = blogPosts.length > 0 ? blogPosts : STATIC_BLOG_POSTS;
 
   return (
     <>
@@ -95,7 +87,7 @@ export default function ForStudentsPage() {
       <InstitutionsCarousel institutions={institutions} loading={institutionsLoading} />
       <HowItWorks />
       <AgentsCarousel agents={agents} loading={agentsLoading} />
-      <BlogCarousel posts={displayedBlogPosts} />
+      <LatestBlogSection subtitle="Expert insights on international education and student success." />
 
       {/* ── 7. CTA BANNER ───────────────────────────────────────────────── */}
       <section className="py-20 bg-[hsl(var(--purple-dark))] text-white overflow-hidden relative">

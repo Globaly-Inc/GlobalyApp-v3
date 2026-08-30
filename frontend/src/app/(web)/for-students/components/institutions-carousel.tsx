@@ -7,7 +7,7 @@ import type { SearchBusiness } from "../../search/types";
 
 export function InstitutionsCarousel({ institutions, loading }: Readonly<{ institutions: SearchBusiness[]; loading: boolean }>) {
   return (
-    <section className="py-16 bg-muted/30">
+    <section className="py-16 bg-primary/5">
       <div className="container mx-auto px-4">
         <Reveal>
           <div className="flex items-center justify-between mb-6">

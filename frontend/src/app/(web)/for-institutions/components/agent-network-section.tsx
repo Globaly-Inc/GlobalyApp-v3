@@ -6,7 +6,7 @@ import { AGENT_NETWORK_ITEMS } from "../static/for-institutions-content";
 
 export function AgentNetworkSection() {
   return (
-    <section className="py-16 bg-muted/30">
+    <section className="py-16 bg-background">
       <div className="container mx-auto px-4">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <Reveal direction="left">
