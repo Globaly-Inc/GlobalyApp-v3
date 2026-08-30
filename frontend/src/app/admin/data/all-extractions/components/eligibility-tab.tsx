@@ -10,30 +10,28 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
+import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, saveFormAndLearn, useFieldSaver } from "./editable-field";
 import { latestTimestamp } from "../utils";
 import { EligibilityForm } from "./eligibility-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type {
-  CourseLinks, CourseRow, EligibilityParams, EligibilityRequirement, ExtractionJob,
+  CourseLinks, EligibilityParams, EligibilityRequirement, ExtractionJob,
 } from "../apis/types";
+
+type LinkedCourse = { id: string; name: string | null };
 
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
 
-// Derived from EditableField's own props so we don't have to touch editable-field.tsx
-// to get at its prop type.
 type EditableFieldProps = Parameters<typeof EditableField>[0];
 
-// EditableField keeps its own click-to-edit affordance — this just gives each
-// field a visual anchor (icon tile), matching the Institution/Branches tabs' treatment.
 function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
   return (
     <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
@@ -46,9 +44,9 @@ function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps 
 }
 
 function RequirementCard({
+  jobId,
   requirement,
-  courses,
-  linkedCourseIds,
+  linked,
   selected,
   busy,
   onToggleSelect,
@@ -58,9 +56,9 @@ function RequirementCard({
   onLinkCourse,
   onUnlinkCourse,
 }: Readonly<{
+  jobId: string;
   requirement: EligibilityRequirement;
-  courses: CourseRow[];
-  linkedCourseIds: string[];
+  linked: LinkedCourse[];
   selected: boolean;
   busy: boolean;
   onToggleSelect: () => void;
@@ -73,8 +71,6 @@ function RequirementCard({
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const linked = courses.filter((c) => linkedCourseIds.includes(c.id));
-  const unlinked = courses.filter((c) => !linkedCourseIds.includes(c.id));
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
   const languageCount = requirement.language_tests?.length ?? 0;
 
@@ -162,7 +158,7 @@ function RequirementCard({
           <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
           {visible.map((course) => (
             <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
-              {course.name}
+              {course.name ?? "Unnamed course"}
               {editingLinks && (
                 <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
                   <X className="h-3 w-3" />
@@ -186,12 +182,10 @@ function RequirementCard({
         </div>
 
         {editingLinks && (
-          <Combobox
-            options={unlinked.map((c) => ({ value: c.id, label: c.name }))}
-            value=""
-            onChange={onLinkCourse}
-            placeholder={unlinked.length ? "Link a course…" : "All courses linked"}
-            disabled={unlinked.length === 0}
+          <CourseLinkPicker
+            jobId={jobId}
+            excludeIds={linked.map((c) => c.id)}
+            onSelect={onLinkCourse}
             className="h-8 text-xs"
           />
         )}
@@ -203,13 +197,11 @@ function RequirementCard({
 export function EligibilityTab({
   jobId,
   job,
-  courses,
   onReload,
   onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
-  courses: CourseRow[];
   onReload: () => void;
   onJumpToContext: () => void;
 }>) {
@@ -283,8 +275,10 @@ export function EligibilityTab({
     }
   };
 
-  const coursesForRequirement = (id: string) =>
-    (links?.eligibility_assignments ?? []).filter((a) => a.eligibility_requirement_id === id).map((a) => a.course_id);
+  const coursesForRequirement = (id: string): LinkedCourse[] =>
+    (links?.eligibility_assignments ?? [])
+      .filter((a) => a.eligibility_requirement_id === id)
+      .map((a) => ({ id: a.course_id, name: a.course_name }));
 
   return (
     <div>
@@ -332,7 +326,9 @@ export function EligibilityTab({
               variant="destructive" size="sm" className="h-8 gap-1.5 cursor-pointer"
               disabled={saving}
               onClick={async () => {
-                if (!(await confirm(`Delete ${selectedIds.length} requirements?`))) return;
+                if (!(await confirm(`Delete ${selectedIds.length} requirements?`))) {
+                  return;
+                }
                 await run(async () => {
                   await Promise.all(selectedIds.map((id) => allExtractionsApi.deleteEligibilityRequirement(id)));
                   setSelectedIds([]);
@@ -401,9 +397,9 @@ export function EligibilityTab({
           ) : (
             <RequirementCard
               key={requirement.id}
+              jobId={jobId}
               requirement={requirement}
-              courses={courses}
-              linkedCourseIds={coursesForRequirement(requirement.id)}
+              linked={coursesForRequirement(requirement.id)}
               selected={selectedIds.includes(requirement.id)}
               busy={saving}
               onToggleSelect={() =>
@@ -412,7 +408,12 @@ export function EligibilityTab({
                 )
               }
               onEdit={() => { setEditingId(requirement.id); setAdding(false); }}
-              onDelete={async () => { if (!(await confirm("Delete requirement?"))) return; await run(() => allExtractionsApi.deleteEligibilityRequirement(requirement.id), "Requirement deleted"); }}
+              onDelete={async () => {
+                if (!(await confirm("Delete requirement?"))) {
+                  return;
+                }
+                await run(() => allExtractionsApi.deleteEligibilityRequirement(requirement.id), "Requirement deleted");
+              }}
               onSaveField={(column, next) => saveField("extraction_eligibility_requirements", requirement.id, column, next)}
               onLinkCourse={(courseId) =>
                 run(() => allExtractionsApi.assignJunction("eligibility-requirements", { job_id: jobId, course_id: courseId, entity_id: requirement.id }), "Linked to course")

@@ -52,7 +52,7 @@ export interface AgentRow {
 export async function findOverviewByJobId(jobId: string): Promise<OverviewRow | undefined> {
   return masterKnex("superadmin.extraction_institution_overview")
     .where({ job_id: jobId })
-    .orderBy("created_at", "asc")
+    .orderBy("created_at", "desc")
     .first();
 }
 

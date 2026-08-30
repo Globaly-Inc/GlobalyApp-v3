@@ -7,6 +7,10 @@ import { buildPaginatedResponse, type PaginationInput } from "../../../../shared
 import { logAudit } from "../shared/audit.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import * as repo from "../repositories/jobs.repository.js";
+import * as coursesRepo from "../repositories/courses.repository.js";
+import * as reviewRepo from "../repositories/review.repository.js";
+import * as stagedRepo from "../repositories/staged.repository.js";
+import * as visaRepo from "../repositories/visa-services.repository.js";
 import type { CreateJobInput, FailJobInput, PatchJobContextInput } from "../schemas/jobs.schema.js";
 
 const logger = createChildLogger("extraction-jobs-service");
@@ -71,6 +75,26 @@ export async function getJob(id: string) {
   if (!job) throw new NotFoundError("Extraction job not found");
   // Same title fallback the list uses — the overview row is already loaded here.
   return { job: { ...job, institution_name: job.institution_name ?? overview?.name ?? null }, overview };
+}
+
+export async function getTabCounts(jobId: string) {
+  const [branches, agents, courses, fees, intakes, eligibility, units, studyOptions, accreditations, visaServices] =
+    await Promise.all([
+      reviewRepo.countCampusesByJob(jobId),
+      reviewRepo.countAgentsByJob(jobId),
+      coursesRepo.countCoursesByJob(jobId),
+      coursesRepo.countCourseFeesByJob(jobId),
+      coursesRepo.countIntakesByJob(jobId),
+      coursesRepo.countEligibilityByJob(jobId),
+      coursesRepo.countStudyUnitsByJob(jobId),
+      coursesRepo.countStudyOptionsByJob(jobId),
+      stagedRepo.countAccreditationsByJob(jobId),
+      visaRepo.countVisaServicesByJob(jobId),
+    ]);
+  return {
+    branches, agents, courses, fees, intakes, eligibility, units,
+    study_options: studyOptions, accreditations, visa_services: visaServices,
+  };
 }
 
 export async function getJobEvents(jobId: string, limit: number) {

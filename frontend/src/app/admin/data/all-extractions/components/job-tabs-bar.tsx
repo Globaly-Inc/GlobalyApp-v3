@@ -16,6 +16,7 @@ import {
   Globe2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { TabCounts } from "../apis/types";
 
 export type JobTab =
   | "overview"
@@ -32,35 +33,35 @@ export type JobTab =
   | "accreditations"
   | "visa_services";
 
-const TABS: { value: JobTab; label: string; icon: LucideIcon }[] = [
+const TABS: { value: JobTab; label: string; icon: LucideIcon; countKey?: keyof TabCounts }[] = [
   { value: "overview", label: "Overview", icon: ListOrdered },
   { value: "context", label: "Context", icon: Settings2 },
   { value: "institution", label: "Institution", icon: Building2 },
-  { value: "branches", label: "Branches", icon: MapPin },
-  { value: "agents", label: "Agents", icon: Users },
-  { value: "courses", label: "Courses", icon: BookOpen },
-  { value: "fees", label: "Fees", icon: DollarSign },
-  { value: "intakes", label: "Intakes", icon: Calendar },
-  { value: "eligibility", label: "Eligibility", icon: GraduationCap },
-  { value: "units", label: "Study Units", icon: BookOpen },
-  { value: "study_options", label: "Study Options", icon: Clock },
-  { value: "accreditations", label: "Accreditations", icon: ShieldCheck },
-  { value: "visa_services", label: "Visa Services", icon: Globe2 },
+  { value: "branches", label: "Branches", icon: MapPin, countKey: "branches" },
+  { value: "agents", label: "Agents", icon: Users, countKey: "agents" },
+  { value: "courses", label: "Courses", icon: BookOpen, countKey: "courses" },
+  { value: "fees", label: "Fees", icon: DollarSign, countKey: "fees" },
+  { value: "intakes", label: "Intakes", icon: Calendar, countKey: "intakes" },
+  { value: "eligibility", label: "Eligibility", icon: GraduationCap, countKey: "eligibility" },
+  { value: "units", label: "Study Units", icon: BookOpen, countKey: "units" },
+  { value: "study_options", label: "Study Options", icon: Clock, countKey: "study_options" },
+  { value: "accreditations", label: "Accreditations", icon: ShieldCheck, countKey: "accreditations" },
+  { value: "visa_services", label: "Visa Services", icon: Globe2, countKey: "visa_services" },
 ];
 
-/**
- * `tabs` restricts which tabs render — e.g. a visa_service job has no courses/campuses.
- * `institutionLabel` relabels the "institution" tab — it's the same extraction_institution_overview
- * table/tab for every job type (there's one generic identity record per job, not a separate
- * one per source_type), so a visa-service job showing "Institution" read as if visa data had
- * leaked into the wrong place. It hasn't; the label was just wrong for what's actually shown.
- */
 export function JobTabsBar({
   active,
   onChange,
   tabs,
   institutionLabel,
-}: Readonly<{ active: JobTab; onChange: (tab: JobTab) => void; tabs?: JobTab[]; institutionLabel?: string }>) {
+  counts,
+}: Readonly<{
+  active: JobTab;
+  onChange: (tab: JobTab) => void;
+  tabs?: JobTab[];
+  institutionLabel?: string;
+  counts?: TabCounts;
+}>) {
   const visibleTabs = (tabs ? TABS.filter((t) => tabs.includes(t.value)) : TABS).map((t) =>
     t.value === "institution" && institutionLabel ? { ...t, label: institutionLabel } : t,
   );
@@ -69,9 +70,11 @@ export function JobTabsBar({
       <div className="inline-flex w-max gap-1 pb-px">
         {visibleTabs.map((tab) => {
           const isActive = active === tab.value;
+          const count = tab.countKey && counts ? counts[tab.countKey] : undefined;
           return (
             <button
               key={tab.value}
+              type="button"
               onClick={() => onChange(tab.value)}
               className={cn(
                 "flex items-center gap-2 whitespace-nowrap rounded-t-lg border-b-2 -mb-px px-3.5 py-2.5 text-sm font-medium transition-colors cursor-pointer",
@@ -82,6 +85,16 @@ export function JobTabsBar({
             >
               <tab.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
               {tab.label}
+              {count !== undefined && (
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-0.5 text-normal font-semibold leading-none",
+                    isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {count}
+                </span>
+              )}
             </button>
           );
         })}

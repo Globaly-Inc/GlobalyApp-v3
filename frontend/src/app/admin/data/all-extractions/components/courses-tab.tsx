@@ -126,7 +126,9 @@ export function CoursesTab({
   };
 
   const deleteCourse = async (id: string) => {
-    if (!(await confirm("Delete course?", "This will permanently delete the course and its linked fees, intakes, and other data."))) return;
+    if (!(await confirm("Delete course?", "This will permanently delete the course and its linked fees, intakes, and other data."))) {
+      return;
+    }
     setSaving(true);
     try {
       await allExtractionsApi.deleteCourse(id);
@@ -143,7 +145,9 @@ export function CoursesTab({
 
   const bulkDelete = async () => {
     const many = selectedIds.length > 1;
-    if (!(await confirm(many ? `Delete ${selectedIds.length} courses?` : "Delete course?", "This will permanently delete the selected courses and their linked fees, intakes, and other data."))) return;
+    if (!(await confirm(many ? `Delete ${selectedIds.length} courses?` : "Delete course?", "This will permanently delete the selected courses and their linked fees, intakes, and other data."))) {
+      return;
+    }
     setSaving(true);
     try {
       const { queued } = await allExtractionsApi.bulkDeleteCourses(selectedIds);

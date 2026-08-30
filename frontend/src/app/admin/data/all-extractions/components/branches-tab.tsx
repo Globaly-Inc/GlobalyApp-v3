@@ -211,7 +211,9 @@ export function BranchesTab({
 
   const handleDelete = async (ids: string[]) => {
     const many = ids.length > 1;
-    if (!(await confirm(many ? `Delete ${ids.length} branches?` : "Delete branch?"))) return;
+    if (!(await confirm(many ? `Delete ${ids.length} branches?` : "Delete branch?"))) {
+      return;
+    }
     try {
       await Promise.all(ids.map((id) => allExtractionsApi.deleteCampus(id)));
       setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));

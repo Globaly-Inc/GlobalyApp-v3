@@ -218,7 +218,9 @@ function VisaServiceCard({
             <Button
               size="sm" variant="ghost" className="gap-1.5 text-destructive hover:text-destructive cursor-pointer" disabled={busy}
               onClick={async () => {
-                if (!(await onConfirmDelete())) return;
+                if (!(await onConfirmDelete())) {
+                  return;
+                }
                 await run(() => allExtractionsApi.deleteVisaService(service.id), "Visa service deleted");
               }}
             >

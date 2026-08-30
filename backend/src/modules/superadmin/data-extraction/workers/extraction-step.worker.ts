@@ -89,6 +89,18 @@ async function scrapeUrl(url: string): Promise<string | null> {
   return r.markdown && r.markdown.length > 50 ? r.markdown : null;
 }
 
+async function scrapeInstitutionPage(url: string): Promise<{ markdown: string; links: string[] } | null> {
+  const r = await scrapeMarkdown(url, { onlyMainContent: false, withLinks: true });
+  return r.markdown && r.markdown.length > 50 ? { markdown: r.markdown, links: r.links } : null;
+}
+
+function findContactLink(markdown: string, links: string[], origin: string): string | null {
+  const anchor = markdown.match(/\[([^\]]*(?:contact|get in touch|enquir)[^\]]*)\]\((https?:\/\/[^)\s]+)\)/i);
+  if (anchor) return anchor[2];
+  const byPath = links.find((l) => /\/(contact(-us)?|get-in-touch|enquir(y|ies))\/?$/i.test(l));
+  return byPath ?? null;
+}
+
 function sha1(...parts: (string | null | undefined)[]): string {
   return createHash("sha1").update(parts.map(p => p ?? "").join("|")).digest("hex");
 }
@@ -194,15 +206,19 @@ async function handleInstitutionStep(jobId: string) {
   const guided = parseGuidedUrls(job);
   const contactUrls: string[] = (guided.contact_urls as string[]) || [];
 
-  // Build URL list: institution_url + contact_urls + /contact guess
   const baseUrl = job.institution_url;
-  const guessContact = (() => {
-    try { return new URL("/contact", new URL(baseUrl).origin).href; } catch { return null; }
+  const origin = (() => {
+    try { return new URL(baseUrl).origin; } catch { return null; }
   })();
+
+  const homepage = await scrapeInstitutionPage(baseUrl);
+  const discoveredContact = homepage && origin ? findContactLink(homepage.markdown, homepage.links, origin) : null;
+  const guessContact = origin ? new URL("/contact", origin).href : null;
+
   const urlsToScrape = [...new Set([
     baseUrl,
     ...contactUrls,
-    ...(contactUrls.length === 0 && guessContact ? [guessContact] : []),
+    ...(contactUrls.length === 0 ? [discoveredContact, guessContact].filter((u): u is string => !!u) : []),
   ])];
 
   await writeJobEvent(jobId, "step_start", { phase: "institution", message: `Scraping ${urlsToScrape.length} URLs for institution data` });
@@ -213,8 +229,13 @@ async function handleInstitutionStep(jobId: string) {
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${INSTITUTION_EXTRACTION_SYSTEM}\n\n${addendum}` : INSTITUTION_EXTRACTION_SYSTEM;
 
-  // Scrape all in parallel
-  const scrapeResults = await Promise.all(urlsToScrape.map(u => scrapeUrl(u)));
+  // Scrape the rest in parallel — the homepage was already scraped above, reuse it instead
+  // of scraping it again.
+  const scrapeResults = await Promise.all(
+    urlsToScrape.map((u) =>
+      u === baseUrl ? Promise.resolve(homepage?.markdown ?? null) : scrapeInstitutionPage(u).then((r) => r?.markdown ?? null),
+    ),
+  );
   const scrapedPairs: { url: string; markdown: string }[] = [];
   for (let i = 0; i < urlsToScrape.length; i++) {
     if (scrapeResults[i]) scrapedPairs.push({ url: urlsToScrape[i], markdown: scrapeResults[i]! });

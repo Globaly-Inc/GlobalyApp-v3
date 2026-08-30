@@ -34,6 +34,11 @@ export async function countCoursesByJob(jobId: string, filters: CourseListFilter
   return Number(row.count);
 }
 
+export async function countCourseFeesByJob(jobId: string) {
+  const [row] = await masterKnex(`${S}.extraction_course_fees`).where({ job_id: jobId }).count("id as count");
+  return Number(row.count);
+}
+
 // Powers the status filter dropdown — counts are over the whole job, not the current page.
 export async function countCoursesByStatus(jobId: string) {
   const rows = await masterKnex(T)
@@ -166,10 +171,14 @@ export async function getCourseLinks(jobId: string) {
 
   const queries = Object.entries(tables).map(([key, table]) => {
     // accreditations is a standalone table — no job_id filter
-    const query =
-      key === "accreditations"
-        ? masterKnex(table).select("*")
-        : masterKnex(table).where({ job_id: jobId });
+    if (key === "accreditations") {
+      return masterKnex(table).select("*").then((rows) => [key, rows] as const);
+    }
+    const query = key.endsWith("_assignments")
+      ? masterKnex(table).select(`${table}.*`, `${T}.name as course_name`)
+        .leftJoin(T, `${table}.course_id`, `${T}.id`)
+        .where(`${table}.job_id`, jobId)
+      : masterKnex(table).where({ job_id: jobId });
     return query.then((rows) => [key, rows] as const);
   });
 
