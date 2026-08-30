@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
 import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
-import { InstitutionLogo } from "./institution-logo";
+import { InstitutionLogo } from "@/components/institution-logo";
 
 type CourseCardProps = {
   card: CourseCardType;
@@ -58,6 +58,7 @@ function toCompareItem(card: CourseCardType): CompareCourseItem {
     slug: card.slug ?? "",
     name: card.course_name,
     institutionName: card.institution_name,
+    institutionLogoUrl: card.institution_logo_url,
     countryName: card.country,
     durationLabel: card.duration || null,
     nextIntakeLabel: card.intakes[0],
@@ -74,23 +75,38 @@ export function CourseCard({ card }: CourseCardProps) {
   const fee = formatFee(card.annual_tuition_fee, card.currency);
   const modes = card.study_modes.map(prettify).join(" · ");
   const place = [card.city, card.country].filter(Boolean).join(", ");
-  const hasDetails = Boolean(card.duration || card.intakes.length > 0 || modes);
+  const nextIntake = card.intakes[0] ?? null;
 
   return (
     <Card
       size="sm"
       className="relative flex h-full w-full flex-col gap-0 overflow-hidden py-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
     >
-      {/* Decorative brand wash behind the header — the logo sits on top of it. */}
+      {/* Decorative brand wash */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-br from-primary/12 via-primary/5 to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-br from-primary/12 via-primary/5 to-transparent"
       />
 
-      {/* Header */}
-      <div className="relative flex items-start gap-3 px-4 pt-4">
+      {/* Course name — first thing eyes land on */}
+      <div className="relative px-4 pt-4">
+        <p
+          className="line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight text-foreground"
+          title={card.course_name}
+        >
+          {card.course_name}
+        </p>
+        {degreeLevelOf(card) && (
+          <Badge variant="secondary" className="mt-1.5 border-0 bg-primary/10 text-primary">
+            {degreeLevelOf(card)}
+          </Badge>
+        )}
+      </div>
+
+      {/* Institution + location */}
+      <div className="relative flex items-center gap-2.5 px-4 pt-3">
         <InstitutionLogo name={card.institution_name} logoUrl={card.institution_logo_url} />
-        <div className="min-w-0 flex-1 pt-0.5">
+        <div className="min-w-0">
           <p className="truncate text-xs font-semibold text-foreground" title={card.institution_name}>
             {card.institution_name}
           </p>
@@ -103,22 +119,7 @@ export function CourseCard({ card }: CourseCardProps) {
         </div>
       </div>
 
-      {/* Course title + level */}
-      <div className="relative px-4 pt-3">
-        <p
-          className="line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight text-foreground"
-          title={card.course_name}
-        >
-          {card.course_name}
-        </p>
-        {degreeLevelOf(card) && (
-          <Badge variant="secondary" className="mt-2 border-0 bg-primary/10 text-primary">
-            {degreeLevelOf(card)}
-          </Badge>
-        )}
-      </div>
-
-      {/* Tuition gets its own strip — it's the number students scan for first. */}
+      {/* Tuition strip */}
       {fee && (
         <div className="mx-4 mt-3 flex items-baseline justify-between rounded-lg border border-primary/15 bg-primary/[0.06] px-3 py-2">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -131,14 +132,11 @@ export function CourseCard({ card }: CourseCardProps) {
         </div>
       )}
 
-      {/* Details — the section disappears entirely when the card has none of the
-          fields, so there's no empty padded band. */}
-      {hasDetails && (
+      {/* Details — disappears when the card has none of the fields */}
+      {(card.duration || nextIntake || modes) && (
         <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 px-4 py-3">
           {card.duration && <DetailRow icon={Clock} label="Duration" value={card.duration} />}
-          {card.intakes.length > 0 && (
-            <DetailRow icon={CalendarDays} label="Intakes" value={card.intakes.join(", ")} />
-          )}
+          {nextIntake && <DetailRow icon={CalendarDays} label="Next Intake" value={nextIntake} />}
           {modes && <DetailRow icon={Presentation} label="Study mode" value={modes} />}
         </div>
       )}

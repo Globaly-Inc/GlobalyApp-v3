@@ -53,6 +53,7 @@ export type CompareCourseItem = {
   slug: string;
   name: string;
   institutionName?: string;
+  institutionLogoUrl?: string | null;
   countryName?: string;
   durationLabel?: string | null;
   subjectArea?: string | null;

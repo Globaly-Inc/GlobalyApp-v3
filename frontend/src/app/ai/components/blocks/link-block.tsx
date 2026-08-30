@@ -15,7 +15,7 @@ export function LinkBlock({ block }: LinkBlockProps) {
   if (!block.url.startsWith("/")) return null;
 
   return (
-    <Button variant="outline" size="sm" className="self-start" render={<Link href={block.url} />}>
+    <Button variant="outline" size="sm" className="self-start" render={<Link href={block.url} target="_blank" rel="noopener noreferrer" />}>
       {block.label}
       <ArrowRight className="size-3.5" />
     </Button>

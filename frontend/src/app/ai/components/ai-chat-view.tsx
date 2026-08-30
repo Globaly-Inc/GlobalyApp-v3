@@ -66,31 +66,31 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
 
   const handleSend = useCallback(
     (content: string, files?: File[]) => {
+      const trimmed = content.trim();
+      if (!trimmed || sendStatus === "loading") return;
       if (!user) {
         guestFingerprint.current ??= crypto.randomUUID();
-        dispatch(sendGuestMessage({ content, fingerprint: guestFingerprint.current }));
+        dispatch(sendGuestMessage({ content: trimmed, fingerprint: guestFingerprint.current }));
         setDraft("");
         return;
       }
       if (activeSessionId && activeSessionId !== GUEST_SESSION_ID) {
         dispatch(addOptimisticUserMessage({
           sessionId: activeSessionId,
-          content,
+          content: trimmed,
           attachments: files?.map((f) => f.name),
         }));
       }
-      dispatch(sendMessage({ sessionId: activeSessionId, content, files }));
+      dispatch(sendMessage({ sessionId: activeSessionId, content: trimmed, files }));
       setDraft("");
     },
-    [dispatch, activeSessionId, user],
+    [dispatch, activeSessionId, user, sendStatus],
   );
 
   const handleNewChat = useCallback(() => {
     dispatch(setActiveSession(null));
     setSidebarOpen(false);
   }, [dispatch]);
-
-  const handleSuggestion = useCallback((text: string) => setDraft(text), []);
 
   const isChatting = messages.length > 0 || sendStatus === "loading";
 
@@ -142,10 +142,10 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
         <ProfileCompletionBanner />
 
         {isChatting ? (
-          <ChatMessages onChipClick={handleSuggestion} />
+          <ChatMessages onChipClick={handleSend} />
         ) : (
           <div className="flex-1 overflow-y-auto">
-            <SuggestedStarters onSelect={handleSuggestion} name={profile?.first_name}>
+            <SuggestedStarters onSelect={handleSend} name={profile?.first_name}>
               {composer(true)}
             </SuggestedStarters>
           </div>
