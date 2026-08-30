@@ -11,8 +11,8 @@ import { COMPARE_ROWS } from "../compare-rows";
  * Floating messenger-style compare widget (bottom-right, collapsible).
  * Shared by the search page and the AI counsellor — both feed the same
  * in-memory store. "Compare Now" renders the comparison inline in this
- * widget; "View details" opens the full /compare page in the SAME tab
- * (a new tab would start with an empty store).
+ * widget; "View details" opens the full /compare page in a new tab
+ * (the store is backed by localStorage so the new tab loads the same selection).
  *
  * `positionClass` exists because the portal parks its own floating button in this same corner —
  * /personal/explore passes an offset so the two don't sit on top of each other.
@@ -129,7 +129,7 @@ export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ p
             <Button type="button" size="sm" variant="ghost" onClick={() => setComparing(false)} className="h-8 gap-1.5">
               <ArrowLeft className="size-3.5" /> Back
             </Button>
-            <Button size="sm" className="h-8 flex-1 gap-1.5" render={<Link href="/compare" />}>
+            <Button size="sm" className="h-8 flex-1 gap-1.5" render={<Link href="/compare" target="_blank" rel="noopener noreferrer" />}>
               <ExternalLink className="size-3.5" /> View details
             </Button>
           </>

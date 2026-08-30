@@ -56,12 +56,24 @@ export function CourseCard({
                 <GraduationCap className="h-8 w-8 text-muted-foreground" />
               )}
             </div>
-
-            <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
-                {course.name}
-              </h3>
-
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="flex-1 min-w-0 font-semibold text-foreground group-hover:text-primary transition-colors leading-snug text-[15px] line-clamp-2">
+                  {course.name}
+                </h3>
+                <div className="pointer-events-auto relative z-10">
+                  <CourseCompareButton
+                    course={{
+                      id: course.id, slug: course.slug, name: course.name,
+                      institutionName: course.awarding_institution ?? undefined,
+                      institutionLogoUrl: course.image_url,
+                      countryName: course.country_name ?? undefined,
+                      durationLabel, subjectArea: course.subject_area,
+                      nextIntakeLabel, annualTuition, feeCurrency,
+                    }}
+                  />
+                </div>
+              </div>
               {course.awarding_institution && (
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                   <GraduationCap className="h-4 w-4 shrink-0" />
