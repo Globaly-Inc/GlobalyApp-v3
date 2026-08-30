@@ -29,7 +29,7 @@ export async function distributionsRoutes(app: FastifyInstance) {
     { preHandler: [requireBusinessOrInstitutionContext, requireEnquiryPermission("enquiries:view")] },
     async (req, reply) => {
       const query = ListDistributionsQuerySchema.parse(req.query);
-      const distributions = await service.listForBusiness(req.db, query);
+      const distributions = await service.listForBusiness(req.db, recipientFromRequest(req), query);
       return reply.send({ data: distributions });
     },
   );

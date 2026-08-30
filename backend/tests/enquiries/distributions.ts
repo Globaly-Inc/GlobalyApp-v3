@@ -165,7 +165,7 @@ async function tenantStatus(businessId: number, schemaUuid: string, enquiryId: s
 
 async function listFor(businessId: number, schemaUuid: string) {
   const db = await getKnex(businessId, schemaName(schemaUuid));
-  return service.listForBusiness(db, {});
+  return service.listForBusiness(db, { kind: "business", id: businessId }, {});
 }
 
 /** One enquiry fanned out to `count` provisioned businesses. */

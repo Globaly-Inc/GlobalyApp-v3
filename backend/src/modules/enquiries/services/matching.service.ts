@@ -323,16 +323,22 @@ async function matchAndCommit(enquiry: any, excludeBusinessIds: number[]): Promi
  *
  * An unclaimed institution is still a valid recipient. It gets the mail with a claim CTA, and the
  * distribution waits for it — which is why this does not gate on account_status.
+ *
+ * It does gate on there being someone to send that CTA to. Promote leaves `institutions.email`
+ * NULL when extraction found no address, or when another institution already holds it; unclaimed,
+ * such a row also has no members and no tenant schema. Distributing to it would flip the enquiry
+ * to 'distributed' with no mail, no tenant row and no way to claim — the student would be waiting
+ * on a lead nobody can open. Returning false instead lets the caller try the agent fallback and
+ * then no_match, which is at least honest. Recipients come from the email service so the two
+ * cannot disagree about who is reachable.
  */
 async function commitInstitutionFallback(enquiry: any, studentCountryCode: string | null): Promise<boolean> {
   const institutionId: number | null = enquiry.institution_id ?? null;
   if (institutionId == null) return false;
 
-  const institution = await masterKnex("institutions")
-    .where({ id: institutionId })
-    .whereNull("deleted_at")
-    .first("id");
-  if (!institution) return false;
+  // Also covers "institution missing or soft-deleted" — that returns no recipients.
+  const { recipients } = await emailQueueService.resolveInstitutionRecipients(institutionId);
+  if (recipients.length === 0) return false;
 
   // No ON CONFLICT: matching only ever runs on a 'pending' enquiry and flips the status in this
   // same transaction, so a second run cannot reach the insert. The partial unique index on

@@ -2,11 +2,12 @@
 // business portal's list is genuinely tenant-sourced (see PRD scope-revision).
 // Fire-and-forget: a single business's tenant write must never fail the match.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import type { Recipient } from "../shared/recipient.js";
+import { recipientFilter, type Recipient } from "../shared/recipient.js";
 
 const logger = createChildLogger("enquiry-tenant-sync");
 
@@ -35,7 +36,8 @@ export async function syncDistributionToTenant(
  * Silently does nothing for an institution that was promoted but never claimed: it has no schema
  * yet (`schema_provisioned_at IS NULL`), so there is nowhere to mirror to. The central
  * distribution row is the durable one — the claim flow provisions the schema, and the row can be
- * mirrored then. This is why the institution's inbox must never treat "no tenant row" as "no lead".
+ * mirrored then — by reconcileTenantMirror, which the inbox runs before it reads, precisely
+ * because a missing tenant row here never means "no lead".
  */
 export async function syncInstitutionDistributionToTenant(
   institutionId: number,
@@ -155,35 +157,51 @@ async function tenantDbFor(recipient: Recipient) {
 }
 
 /**
- * Mirrors every enquiry already sent to this institution into the schema it just got.
+ * Replays into a recipient's tenant mirror every central distribution the mirror is missing.
  *
- * The fallback distributes to unclaimed institutions on purpose — the notification is what asks
- * someone to claim the account — so by the time a schema exists there can be leads waiting that
- * were never mirrored. Without this the institution claims, signs in, and finds an empty
- * Enquiries tab holding exactly the enquiry that brought them here.
+ * Every writer of that mirror swallows its errors — syncDistributionToTenant and
+ * syncInstitutionDistributionToTenant at match time, and the claim-time call below — while the
+ * inbox listing reads the mirror and treats "no tenant row" as "no lead". So one swallowed
+ * failure used to lose a lead permanently: nothing ever re-ran the write. Two cases in
+ * particular had no second chance at all — a claim only provisions once, so a failed backfill
+ * left the institution staring at the empty Enquiries tab that the claim mail sent them to fix;
+ * and a flaked match-time sync to an already-claimed org was never retried either.
  *
- * Statuses come from the central row rather than being reset to 'distributed': nothing else could
- * have moved them (the institution had no way in), but copying what is there costs nothing and
- * cannot be wrong.
+ * Running it on the read path is what makes those writers genuinely best-effort. Central
+ * `enquiry_distributions` is the source of truth — listForBusinessFromTenant already discards
+ * tenant rows without a central counterpart — so replaying the difference cannot invent a lead,
+ * and a reconcile that itself fails is retried on the very next page load rather than never.
+ *
+ * Cheap enough to sit there: one indexed central query plus one tenant id scan, and zero writes
+ * in the normal case where nothing is missing.
+ *
+ * Statuses come from the central row rather than being reset to 'distributed' — a row that went
+ * missing at match time may well have moved on since, and copying what is there cannot be wrong.
  */
-export async function backfillInstitutionDistributions(institutionId: number): Promise<void> {
+export async function reconcileTenantMirror(recipient: Recipient, db?: Knex): Promise<void> {
   try {
     const rows = await masterKnex("enquiry_distributions")
-      .where({ institution_id: institutionId })
+      .where(recipientFilter(recipient))
       .whereNull("deleted_at")
       .select("id", "enquiry_id", "status");
     if (rows.length === 0) return;
 
-    const tenantDb = await tenantDbFor({ kind: "institution", id: institutionId });
-    for (const row of rows) {
+    const tenantDb = db ?? (await tenantDbFor(recipient));
+    const mirrored = await tenantDb("business_enquiries")
+      .whereIn("enquiry_id", rows.map((r) => r.enquiry_id))
+      .pluck("enquiry_id");
+    const missing = rows.filter((r) => !mirrored.includes(r.enquiry_id));
+    if (missing.length === 0) return;
+
+    for (const row of missing) {
       await tenantDb.raw(
         `INSERT INTO business_enquiries (enquiry_id, distribution_id, status) VALUES (?, ?, ?)
          ON CONFLICT (enquiry_id) DO NOTHING`,
         [row.enquiry_id, row.id, row.status],
       );
     }
-    logger.info("Backfilled institution enquiries on claim", { institutionId, count: rows.length });
+    logger.info("Replayed enquiries missing from tenant mirror", { recipient, count: missing.length });
   } catch (err) {
-    logger.error("Failed to backfill institution enquiries on claim", { institutionId, error: err });
+    logger.error("Failed to reconcile tenant enquiry mirror", { recipient, error: err });
   }
 }

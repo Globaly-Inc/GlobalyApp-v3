@@ -88,6 +88,25 @@ async function makeBusiness(): Promise<number> {
 }
 
 /**
+ * A promoted-but-unclaimed institution: no owner, no members, no tenant schema — exactly what
+ * promoteInstitution writes. `email` is the knob under test: promote leaves it NULL when
+ * extraction found no address, or when another institution already holds it.
+ */
+async function makeInstitution(email: string | null): Promise<number> {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const [row] = await masterKnex("institutions")
+    .insert({
+      institution_name: `Match Test Inst ${suffix}`,
+      subdomain: `match-test-inst-${suffix}`,
+      email,
+      status: "pending",
+      claim_status: "unclaimed",
+    })
+    .returning("id");
+  return row.id;
+}
+
+/**
  * An ACTIVE representation is the ONLY thing that makes a business eligible.
  * Without one, a directory row alone matches nothing — there is no general pool.
  */
@@ -131,13 +150,14 @@ async function makeEnquiry(
   studentId: number,
   courseId: string,
   extractionJobId: string | null,
-  geo?: { lat?: number; lon?: number },
+  geo?: { lat?: number; lon?: number; institutionId?: number },
 ) {
   const [row] = await masterKnex("enquiries")
     .insert({
       student_id: studentId,
       course_id: courseId,
       extraction_job_id: extractionJobId,
+      institution_id: geo?.institutionId ?? null,
       message: "This is a test enquiry message for matching tests.",
       student_latitude: geo?.lat ?? null,
       student_longitude: geo?.lon ?? null,
@@ -156,7 +176,13 @@ async function getCountryId(iso2: string): Promise<number> {
   return inserted.id;
 }
 
-async function cleanup(opts: { studentIds?: number[]; jobIds?: string[]; businessIds?: number[]; enquiryIds?: string[] }) {
+async function cleanup(opts: {
+  studentIds?: number[];
+  jobIds?: string[];
+  businessIds?: number[];
+  enquiryIds?: string[];
+  institutionIds?: number[];
+}) {
   if (opts.enquiryIds?.length) {
     await masterKnex("enquiry_distributions").whereIn("enquiry_id", opts.enquiryIds).delete();
     await masterKnex("audit_logs").whereIn("entity_id", opts.enquiryIds).delete();
@@ -172,6 +198,9 @@ async function cleanup(opts: { studentIds?: number[]; jobIds?: string[]; busines
       await masterKnex("superadmin.extraction_courses").where({ job_id: jobId }).delete();
       await masterKnex("superadmin.extraction_jobs").where({ id: jobId }).delete();
     }
+  }
+  if (opts.institutionIds?.length) {
+    await masterKnex("institutions").whereIn("id", opts.institutionIds).delete();
   }
   if (opts.studentIds?.length) {
     await masterKnex("platform_user_profiles").whereIn("user_id", opts.studentIds).delete();
@@ -662,6 +691,47 @@ async function main() {
       eq(dists[0].business_id, businessId, "fallback business_id");
     } finally {
       await cleanup({ studentIds: [studentId], jobIds: [jobId], businessIds: [businessId], enquiryIds: [enquiry.id] });
+    }
+  });
+
+  // ── 3b. The institution fallback needs someone to notify ──
+  //
+  // An unclaimed institution has no members and no tenant schema, so its contact email is the
+  // whole audience. With that NULL there is nobody to mail and nowhere to mirror — distributing
+  // anyway left the student on a 'distributed' enquiry no one could ever open.
+  await assert("an institution with no contact email and no members is NOT a fallback recipient", async () => {
+    const studentId = await makeStudent({ countryId: null });
+    const { jobId, courseId } = await makeJobAndCourse("Unreachable Subject XYZ");
+    const institutionId = await makeInstitution(null);
+    const enquiry = await makeEnquiry(studentId, courseId, jobId, { institutionId });
+    try {
+      await runMatching(enquiry.id);
+      const updated = await masterKnex("enquiries").where({ id: enquiry.id }).first();
+      eq(updated.status, "no_match", "enquiry status");
+      const dists = await masterKnex("enquiry_distributions").where({ enquiry_id: enquiry.id });
+      eq(dists.length, 0, "no distributions created");
+    } finally {
+      await cleanup({ studentIds: [studentId], jobIds: [jobId], enquiryIds: [enquiry.id], institutionIds: [institutionId] });
+    }
+  });
+
+  await assert("an institution WITH a contact email still receives the fallback", async () => {
+    const studentId = await makeStudent({ countryId: null });
+    const { jobId, courseId } = await makeJobAndCourse("Reachable Subject XYZ");
+    const institutionId = await makeInstitution(`match-test-${Date.now()}@example.com`);
+    const enquiry = await makeEnquiry(studentId, courseId, jobId, { institutionId });
+    try {
+      await runMatching(enquiry.id);
+      const updated = await masterKnex("enquiries").where({ id: enquiry.id }).first();
+      eq(updated.status, "distributed", "enquiry status");
+      const dists = await masterKnex("enquiry_distributions").where({ enquiry_id: enquiry.id });
+      eq(dists.length, 1, "sole recipient");
+      eq(dists[0].institution_id, institutionId, "fallback institution_id");
+      eq(dists[0].business_id, null, "no business behind an institution fallback");
+      eq(dists[0].tier, 4, "institution fallback is tier 4");
+    } finally {
+      await masterKnex("enquiry_email_queue").where({ enquiry_id: enquiry.id }).delete();
+      await cleanup({ studentIds: [studentId], jobIds: [jobId], enquiryIds: [enquiry.id], institutionIds: [institutionId] });
     }
   });
 
