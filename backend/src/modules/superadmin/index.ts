@@ -11,6 +11,7 @@ import seoAdminModule from "./marketing/seo/index.js";
 import subscribersAdminModule from "./marketing/subscribers/index.js";
 import monitoringModule from "./monitoring/index.js";
 import settingsAdminModule from "./settings/index.js";
+import revenueModule from "./revenue/index.js";
 
 export default async function superadminModule(app: FastifyInstance) {
   // admin-users handles requireAdmin per-route (has public invite/accept endpoint)
@@ -29,5 +30,6 @@ export default async function superadminModule(app: FastifyInstance) {
     scoped.register(aiKnowledgeModule, { prefix: "/api/v3/admin/ai-knowledge" });
     scoped.register(monitoringModule, { prefix: "/api/v3/admin/monitoring" });
     scoped.register(settingsAdminModule, { prefix: "/api/v3/admin/settings" });
+    scoped.register(revenueModule, { prefix: "/api/v3/admin/revenue" });
   });
 }
