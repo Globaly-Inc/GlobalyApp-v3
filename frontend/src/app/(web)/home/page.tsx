@@ -129,7 +129,7 @@ export default function HomePage() {
       </section>
 
       {/* ── FOR STUDENTS ── */}
-      <section className="py-16 bg-muted/30">
+      <section className="py-16 bg-primary/5">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <Reveal direction="left">
@@ -247,7 +247,7 @@ export default function HomePage() {
       </section>
 
       {/* ── FOR EDUCATION PROVIDERS ── */}
-      <section className="py-16 bg-muted/30">
+      <section className="py-16 bg-primary/5">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <Reveal direction="left" className="relative">
@@ -333,7 +333,7 @@ export default function HomePage() {
       </section>
 
       {/* ── FOR AGENTS ── */}
-      <section className="py-16 bg-muted/30">
+      <section className="py-16 bg-primary/5">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <Reveal direction="left">
