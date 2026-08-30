@@ -23,7 +23,7 @@ import * as repo from "../repositories/platform-users.repository.js";
 import * as institutionMembers from "./institution-members.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
 import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
-import { backfillInstitutionDistributions } from "../../enquiries/services/tenant-sync.service.js";
+import { reconcileTenantMirror } from "../../enquiries/services/tenant-sync.service.js";
 
 const logger = createChildLogger("institution-claim-service");
 const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
@@ -163,7 +163,11 @@ export async function acceptInstitutionClaim(
 
     // Leads that arrived while nobody could sign in — the enquiry fallback mails unclaimed
     // institutions precisely to get them here, so the schema starts with them already in it.
-    await backfillInstitutionDistributions(Number(institution.id));
+    // Best-effort on purpose: the claim is already committed by this point (token cleared,
+    // member added, account_status flipped), so throwing here would 500 a claim that actually
+    // worked and cannot be retried. The inbox reconciles on read, which is what makes a miss
+    // here recoverable rather than permanent.
+    await reconcileTenantMirror({ kind: "institution", id: Number(institution.id) });
 
     logger.info("Promoted institution claimed", { institutionId: institution.id, jobId: institution.source_job_id });
 

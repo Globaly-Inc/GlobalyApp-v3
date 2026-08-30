@@ -237,18 +237,19 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
  * and the mail carries a claim link. A fresh link is minted per fallback rather than reused: the
  * token has a 72-hour life, and an enquiry can land long after the last one expired.
  *
+ * Resolution is split out and exported because matching gates the fallback on it: promote nulls
+ * `institutions.email` when extraction found no address (or another institution already holds
+ * it), and such an institution, still unclaimed, has nobody to notify. Distributing to it would
+ * strand the enquiry as 'distributed' with no reachable recipient, so matching asks here first.
+ *
  * `business_id` on the queue row stays NULL — it FKs to businesses, and this recipient is not one.
  */
-export async function enqueueInstitutionFallbackEmail(
-  enquiryId: string,
-  distributionId: string,
-  institutionId: number,
-) {
+export async function resolveInstitutionRecipients(institutionId: number) {
   const institution = await masterKnex("institutions")
     .where({ id: institutionId })
     .whereNull("deleted_at")
     .first("id", "email", "institution_name", "account_status");
-  if (!institution) return;
+  if (!institution) return { recipients: [], institution: null };
 
   const members = await masterKnex("user_institution_index as uii")
     .join("platform_users as pu", "pu.id", "uii.platform_user_id")
@@ -261,7 +262,16 @@ export async function enqueueInstitutionFallbackEmail(
   if (contact && !members.some((m) => m.email?.toLowerCase() === contact.toLowerCase())) {
     recipients.push({ userId: null, email: contact });
   }
-  if (recipients.length === 0) return;
+  return { recipients, institution };
+}
+
+export async function enqueueInstitutionFallbackEmail(
+  enquiryId: string,
+  distributionId: string,
+  institutionId: number,
+) {
+  const { recipients, institution } = await resolveInstitutionRecipients(institutionId);
+  if (!institution || recipients.length === 0) return;
 
   const isClaimed = Number(institution.account_status) === 1;
   const claimUrl = isClaimed ? null : await mintInstitutionClaimUrl(institutionId);

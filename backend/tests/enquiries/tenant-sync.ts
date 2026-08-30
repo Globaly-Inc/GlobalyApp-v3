@@ -178,7 +178,8 @@ async function main() {
       eq(tenantRow.distribution_id, dist.id, "tenant row distribution_id");
       eq(tenantRow.status, "distributed", "tenant row status");
 
-      const inbox = await distributionsService.listForBusiness(tenantDb, {});
+      const recipient = { kind: "business" as const, id: business.id };
+      const inbox = await distributionsService.listForBusiness(tenantDb, recipient, {});
       eq(inbox.length, 1, "inbox row count");
       eq(inbox[0].enquiry_id, enquiry.id, "inbox enquiry_id");
       eq(inbox[0].distribution_id, dist.id, "inbox distribution_id");
@@ -187,6 +188,24 @@ async function main() {
       eq(inbox[0].institution_name?.startsWith("Tenant Sync Institution"), true, "inbox institution_name");
       eq(inbox[0].tier, dist.tier, "inbox tier");
       eq(inbox[0].status, dist.status, "inbox status");
+
+      // ── 3. The mirror repairs itself on read ──
+      //
+      // Every writer of business_enquiries swallows its errors, and the listing treats a
+      // missing row as "no lead" — so a single flaked write used to lose the lead forever.
+      // Deleting the row is exactly what a swallowed failure leaves behind.
+      await tenantDb("business_enquiries").where({ enquiry_id: enquiry.id }).delete();
+      eq(
+        await tenantDb("business_enquiries").where({ enquiry_id: enquiry.id }).first(),
+        undefined,
+        "tenant row is gone before the repair",
+      );
+
+      const repaired = await distributionsService.listForBusiness(tenantDb, recipient, {});
+      eq(repaired.length, 1, "the lead is back in the inbox");
+      eq(repaired[0].distribution_id, dist.id, "repaired distribution_id");
+      // Replayed from the central row, not reset to 'distributed'.
+      eq(repaired[0].status, dist.status, "repaired status comes from the central row");
     } finally {
       await cleanup({ studentId, jobId, businessId: business.id, enquiryId: enquiry.id, overviewId });
     }

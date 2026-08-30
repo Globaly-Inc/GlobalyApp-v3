@@ -13,13 +13,18 @@ import { logEnquiryAudit } from "../shared/audit.js";
 import * as distributionsRepo from "../repositories/distributions.repository.js";
 import * as creditsService from "./credits.service.js";
 import * as messagesService from "./messages.service.js";
-import { markInConversation, syncStatusToTenant } from "./tenant-sync.service.js";
+import { markInConversation, reconcileTenantMirror, syncStatusToTenant } from "./tenant-sync.service.js";
 import type { Recipient } from "../shared/recipient.js";
 
 export async function listForBusiness(
   db: Knex,
+  recipient: Recipient,
   filters: { status?: string; limit?: number; offset?: number },
 ) {
+  // Every write to the tenant mirror is fire-and-forget, and a lead missing from it is
+  // invisible here — so repair before reading rather than trusting writes that swallowed
+  // their errors. Normally a no-op: it writes nothing when nothing is missing.
+  await reconcileTenantMirror(recipient, db);
   return distributionsRepo.listForBusinessFromTenant(db, filters);
 }
 
