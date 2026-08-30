@@ -142,7 +142,7 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
         <ProfileCompletionBanner />
 
         {isChatting ? (
-          <ChatMessages onChipClick={handleSend} />
+          <ChatMessages onChipClick={handleSend} onSend={handleSend} />
         ) : (
           <div className="flex-1 overflow-y-auto">
             <SuggestedStarters onSelect={handleSend} name={profile?.first_name}>
