@@ -70,6 +70,14 @@ export type CreateJobParams = {
   sample_course_url?: string;
 };
 
+export type ExistingJobConflict = {
+  id: string;
+  institutionName: string | null;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
 export type InstitutionOverview = {
   id: string;
   name: string | null;

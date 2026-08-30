@@ -16,6 +16,7 @@ export const errorHandlerPlugin = fp(async (app) => {
       return reply.status(error.statusCode).send({
         error: error.message,
         code: error.code,
+        ...(error.details !== undefined ? { details: error.details } : {}),
       });
     }
 

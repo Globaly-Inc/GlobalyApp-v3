@@ -186,6 +186,27 @@ export async function findJobWithOverview(id: string) {
   return { job, overview: overview ?? null };
 }
 
+export function normaliseHost(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+export async function findJobByInstitutionHost(institutionUrl: string) {
+  const host = normaliseHost(institutionUrl);
+  if (!host) return null;
+
+  const rows = await masterKnex(`${T} as j`)
+    .leftJoin(`${T_OVERVIEW} as o`, "o.job_id", "j.id")
+    .select("j.id", "j.institution_url", "o.website", "o.email", "o.phone")
+    .select(masterKnex.raw("coalesce(j.institution_name, o.name) as institution_name"))
+    .whereNot("j.status", "declined");
+
+  return rows.find((r) => normaliseHost(r.institution_url) === host || (r.website && normaliseHost(r.website) === host)) ?? null;
+}
+
 export async function insertJob(data: Record<string, unknown>) {
   const [row] = await masterKnex(T).insert(data).returning("id");
   return row;

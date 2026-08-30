@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/combobox";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { useAppDispatch } from "@/lib/hooks";
 import { categoriesApi, type Category } from "@/app/admin/platform/categories/apis";
 import { createJob } from "../store/all-extractions-slice";
+import type { ExistingJobConflict } from "../apis/types";
 import {
   GUIDED_URL_CATEGORIES,
   SOURCE_TYPE_OPTIONS,
@@ -39,6 +41,7 @@ export function NewExtractionDialog({
 }: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void }>) {
   const dispatch = useAppDispatch();
   const [step, setStep] = useState(0);
+  const [conflict, setConflict] = useState<ExistingJobConflict | null>(null);
   const [businessCategory, setBusinessCategory] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
   // Kept alongside the ids so the review step still has a name after a search
@@ -65,6 +68,18 @@ export function NewExtractionDialog({
     }
     if (fetchedForOpenRef.current) return;
     fetchedForOpenRef.current = true;
+
+    setStep(0);
+    setBusinessCategory("");
+    setServiceCategory("");
+    setBusinessLabel("");
+    setServiceLabel("");
+    setSourceType("institution");
+    setInstitutionUrl("");
+    setSampleCourseUrl("");
+    setGuidedUrls({});
+    setGuidanceNotes("");
+
     setLoadingCategories(true);
     Promise.all([
       categoriesApi.getBusinessCategories({ limit: 10, active: true }),
@@ -94,27 +109,11 @@ export function NewExtractionDialog({
     }, SEARCH_DEBOUNCE_MS);
   };
 
-  const handleOpenChange = (next: boolean) => {
-    if (next) {
-      setStep(0);
-      setBusinessCategory("");
-      setServiceCategory("");
-      setBusinessLabel("");
-      setServiceLabel("");
-      setSourceType("institution");
-      setInstitutionUrl("");
-      setSampleCourseUrl("");
-      setGuidedUrls({});
-      setGuidanceNotes("");
-    }
-    onOpenChange(next);
-  };
-
   // A stray backdrop click or Escape would wipe a half-filled three-step form, so the only
   // ways out are Cancel and the corner ×. Outside presses are blocked by disablePointerDismissal.
   const handleOpenChangeWithReason = (next: boolean, details: { reason?: string }) => {
     if (!next && details.reason === "escape-key") return;
-    handleOpenChange(next);
+    onOpenChange(next);
   };
 
   // "Visa Services" is both a business category and a service category — when an admin
@@ -163,7 +162,11 @@ export function NewExtractionDialog({
     );
     setCreating(false);
     if (createJob.rejected.match(result)) {
-      toast.error("Couldn't start extraction", { description: result.error.message ?? "Please try again." });
+      if (result.payload?.existingJob) {
+        setConflict(result.payload.existingJob);
+        return;
+      }
+      toast.error("Couldn't start extraction", { description: result.payload?.message ?? result.error.message ?? "Please try again." });
       return;
     }
     toast.success("Extraction started");
@@ -171,6 +174,7 @@ export function NewExtractionDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChangeWithReason} disablePointerDismissal>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -292,5 +296,35 @@ export function NewExtractionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={!!conflict} onOpenChange={(open) => !open && setConflict(null)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Institution already exists</DialogTitle>
+          <DialogDescription>
+            {conflict?.institutionName || "An institution"} with a matching website is already being tracked
+            {conflict?.email || conflict?.phone ? " — " : "."}
+            {conflict?.email && ` ${conflict.email}`}
+            {conflict?.phone && ` · ${conflict.phone}`}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" className="cursor-pointer" onClick={() => setConflict(null)}>
+            Close
+          </Button>
+          <Button
+            className="gap-1.5 cursor-pointer"
+            onClick={() => {
+              if (conflict) window.open(`/admin/data/all-extractions/${conflict.id}`, "_blank", "noopener,noreferrer");
+              setConflict(null);
+            }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            View existing job
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 // Extraction jobs service — CRUD, status transitions, pipeline control.
 
-import { NotFoundError, BadRequestError } from "../../../../shared/errors.js";
+import { NotFoundError, ConflictError } from "../../../../shared/errors.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
@@ -108,6 +108,17 @@ export async function getAgentRuns(jobId: string) {
 // ── Creates ──
 
 export async function createJob(input: CreateJobInput, adminId: number) {
+  const existing = await repo.findJobByInstitutionHost(input.institution_url);
+  if (existing) {
+    throw new ConflictError("An institution with a matching website already exists", {
+      existing_job_id: existing.id,
+      institution_name: existing.institution_name,
+      website: existing.website,
+      email: existing.email,
+      phone: existing.phone,
+    });
+  }
+
   const row = await repo.insertJob(input);
   await logAudit(adminId, "EXTRACTION_JOB_CREATE", {
     entityType: "extraction_jobs",

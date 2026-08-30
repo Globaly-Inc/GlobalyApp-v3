@@ -210,13 +210,25 @@ export class ApiError extends Error {
   constructor(message: string, code?: string, details?: unknown) {
     super(message);
     this.code = code;
+    this.details = details;
   }
+}
+
+function messageFromValidationDetails(details: unknown): string | null {
+  if (!Array.isArray(details) || details.length === 0) return null;
+  const messages = details
+    .map((issue) => (issue && typeof issue === "object" && typeof (issue as { message?: unknown }).message === "string"
+      ? (issue as { message: string }).message
+      : null))
+    .filter((m): m is string => m !== null);
+  return messages.length ? messages.join(", ") : null;
 }
 
 async function readError(res: Response): Promise<ApiError> {
   try {
     const data = (await res.json()) as { error?: string; message?: string; code?: string; details?: unknown };
-    return new ApiError(data.error || data.message || "Please try again.", data.code, data.details);
+    const message = messageFromValidationDetails(data.details) || data.error || data.message || "Please try again.";
+    return new ApiError(message, data.code, data.details);
   } catch {
     return new ApiError("Please try again.");
   }
