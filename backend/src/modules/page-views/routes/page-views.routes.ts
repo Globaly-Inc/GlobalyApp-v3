@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { NotFoundError } from "../../../shared/errors.js";
 import { PageViewParamSchema } from "../schemas/page-views.schema.js";
 import * as repo from "../repositories/page-views.repository.js";
 
@@ -13,6 +14,9 @@ export async function pageViewsRoutes(app: FastifyInstance) {
   /** Records the visit and returns the new total, so the page needs no second request to display it. */
   app.post("/page-views/:entityType/:entityId", async (req, reply) => {
     const { entityType, entityId } = PageViewParamSchema.parse(req.params);
+    // A counter may only exist for a page that exists. Without this an anonymous caller could mint
+    // a permanent row per made-up id, and nothing would ever clean them up.
+    if (!(await repo.entityExists(entityType, entityId))) throw new NotFoundError("Page not found");
     return reply.send({ views: await repo.bumpViews(entityType, entityId) });
   });
 }

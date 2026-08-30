@@ -344,7 +344,17 @@ type RealVisaBusinessRow = {
   description: string | null; city: string | null; country_name: string | null; website: string | null; email: string | null;
 };
 
-async function listRealVisaProviders({ country, city, search }: Omit<VisaServiceFilters, "licensedOnly">) {
+/**
+ * Owner-managed businesses that sell a visa service, which the tab lists alongside scraped providers.
+ *
+ * `licensedOnly` and `serviceType` describe columns that exist only on scraped services
+ * (registration_status, type) — a business_services row carries neither, so there is no honest way
+ * to evaluate them here. Rather than let these rows through unfiltered (which made the list, and
+ * the total, contradict the active filter), a service-level filter excludes them entirely.
+ */
+async function listRealVisaProviders({ country, city, search, licensedOnly, serviceType }: VisaServiceFilters) {
+  if (licensedOnly || serviceType) return [];
+
   const businesses: RealVisaBusinessRow[] = await masterKnex("businesses as b")
     .leftJoin("countries as c", "c.id", "b.country_id")
     .where("b.is_published", true)
