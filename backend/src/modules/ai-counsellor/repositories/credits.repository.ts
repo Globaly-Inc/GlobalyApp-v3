@@ -19,6 +19,7 @@ export interface TransactionRow {
   reason: "signup_grant" | "message" | "purchase" | "admin_grant" | "subscription_grant";
   reference_type: "ai_message" | "purchase" | null;
   reference_id: number | null;
+  description: string | null;
   created_at: Date;
 }
 
@@ -65,6 +66,7 @@ export async function recordTransaction(
     reason: TransactionRow["reason"];
     referenceType?: "ai_message" | "purchase";
     referenceId?: number;
+    description?: string;
   },
   trx: Knex.Transaction,
 ): Promise<TransactionRow> {
@@ -76,6 +78,7 @@ export async function recordTransaction(
       reason: data.reason,
       reference_type: data.referenceType ?? null,
       reference_id: data.referenceId ?? null,
+      description: data.description ?? null,
     })
     .returning("*");
   return row;

@@ -75,10 +75,11 @@ export async function grantCredits(
   amount: number,
   balanceType: "free" | "subscription" | "purchased",
   reason: "signup_grant" | "admin_grant" | "subscription_grant" | "purchase",
+  description?: string,
 ): Promise<void> {
   const wallet = await ensureWallet(userId);
   await masterKnex.transaction(async (trx) => {
     await creditsRepo.updateBalance(wallet.id, balanceType, amount, trx);
-    await creditsRepo.recordTransaction(wallet.id, { amount, balanceType, reason }, trx);
+    await creditsRepo.recordTransaction(wallet.id, { amount, balanceType, reason, description }, trx);
   });
 }
