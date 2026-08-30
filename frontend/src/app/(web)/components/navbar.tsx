@@ -10,9 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -115,25 +113,25 @@ export function Navbar() {
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 p-1.5">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="px-1.5 py-1.5 font-normal">
+                  <DropdownMenuItem
+                    className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
+                    onClick={() => router.push(profileHref(user))}
+                  >
+                    <Avatar className="size-8 shrink-0">
+                      {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+                      <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium truncate">
                         {[user.first_name, user.last_name].filter(Boolean).join(" ") || "User"}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                    </DropdownMenuLabel>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(profileHref(user))}>
-                    My Profile
+                    </div>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
                     Personal Portal
                   </DropdownMenuItem>
-                  {/* Entering needs an ORG-SCOPED token, not just a route change: ensureBusinessContext()
-                      reads the memberships, picks the selected org, and calls /auth/switch-account.
-                      Navigating without it lands on a 403. */}
                   <DropdownMenuItem
                     className="cursor-pointer px-1.5 py-1.5"
                     onClick={async () => {

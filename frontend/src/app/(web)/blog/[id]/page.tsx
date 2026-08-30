@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import DOMPurify from "isomorphic-dompurify";
-import { ArrowLeft, Calendar, Clock, Globe, BookOpen, Briefcase, Home, Eye } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Globe, BookOpen, Briefcase, Home, Eye, GraduationCap, Plane, PenLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getPostById } from "../api";
+import { BlogCta } from "../components/blog-cta";
+import { Reveal } from "../../components/reveal";
 
 function topicClass(topic: string | null) {
   switch (topic) {
@@ -63,26 +65,55 @@ export default async function BlogPostPage({ params }: Readonly<{ params: Promis
       </div>
 
       <article className="container max-w-3xl mx-auto px-4 py-10">
-        {(post.category || post.country_focus) && (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {post.category && (
-              <Badge className={`flex items-center gap-1.5 border ${topicClass(post.category)}`}>
-                {topicIcon(post.category)}
-                {post.category}
-              </Badge>
-            )}
-            {post.country_focus && (
-              <Badge variant="outline" className="flex items-center gap-1.5">
-                <Globe className="h-3 w-3" />
-                {post.country_focus}
-              </Badge>
-            )}
+        <div className="relative -mx-4 px-4 pt-2 pb-4 overflow-hidden">
+          <div
+            className="absolute inset-0 -z-20 opacity-[0.4] [background-image:radial-gradient(var(--color-primary)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_60%_100%_at_50%_0%,black,transparent)]"
+            aria-hidden
+          />
+          <div className="pointer-events-none absolute inset-0 -z-10 hidden sm:block" aria-hidden>
+            <GraduationCap
+              className="absolute left-[6%] top-[8%] h-12 w-12 text-primary/15 animate-float"
+              style={{ animationDelay: "0s", "--float-rotate": "-8deg" } as React.CSSProperties}
+            />
+            <Plane
+              className="absolute right-[8%] top-[4%] h-10 w-10 text-primary/15 animate-float"
+              style={{ animationDelay: "1.4s", "--float-rotate": "12deg" } as React.CSSProperties}
+            />
+            <PenLine
+              className="absolute right-[3%] top-[45%] h-9 w-9 text-primary/15 animate-float"
+              style={{ animationDelay: "2.2s", "--float-rotate": "6deg" } as React.CSSProperties}
+            />
           </div>
-        )}
 
-        <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4 leading-tight">{post.title}</h1>
+          {(post.category || post.country_focus) && (
+            <Reveal>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {post.category && (
+                  <Badge className={`flex items-center gap-1.5 border ${topicClass(post.category)}`}>
+                    {topicIcon(post.category)}
+                    {post.category}
+                  </Badge>
+                )}
+                {post.country_focus && (
+                  <Badge variant="outline" className="flex items-center gap-1.5">
+                    <Globe className="h-3 w-3" />
+                    {post.country_focus}
+                  </Badge>
+                )}
+              </div>
+            </Reveal>
+          )}
 
-        {post.excerpt && <p className="text-lg text-muted-foreground mb-6 leading-relaxed">{post.excerpt}</p>}
+          <Reveal delay={0.1}>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4 leading-tight">{post.title}</h1>
+          </Reveal>
+
+          {post.excerpt && (
+            <Reveal delay={0.2}>
+              <p className="text-lg text-muted-foreground mb-6 leading-relaxed">{post.excerpt}</p>
+            </Reveal>
+          )}
+        </div>
 
         <div className="flex items-center gap-4 flex-wrap pb-6 border-b border-border">
           <div className="flex items-center gap-2">
@@ -152,6 +183,8 @@ export default async function BlogPostPage({ params }: Readonly<{ params: Promis
           </Link>
         </div>
       </article>
+
+      <BlogCta />
     </div>
   );
 }

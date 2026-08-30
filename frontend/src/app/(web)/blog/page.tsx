@@ -1,19 +1,18 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Globe, BookOpen, Briefcase, Home, Calendar, Clock, Eye } from "lucide-react";
+import { Globe, BookOpen, Briefcase, Home, Calendar, Clock, Eye, GraduationCap, Plane, MapPin, PenLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getFilters, getPosts } from "./api";
 import type { PublicBlogPost } from "./types";
+import { BlogHeroHeading } from "./components/blog-hero-heading";
+import { BlogCta } from "./components/blog-cta";
+import { Reveal } from "../components/reveal";
 
 export const metadata: Metadata = {
   title: "Blog — Globaly",
-  description: "Insights on studying abroad, working internationally, and settling in a new country.",
+  description: "Insights on studying, working, and living internationally — for every kind of journey.",
 };
-
-// Common flags as a display nicety — any country not listed here still works, it just
-// falls back to a globe emoji. The filter list itself always comes from actual post data
-// (see getFilters()), never a hardcoded guess-list, so a new country is never unreachable.
 const COUNTRY_FLAGS: Record<string, string> = {
   Australia: "🇦🇺",
   "United Kingdom": "🇬🇧",
@@ -55,7 +54,7 @@ function PostCard({ post }: Readonly<{ post: PublicBlogPost }>) {
   return (
     <Link
       href={`/blog/${post.id}`}
-      className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:shadow-lg transition-all duration-200"
+      className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
     >
       <div className="aspect-video bg-muted overflow-hidden">
         {post.cover_image_url ? (
@@ -156,25 +155,66 @@ export default async function BlogPage({
 
   return (
     <div>
-      <section className="bg-linear-to-br from-primary/5 via-background to-primary/10 py-16 border-b border-border">
-        <div className="container max-w-5xl mx-auto px-4 text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Globe className="h-6 w-6 text-primary" />
-            <span className="text-sm font-medium text-primary uppercase tracking-widest">Globaly Blog</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4 leading-tight">
-            Insights on Studying Abroad &<br className="hidden md:block" /> International Education
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Expert guides, tips, and stories to help students, agents, and institutions navigate the world of
-            international education.
-          </p>
+      <section className="relative overflow-hidden border-b border-border py-20 md:py-28">
+        <div
+          className="absolute inset-0 -z-20 opacity-[0.4] [background-image:radial-gradient(var(--color-primary)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_0%,black,transparent)]"
+          aria-hidden
+        />
+        <div
+          className="absolute -top-24 left-1/2 -z-10 h-72 w-[36rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl"
+          aria-hidden
+        />
+
+        <div className="pointer-events-none absolute inset-0 -z-10 hidden sm:block" aria-hidden>
+          <GraduationCap
+            className="absolute left-[8%] top-[18%] h-16 w-16 text-primary/20 animate-float"
+            style={{ animationDelay: "0s", "--float-rotate": "-8deg" } as React.CSSProperties}
+          />
+          <Plane
+            className="absolute right-[12%] top-[14%] h-13 w-13 text-primary/20 animate-float"
+            style={{ animationDelay: "1.2s", "--float-rotate": "12deg" } as React.CSSProperties}
+          />
+          <BookOpen
+            className="absolute left-[16%] bottom-[16%] h-14 w-14 text-primary/20 animate-float"
+            style={{ animationDelay: "2.1s" } as React.CSSProperties}
+          />
+          <Briefcase
+            className="absolute right-[18%] bottom-[20%] h-13 w-13 text-primary/20 animate-float"
+            style={{ animationDelay: "0.6s", "--float-rotate": "-10deg" } as React.CSSProperties}
+          />
+          <MapPin
+            className="absolute right-[7%] top-[40%] h-11 w-11 text-primary/20 animate-float"
+            style={{ animationDelay: "1.8s" } as React.CSSProperties}
+          />
+          <PenLine
+            className="absolute left-[6%] top-[42%] h-11 w-11 text-primary/20 animate-float"
+            style={{ animationDelay: "2.6s", "--float-rotate": "6deg" } as React.CSSProperties}
+          />
+        </div>
+
+        <div className="container max-w-3xl mx-auto px-4 text-center">
+          <Reveal>
+            <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-primary">
+              <Globe className="h-3.5 w-3.5" />
+              Globaly Blog
+            </div>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <BlogHeroHeading />
+          </Reveal>
+          <Reveal delay={0.2}>
+            <p className="text-lg text-muted-foreground max-w-xl mx-auto">
+              Expert guides, tips, and real stories to help students, agents, and institutions navigate a new
+              country with confidence.
+            </p>
+          </Reveal>
         </div>
       </section>
 
+      {(filters.categories.length > 0 || filters.countries.length > 0) && (
       <section className="sticky top-16 z-10 bg-background/95 backdrop-blur border-b border-border">
         <div className="container max-w-6xl mx-auto px-4">
-          <div className="flex items-center gap-1.5 overflow-x-auto py-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto py-3 animate-fade-in">
             {topicOptions.map((t) => {
               const active = topic === t.value;
               return (
@@ -183,7 +223,7 @@ export default async function BlogPage({
                     type="button"
                     size="sm"
                     variant={active ? "default" : "ghost"}
-                    className="h-8 rounded-full px-3 gap-1.5 whitespace-nowrap text-sm font-medium"
+                    className="h-8 rounded-full px-3 gap-1.5 whitespace-nowrap text-sm font-medium transition-transform hover:scale-105"
                   >
                     {topicIcon(t.value)}
                     {t.label}
@@ -200,7 +240,7 @@ export default async function BlogPage({
                     type="button"
                     size="sm"
                     variant={active ? "default" : "ghost"}
-                    className="h-8 rounded-full px-3 gap-1 whitespace-nowrap text-sm font-medium"
+                    className="h-8 rounded-full px-3 gap-1 whitespace-nowrap text-sm font-medium transition-transform hover:scale-105"
                   >
                     <span>{c.flag}</span>
                     <span>{c.label}</span>
@@ -211,21 +251,28 @@ export default async function BlogPage({
           </div>
         </div>
       </section>
+      )}
 
       <section className="py-12">
         <div className="container max-w-6xl mx-auto px-4">
           {posts.length === 0 ? (
             <div className="text-center py-20">
               <Globe className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-              <p className="text-muted-foreground text-lg">No blog posts found with these filters.</p>
-              <Link href="/blog" className="mt-3 inline-block text-sm text-primary hover:underline">
-                Clear filters
-              </Link>
+              <p className="text-muted-foreground text-lg">
+                {topic || country ? "No blog posts found with these filters." : "No blog posts yet — check back soon."}
+              </p>
+              {(topic || country) && (
+                <Link href="/blog" className="mt-3 inline-block text-sm text-primary hover:underline">
+                  Clear filters
+                </Link>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {posts.map((post) => (
-                <PostCard key={post.id} post={post} />
+              {posts.map((post, i) => (
+                <Reveal key={post.id} delay={(i % 3) * 0.1}>
+                  <PostCard post={post} />
+                </Reveal>
               ))}
             </div>
           )}
@@ -260,6 +307,8 @@ export default async function BlogPage({
           )}
         </div>
       </section>
+
+      <BlogCta />
     </div>
   );
 }

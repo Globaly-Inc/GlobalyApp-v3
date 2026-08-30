@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CoverLogoEditor } from "@/components/cover-logo-editor";
+import { CroppedFileInput, type CroppedFileInputHandle } from "@/components/cropped-file-input";
 import { flagEmoji } from "@/components/ui/phone-input";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
@@ -36,18 +37,12 @@ export function ProfileHeaderCard({
   logoUploading: boolean;
   onEditDetails: () => void;
 }>) {
-  const logoInputRef = useRef<HTMLInputElement>(null);
+  const logoPickerRef = useRef<CroppedFileInputHandle>(null);
   const initial = profile.business_name?.[0]?.toUpperCase() ?? "B";
   const country = countries.find((c) => c.id === profile.country_id) ?? null;
 
-  const handleLogoPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (file) onLogoFile(file);
-  };
-
   const logo = (
-    <div className="relative h-28 w-28 shrink-0 left-5">
+    <div className="relative h-28 w-28 shrink-0 left-10">
       {previewMode ? (
         <Avatar className="size-28 rounded-xl border-4 border-background bg-white shadow-lg">
           {profile.logo_url && <AvatarImage src={profile.logo_url} alt="" className="rounded-lg object-cover" />}
@@ -57,7 +52,7 @@ export function ProfileHeaderCard({
         <button
           type="button"
           className="group size-28 cursor-pointer"
-          onClick={() => logoInputRef.current?.click()}
+          onClick={() => logoPickerRef.current?.pick()}
           aria-label="Edit logo"
         >
           <Avatar className="size-28 rounded-xl border-4 border-background bg-white shadow-lg">
@@ -69,7 +64,7 @@ export function ProfileHeaderCard({
           </span>
         </button>
       )}
-      <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={handleLogoPick} />
+      <CroppedFileInput ref={logoPickerRef} cropShape="square" onCropped={onLogoFile} isSaving={logoUploading} />
     </div>
   );
 
@@ -97,7 +92,7 @@ export function ProfileHeaderCard({
       <CardContent>
         <div className="flex items-start gap-4 -mt-14">
           {logo}
-          <div className="flex flex-1 items-start justify-between gap-2 pt-4 sm:pt-14 ml-4 m-4">
+          <div className="flex flex-1 items-start justify-between gap-2 pt-2 sm:pt-14 ml-10 m-4">
             <div>
               <div className="mb-1 flex items-center gap-1.5">
                 {businessTypeLabel(profile.business_type) && (
@@ -112,6 +107,7 @@ export function ProfileHeaderCard({
                 )}
               </div>
               <h1 className="text-xl font-bold text-foreground">{profile.business_name}</h1>
+              {profile.email && <p className="text-sm text-muted-foreground">{profile.email}</p>}
               <p className="text-sm text-muted-foreground">
                 {country && `${flagEmoji(country.iso2)} `}
                 {businessLocationLine(profile, countries) ?? profile.subdomain}

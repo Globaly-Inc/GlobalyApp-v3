@@ -397,6 +397,32 @@ export async function updateInstitution(id: number, data: Record<string, unknown
   return row;
 }
 
+export async function appendInstitutionMedia(
+  id: number,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("institutions")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_append(coalesce(??, ARRAY[]::text[]), ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
+export async function removeInstitutionMedia(
+  id: number,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("institutions")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_remove(??, ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
 // ── Countries / Cities ──
 
 export async function listCountries() {

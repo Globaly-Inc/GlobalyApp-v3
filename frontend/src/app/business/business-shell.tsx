@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, ChevronDown, Coins, Loader2, Sparkles } from "lucide-react";
+import { Bell, ChevronDown, Coins, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -219,13 +219,6 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
               <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden />
             </Link>
             <Link
-              href="/business/ai-widget"
-              className="hidden md:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 h-8 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              AI Counsellor
-            </Link>
-            <Link
               href="/business/credits"
               className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
             >
@@ -253,14 +246,20 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 p-1.5">
-              <div className="px-1.5 py-1.5">
-                <p className="text-sm font-medium truncate">{profile?.business_name || "Business"}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/profile")}>
-                My Profile
+              <DropdownMenuItem
+                className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
+                onClick={() => router.push("/business/profile")}
+              >
+                <Avatar className="size-8 shrink-0">
+                  {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
+                  <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{profile?.business_name || "Business"}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                </div>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
                 Personal Portal
               </DropdownMenuItem>
