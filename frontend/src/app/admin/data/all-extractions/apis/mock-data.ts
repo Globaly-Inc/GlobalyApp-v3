@@ -838,13 +838,12 @@ export const allExtractionsMockApi = {
         : null,
       campuses: job.agent_count ? [{ id: "c1", updated_at: now }] : [],
       agents: Array.from({ length: job.agent_count ?? 0 }, (_, i) => ({ id: `a${i}`, updated_at: now })),
-      courses: Array.from({ length: job.courses_extracted }, (_, i) => ({
-        id: `co${i}`,
-        name: `Course ${i + 1}`,
-        verification_status: i % 3 === 0 ? "confirmed" : "pending",
-        updated_at: now,
-      })),
-      coursesTotal: job.courses_extracted,
+      tabCounts: {
+        branches: job.agent_count ? 1 : 0,
+        agents: job.agent_count ?? 0,
+        courses: job.courses_extracted,
+        fees: 0, intakes: 0, eligibility: 0, units: 0, study_options: 0, accreditations: 0, visa_services: 0,
+      },
       courseLinks: EMPTY_COURSE_LINKS,
       visaServices: [],
     };

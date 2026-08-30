@@ -10,18 +10,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
+import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, saveFormAndLearn, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { StudyOptionForm } from "./study-option-form";
-import type { CourseLinks, CourseRow, ExtractionJob, StudyOption } from "../apis/types";
+import type { CourseLinks, ExtractionJob, StudyOption } from "../apis/types";
+
+type LinkedCourse = { id: string; name: string | null };
 
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
@@ -41,9 +43,9 @@ function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps 
 }
 
 function StudyOptionCard({
+  jobId,
   option,
-  courses,
-  linkedCourseIds,
+  linked,
   selected,
   onToggleSelect,
   busy,
@@ -53,9 +55,9 @@ function StudyOptionCard({
   onUnlinkCourse,
   onSaveField,
 }: Readonly<{
+  jobId: string;
   option: StudyOption;
-  courses: CourseRow[];
-  linkedCourseIds: string[];
+  linked: LinkedCourse[];
   selected: boolean;
   onToggleSelect: () => void;
   busy: boolean;
@@ -68,8 +70,6 @@ function StudyOptionCard({
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const linked = courses.filter((c) => linkedCourseIds.includes(c.id));
-  const unlinked = courses.filter((c) => !linkedCourseIds.includes(c.id));
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
   const title = option.name || humanize(option.study_mode) || "Study option";
 
@@ -121,7 +121,7 @@ function StudyOptionCard({
           <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
           {visible.map((course) => (
             <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
-              {course.name}
+              {course.name ?? "Unnamed course"}
               {editingLinks && (
                 <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
                   <X className="h-3 w-3" />
@@ -145,12 +145,10 @@ function StudyOptionCard({
         </div>
 
         {editingLinks && (
-          <Combobox
-            options={unlinked.map((c) => ({ value: c.id, label: c.name }))}
-            value=""
-            onChange={onLinkCourse}
-            placeholder={unlinked.length ? "Link a course…" : "All courses linked"}
-            disabled={unlinked.length === 0}
+          <CourseLinkPicker
+            jobId={jobId}
+            excludeIds={linked.map((c) => c.id)}
+            onSelect={onLinkCourse}
             className="mt-2 h-8 text-xs"
           />
         )}
@@ -162,13 +160,11 @@ function StudyOptionCard({
 export function StudyOptionsTab({
   jobId,
   job,
-  courses,
   onReload,
   onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
-  courses: CourseRow[];
   onReload: () => void;
   onJumpToContext: () => void;
 }>) {
@@ -240,8 +236,10 @@ export function StudyOptionsTab({
     }
   };
 
-  const coursesForOption = (id: string) =>
-    (links?.study_option_assignments ?? []).filter((a) => a.study_option_id === id).map((a) => a.course_id);
+  const coursesForOption = (id: string): LinkedCourse[] =>
+    (links?.study_option_assignments ?? [])
+      .filter((a) => a.study_option_id === id)
+      .map((a) => ({ id: a.course_id, name: a.course_name }));
 
   return (
     <div>
@@ -289,7 +287,9 @@ export function StudyOptionsTab({
               variant="destructive" size="sm" className="h-8 gap-1.5 cursor-pointer"
               disabled={saving}
               onClick={async () => {
-                if (!(await confirm(`Delete ${selectedIds.length} study options?`))) return;
+                if (!(await confirm(`Delete ${selectedIds.length} study options?`))) {
+                  return;
+                }
                 await run(async () => {
                   await Promise.all(selectedIds.map((id) => allExtractionsApi.deleteStudyOption(id)));
                   setSelectedIds([]);
@@ -359,9 +359,9 @@ export function StudyOptionsTab({
           ) : (
             <StudyOptionCard
               key={option.id}
+              jobId={jobId}
               option={option}
-              courses={courses}
-              linkedCourseIds={coursesForOption(option.id)}
+              linked={coursesForOption(option.id)}
               busy={saving}
               selected={selectedIds.includes(option.id)}
               onToggleSelect={() =>
@@ -369,7 +369,9 @@ export function StudyOptionsTab({
               }
               onEdit={() => { setEditingId(option.id); setAdding(false); }}
               onDelete={async () => {
-                if (!(await confirm("Delete study option?"))) return;
+                if (!(await confirm("Delete study option?"))) {
+                  return;
+                }
                 await run(() => allExtractionsApi.deleteStudyOption(option.id), "Study option deleted");
               }}
               onLinkCourse={(courseId) =>

@@ -185,6 +185,19 @@ export interface SiteIntelligence {
 // ── Writers ──
 
 export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview) {
+  const existing = await masterKnex(`${S}.extraction_institution_overview`).where({ job_id: jobId }).first();
+  if (existing) {
+    const merged: Record<string, unknown> = { ...data };
+    for (const [key, val] of Object.entries(existing)) {
+      if (["id", "job_id", "created_at", "updated_at"].includes(key)) continue;
+      if ((merged[key] == null || merged[key] === "") && val != null && val !== "") merged[key] = val;
+    }
+    await masterKnex(`${S}.extraction_institution_overview`).where({ id: existing.id }).update({
+      ...merged, updated_at: masterKnex.fn.now(),
+    });
+    logger.info("Updated institution overview (resume/re-run)", { jobId, id: existing.id });
+    return { id: existing.id };
+  }
   const [row] = await masterKnex(`${S}.extraction_institution_overview`)
     .insert({ job_id: jobId, ...data })
     .returning("id");

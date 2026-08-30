@@ -66,6 +66,13 @@ export const accreditations = {
   delete: (id: string) => deleteEntity("extraction_accreditations", id),
 };
 
+export async function countAccreditationsByJob(jobId: string) {
+  const [row] = await masterKnex(`${S}.extraction_course_accreditation_assignments`)
+    .where({ job_id: jobId })
+    .countDistinct("extraction_accreditation_id as count");
+  return Number(row.count);
+}
+
 /** Scraped accreditations that appear in this job's junction rows, plus the rows themselves. */
 export async function getJobAccreditations(jobId: string) {
   const assignments = await masterKnex(`${S}.extraction_course_accreditation_assignments as a`)

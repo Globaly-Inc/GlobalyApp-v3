@@ -13,7 +13,6 @@ import type {
   CourseFeeParams,
   CourseFull,
   CourseLinks,
-  CourseRow,
   CreateCampusParams,
   CreateCourseParams,
   CreateJobParams,
@@ -39,6 +38,7 @@ import type {
   StudyOptionParams,
   StudyUnit,
   StudyUnitParams,
+  TabCounts,
   UpdateContextParams,
   UpdateCourseParams,
   VisaService,
@@ -127,11 +127,11 @@ export const allExtractionsRealApi = {
   // "Extraction Details by Tab" cards summarize — one round trip per card group,
   // same shape V2's OverviewTab.loadSummary() fetched.
   getJobFull: async (id: string): Promise<JobFull> => {
-    const [detail, campusesRes, agentsRes, coursesRes, courseLinks, visaServices] = await Promise.all([
+    const [detail, campusesRes, agentsRes, tabCounts, courseLinks, visaServices] = await Promise.all([
       httpGet<{ job: ExtractionJob; overview: InstitutionOverview | null }>(`/admin/data-extraction/jobs/${id}`),
       httpGet<{ campuses: CampusRow[] }>(`/admin/data-extraction/jobs/${id}/campuses`),
       httpGet<{ agents: AgentRow[] }>(`/admin/data-extraction/jobs/${id}/agents`),
-      httpGet<Paginated<CourseRow>>(`/admin/data-extraction/jobs/${id}/courses?limit=100`),
+      httpGet<TabCounts>(`/admin/data-extraction/jobs/${id}/tab-counts`),
       httpGet<CourseLinks>(`/admin/data-extraction/jobs/${id}/course-links`),
       httpGet<{ visa_services: VisaService[] }>(`/admin/data-extraction/jobs/${id}/visa-services`).then((r) => r.visa_services),
     ]);
@@ -140,8 +140,7 @@ export const allExtractionsRealApi = {
       overview: detail.overview,
       campuses: campusesRes.campuses,
       agents: agentsRes.agents,
-      courses: coursesRes.data,
-      coursesTotal: coursesRes.meta?.total ?? coursesRes.data.length,
+      tabCounts,
       courseLinks,
       visaServices,
     };

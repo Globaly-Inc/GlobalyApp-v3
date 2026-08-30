@@ -82,7 +82,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
 
   try {
     // ── Phase 1: Scrape homepage → LLM analysis ──
-    const homepage = await scrapeMarkdown(job.institution_url, { withLinks: true, onlyMainContent: true });
+    const homepage = await scrapeMarkdown(job.institution_url, { withLinks: true, onlyMainContent: false });
 
     if (!homepage.markdown && homepage.error) {
       throw new Error(`Failed to scrape homepage: ${homepage.error}`);

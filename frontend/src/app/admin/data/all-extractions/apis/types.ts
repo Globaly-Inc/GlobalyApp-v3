@@ -121,8 +121,7 @@ export type CampusRow = TimestampedRow & { id: string };
 export type AgentRow = TimestampedRow & { id: string };
 export type CourseRow = TimestampedRow & { id: string; name: string; verification_status?: string | null };
 
-/** A row in one of the extraction_course_* junction tables. */
-export type CourseAssignment = { id: string; course_id: string } & Record<string, string | null>;
+export type CourseAssignment = { id: string; course_id: string; course_name: string | null } & Record<string, string | null>;
 
 /** Junction slugs the backend's /junctions/:junction/assign endpoint accepts. */
 export type JunctionSlug =
@@ -150,15 +149,25 @@ export type CourseLinks = {
   course_campuses: CourseAssignment[];
 };
 
+export type TabCounts = {
+  branches: number;
+  agents: number;
+  courses: number;
+  fees: number;
+  intakes: number;
+  eligibility: number;
+  units: number;
+  study_options: number;
+  accreditations: number;
+  visa_services: number;
+};
+
 export type JobFull = {
   job: ExtractionJob;
   overview: InstitutionOverview | null;
   campuses: CampusRow[];
   agents: AgentRow[];
-  courses: CourseRow[];
-  /** Real total course count for this job — `courses` above is capped (limit=100), so
-   * job stats/counts must read this, not `courses.length`. */
-  coursesTotal: number;
+  tabCounts: TabCounts;
   courseLinks: CourseLinks;
   /** Only populated for source_type: "visa_service" jobs — empty array otherwise. */
   visaServices: VisaService[];

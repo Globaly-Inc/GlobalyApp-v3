@@ -10,8 +10,10 @@ const T_AGENTS = "superadmin.extraction_agents";
 
 // extraction_jobs.institution_name stays null until the pipeline names the job, but the
 // extractor writes the name to the overview row well before that — so the list has a
-// title to show. Subquery, not a join: job_id has no unique index on the overview table.
-const OVERVIEW_NAME = `(select o.name from ${T_OVERVIEW} o where o.job_id = ${T}.id limit 1)`;
+// title to show. Subquery, not a join: job_id has no unique index on the overview table,
+// so a stale duplicate row (e.g. a resumed job's first, incomplete pass) could otherwise
+// win an unordered `limit 1` — order by created_at so the newest write always wins.
+const OVERVIEW_NAME = `(select o.name from ${T_OVERVIEW} o where o.job_id = ${T}.id order by o.created_at desc limit 1)`;
 
 export async function listJobs(opts: { status?: string; q?: string; limit: number }) {
   const query = masterKnex(T)
@@ -179,7 +181,7 @@ export async function findJobWithOverview(id: string) {
       .leftJoin("public.service_categories as sc", "sc.id", `${T}.service_category_id`)
       .where(`${T}.id`, id)
       .first(),
-    masterKnex(T_OVERVIEW).where({ job_id: id }).first(),
+    masterKnex(T_OVERVIEW).where({ job_id: id }).orderBy("created_at", "desc").first(),
   ]);
   return { job, overview: overview ?? null };
 }

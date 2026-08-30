@@ -10,6 +10,11 @@ export async function listVisaServicesByJob(jobId: string, status?: string) {
   return q;
 }
 
+export async function countVisaServicesByJob(jobId: string) {
+  const [row] = await masterKnex(T).where({ job_id: jobId }).count("id as count");
+  return Number(row.count);
+}
+
 // Powers a status filter dropdown, same pattern as courses.repository's countCoursesByStatus.
 export async function countVisaServicesByStatus(jobId: string) {
   const rows = await masterKnex(T)

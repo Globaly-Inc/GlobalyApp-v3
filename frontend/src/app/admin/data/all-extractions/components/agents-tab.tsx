@@ -460,7 +460,9 @@ export function AgentsTab({
 
   const handleDelete = async (ids: string[]) => {
     const many = ids.length > 1;
-    if (!(await confirm(many ? `Delete ${ids.length} agents?` : "Delete agent?"))) return;
+    if (!(await confirm(many ? `Delete ${ids.length} agents?` : "Delete agent?"))) {
+      return;
+    }
     try {
       await Promise.all(ids.map((id) => allExtractionsApi.deleteAgent(id)));
       setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));

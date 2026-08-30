@@ -64,6 +64,12 @@ export async function jobsRoutes(app: FastifyInstance) {
     return reply.send(await service.getJob(id));
   });
 
+  // GET /jobs/:id/tab-counts — count(*) per entity type, for the tab-bar count tags.
+  app.get("/jobs/:id/tab-counts", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.getTabCounts(id));
+  });
+
   // RJ3: GET /jobs/:id/events
   app.get("/jobs/:id/events", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);

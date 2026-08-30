@@ -117,7 +117,9 @@ export function AccreditationLibrarySection({
   const pageRows = filtered.slice((page - 1) * limit, page * limit);
 
   async function handleDelete(row: LibraryAccreditation) {
-    if (!(await confirm(`Delete "${row.name}" from the library?`))) return;
+    if (!(await confirm(`Delete "${row.name}" from the library?`))) {
+      return;
+    }
     try {
       await allExtractionsApi.deleteLibraryAccreditation(row.id);
       toast.success("Deleted");
