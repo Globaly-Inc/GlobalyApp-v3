@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 type ChatMessageProps = {
   message: Message;
   onChipClick?: (chip: string) => void;
+  onSend?: (value: string) => void;
 };
 
 /** Cards size themselves to the container, not the viewport — the same grid has to
@@ -179,6 +180,7 @@ function AssistantTurn({
   chips,
   blocks,
   onChipClick,
+  onSend,
   footer,
 }: {
   content: string;
@@ -186,6 +188,7 @@ function AssistantTurn({
   chips: string[];
   blocks: ResponseBlock[];
   onChipClick?: (chip: string) => void;
+  onSend?: (value: string) => void;
   footer?: React.ReactNode;
 }) {
   // The model routinely answers its own question twice — once as a quick_replies
@@ -198,8 +201,14 @@ function AssistantTurn({
       <AssistantMark />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {content && <MessageMarkdown text={content} />}
-        {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} />}
-        {cards.length > 0 && <CourseCardList cards={cards} />}
+        {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}
+        {cards.length > 0 && (
+          <div className={CARD_GRID}>
+            {cards.map((card, i) => (
+              <CourseCard key={card.id ?? i} card={card} />
+            ))}
+          </div>
+        )}
         {chips.length > 0 && !hasQuickReplies && <Chips chips={chips} onChipClick={onChipClick} />}
         {footer}
       </div>
@@ -207,7 +216,7 @@ function AssistantTurn({
   );
 }
 
-export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
+export function ChatMessage({ message, onChipClick, onSend }: ChatMessageProps) {
   if (message.role === "user") {
     const { quote, body } = splitQuote(message.content);
     return (
@@ -235,6 +244,7 @@ export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
       chips={message.chips}
       blocks={message.blocks}
       onChipClick={onChipClick}
+      onSend={onSend}
       footer={
         // Optimistic rows have no server id yet, so there's nothing to rate.
         message.id > 0 ? (
@@ -258,14 +268,16 @@ export function StreamingMessage({
   chips,
   blocks = [],
   onChipClick,
+  onSend,
 }: {
   content: string;
   cards: CourseCardType[];
   chips: string[];
   blocks?: ResponseBlock[];
   onChipClick?: (chip: string) => void;
+  onSend?: (value: string) => void;
 }) {
   return (
-    <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} />
+    <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} />
   );
 }

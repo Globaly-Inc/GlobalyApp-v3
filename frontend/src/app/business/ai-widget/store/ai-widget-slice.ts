@@ -13,6 +13,11 @@ export const deactivateEmbedConfig = createAsyncThunk("aiWidget/deactivateConfig
   return id;
 });
 
+export const reactivateEmbedConfig = createAsyncThunk("aiWidget/reactivateConfig", async (id: number) => {
+  await aiWidgetApi.reactivateConfig(id);
+  return id;
+});
+
 type AiWidgetState = {
   configs: EmbedConfig[];
   status: "idle" | "loading" | "failed";
@@ -60,6 +65,10 @@ const aiWidgetSlice = createSlice({
       .addCase(deactivateEmbedConfig.fulfilled, (state, action) => {
         const config = state.configs.find((c) => c.id === action.payload);
         if (config) config.is_active = false;
+      })
+      .addCase(reactivateEmbedConfig.fulfilled, (state, action) => {
+        const config = state.configs.find((c) => c.id === action.payload);
+        if (config) config.is_active = true;
       });
   },
 });

@@ -57,4 +57,11 @@ export const aiWidgetMockApi = {
     const config = configs.find((c) => c.id === id);
     if (config) config.is_active = false;
   },
+
+  reactivateConfig: async (id: number): Promise<void> => {
+    console.log("[mock] PATCH /ai-chat/embed/configs/" + id + "/activate");
+    await delay(300);
+    const config = configs.find((c) => c.id === id);
+    if (config) config.is_active = true;
+  },
 };
