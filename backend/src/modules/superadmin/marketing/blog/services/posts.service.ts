@@ -53,11 +53,12 @@ function withComputedFields(data: Partial<PostInput>, existing?: { title?: strin
   return { ...data, seo_score: calculateSeoScore(merged) };
 }
 
-export async function createPost(data: PostInput, creatorId: number) {
+export async function createPost(data: PostInput, creatorId: number | null) {
   const clash = await repo.findPostBySlug(data.slug);
   if (clash) throw new ConflictError("slug already exists");
   const payload: Record<string, unknown> = withComputedFields(data);
   payload.creator_id = creatorId;
+  payload.views = 500;
   if (data.is_published) payload.published_at = new Date().toISOString();
   return repo.insertPost(payload);
 }

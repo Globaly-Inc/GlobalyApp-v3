@@ -5,6 +5,7 @@ import { Camera, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { CoverLogoEditor } from "@/components/cover-logo-editor";
+import { CroppedFileInput, type CroppedFileInputHandle } from "@/components/cropped-file-input";
 import { flagEmoji } from "@/components/ui/phone-input";
 import type { Country } from "@/app/geo/apis";
 import type { StudentProfile } from "../apis/types";
@@ -24,14 +25,8 @@ export function ProfileHeroCard({
   countries: Country[];
 }>) {
   const country = countries.find((c) => c.id === profile.personal_address_country_id) ?? null;
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoPickerRef = useRef<CroppedFileInputHandle>(null);
   const photoUploading = imageUploading === "profile";
-
-  const handlePhotoPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (file) onImageFile("profile", file);
-  };
 
   return (
     <div className="overflow-hidden rounded-lg border bg-card text-card-foreground">
@@ -47,11 +42,11 @@ export function ProfileHeroCard({
       />
       <CardContent>
         <div className="flex items-start gap-4 -mt-14">
-          <div className="relative h-28 w-28 shrink-0 left-5">
+          <div className="relative h-28 w-28 shrink-0 left-10">
             <button
               type="button"
               className="group size-28 cursor-pointer"
-              onClick={() => photoInputRef.current?.click()}
+              onClick={() => photoPickerRef.current?.pick()}
               aria-label="Edit photo"
             >
               <Avatar className="size-28 rounded-xl border-4 border-background shadow-lg">
@@ -68,9 +63,14 @@ export function ProfileHeroCard({
                 )}
               </span>
             </button>
-            <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={handlePhotoPick} />
+            <CroppedFileInput
+              ref={photoPickerRef}
+              cropShape="square"
+              onCropped={(file) => onImageFile("profile", file)}
+              isSaving={photoUploading}
+            />
           </div>
-          <div className="pt-4 sm:pt-14 ml-4 m-4">
+          <div className="pt-4 sm:pt-14 ml-10 m-4">
             <h1 className="text-xl font-bold text-foreground">
               {profile.first_name} {profile.last_name}
             </h1>

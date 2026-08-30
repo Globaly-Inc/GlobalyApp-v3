@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronDown, Sparkles, Loader2 } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -119,15 +119,6 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href="/ai"
-            className="hidden md:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 h-8 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
-            aria-label="Open AI Counsellor"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>AI Counsellor</span>
-          </Link>
-
           <AdminMobileNav />
 
           <DropdownMenu>
@@ -135,18 +126,18 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
               render={
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-lg border border-border px-1.5 py-1 text-foreground hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
+                  className="flex items-center gap-2 rounded-full border border-border px-1.5 py-1 text-foreground hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
                 />
               }
             >
               <div
                 className={cn(
-                  "h-7 w-7 rounded-lg flex items-center justify-center overflow-hidden shrink-0",
+                  "h-7 w-7 rounded-full flex items-center justify-center overflow-hidden shrink-0",
                   me.photo_url ? "bg-transparent" : "bg-primary",
                 )}
               >
                 {me.photo_url ? (
-                  <img src={me.photo_url} alt="" className="h-full w-full rounded-lg object-cover" />
+                  <img src={me.photo_url} alt="" className="h-full w-full rounded-full object-cover" />
                 ) : (
                   <span className="text-primary-foreground text-xs font-semibold">{initial}</span>
                 )}
@@ -154,13 +145,26 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
               <ChevronDown className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 p-1.5">
-              <div className="px-1.5 py-1.5">
-                <p className="text-sm font-medium truncate">{me.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{me.email}</p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/profile")}>
-                My Profile
+              <DropdownMenuItem
+                className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
+                onClick={() => router.push("/admin/profile")}
+              >
+                <div
+                  className={cn(
+                    "h-8 w-8 rounded-full flex items-center justify-center overflow-hidden shrink-0",
+                    me.photo_url ? "bg-transparent" : "bg-primary",
+                  )}
+                >
+                  {me.photo_url ? (
+                    <img src={me.photo_url} alt="" className="h-full w-full rounded-full object-cover" />
+                  ) : (
+                    <span className="text-primary-foreground! text-xs font-semibold">{initial}</span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{me.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{me.email}</p>
+                </div>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>

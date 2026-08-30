@@ -23,6 +23,7 @@ const envSchema = z.object({
   // Server
   NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().default(3000),
+  API_URL: z.string().optional(),
   APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
 
@@ -86,6 +87,7 @@ const parsed = envSchema.parse(process.env);
 
 export const config = {
   ...parsed,
+  API_URL: parsed.API_URL ?? `http://localhost:${parsed.PORT}`,
   MASTER_DB_URL: `postgresql://${parsed.DB_USERNAME}:${parsed.DB_PASSWORD}@${parsed.DB_HOST}:${parsed.DB_PORT}/${parsed.DB_NAME}`,
 };
 

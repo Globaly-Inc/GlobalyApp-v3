@@ -95,12 +95,28 @@ export const businessMockApi = {
     return mockProfile;
   },
 
-  uploadImage: async (category: "logo" | "cover", file: File): Promise<{ storage_path: string }> => {
+  uploadImage: async (category: "logo" | "cover" | "gallery", file: File): Promise<{ storage_path: string }> => {
     console.log(`[mock] POST /businesses/me/files?category=${category}`, file.name);
     await delay(400);
     const url = URL.createObjectURL(file);
-    mockProfile = { ...mockProfile, [category === "logo" ? "logo_url" : "cover_url"]: url };
+    if (category === "logo" || category === "cover") {
+      mockProfile = { ...mockProfile, [category === "logo" ? "logo_url" : "cover_url"]: url };
+    } else if (file.type.startsWith("video/")) {
+      mockProfile = { ...mockProfile, video_urls: [...(mockProfile.video_urls ?? []), url] };
+    } else {
+      mockProfile = { ...mockProfile, gallery_images: [...(mockProfile.gallery_images ?? []), url] };
+    }
     return { storage_path: url };
+  },
+
+  deleteMedia: async (url: string, type: "gallery" | "video"): Promise<void> => {
+    console.log(`[mock] DELETE /businesses/me/media`, { url, type });
+    await delay(300);
+    if (type === "video") {
+      mockProfile = { ...mockProfile, video_urls: (mockProfile.video_urls ?? []).filter((u) => u !== url) };
+    } else {
+      mockProfile = { ...mockProfile, gallery_images: (mockProfile.gallery_images ?? []).filter((u) => u !== url) };
+    }
   },
 
   getBusinessCategories: async (search?: string): Promise<BusinessCategoryOption[]> => {

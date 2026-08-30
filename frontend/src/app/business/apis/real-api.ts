@@ -1,4 +1,4 @@
-import { httpGet, httpPatch, httpPost, httpPostForm, isInstitutionContext } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, isInstitutionContext } from "@/lib/api/http";
 import type {
   BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
   RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult,
@@ -104,11 +104,19 @@ export const businessRealApi = {
     return httpPatch("/businesses/me", patch);
   },
 
-  uploadImage: (category: "logo" | "cover", file: File): Promise<{ storage_path: string }> => {
+  uploadImage: (category: "logo" | "cover" | "gallery", file: File): Promise<{ storage_path: string }> => {
     const form = new FormData();
     form.append("file", file);
     const base = isInstitutionContext() ? "/institutions/me/files" : "/businesses/me/files";
     return httpPostForm(`${base}?category=${category}`, form);
+  },
+
+  deleteMedia: (url: string, type: "gallery" | "video"): Promise<void> => {
+    const base = isInstitutionContext() ? "/institutions/me/media" : "/businesses/me/media";
+    return httpDelete(base, {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, type }),
+    });
   },
 
   getBusinessCategories: async (search?: string): Promise<BusinessCategoryOption[]> => {

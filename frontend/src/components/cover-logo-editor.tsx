@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, type ChangeEvent } from "react";
+import { useRef } from "react";
 import { Camera, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { CroppedFileInput, type CroppedFileInputHandle } from "@/components/cropped-file-input";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,14 +37,8 @@ export function CoverLogoEditor({
   /** A person's photo: full-bleed circle (object-cover, no padding/background) instead of a padded square logo tile. */
   roundPhoto?: boolean;
 }>) {
-  const coverInputRef = useRef<HTMLInputElement>(null);
-  const logoInputRef = useRef<HTMLInputElement>(null);
-
-  const handlePick = (onFile: (file: File) => void) => (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (file) onFile(file);
-  };
+  const coverPickerRef = useRef<CroppedFileInputHandle>(null);
+  const logoPickerRef = useRef<CroppedFileInputHandle>(null);
 
   return (
     <div className={cn("relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48", className)}>
@@ -58,20 +53,20 @@ export function CoverLogoEditor({
             size="sm"
             className="absolute right-4 top-4 gap-1.5"
             disabled={coverUploading}
-            onClick={() => coverInputRef.current?.click()}
+            onClick={() => coverPickerRef.current?.pick()}
           >
             {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
             Edit cover
           </Button>
-          <input ref={coverInputRef} type="file" accept="image/*" hidden onChange={handlePick(onCoverFile)} />
+          <CroppedFileInput ref={coverPickerRef} cropShape="square" onCropped={onCoverFile} isSaving={coverUploading} />
         </>
       )}
 
       {!hideLogo && (
         <button
           type="button"
-          className="group absolute -bottom-12 left-6 cursor-pointer"
-          onClick={() => logoInputRef.current?.click()}
+          className="group absolute -bottom-12 left-10 cursor-pointer"
+          onClick={() => logoPickerRef.current?.pick()}
           aria-label="Edit logo"
         >
           <Avatar
@@ -91,7 +86,7 @@ export function CoverLogoEditor({
           </span>
         </button>
       )}
-      <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={handlePick(onLogoFile)} />
+      <CroppedFileInput ref={logoPickerRef} cropShape="square" onCropped={onLogoFile} isSaving={logoUploading} />
     </div>
   );
 }

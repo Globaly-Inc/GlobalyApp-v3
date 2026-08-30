@@ -2,10 +2,17 @@
 import type { FastifyInstance } from "fastify";
 import { NotFoundError } from "../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
+import * as storage from "../../../shared/storage/storageService.js";
 import * as repo from "../../superadmin/marketing/blog/repositories/posts.repository.js";
 import { IdParam, PublicPostListQuery } from "../schemas/public-blog.schema.js";
 
 export async function publicBlogRoutes(app: FastifyInstance) {
+  app.get("/blog/covers/*", async (req, reply) => {
+    const storagePath = `blog-posts/covers/${(req.params as { "*": string })["*"]}`;
+    const url = await storage.getSignedViewUrl(storagePath);
+    return reply.redirect(url);
+  });
+
   app.get("/blog/filters", async (_req, reply) => {
     const filters = await repo.listPublishedFilterValues();
     return reply.send(filters);

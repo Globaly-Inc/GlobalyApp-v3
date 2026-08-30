@@ -5,7 +5,7 @@ import { z } from "zod";
 import * as storage from "../../../shared/storage/storageService.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as bizRepo from "../repositories/businesses.repository.js";
-import { NotFoundError } from "../../../shared/errors.js";
+import { ForbiddenError, NotFoundError } from "../../../shared/errors.js";
 import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
 
 const FileIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -46,6 +46,9 @@ export async function businessFileRoutes(app: FastifyInstance) {
     if (fileCategory === "logo" || fileCategory === "cover") {
       const col = fileCategory === "logo" ? "logo_url" : "cover_url";
       await bizRepo.updateBusinessProfile(req.business!.id, { [col]: storagePath });
+    } else if (fileCategory === "gallery") {
+      const col = file.mimetype.startsWith("video/") ? "video_urls" : "gallery_images";
+      await bizRepo.appendBusinessMedia(req.business!.id, col, storagePath);
     }
 
     return reply.status(201).send({
@@ -96,6 +99,26 @@ export async function businessFileRoutes(app: FastifyInstance) {
 
     if (file.category === "logo") await bizRepo.updateBusinessProfile(req.business!.id, { logo_url: null });
     if (file.category === "cover") await bizRepo.updateBusinessProfile(req.business!.id, { cover_url: null });
+    if (file.category === "gallery") {
+      const col = file.mime_type.startsWith("video/") ? "video_urls" : "gallery_images";
+      await bizRepo.removeBusinessMedia(req.business!.id, col, file.storage_path);
+    }
+
+    return reply.status(204).send();
+  });
+
+  // ── Delete a gallery/video item by its resolved URL (frontend only has the signed URL, not the file id) ──
+  const DeleteMediaBody = z.object({ url: z.string(), type: z.enum(["gallery", "video"]) });
+  app.delete("/me/media", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { url, type } = DeleteMediaBody.parse(req.body);
+    const storagePath = storage.toStoragePath(url);
+    const col = type === "video" ? "video_urls" : "gallery_images";
+
+    const ownPrefix = `public/businesses/${req.auth.orgId!}/gallery/`;
+    if (!storagePath.startsWith(ownPrefix)) throw new ForbiddenError("Not your media");
+
+    await storage.deleteFile(storagePath).catch(() => {});
+    await bizRepo.removeBusinessMedia(req.business!.id, col, storagePath);
 
     return reply.status(204).send();
   });

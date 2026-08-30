@@ -5,10 +5,10 @@ import { z } from "zod";
 import * as storage from "../../../shared/storage/storageService.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as repo from "../repositories/platform-users.repository.js";
-import { NotFoundError } from "../../../shared/errors.js";
+import { ForbiddenError, NotFoundError } from "../../../shared/errors.js";
 import { requireInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 
-const CategoryQuery = z.object({ category: z.enum(["logo", "cover"]) });
+const CategoryQuery = z.object({ category: z.enum(["logo", "cover", "gallery"]) });
 
 export async function institutionFileRoutes(app: FastifyInstance) {
   app.post("/me/files", { preHandler: requireInstitutionContext }, async (req, reply) => {
@@ -37,7 +37,12 @@ export async function institutionFileRoutes(app: FastifyInstance) {
       size_bytes: buffer.length,
     });
 
-    await repo.updateInstitution(req.institutionId, { [category === "logo" ? "logo_url" : "cover_url"]: storagePath });
+    if (category === "logo" || category === "cover") {
+      await repo.updateInstitution(req.institutionId, { [category === "logo" ? "logo_url" : "cover_url"]: storagePath });
+    } else {
+      const col = file.mimetype.startsWith("video/") ? "video_urls" : "gallery_images";
+      await repo.appendInstitutionMedia(req.institutionId, col, storagePath);
+    }
 
     return reply.status(201).send({
       id: record.id,
@@ -47,5 +52,23 @@ export async function institutionFileRoutes(app: FastifyInstance) {
       size_bytes: record.size_bytes,
       category: record.category,
     });
+  });
+
+  // ── Delete a gallery/video item by its resolved URL (frontend only has the signed URL, not the file id) ──
+  const DeleteMediaBody = z.object({ url: z.string(), type: z.enum(["gallery", "video"]) });
+  app.delete("/me/media", { preHandler: requireInstitutionContext }, async (req, reply) => {
+    const { url, type } = DeleteMediaBody.parse(req.body);
+    const storagePath = storage.toStoragePath(url);
+    const col = type === "video" ? "video_urls" : "gallery_images";
+
+    // The client only has the resolved (signed) URL, not a file id scoped to this org — without this
+    // check, any authenticated institution could pass another org's gallery URL and delete their object.
+    const ownPrefix = `public/institutions/${req.auth.orgId!}/gallery/`;
+    if (!storagePath.startsWith(ownPrefix)) throw new ForbiddenError("Not your media");
+
+    await storage.deleteFile(storagePath).catch(() => {});
+    await repo.removeInstitutionMedia(req.institutionId, col, storagePath);
+
+    return reply.status(204).send();
   });
 }

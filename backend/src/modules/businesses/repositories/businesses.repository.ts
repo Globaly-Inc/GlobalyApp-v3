@@ -67,20 +67,37 @@ export async function updateBusinessProfile(id: string, data: Record<string, unk
   return row;
 }
 
+export async function appendBusinessMedia(
+  id: string,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("businesses")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_append(coalesce(??, ARRAY[]::text[]), ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
+export async function removeBusinessMedia(
+  id: string,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("businesses")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_remove(??, ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
 export async function findByClaimToken(token: string): Promise<BusinessRecord | undefined> {
   return masterKnex<BusinessRecord>("businesses").where({ claim_token: token }).whereNull("deleted_at").first();
 }
 
-/**
- * An unclaimed business matching this address, found by the business's OWN contact email.
- *
- * Not by owner_id: a promoted listing has no owner until somebody claims it, so there is no
- * owner to match on. `businesses.email` is the contact address extraction captured, and it is
- * also where the claim link gets sent — matching on it is what makes the listing reachable.
- *
- * A listing extraction found no email for cannot be claimed self-serve at all; an admin has to
- * send the claim request to an address they supply.
- */
+
 export async function findUnclaimedBusinessByContactEmail(email: string): Promise<BusinessRecord | undefined> {
   return masterKnex<BusinessRecord>("businesses")
     .whereRaw("lower(email) = lower(?)", [email])

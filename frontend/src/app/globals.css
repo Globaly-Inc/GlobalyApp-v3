@@ -296,6 +296,14 @@
   .animate-fade-out {
     animation: fade-out 0.4s ease-out;
   }
+
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) rotate(var(--float-rotate, 0deg)); }
+    50% { transform: translate(6px, -32px) rotate(var(--float-rotate, 0deg)); }
+  }
+  .animate-float {
+    animation: float 5s ease-in-out infinite;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -308,5 +316,8 @@
     opacity: 1 !important;
     transform: none !important;
     transition: none !important;
+  }
+  .animate-float {
+    animation: none !important;
   }
 }

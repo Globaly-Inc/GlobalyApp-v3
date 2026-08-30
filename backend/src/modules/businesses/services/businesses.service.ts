@@ -137,14 +137,29 @@ export async function searchBusinesses(auth: { orgId?: string; orgType?: string 
 }
 
 export async function withImagePreviews<
-  T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null },
+  T extends {
+    logo_url?: string | null;
+    cover_url?: string | null;
+    gallery_images?: string[] | null;
+    video_urls?: string[] | null;
+  },
 >(biz: T): Promise<T & { gallery_image_urls?: (string | null)[] }> {
-  const [logo_url, cover_url, gallery_image_urls] = await Promise.all([
+  const [logo_url, cover_url, gallery_image_urls, video_urls] = await Promise.all([
     storage.resolvePreviewUrl(biz.logo_url),
     storage.resolvePreviewUrl(biz.cover_url),
     biz.gallery_images ? Promise.all(biz.gallery_images.map((p) => storage.resolvePreviewUrl(p))) : undefined,
+    biz.video_urls ? Promise.all(biz.video_urls.map((p) => storage.resolvePreviewUrl(p))) : undefined,
   ]);
-  return { ...biz, logo_url, cover_url, ...(gallery_image_urls ? { gallery_image_urls } : {}) };
+  return {
+    ...biz,
+    logo_url,
+    cover_url,
+    // Overwrite in place so the business's own /me profile (which reads `gallery_images`/`video_urls`
+    // directly) gets viewable URLs, while `gallery_image_urls` stays for the public search consumers
+    // that already read that separate field name.
+    ...(gallery_image_urls ? { gallery_images: gallery_image_urls, gallery_image_urls } : {}),
+    ...(video_urls ? { video_urls } : {}),
+  };
 }
 
 /** Get full business record by schema_name (orgId from JWT). */

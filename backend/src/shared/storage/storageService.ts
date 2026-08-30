@@ -15,6 +15,8 @@ const logger = createChildLogger("storage-service");
 const ALLOWED_MIME_TYPES = new Set([
   // Images
   "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml",
+  // Videos (gallery uploads)
+  "video/mp4", "video/webm", "video/quicktime",
   // Documents
   "application/pdf",
   "application/msword",

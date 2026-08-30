@@ -5,12 +5,22 @@ import * as repo from "../repositories/platform-users.repository.js";
 import type { InstitutionProfilePatchInput } from "../schemas/institution-profile.schema.js";
 import type { InstitutionRecord } from "../../../core/types.js";
 
-async function withImagePreviews<T extends { logo_url?: string | null; cover_url?: string | null }>(inst: T): Promise<T> {
-  const [logo_url, cover_url] = await Promise.all([
+async function withImagePreviews<
+  T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null; video_urls?: string[] | null },
+>(inst: T): Promise<T> {
+  const [logo_url, cover_url, gallery_images, video_urls] = await Promise.all([
     storage.resolvePreviewUrl(inst.logo_url),
     storage.resolvePreviewUrl(inst.cover_url),
+    inst.gallery_images ? Promise.all(inst.gallery_images.map((p) => storage.resolvePreviewUrl(p))) : undefined,
+    inst.video_urls ? Promise.all(inst.video_urls.map((p) => storage.resolvePreviewUrl(p))) : undefined,
   ]);
-  return { ...inst, logo_url, cover_url };
+  return {
+    ...inst,
+    logo_url,
+    cover_url,
+    ...(gallery_images ? { gallery_images } : {}),
+    ...(video_urls ? { video_urls } : {}),
+  };
 }
 
 export async function getMyInstitution(institution: InstitutionRecord) {
