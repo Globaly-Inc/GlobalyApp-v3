@@ -377,8 +377,8 @@ export default function HomePage() {
             <Reveal direction="right" className="relative">
               <div ref={parallax3Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
-                  src={`${MEDIA_URL}/education counselors-hero.mp4`}
-                  poster={`${MEDIA_URL}/education counselors-hero-poster.webp`}
+                  src={`${MEDIA_URL}/agents-hero.mp4`}
+                  poster={`${MEDIA_URL}/agents-hero-poster.webp`}
                   className="w-full h-full object-cover"
                   style={{ transform: isMobile ? undefined : parallax3Transform }}
                 />

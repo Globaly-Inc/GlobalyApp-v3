@@ -98,7 +98,7 @@ import { GraduationCap, Building2, Users, Stamp, Handshake } from "lucide-react"
 export const CATEGORIES = [
   { slug: "courses", name: "Courses", Icon: GraduationCap },
   { slug: "institutions", name: "Institutions", Icon: Building2 },
-  { slug: "education counselors", name: "Education Counselors", Icon: Users },
+  { slug: "education-agencies", name: "Education Counselors", Icon: Users },
   { slug: "visas", name: "Visas", Icon: Stamp },
   { slug: "other-services", name: "Other Services", Icon: Handshake },
 ];
@@ -126,7 +126,7 @@ export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
     "Which countries offer affordable tuition for international students?",
     "What are the highest-ranked universities for business?",
   ],
-  agents: [
+  "education-agencies": [
     "What do education counselors do?",
     "Do I need an education counselor to apply to a course?",
     "How are education counselors paid?",
@@ -158,7 +158,7 @@ export const MEDIA_URL = "https://storage.googleapis.com/globalyapp-public-image
 export const SEARCH_SUGGESTIONS_BY_SLUG: Record<string, string[]> = {
   courses: ["MBA", "MSc Information Technology", "Nursing", "Data Science"],
   institutions: ["University of Melbourne", "University of Toronto", "TAFE", "Community colleges"],
-  agents: ["Education Counselors for Australia", "Education Counselors for Canada", "Education Counselors for the UK", "Education Counselors for the USA"],
+  "education-agencies": ["Education Counselors for Australia", "Education Counselors for Canada", "Education Counselors for the UK", "Education Counselors for the USA"],
   visas: ["Student visa", "Post-study work visa", "Dependent visa", "Visitor visa"],
   "other-services": ["Airport pickup", "Accommodation", "Tutoring", "SIM card"],
 };
