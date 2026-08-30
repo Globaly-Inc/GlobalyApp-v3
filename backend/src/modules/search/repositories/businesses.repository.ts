@@ -85,9 +85,28 @@ export type InstitutionFilters = Omit<BusinessSearchFilters, "businessType"> & {
   institutionType?: string;
   /** "YYYY-MM" — keeps institutions whose catalog has an intake in that month or later. */
   intakeFrom?: string;
+  /** The next three are catalog properties: an institution matches when one of its courses does. */
+  subjectArea?: string;
+  degreeLevel?: string;
+  studyMode?: string;
 };
 
-function institutionsQuery({ country, city, search, institutionType, intakeFrom }: InstitutionFilters) {
+/**
+ * Keeps institutions whose catalog has a course matching `condition`.
+ *
+ * Subject area, degree level and study mode are course properties — an institution has them only
+ * through what it teaches — so each is an EXISTS over its extraction job rather than a column here.
+ */
+function catalogMatch(condition: string, bindings: unknown[]) {
+  return {
+    sql: `exists (select 1 from ${S}.extraction_courses ec where ec.job_id = i.source_job_id and ${condition})`,
+    bindings,
+  };
+}
+
+function institutionsQuery({
+  country, city, search, institutionType, intakeFrom, subjectArea, degreeLevel, studyMode,
+}: InstitutionFilters) {
   const q = masterKnex("institutions as i")
     .leftJoin("countries as c", "c.id", "i.country_id")
     .where("i.is_published", true)
@@ -119,6 +138,13 @@ function institutionsQuery({ country, city, search, institutionType, intakeFrom 
       [year, year, month],
     );
   }
+  for (const match of [
+    subjectArea && catalogMatch("ec.subject_area ilike ?", [`%${subjectArea}%`]),
+    degreeLevel && catalogMatch("ec.degree_level = ?", [degreeLevel]),
+    studyMode && catalogMatch("ec.study_mode = ?", [studyMode]),
+  ]) {
+    if (match) q.whereRaw(match.sql, match.bindings as never);
+  }
   return q;
 }
 
@@ -131,6 +157,26 @@ export async function listInstitutionTypes() {
     .distinct("i.institution_type")
     .orderBy("i.institution_type");
   return rows.map((r: { institution_type: string }) => r.institution_type);
+}
+
+/**
+ * Catalog facets for the institutions filter panel — the subject areas, degree levels and study
+ * modes actually taught by a published institution, so no option can return an empty result.
+ */
+export async function listInstitutionCatalogFacets() {
+  const { rows } = await masterKnex.raw(
+    `select distinct ec.subject_area, ec.degree_level, ec.study_mode
+       from ${S}.extraction_courses ec
+      where exists (select 1 from institutions i
+                     where i.source_job_id = ec.job_id and i.is_published = true and i.deleted_at is null)`,
+  );
+  const column = (key: "subject_area" | "degree_level" | "study_mode") =>
+    [...new Set((rows as Record<string, string | null>[]).map((r) => r[key]).filter(Boolean))].sort() as string[];
+  return {
+    subject_areas: column("subject_area"),
+    degree_levels: column("degree_level"),
+    study_modes: column("study_mode"),
+  };
 }
 
 /** Intake months across every published institution's catalog, earliest first — "YYYY-MM". */
@@ -185,16 +231,39 @@ type PublicInstitutionRow = {
   campus_locations: string[] | null;
 };
 
-export type VisaServiceFilters = Omit<BusinessSearchFilters, "businessType"> & { licensedOnly?: boolean };
+export type VisaServiceFilters = Omit<BusinessSearchFilters, "businessType"> & {
+  licensedOnly?: boolean;
+  /** Describes the services a provider offers, not the provider row itself. */
+  serviceType?: string;
+};
 
-function visaServiceProvidersQuery({ licensedOnly, ...rest }: VisaServiceFilters) {
+function visaServiceProvidersQuery({ licensedOnly, serviceType, ...rest }: VisaServiceFilters) {
   const q = overviewQuery(rest, "ej.source_type = 'visa_service'");
-  if (licensedOnly) {
+  // Both filters are properties of a service the provider offers, so each is an EXISTS over its job.
+  const offers = (condition: string, bindings: unknown[] = []) =>
     q.whereRaw(
-      `exists (select 1 from ${S}.extraction_visa_services evs where evs.job_id = ei.job_id and evs.registration_status = 'active')`,
+      `exists (select 1 from ${S}.extraction_visa_services evs where evs.job_id = ei.job_id and ${condition})`,
+      bindings as never,
     );
-  }
+  if (licensedOnly) offers("evs.registration_status = 'active'");
+  if (serviceType) offers("evs.type = ?", [serviceType]);
   return q;
+}
+
+/**
+ * Facets for the visa-services filter panel, read off the services themselves so no option can be
+ * offered for something no visible provider actually does.
+ */
+export async function listVisaServiceFacets() {
+  const rows = await masterKnex(`${S}.extraction_visa_services as evs`)
+    .distinct("evs.type")
+    .whereNotNull("evs.type")
+    .whereRaw(
+      `exists (select 1 from ${S}.extraction_jobs ej
+                where ej.id = evs.job_id and ej.status = 'exported' and ej.source_type = 'visa_service')`,
+    )
+    .orderBy("evs.type");
+  return { service_types: rows.map((r: { type: string }) => r.type) };
 }
 
 function withSlug<T extends { id: string; business_name: string }>(row: T) {
@@ -384,6 +453,8 @@ export type BusinessSearchFilters = {
   country?: string;
   city?: string;
   search?: string;
+  /** Keeps only businesses an admin has verified — the "Verified" badge on the card. */
+  verifiedOnly?: boolean;
 };
 
 const BUSINESS_COLUMNS = [
@@ -396,7 +467,7 @@ const BUSINESS_COLUMNS = [
   "b.status", "b.latitude", "b.longitude", "b.business_registration_number", "b.registration_licenses",
 ];
 
-function baseQuery({ businessType, country, city, search }: BusinessSearchFilters) {
+function baseQuery({ businessType, country, city, search, verifiedOnly }: BusinessSearchFilters) {
   const q = masterKnex("businesses as b")
     .leftJoin("business_categories as cat", "cat.id", "b.business_category_id")
     .leftJoin("countries as c", "c.id", "b.country_id")
@@ -413,6 +484,7 @@ function baseQuery({ businessType, country, city, search }: BusinessSearchFilter
   if (search) {
     q.where((b) => b.whereILike("b.business_name", `%${search}%`).orWhereILike("b.description", `%${search}%`));
   }
+  if (verifiedOnly) q.where("b.status", "verified");
   return q;
 }
 

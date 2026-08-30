@@ -14,8 +14,8 @@ export function Footer() {
               <Image src="/globaly-logo-white.png" alt="Globaly" width={776} height={188} className="h-8 w-auto" />
             </Link>
             <p className="text-sm text-white/60 mb-4 max-w-xs">
-              Connecting Students with Domestic and International Education Providers, Education
-              Agents and Service Providers
+              Connecting Students with Domestic and International Education Providers,
+              Education Counselors and Service Providers
             </p>
             <div className="flex gap-3">
               {SOCIALS.map(({ name, href, label }) => (
@@ -39,9 +39,13 @@ export function Footer() {
               <ul className="space-y-2">
                 {links.map((link) => (
                   <li key={link.label}>
-                    <Link href={link.href} className="text-sm text-white/60 hover:text-white transition-colors">
-                      {link.label}
-                    </Link>
+                    {link.href ? (
+                      <Link href={link.href} className="text-sm text-white/60 hover:text-white transition-colors">
+                        {link.label}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-white/60">{link.label}</span>
+                    )}
                   </li>
                 ))}
               </ul>

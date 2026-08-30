@@ -32,7 +32,7 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
   const placeholder = useMemo(
     () =>
       mode === "ai"
-        ? "Ask anything about studying abroad…"
+        ? "Ask anything about studying at home or overseas…"
         : `Search ${CATEGORIES.find((c) => c.slug === activeSlug)?.name.toLowerCase()}…`,
     [mode, activeSlug],
   );

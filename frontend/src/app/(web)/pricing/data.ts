@@ -12,11 +12,11 @@ export const trustStats = [
 
 export const studentFeatures = [
   { text: "Full student profile with documents", sub: "Qualifications, language tests, work experience" },
-  { text: "Search & compare 180K+ services", sub: "Courses, institutions, agents across 35+ countries" },
-  { text: "Send up to 3 enquiries per day", sub: "Direct contact with verified agents and institutions" },
+  { text: "Search & compare 180K+ services", sub: "Courses, institutions, education counselors across 35+ countries" },
+  { text: "Send up to 3 enquiries per day", sub: "Direct contact with verified education counselors and institutions" },
   { text: "AI eligibility checking", sub: "Know your chances before applying" },
-  { text: "Real student ambassador connections", sub: "Chat with students already studying abroad" },
-  { text: "Jobs, events, accommodation, services", sub: "The full settle-abroad marketplace" },
+  { text: "Real student ambassador connections", sub: "Chat with students already on the course" },
+  { text: "Jobs, events, accommodation, services", sub: "The full settling-in marketplace" },
   { text: "10 free credits every month", sub: "For AI counselling and writing tools" },
 ];
 
@@ -24,7 +24,7 @@ export const earnCards = [
   { emoji: "🗓", amount: "10", unit: "credits / month", title: "Monthly free grant", desc: "Just for showing up. 10 credits deposited to your wallet every month, automatically.", tag: "Auto — no action needed" },
   { emoji: "✅", amount: "20", unit: "credits · one-time", title: "Complete your profile", desc: "Fill out your qualifications, test scores and preferences to 100%. Earn 20 credits instantly.", tag: "One-time lifetime bonus" },
   { emoji: "👥", amount: "20", unit: "credits per student referral", title: "Refer a friend", desc: "Share your unique referral link. Earn 20 credits for each student who completes their profile.", tag: "Unlimited referrals" },
-  { emoji: "🏢", amount: "100", unit: "credits per business referral", title: "Refer a business", desc: "Know an education agent or institution? Earn 100 credits when they verify their account.", tag: "Unlimited referrals" },
+  { emoji: "🏢", amount: "100", unit: "credits per business referral", title: "Refer a business", desc: "Know an education counselor or institution? Earn 100 credits when they verify their account.", tag: "Unlimited referrals" },
   { emoji: "🎓", amount: "5–50", unit: "credits per milestone", title: "Ambassador milestones", desc: "Represent a university as a student ambassador. Earn credits as you hit program milestones.", tag: "Per program" },
   { emoji: "💳", amount: "Buy", unit: "top-up credits", title: "Purchase a credit pack", desc: "Need more? Buy credits from $10 AUD. Bulk packs save up to 50%. They never expire.", tag: "Packs from 50 cr / $10 AUD" },
 ];
@@ -155,7 +155,7 @@ export const studentFaqs = [
   { q: "Is Globaly really free for students?", a: "Yes, always. You can search courses, send enquiries, and build your profile at no cost. There are no hidden charges or surprise fees — ever." },
   { q: "What are Globaly credits and how do I use them?", a: "Credits unlock premium features like extended AI Counsellor sessions and priority support. You earn them for free through referrals, profile completion, and milestones — or top up if you'd like more." },
   { q: "How does the AI Counsellor work?", a: "Our AI Counsellor helps you shortlist courses, check your eligibility, compare destinations, and prepare your applications — all powered by AI trained on verified education data." },
-  { q: "Do I need to pay to send enquiries?", a: "No. Sending enquiries to agents and institutions is always free for students. There is no limit on how many you can explore." },
+  { q: "Do I need to pay to send enquiries?", a: "No. Sending enquiries to education counselors and institutions is always free for students. There is no limit on how many you can explore." },
   { q: "Can I earn credits without paying?", a: "Absolutely. Refer friends, complete your profile, hit milestones, or join ambassador programs — all of these reward you with free credits." },
   { q: "What happens to my credits if I stop using Globaly?", a: "Purchased credits never expire. Earned credits stay in your wallet as long as your account is active. You can come back and use them anytime." },
   { q: "Is my personal data safe?", a: "Yes. All data is encrypted and stored securely. We never share your personal information with third parties without your explicit consent." },

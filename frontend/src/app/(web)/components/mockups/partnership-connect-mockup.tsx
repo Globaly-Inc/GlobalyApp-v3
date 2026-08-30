@@ -82,7 +82,7 @@ export function PartnershipConnectMockup() {
               <div className="text-sm font-semibold text-foreground truncate">{agency.name}</div>
               <div className="text-xs text-muted-foreground mt-0.5">{agency.location}</div>
               <Badge variant="secondary" className="mt-2 text-[10px]">
-                Agent · {agency.students} students
+                Education Counselor · {agency.students} students
               </Badge>
             </MockupCard>
           </div>

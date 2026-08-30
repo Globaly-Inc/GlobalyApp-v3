@@ -10,8 +10,8 @@ export function HeroSection({
   return (
     <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
       <AutoplayVideo
-        src={`${MEDIA_URL}/agents-hero.mp4`}
-        poster={`${MEDIA_URL}/agents-hero-poster.webp`}
+        src={`${MEDIA_URL}/education counselors-hero.mp4`}
+        poster={`${MEDIA_URL}/education counselors-hero-poster.webp`}
         className="absolute inset-0 w-full h-full object-cover scale-105"
         style={{ transformOrigin: "center" }}
       />
@@ -33,7 +33,7 @@ export function HeroSection({
             Connect with top institutions, access verified student leads, and scale your consultancy — all in one
             transparent, fair platform.
           </p>
-          <UnifiedSearchBar defaultTabSlug="agents" />
+          <UnifiedSearchBar defaultTabSlug="education counselors" />
         </div>
       </div>
     </section>

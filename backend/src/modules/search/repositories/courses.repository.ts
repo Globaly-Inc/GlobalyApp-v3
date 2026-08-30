@@ -15,6 +15,10 @@ export type CourseSearchFilters = {
   feeMax?: number;
   currency?: string;
   intakeYear?: number;
+  /** Awarding institution, matched on the name the course carries. */
+  institution?: string;
+  /** Duration bucket in weeks as "min-max"; "157-" means 157 and up. */
+  duration?: string;
   jobId?: string;
   /** Restricts to specific courses — how the saved-courses list reuses this query. */
   courseIds?: string[];
@@ -76,7 +80,10 @@ const CAMPUS_LOCATIONS = masterKnex.raw(
 
 const CARD_COLUMNS = [CAMPUS_LOCATIONS, installmentColumn("domestic"), installmentColumn("international")];
 
-function baseQuery({ country, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear, jobId, courseIds }: CourseSearchFilters) {
+function baseQuery({
+  country, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear,
+  institution, duration, jobId, courseIds,
+}: CourseSearchFilters) {
   const q = masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
     // At most one institution per job (institutions_source_job_uniq), so this can't fan rows out.
@@ -107,6 +114,15 @@ function baseQuery({ country, degreeLevel, subjectArea, search, feeMin, feeMax, 
       `exists (select 1 from ${S}.extraction_intakes ei where ei.course_id = ec.id and ei.intake_year = ?)`,
       [intakeYear],
     );
+  }
+  // Case-insensitive equality rather than ILIKE: the values come from the facet list, which is
+  // this same column, so a partial match would only ever be an accident.
+  if (institution) q.whereRaw("lower(ec.awarding_institution) = lower(?)", [institution]);
+  if (duration) {
+    // "min-max", max optional. A course with no duration is excluded rather than assumed short.
+    const [min, max] = duration.split("-");
+    q.where("ec.duration_weeks", ">=", Number(min));
+    if (max) q.where("ec.duration_weeks", "<=", Number(max));
   }
   return q;
 }
@@ -217,7 +233,7 @@ export async function listCourseFacets(jobId: string) {
 }
 
 export async function listCourseFilterOptions() {
-  const [years, currencies, degreeLevels] = await Promise.all([
+  const [years, currencies, degreeLevels, institutions] = await Promise.all([
     masterKnex(`${S}.extraction_intakes`)
       .distinct("intake_year")
       .whereNotNull("intake_year")
@@ -229,11 +245,19 @@ export async function listCourseFilterOptions() {
       .distinct("degree_level")
       .whereNotNull("degree_level")
       .orderBy("degree_level"),
+    // Only institutions with a publicly visible course, so the filter can't offer a name that
+    // returns nothing.
+    masterKnex(`${S}.extraction_courses as ec`)
+      .distinct("ec.awarding_institution")
+      .whereNotNull("ec.awarding_institution")
+      .whereRaw(PUBLICLY_VISIBLE)
+      .orderBy("ec.awarding_institution"),
   ]);
   return {
     years: years.map((r: { intake_year: number }) => r.intake_year),
     currencies: [...new Set(currencies.map((r: { currency: string | null }) => r.currency).filter(Boolean))] as string[],
     degree_levels: degreeLevels.map((r: { degree_level: string }) => r.degree_level),
+    institutions: institutions.map((r: { awarding_institution: string }) => r.awarding_institution),
   };
 }
 

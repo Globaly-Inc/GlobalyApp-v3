@@ -9,7 +9,7 @@ export function CountryCta({ countryName }: Readonly<{ countryName: string }>) {
       <Globe className="mx-auto mb-4 h-10 w-10 opacity-80 sm:h-12 sm:w-12" />
       <h2 className="text-xl font-bold sm:text-2xl">Your Journey Starts Here</h2>
       <p className="mx-auto mt-2 max-w-xl text-sm text-primary-foreground/80 sm:text-base">
-        Connect with verified institutions and agents who specialize in {countryName} placements.
+        Connect with verified institutions and education counselors who specialize in {countryName} placements.
       </p>
       <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
         <Button className="h-10 w-full sm:w-auto" variant="secondary" render={<Link href="/auth/sign-up" />}>

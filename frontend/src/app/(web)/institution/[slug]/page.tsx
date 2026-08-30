@@ -16,6 +16,7 @@ import { InstitutionSubjectAreas } from "./components/institution-subject-areas"
 import { InstitutionCoursesSection } from "./components/institution-courses-section";
 import { ProfileGallery, type GalleryItem } from "../../components/profile/profile-gallery";
 import { InstitutionTeamCard } from "./components/institution-sidebar";
+import { PageViews } from "../../components/page-views";
 
 type InstitutionPageProps = Readonly<{
   params: Promise<{ slug: string }>;
@@ -114,10 +115,13 @@ export default async function InstitutionPage({ params, searchParams }: Institut
 
   return (
     <div className="container mx-auto max-w-6xl space-y-4 px-4 py-6 md:space-y-6">
-      <p className="text-xs text-muted-foreground">
-        <Link href="/" className="hover:text-primary">Home</Link> /{" "}
-        <Link href="/search?tab=institutions" className="hover:text-primary">Institutions</Link> / {institution.business_name}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+          <Link href="/search?tab=institutions" className="hover:text-primary">Institutions</Link> / {institution.business_name}
+        </p>
+        <PageViews type="institution" id={institution.id} className="shrink-0" />
+      </div>
 
       <ProfileHero data={profile} />
 

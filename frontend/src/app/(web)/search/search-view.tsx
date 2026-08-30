@@ -1,5 +1,5 @@
 import {
-  getCourseFilters, getCourses, getEducationAgencies, getInstitutionFilters, getInstitutions,
+  getCourseFilters, getCourses, getEducationAgencies, getInstitutionFilters, getInstitutions, getVisaServiceFilters,
   getMigrationAgents, getScholarshipsSearch, getServices, getStudentJobs, getVisaServices,
 } from "./api";
 import type {
@@ -41,6 +41,12 @@ export type SearchViewParams = {
   licensed_only?: string;
   institution_type?: string;
   intake_from?: string;
+  institution?: string;
+  duration?: string;
+  study_mode?: string;
+  verified_only?: string;
+  service_type?: string;
+  coverage_type?: string;
   /** Display-only: how a course card states its fee. Never forwarded to the API. */
   fee_period?: string;
 };
@@ -57,7 +63,7 @@ function countBy<T>(items: T[], getValue: (item: T) => string | null): [string, 
 const TAB_NAMES: Record<SearchTabKey, string> = {
   courses: "Courses",
   institutions: "Institutions",
-  "education-agencies": "Education Agents",
+  "education-agencies": "Education Counselors",
   "visa-services": "Visa Services",
   "migration-agents": "Migration Agents",
   jobs: "Student Jobs",
@@ -104,6 +110,12 @@ export async function SearchView({
     licensed_only: params.licensed_only === "true",
     institution_type: params.institution_type || undefined,
     intake_from: params.intake_from || undefined,
+    institution: params.institution || undefined,
+    duration: params.duration || undefined,
+    study_mode: params.study_mode || undefined,
+    verified_only: params.verified_only === "true",
+    service_type: params.service_type || undefined,
+    coverage_type: params.coverage_type || undefined,
   };
 
   const fetchers: Record<SearchTabKey, () => Promise<{ data: unknown[]; meta: { page: number; limit: number; total: number; totalPages: number } }>> = {
@@ -117,7 +129,7 @@ export async function SearchView({
     services: () => getServices(filters),
   };
 
-  const [{ data: results, meta }, courseFilterOptions, institutionFilterOptions, scholarshipSample] = await Promise.all([
+  const [{ data: results, meta }, courseFilterOptions, institutionFilterOptions, scholarshipSample, visaFilterOptions] = await Promise.all([
     fetchers[activeTab](),
     activeTab === "courses" ? getCourseFilters() : Promise.resolve(null),
     activeTab === "institutions" ? getInstitutionFilters() : Promise.resolve(null),
@@ -126,6 +138,7 @@ export async function SearchView({
     activeTab === "scholarships"
       ? getScholarshipsSearch({ search: filters.search })
       : Promise.resolve(null),
+    activeTab === "visa-services" ? getVisaServiceFilters() : Promise.resolve(null),
   ]);
 
   const scholarshipCountryOptions = scholarshipSample
@@ -133,6 +146,10 @@ export async function SearchView({
     : undefined;
   const scholarshipCityOptions = scholarshipSample
     ? countBy(scholarshipSample.data, (s) => s.city).map(([value, count]) => ({ value, label: `${value} (${count})` }))
+    : undefined;
+
+  const scholarshipCoverageOptions = scholarshipSample
+    ? countBy(scholarshipSample.data, (s) => s.coverage_type).map(([value]) => value)
     : undefined;
 
   const feePeriod = FEE_PERIOD_OPTIONS.some((o) => o.value === params.fee_period)
@@ -174,6 +191,18 @@ export async function SearchView({
     institutionTypes: institutionFilterOptions?.institution_types,
     intakeFrom: filters.intake_from,
     intakeMonths: institutionFilterOptions?.intake_months,
+    institution: filters.institution,
+    institutions: courseFilterOptions?.institutions,
+    duration: filters.duration,
+    studyMode: filters.study_mode,
+    catalogSubjectAreas: institutionFilterOptions?.subject_areas,
+    catalogDegreeLevels: institutionFilterOptions?.degree_levels,
+    catalogStudyModes: institutionFilterOptions?.study_modes,
+    verifiedOnly: filters.verified_only,
+    serviceType: filters.service_type,
+    serviceTypes: visaFilterOptions?.service_types,
+    coverageType: filters.coverage_type,
+    coverageTypes: scholarshipCoverageOptions,
   };
 
   return (

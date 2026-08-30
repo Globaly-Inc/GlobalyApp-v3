@@ -74,7 +74,7 @@ export default function HomePage() {
             </h1>
             <p className="text-white/80 mb-8 text-base sm:text-xl font-medium px-2">
               Connecting Students with Domestic and International Education Providers, Education
-              Agents and Service Providers
+              Education Counselors and Service Providers
             </p>
             <UnifiedSearchBar />
           </div>
@@ -268,7 +268,7 @@ export default function HomePage() {
                 <p className="text-muted-foreground mb-6 leading-relaxed">
                   Showcase your course offerings to the global market without any limitation and
                   connect with the qualified students locally and internationally through reputed
-                  and highly rated education agents
+                  and highly rated education counselors
                 </p>
                 <div className="space-y-2.5 mb-8">
                   {PROVIDER_FEATURES.map((feat) => (
@@ -310,7 +310,7 @@ export default function HomePage() {
               One Platform. <span className="highlight-text active">Global Reach.</span>
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Whether you&apos;re a student, an institution, or an agent — Globaly.app connects you
+              Whether you&apos;re a student, an institution, or an education counselor — Globaly.app connects you
               with the right people, at the right time.
             </p>
           </Reveal>
@@ -339,7 +339,7 @@ export default function HomePage() {
             <Reveal direction="left">
               <div>
                 <h2 className="text-3xl font-bold mb-4">
-                  For <span className="gradient-text">Education Agents</span>
+                  For <span className="gradient-text">Education Counselors</span>
                 </h2>
                 <p className="text-muted-foreground mb-6 leading-relaxed">
                   Bridge the gap between students and institutions worldwide. Access verified
@@ -377,8 +377,8 @@ export default function HomePage() {
             <Reveal direction="right" className="relative">
               <div ref={parallax3Ref as never} className="rounded-2xl shadow-xl overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                 <AutoplayVideo
-                  src={`${MEDIA_URL}/agents-hero.mp4`}
-                  poster={`${MEDIA_URL}/agents-hero-poster.webp`}
+                  src={`${MEDIA_URL}/education counselors-hero.mp4`}
+                  poster={`${MEDIA_URL}/education counselors-hero-poster.webp`}
                   className="w-full h-full object-cover"
                   style={{ transform: isMobile ? undefined : parallax3Transform }}
                 />
@@ -394,7 +394,7 @@ export default function HomePage() {
           <Reveal className="text-center max-w-2xl mx-auto">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to start your global journey?</h2>
             <p className="text-white/70 mb-10 text-lg">
-              Join thousands of students, institutions, and agents already using Globaly.app to
+              Join thousands of students, institutions, and education counselors already using Globaly.app to
               connect and grow.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

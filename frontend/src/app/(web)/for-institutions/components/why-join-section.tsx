@@ -11,7 +11,7 @@ export function WhyJoinSection() {
             Why Institutions Join <span className="highlight-text active">Globaly.app?</span>
           </h2>
           <p className="text-muted-foreground">
-            Take charge of your students, agent network, and course data in one smart platform.
+            Take charge of your students, education counselor network, and course data in one smart platform.
           </p>
         </Reveal>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">

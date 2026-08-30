@@ -13,11 +13,11 @@ export function PricingStudentSection() {
         <div className="container mx-auto max-w-3xl px-4 text-center">
           <Badge className="mb-4 border-0 bg-emerald-100 px-4 py-1 text-sm text-emerald-700">Free forever</Badge>
           <h2 className="mb-3 text-3xl font-bold md:text-4xl">
-            Study abroad without paying a single cent to Globaly.
+            Study at home or overseas without paying a single cent to Globaly.
           </h2>
           <p className="mx-auto mb-8 max-w-xl text-muted-foreground">
             We believe every student deserves access to the best education guidance — regardless of budget. Your
-            profile, your applications, your AI counsellor, your entire study abroad journey. Free.
+            profile, your applications, your AI counsellor, your entire education journey. Free.
           </p>
 
           <Card className="mx-auto max-w-lg text-left">

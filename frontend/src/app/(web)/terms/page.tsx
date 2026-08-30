@@ -66,7 +66,7 @@ export default function TermsPage() {
                 globaly.app
               </a>{" "}
               provides a platform for students to search for courses, universities, educational services, and
-              connect with agents and providers.
+              connect with education counselors and providers.
             </p>
             <p className="font-medium text-foreground">
               You may use the Website for lawful purposes only. You agree not to use the Website:
@@ -84,10 +84,10 @@ export default function TermsPage() {
             <ul>
               <li>
                 <strong>Students:</strong> Students can create profiles to search for educational opportunities,
-                connect with agents, and receive personalized recommendations.
+                connect with education counselors, and receive personalized recommendations.
               </li>
               <li>
-                <strong>Agents:</strong> Educational consultancies or service providers can register as agents to
+                <strong>Education Counselors:</strong> Educational consultancies or service providers can register as education counselors to
                 showcase their services and connect with students.
               </li>
               <li>
@@ -108,7 +108,7 @@ export default function TermsPage() {
           <LegalSection id="content-ownership" icon={Copyright} title="Content Ownership">
             <ul>
               <li>Globaly Inc. owns the content on the Website, including information about countries, cities, courses, and providers.</li>
-              <li>Agents and Providers are responsible for the content they add to the Website, including descriptions of their services and programs.</li>
+              <li>Education Counselors and Providers are responsible for the content they add to the Website, including descriptions of their services and programs.</li>
             </ul>
           </LegalSection>
 
@@ -136,7 +136,7 @@ export default function TermsPage() {
           <LegalSection id="limitation-of-liability" icon={ShieldAlert} title="Limitation of Liability">
             <ul>
               <li>Globaly Inc. makes no warranties, express or implied, about the accuracy, completeness, or reliability of the content on the Website.</li>
-              <li>We will not be liable for any damages arising from your use of the Website or the services offered by agents and providers.</li>
+              <li>We will not be liable for any damages arising from your use of the Website or the services offered by education counselors and providers.</li>
             </ul>
           </LegalSection>
 

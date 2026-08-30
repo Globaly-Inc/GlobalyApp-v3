@@ -7,7 +7,7 @@ import { withImagePreviews } from "../../businesses/services/businesses.service.
 import * as repo from "../repositories/businesses.repository.js";
 import * as coursesRepo from "../repositories/courses.repository.js";
 import {
-  CourseListQuery, InstitutionListQuery, SearchListQuery, ServiceListQuery, VisaServiceListQuery,
+  BusinessTabListQuery, CourseListQuery, InstitutionListQuery, ServiceListQuery, VisaServiceListQuery,
 } from "../schemas/search.schema.js";
 
 async function withRepresentationPreviews(reps: Awaited<ReturnType<typeof repo.listPublicRepresentations>>) {
@@ -31,17 +31,23 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
   // Facet options for the institutions filter panel — the types and intake months that are
   // actually represented, so the panel can't offer a filter that returns nothing.
   app.get("/search/institutions/filters", async (_req, reply) => {
-    const [institution_types, intake_months] = await Promise.all([
+    const [institution_types, intake_months, catalog] = await Promise.all([
       repo.listInstitutionTypes(),
       repo.listInstitutionIntakeMonths(),
+      repo.listInstitutionCatalogFacets(),
     ]);
-    return reply.send({ institution_types, intake_months });
+    return reply.send({ institution_types, intake_months, ...catalog });
   });
 
   app.get("/search/institutions", async (req, reply) => {
-    const { country, city, search, institution_type, intake_from, ...pagination } = InstitutionListQuery.parse(req.query);
+    const {
+      country, city, search, institution_type, intake_from, subject_area, degree_level, study_mode, ...pagination
+    } = InstitutionListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const filters = { country, city, search, institutionType: institution_type, intakeFrom: intake_from };
+    const filters = {
+      country, city, search, institutionType: institution_type, intakeFrom: intake_from,
+      subjectArea: subject_area, degreeLevel: degree_level, studyMode: study_mode,
+    };
     const [rawRows, total] = await Promise.all([
       repo.listPublicInstitutions(filters, limit, offset),
       repo.countPublicInstitutions(filters),
@@ -95,10 +101,19 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
+  // Facet options for the visa-services filter panel.
+  app.get("/search/visa-services/filters", async (_req, reply) =>
+    reply.send(await repo.listVisaServiceFacets()),
+  );
+
   app.get("/search/visa-services", async (req, reply) => {
-    const { country, city, search, licensed_only, ...pagination } = VisaServiceListQuery.parse(req.query);
+    const {
+      country, city, search, licensed_only, service_type, ...pagination
+    } = VisaServiceListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const filters = { country, city, search, licensedOnly: licensed_only };
+    const filters = {
+      country, city, search, licensedOnly: licensed_only, serviceType: service_type,
+    };
     const [rows, total] = await Promise.all([
       repo.listPublicVisaServiceProviders(filters, limit, offset),
       repo.countPublicVisaServiceProviders(filters),
@@ -123,9 +138,9 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
 
   for (const { path, businessType } of TABS) {
     app.get(path, async (req, reply) => {
-      const { country, city, search, ...pagination } = SearchListQuery.parse(req.query);
+      const { country, city, search, verified_only, ...pagination } = BusinessTabListQuery.parse(req.query);
       const { limit, offset } = paginationToOffset(pagination);
-      const filters = { businessType, country, city, search };
+      const filters = { businessType, country, city, search, verifiedOnly: verified_only };
       const [rawRows, total] = await Promise.all([
         repo.listPublicBusinesses(filters, limit, offset),
         repo.countPublicBusinesses(filters),

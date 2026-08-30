@@ -40,13 +40,37 @@ export type InstitutionFilterOptions = {
   institution_types: string[];
   /** "YYYY-MM", earliest first. */
   intake_months: string[];
+  /** Catalog facets: what the published institutions actually teach. */
+  subject_areas: string[];
+  degree_levels: string[];
+  study_modes: string[];
+};
+
+export type VisaServiceFilterOptions = {
+  /** What kind of work the provider does: visa_application, appeal, … */
+  service_types: string[];
 };
 
 export type CourseFilterOptions = {
   years: number[];
   currencies: string[];
   degree_levels: string[];
+  /** Awarding institutions with at least one visible course. */
+  institutions: string[];
 };
+
+/**
+ * Duration buckets for the courses filter, as the "min-max" weeks the API expects. Buckets rather
+ * than a free number: durations cluster on a handful of values, so a slider would mostly land on
+ * gaps.
+ */
+export const DURATION_OPTIONS: { value: string; label: string }[] = [
+  { value: "0-26", label: "Up to 6 months" },
+  { value: "27-52", label: "6 months – 1 year" },
+  { value: "53-104", label: "1 – 2 years" },
+  { value: "105-156", label: "2 – 3 years" },
+  { value: "157-", label: "3 years +" },
+];
 
 export type CompareCourseItem = {
   id: string;
@@ -392,6 +416,25 @@ export const DEGREE_LABEL: Record<string, string> = {
   graduate_diploma: "Graduate Diploma",
   master: "Master's",
   doctoral: "Doctoral (PhD)",
+  other: "Other",
+};
+
+export const COVERAGE_LABEL: Record<string, string> = {
+  full_tuition: "Full Tuition",
+  partial_tuition: "Partial Tuition",
+  living_allowance: "Living Allowance",
+  stipend: "Stipend",
+  travel: "Travel",
+  various: "Various",
+  other: "Other",
+};
+
+/** Scraped visa-service work types. */
+export const VISA_SERVICE_TYPE_LABEL: Record<string, string> = {
+  visa_application: "Visa Application",
+  appeal: "Appeals & Reviews",
+  migration_advice: "Migration Advice",
+  sponsorship: "Sponsorship",
   other: "Other",
 };
 

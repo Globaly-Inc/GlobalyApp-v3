@@ -14,7 +14,7 @@ export function FreeListingCta() {
           <Reveal direction="right">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">
               Publish Your Courses &amp; Access{" "}
-              <span className="highlight-text active">Verified Agents</span>{" "}
+              <span className="highlight-text active">Verified Education Counselors</span>{" "}
               <span className="text-[hsl(var(--gold))]">FREE for a Limited Time 🎉</span>
             </h2>
             <p className="text-muted-foreground mb-6 leading-relaxed">
