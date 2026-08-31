@@ -193,6 +193,21 @@ async function main() {
   assertEqual(r.notFound, true, "a 404 reported as a scraper API error (not page content) is still classified as notFound");
   assertEqual(r.error?.includes("404"), true, "the error still names the real status code");
 
+  // 8c. Reviewer-caught bug: Crawl4AI can independently detect the dead URL (real "Page
+  // Not Found" content) BEFORE Firecrawl even runs — but if Firecrawl's own failure is
+  // generic/uninformative (no content, no "404" in its error), notFound must not discard
+  // the signal Crawl4AI already gave us just because Firecrawl's own signal was unclear.
+  const NOT_FOUND_PAGE_8C = `${LONG}\nPage Not Found\n${LONG}`;
+  mockScrapling(SHORT);
+  global.fetch = (async (url: string | URL) => {
+    const u = url.toString();
+    if (u.includes("crawl4ai.test")) return new Response(JSON.stringify({ markdown: NOT_FOUND_PAGE_8C }), { status: 200 });
+    if (u.includes("firecrawl.dev")) return new Response(JSON.stringify({ success: false, error: "timeout" }), { status: 500 });
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+  r = await scrapeMarkdown("https://example.com");
+  assertEqual(r.notFound, true, "Crawl4AI's dead-URL signal survives even when Firecrawl's own failure is generic");
+
   // 9. Reconnecting to the scrapling MCP server itself (not just a tool call inside an
   // established connection) can hit the same transient "Request timed out" — reproduces
   // the real bug: one bad connect attempt used to abandon the ENTIRE scrapling cascade

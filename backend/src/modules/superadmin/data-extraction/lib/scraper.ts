@@ -480,7 +480,9 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
       return {
         markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true,
         error: fc.error || a2.error || a1.error || unusableReason(fc.markdown),
-        notFound: isDeadUrlSignal(fc.markdown, fc.error),
+        notFound: isDeadUrlSignal(fc.markdown, fc.error)
+          || isDeadUrlSignal(a2.markdown, a2.error)
+          || isDeadUrlSignal(a1.markdown, a1.error),
       };
     }
     return {
