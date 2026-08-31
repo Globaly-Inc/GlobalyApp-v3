@@ -130,7 +130,19 @@ async function makeJobAndCourse(subject: string) {
     job_id: job.id,
     name: `Msg Institution ${suffix}`,
   });
-  return { jobId: job.id, courseId: course.id };
+  // The institution the job was promoted to — what business_representations targets and what
+  // matching keys on. Without it every recipient below would be ineligible.
+  const [institution] = await masterKnex("institutions")
+    .insert({
+      institution_name: `Msg Institution ${suffix}`,
+      subdomain: `msg-inst-${suffix}`,
+      email: `msg-inst-${suffix}@example.com`,
+      source_job_id: job.id,
+      status: "pending",
+      claim_status: "unclaimed",
+    })
+    .returning("id");
+  return { jobId: job.id, courseId: course.id, institutionId: institution.id };
 }
 
 async function makeRecipient(jobId: string, courseId: string, subject: string, offsetDeg = 0) {
@@ -146,21 +158,21 @@ async function makeRecipient(jobId: string, courseId: string, subject: string, o
     })
     .returning(["id", "schema_name"]);
   await provisionBusinessSchema(row.schema_name);
-  await masterKnex("representations").insert({
-    business_id: row.id,
-    extraction_job_id: jobId,
-    extraction_course_id: courseId,
+  const institution = await masterKnex("institutions").where({ source_job_id: jobId }).first("id");
+  await masterKnex("business_representations").insert({
+    originator_id: row.id,
+    originator_type: "business",
+    target_id: institution.id,
+    target_type: "institution",
     status: "active",
   });
-  await masterKnex("enquiry_match_directory").insert({
-    business_id: row.id,
-    subject_area: subject,
-    country_code: "AU",
-    verification_status: "verified",
+  // Ranking attributes live on the business now, not on a synced directory row.
+  await masterKnex("businesses").where({ id: row.id }).update({
+    country_id: await getCountryId("AU"),
+    status: "verified",
     latitude: -33.87 - offsetDeg,
     longitude: 151.21,
-    is_institution_contact: false,
-    is_suspended: false,
+    enquiry_enabled: true,
   });
   return { id: row.id, schemaUuid: row.schema_name };
 }
@@ -178,7 +190,7 @@ async function scenario(businessCount: number) {
   const studentId = await makeStudent(countryId, "Msg");
   const agentId = await makeAgentUser();
   const subject = `Msg Subject ${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const { jobId, courseId } = await makeJobAndCourse(subject);
+  const { jobId, courseId, institutionId } = await makeJobAndCourse(subject);
 
   const businesses: Array<{ id: number; schemaUuid: string }> = [];
   for (let i = 0; i < businessCount; i++) {
@@ -190,6 +202,8 @@ async function scenario(businessCount: number) {
       student_id: studentId,
       course_id: courseId,
       extraction_job_id: jobId,
+      // Matching keys its whole candidate query on this — the same derivation createEnquiry does.
+      institution_id: institutionId,
       message: "I would like more information about this course and its intakes.",
       student_latitude: -33.8688,
       student_longitude: 151.2093,
@@ -221,10 +235,14 @@ async function scenario(businessCount: number) {
       await masterKnex("enquiry_distributions").where({ enquiry_id: enquiry.id }).delete();
       await masterKnex("enquiries").where({ id: enquiry.id }).delete();
       const ids = businesses.map((b) => b.id);
-      await masterKnex("enquiry_match_directory").whereIn("business_id", ids).delete();
-      await masterKnex("representations").whereIn("business_id", ids).delete();
+      await masterKnex("business_representations")
+        .whereIn("originator_id", ids)
+        .where("originator_type", "business")
+        .delete();
       await masterKnex("user_business_index").whereIn("business_id", ids).delete();
       await masterKnex("businesses").whereIn("id", ids).delete();
+      // Institutions before the job: enquiries reference them and representations target them.
+      await masterKnex("institutions").where({ source_job_id: jobId }).delete();
       await masterKnex("superadmin.extraction_institution_overview").where({ job_id: jobId }).delete();
       await masterKnex("superadmin.extraction_courses").where({ job_id: jobId }).delete();
       await masterKnex("superadmin.extraction_jobs").where({ id: jobId }).delete();

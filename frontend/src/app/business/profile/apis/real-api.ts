@@ -87,6 +87,9 @@ function toBusinessSearchQuery(params: BusinessSearchParams): string {
   const q = new URLSearchParams();
   if (params.search) q.set("search", params.search);
   if (params.limit) q.set("limit", String(params.limit));
+  // Only sent when on: the branch picker must keep getting businesses only, since it stores a
+  // bare id with no kind alongside it.
+  if (params.include_institutions) q.set("include_institutions", "true");
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EnquiryStatusBadge } from "./enquiry-status-badge";
+import { EligibilityBadge } from "./eligibility-badge";
 import { formatDate, initials, intakeLabel } from "../utils";
 
 import type { DistributionListItem } from "../apis/types";
@@ -71,7 +72,10 @@ export function EnquiryInboxCard({
           </div>
         </div>
 
-        <EnquiryStatusBadge status={item.status} className="self-start" />
+        <div className="flex flex-col items-end gap-1.5">
+          <EnquiryStatusBadge status={item.status} className="self-start" />
+          <EligibilityBadge status={item.eligibility_status} />
+        </div>
       </div>
 
       {item.message && (

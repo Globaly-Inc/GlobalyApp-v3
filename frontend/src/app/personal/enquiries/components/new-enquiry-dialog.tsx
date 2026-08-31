@@ -15,15 +15,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Combobox, type ComboboxOption } from "@/components/combobox";
+import { type ComboboxOption } from "@/components/combobox";
 import { cn } from "@/lib/utils";
 import { useValidatedForm } from "@/app/personal/profile/validation";
 import { FieldError } from "@/app/personal/profile/field-error";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { createEnquiry, fetchCourseOptions, fetchEnquiries } from "../store/enquiries-slice";
+import { createEnquiry, fetchCourseOptions, fetchEligibility, fetchEnquiries } from "../store/enquiries-slice";
 import { MESSAGE_MAX, MESSAGE_MIN, defaultIntakeYear } from "../const";
 import { durationLabel, prettyMode } from "../utils";
-import { CoursePreview, CoursePreviewSkeleton } from "./course-preview";
+import { CoursePickerFields, Required } from "./course-picker-fields";
+import { EligibilityBanner } from "./eligibility-banner";
 import { IntakeFields } from "./intake-fields";
 
 import type { CreateEnquiryInput } from "../apis/types";
@@ -49,15 +50,6 @@ function emptyInput(courseId: string | null): CreateEnquiryInput {
   };
 }
 
-/** A required field's marker — one place, so every label marks it the same way. */
-function Required() {
-  return (
-    <span className="text-destructive" aria-hidden>
-      *
-    </span>
-  );
-}
-
 /**
  * The parent remounts this with a fresh `key` on every open, so all form state
  * starts clean without a reset path — opening programmatically (the New Enquiry
@@ -79,6 +71,13 @@ export function NewEnquiryDialog({
   const courses = useAppSelector((s) => s.enquiries.courseOptions);
   const courseOptionsStatus = useAppSelector((s) => s.enquiries.courseOptionsStatus);
   const coursesLoading = courseOptionsStatus === "loading";
+
+  // Eligibility for whichever course is currently picked. Purely informational: it never gates
+  // submission, and the server does not re-check it as a condition either.
+  const verdict = useAppSelector((s) =>
+    form.course_id ? (s.enquiries.eligibilityByCourse[form.course_id] ?? null) : null,
+  );
+  const eligibilityLoading = useAppSelector((s) => s.enquiries.eligibilityStatus === "loading");
 
   // Institution is a filter for the course list — never submitted, since the
   // backend derives the stored institution from the chosen course.
@@ -109,6 +108,12 @@ export function NewEnquiryDialog({
   useEffect(() => {
     if (open) dispatch(fetchCourseOptions());
   }, [open, dispatch]);
+
+  // Re-checked whenever the picked course changes. The thunk's own `condition` makes a repeat
+  // for the same course a no-op, so switching back and forth doesn't refetch.
+  useEffect(() => {
+    if (open && form.course_id) dispatch(fetchEligibility(form.course_id));
+  }, [open, form.course_id, dispatch]);
 
   const institutionOptions: ComboboxOption[] = useMemo(() => {
     const byJob = new Map<string, string>();
@@ -189,51 +194,18 @@ export function NewEnquiryDialog({
         {/* flex/gap, not space-y — space-y inflates height around Combobox focus
             guards inside a Dialog (see frontend/AGENTS.md). */}
         <div className="flex flex-col gap-4">
-          {courseLocked ? (
-            <div className="flex flex-col gap-2">
-              <Label>Course</Label>
-              {selectedCourse ? <CoursePreview course={selectedCourse} /> : <CoursePreviewSkeleton />}
-              <FieldError message={errors.course_id} />
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="enquiry-institution">Institution</Label>
-                <Combobox
-                  id="enquiry-institution"
-                  options={institutionOptions}
-                  value={institutionJobId}
-                  onChange={handleInstitutionChange}
-                  placeholder="All institutions"
-                  searchPlaceholder="Search institutions..."
-                  emptyText="No institutions found."
-                  loading={coursesLoading}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Optional — narrows the course list below.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="enquiry-course">
-                  Course <Required />
-                </Label>
-                <Combobox
-                  id="enquiry-course"
-                  options={courseOptions}
-                  value={form.course_id}
-                  onChange={handleCourseChange}
-                  placeholder="Select a course"
-                  searchPlaceholder="Search courses..."
-                  emptyText={institutionJobId ? "No courses for this institution." : "No courses found."}
-                  loading={coursesLoading}
-                  aria-invalid={!!errors.course_id}
-                />
-                <FieldError message={errors.course_id} />
-                {selectedCourse && <CoursePreview course={selectedCourse} />}
-              </div>
-            </>
-          )}
+          <CoursePickerFields
+            locked={courseLocked}
+            selectedCourse={selectedCourse}
+            courseId={form.course_id}
+            institutionJobId={institutionJobId}
+            institutionOptions={institutionOptions}
+            courseOptions={courseOptions}
+            loading={coursesLoading}
+            error={errors.course_id}
+            onInstitutionChange={handleInstitutionChange}
+            onCourseChange={handleCourseChange}
+          />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="enquiry-message">
@@ -261,6 +233,8 @@ export function NewEnquiryDialog({
               </span>
             </div>
           </div>
+
+          <EligibilityBanner verdict={verdict} loading={eligibilityLoading && !verdict} />
 
           <IntakeFields
             month={form.preferred_intake ?? ""}

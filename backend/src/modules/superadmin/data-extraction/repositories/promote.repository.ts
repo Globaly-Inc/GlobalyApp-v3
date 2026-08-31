@@ -178,22 +178,36 @@ export async function updateBusiness(id: number, data: Record<string, unknown>) 
 }
 
 /**
- * Links an agent's business to the institution job it was scraped from.
+ * Links an agent's business to the institution the job was promoted to, writing the same
+ * `business_representations` row the Partners tab writes — which is what makes the business
+ * eligible to receive that institution's enquiries.
+ *
  * Returns true only when a new link was actually written.
  *
- * The table's UNIQUE (business_id, extraction_job_id, extraction_course_id) cannot carry
- * this: promote links at job level, leaving extraction_course_id NULL, and Postgres treats
- * NULLs as distinct — so ON CONFLICT would never fire and every re-promote would duplicate.
- * Hence the explicit existence check.
+ * Resolving through `institutions.source_job_id` rather than storing the job id: representations
+ * are institution-level, and `promoteInstitution` runs before promoteJob's agent loop, so the row
+ * is already there. A job promoted to a *business* has no institution — the caller counts the
+ * false and moves on rather than inventing one.
+ *
+ * ON CONFLICT can carry the idempotency here (unlike the old table, whose UNIQUE included a
+ * nullable course column that Postgres treats as always-distinct), so a re-promote is a no-op.
  */
 export async function linkRepresentation(businessId: number, jobId: string): Promise<boolean> {
-  const existing = await masterKnex("representations")
-    .where({ business_id: businessId, extraction_job_id: jobId })
-    .whereNull("extraction_course_id")
+  const institution = await masterKnex("institutions")
+    .where({ source_job_id: jobId })
     .whereNull("deleted_at")
     .first("id");
-  if (existing) return false;
+  if (!institution) return false;
 
-  await masterKnex("representations").insert({ business_id: businessId, extraction_job_id: jobId });
-  return true;
+  const inserted = await masterKnex("business_representations")
+    .insert({
+      originator_id: businessId,
+      originator_type: "business",
+      target_id: institution.id,
+      target_type: "institution",
+    })
+    .onConflict(["originator_id", "originator_type", "target_id", "target_type"])
+    .ignore()
+    .returning("id");
+  return inserted.length > 0;
 }

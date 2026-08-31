@@ -36,8 +36,8 @@ export async function businessRoutes(app: FastifyInstance) {
   });
 
   app.get("/search", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
-    const { search, limit } = BusinessSearchQuerySchema.parse(req.query);
-    const result = await service.searchBusinesses(req.auth, search, limit);
+    const { search, limit, include_institutions } = BusinessSearchQuerySchema.parse(req.query);
+    const result = await service.searchBusinesses(req.auth, search, limit, include_institutions);
     return reply.send(result);
   });
 

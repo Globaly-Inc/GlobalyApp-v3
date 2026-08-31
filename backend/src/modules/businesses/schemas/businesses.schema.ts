@@ -63,6 +63,13 @@ export const BusinessProfilePatchSchema = z.object({
 export const BusinessSearchQuerySchema = z.object({
   search: z.string().optional(),
   limit: z.coerce.number().int().positive().max(50).default(10),
+  // Not z.coerce.boolean(): that coerces the STRING "false" to true, and this flag decides
+  // whether rows with a colliding id space enter a picker, so silently defaulting to on is the
+  // one failure mode it must not have.
+  include_institutions: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
 });
 
 // first/last name are collected HERE rather than at promote time: extraction never captures a

@@ -86,6 +86,7 @@ export async function listForBusinessFromTenant(
       // shows "1/3 unlocked". Column names stay accept_* per the schema.
       "e.accept_count",
       "e.max_accepts",
+      "e.eligibility_snapshot",
       "c.name as course_name",
       "c.short_name as course_short_name",
       "o.name as institution_name",
@@ -162,6 +163,14 @@ export async function listForBusinessFromTenant(
 
       accept_count: Number(enquiry?.accept_count ?? 0),
       max_accepts: Number(enquiry?.max_accepts ?? 0),
+
+      // The rollup ONLY. The criteria behind it name the student's actual degree and scores —
+      // profile detail a locked row has not paid for. Null on enquiries predating the check.
+      eligibility_status: (enquiry?.eligibility_snapshot?.status ?? null) as
+        | "eligible"
+        | "not_eligible"
+        | "unknown"
+        | null,
 
       is_unlocked: isUnlocked,
       coin_cost: Number(distribution?.coin_cost ?? 0),

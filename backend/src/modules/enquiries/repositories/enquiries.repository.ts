@@ -1,6 +1,6 @@
 // Enquiries repository — reads/writes against globalyapp.enquiries.
 // course_id/extraction_job_id validation reaches into superadmin.extraction_courses/jobs
-// (cross-schema, not cross-database — same pattern as match-directory-sync.service.ts).
+// (cross-schema, not cross-database — one pool, an explicit `superadmin.` prefix).
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
@@ -26,6 +26,8 @@ export interface EnquiryRow {
   last_distributed_at: Date | null;
   closed_at: Date | null;
   close_reason: string | null;
+  /** EligibilityVerdict as stored at submission. Null for enquiries predating the check. */
+  eligibility_snapshot: unknown | null;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
@@ -57,24 +59,6 @@ export async function findBusinessById(businessId: number) {
     .where({ id: businessId })
     .whereNull("deleted_at")
     .first("id", "enquiry_enabled", "status");
-}
-
-export async function insert(data: {
-  student_id: number;
-  course_id: string;
-  extraction_job_id: string | null;
-  business_id: number | null;
-  message: string;
-  preferred_intake: string | null;
-  preferred_year: number | null;
-  student_country_code: string | null;
-  student_latitude: number | null;
-  student_longitude: number | null;
-}): Promise<EnquiryRow> {
-  const [row] = await masterKnex(T)
-    .insert({ ...data, status: "pending" })
-    .returning("*");
-  return row;
 }
 
 export async function findById(id: string): Promise<EnquiryRow | undefined> {

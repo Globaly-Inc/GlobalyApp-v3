@@ -34,6 +34,9 @@ export type Enquiry = {
   course_short_name: string | null;
   institution_name: string | null;
   institution_logo_url: string | null;
+  /** The verdict as it stood when the enquiry was sent. Null for enquiries created before the
+   * eligibility check shipped — "not evaluated", never "ineligible". */
+  eligibility_snapshot: EligibilityVerdict | null;
   /** Businesses that paid to unlock. Never the full recipient list — the server
    * only ever returns the ones who unlocked. */
   unlocked_businesses: UnlockedBusiness[];
@@ -63,6 +66,39 @@ export type CreateEnquiryInput = {
   message: string;
   preferred_intake?: string | null;
   preferred_year?: number | null;
+};
+
+export type CriterionStatus = "pass" | "fail" | "unknown";
+
+export type EligibilityCriterion = {
+  key: "min_degree" | "min_score" | "academic_test" | "language_test";
+  label: string;
+  /** What the course asks for, pre-formatted by the server ("Bachelor's", "≥ 6.0", "60%"). */
+  required: string | null;
+  /** What the student has. Null when there is nothing on file to compare. */
+  actual: string | null;
+  status: CriterionStatus;
+  /** The two sides used different score scales and were converted before comparing. */
+  converted?: boolean;
+  hint?: string;
+};
+
+/**
+ * Informational only — nothing in the app refuses an enquiry on the strength of this. It exists
+ * so a student can see how their profile lines up with a course before they write to it.
+ *
+ * `unknown` is a real answer, not an error: requirements are scraped and often incomplete, and a
+ * criterion nobody can evaluate must never render as a failure.
+ */
+export type EligibilityVerdict = {
+  status: "eligible" | "not_eligible" | "unknown";
+  /** Share of the comparable criteria met, 0-100. Null when nothing could be compared —
+   * `unknown` criteria are left out of the fraction rather than counted against the student. */
+  percentage: number | null;
+  criteria: EligibilityCriterion[];
+  requirement_id: string | null;
+  student_type: "domestic" | "international";
+  evaluated_at: string;
 };
 
 /**

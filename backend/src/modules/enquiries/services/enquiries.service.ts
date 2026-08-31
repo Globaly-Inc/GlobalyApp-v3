@@ -3,6 +3,7 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import * as repo from "../repositories/enquiries.repository.js";
 import * as platformUsersRepo from "../../platform-users/repositories/platform-users.repository.js";
+import * as eligibilityService from "./eligibility.service.js";
 import { loadCompletion } from "../../platform-users/services/completion.js";
 import { logEnquiryAudit } from "../shared/audit.js";
 import { ENQUIRY_QUEUES } from "../shared/queues.js";
@@ -34,6 +35,10 @@ export interface CreateEnquiryInput {
  * platform-users/completion.ts — the same freshly-computed figure the profile
  * gate renders, so the UI can never show 100% while this 403s. Deliberately
  * NOT also gated on `onboarding_completed`.
+ *
+ * Eligibility is NOT a gate. It is computed here only so the verdict can be snapshotted onto the
+ * row, and a student who meets none of the requirements submits exactly like one who meets all of
+ * them. Requirements are scraped and unverified — far too thin to refuse a lead on.
  */
 export async function createEnquiry(studentId: number, input: CreateEnquiryInput) {
   const [profile, { percentage }] = await Promise.all([
@@ -75,6 +80,20 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
   const jobId = input.extraction_job_id ?? course.job_id ?? null;
   const institutionId = jobId ? await repo.findInstitutionIdByJobId(jobId) : null;
 
+  // Recomputed rather than accepted from the client, so the stored snapshot reflects the profile
+  // as it stands at submission. Nothing branches on the result — a failure to evaluate must not
+  // cost the student their enquiry, so it degrades to a null snapshot.
+  const verdict = await eligibilityService
+    .getVerdict(studentId, input.course_id)
+    .catch((err) => {
+      logger.warn("Eligibility evaluation failed; enquiry proceeds without a snapshot", {
+        studentId,
+        courseId: input.course_id,
+        error: (err as Error).message,
+      });
+      return null;
+    });
+
   const enquiry = await masterKnex.transaction(async (trx) => {
     const [row] = await trx("enquiries")
       .insert({
@@ -91,6 +110,9 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
         student_country_code: null,
         student_latitude: profile.latitude ?? null,
         student_longitude: profile.longitude ?? null,
+        // A snapshot, like student_latitude above — never recomputed, so a verdict a business
+        // paid to unlock cannot change underneath it when the student edits their profile.
+        eligibility_snapshot: verdict ? JSON.stringify(verdict) : null,
         status: "pending",
       })
       .returning("*");
@@ -99,7 +121,11 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
       entityType: "enquiry",
       entityId: row.id,
       trx,
-      details: { course_id: input.course_id, business_id: input.business_id ?? null },
+      details: {
+        course_id: input.course_id,
+        business_id: input.business_id ?? null,
+        eligibility: verdict?.status ?? null,
+      },
     });
 
     return row;

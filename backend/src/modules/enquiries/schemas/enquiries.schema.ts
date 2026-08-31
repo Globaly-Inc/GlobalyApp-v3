@@ -16,6 +16,10 @@ export const EnquiryIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const CourseIdParamSchema = z.object({
+  courseId: z.string().uuid(),
+});
+
 export const ListEnquiriesQuerySchema = PaginationSchema.extend({
   status: z.string().optional(),
 });
@@ -57,6 +61,9 @@ export const EnquiryDetailSchema = z.object({
   message: z.string(),
   status: z.string(),
   created_at: z.coerce.date(),
+  // The verdict computed at submission. NULL on every enquiry created before eligibility
+  // shipped — "not evaluated", never "ineligible".
+  eligibility_snapshot: z.unknown().nullable(),
   course_name: z.string(),
   course_short_name: z.string().nullable(),
   institution_name: z.string().nullable(),

@@ -8,20 +8,22 @@
 // in distributions.repository is the belt-and-suspenders backstop in case
 // that guard is ever bypassed (e.g. manual re-trigger while still 'pending').
 //
-// `representations` is the ONLY filter on who receives an enquiry: a business
-// must hold an active representation for the enquiry's course, or for its
-// institution with no course named. There is no general/subject-matched fallback
-// pool — an enquiry no one represents becomes `no_match` rather than being sent
-// to unrelated agents. See rankCandidates for the tier definitions.
+// `business_representations` is the ONLY filter on who receives an enquiry: a
+// business must hold a live, in-window representation of the enquiry's
+// institution — the same row the Partners tab writes. Representations are
+// institution-level, so one covers every course there. There is no
+// general/subject-matched fallback pool — an enquiry no one represents becomes
+// `no_match` rather than being sent to unrelated agents. See rankCandidates for
+// the tier definitions.
 //
 // Country is a hard eligibility gate (see rankCandidates), which makes two bits
 // of data load-bearing rather than merely nice-to-have:
 //   - Country: an enquiry whose student country cannot be resolved (neither
-//     `country_of_residence_id` nor `nationality_id` set), or a directory row with
-//     a NULL `country_code`, matches NOTHING. Only the institution-direct
-//     fallback can still produce a recipient in that case.
+//     `country_of_residence_id` nor `nationality_id` set), or a business with no
+//     `country_id`, matches NOTHING. Only the institution-direct fallback can
+//     still produce a recipient in that case.
 //   - Coordinates: distance splits T1/T2/T3, so a missing
-//     `enquiry_match_directory.latitude/longitude` or student
+//     `businesses.latitude/longitude` or student
 //     `platform_user_profiles.latitude/longitude` puts the candidate in T3. With
 //     coordinates unpopulated across the board every verified same-country rep
 //     collapses into T3 — still matched and still ahead of T4, just unordered.
@@ -54,20 +56,14 @@ function distanceBand(distanceKm: number | null): 1 | 2 | 3 {
   return 3;
 }
 
-interface DirectoryCandidate {
-  business_id: number;
-  /** Which active representation made this business eligible — recorded on the
-   * distribution row so a match is always traceable back to its cause. */
+/** A candidate as the ranker sees it — a representing business plus its ranking attributes. */
+type Candidate = Omit<representationsRepo.RepresentingBusiness, "representation_id"> & {
+  /** Which representation made this business eligible — recorded on the distribution row so a
+   * match is always traceable back to its cause. Absent on the direct-target short circuit. */
   representation_id?: string | null;
-  subject_area: string | null;
-  country_code: string | null;
-  verification_status: "verified" | "unverified";
-  latitude: number | string | null;
-  longitude: number | string | null;
-  is_institution_contact: boolean;
-}
+};
 
-interface RankedCandidate extends DirectoryCandidate {
+interface RankedCandidate extends Candidate {
   tier: number;
   distance_km: number | null;
 }
@@ -112,12 +108,11 @@ function distanceKm(
  * business with no coordinates is not evidence of proximity. Note this makes
  * coordinates load-bearing — see the note at the top of this file.
  *
- * `repCandidates` are directory rows for businesses holding an active
- * representation for this enquiry's course or institution — the only businesses
- * eligible at all.
+ * `repCandidates` are the businesses holding a live representation of this
+ * enquiry's institution — the only businesses eligible at all.
  */
 export function rankCandidates(opts: {
-  repCandidates: DirectoryCandidate[];
+  repCandidates: Candidate[];
   studentCountryCode: string | null;
   studentLat: number | string | null;
   studentLon: number | string | null;
@@ -125,13 +120,13 @@ export function rankCandidates(opts: {
 }): RankedCandidate[] {
   const { repCandidates, studentCountryCode, studentLat, studentLon, maxDistributions } = opts;
 
-  const withDistance = (c: DirectoryCandidate): RankedCandidate => ({
+  const withDistance = (c: Candidate): RankedCandidate => ({
     ...c,
     tier: 0,
     distance_km: distanceKm(studentLat, studentLon, c.latitude, c.longitude),
   });
 
-  const sameCountry = (c: DirectoryCandidate) =>
+  const sameCountry = (c: Candidate) =>
     !!studentCountryCode && !!c.country_code && c.country_code === studentCountryCode;
 
   const augmented = repCandidates.map(withDistance);
@@ -139,7 +134,7 @@ export function rankCandidates(opts: {
   // `verification_status` has no CHECK constraint, so anything other than
   // 'verified' (e.g. 'pending') must fall through to the unverified tiers rather
   // than matching no bucket and dropping out of the ranking entirely.
-  const isVerified = (c: DirectoryCandidate) => c.verification_status === "verified";
+  const isVerified = (c: Candidate) => c.verification_status === "verified";
 
   // Same country is a hard eligibility gate, not just a tier: a rep outside the
   // student's country never receives the enquiry, verified or not. Note this
@@ -183,28 +178,6 @@ async function resolveGeography(enquiry: any) {
   return profile?.residence_code ?? profile?.nationality_code ?? null;
 }
 
-/**
- * Institution-direct fallback (PRD §12): if the enquiry's institution has a
- * business acting as its sole contact (`is_institution_contact = true` in the
- * directory, scoped to this institution via an active `representations` row —
- * the directory table itself carries no job_id column), that business becomes
- * the sole recipient.
- */
-async function findInstitutionFallback(
-  extractionJobId: string,
-): Promise<{ business_id: number; representation_id: string } | null> {
-  const row = await masterKnex("enquiry_match_directory as emd")
-    .join("representations as r", function () {
-      this.on("r.business_id", "=", "emd.business_id").andOn("r.extraction_job_id", "=", masterKnex.raw("?", [extractionJobId]));
-    })
-    .where("emd.is_institution_contact", true)
-    .where("emd.is_suspended", false)
-    .where("r.status", "active")
-    .whereNull("r.deleted_at")
-    .first("emd.business_id", "r.id as representation_id");
-  return row ? { business_id: Number(row.business_id), representation_id: row.representation_id } : null;
-}
-
 export async function runMatching(enquiryId: string): Promise<void> {
   const enquiry = await masterKnex("enquiries").where({ id: enquiryId }).first();
   if (!enquiry) return;
@@ -231,43 +204,20 @@ async function matchAndCommit(enquiry: any, excludeBusinessIds: number[]): Promi
     return;
   }
 
-  // The course's subject area is no longer read: eligibility comes purely from
-  // `representations`, so there is nothing to subject-match against.
+  // The course's subject area is not read: eligibility comes purely from
+  // `business_representations`, so there is nothing to subject-match against.
   const studentCountryCode = await resolveGeography(enquiry);
 
-  const directoryRows: DirectoryCandidate[] = await masterKnex("enquiry_match_directory")
-    .where("is_suspended", false)
-    .select("business_id", "subject_area", "country_code", "verification_status", "latitude", "longitude", "is_institution_contact");
+  // The whole candidate pool, ranking attributes included, in one query. An enquiry with no
+  // resolved institution (its job was promoted to a business, not an institution) has nobody to
+  // match against and falls through to the institution fallback and then no_match.
+  const repCandidates = (
+    enquiry.institution_id != null
+      ? await representationsRepo.findRepresentingBusinesses(Number(enquiry.institution_id))
+      : []
+  ).filter((c) => !excluded.has(c.business_id));
 
-  const notExcluded = (r: DirectoryCandidate) => !excluded.has(r.business_id);
-
-  // Tiers 1-6 are "institution reps" (PRD §12): businesses holding an ACTIVE
-  // representation for this enquiry's institution or course. Previously this was
-  // approximated by comparing directory subject_area strings, which let a
-  // business that represented nothing related to the enquiry be treated as a
-  // rep — e.g. a Computer Science consultancy receiving a Cornell food-industry
-  // enquiry. The representations table is the actual source of truth for
-  // "who represents what", so it gates the pool now.
-  const representationByBusiness = new Map(
-    (
-      await representationsRepo.findRepresentingBusinesses({
-        extractionJobId: enquiry.extraction_job_id ?? null,
-        courseId: enquiry.course_id ?? null,
-      })
-    ).map((r) => [r.business_id, r.representation_id]),
-  );
-
-  // NOT filtered on is_institution_contact: under the sole-representer rule a
-  // business earns that flag by being an institution's only representer, and it
-  // is still an agent — excluding it here dropped the one business that actually
-  // represents the institution while a subject-matched general agent got the
-  // enquiry instead. The flag only makes it *additionally* eligible for the
-  // last-resort fallback below.
-  const repCandidates = directoryRows
-    .filter((r) => representationByBusiness.has(r.business_id) && notExcluded(r))
-    .map((r) => ({ ...r, representation_id: representationByBusiness.get(r.business_id)! }));
-
-  let selected = rankCandidates({
+  const selected = rankCandidates({
     repCandidates,
     studentCountryCode,
     studentLat: enquiry.student_latitude,
@@ -275,32 +225,14 @@ async function matchAndCommit(enquiry: any, excludeBusinessIds: number[]): Promi
     maxDistributions: MAX_DISTRIBUTIONS,
   });
 
-  // Two last-resort paths, and the order between them is the whole policy.
+  // One last-resort path: the institution that owns the course takes the lead itself.
   //
-  // The institution that owns the course goes first. The other one — findInstitutionFallback —
-  // routes to the agent flagged `is_institution_contact`, which it earns by being an
-  // institution's SOLE representer, and it matches on job_id alone: any active representation
-  // for any course at that institution makes it eligible for every other course there. That is
-  // a wider net than "represents this course", so an agent was taking leads for courses it does
-  // not represent while the institution itself heard nothing.
-  //
-  // It stays as the next step down, for a job promoted to a business rather than an institution
-  // — there is no institution to fall back to in that case.
+  // There used to be a second — an agent flagged `is_institution_contact` for being an
+  // institution's SOLE representer. It is gone with the match directory, and nothing is lost:
+  // a sole representer is now simply the only member of the pool above, ranked normally. The
+  // one case the flag uniquely covered was a sole representer that FAILS the country gate
+  // taking the lead anyway, which is the wrong-routing this comment used to describe.
   if (selected.length === 0 && (await commitInstitutionFallback(enquiry, studentCountryCode))) return;
-
-  if (selected.length === 0 && enquiry.extraction_job_id) {
-    const fallback = await findInstitutionFallback(enquiry.extraction_job_id);
-    if (fallback != null && !excluded.has(fallback.business_id)) {
-      selected = [
-        {
-          business_id: fallback.business_id,
-          representation_id: fallback.representation_id,
-          tier: 1,
-          distance_km: null,
-        } as RankedCandidate,
-      ];
-    }
-  }
 
   if (selected.length === 0) {
     await markNoMatch(enquiryId, enquiry.student_id, studentCountryCode);

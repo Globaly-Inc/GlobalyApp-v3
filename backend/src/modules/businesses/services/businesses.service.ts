@@ -130,11 +130,18 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   };
 }
 
-export async function searchBusinesses(auth: { orgId?: string; orgType?: string }, search: string | undefined, limit: number) {
-  if (auth.orgType === "institution") return repo.searchBusinesses(search, undefined, limit);
+export async function searchBusinesses(
+  auth: { orgId?: string; orgType?: string },
+  search: string | undefined,
+  limit: number,
+  includeInstitutions = false,
+) {
+  // An institution caller has no business row to exclude — and its own id would exclude an
+  // unrelated business, since the two id spaces collide.
+  if (auth.orgType === "institution") return repo.searchBusinesses(search, undefined, limit, includeInstitutions);
   const caller = await repo.findBusinessByDbName(auth.orgId!);
   if (!caller) throw new NotFoundError("Business not found");
-  return repo.searchBusinesses(search, caller.id, limit);
+  return repo.searchBusinesses(search, caller.id, limit, includeInstitutions);
 }
 
 export async function withImagePreviews<

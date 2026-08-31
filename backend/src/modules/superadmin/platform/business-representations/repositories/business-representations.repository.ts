@@ -98,7 +98,7 @@ export async function listByPartnerInstitutionId(institutionId: number, limit: n
 
 export async function createRelation(
   businessId: number,
-  data: Pick<RelationInput, "partner_business_id" | "country_ids" | "valid_from" | "valid_until" | "notes">,
+  data: Pick<RelationInput, "partner_business_id" | "partner_kind" | "country_ids" | "valid_from" | "valid_until" | "notes">,
   ignoreDuplicate = false,
 ) {
   const query = masterKnex("business_representations")
@@ -106,7 +106,11 @@ export async function createRelation(
       originator_id: businessId,
       originator_type: "business",
       target_id: data.partner_business_id,
-      target_type: "business",
+      // Was hardcoded 'business', which made an institution unlinkable even though the table,
+      // the unique index and listRelations all model both kinds. The UNIQUE is over
+      // (originator, originator_type, target_id, target_type), so business 42 and institution 42
+      // are correctly distinct rows.
+      target_type: data.partner_kind ?? "business",
       country_ids: data.country_ids,
       valid_from: data.valid_from ?? null,
       valid_until: data.valid_until ?? null,

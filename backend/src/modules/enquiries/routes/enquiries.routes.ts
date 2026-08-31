@@ -4,9 +4,15 @@
 
 import type { FastifyInstance } from "fastify";
 import * as service from "../services/enquiries.service.js";
+import * as eligibilityService from "../services/eligibility.service.js";
 import * as messagesService from "../services/messages.service.js";
 import * as mediaService from "../services/message-media.service.js";
-import { CreateEnquirySchema, EnquiryIdParamSchema, ListEnquiriesQuerySchema } from "../schemas/enquiries.schema.js";
+import {
+  CourseIdParamSchema,
+  CreateEnquirySchema,
+  EnquiryIdParamSchema,
+  ListEnquiriesQuerySchema,
+} from "../schemas/enquiries.schema.js";
 import {
   DistributionIdParamSchema,
   MessageIdParamSchema,
@@ -27,6 +33,13 @@ export async function enquiriesRoutes(app: FastifyInstance) {
     const { page, limit, status } = ListEnquiriesQuerySchema.parse(req.query);
     const result = await service.listEnquiriesForStudent(Number(req.auth.sub), { page, limit }, status);
     return reply.send(result);
+  });
+
+  // Before /enquiries/:id — that one parses its id as a uuid, so "eligibility" would 400 rather
+  // than fall through if the order were reversed.
+  app.get("/enquiries/eligibility/:courseId", async (req, reply) => {
+    const { courseId } = CourseIdParamSchema.parse(req.params);
+    return reply.send(await eligibilityService.getVerdict(Number(req.auth.sub), courseId));
   });
 
   app.get("/enquiries/:id", async (req, reply) => {

@@ -42,6 +42,10 @@ export const DistributionListItemSchema = z.object({
   accept_count: z.number(),
   max_accepts: z.number(),
 
+  // The student's eligibility rollup, without the criteria behind it — those name their actual
+  // degree and scores, which a locked row has not paid for. Null on pre-check enquiries.
+  eligibility_status: z.enum(["eligible", "not_eligible", "unknown"]).nullable(),
+
   is_unlocked: z.boolean(),
   coin_cost: z.number(),
   unlocked_at: z.coerce.date().nullable(),

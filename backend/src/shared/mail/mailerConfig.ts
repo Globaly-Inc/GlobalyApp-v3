@@ -13,8 +13,5 @@ export const mailerConfig: MailerConfig = {
   port: config.MAIL_PORT,
   user: config.MAIL_USERNAME,
   pass: config.MAIL_PASSWORD,
-  // With a display name: a mail client shows the address verbatim when there isn't one, so
-  // every mail the platform sends was arriving from "noreply@globalyapp.com" rather than
-  // from Globaly. Applies to OTP, invitations and enquiry notices alike.
-  defaultFrom: "Globaly <noreply@globalyapp.com>",
+  defaultFrom: "noreply@globalyapp.com",
 };

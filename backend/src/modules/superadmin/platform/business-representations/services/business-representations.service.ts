@@ -22,20 +22,30 @@ export async function listRelations(businessId: number, limit: number, offset: n
 
 export async function createRelation(businessId: number, data: RelationInput) {
   const biz = await requireBusiness(businessId);
-  await requireBusiness(data.partner_business_id);
+  // Validated against the table the kind names, not always `businesses` — otherwise an
+  // institution id would be rejected as a missing business, or worse, accepted because some
+  // unrelated business happens to hold that number.
+  const partnerIsInstitution = data.partner_kind === "institution";
+  if (partnerIsInstitution) await requireInstitution(data.partner_business_id);
+  else await requireBusiness(data.partner_business_id);
 
   let relation;
   try {
     relation = await repo.createRelation(businessId, data);
   } catch (e) {
-    if ((e as { code?: string }).code === "23505") throw new ConflictError("This business is already linked as a partner");
+    if ((e as { code?: string }).code === "23505") {
+      throw new ConflictError(`This ${partnerIsInstitution ? "institution" : "business"} is already linked as a partner`);
+    }
     throw e;
   }
 
   if (data.apply_to_branches) {
     const branchBusinessIds = await repo.listLinkedBranchBusinessIds(businessId, biz.schema_name);
     for (const branchBusinessId of branchBusinessIds) {
-      if (branchBusinessId === data.partner_business_id) continue;
+      // Only meaningful when the partner is itself a business — a branch business id and an
+      // institution id can be equal while referring to entirely different orgs, so comparing
+      // them across kinds would skip a branch that should have been linked.
+      if (!partnerIsInstitution && branchBusinessId === data.partner_business_id) continue;
       await repo.createRelation(branchBusinessId, data, true);
     }
   }

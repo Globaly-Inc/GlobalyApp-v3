@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { enquiriesApi } from "../apis";
 
-import type { Course, CreateEnquiryInput, Enquiry, EnquiryListItem } from "../apis/types";
+import type { Course, CreateEnquiryInput, EligibilityVerdict, Enquiry, EnquiryListItem } from "../apis/types";
 import type { RootState } from "@/lib/store";
 
 export const createEnquiry = createAsyncThunk("enquiries/create", (input: CreateEnquiryInput) =>
@@ -39,6 +39,24 @@ export const fetchCourseOptions = createAsyncThunk(
   },
 );
 
+/**
+ * The student's eligibility for the course currently selected in the dialog.
+ *
+ * Cached per course id so switching back and forth doesn't refetch, and so the acknowledgement
+ * checkbox can key off the same verdict the panel is showing. The server re-evaluates on submit
+ * regardless — this is display state, not the decision.
+ */
+export const fetchEligibility = createAsyncThunk(
+  "enquiries/fetchEligibility",
+  (courseId: string) => enquiriesApi.getEligibility(courseId),
+  {
+    condition: (courseId, { getState }) => {
+      const s = (getState() as RootState).enquiries;
+      return s.eligibilityStatus !== "loading" && !s.eligibilityByCourse[courseId];
+    },
+  },
+);
+
 type EnquiriesState = {
   items: EnquiryListItem[];
   byId: Record<string, Enquiry>;
@@ -46,6 +64,8 @@ type EnquiriesState = {
   courseOptionsStatus: "idle" | "loading" | "failed";
   status: "idle" | "loading" | "failed";
   createStatus: "idle" | "saving" | "failed";
+  eligibilityByCourse: Record<string, EligibilityVerdict>;
+  eligibilityStatus: "idle" | "loading" | "failed";
   error: string | null;
 };
 
@@ -56,6 +76,8 @@ const initialState: EnquiriesState = {
   courseOptionsStatus: "idle",
   status: "idle",
   createStatus: "idle",
+  eligibilityByCourse: {},
+  eligibilityStatus: "idle",
   error: null,
 };
 
@@ -93,6 +115,18 @@ const enquiriesSlice = createSlice({
       })
       .addCase(fetchCourseOptions.rejected, (state) => {
         state.courseOptionsStatus = "failed";
+      })
+      .addCase(fetchEligibility.pending, (state) => {
+        state.eligibilityStatus = "loading";
+      })
+      .addCase(fetchEligibility.fulfilled, (state, action) => {
+        state.eligibilityStatus = "idle";
+        state.eligibilityByCourse[action.meta.arg] = action.payload;
+      })
+      // A verdict that can't be fetched must not block the enquiry — the server is the gate, and
+      // it will 400 with the reason if the student really is ineligible.
+      .addCase(fetchEligibility.rejected, (state) => {
+        state.eligibilityStatus = "failed";
       })
       .addCase(createEnquiry.pending, (state) => {
         state.createStatus = "saving";

@@ -1,4 +1,11 @@
-import type { Course, CreateEnquiryInput, Enquiry, EnquiryListItem, PaginatedResponse } from "./types";
+import type {
+  Course,
+  CreateEnquiryInput,
+  EligibilityVerdict,
+  Enquiry,
+  EnquiryListItem,
+  PaginatedResponse,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -8,6 +15,7 @@ const mockEnquiries = new Map<string, Enquiry>();
 
 mockEnquiries.set("enq-2", {
   id: "enq-2",
+  eligibility_snapshot: null,
   unlocked_businesses: [
     {
       distribution_id: "dist-mock-1",
@@ -172,6 +180,55 @@ const mockCourses: Course[] = [
   },
 ];
 
+/**
+ * One fixture per verdict, cycled by course id, so all three UI states — the pass panel, the
+ * "couldn't verify" panel, and the acknowledgement gate — are reachable in mock mode without
+ * editing this file.
+ */
+const mockVerdicts: EligibilityVerdict[] = [
+  {
+    status: "eligible",
+    percentage: 100,
+    requirement_id: "req-mock-1",
+    student_type: "international",
+    evaluated_at: new Date().toISOString(),
+    criteria: [
+      { key: "min_degree", label: "Minimum degree", required: "Bachelor's", actual: "master", status: "pass" },
+      { key: "min_score", label: "Minimum score", required: "60%", actual: "3.4 (gpa_4)", status: "pass", converted: true },
+      { key: "language_test", label: "IELTS Academic", required: "≥ 6", actual: "7", status: "pass" },
+    ],
+  },
+  {
+    status: "not_eligible",
+    percentage: 33,
+    requirement_id: "req-mock-2",
+    student_type: "international",
+    evaluated_at: new Date().toISOString(),
+    criteria: [
+      { key: "min_degree", label: "Minimum degree", required: "Master's", actual: "bachelor", status: "fail" },
+      { key: "language_test", label: "IELTS Academic — Writing", required: "≥ 6", actual: "5.5", status: "fail" },
+      { key: "min_score", label: "Minimum score", required: "60%", actual: "72%", status: "pass" },
+    ],
+  },
+  {
+    status: "unknown",
+    percentage: null,
+    requirement_id: null,
+    student_type: "international",
+    evaluated_at: new Date().toISOString(),
+    criteria: [
+      {
+        key: "language_test",
+        label: "IELTS Academic",
+        required: "≥ 6.5",
+        actual: null,
+        status: "unknown",
+        hint: "Add your IELTS Academic score to check this.",
+      },
+    ],
+  },
+];
+
 export const enquiriesMockApi = {
   listCourses: async (page = 1, limit = 20) => {
     console.log("[mock] GET /courses", { page, limit });
@@ -181,6 +238,14 @@ export const enquiriesMockApi = {
       data: mockCourses.slice(start, start + limit),
       meta: { page, limit, total: mockCourses.length, totalPages: Math.ceil(mockCourses.length / limit) },
     };
+  },
+
+  getEligibility: async (courseId: string): Promise<EligibilityVerdict> => {
+    console.log("[mock] GET /enquiries/eligibility/", courseId);
+    await delay(250);
+    // Deterministic per course so a given card keeps the same verdict across renders.
+    const pick = [...courseId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % mockVerdicts.length;
+    return mockVerdicts[pick]!;
   },
 
   createEnquiry: async (input: CreateEnquiryInput): Promise<Enquiry> => {
@@ -210,6 +275,7 @@ export const enquiriesMockApi = {
       last_distributed_at: null,
       closed_at: null,
       close_reason: null,
+      eligibility_snapshot: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

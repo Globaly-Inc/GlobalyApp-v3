@@ -21,6 +21,11 @@ export type DistributionListItem = {
   accept_count: number;
   max_accepts: number;
 
+  /** The student's eligibility rollup for the course they enquired about, as it stood when they
+   * sent it. The criteria behind it are deliberately not sent — they name the student's degree
+   * and scores. Null on enquiries that predate the eligibility check. */
+  eligibility_status: "eligible" | "not_eligible" | "unknown" | null;
+
   is_unlocked: boolean;
   coin_cost: number;
   unlocked_at: string | null;
