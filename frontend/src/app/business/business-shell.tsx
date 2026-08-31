@@ -116,18 +116,11 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     };
   }, [dispatch]);
 
-  // A full reload is the honest way to re-switch: every slice already holds data
-  // fetched under the previous business, and there is no cross-slice reset.
-  //
-  // /business/profile/[businessId] is an exception: it owns its own org-reconciliation
-  // effect, switching context to whatever business the URL names (needed for deep links).
-  // Reloading the SAME url there would leave it pointed at the OLD business id, and that
-  // effect would immediately switch back — silently undoing this switch. Navigate to the
-  // new business's own profile url instead and let that page do the (now-agreeing) switch.
+  
   const handleSwitchBusiness = async (orgId: string) => {
     if (orgId === activeOrgId) return;
     saveSelectedOrgId(orgId);
-    if (pathname?.startsWith("/business/profile")) {
+    if (pathname === "/business/profile" || /^\/business\/profile\/\d/.test(pathname ?? "")) {
       const target = businesses.find((b) => b.org_id === orgId);
       if (target) {
         window.location.assign(`/business/profile/${target.id}`);
