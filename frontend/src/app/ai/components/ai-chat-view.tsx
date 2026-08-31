@@ -38,6 +38,13 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
   const { user, initializing } = useAuthState();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loginPromptDismissed, setLoginPromptDismissed] = useState(false);
+
+  // Re-show the login prompt every 30 s after dismissal while the guest is still blocked.
+  useEffect(() => {
+    if (!loginPromptDismissed) return;
+    const t = setTimeout(() => setLoginPromptDismissed(false), 30_000);
+    return () => clearTimeout(t);
+  }, [loginPromptDismissed]);
   const [draft, setDraft] = useState(initialQuery ?? "");
 
   const guestFingerprint = useRef<string | null>(null);
