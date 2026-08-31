@@ -18,6 +18,7 @@ export type CourseCard = {
   institution_name: string;
   /** Resolved server-side from the institution record — the model is never asked for image URLs. */
   institution_logo_url: string | null;
+  institution_cover_url: string | null;
   course_name: string;
   degree_level: string;
   duration: string;
@@ -75,6 +76,7 @@ export type WireCourseCard = {
   name?: string;
   institution?: string;
   institution_logo_url?: string | null;
+  institution_cover_url?: string | null;
   degree_level?: string;
   duration?: string;
   fees?: number | null;

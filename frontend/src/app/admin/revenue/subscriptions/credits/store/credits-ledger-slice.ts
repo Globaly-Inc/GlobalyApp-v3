@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { creditsLedgerApi } from "../apis";
-import type { LedgerEntry, AdjustInput } from "../apis/types";
+import type { LedgerEntry, AdjustInput, DailyLogEntry, ChartSeries, ChartMetric } from "../apis/types";
 
 export const fetchLedger = createAsyncThunk(
   "creditsLedger/fetchLedger",
@@ -16,6 +16,18 @@ export const applyAdjustment = createAsyncThunk("creditsLedger/applyAdjustment",
   creditsLedgerApi.adjust(input),
 );
 
+export const fetchDailyLog = createAsyncThunk(
+  "creditsLedger/fetchDailyLog",
+  (params: { date?: string; page?: number; limit?: number; search?: string }) =>
+    creditsLedgerApi.getDailyLog(params),
+);
+
+export const fetchChart = createAsyncThunk(
+  "creditsLedger/fetchChart",
+  (params: { metric?: ChartMetric; days?: number }) =>
+    creditsLedgerApi.getChart(params),
+);
+
 type CreditsLedgerState = {
   entries: LedgerEntry[];
   total: number;
@@ -23,6 +35,11 @@ type CreditsLedgerState = {
   status: "idle" | "loading" | "failed";
   adjustStatus: "idle" | "loading" | "failed";
   error: string | null;
+  dailyEntries: DailyLogEntry[];
+  dailyTotal: number;
+  dailyStatus: "idle" | "loading" | "failed";
+  chartSeries: ChartSeries[];
+  chartStatus: "idle" | "loading" | "failed";
 };
 
 const initialState: CreditsLedgerState = {
@@ -32,6 +49,11 @@ const initialState: CreditsLedgerState = {
   status: "idle",
   adjustStatus: "idle",
   error: null,
+  dailyEntries: [],
+  dailyTotal: 0,
+  dailyStatus: "idle",
+  chartSeries: [],
+  chartStatus: "idle",
 };
 
 const creditsLedgerSlice = createSlice({
@@ -61,7 +83,20 @@ const creditsLedgerSlice = createSlice({
       .addCase(applyAdjustment.rejected, (state, action) => {
         state.adjustStatus = "failed";
         state.error = action.error.message ?? "Adjustment failed";
-      });
+      })
+      .addCase(fetchDailyLog.pending, (state) => { state.dailyStatus = "loading"; })
+      .addCase(fetchDailyLog.fulfilled, (state, action) => {
+        state.dailyStatus = "idle";
+        state.dailyEntries = action.payload.data;
+        state.dailyTotal = action.payload.total;
+      })
+      .addCase(fetchDailyLog.rejected, (state) => { state.dailyStatus = "failed"; })
+      .addCase(fetchChart.pending, (state) => { state.chartStatus = "loading"; })
+      .addCase(fetchChart.fulfilled, (state, action) => {
+        state.chartStatus = "idle";
+        state.chartSeries = action.payload.series;
+      })
+      .addCase(fetchChart.rejected, (state) => { state.chartStatus = "failed"; });
   },
 });
 

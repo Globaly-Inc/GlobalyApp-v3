@@ -15,6 +15,7 @@ export interface ParsedCard {
   source_url?: string;
   /** Filled server-side from the institution record — never from model output. */
   institution_logo_url?: string | null;
+  institution_cover_url?: string | null;
   institution_website?: string | null;
 }
 

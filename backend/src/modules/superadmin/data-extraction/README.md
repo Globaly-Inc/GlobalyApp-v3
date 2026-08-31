@@ -255,7 +255,7 @@ Note: Firecrawl `/map` is used for URL discovery only because Crawl4AI cannot ma
 | URL filtering | `gemini-2.5-flash` | Classify discovered URLs as course/non-course |
 | Course extraction | `gemini-2.5-flash` | Extract structured course data from page markdown |
 | Verification | `gemini-2.5-flash` | Compare extracted fields against live page |
-| Embeddings | `text-embedding-004` | Extraction memory similarity search |
+| Embeddings | `gemini-embedding-001` | Extraction memory similarity search (3072 dims) |
 
 All LLM calls use `responseMimeType: "application/json"` for structured output.
 
@@ -328,7 +328,7 @@ FIRECRAWL_API_KEY=fc-...              # Firecrawl SaaS key (last resort)
 
 # Optional overrides
 GEMINI_MODEL=gemini-2.5-flash         # Default extraction model
-GEMINI_EMBEDDING_MODEL=text-embedding-004  # Default embedding model
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001  # Default embedding model
 ```
 
 ## Running Locally

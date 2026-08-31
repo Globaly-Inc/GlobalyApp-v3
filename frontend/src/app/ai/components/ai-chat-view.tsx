@@ -48,11 +48,15 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
   const [draft, setDraft] = useState(initialQuery ?? "");
 
   const guestFingerprint = useRef<string | null>(null);
+  const autoSentRef = useRef(false);
 
-  // Logged-in users on the public /ai page belong in the personal portal.
+  // Logged-in users on the public /ai page belong in the personal portal — carry the query.
   useEffect(() => {
-    if (redirectIfAuthenticated && !initializing && user) router.replace("/personal/ai");
-  }, [redirectIfAuthenticated, initializing, user, router]);
+    if (redirectIfAuthenticated && !initializing && user) {
+      const target = initialQuery ? `/personal/ai?q=${encodeURIComponent(initialQuery)}` : "/personal/ai";
+      router.replace(target);
+    }
+  }, [redirectIfAuthenticated, initializing, user, router, initialQuery]);
 
   // Guard against double-fetch in React Strict Mode; skip for guests (no auth → 401).
   const fetchedRef = useRef(false);
@@ -96,6 +100,15 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
     },
     [dispatch, activeSessionId, user, sendStatus],
   );
+
+  // Auto-submit the query from the landing page search bar — fires once auth state is known.
+  // Skip if this page is about to redirect the user elsewhere (logged-in on public /ai).
+  useEffect(() => {
+    if (!initialQuery || initializing || autoSentRef.current) return;
+    if (redirectIfAuthenticated && user) return;
+    autoSentRef.current = true;
+    handleSend(initialQuery);
+  }, [initialQuery, initializing, user, redirectIfAuthenticated, handleSend]);
 
   const handleNewChat = useCallback(() => {
     dispatch(setActiveSession(null));

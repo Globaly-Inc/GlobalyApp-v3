@@ -47,6 +47,7 @@ const mockMessages: Record<number, Message[]> = {
         {
           institution_name: "University of Melbourne",
           institution_logo_url: "https://logo.clearbit.com/unimelb.edu.au",
+          institution_cover_url: "https://images.unsplash.com/photo-1607237138185-eedd9c632b0b?w=800&q=80",
           course_name: "Master of Business Administration",
           degree_level: "Postgraduate",
           duration: "2 years full-time",
@@ -82,6 +83,7 @@ const mockStreamCards: CourseCard[] = [
   {
     institution_name: "Monash University",
     institution_logo_url: "https://logo.clearbit.com/monash.edu",
+    institution_cover_url: "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&q=80",
     course_name: "Master of Business Administration",
     degree_level: "Postgraduate",
     duration: "18 months full-time",
@@ -97,6 +99,7 @@ const mockStreamCards: CourseCard[] = [
     // No logo — exercises the monogram fallback.
     institution_name: "RMIT University",
     institution_logo_url: null,
+    institution_cover_url: null,
     course_name: "Master of Business Administration (Executive)",
     degree_level: "Postgraduate",
     duration: "2 years part-time",

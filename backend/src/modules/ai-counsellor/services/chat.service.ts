@@ -34,6 +34,7 @@ async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedCard[]> 
       return {
         ...card,
         institution_logo_url: m.logo_url,
+        institution_cover_url: m.cover_url,
         institution_website: m.website,
         city: card.city ?? m.city ?? undefined,
       };
