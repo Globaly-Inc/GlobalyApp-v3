@@ -354,7 +354,7 @@ async function firecrawlScrape(
         onlyMainContent: opts.onlyMainContent ?? true,
         waitFor: opts.waitFor ?? 2000,
         ...(opts.mobile ? { mobile: true } : {}),
-        ...(opts.proxy ? { proxy: opts.proxy } : {}),
+        proxy: opts.proxy ?? "auto",
         ...(opts.expandCollapsed ? { actions: [
           { type: "executeJavascript", script: EXPAND_COLLAPSED_SCRIPT },
           { type: "wait", milliseconds: 1500 },
