@@ -419,6 +419,9 @@ services:
     container_name: scrapling-mcp
     restart: unless-stopped
     command:
+      - uv
+      - run
+      - scrapling
       - mcp
       - --http
       - --host
