@@ -17,7 +17,6 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { ensureBusinessContext } from "@/lib/api/http";
-import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
@@ -136,9 +135,7 @@ export function Navbar() {
                     className="cursor-pointer px-1.5 py-1.5"
                     onClick={async () => {
                       if (await ensureBusinessContext()) router.push("/business/portal");
-                      else toast.error("Could not open the Business Portal", {
-                        description: "Your business membership could not be confirmed. Please sign in again.",
-                      });
+                      else router.push("/business/onboarding");
                     }}
                   >
                     Business Portal
@@ -241,9 +238,8 @@ export function Navbar() {
                                 setMobileOpen(false);
                                 router.push("/business/portal");
                               } else {
-                                toast.error("Could not open the Business Portal", {
-                                  description: "Your business membership could not be confirmed. Please sign in again.",
-                                });
+                                setMobileOpen(false);
+                                router.push("/business/onboarding");
                               }
                             }}
                           >
