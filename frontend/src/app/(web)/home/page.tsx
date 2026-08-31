@@ -60,7 +60,7 @@ export default function HomePage() {
               World #1 AI Integrated Education Ecosystem
             </p>
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
-              Making Global Education
+              Making Education
               <br />
               <span className="text-[hsl(var(--gold))]">
                 {displayText}

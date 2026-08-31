@@ -38,13 +38,13 @@ export function AiPublicHeader() {
             ) : (
               <>
                 <Link
-                  href={`/auth/sign-in?redirect=${encodeURIComponent("/ai")}`}
+                  href={`/auth/sign-in?redirect=${encodeURIComponent("/personal/ai")}`}
                   className="inline-flex h-8 items-center rounded-md px-3 text-sm font-medium hover:bg-muted"
                 >
                   Sign in
                 </Link>
                 <Link
-                  href={`/auth/sign-up?redirect=${encodeURIComponent("/ai")}`}
+                  href={`/auth/sign-up?redirect=${encodeURIComponent("/personal/ai")}`}
                   className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
                   Sign up free
