@@ -36,6 +36,7 @@ import savedItemsModule from "./modules/saved-items/index.js";
 import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
 import waitlistModule from "./modules/waitlist/index.js";
 import guidesPublicModule from "./modules/guides-public/index.js";
+import publicPageViewsModule from "./modules/page-views/index.js";
 
 const logger = createChildLogger("server");
 
@@ -87,6 +88,7 @@ export async function buildServer() {
   // never acquire the auth hook — public by construction, not by an allow-list.
   await app.register(publicReferralsModule);
   await app.register(waitlistModule);        // coming-soon page sign-up (no auth)
+  await app.register(publicPageViewsModule); // visit counter on public detail pages (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

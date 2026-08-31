@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getVisaServiceProviderBySlug } from "../../search/api";
 import { EntityProfile } from "../../components/profile/entity-profile";
+import { PageViews } from "../../components/page-views";
 import { joinParts, type ProfileData, type ProfileRegistration } from "../../components/profile/profile-data";
 import type { VisaServiceProviderDetail } from "../../search/types";
 import { VisaServicesSection } from "./components/visa-services-section";
@@ -76,10 +77,13 @@ export default async function VisaServicePage({ params }: VisaServicePageProps) 
     <EntityProfile
       data={toProfileData(provider)}
       breadcrumb={
-        <p className="text-xs text-muted-foreground">
-          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
-          <Link href="/search?tab=visa-services" className="hover:text-primary">Visa Services</Link> / {provider.business_name}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+            <Link href="/search?tab=visa-services" className="hover:text-primary">Visa Services</Link> / {provider.business_name}
+          </p>
+          <PageViews type="visa-service" id={provider.id} className="shrink-0" />
+        </div>
       }
     >
       <VisaServicesSection services={provider.services} />

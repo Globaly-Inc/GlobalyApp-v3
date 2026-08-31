@@ -11,12 +11,12 @@ export function AgentNetworkSection() {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <Reveal direction="left">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">
-              Build Your <span className="highlight-text active">Agent Network.</span> Get
+              Build Your <span className="highlight-text active">Education Counselor Network.</span> Get
               Pre-Checked Student Leads. Process Faster.
             </h2>
             <p className="text-muted-foreground mb-8 leading-relaxed">
-              With Globaly.app, you can connect directly with verified agents, receive
-              eligibility-checked student inquiries, and manage your agent network, events, and
+              With Globaly.app, you can connect directly with verified education counselors, receive
+              eligibility-checked student inquiries, and manage your education counselor network, events, and
               recruitment performance — all from one platform.
             </p>
             <div className="space-y-5">
@@ -41,7 +41,7 @@ export function AgentNetworkSection() {
                 Start Building My Network
               </Button>
               <Button variant="outline" className="rounded-full" render={<Link href="/search?tab=education-agencies" />}>
-                Explore Agents
+                Explore Education Counselors
               </Button>
             </div>
           </Reveal>

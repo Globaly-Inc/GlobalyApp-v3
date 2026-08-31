@@ -1,6 +1,6 @@
 import type {
   BusinessDetail, CourseDetail, CourseFilterOptions, InstitutionDetail, InstitutionFilterOptions,
-  Paginated, SearchBusiness, SearchCourse, SearchScholarship,
+  BusinessCategory, Paginated, SearchBusiness, SearchCourse, SearchScholarship, VisaServiceFilterOptions,
   SearchJob, SearchService, VisaServiceProviderDetail,
 } from "./types";
 import type { PlatformTest } from "@/lib/tests-catalog";
@@ -30,6 +30,18 @@ export type SearchFilterParams = {
   basis?: string;
   licensed_only?: boolean;
   institution_type?: string;
+  /** Courses tab: awarding institution, exact value from the facet list. */
+  institution?: string;
+  /** Courses tab: duration bucket in weeks, "min-max" ("157-" = 157 and up). */
+  duration?: string;
+  /** Institutions tab: matches when one of the institution’s courses is taught this way. */
+  study_mode?: string;
+  /** Education Counselor tabs: only businesses an admin has verified. */
+  verified_only?: boolean;
+  /** Visa services: properties of the services a provider offers. */
+  service_type?: string;
+  /** Scholarships: what the award pays for. */
+  coverage_type?: string;
   /** "YYYY-MM" from the Upcoming Intake picker. */
   intake_from?: string;
 };
@@ -51,6 +63,11 @@ function buildQuery(params: SearchFilterParams) {
   if (params.currency) qs.set("currency", params.currency);
   if (params.intake_year != null) qs.set("intake_year", String(params.intake_year));
   if (params.sort) qs.set("sort", params.sort);
+  if (params.institution) qs.set("institution", params.institution);
+  if (params.duration) qs.set("duration", params.duration);
+  if (params.study_mode) qs.set("study_mode", params.study_mode);
+  if (params.verified_only) qs.set("verified_only", "true");
+  if (params.service_type) qs.set("service_type", params.service_type);
   if (params.licensed_only) qs.set("licensed_only", "true");
   return qs;
 }
@@ -67,7 +84,9 @@ export const getCourses = (params: SearchFilterParams): Promise<Paginated<Search
 export const getInstitutions = (params: SearchFilterParams): Promise<Paginated<SearchBusiness>> =>
   USE_MOCK_DATA ? Promise.resolve(mockGetInstitutions(params)) : fetchPaginated<SearchBusiness>("search/institutions", params);
 
-const NO_INSTITUTION_FILTERS: InstitutionFilterOptions = { institution_types: [], intake_months: [] };
+const NO_INSTITUTION_FILTERS: InstitutionFilterOptions = {
+  institution_types: [], intake_months: [], subject_areas: [], degree_levels: [], study_modes: [],
+};
 
 /**
  * Facets for the institutions filter panel. These only populate optional filter controls, so a
@@ -77,6 +96,31 @@ export async function getInstitutionFilters(): Promise<InstitutionFilterOptions>
   if (USE_MOCK_DATA) return NO_INSTITUTION_FILTERS;
   const res = await fetch(`${API_BASE}/search/institutions/filters`, { next: { revalidate: 300 } });
   if (!res.ok) return NO_INSTITUTION_FILTERS;
+  return res.json();
+}
+
+const NO_VISA_FILTERS: VisaServiceFilterOptions = { service_types: [] };
+
+/**
+ * The category catalog behind the hero switcher. Public, so an anonymous visitor sees the same
+ * list a signed-in one does; an empty result leaves the switcher on its hardcoded fallback.
+ */
+export async function getBusinessCategories(): Promise<BusinessCategory[]> {
+  if (USE_MOCK_DATA) return [];
+  try {
+    const res = await fetch(`${API_BASE}/search/business-categories`, { next: { revalidate: 300 } });
+    if (!res.ok) return [];
+    return (await res.json()).categories ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Facets for the visa-services panel. Optional controls, so a failure just empties them. */
+export async function getVisaServiceFilters(): Promise<VisaServiceFilterOptions> {
+  if (USE_MOCK_DATA) return NO_VISA_FILTERS;
+  const res = await fetch(`${API_BASE}/search/visa-services/filters`, { next: { revalidate: 300 } });
+  if (!res.ok) return NO_VISA_FILTERS;
   return res.json();
 }
 
@@ -108,6 +152,7 @@ export const getScholarshipsSearch = (params: SearchFilterParams): Promise<Pagin
   if (params.basis) qs.set("basis", params.basis);
   if (params.degree_level) qs.set("degree_level", params.degree_level);
   if (params.fee_min != null) qs.set("coverage_min", String(params.fee_min));
+  if (params.coverage_type) qs.set("coverage_type", params.coverage_type);
   return fetch(`${API_BASE}/scholarships?${qs}`, { next: { revalidate: 30 } }).then((res) => {
     if (!res.ok) throw new Error("Failed to load scholarships");
     return res.json();

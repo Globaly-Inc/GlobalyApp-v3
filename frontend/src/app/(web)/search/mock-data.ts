@@ -353,6 +353,7 @@ const MOCK_COURSE_FILTER_OPTIONS: CourseFilterOptions = {
   years: [2026, 2027],
   currencies: ["AUD", "USD", "CAD", "INR", "NPR"],
   degree_levels: ["Bachelor", "Certificate", "Doctorate", "Graduate Certificate", "Master", "Other", "PhD"],
+  institutions: [...new Set(MOCK_COURSES.map((c) => c.awarding_institution).filter(Boolean))] as string[],
 };
 
 function matchesCommon(

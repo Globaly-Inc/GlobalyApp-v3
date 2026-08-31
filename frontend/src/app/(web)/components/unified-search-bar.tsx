@@ -1,12 +1,42 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Sparkles, ArrowUp, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CATEGORIES, AI_PROMPTS_BY_SLUG, SEARCH_SUGGESTIONS_BY_SLUG, SEARCH_DESTINATIONS } from "../const/index";
+import {
+  CATEGORIES, CATEGORY_SLUG_TO_TAB, AI_PROMPTS_BY_SLUG, SEARCH_SUGGESTIONS_BY_SLUG, SEARCH_DESTINATIONS,
+} from "../const/index";
+import { getBusinessCategories } from "../search/api";
+import { SEARCH_TABS } from "../search/components/search-tabs";
 
 type Mode = "ai" | "search";
+
+type Category = { slug: string; name: string };
+
+/** Tabs currently in the rail. A category pointing anywhere else has nothing to show. */
+const LIVE_TABS = new Set(SEARCH_TABS.map((t) => t.key as string));
+
+/**
+ * Rebuilds the switcher from the category catalog, keeping Courses first and Other Services last —
+ * neither is a business, so neither comes from the API.
+ *
+ * The label comes from the search rail rather than the row's own name, so the switcher and the tab
+ * it navigates to always read the same.
+ */
+function toOptions(rows: { slug: string; name: string }[]): Category[] {
+  const fromApi = rows
+    .map((row) => ({ row, tab: CATEGORY_SLUG_TO_TAB[row.slug] }))
+    .filter((c): c is { row: typeof c.row; tab: string } => Boolean(c.tab) && LIVE_TABS.has(c.tab!))
+    .map(({ row, tab }) => ({
+      slug: tab,
+      name: SEARCH_TABS.find((t) => t.key === tab)?.label ?? row.name,
+    }));
+  if (fromApi.length === 0) return CATEGORIES;
+
+  const fixed = (slug: string) => CATEGORIES.find((c) => c.slug === slug)!;
+  return [fixed("courses"), ...fromApi, fixed("other-services")];
+}
 
 const MODES: { id: Mode; label: string; Icon: typeof Search }[] = [
   { id: "ai", label: "Ask AI", Icon: Sparkles },
@@ -20,6 +50,15 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
   // for-institutions hero has to land on institutions, not courses.
   const [activeSlug, setActiveSlug] = useState<string>(defaultTabSlug ?? CATEGORIES[0]!.slug);
   const [query, setQuery] = useState("");
+  const [categories, setCategories] = useState<Category[]>(CATEGORIES);
+
+  // Strict Mode double-invokes effects, and this list changes about never — fetch it once.
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    getBusinessCategories().then((rows) => setCategories(toOptions(rows)));
+  }, []);
 
   const suggestions = useMemo(
     () =>
@@ -32,9 +71,9 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
   const placeholder = useMemo(
     () =>
       mode === "ai"
-        ? "Ask anything about studying abroad…"
-        : `Search ${CATEGORIES.find((c) => c.slug === activeSlug)?.name.toLowerCase()}…`,
-    [mode, activeSlug],
+        ? "Ask anything about studying at home or overseas…"
+        : `Search ${categories.find((c) => c.slug === activeSlug)?.name.toLowerCase() ?? "courses"}…`,
+    [mode, activeSlug, categories],
   );
 
   // Takes the value explicitly so a suggestion chip can search straight away rather than waiting a render for state.
@@ -99,7 +138,7 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
                 aria-label="Search category"
                 className="appearance-none h-9 pl-3 pr-6 rounded-full bg-transparent text-sm font-medium text-slate-600 hover:text-slate-900 outline-none cursor-pointer"
               >
-                {CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <option key={cat.slug} value={cat.slug}>
                     {cat.name}
                   </option>

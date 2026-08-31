@@ -6,8 +6,8 @@ import { ProfileLocationsCard } from "./profile-locations-card";
 import type { ProfileData } from "./profile-data";
 
 /**
- * The public profile shell shared by institutions, education agents, visa services and migration
- * agents — V1's BusinessPublicPreview layout: hero card, then a two-column body with About,
+ * The public profile shell shared by institutions, education counselors, visa services and migration
+ * education counselors — V1's BusinessPublicPreview layout: hero card, then a two-column body with About,
  * caller-supplied sections and Locations on the left, contact/registration and caller-supplied
  * cards on the right.
  */

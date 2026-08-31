@@ -12,7 +12,7 @@ export function CountryPlatformStats({
       ? { icon: Building2, label: "Institutions", value: country.universities_count_label ?? String(institutionsCount) }
       : null,
     coursesCount > 0 ? { icon: GraduationCap, label: "Services", value: String(coursesCount) } : null,
-    agentsCount > 0 ? { icon: UserCheck, label: "Agents", value: String(agentsCount) } : null,
+    agentsCount > 0 ? { icon: UserCheck, label: "Education Counselors", value: String(agentsCount) } : null,
     country.student_count_label ? { icon: Users, label: "Students", value: country.student_count_label } : null,
   ].filter((s): s is { icon: typeof Building2; label: string; value: string } => !!s);
 

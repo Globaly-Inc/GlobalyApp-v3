@@ -8,12 +8,12 @@ import { CompareTray } from "./search/components/compare-tray";
 
 const TITLE = "Globaly — World #1 AI Integrated Education Ecosystem";
 const OG_DESCRIPTION =
-  "Connecting Students with Domestic and International Education Providers, Education Agents and Service Providers";
+  "Connecting Students with Domestic and International Education Providers, Education Counselors and Service Providers";
 
 export const metadata: Metadata = {
   title: TITLE,
   description:
-    "Globaly is the World #1 AI Integrated Education Ecosystem — connecting students with counsellors, education agents, institutions and service providers worldwide. Search, enroll and settle.",
+    "Globaly is the World #1 AI Integrated Education Ecosystem — connecting students with counsellors, education counselors, institutions and service providers worldwide. Search, enroll and settle.",
   authors: [{ name: "Globaly.ai" }],
   alternates: { canonical: "https://www.globalyapp.com/" },
   verification: { google: "BZ5srMbEp1MHzey_WGmXmNAbMx7Bh6Bf-WTM6UsKb94" },

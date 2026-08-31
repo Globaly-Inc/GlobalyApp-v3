@@ -7,7 +7,7 @@ import { Reveal } from "../../components/reveal";
 import { AutoScrollRow } from "../../components/auto-scroll-row";
 import type { SearchBusiness } from "../../search/types";
 
-// V2 links each card to /agent/:slug; v3 has no agent detail route yet, so cards point at the
+// V2 links each card to /agent/:slug; v3 has no education counselor detail route yet, so cards point at the
 // education-agencies tab of /search instead (the real tab key — not "agents", see search/types.ts).
 export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBusiness[]; loading: boolean }>) {
   return (
@@ -80,7 +80,7 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
 
         <Reveal className="text-center mt-10">
           <Button variant="outline" className="rounded-full px-8" render={<Link href="/search?tab=education-agencies" />}>
-            Explore all Agents
+            Explore all Education Counselors
           </Button>
         </Reveal>
       </div>

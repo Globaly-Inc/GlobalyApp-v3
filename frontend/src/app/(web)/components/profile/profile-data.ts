@@ -1,4 +1,4 @@
-// The normalized shape every public detail page (institution, education agent, visa service,
+// The normalized shape every public detail page (institution, education counselor, visa service,
 // migration agent) feeds into <EntityProfile>. V1 rendered all four through a single
 // BusinessPublicPreview component; keeping one shape here preserves that so the four pages
 // can't drift apart again.

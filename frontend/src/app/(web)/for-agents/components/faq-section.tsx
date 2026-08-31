@@ -6,7 +6,7 @@ const FAQS = [
     a: "Globaly is a unified platform that connects education consultancies with students and institutions worldwide, helping you streamline student recruitment, access global opportunities, and grow your business.",
   },
   {
-    q: "Is Globaly free to use for agents?",
+    q: "Is Globaly free to use for education counselors?",
     a: "Yes, Globaly is free to join and use. We operate as a zero-commission platform, meaning you keep 100% of what you earn. While core features are free, certain advanced tools—like accessing premium enquiries—require Globaly Coins.",
   },
   {
@@ -15,7 +15,7 @@ const FAQS = [
   },
   {
     q: "How do I connect with institutions and manage partnerships?",
-    a: "You can explore available institutions on Globaly, request partnerships, and represent their services from your agent portal with ease and transparency.",
+    a: "You can explore available institutions on Globaly, request partnerships, and represent their services from your education counselor portal with ease and transparency.",
   },
   {
     q: "What is Globaly Coin and how does the credit system work?",

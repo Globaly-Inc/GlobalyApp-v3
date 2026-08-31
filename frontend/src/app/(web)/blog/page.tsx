@@ -11,7 +11,7 @@ import { Reveal } from "../components/reveal";
 
 export const metadata: Metadata = {
   title: "Blog — Globaly",
-  description: "Insights on studying, working, and living internationally — for every kind of journey.",
+  description: "Insights on studying at your home country or overseas, with expert guides, tips, and real stories to help students, agents, and institutions navigate a new country with confidence.",
 };
 const COUNTRY_FLAGS: Record<string, string> = {
   Australia: "🇦🇺",
@@ -204,8 +204,8 @@ export default async function BlogPage({
           </Reveal>
           <Reveal delay={0.2}>
             <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-              Expert guides, tips, and real stories to help students, agents, and institutions navigate a new
-              country with confidence.
+             Expert guides, tips, and stories to help students, education counselors, and institutions navigate the world of
+            international education.
             </p>
           </Reveal>
         </div>

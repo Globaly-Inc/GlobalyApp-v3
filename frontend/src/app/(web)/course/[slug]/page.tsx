@@ -14,6 +14,7 @@ import { CourseIntakesCard } from "./components/course-intakes-card";
 import { CourseWeatherCard } from "./components/course-weather-card";
 import { CourseAwardedByCard, CourseConnectCard } from "./components/course-sidebar";
 import { CourseEntryRequirementsCard } from "./components/course-entry-requirements-card";
+import { PageViews } from "../../components/page-views";
 
 type CoursePageProps = Readonly<{ params: Promise<{ slug: string }> }>;
 
@@ -56,10 +57,13 @@ export default async function CoursePage({ params }: CoursePageProps) {
 
   return (
     <div className="container mx-auto max-w-6xl space-y-4 px-4 py-6 md:space-y-6">
-      <p className="text-xs text-muted-foreground">
-        <Link href="/" className="hover:text-primary">Home</Link> /{" "}
-        <Link href="/search?tab=courses" className="hover:text-primary">Courses</Link> / {course.name}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+          <Link href="/search?tab=courses" className="hover:text-primary">Courses</Link> / {course.name}
+        </p>
+        <PageViews type="course" id={course.id} className="shrink-0" />
+      </div>
 
       <CourseHero course={course} />
       <CourseStats course={course} />

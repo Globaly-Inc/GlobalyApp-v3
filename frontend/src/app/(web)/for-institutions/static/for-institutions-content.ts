@@ -3,10 +3,7 @@ import {
   Globe,
   Handshake,
   GraduationCap,
-  CalendarCheck,
-  Code2,
-  Megaphone,
-  Sparkles,
+  // CalendarCheck, Code2, Megaphone, Sparkles come back with the parked WHY_JOIN cards below.
   UserPlus,
   School,
   BookMarked,
@@ -17,19 +14,19 @@ import { MEDIA_URL } from "../../const/index";
 export const INSTITUTION_TYPING_PHRASES = [
   "Reach & Impact",
   "Student Pipeline",
-  "Agent Network",
+  "Education Counselor Network",
   "Course Listings",
   "Brand Presence",
 ];
 
 export const FAQS = [
   {
-    q: "How do I connect with Agent?",
-    a: "You can connect with trusted education consultancies directly on Globaly from our 'Partnership' feature. Once your institution is verified, you'll be able to search and partner with agents, allowing them to represent you to your mentioned regions.",
+    q: "How do I connect with Education Counselor?",
+    a: "You can connect with trusted education consultancies directly on Globaly from our 'Partnership' feature. Once your institution is verified, you'll be able to search and partner with education counselors, allowing them to represent you to your mentioned regions.",
   },
   {
-    q: "How does the partnership with education agents work?",
-    a: "Institutions can build and manage partnerships with agents through Globaly's secure platform. Once connected, agents can represent your courses, handle student enquiries, and support application processes — all within your partner network.",
+    q: "How does the partnership with education counselors work?",
+    a: "Institutions can build and manage partnerships with education counselors through Globaly's secure platform. Once connected, education counselors can represent your courses, handle student enquiries, and support application processes — all within your partner network.",
   },
   {
     q: "Can we manage and update our courses easily?",
@@ -66,22 +63,23 @@ export const WHY_JOIN = [
   {
     Icon: Globe,
     title: "Feature on a Global, Open Marketplace",
-    desc: "Be discovered by students, agents, and migration counselors actively searching for programs like yours — transparent, open, and bias-free.",
+    desc: "Be discovered by students, education counselors, and migration counselors actively searching for programs like yours — transparent, open, and bias-free.",
   },
   {
     Icon: Handshake,
-    title: "Connect and Collaborate with verified Education Agents",
+    title: "Connect and Collaborate with verified Education Counselors",
     desc: "Build your own network of trusted education and migration agents worldwide — without relying on aggregators or super-agents.",
   },
   {
     Icon: GraduationCap,
     title: "Access Highly Qualified, Pre-Checked Student Leads",
-    desc: "Receive student inquiries through verified agents with eligibility-checked applications, reducing application errors and improving conversion rates.",
+    desc: "Receive student inquiries through verified education counselors with eligibility-checked applications, reducing application errors and improving conversion rates.",
   },
+  /* Parked until the LMS ships:
   {
     Icon: CalendarCheck,
-    title: "Train & Certify Your Agent Network",
-    desc: "Create training programs with chapters, video content, and assessments. Issue Bronze, Silver, and Gold certifications to your agent network. Track performance with Trust Scores and leaderboards.",
+    title: "Train & Certify Your Education Counselor Network",
+    desc: "Create training programs with chapters, video content, and assessments. Issue Bronze, Silver, and Gold certifications to your education counselor network. Track performance with Trust Scores and leaderboards.",
   },
   {
     Icon: Code2,
@@ -98,6 +96,7 @@ export const WHY_JOIN = [
     title: "AI-Powered Training Content",
     desc: "Generate chapter outlines, assessment questions, and summaries with AI. Build comprehensive training programs in minutes, not weeks.",
   },
+  */
 ];
 
 export const HOW_IT_WORKS = [
@@ -118,7 +117,7 @@ export const HOW_IT_WORKS = [
   },
   {
     Icon: Handshake,
-    title: "Connect with trusted Agents",
+    title: "Connect with trusted Education Counselors",
     desc: "Collaborate with verified education consultants to reach students in key markets.",
   },
   {
@@ -169,31 +168,31 @@ export const OWN_DATA_ITEMS = [
   },
   {
     title: "Global Open Marketplace Visibility",
-    desc: "Feature your institution and programs on a transparent platform where students, agents, and migration counselors actively search for programs like yours.",
+    desc: "Feature your institution and programs on a transparent platform where students, education counselors, and migration counselors actively search for programs like yours.",
   },
   {
-    title: "Real-Time Data Sync for Agents & Students",
-    desc: "Ensure your verified agents and prospective students always see your latest course offerings, eligibility criteria, and intake schedules.",
+    title: "Real-Time Data Sync for Education Counselors & Students",
+    desc: "Ensure your verified education counselors and prospective students always see your latest course offerings, eligibility criteria, and intake schedules.",
   },
   {
     title: "Embed Powerful Course Search",
-    desc: "Integrate Globaly.app's powerful course search tool and live API into your own website or CRM, keeping your student and agent audiences up-to-date everywhere you operate.",
+    desc: "Integrate Globaly.app's powerful course search tool and live API into your own website or CRM, keeping your student and education counselor audiences up-to-date everywhere you operate.",
     comingSoon: true,
   },
 ];
 
 export const AGENT_NETWORK_ITEMS = [
   {
-    title: "Connect with Verified Education Agents",
-    desc: "Build a trusted, independent network of agents worldwide — no super-agent restrictions, no aggregator middlemen.",
+    title: "Connect with Verified Education Counselors",
+    desc: "Build a trusted, independent network of education counselors worldwide — no super-education counselor restrictions, no aggregator middlemen.",
   },
   {
     title: "Smart Recruitment Analytics",
-    desc: "Track recruitment volume, agent performance, and student enrollment trends with a clear, live analytics dashboard.",
+    desc: "Track recruitment volume, education counselor performance, and student enrollment trends with a clear, live analytics dashboard.",
   },
   {
     title: "Direct Partnership Management",
-    desc: "Grant agent branches access to represent you in specific regions, manage certifications, and track partner performance effortlessly.",
+    desc: "Grant education counselor branches access to represent you in specific regions, manage certifications, and track partner performance effortlessly.",
   },
   {
     title: "Eligibility-Checked Leads",

@@ -6,7 +6,7 @@ const BENEFITS = [
   {
     Icon: UserCheck,
     title: "List Your Profile & Build Your Reputation",
-    desc: "Create your verified agent profile, showcase your services, accreditations, and partnerships. Get discovered by students and providers actively searching for local representatives like you.",
+    desc: "Create your verified education counselor profile, showcase your services, accreditations, and partnerships. Get discovered by students and providers actively searching for local representatives like you.",
   },
   {
     Icon: Handshake,
@@ -37,7 +37,7 @@ export function WhyAgentsJoinSection() {
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold mb-3">
-            Why Education Agents Join <span className="highlight-text active">Globaly.app?</span>
+            Why Education Counselors Join <span className="highlight-text active">Globaly.app?</span>
           </h2>
           <p className="text-muted-foreground">
             More Leads. Direct Connections. Smarter Tools. Open Opportunities.{" "}

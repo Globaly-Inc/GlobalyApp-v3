@@ -10,6 +10,7 @@ import type { BusinessDetail } from "../../search/types";
 import { BusinessServicesSection } from "./components/business-services-section";
 import { BusinessTeamSection } from "./components/business-team-section";
 import { BusinessRepresentationsSection } from "./components/business-representations-section";
+import { PageViews } from "../../components/page-views";
 
 type BusinessPageProps = Readonly<{ params: Promise<{ subdomain: string }> }>;
 
@@ -81,10 +82,13 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
     <EntityProfile
       data={toProfileData(business)}
       breadcrumb={
-        <p className="text-xs text-muted-foreground">
-          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
-          <Link href="/search" className="hover:text-primary">Search</Link> / {business.business_name}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+            <Link href="/search" className="hover:text-primary">Search</Link> / {business.business_name}
+          </p>
+          <PageViews type="business" id={business.id} className="shrink-0" />
+        </div>
       }
       sidebar={
         <>

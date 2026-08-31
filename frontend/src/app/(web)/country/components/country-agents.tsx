@@ -14,7 +14,7 @@ export function CountryAgents({
   return (
     <Reveal>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Top Agents for {countryName}</h2>
+        <h2 className="text-2xl font-bold">Top Education Counselors for {countryName}</h2>
         <Button
           variant="outline"
           className="h-10"
