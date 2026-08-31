@@ -69,6 +69,18 @@ export function CourseListPanel({
   const allSelected = courses?.length > 0 && selectedIds?.length === courses?.length;
   const overallTotal = statusCounts.reduce((sum, s) => sum + s.count, 0);
 
+  const statusItems = [
+    <SelectItem key="all" value="all">All statuses ({overallTotal})</SelectItem>,
+    ...[...statusCounts].sort((a, b) => a.status.localeCompare(b.status)).map(({ status, count }) => (
+      <SelectItem key={status} value={status}>
+        <span className="flex items-center gap-2">
+          <span className={cn("h-1.5 w-1.5 rounded-full", VERIFICATION_DOT[status] ?? "bg-muted-foreground/30")} />
+          <span className="capitalize">{status}</span> ({count})
+        </span>
+      </SelectItem>
+    )),
+  ];
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -81,33 +93,33 @@ export function CourseListPanel({
             className="h-9 pl-7 text-xs"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange(v ?? "all")}>
-          <SelectTrigger className="h-9 w-[160px] text-xs cursor-pointer">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses ({overallTotal})</SelectItem>
-            {[...statusCounts].sort((a, b) => a.status.localeCompare(b.status)).map(({ status, count }) => (
-              <SelectItem key={status} value={status}>
-                <span className="flex items-center gap-2">
-                  <span className={cn("h-1.5 w-1.5 rounded-full", VERIFICATION_DOT[status] ?? "bg-muted-foreground/30")} />
-                  <span className="capitalize">{status}</span> ({count})
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Combobox
-          options={SORT_OPTIONS}
-          value={sort}
-          onChange={(v) => onSortChange(v as SortOrder)}
-          className="h-9 w-[150px] text-xs cursor-pointer"
-        />
-        <Button className="h-9 gap-1.5 cursor-pointer" disabled={adding} onClick={onAdd}>
-          <Plus className="h-4 w-4" />
-          Add Course
-        </Button>
+        {compact ? (
+          <Button className="h-9 w-9 shrink-0 p-0 cursor-pointer" disabled={adding} onClick={onAdd} title="Add Course">
+            <Plus className="h-4 w-4" />
+          </Button>
+        ) : (
+          <>
+            <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange(v ?? "all")}>
+              <SelectTrigger className="h-9 w-[160px] text-xs cursor-pointer"><SelectValue /></SelectTrigger>
+              <SelectContent>{statusItems}</SelectContent>
+            </Select>
+            <Combobox options={SORT_OPTIONS} value={sort} onChange={(v) => onSortChange(v as SortOrder)} className="h-9 w-[150px] text-xs cursor-pointer" />
+            <Button className="h-9 gap-1.5 cursor-pointer" disabled={adding} onClick={onAdd}>
+              <Plus className="h-4 w-4" />
+              Add Course
+            </Button>
+          </>
+        )}
       </div>
+      {compact && (
+        <div className="flex items-center gap-2">
+          <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange(v ?? "all")}>
+            <SelectTrigger className="h-9 flex-1 text-xs cursor-pointer"><SelectValue /></SelectTrigger>
+            <SelectContent>{statusItems}</SelectContent>
+          </Select>
+          <Combobox options={SORT_OPTIONS} value={sort} onChange={(v) => onSortChange(v as SortOrder)} className="h-9 flex-1 text-xs cursor-pointer" />
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg border-b bg-primary/5 px-3 py-2">
         <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">

@@ -1,11 +1,13 @@
 import { z } from "zod";
 
 // The only keys the API accepts — a fixed catalogue, not a free-form KV store.
-export const INTEGRATION_KEYS = ["higgsfield_api_key", "gsc_service_account_json", "gsc_site_url"] as const;
+export const INTEGRATION_KEYS = ["higgsfield_api_key", "gsc_service_account_json", "gsc_site_url", "globalyos_crm_api_key", "globalyos_crm_url"] as const;
 export type IntegrationKey = (typeof INTEGRATION_KEYS)[number];
 
 export const UpdateIntegrationsSchema = z.object({
   higgsfield_api_key: z.string().trim().max(4096).optional(),
+  globalyos_crm_api_key: z.string().trim().max(4096).optional(),
+  globalyos_crm_url: z.string().trim().url().max(512).optional(),
   gsc_service_account_json: z
     .string()
     .trim()
