@@ -3,4 +3,4 @@ import { creditsLedgerMockApi } from "./mock-data";
 import { creditsLedgerRealApi } from "./real-api";
 
 export const creditsLedgerApi = createApi({ mock: creditsLedgerMockApi, real: creditsLedgerRealApi });
-export type { LedgerEntry, LedgerPage, UserSearchResult, AdjustInput, CreditReason } from "./types";
+export type { LedgerEntry, LedgerPage, UserSearchResult, AdjustInput, CreditReason, DailyLogEntry, DailyLogPage, ChartMetric, ChartSeries, ChartResponse } from "./types";

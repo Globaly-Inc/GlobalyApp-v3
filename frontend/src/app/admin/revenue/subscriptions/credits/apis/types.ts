@@ -38,3 +38,42 @@ export interface AdjustInput {
   balance_type: "free" | "subscription" | "purchased";
   description: string;
 }
+
+export type ChartMetric = "total" | "by_reason" | "by_balance_type" | "by_user" | "by_region";
+
+export interface DailyLogEntry {
+  platform_user_id: number;
+  owner_name: string;
+  owner_email: string;
+  country_name: string | null;
+  total_granted: number;
+  total_used: number;
+  net_change: number;
+  transaction_count: number;
+  closing_balance: number;
+}
+
+export interface DailyLogPage {
+  data: DailyLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  date: string;
+}
+
+export interface ChartDataPoint {
+  date: string;
+  value: number;
+}
+
+export interface ChartSeries {
+  key: string;
+  label: string;
+  data: ChartDataPoint[];
+}
+
+export interface ChartResponse {
+  metric: ChartMetric;
+  days: number;
+  series: ChartSeries[];
+}
