@@ -65,6 +65,7 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
         address: input.address,
         postcode: input.postcode,
         registration_licenses: input.registration_licenses,
+        claim_status: "claimed",
       });
     } catch (err: any) {
       if (err.code !== "23505" || attempt === 4) throw err;
