@@ -9,7 +9,10 @@ type SignupWallProps = {
 };
 
 export function SignupWall({ fingerprintHash }: SignupWallProps) {
-  const params = fingerprintHash ? `?fp=${fingerprintHash}` : "";
+  const redirect = fingerprintHash
+    ? `/personal/ai?fp=${encodeURIComponent(fingerprintHash)}`
+    : "/personal/ai";
+  const redirectParam = `?redirect=${encodeURIComponent(redirect)}`;
 
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -19,11 +22,11 @@ export function SignupWall({ fingerprintHash }: SignupWallProps) {
           Sign up to get 10 free credits and save your conversation history.
         </p>
         <div className="mt-5 flex flex-col gap-2">
-          <Button render={<Link href={`/auth/sign-up${params}`} />}>
+          <Button render={<Link href={`/auth/sign-up${redirectParam}`} />}>
             <UserPlus className="h-4 w-4" />
             Sign Up
           </Button>
-          <Button variant="outline" render={<Link href={`/auth/sign-in${params}`} />}>
+          <Button variant="outline" render={<Link href={`/auth/sign-in${redirectParam}`} />}>
             <LogIn className="h-4 w-4" />
             Log In
           </Button>

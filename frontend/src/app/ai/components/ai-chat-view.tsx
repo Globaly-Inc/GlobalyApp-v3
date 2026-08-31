@@ -59,7 +59,10 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
     if (fp) {
       dispatch(migrateGuestSession(fp)).then((action) => {
         const sessionId = (action.payload as number | null);
-        if (sessionId) dispatch(setActiveSession(sessionId));
+        if (sessionId) {
+          dispatch(setActiveSession(sessionId));
+          dispatch(fetchSessions()); // refresh sidebar to include the migrated session
+        }
       });
     }
   }, [dispatch, user, initializing, fp]);
