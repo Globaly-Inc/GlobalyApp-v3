@@ -188,7 +188,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   }
 
   const isInstitution = institutionOrgIds.has(activeOrgId ?? "");
-  const initial = profile?.business_name?.[0]?.toUpperCase() ?? "B";
+  const initial = (user?.first_name?.[0] ?? user?.email?.[0])?.toUpperCase() ?? "U";
   const activeBusinessId = businesses.find((b) => b.org_id === activeOrgId)?.id ?? null;
   const navGroups = withBusinessId(isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS, activeBusinessId);
 
@@ -206,7 +206,11 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
           <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
           <div className="flex min-w-0 items-center pl-3 md:pl-4">
-            <BusinessSwitcher businesses={businesses} activeOrgId={activeOrgId} onSwitch={handleSwitchBusiness} />
+            <BusinessSwitcher
+              businesses={businesses}
+              activeOrgId={activeOrgId}
+              onSwitch={handleSwitchBusiness}
+            />
           </div>
 
           <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-2">
@@ -255,7 +259,9 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
                   <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{profile?.business_name || "Business"}</p>
+                  <p className="text-sm font-medium truncate">
+                    {[user?.first_name, user?.last_name].filter(Boolean).join(" ") || "User"}
+                  </p>
                   <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
                 </div>
               </DropdownMenuItem>
