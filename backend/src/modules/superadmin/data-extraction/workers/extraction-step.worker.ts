@@ -33,6 +33,9 @@ import {
   normaliseCampusName,
   upsertStudyUnit,
   normaliseCourseCategory,
+  normaliseScoreType,
+  deriveScoreFromDescription,
+  coerceMoney,
   writeVisaService,
   updateVisaServiceById,
   normaliseVisaServiceName,
@@ -672,10 +675,15 @@ async function handleDiscoveryStep(jobId: string) {
       return;
     }
 
-    // Real courses found — queue each for extraction
+    // Real courses found — queue each for extraction. Re-running this step re-scrapes
+    // every course_list_url (including ones a prior run already processed) so a newly
+    // added guided URL gets picked up — skip courses already queued for this job instead
+    // of re-queuing/re-extracting duplicates on every re-run.
     if (result.courses?.length) {
       for (const course of result.courses) {
         const courseUrl = course.url || url;
+        const dup = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId, url: courseUrl }).first("id");
+        if (dup) continue;
         const queueItemId = await insertQueueItem(jobId, courseUrl);
         await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url: courseUrl });
         totalCoursePages++;
@@ -706,7 +714,14 @@ async function handleDiscoveryStep(jobId: string) {
   });
 }
 
+// The Context tab's intakes_urls/eligibility_urls/units_urls/accreditations_urls guided
+// categories all dispatch to this one step.
+const COURSES_STEP_GUIDED_CATEGORIES = ["intakes_urls", "eligibility_urls", "units_urls", "accreditations_urls"] as const;
+
 async function handleCoursesStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+
   // Re-dispatch all pending/failed queue items to PAGES queue
   const items = await masterKnex(`${S}.extraction_queue`)
     .where({ job_id: jobId })
@@ -724,10 +739,37 @@ async function handleCoursesStep(jobId: string) {
     });
   }
 
+  // Real bug: this step never looked at guided_urls at all, so adding a new URL under
+  // Intakes/Eligibility/Study Units/Accreditations in the Context tab and hitting
+  // "Re-run" did nothing — no queue item was ever created for it. Queue any guided URL
+  // from these four categories not already in this job's queue; the normal per-page
+  // pipeline (extraction-page.worker.ts) already extracts all of these entity types from
+  // any course page, so no separate extraction logic is needed here.
+  const guided = parseGuidedUrls(job);
+  const guidedUrls = [...new Set(COURSES_STEP_GUIDED_CATEGORIES.flatMap((k) => (guided[k] as string[]) || []))];
+  const existingUrls = guidedUrls.length
+    ? new Set((await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).whereIn("url", guidedUrls).select("url"))
+        .map((r: { url: string }) => r.url))
+    : new Set<string>();
+
+  let queuedNew = 0;
+  for (const url of guidedUrls) {
+    if (existingUrls.has(url)) continue;
+    const queueItemId = await insertQueueItem(jobId, url);
+    await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
+    queuedNew++;
+  }
+  if (queuedNew > 0) {
+    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+      total_pages_found: masterKnex.raw("COALESCE(total_pages_found, 0) + ?", [queuedNew]),
+      updated_at: masterKnex.fn.now(),
+    });
+  }
+
   await writeJobEvent(jobId, "step_complete", {
     phase: "courses",
-    message: `${items.length} pages re-dispatched to extraction queue`,
-    data: { count: items.length },
+    message: `${items.length} pages re-dispatched, ${queuedNew} new guided URLs queued for extraction`,
+    data: { count: items.length, new_guided_urls: queuedNew },
   });
 }
 
@@ -747,8 +789,19 @@ async function handleEnrichmentStep(jobId: string) {
   const candidatePaths = ["/fees", "/tuition", "/tuition-fees", "/course-fees", "/costs", "/pricing"];
   let feePageText: string | null = null;
 
+  // Real bug: this step never looked at guided_urls.fees_urls at all — adding a Fees
+  // guided URL in the Context tab and hitting "Re-run" was silently ignored in favor of
+  // site-intelligence guessing and a hardcoded path list. An admin-provided URL is a
+  // stronger signal than either, so it wins outright when present.
+  const guided = parseGuidedUrls(job);
+  const feesUrls: string[] = (guided.fees_urls as string[]) || [];
+  if (feesUrls.length > 0) {
+    const pages = (await Promise.all(feesUrls.map((u) => scrapeUrl(u)))).filter((md): md is string => !!md);
+    if (pages.length > 0) feePageText = pages.join("\n\n");
+  }
+
   // Check site intelligence for high-value pages
-  if (siteIntel?.navigation_patterns) {
+  if (!feePageText && siteIntel?.navigation_patterns) {
     const nav = typeof siteIntel.navigation_patterns === "string"
       ? JSON.parse(siteIntel.navigation_patterns)
       : siteIntel.navigation_patterns;
@@ -1037,13 +1090,25 @@ async function handleCourseDataStep(
       await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
       const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
       for (const req of reqs) {
+        const description = (req.description as string | null) ?? null;
+        let scoreType = normaliseScoreType(req.score_type);
+        let scoreValue = coerceMoney(req.min_score);
+        if (!scoreType && scoreValue == null && !req.min_score_percent) {
+          const derived = deriveScoreFromDescription(description);
+          if (derived) { scoreType = derived.score_type; scoreValue = derived.value; }
+        }
+        const isPercentage = scoreType === "percentage";
+
         const [reqRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
           .insert({
             job_id: jobId,
             name: req.name ?? null,
             applicable_to: req.applicable_to ?? "both",
-            description: req.description ?? null,
-            min_score_percent: req.min_score_percent ?? null,
+            description,
+            min_score_percent: isPercentage ? scoreValue : coerceMoney(req.min_score_percent),
+            min_degree_level: req.min_degree_level ?? null,
+            score_type: scoreType,
+            min_score: isPercentage ? null : scoreValue,
           })
           .returning("id");
         await masterKnex(`${S}.extraction_course_eligibility_assignments`)

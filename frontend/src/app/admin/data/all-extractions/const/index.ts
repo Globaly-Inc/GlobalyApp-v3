@@ -165,10 +165,13 @@ export const ENGLISH_SUBSCORES = [
   { key: "speaking_score", label: "Speaking" },
 ] as const;
 
+// Values must match the DB CHECK constraint on extraction_eligibility_requirements.score_type
+// (superadmin/20260805_004_extraction_staged_entities.ts) — anything else fails on save.
 export const SCORE_TYPE_OPTIONS = [
   { value: "percentage", label: "Percentage (%)" },
-  { value: "gpa", label: "GPA" },
-  { value: "grade", label: "Grade" },
+  { value: "gpa_4", label: "GPA (out of 4.0)" },
+  { value: "gpa_10", label: "GPA (out of 10.0)" },
+  { value: "cgpa", label: "CGPA" },
 ];
 
 export const STUDENT_TYPE_OPTIONS = [

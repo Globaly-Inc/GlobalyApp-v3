@@ -43,6 +43,7 @@ export interface ScrapeResult {
   links: string[];
   scraper: "scrapling" | "crawl4ai" | "firecrawl" | "none";
   blocked?: boolean;
+  notFound?: boolean;
   error?: string;
 }
 
@@ -60,23 +61,36 @@ export interface DiscoveryResult {
 
 const MIN_CONTENT_LEN = 200;
 
-// Soft-404/error shells (nav + footer + "page not found") routinely clear MIN_CONTENT_LEN
-// on their own, so a length-only gate accepts them as a successful scrape and the cascade
-// never escalates to a tier that would actually render the real page.
-const NO_CONTENT_PATTERNS = [
+const NOT_FOUND_PATTERNS = [
   /page (could not be found|not found|doesn['’]?t exist|does not exist)/i,
   /\b404\b[^a-z0-9]{0,20}(error|not found|page)/i,
   /we (can|could)['’]?n[o]?t find (that|this|the) page/i,
   /sorry,? (we )?(couldn['’]?t|could not|can['’]?t) find/i,
+];
+const ACCESS_DENIED_PATTERNS = [
   /access (denied|forbidden)/i,
   /you don['’]?t have permission to access/i,
 ];
+const NO_CONTENT_PATTERNS = [...NOT_FOUND_PATTERNS, ...ACCESS_DENIED_PATTERNS];
 
 // ponytail: phrase-based soft-404 detector, not a content-density model — add one if a
 // real page keeps slipping through with boilerplate-only content but no matching phrase.
 function isUsableContent(content: string): boolean {
   if (content.length < MIN_CONTENT_LEN) return false;
   return !NO_CONTENT_PATTERNS.some((re) => re.test(content));
+}
+
+/** True only for "this URL doesn't exist" phrasing — not access-denied/anti-bot walls. */
+function isDeadUrl(content: string): boolean {
+  return NOT_FOUND_PATTERNS.some((re) => re.test(content));
+}
+
+/** Human-readable reason a rejected scrape had no usable content, for admin-visible errors. */
+function unusableReason(content: string): string {
+  if (content.length < MIN_CONTENT_LEN) return `page content too short (${content.length} chars)`;
+  if (isDeadUrl(content)) return "source page reports the content doesn't exist (404 / not found)";
+  if (ACCESS_DENIED_PATTERNS.some((re) => re.test(content))) return "page reports access denied (possible anti-bot block)";
+  return "page content unusable";
 }
 
 // ─── Human-like fetch helpers ───────────────────────────────────────────────
@@ -236,28 +250,36 @@ async function crawl4aiScrape(
 }
 
 // ─── Scrapling (via its own MCP server) ────────────────────────────────────
-//
-// Scrapling has no REST contract of its own — its only built-in "service mode"
-// is an MCP server (`scrapling mcp --http`, see devops's scrapling-mcp compose
-// service). Its `get`/`stealthy_fetch`/`fetch` tools are exactly the three
-// cheapest-first tiers our old self-hosted wrapper used to implement by hand
-// (plain HTTP+impersonation → Cloudflare-solving headless browser → full
-// Playwright), so this cascades across those tools directly over MCP instead.
 
 let mcpClient: Client | null = null;
 let mcpClientBaseUrl: string | null = null;
 
+const MCP_CONNECT_TIMEOUT_MS = 8_000;
+const MCP_CONNECT_ATTEMPTS = 2;
+
 async function getMcpClient(cfg: { baseUrl: string; apiKey?: string }): Promise<Client> {
   if (mcpClient && mcpClientBaseUrl === cfg.baseUrl) return mcpClient;
-  const transport = new StreamableHTTPClientTransport(new URL(`${cfg.baseUrl}/mcp`), {
-    requestInit: cfg.apiKey ? { headers: { Authorization: `Bearer ${cfg.apiKey}` } } : undefined,
-  });
-  const client = new Client({ name: "globalyapp-backend", version: "1.0.0" });
-  await client.connect(transport);
-  logger.info(`scrapling mcp connected at ${cfg.baseUrl}/mcp`);
-  mcpClient = client;
-  mcpClientBaseUrl = cfg.baseUrl;
-  return client;
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MCP_CONNECT_ATTEMPTS; attempt++) {
+    const transport = new StreamableHTTPClientTransport(new URL(`${cfg.baseUrl}/mcp`), {
+      requestInit: cfg.apiKey ? { headers: { Authorization: `Bearer ${cfg.apiKey}` } } : undefined,
+    });
+    const client = new Client({ name: "globalyapp-backend", version: "1.0.0" });
+    try {
+      await client.connect(transport, { timeout: MCP_CONNECT_TIMEOUT_MS });
+      logger.info(`scrapling mcp connected at ${cfg.baseUrl}/mcp`);
+      mcpClient = client;
+      mcpClientBaseUrl = cfg.baseUrl;
+      return client;
+    } catch (err) {
+      lastErr = err;
+      logger.warn(`scrapling mcp connect attempt ${attempt}/${MCP_CONNECT_ATTEMPTS} failed — ${err instanceof Error ? err.message : String(err)}`);
+      if (attempt < MCP_CONNECT_ATTEMPTS) await politeDelay(500, 500);
+    }
+  }
+  const reason = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new Error(`scrapling mcp unreachable after ${MCP_CONNECT_ATTEMPTS} attempts: ${reason}`);
 }
 
 type ScraplingExtractionType = "markdown" | "html";
@@ -268,9 +290,8 @@ interface ScraplingToolResult {
   url?: string;
 }
 
-// Cheapest-first, matching the old wrapper's internal escalation.
 const SCRAPLING_TIERS: { tool: string; timeoutMs: number; args: Record<string, unknown> }[] = [
-  { tool: "get", timeoutMs: 15_000, args: { timeout: 10 } },
+  { tool: "get", timeoutMs: 22_000, args: { timeout: 10 } },
   { tool: "stealthy_fetch", timeoutMs: 30_000, args: { timeout: 25_000, network_idle: true, solve_cloudflare: true } },
   { tool: "fetch", timeoutMs: 35_000, args: { timeout: 30_000, network_idle: true } },
 ];
@@ -310,7 +331,7 @@ async function scraplingScrape(
         logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars)`);
         return { content, tierUsed: tier.tool };
       }
-      lastError = `${tier.tool} returned ${content.length} chars (unusable)`;
+      lastError = `${tier.tool}: ${unusableReason(content)}`;
       logger.info(`scrapling mcp: tool "${tier.tool}" insufficient for ${url} (${content.length} chars) — escalating`);
     } catch (err) {
       lastError = err instanceof Error ? `${tier.tool}: ${err.message}` : `${tier.tool} error`;
@@ -451,15 +472,28 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
       if (isUsableContent(fc.markdown)) {
         return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl" };
       }
-      return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true, error: fc.error || a2.error || a1.error || "Empty page" };
+      return {
+        markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true,
+        error: fc.error || a2.error || a1.error || unusableReason(fc.markdown),
+        notFound: !fc.error && isDeadUrl(fc.markdown),
+      };
     }
-    return { markdown: "", links: [], scraper: "crawl4ai", blocked: true, error: a2.error || a1.error || "Empty page" };
+    return {
+      markdown: "", links: [], scraper: "crawl4ai", blocked: true,
+      error: a2.error || a1.error || unusableReason(a2.markdown),
+      notFound: !a2.error && !a1.error && isDeadUrl(a2.markdown),
+    };
   }
 
   // Path B: Firecrawl-only
   if (fcKey) {
     const fc = await firecrawlScrape(url, fcKey, opts);
-    return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: !isUsableContent(fc.markdown), error: fc.error };
+    const usable = isUsableContent(fc.markdown);
+    return {
+      markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: !usable,
+      error: fc.error || (usable ? undefined : unusableReason(fc.markdown)),
+      notFound: !usable && !fc.error && isDeadUrl(fc.markdown),
+    };
   }
 
   return { markdown: "", links: [], scraper: "none", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)" };

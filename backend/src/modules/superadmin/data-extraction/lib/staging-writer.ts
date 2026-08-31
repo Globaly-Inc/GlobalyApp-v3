@@ -76,11 +76,11 @@ function coerceMonth(v: unknown): number | null {
 
 // ponytail: LLM emits "February 15" / "Feb 2026" for date columns — ISO or null, nothing else.
 // A string with no year ("February 15") is not a date; the month still survives via intake_month.
-function coerceDate(v: unknown): string | null {
+export function coerceDate(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
-  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (iso) return iso[1];
+  const iso = s.match(/^(\d{4})-\d{2}-\d{2}/);
+  if (iso) return iso[1] === "0000" ? null : iso[0];
   if (!/\d{4}/.test(s)) return null;
   const d = new Date(s);
   if (isNaN(d.getTime())) return null;
@@ -117,6 +117,34 @@ export function coerceMoney(v: unknown): number | null {
   return match ? Number(match[0]) : null;
 }
 
+const SCORE_TYPES = ["percentage", "gpa_4", "gpa_10", "cgpa"] as const;
+type ScoreType = (typeof SCORE_TYPES)[number];
+
+export function normaliseScoreType(v: unknown): ScoreType | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim().toLowerCase();
+  return (SCORE_TYPES as readonly string[]).includes(s) ? (s as ScoreType) : null;
+}
+
+// ponytail: same LLM-drift guard as coerceMoney — a score stated plainly in the
+// description ("GPA of 3.0") but missing from score_type/min_score. Bare "GPA of X"
+// defaults to a 4.0 scale (the common convention) unless the text names a different one.
+export function deriveScoreFromDescription(description: string | null | undefined): { score_type: ScoreType; value: number } | null {
+  if (!description) return null;
+  const patterns: { type: ScoreType; re: RegExp }[] = [
+    { type: "percentage", re: /(\d+(?:\.\d+)?)\s*(?:%|percent)/i },
+    { type: "cgpa", re: /cgpa[^\d]{0,10}(\d+(?:\.\d+)?)/i },
+    { type: "gpa_10", re: /gpa[^\d]{0,10}(\d+(?:\.\d+)?)\s*(?:\/|out of)\s*10(?:\.0)?\b/i },
+    { type: "gpa_4", re: /gpa[^\d]{0,10}(\d+(?:\.\d+)?)\s*(?:\/|out of)\s*4(?:\.0)?\b/i },
+    { type: "gpa_4", re: /gpa[^\d]{0,10}(\d+(?:\.\d+)?)/i },
+  ];
+  for (const { type, re } of patterns) {
+    const m = description.match(re);
+    if (m) return { score_type: type, value: Number(m[1]) };
+  }
+  return null;
+}
+
 export interface ExtractedStudyOption {
   name?: string | null;
   study_mode?: string;
@@ -131,6 +159,8 @@ export interface ExtractedEligibility {
   description?: string | null;
   min_score_percent?: number | null;
   min_degree_level?: string | null;
+  score_type?: string | null;
+  min_score?: number | string | null;
 }
 
 export interface ExtractedEnglishReq {
@@ -418,14 +448,24 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Eligibility requirements + assignments ──
   if (course.eligibility?.length) {
     for (const elig of course.eligibility) {
+      let scoreType = normaliseScoreType(elig.score_type);
+      let scoreValue = coerceMoney(elig.min_score);
+      if (!scoreType && scoreValue == null && !elig.min_score_percent) {
+        const derived = deriveScoreFromDescription(elig.description);
+        if (derived) { scoreType = derived.score_type; scoreValue = derived.value; }
+      }
+      const isPercentage = scoreType === "percentage";
+
       const [eligRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
         .insert({
           job_id: jobId,
           name: elig.name ?? null,
           applicable_to: elig.applicable_to ?? "both",
           description: elig.description ?? null,
-          min_score_percent: coerceInt(elig.min_score_percent),
+          min_score_percent: isPercentage ? scoreValue : coerceInt(elig.min_score_percent),
           min_degree_level: elig.min_degree_level ?? null,
+          score_type: scoreType,
+          min_score: isPercentage ? null : scoreValue,
         })
         .returning("id");
       await masterKnex(`${S}.extraction_course_eligibility_assignments`)
