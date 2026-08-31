@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Building2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,9 @@ const DEFAULT_PAGE_SIZE = 10;
 
 export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { jobs, meta, status } = useAppSelector((state) => state.dataAllExtractions);
   const businessCategories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
 
@@ -41,8 +45,8 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const [showDeclined, setShowDeclined] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [page, setPageState] = useState(() => Number(searchParams.get("page")) || 1);
+  const [pageSize, setPageSizeState] = useState(() => Number(searchParams.get("per_page")) || DEFAULT_PAGE_SIZE);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
@@ -50,6 +54,20 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const isCompleted = mode === "completed";
   const showNewExtractionButton = mode === "all" || mode === "ai-ongoing";
   const canPublish = mode === "all" || isCompleted;
+
+  const setPage = (next: number) => {
+    setPageState(next);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("page", String(next));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const setPageSize = (next: number) => {
+    setPageSizeState(next);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("per_page", String(next));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   const categoriesFetchedRef = useRef(false);
   useEffect(() => {
@@ -62,8 +80,14 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // Any filter/sort/mode/page-size change invalidates the current page.
+  // Any filter/sort/mode/page-size change invalidates the current page — but not the initial
+  // mount, where page may have been restored from the URL (?page=N&per_page=N on reload).
+  const didMountRef = useRef(false);
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     setPage(1);
   }, [mode, showDeclined, debouncedQuery, sortOrder, sourceFilter, statusFilter, businessCategoryFilter, pageSize]);
 

@@ -77,6 +77,28 @@ function mockScraplingSessionExpiry(markdown: string) {
   return { connectCalls: () => connectCalls };
 }
 
+/**
+ * Simulates a flaky reconnect to the scrapling MCP server itself (not just a tool call
+ * inside an already-open connection) — e.g. the pod is mid-restart. connect() fails for
+ * the first `failCount` calls, then succeeds.
+ */
+function mockScraplingConnectFlaky(markdown: string, failCount: number) {
+  let connectAttempts = 0;
+  let callToolCalls = 0;
+  (Client.prototype as any).connect = async function () {
+    connectAttempts++;
+    if (connectAttempts <= failCount) throw new Error("MCP error -32001: Request timed out");
+  };
+  (Client.prototype as any).callTool = async function () {
+    callToolCalls++;
+    if (callToolCalls === 1) {
+      throw new Error("Rejected request with unknown or expired session ID: deadbeef");
+    }
+    return { structuredContent: { status: 200, content: [markdown], url: "https://example.com" } };
+  };
+  return { connectAttempts: () => connectAttempts };
+}
+
 async function main() {
   const { scrapeMarkdown } = await import("../src/modules/superadmin/data-extraction/lib/scraper.js");
 
@@ -141,6 +163,80 @@ async function main() {
   assertEqual(r.scraper, "firecrawl", "expandCollapsed still resolves via firecrawl");
   assertEqual(Array.isArray(capturedBody?.actions), true, "expandCollapsed adds a Firecrawl actions array");
   assertEqual(capturedBody?.actions?.[0]?.type, "executeJavascript", "the action is a JS click-open script, not a brittle selector-specific click that fails the whole scrape when nothing matches");
+
+  // 8. A genuinely dead URL — every tier (scrapling, crawl4ai, firecrawl) independently
+  // fetches the source site's own real "page not found" page. Must be flagged distinctly
+  // (notFound: true) with an error naming the real cause, not the old generic
+  // "blocked ... Empty page" — reproduces the real catalog.mines.edu tuition-page bug,
+  // where the queue item's stored error gave no indication the URL itself was dead.
+  const NOT_FOUND_PAGE = `${LONG}\nPage Not Found\n${LONG}`;
+  mockScrapling(NOT_FOUND_PAGE);
+  mockFetch({ "crawl4ai.test": NOT_FOUND_PAGE, "firecrawl.dev": NOT_FOUND_PAGE });
+  r = await scrapeMarkdown("https://example.com");
+  assertEqual(r.blocked, true, "a dead URL is still reported as blocked");
+  assertEqual(r.notFound, true, "a dead URL is flagged distinctly via notFound");
+  assertEqual(r.error?.includes("doesn't exist"), true, "the error names the real cause instead of a generic 'Empty page'");
+
+  mockScrapling(SHORT);
+  global.fetch = (async (url: string | URL) => {
+    const u = url.toString();
+    if (u.includes("crawl4ai.test")) return new Response(JSON.stringify({ markdown: SHORT }), { status: 200 });
+    if (u.includes("firecrawl.dev")) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unexpected error during scrape URL: Status code 404" }),
+        { status: 500 },
+      );
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+  r = await scrapeMarkdown("https://example.com");
+  assertEqual(r.notFound, true, "a 404 reported as a scraper API error (not page content) is still classified as notFound");
+  assertEqual(r.error?.includes("404"), true, "the error still names the real status code");
+
+  // 8c. Reviewer-caught bug: Crawl4AI can independently detect the dead URL (real "Page
+  // Not Found" content) BEFORE Firecrawl even runs — but if Firecrawl's own failure is
+  // generic/uninformative (no content, no "404" in its error), notFound must not discard
+  // the signal Crawl4AI already gave us just because Firecrawl's own signal was unclear.
+  const NOT_FOUND_PAGE_8C = `${LONG}\nPage Not Found\n${LONG}`;
+  mockScrapling(SHORT);
+  global.fetch = (async (url: string | URL) => {
+    const u = url.toString();
+    if (u.includes("crawl4ai.test")) return new Response(JSON.stringify({ markdown: NOT_FOUND_PAGE_8C }), { status: 200 });
+    if (u.includes("firecrawl.dev")) return new Response(JSON.stringify({ success: false, error: "timeout" }), { status: 500 });
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+  r = await scrapeMarkdown("https://example.com");
+  assertEqual(r.notFound, true, "Crawl4AI's dead-URL signal survives even when Firecrawl's own failure is generic");
+
+  // 9. Reconnecting to the scrapling MCP server itself (not just a tool call inside an
+  // established connection) can hit the same transient "Request timed out" — reproduces
+  // the real bug: one bad connect attempt used to abandon the ENTIRE scrapling cascade
+  // (get/stealthy_fetch/fetch all skipped) instead of just retrying the connection.
+  // failCount=1 means connect() fails once, then succeeds on the 2nd attempt — exactly
+  // within getMcpClient's bounded retry budget (MCP_CONNECT_ATTEMPTS = 2).
+  const flaky = mockScraplingConnectFlaky(LONG, 1);
+  r = await scrapeMarkdown("https://example.com");
+  assertEqual(r.scraper, "scrapling", "recovers via scrapling after a flaky reconnect, instead of falling through to crawl4ai/firecrawl");
+  assertEqual(flaky.connectAttempts(), 2, "retries the connection before giving up");
+
+  // 10. A persistently unreachable scrapling MCP server (not just briefly slow) must
+  // still fail with a BOUNDED number of attempts, not retry forever or hang on the SDK's
+  // 60s default per attempt — and then fall through to the rest of the cascade. The
+  // client is cached module-wide, so callTool must fail first (forcing a real reconnect
+  // attempt) before connect()'s override actually gets exercised — a cached client from
+  // the previous test would otherwise skip connect() entirely.
+  let downAttempts = 0;
+  (Client.prototype as any).callTool = async function () {
+    throw new Error("Rejected request with unknown or expired session ID: deadbeef");
+  };
+  (Client.prototype as any).connect = async function () {
+    downAttempts++;
+    throw new Error("MCP error -32001: Request timed out");
+  };
+  mockFetch({ "crawl4ai.test": LONG });
+  r = await scrapeMarkdown("https://example.com");
+  assertEqual(r.scraper, "crawl4ai", "falls through to crawl4ai when the scrapling mcp server is genuinely unreachable");
+  assertEqual(downAttempts, 2, "gives up after a bounded number of connect attempts, not unbounded retries");
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

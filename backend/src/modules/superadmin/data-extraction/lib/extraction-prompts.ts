@@ -140,7 +140,9 @@ Extract this JSON:
           "name": "requirement name",
           "applicable_to": "domestic|international|both",
           "description": "details",
-          "min_score_percent": null
+          "score_type": "percentage|gpa_4|gpa_10|cgpa|null — the kind of number in min_score, if this requirement states one",
+          "min_score": "the numeric minimum stated (e.g. 65 for '65%', 3.0 for 'GPA of 3.0') — null if no number is stated",
+          "min_degree_level": "Bachelor|Master|PhD|Diploma|Certificate|etc — the prior qualification level this requirement applies to, if stated or clearly implied (e.g. an 'undergraduate GPA' requirement for a Master's program implies Bachelor) — else null"
         }
       ],
       "english_requirements": [
@@ -187,6 +189,7 @@ Rules:
 - Do NOT extract a page as a course if it describes the ADMISSIONS PROCESS in general — e.g. "How to Apply as a First-Year Student", "Transfer Pathways", "Application Requirements", "Dates and Deadlines" — rather than one specific named qualification. These pages talk about applying, deadlines, or eligibility across many/all programs at once, and never name one degree with its own curriculum. Never invent a degree_level (e.g. "Bachelor") for a page like this just because it mentions undergraduate/first-year admission — if the page does not name one specific qualification, return an empty courses array.
 - Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
 - Never invent fees or dates — only extract what's explicitly stated
+- For eligibility requirements, always populate score_type + min_score when a specific numeric threshold is stated, not just in the free-text description: "percentage" for a % figure, "gpa_4" for a GPA (the default scale when no scale is named — most common convention), "gpa_10" only when the page explicitly says the GPA is out of 10, "cgpa" when the page uses that term specifically. Leave both null if no number is stated.
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If fees link to an external PDF or schedule page, include that URL in the fee name (e.g. "See fee schedule: <url>")
@@ -623,7 +626,7 @@ export function courseDataPrompt(
   "study_units": [{ "unit_code": "code or null", "unit_name": "unit name", "credit_points": null }]
 }`,
     eligibility: `{
-  "requirements": [{ "name": "requirement name", "applicable_to": "domestic|international|both", "description": "details", "min_score_percent": null }],
+  "requirements": [{ "name": "requirement name", "applicable_to": "domestic|international|both", "description": "details", "score_type": "percentage|gpa_4|gpa_10|cgpa|null", "min_score": "numeric minimum stated, or null", "min_degree_level": "Bachelor|Master|etc, if stated or implied, else null" }],
   "english_requirements": [{ "test_type_name": "IELTS|TOEFL|PTE", "overall_score": null, "listening_score": null, "reading_score": null, "writing_score": null, "speaking_score": null }]
 }`,
     accreditations: `{

@@ -8,12 +8,8 @@ const T_OVERVIEW = "superadmin.extraction_institution_overview";
 const T_EVENTS = "superadmin.extraction_job_events";
 const T_CAMPUSES = "superadmin.extraction_campuses";
 const T_AGENTS = "superadmin.extraction_agents";
+const T_COURSES = "superadmin.extraction_courses";
 
-// extraction_jobs.institution_name stays null until the pipeline names the job, but the
-// extractor writes the name to the overview row well before that — so the list has a
-// title to show. Subquery, not a join: job_id has no unique index on the overview table,
-// so a stale duplicate row (e.g. a resumed job's first, incomplete pass) could otherwise
-// win an unordered `limit 1` — order by created_at so the newest write always wins.
 const OVERVIEW_NAME = `(select o.name from ${T_OVERVIEW} o where o.job_id = ${T}.id order by o.created_at desc limit 1)`;
 
 export async function listJobs(opts: { status?: string; q?: string; limit: number }) {
@@ -143,7 +139,7 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
   if (jobs.length) {
     const jobIds = jobs.map((j: { id: string }) => j.id);
 
-    const [campusCounts, agentCounts] = await Promise.all([
+    const [campusCounts, agentCounts, courseCounts] = await Promise.all([
       masterKnex(T_CAMPUSES)
         .select("job_id")
         .count("id as count")
@@ -154,14 +150,20 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
         .count("id as count")
         .whereIn("job_id", jobIds)
         .groupBy("job_id"),
+      masterKnex(T_COURSES)
+        .select("job_id")
+        .count("id as count")
+        .whereIn("job_id", jobIds)
+        .groupBy("job_id"),
     ]);
 
     const campusMap = Object.fromEntries(campusCounts.map((r: any) => [r.job_id, Number(r.count)]));
     const agentMap = Object.fromEntries(agentCounts.map((r: any) => [r.job_id, Number(r.count)]));
-
+    const courseMap = Object.fromEntries(courseCounts.map((r: any) => [r.job_id, Number(r.count)]));
     for (const job of jobs as any[]) {
       job.campus_count = campusMap[job.id] ?? 0;
       job.agent_count = agentMap[job.id] ?? 0;
+      job.courses_extracted = courseMap[job.id] ?? 0;
     }
   }
 

@@ -55,7 +55,7 @@ function detectPaginationUrls(baseUrl: string, links: string[], markdown: string
 }
 
 // ponytail: ported from V2's classifyFailure + routeFailure
-type FailureClass = "anti_bot" | "not_a_course" | "ai_5xx" | "parse_error" | "other";
+type FailureClass = "anti_bot" | "not_found" | "not_a_course" | "ai_5xx" | "parse_error" | "other";
 
 function classifyFailure(error: string): FailureClass {
   const e = error.toLowerCase();
@@ -245,8 +245,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     });
 
     if (page.blocked || page.markdown.length < 50) {
-      const reason = page.blocked ? "blocked" : "minimal_content";
-      logger.warn("Page blocked or empty", { url, scraper: page.scraper, error: page.error });
+      const reason = page.notFound ? "not_found" : page.blocked ? "blocked" : "minimal_content";
+      const failureClass: FailureClass = page.notFound ? "not_found" : "anti_bot";
+      logger.warn("Page blocked, not found, or empty", { url, scraper: page.scraper, error: page.error });
 
       // Route through retry logic instead of silently completing
       const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
@@ -255,10 +256,10 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // when the call succeeded and content was just thin) — real bug: every one of these
       // was previously bucketed as a generic "blocked", indistinguishable in the DB from an
       // actual anti-bot 403 even when Firecrawl reported success and the page was simply a
-      // client-side accordion shell (see expandCollapsed above).
+      // client-side accordion shell (see expandCollapsed above) or the source URL is just dead.
       const meta = {
         ...(item?.processing_meta ?? {}), last_error: reason,
-        last_error_detail: page.error ?? null, last_failure_class: "anti_bot" as const,
+        last_error_detail: page.error ?? null, last_failure_class: failureClass,
       };
 
       // Retry 1: Firecrawl with JS rendering + auto proxy escalation (Firecrawl only
@@ -271,11 +272,13 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // Both retries also click open collapsed accordions/tabs (expandCollapsed) — most
       // of this job's "blocked" pages were never actually blocked, they were JS-accordion
       // shells that no proxy tier could ever fix.
-      if (retries < 2) {
+      // A not_found page skips retries entirely — every proxy/mobile tier hits the exact
+      // same 404 on the source site, so retrying only delays the (unchanged) failure.
+      if (!page.notFound && retries < 2) {
         meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
         const retryProxy = retries === 0 ? "auto" : "stealth";
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
-          status: "pending", failure_class: "anti_bot", retry_count: retries + 1,
+          status: "pending", failure_class: failureClass, retry_count: retries + 1,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
         await queueService.publish(EXTRACTION_QUEUES.PAGES, {
@@ -284,17 +287,20 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         });
         logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1, proxy: retryProxy });
       } else {
-        // Exhausted retries — mark failed so it's visible in the admin queue panel
+        // Exhausted retries (or a dead URL that can't benefit from any) — mark failed so
+        // it's visible in the admin queue panel with the real reason, not a generic one.
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
           status: "failed",
-          error: `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${page.error}` : ""}`,
-          failure_class: "anti_bot", retry_count: retries,
+          error: page.notFound
+            ? `Page does not exist on the source site (404)${page.error ? `: ${page.error}` : ""}`
+            : `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${page.error}` : ""}`,
+          failure_class: failureClass, retry_count: retries,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
         await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
         await writeJobEvent(jobId, "page_error", {
           level: "warn", phase: "data_extraction",
-          message: `Page unreachable after retries: ${url}`,
+          message: page.notFound ? `Page does not exist on source site: ${url}` : `Page unreachable after retries: ${url}`,
           data: { url, reason, retries, scraper: page.scraper },
         });
       }
