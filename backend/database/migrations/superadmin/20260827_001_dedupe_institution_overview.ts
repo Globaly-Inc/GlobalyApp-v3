@@ -19,7 +19,7 @@ export async function up(knex: Knex): Promise<void> {
     const keep = rows.at(-1);
     const merged: Record<string, unknown> = {};
     for (const col of MERGE_COLUMNS) {
-      merged[col] = rows.map((r) => r[col]).find((v) => v != null && v !== "") ?? null;
+      merged[col] = rows.toReversed().map((r) => r[col]).find((v) => v != null && v !== "") ?? null;
     }
     await knex(`${S}.${TABLE}`).where({ id: keep.id }).update({ ...merged, updated_at: knex.fn.now() });
     await knex(`${S}.${TABLE}`).where({ job_id }).whereNot({ id: keep.id }).delete();

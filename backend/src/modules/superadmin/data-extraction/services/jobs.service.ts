@@ -1,7 +1,8 @@
 // Extraction jobs service — CRUD, status transitions, pipeline control.
 
-import { NotFoundError, BadRequestError } from "../../../../shared/errors.js";
+import { NotFoundError, ConflictError } from "../../../../shared/errors.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { masterKnex } from "../../../../core/db/master-pool.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
@@ -107,8 +108,33 @@ export async function getAgentRuns(jobId: string) {
 
 // ── Creates ──
 
+function conflictFor(existing: {
+  id: string;
+  institution_name: string | null;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+}) {
+  return new ConflictError("An institution with a matching website already exists", {
+    existing_job_id: existing.id,
+    institution_name: existing.institution_name,
+    website: existing.website,
+    email: existing.email,
+    phone: existing.phone,
+  });
+}
+
 export async function createJob(input: CreateJobInput, adminId: number) {
-  const row = await repo.insertJob(input);
+  const host = repo.normaliseHost(input.institution_url);
+
+  const row = await masterKnex.transaction(async (trx) => {
+    if (host) await repo.lockInstitutionHost(host, trx);
+
+    const existing = await repo.findJobByInstitutionHost(input.institution_url, trx);
+    if (existing) throw conflictFor(existing);
+
+    return repo.insertJob(input, trx);
+  });
   await logAudit(adminId, "EXTRACTION_JOB_CREATE", {
     entityType: "extraction_jobs",
     entityId: row.id,

@@ -175,7 +175,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
 
   return (
     <div className="pb-20">
-      {showNewForm && <NewExtractionDialog open={showNewForm} onOpenChange={setShowNewForm} />}
+      <NewExtractionDialog open={showNewForm} onOpenChange={setShowNewForm} />
 
       <JobsListToolbar
         mode={mode}

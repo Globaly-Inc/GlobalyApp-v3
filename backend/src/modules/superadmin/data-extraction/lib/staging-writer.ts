@@ -183,25 +183,25 @@ export interface SiteIntelligence {
 }
 
 // ── Writers ──
+const OVERVIEW_MERGE_COLUMNS = [
+  "name", "website", "phone", "email", "address", "city", "state", "country",
+  "description", "logo_url", "source_url", "zip_code",
+  "facebook_url", "instagram_url", "twitter_url", "linkedin_url", "youtube_url",
+] as const;
 
 export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview) {
-  const existing = await masterKnex(`${S}.extraction_institution_overview`).where({ job_id: jobId }).first();
-  if (existing) {
-    const merged: Record<string, unknown> = { ...data };
-    for (const [key, val] of Object.entries(existing)) {
-      if (["id", "job_id", "created_at", "updated_at"].includes(key)) continue;
-      if ((merged[key] == null || merged[key] === "") && val != null && val !== "") merged[key] = val;
-    }
-    await masterKnex(`${S}.extraction_institution_overview`).where({ id: existing.id }).update({
-      ...merged, updated_at: masterKnex.fn.now(),
-    });
-    logger.info("Updated institution overview (resume/re-run)", { jobId, id: existing.id });
-    return { id: existing.id };
+  const mergeSet: Record<string, unknown> = { updated_at: masterKnex.fn.now() };
+  for (const col of OVERVIEW_MERGE_COLUMNS) {
+    mergeSet[col] = masterKnex.raw(
+      `COALESCE(NULLIF(EXCLUDED.${col}, ''), ${S}.extraction_institution_overview.${col})`,
+    );
   }
   const [row] = await masterKnex(`${S}.extraction_institution_overview`)
     .insert({ job_id: jobId, ...data })
+    .onConflict("job_id")
+    .merge(mergeSet)
     .returning("id");
-  logger.info("Wrote institution overview", { jobId, id: row.id });
+  logger.info("Upserted institution overview", { jobId, id: row.id });
   return row;
 }
 

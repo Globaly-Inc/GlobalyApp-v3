@@ -6,6 +6,7 @@
 
 import "dotenv/config";
 import { createHash } from "node:crypto";
+import dns from "node:dns";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
@@ -94,11 +95,40 @@ async function scrapeInstitutionPage(url: string): Promise<{ markdown: string; l
   return r.markdown && r.markdown.length > 50 ? { markdown: r.markdown, links: r.links } : null;
 }
 
-function findContactLink(markdown: string, links: string[], origin: string): string | null {
+const PRIVATE_IPV4_RANGES = [/^127\./, /^10\./, /^192\.168\./, /^169\.254\./, /^0\.0\.0\.0$/, /^172\.(1[6-9]|2\d|3[01])\./];
+
+function isPrivateOrLocalHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return true;
+  if (h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")) return true;
+  return PRIVATE_IPV4_RANGES.some((re) => re.test(h));
+}
+
+async function resolvesToPrivateHost(hostname: string): Promise<boolean> {
+  try {
+    const records = await dns.promises.lookup(hostname, { all: true, verbatim: true });
+    return records.some((r) => isPrivateOrLocalHost(r.address));
+  } catch {
+    // Can't confirm where it points — fail closed rather than scrape an unresolvable host.
+    return true;
+  }
+}
+
+async function findContactLink(markdown: string, links: string[], origin: string): Promise<string | null> {
   const anchor = markdown.match(/\[([^\]]*(?:contact|get in touch|enquir)[^\]]*)\]\((https?:\/\/[^)\s]+)\)/i);
-  if (anchor) return anchor[2];
-  const byPath = links.find((l) => /\/(contact(-us)?|get-in-touch|enquir(y|ies))\/?$/i.test(l));
-  return byPath ?? null;
+  const candidate = anchor?.[2] ?? links.find((l) => /\/(contact(-us)?|get-in-touch|enquir(y|ies))\/?$/i.test(l)) ?? null;
+  if (!candidate) return null;
+
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return null;
+  }
+  if (url.origin !== origin || isPrivateOrLocalHost(url.hostname)) return null;
+  if (await resolvesToPrivateHost(url.hostname)) return null;
+
+  return candidate;
 }
 
 function sha1(...parts: (string | null | undefined)[]): string {
@@ -212,7 +242,7 @@ async function handleInstitutionStep(jobId: string) {
   })();
 
   const homepage = await scrapeInstitutionPage(baseUrl);
-  const discoveredContact = homepage && origin ? findContactLink(homepage.markdown, homepage.links, origin) : null;
+  const discoveredContact = homepage && origin ? await findContactLink(homepage.markdown, homepage.links, origin) : null;
   const guessContact = origin ? new URL("/contact", origin).href : null;
 
   const urlsToScrape = [...new Set([

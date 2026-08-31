@@ -1,5 +1,6 @@
 // Extraction jobs repository — all queries against superadmin.extraction_jobs + related reads.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 
 const T = "superadmin.extraction_jobs";
@@ -186,8 +187,33 @@ export async function findJobWithOverview(id: string) {
   return { job, overview: overview ?? null };
 }
 
-export async function insertJob(data: Record<string, unknown>) {
-  const [row] = await masterKnex(T).insert(data).returning("id");
+export function normaliseHost(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+export async function findJobByInstitutionHost(institutionUrl: string, db: Knex = masterKnex) {
+  const host = normaliseHost(institutionUrl);
+  if (!host) return null;
+
+  const rows = await db(`${T} as j`)
+    .leftJoin(`${T_OVERVIEW} as o`, "o.job_id", "j.id")
+    .select("j.id", "j.institution_url", "o.website", "o.email", "o.phone")
+    .select(db.raw("coalesce(j.institution_name, o.name) as institution_name"))
+    .whereNot("j.status", "declined");
+
+  return rows.find((r) => normaliseHost(r.institution_url) === host || (r.website && normaliseHost(r.website) === host)) ?? null;
+}
+
+export async function lockInstitutionHost(host: string, trx: Knex.Transaction) {
+  await trx.raw("select pg_advisory_xact_lock(hashtext(?)::bigint)", [host]);
+}
+
+export async function insertJob(data: Record<string, unknown>, db: Knex = masterKnex) {
+  const [row] = await db(T).insert(data).returning("id");
   return row;
 }
 
