@@ -122,7 +122,7 @@ export function CreditUsageChart() {
                 borderRadius: "8px",
                 fontSize: "12px",
               }}
-              formatter={(val: number, name: string) => [`${val} cr`, name]}
+              formatter={(val, name) => [`${val} cr`, name]}
             />
             {chartSeries.length > 1 && <Legend wrapperStyle={{ fontSize: "12px" }} />}
             {chartSeries.map((s, i) => (

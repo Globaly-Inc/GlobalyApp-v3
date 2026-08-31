@@ -143,7 +143,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
               <DropdownMenuContent align="end" className="w-56 p-1.5">
                 <DropdownMenuItem
                   className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
-                  onClick={() => router.push(myProfileHref)}
+                  onClick={() => router.push("/personal/profile")}
                 >
                   <Avatar className="size-8 shrink-0">
                     {avatarPhotoUrl && <AvatarImage src={avatarPhotoUrl} alt={profile?.first_name} />}
