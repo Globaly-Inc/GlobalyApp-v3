@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuthState } from "@/app/auth/store/auth-slice";
-import { BusinessProfileDetailView } from "@/app/business/profile/business-profile-detail-view";
+import { ProfileView } from "@/app/personal/profile/profile-view";
 
 export default function BusinessProfilePage() {
   const router = useRouter();
@@ -16,11 +16,11 @@ export default function BusinessProfilePage() {
     : null;
 
   useEffect(() => {
-    if (initializing || !user) return;
-    if (!target) router.replace("/business/portal");
+    if (initializing || !user || target) return;
+    router.replace("/business/portal");
   }, [initializing, user, target, router]);
 
-  if (initializing || !user || !target) {
+  if (!target) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -28,5 +28,5 @@ export default function BusinessProfilePage() {
     );
   }
 
-  return <BusinessProfileDetailView businessId={target.id} />;
+  return <ProfileView />;
 }
