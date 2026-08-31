@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CalendarDays, Check, Clock, ExternalLink, MapPin, Plus, Presentation } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { CalendarDays, Check, Clock, MapPin, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
 import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
@@ -15,43 +15,24 @@ type CourseCardProps = {
   card: CourseCardType;
 };
 
-/** "on_campus" → "On campus", "full_time" → "Full time" — wire enums are not for humans. */
 function prettify(value: string): string {
   const spaced = value.replace(/_/g, " ").trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function formatFee(amount: number | null, currency: string): string | null {
-  // Number() guard: cards persisted before the wire-mapper fix still carry the fee
-  // as a Postgres-numeric string, and String#toLocaleString would skip the separators.
   const n = Number(amount);
   if (!Number.isFinite(n) || n <= 0) return null;
   return `${currency} ${n.toLocaleString("en-US")}`;
 }
 
-/** Extraction data often lacks degree_level, but the course name usually carries it. */
 function degreeLevelOf(card: CourseCardType): string {
   if (card.degree_level) return prettify(card.degree_level);
-  // Anywhere in the name, not just the start — "CHC52021- Diploma of ..." style titles
-  // from older messages carry a code before the level word.
   const m = /\b(Graduate Certificate|Graduate Diploma|Bachelor|Master|Doctor|PhD|Diploma|Certificate|Associate)\b/i
     .exec(card.course_name);
   return m?.[0] ?? "";
 }
 
-function DetailRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-2">
-      <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <div className="min-w-0">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className="truncate text-xs font-medium text-foreground" title={value}>{value}</p>
-      </div>
-    </div>
-  );
-}
-
-/** AI card → the shared compare store's item shape (same store as the search page). */
 function toCompareItem(card: CourseCardType): CompareCourseItem {
   return {
     id: card.id ?? `${card.institution_name}-${card.course_name}`,
@@ -68,28 +49,51 @@ function toCompareItem(card: CourseCardType): CompareCourseItem {
 }
 
 export function CourseCard({ card }: CourseCardProps) {
+  const { user, initializing } = useAuthState();
   const compare = useCompareTray();
   const compareItem = toCompareItem(card);
   const added = compare.has(compareItem.id);
 
   const fee = formatFee(card.annual_tuition_fee, card.currency);
-  const modes = card.study_modes.map(prettify).join(" · ");
   const place = [card.city, card.country].filter(Boolean).join(", ");
   const nextIntake = card.intakes[0] ?? null;
+
+  // Card-wide link: internal slug wins, external source_url as fallback.
+  const href = card.slug ? `/course/${card.slug}` : (card.source_url ?? null);
+  const isExternal = !card.slug && !!card.source_url;
 
   return (
     <Card
       size="sm"
-      className="relative flex h-full w-full flex-col gap-0 overflow-hidden py-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
+      className="group relative flex h-full w-full flex-col gap-0 overflow-hidden py-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
     >
-      {/* Decorative brand wash */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-br from-primary/12 via-primary/5 to-transparent"
-      />
+      {/* Card-wide clickable overlay — sits behind interactive children */}
+      {href && (
+        isExternal
+          ? <a href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-0" aria-label={card.course_name} />
+          : <Link href={href} className="absolute inset-0 z-0" aria-label={card.course_name} />
+      )}
 
-      {/* Course name — first thing eyes land on */}
-      <div className="relative px-4 pt-4">
+      {/* Cover image hero — falls back to a gradient brand wash when the institution has no cover */}
+      {card.institution_cover_url ? (
+        <div className="relative h-28 w-full overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={card.institution_cover_url}
+            alt={card.institution_name}
+            className="h-full w-full object-cover"
+          />
+          <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          <div className="absolute bottom-2.5 left-3">
+            <InstitutionLogo name={card.institution_name} logoUrl={card.institution_logo_url} className="size-10 ring-2 ring-white/80" />
+          </div>
+        </div>
+      ) : (
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-br from-primary/12 via-primary/5 to-transparent" />
+      )}
+
+      {/* Course name */}
+      <div className={card.institution_cover_url ? "px-4 pt-3" : "relative px-4 pt-4"}>
         <p
           className="line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight text-foreground"
           title={card.course_name}
@@ -104,8 +108,10 @@ export function CourseCard({ card }: CourseCardProps) {
       </div>
 
       {/* Institution + location */}
-      <div className="relative flex items-center gap-2.5 px-4 pt-3">
-        <InstitutionLogo name={card.institution_name} logoUrl={card.institution_logo_url} />
+      <div className={`flex items-center gap-2.5 px-4 pt-3 ${card.institution_cover_url ? "" : "relative"}`}>
+        {!card.institution_cover_url && (
+          <InstitutionLogo name={card.institution_name} logoUrl={card.institution_logo_url} />
+        )}
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold text-foreground" title={card.institution_name}>
             {card.institution_name}
@@ -122,9 +128,7 @@ export function CourseCard({ card }: CourseCardProps) {
       {/* Tuition strip */}
       {fee && (
         <div className="mx-4 mt-3 flex items-baseline justify-between rounded-lg border border-primary/15 bg-primary/[0.06] px-3 py-2">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Tuition
-          </span>
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Tuition</span>
           <span className="text-sm font-semibold tabular-nums text-foreground">
             {fee}
             <span className="ml-1 text-[10px] font-normal text-muted-foreground">/ year</span>
@@ -132,49 +136,38 @@ export function CourseCard({ card }: CourseCardProps) {
         </div>
       )}
 
-      {/* Details — disappears when the card has none of the fields */}
-      {(card.duration || nextIntake || modes) && (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 px-4 py-3">
-          {card.duration && <DetailRow icon={Clock} label="Duration" value={card.duration} />}
-          {nextIntake && <DetailRow icon={CalendarDays} label="Next Intake" value={nextIntake} />}
-          {modes && <DetailRow icon={Presentation} label="Study mode" value={modes} />}
+      {/* Duration + next intake inline */}
+      {(card.duration || nextIntake) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3">
+          {card.duration && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Clock className="size-3.5 shrink-0" />
+              {card.duration}
+            </span>
+          )}
+          {nextIntake && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <CalendarDays className="size-3.5 shrink-0" />
+              Intake: {nextIntake}
+            </span>
+          )}
         </div>
       )}
 
-      {/* Actions — mt-auto pins this row to the card bottom so cards without
-          details stay the same height as their row-mates, buttons aligned. */}
-      <div className="mt-auto flex items-center justify-between gap-2 border-t bg-muted/20 px-4 py-2">
-        {card.slug ? (
+      {/* Compare button — relative + z-10 so it sits above the card-wide link overlay */}
+      {!initializing && user && (
+        <div className="relative z-10 mt-auto flex justify-end border-t bg-muted/20 px-4 py-2">
           <Button
-            variant="link"
+            variant={added ? "secondary" : "outline"}
             size="sm"
-            className="h-auto p-0 text-xs"
-            render={<Link href={`/course/${card.slug}`} target="_blank" rel="noopener noreferrer" />}
+            className="h-7 text-xs"
+            disabled={added || compare.isFull}
+            onClick={() => compare.add(compareItem)}
           >
-            View details <ArrowRight />
+            {added ? <><Check /> Added</> : <><Plus /> Compare</>}
           </Button>
-        ) : card.source_url ? (
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0 text-xs"
-            render={<a href={card.source_url} target="_blank" rel="noopener noreferrer" />}
-          >
-            View details <ExternalLink />
-          </Button>
-        ) : (
-          <span />
-        )}
-        <Button
-          variant={added ? "secondary" : "outline"}
-          size="sm"
-          className="h-7 text-xs"
-          disabled={added || compare.isFull}
-          onClick={() => compare.add(compareItem)}
-        >
-          {added ? <><Check /> Added</> : <><Plus /> Compare</>}
-        </Button>
-      </div>
+        </div>
+      )}
     </Card>
   );
 }

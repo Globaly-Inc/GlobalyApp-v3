@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ChevronDown, ExternalLink, Layers, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "../use-compare-tray";
 import { COMPARE_ROWS } from "../compare-rows";
 
@@ -18,11 +19,12 @@ import { COMPARE_ROWS } from "../compare-rows";
  * /personal/explore passes an offset so the two don't sit on top of each other.
  */
 export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ positionClass?: string }> = {}) {
+  const { user } = useAuthState();
   const { items, max, remove, clear } = useCompareTray();
   const [collapsed, setCollapsed] = useState(false);
   const [comparing, setComparing] = useState(false);
 
-  if (items.length === 0) return null;
+  if (!user || items.length === 0) return null;
   // Items can drop below 2 while the table is open — fall back to the list.
   const showTable = comparing && items.length >= 2;
 

@@ -23,6 +23,7 @@ function toCourseCard(w: WireCourseCard): CourseCard {
     course_name: w.name ?? "",
     institution_name: w.institution ?? "",
     institution_logo_url: w.institution_logo_url ?? null,
+    institution_cover_url: w.institution_cover_url ?? null,
     degree_level: w.degree_level ?? "",
     duration: w.duration ?? "",
     annual_tuition_fee: toFee(w.fees),

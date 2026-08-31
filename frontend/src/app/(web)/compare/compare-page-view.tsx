@@ -1,19 +1,31 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, BookOpen, MapPin, Printer, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InstitutionLogo } from "@/components/institution-logo";
 import { cn } from "@/lib/utils";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "../search/use-compare-tray";
 import { COMPARE_GROUPS } from "../search/compare-rows";
 
 const EMPTY_VALUES = new Set(["—", "Fees on enquiry", "Intake TBC"]);
 
 export function ComparePageView() {
+  const { user, initializing } = useAuthState();
+  const router = useRouter();
   const { items, remove, clear } = useCompareTray();
   const [hoveredCol, setHoveredCol] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!initializing && !user) {
+      router.replace("/auth/sign-in?redirect=/compare");
+    }
+  }, [initializing, user, router]);
+
+  if (!initializing && !user) return null;
 
   if (items.length === 0) {
     return (

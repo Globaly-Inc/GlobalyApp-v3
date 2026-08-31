@@ -341,6 +341,7 @@ export interface CourseInstitutionMedia {
   course_id: string;
   institution_name: string | null;
   logo_url: string | null;
+  cover_url: string | null;
   city: string | null;
   website: string | null;
 }
@@ -357,8 +358,9 @@ export async function institutionMediaByCourseIds(courseIds: string[]): Promise<
 
   return masterKnex(`${SA}.extraction_courses as c`)
     .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
+    .leftJoin("institutions as inst", "inst.source_job_id", "c.job_id")
     .whereIn("c.id", ids)
-    .select("c.id as course_id", "i.name as institution_name", "i.logo_url", "i.city", "i.website");
+    .select("c.id as course_id", "i.name as institution_name", "i.logo_url", "inst.cover_url", "i.city", "i.website");
 }
 
 export async function searchInstitutions(opts: {

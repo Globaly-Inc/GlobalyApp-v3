@@ -165,8 +165,7 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
           <button
             key={suggestion}
             type="button"
-            // A Search chip is a whole query, so run it; an AI prompt is usually a starting point to edit.
-            onClick={() => (mode === "ai" ? setQuery(suggestion) : submit(suggestion))}
+            onClick={() => submit(suggestion)}
             className="rounded-full border border-white/60 bg-black/35 backdrop-blur-xl px-3.5 py-1.5 text-sm font-medium text-white shadow-md transition-colors duration-200 hover:bg-black/50 hover:border-white cursor-pointer"
           >
             {suggestion}

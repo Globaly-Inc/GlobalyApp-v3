@@ -408,14 +408,10 @@ export function buildSystemPrompt(opts: {
 
   // ── First message greeting ──
   if (opts.isFirstMessage && !opts.embedConfig) {
-    const today = new Date().toLocaleDateString("en-US", {
-      weekday: "long", month: "long", day: "numeric", year: "numeric",
-    });
     sections.push(
       opts.returning
-        ? `GREETING: This student has chatted with you before — this is a fresh session. Open with a brief, ` +
-          `warm 'Welcome back' that naturally mentions today's date (${today}) before addressing their message. ` +
-          `One line — don't make the greeting the whole reply.`
+        ? "GREETING: This student has chatted with you before — this is a fresh session. Open with a brief, " +
+          "warm 'Welcome back' before addressing their message. One line — don't make the greeting the whole reply."
         : "GREETING: This is the student's first-ever conversation with you. Open by warmly welcoming them " +
           "to GlobalyApp before addressing their message.",
     );
