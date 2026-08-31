@@ -145,6 +145,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     city: data.city,
     address: data.address,
     postcode: data.postcode,
+    claim_status: "claimed",
   });
 
   try {
