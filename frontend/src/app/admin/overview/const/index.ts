@@ -4,6 +4,7 @@ import {
   Briefcase,
   Building2,
   ClipboardList,
+  Coins,
   FileCheck,
   FileText,
   Globe,
@@ -23,15 +24,16 @@ export const PRESETS: { value: DashboardPreset; label: string; days: number }[] 
   { value: "last90", label: "90 days", days: 90 },
 ];
 
-export const FEATURE_MODULES = ["students", "community", "content", "platform", "extraction"] as const;
+export const FEATURE_MODULES = ["students", "community", "content", "ai", "platform", "extraction"] as const;
 export type FeatureModule = (typeof FEATURE_MODULES)[number];
 
 export const MODULE_LABELS: Record<FeatureModule, string> = {
   students: "Students & Services",
   community: "Community",
   content: "Content & Marketing",
+  ai: "AI Counsellor",
   platform: "Platform",
-  extraction: "Data extraction",
+  extraction: "Data Extraction",
 };
 
 // Maps backend feature_usage keys → icon + module. Unknown keys fall back to "platform".
@@ -48,12 +50,26 @@ export const FEATURE_META: Record<string, { icon: LucideIcon; module: FeatureMod
   countries: { icon: Globe, module: "content" },
   blog_posts: { icon: BookOpen, module: "content" },
   scholarships: { icon: GraduationCap, module: "content" },
-  credit_transactions: { icon: Activity, module: "platform" },
-  chat_sessions: { icon: MessageSquare, module: "platform" },
+  chat_sessions: { icon: MessageSquare, module: "ai" },
+  credit_transactions: { icon: Coins, module: "platform" },
   waitlist: { icon: ClipboardList, module: "platform" },
   businesses: { icon: Building2, module: "platform" },
   extraction_jobs: { icon: FileCheck, module: "extraction" },
   extracted_courses: { icon: BookOpen, module: "extraction" },
 };
 
-export const FALLBACK_FEATURE_META = { icon: FileText, module: "platform" as FeatureModule };
+export const FALLBACK_FEATURE_META = { icon: Activity, module: "platform" as FeatureModule };
+
+export const EXTRACTION_STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  processing: "Processing",
+  done: "Completed",
+  failed: "Failed",
+};
+
+export const USER_CATEGORY_LABELS: Record<string, string> = {
+  personal: "Personal",
+  business: "Business",
+  uncategorized: "Uncategorized",
+};
+
