@@ -85,6 +85,11 @@ function isDeadUrl(content: string): boolean {
   return NOT_FOUND_PATTERNS.some((re) => re.test(content));
 }
 
+function isDeadUrlSignal(content: string, error?: string | null): boolean {
+  if (isDeadUrl(content)) return true;
+  return !!error && /\b404\b/.test(error);
+}
+
 /** Human-readable reason a rejected scrape had no usable content, for admin-visible errors. */
 function unusableReason(content: string): string {
   if (content.length < MIN_CONTENT_LEN) return `page content too short (${content.length} chars)`;
@@ -475,13 +480,13 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
       return {
         markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true,
         error: fc.error || a2.error || a1.error || unusableReason(fc.markdown),
-        notFound: !fc.error && isDeadUrl(fc.markdown),
+        notFound: isDeadUrlSignal(fc.markdown, fc.error),
       };
     }
     return {
       markdown: "", links: [], scraper: "crawl4ai", blocked: true,
       error: a2.error || a1.error || unusableReason(a2.markdown),
-      notFound: !a2.error && !a1.error && isDeadUrl(a2.markdown),
+      notFound: isDeadUrlSignal(a2.markdown, a2.error) || isDeadUrlSignal(a1.markdown, a1.error),
     };
   }
 
@@ -492,7 +497,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     return {
       markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: !usable,
       error: fc.error || (usable ? undefined : unusableReason(fc.markdown)),
-      notFound: !usable && !fc.error && isDeadUrl(fc.markdown),
+      notFound: !usable && isDeadUrlSignal(fc.markdown, fc.error),
     };
   }
 
