@@ -42,17 +42,15 @@ export function PartnershipsSection() {
       </div>
 
       <div className="container mx-auto px-4">
-        <div className="grid md:grid-cols-2 gap-12 items-center">
-          <Reveal direction="left">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`${MEDIA_URL}/partnership-meeting.jpg`}
-              alt="Education counselor and university representatives shaking hands in a business meeting"
-              loading="lazy"
-              width={1280}
-              height={960}
-              className="w-full h-auto rounded-2xl shadow-xl object-cover aspect-[4/3]"
-            />
+        <div className="grid md:grid-cols-2 gap-16 items-center">
+          <Reveal direction="left" className="order-2 md:order-1">
+            <div className="relative mx-auto max-w-sm md:max-w-none">
+              <div
+                className="absolute -inset-6 -z-10 rounded-full bg-primary/15 blur-3xl"
+                aria-hidden
+              />
+              <PartnershipConnectMockup />
+            </div>
           </Reveal>
 
           <Reveal direction="right" className="order-1 md:order-2">
