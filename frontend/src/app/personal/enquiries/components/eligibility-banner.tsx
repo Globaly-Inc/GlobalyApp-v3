@@ -18,5 +18,7 @@ export function EligibilityBanner({
 }: Readonly<{ verdict: EligibilityVerdict | null; loading: boolean }>) {
   if (loading) return <EligibilityVerdictSkeleton />;
   if (!verdict) return null;
-  return <EligibilityVerdictPanel verdict={verdict} />;
+  // Summary only — the per-criterion breakdown lives on the course page, where there is room
+  // for it. Here it would bury the message field the student came to fill in.
+  return <EligibilityVerdictPanel verdict={verdict} compact />;
 }

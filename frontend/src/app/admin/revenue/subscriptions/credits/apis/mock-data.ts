@@ -6,6 +6,20 @@ function delay(ms: number) {
 
 const MOCK_ENTRIES: LedgerEntry[] = [
   {
+    // A business paying to see a lead's contact details — the only spend that is not an AI
+    // message, and the one whose description carries the distribution it paid for.
+    id: 0,
+    created_at: "2026-08-31T11:18:00Z",
+    amount: -30,
+    balance_type: "free",
+    reason: "enquiry_unlock",
+    description: "Enquiry unlock — Cornell University · distribution 0fd19f21-da01-4a68-be7f-7112709e459c",
+    platform_user_id: 1,
+    owner_name: "Cornell University",
+    owner_email: "admissions@cornell.example.com",
+    balance_after: 480,
+  },
+  {
     id: 1,
     created_at: "2026-08-30T14:35:00Z",
     amount: 100,

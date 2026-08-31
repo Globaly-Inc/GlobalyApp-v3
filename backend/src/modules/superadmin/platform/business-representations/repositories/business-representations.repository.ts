@@ -96,12 +96,41 @@ export async function listByPartnerInstitutionId(institutionId: number, limit: n
   return { rows, total: Number(count) };
 }
 
+/** The UNIQUE the two writers upsert against. Soft delete leaves the row in place, so it stays live. */
+const RELATION_KEY = ["originator_id", "originator_type", "target_id", "target_type"] as const;
+
+/**
+ * Fields a re-link overwrites when it revives a removed partner. `deleted_at: null` + an active
+ * status is the revival itself; the rest is the new request's own data.
+ */
+function revival(data: Pick<RelationPatch, "country_ids" | "valid_from" | "valid_until" | "notes">) {
+  return {
+    status: "active",
+    deleted_at: null,
+    // `?? []` because RelationPatch leaves country_ids optional: an omitted list means "no
+    // country restriction", and a DO UPDATE SET cannot take an undefined binding either way.
+    country_ids: data.country_ids ?? [],
+    valid_from: data.valid_from ?? null,
+    valid_until: data.valid_until ?? null,
+    notes: data.notes ?? null,
+    updated_at: now(),
+  };
+}
+
+/**
+ * Undefined when the partner is already linked and live — that is the caller's 409.
+ *
+ * The insert is an upsert guarded by `WHERE deleted_at IS NOT NULL` because delete here is soft
+ * while the UNIQUE is not: the removed row keeps occupying the key, so a plain insert made
+ * re-linking a partner you had once removed permanently impossible. DO UPDATE revives that row;
+ * a live one matches neither the insert nor the guard, so it returns nothing and stays untouched
+ * rather than being silently overwritten by the new dates and notes.
+ */
 export async function createRelation(
   businessId: number,
   data: Pick<RelationInput, "partner_business_id" | "partner_kind" | "country_ids" | "valid_from" | "valid_until" | "notes">,
-  ignoreDuplicate = false,
 ) {
-  const query = masterKnex("business_representations")
+  const [row] = await masterKnex("business_representations")
     .insert({
       originator_id: businessId,
       originator_type: "business",
@@ -116,9 +145,10 @@ export async function createRelation(
       valid_until: data.valid_until ?? null,
       notes: data.notes ?? null,
     })
+    .onConflict([...RELATION_KEY])
+    .merge(revival(data))
+    .whereNotNull("business_representations.deleted_at")
     .returning(RAW_COLUMNS);
-  if (ignoreDuplicate) query.onConflict(["originator_id", "originator_type", "target_id", "target_type"]).ignore();
-  const [row] = await query;
   return row && hydrateRelation(row);
 }
 
@@ -136,8 +166,11 @@ export async function createRelationForInstitution(businessId: number, instituti
       valid_until: data.valid_until ?? null,
       notes: data.notes ?? null,
     })
+    .onConflict([...RELATION_KEY])
+    .merge(revival(data))
+    .whereNotNull("business_representations.deleted_at")
     .returning(RAW_COLUMNS);
-  return hydrateRelation(row);
+  return row && hydrateRelation(row);
 }
 
 export async function updateRelation(businessId: number, relationId: string, data: RelationPatch) {

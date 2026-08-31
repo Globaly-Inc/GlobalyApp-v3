@@ -29,14 +29,12 @@ export async function createRelation(businessId: number, data: RelationInput) {
   if (partnerIsInstitution) await requireInstitution(data.partner_business_id);
   else await requireBusiness(data.partner_business_id);
 
-  let relation;
-  try {
-    relation = await repo.createRelation(businessId, data);
-  } catch (e) {
-    if ((e as { code?: string }).code === "23505") {
-      throw new ConflictError(`This ${partnerIsInstitution ? "institution" : "business"} is already linked as a partner`);
-    }
-    throw e;
+  // Nothing back means the link is already there and live. A removed one is revived by the
+  // upsert instead, so "unlink, then link again" works — it used to 409 forever, because the
+  // soft-deleted row kept holding the unique key.
+  const relation = await repo.createRelation(businessId, data);
+  if (!relation) {
+    throw new ConflictError(`This ${partnerIsInstitution ? "institution" : "business"} is already linked as a partner`);
   }
 
   if (data.apply_to_branches) {
@@ -46,7 +44,8 @@ export async function createRelation(businessId: number, data: RelationInput) {
       // institution id can be equal while referring to entirely different orgs, so comparing
       // them across kinds would skip a branch that should have been linked.
       if (!partnerIsInstitution && branchBusinessId === data.partner_business_id) continue;
-      await repo.createRelation(branchBusinessId, data, true);
+      // A branch that already has the link returns nothing; that is the intended no-op.
+      await repo.createRelation(branchBusinessId, data);
     }
   }
 
@@ -79,12 +78,9 @@ export async function createInstitutionRelation(institutionId: number, businessI
   await requireInstitution(institutionId);
   await requireBusiness(businessId);
 
-  try {
-    return await repo.createRelationForInstitution(businessId, institutionId, data);
-  } catch (e) {
-    if ((e as { code?: string }).code === "23505") throw new ConflictError("This institution is already linked as a partner");
-    throw e;
-  }
+  const relation = await repo.createRelationForInstitution(businessId, institutionId, data);
+  if (!relation) throw new ConflictError("This consultancy is already linked as a partner");
+  return relation;
 }
 
 export async function updateInstitutionRelation(institutionId: number, relationId: string, data: RelationPatch) {

@@ -104,10 +104,16 @@ export function EligibilityVerdictSkeleton() {
   );
 }
 
+/**
+ * `compact` keeps only the headline, the score and the bar — the per-criterion breakdown is
+ * dropped. The enquiry dialog uses it: the student is there to write a message, and a full
+ * requirement audit pushes the form itself below the fold. The course page shows the whole thing.
+ */
 export function EligibilityVerdictPanel({
   verdict,
   className,
-}: Readonly<{ verdict: EligibilityVerdict; className?: string }>) {
+  compact = false,
+}: Readonly<{ verdict: EligibilityVerdict; className?: string; compact?: boolean }>) {
   const summary = SUMMARY[verdict.status];
   return (
     <div className={cn("flex flex-col gap-2.5 rounded-lg px-3 py-3 ring-1", summary.ring, className)}>
@@ -118,7 +124,7 @@ export function EligibilityVerdictPanel({
 
       <Score verdict={verdict} barClass={summary.bar} />
 
-      {verdict.criteria.length > 0 && (
+      {!compact && verdict.criteria.length > 0 && (
         <ul className="divide-y divide-border/60">
           {verdict.criteria.map((criterion, i) => (
             <CriterionRow key={`${criterion.key}-${criterion.label}-${i}`} criterion={criterion} />
@@ -128,9 +134,11 @@ export function EligibilityVerdictPanel({
 
       {/* Requirements often differ by audience, and the domestic/international split is derived
           rather than stored — saying which one was used keeps that honest. */}
-      <p className="text-[11px] text-muted-foreground">
-        Checked against the {verdict.student_type} entry requirements.
-      </p>
+      {!compact && (
+        <p className="text-[11px] text-muted-foreground">
+          Checked against the {verdict.student_type} entry requirements.
+        </p>
+      )}
     </div>
   );
 }

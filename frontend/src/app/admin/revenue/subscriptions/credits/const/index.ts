@@ -6,6 +6,7 @@ export const REASON_LABELS: Record<CreditReason, string> = {
   message: "AI tool usage",
   signup_grant: "Profile completion bonus",
   purchase: "Purchase",
+  enquiry_unlock: "Enquiry unlocked",
 };
 
 export const REASON_FILTER_OPTIONS = [
@@ -15,6 +16,7 @@ export const REASON_FILTER_OPTIONS = [
   { value: "message", label: "AI tool usage" },
   { value: "signup_grant", label: "Profile completion bonus" },
   { value: "purchase", label: "Purchase" },
+  { value: "enquiry_unlock", label: "Enquiry unlocked" },
 ];
 
 export type { ChartMetric } from "../apis/types";

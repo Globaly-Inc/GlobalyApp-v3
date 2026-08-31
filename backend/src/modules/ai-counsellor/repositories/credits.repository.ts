@@ -16,7 +16,9 @@ export interface TransactionRow {
   wallet_id: number;
   amount: number;
   balance_type: "free" | "subscription" | "purchased";
-  reason: "signup_grant" | "message" | "purchase" | "admin_grant" | "subscription_grant";
+  // 'enquiry_unlock' pays for a business seeing a student's contact details; see
+  // 20260831_001_credit_transactions_enquiry_unlock.ts for the matching CHECK constraint.
+  reason: "signup_grant" | "message" | "purchase" | "admin_grant" | "subscription_grant" | "enquiry_unlock";
   reference_type: "ai_message" | "purchase" | null;
   reference_id: number | null;
   description: string | null;

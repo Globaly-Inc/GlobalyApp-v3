@@ -15,7 +15,6 @@ import { CourseWeatherCard } from "./components/course-weather-card";
 import { CourseAwardedByCard, CourseConnectCard } from "./components/course-sidebar";
 import { CourseEntryRequirementsCard } from "./components/course-entry-requirements-card";
 import { PageViews } from "../../components/page-views";
-import { CourseEligibilityCheck } from "./components/course-eligibility-check";
 
 type CoursePageProps = Readonly<{ params: Promise<{ slug: string }> }>;
 
@@ -83,10 +82,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
           <CourseAwardedByCard course={course} />
           <CourseConnectCard institution={course.institution} />
           {/* Anchor target for the hero CTA and the search card's Eligibility button. */}
-          <div id="eligibility" className="scroll-mt-24 space-y-3">
-            {/* The viewer's own answer, above the requirements it was judged against. Client-side:
-                this page is cached per-slug, the verdict is per-person. */}
-            <CourseEligibilityCheck courseId={course.id} />
+          <div id="eligibility" className="scroll-mt-24">
             <CourseEntryRequirementsCard eligibility={course.eligibility} englishRequirements={course.englishRequirements} tests={tests} />
           </div>
         </div>

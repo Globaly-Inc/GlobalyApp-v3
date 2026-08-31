@@ -10,10 +10,13 @@
  *  7. Exactly one row per business — the UNIQUE on the table is what makes the old
  *     "one candidate per directory row" slot-hogging bug impossible.
  *  8. A link targeting a DIFFERENT institution is not returned (target_id is really scoped).
+ *  9. Unlink then link again works, and a duplicate live link still refuses — soft delete leaves
+ *     the row holding the UNIQUE key, so the writer has to revive it rather than insert.
  */
 
 import { masterKnex } from "../../src/core/db/master-pool.js";
 import { findRepresentingBusinesses } from "../../src/modules/enquiries/repositories/representations.repository.js";
+import * as partnersRepo from "../../src/modules/superadmin/platform/business-representations/repositories/business-representations.repository.js";
 
 let passed = 0;
 let failed = 0;
@@ -240,6 +243,38 @@ async function main() {
       });
       const rows = await findRepresentingBusinesses(institutionId);
       eq(rows.length, 0);
+    } finally {
+      await cleanup([businessId], [institutionId]);
+    }
+  });
+
+  await assert("a removed partner can be linked again, and a live one still can't be duplicated", async () => {
+    const institutionId = await makeInstitution();
+    const businessId = await makeBusiness();
+    const input = {
+      partner_business_id: institutionId,
+      partner_kind: "institution" as const,
+      country_ids: [],
+      valid_from: null,
+      valid_until: null,
+      notes: null,
+    };
+    try {
+      const first = await partnersRepo.createRelation(businessId, input);
+      if (!first) throw new Error("the first link should have been created");
+
+      // Same partner, still linked: nothing comes back, and the caller turns that into a 409.
+      eq(await partnersRepo.createRelation(businessId, input), undefined, "duplicate live link");
+
+      await partnersRepo.deleteRelation(businessId, first.id);
+      eq((await findRepresentingBusinesses(institutionId)).length, 0, "after unlink");
+
+      // The regression: the soft-deleted row still holds the unique key, so an insert would 409
+      // forever. It has to be revived instead.
+      const relinked = await partnersRepo.createRelation(businessId, { ...input, notes: "re-linked" });
+      if (!relinked) throw new Error("re-linking a removed partner should succeed");
+      eq(relinked.notes, "re-linked");
+      eq((await findRepresentingBusinesses(institutionId)).length, 1, "after re-link");
     } finally {
       await cleanup([businessId], [institutionId]);
     }

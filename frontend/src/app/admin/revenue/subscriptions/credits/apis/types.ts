@@ -3,7 +3,9 @@ export type CreditReason =
   | "message"
   | "purchase"
   | "admin_grant"
-  | "subscription_grant";
+  | "subscription_grant"
+  /** A business or institution paying to reveal an enquiry's student contact details. */
+  | "enquiry_unlock";
 
 export interface LedgerEntry {
   id: number;

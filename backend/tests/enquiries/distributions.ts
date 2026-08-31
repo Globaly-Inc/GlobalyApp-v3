@@ -9,10 +9,12 @@
  *
  * Businesses here are REAL provisioned tenant schemas, because unlock/close mirror
  * their new status onto `business_enquiries` and a business without a schema would
- * let that regress unnoticed.
+ * let that regress unnoticed. They also get real wallets, so the paywall is exercised against
+ * `credit_wallets`/`credit_transactions` rather than a stand-in.
  *
- * Note credits are ONE shared in-code pool (see credits.service.ts), so every test
- * reads getBalance() before and after rather than assuming a starting value.
+ * Credits are real `credit_wallets` rows now, not a shared in-process pool. Each business here
+ * gets its OWN owner and therefore its own wallet, which is what lets these cases assert that one
+ * business's spend leaves another's balance alone — something the old single pool could not model.
  */
 
 import { masterKnex } from "../../src/core/db/master-pool.js";
@@ -21,10 +23,14 @@ import { schemaName } from "../../src/core/db/knex.js";
 import { provisionBusinessSchema } from "../../src/core/business/provisioner.js";
 import { runMatching } from "../../src/modules/enquiries/services/matching.service.js";
 import * as service from "../../src/modules/enquiries/services/distributions.service.js";
-import * as creditsService from "../../src/modules/enquiries/services/credits.service.js";
+import * as creditService from "../../src/modules/ai-counsellor/services/credit.service.js";
+import { DEFAULT_UNLOCK_COST } from "../../src/modules/enquiries/repositories/distributions.repository.js";
 
 /** The services now address a recipient (business or institution) rather than a bare id. */
 const asBiz = (id: number) => ({ kind: "business" as const, id });
+
+/** Seeded onto every test business's wallet — comfortably more than a few unlocks. */
+const WALLET_SEED = 500;
 
 
 let passed = 0;
@@ -131,10 +137,19 @@ async function makeRecipient(
   courseId: string,
   subject: string,
   offsetDeg = 0,
-): Promise<{ id: number; schemaUuid: string }> {
-  const owner = await masterKnex("platform_users").orderBy("id").first();
-  if (!owner) throw new Error("no platform_users row available to own the test business");
+): Promise<{ id: number; schemaUuid: string; ownerId: number }> {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // Its own owner, not the first row in the table: credit_wallets is keyed on platform_users.id,
+  // so businesses sharing an owner would share a wallet and every balance assertion below would
+  // be measuring the wrong thing.
+  const [owner] = await masterKnex("platform_users")
+    .insert({
+      first_name: "Dist",
+      last_name: "Owner",
+      email: `dist-owner-${suffix}@example.com`,
+      is_verified: true,
+    })
+    .returning("id");
   const [row] = await masterKnex("businesses")
     .insert({
       owner_id: owner.id,
@@ -161,7 +176,22 @@ async function makeRecipient(
     longitude: 151.21,
     enquiry_enabled: true,
   });
-  return { id: row.id, schemaUuid: row.schema_name };
+  // Enough to cover several unlocks; individual cases top up or drain as they need.
+  await creditService.grantCredits(owner.id, WALLET_SEED, "free", "admin_grant", "test seed");
+  return { id: row.id, schemaUuid: row.schema_name, ownerId: owner.id };
+}
+
+/** Total spendable credits on the wallet backing this business. */
+async function balanceOf(ownerId: number): Promise<number> {
+  return (await creditService.getBalance(ownerId)).total;
+}
+
+/** Force a wallet to an exact total, for the insufficient-credits case. */
+async function setBalance(ownerId: number, to: number): Promise<void> {
+  const current = await balanceOf(ownerId);
+  if (current !== to) {
+    await creditService.grantCredits(ownerId, to - current, "free", "admin_grant", "test adjust");
+  }
 }
 
 async function distributionFor(enquiryId: string, businessId: number) {
@@ -190,7 +220,7 @@ async function scenario(count: number) {
   const subject = `Dist Subject ${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const { jobId, courseId, institutionId } = await makeJobAndCourse(subject);
 
-  const businesses: Array<{ id: number; schemaUuid: string }> = [];
+  const businesses: Array<{ id: number; schemaUuid: string; ownerId: number }> = [];
   for (let i = 0; i < count; i++) {
     businesses.push(await makeRecipient(jobId, courseId, subject, i * 0.01));
   }
@@ -230,7 +260,11 @@ async function scenario(count: number) {
         .where("originator_type", "business")
         .delete();
       await masterKnex("user_business_index").whereIn("business_id", ids).delete();
+      // Wallets cascade from platform_users and transactions from wallets, so deleting the
+      // owners is enough — but the owners must go AFTER the businesses that reference them.
+      const ownerIds = businesses.map((b) => b.ownerId);
       await masterKnex("businesses").whereIn("id", ids).delete();
+      await masterKnex("platform_users").whereIn("id", ownerIds).delete();
       // Institutions before the job: enquiries reference them and representations target them.
       await masterKnex("institutions").where({ source_job_id: jobId }).delete();
       await masterKnex("superadmin.extraction_institution_overview").where({ job_id: jobId }).delete();
@@ -249,7 +283,7 @@ async function main() {
     const s = await scenario(1);
     const biz = s.businesses[0]!;
     try {
-      const before = creditsService.getBalance();
+      const before = await balanceOf(biz.ownerId);
       const result: any = await service.unlock(asBiz(biz.id),
         (await distributionFor(s.enquiry.id, biz.id)).id,
         s.studentId,
@@ -257,16 +291,17 @@ async function main() {
 
       eq(result.status, "unlocked", "returned status");
       eq(result.already_unlocked, false, "not a repeat unlock");
-      eq(result.coin_cost, creditsService.UNLOCK_COST, "charged the unlock cost");
+      eq(result.coin_cost, DEFAULT_UNLOCK_COST, "charged the business's own enquiry_coin_cost");
       eq(result.student_first_name, "Unlock", "student first name revealed");
       eq(result.student_phone, "+61400000000", "student phone revealed");
-      eq(creditsService.getBalance(), before - creditsService.UNLOCK_COST, "balance deducted");
+      eq(await balanceOf(biz.ownerId), before - DEFAULT_UNLOCK_COST, "wallet debited");
+      eq(result.credits_remaining, before - DEFAULT_UNLOCK_COST, "and the response says so");
 
       const row = await distributionFor(s.enquiry.id, biz.id);
       eq(row.status, "unlocked", "central status");
       eq(row.unlocked_at != null, true, "unlocked_at set");
       eq(row.unlocked_by, s.studentId, "unlocked_by recorded");
-      eq(Number(row.coin_cost), creditsService.UNLOCK_COST, "coin_cost persisted");
+      eq(Number(row.coin_cost), DEFAULT_UNLOCK_COST, "coin_cost persisted");
 
       // Not 'unlocked': the unlock seeds the thread's greeting, and a thread with a
       // message in it is a conversation. The central row above stays on 'unlocked' —
@@ -287,12 +322,12 @@ async function main() {
     try {
       const distId = (await distributionFor(s.enquiry.id, biz.id)).id;
       await service.unlock(asBiz(biz.id), distId, s.studentId);
-      const afterFirst = creditsService.getBalance();
+      const afterFirst = await balanceOf(biz.ownerId);
 
       const second: any = await service.unlock(asBiz(biz.id), distId, s.studentId);
       eq(second.already_unlocked, true, "flagged as already unlocked");
       eq(second.student_email != null, true, "contact still returned");
-      eq(creditsService.getBalance(), afterFirst, "balance unchanged on repeat");
+      eq(await balanceOf(biz.ownerId), afterFirst, "wallet unchanged on repeat");
 
       const enquiry = await masterKnex("enquiries").where({ id: s.enquiry.id }).first();
       eq(Number(enquiry.accept_count), 1, "accept_count incremented once, not twice");
@@ -313,13 +348,13 @@ async function main() {
       }
 
       const fourth = s.businesses[3]!;
-      const balanceBefore = creditsService.getBalance();
+      const balanceBefore = await balanceOf(fourth.ownerId);
       await rejectsWith(
         async () => service.unlock(asBiz(fourth.id), (await distributionFor(s.enquiry.id, fourth.id)).id, s.studentId),
         "ConflictError",
         "4th unlock",
       );
-      eq(creditsService.getBalance(), balanceBefore, "NOT charged when the cap rejects");
+      eq(await balanceOf(fourth.ownerId), balanceBefore, "NOT charged when the cap rejects");
       eq((await distributionFor(s.enquiry.id, fourth.id)).status, "distributed", "4th row untouched");
     } finally {
       await s.cleanup();
@@ -329,10 +364,9 @@ async function main() {
   await assert("insufficient credits returns 402 and leaves the distribution untouched", async () => {
     const s = await scenario(1);
     const biz = s.businesses[0]!;
-    const restore = creditsService.getBalance();
     try {
       // One credit short of an unlock.
-      creditsService.resetForTests(creditsService.UNLOCK_COST - 1);
+      await setBalance(biz.ownerId, DEFAULT_UNLOCK_COST - 1);
 
       const err: any = await rejectsWith(
         async () => service.unlock(asBiz(biz.id), (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId),
@@ -340,20 +374,65 @@ async function main() {
         "unlock with no credits",
       );
       eq(err.statusCode, 402, "maps to HTTP 402");
-      eq(creditsService.getBalance(), creditsService.UNLOCK_COST - 1, "balance unchanged");
+      eq(await balanceOf(biz.ownerId), DEFAULT_UNLOCK_COST - 1, "wallet unchanged — the whole trx rolled back");
       eq((await distributionFor(s.enquiry.id, biz.id)).status, "distributed", "still locked");
+      // The rollback must take the ledger with it: a refused unlock leaves no spend behind.
+      const spends = await masterKnex("credit_transactions as ct")
+        .join("credit_wallets as cw", "cw.id", "ct.wallet_id")
+        .where({ "cw.platform_user_id": biz.ownerId, "ct.reason": "enquiry_unlock" })
+        .count<{ count: string }[]>("ct.id as count");
+      eq(Number(spends[0]!.count), 0, "no ledger row for a spend that never happened");
     } finally {
-      creditsService.resetForTests(restore);
+      await s.cleanup();
+    }
+  });
+
+  await assert("one business's spend does not touch another's balance", async () => {
+    // The single in-process pool this replaced could not model per-business credit at all —
+    // Parramatta unlocking lowered the balance London saw. This is the case that proves it does.
+    const s = await scenario(2);
+    const a = s.businesses[0]!;
+    const b = s.businesses[1]!;
+    try {
+      const bBefore = await balanceOf(b.ownerId);
+      await service.unlock(asBiz(a.id), (await distributionFor(s.enquiry.id, a.id)).id, s.studentId);
+      eq(await balanceOf(b.ownerId), bBefore, "B's wallet untouched by A's unlock");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("the spend lands in the credit ledger with an enquiry_unlock reason", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      const distId = (await distributionFor(s.enquiry.id, biz.id)).id;
+      await service.unlock(asBiz(biz.id), distId, s.studentId);
+
+      const rows = await masterKnex("credit_transactions as ct")
+        .join("credit_wallets as cw", "cw.id", "ct.wallet_id")
+        .where({ "cw.platform_user_id": biz.ownerId, "ct.reason": "enquiry_unlock" })
+        .select("ct.amount", "ct.balance_type", "ct.description");
+
+      // One row per balance type touched; the seed is a single 'free' grant, so one row here.
+      eq(rows.length, 1, "one ledger row for the spend");
+      eq(Number(rows[0]!.amount), -DEFAULT_UNLOCK_COST, "recorded as a debit of the unlock cost");
+      eq(rows[0]!.balance_type, "free", "spent from the free balance first (waterfall)");
+      // reference_id cannot hold a uuid, so the distribution is identified in the description —
+      // which is also what the admin ledger's search filter matches on.
+      eq(String(rows[0]!.description).includes(distId), true, "description identifies the distribution");
+    } finally {
       await s.cleanup();
     }
   });
 
   await assert("a business cannot unlock or close another business's distribution", async () => {
     const s = await scenario(2);
-    const [a, b] = s.businesses as [{ id: number }, { id: number }];
+    const a = s.businesses[0]!;
+    const b = s.businesses[1]!;
     try {
       const aDist = (await distributionFor(s.enquiry.id, a.id)).id;
-      const balanceBefore = creditsService.getBalance();
+      const balanceBefore = await balanceOf(b.ownerId);
 
       await rejectsWith(() => service.unlock(asBiz(b.id), aDist, s.studentId), "NotFoundError", "cross-business unlock");
       await rejectsWith(
@@ -362,7 +441,7 @@ async function main() {
         "cross-business close",
       );
 
-      eq(creditsService.getBalance(), balanceBefore, "no charge for a foreign row");
+      eq(await balanceOf(b.ownerId), balanceBefore, "no charge for a foreign row");
       eq((await distributionFor(s.enquiry.id, a.id)).status, "distributed", "A's row untouched");
     } finally {
       await s.cleanup();
@@ -389,7 +468,7 @@ async function main() {
       eq(unlocked!.message, MESSAGE, "full message");
       eq(unlocked!.student_name, "Unlock Student", "name revealed");
       eq(unlocked!.student_phone, "+61400000000", "phone revealed");
-      eq(unlocked!.coin_cost, creditsService.UNLOCK_COST, "cost surfaced in the list");
+      eq(unlocked!.coin_cost, DEFAULT_UNLOCK_COST, "cost surfaced in the list");
     } finally {
       await s.cleanup();
     }
@@ -423,7 +502,8 @@ async function main() {
 
   await assert("two businesses close the same enquiry with different reasons, independently", async () => {
     const s = await scenario(2);
-    const [a, b] = s.businesses as [{ id: number }, { id: number }];
+    const a = s.businesses[0]!;
+    const b = s.businesses[1]!;
     try {
       await service.close(asBiz(a.id), (await distributionFor(s.enquiry.id, a.id)).id, "Out of our catchment area.", s.studentId);
       await service.close(asBiz(b.id), (await distributionFor(s.enquiry.id, b.id)).id, "No capacity for this intake.", s.studentId);
@@ -444,9 +524,9 @@ async function main() {
 
       eq((await distributionFor(s.enquiry.id, biz.id)).unlocked_at, null, "closed without ever unlocking");
 
-      const balanceBefore = creditsService.getBalance();
+      const balanceBefore = await balanceOf(biz.ownerId);
       await rejectsWith(() => service.unlock(asBiz(biz.id), distId, s.studentId), "ConflictError", "unlock after close");
-      eq(creditsService.getBalance(), balanceBefore, "no charge for unlocking a closed row");
+      eq(await balanceOf(biz.ownerId), balanceBefore, "no charge for unlocking a closed row");
 
       await rejectsWith(() => service.close(asBiz(biz.id), distId, "again", s.studentId), "ConflictError", "double close");
     } finally {

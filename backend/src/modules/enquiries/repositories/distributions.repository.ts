@@ -252,3 +252,56 @@ export async function listBusinessIdsForEnquiry(enquiryId: string): Promise<numb
   const rows = await masterKnex(T).where({ enquiry_id: enquiryId }).select("business_id");
   return rows.map((r) => r.business_id);
 }
+
+/**
+ * Default when a recipient has no configured price. Mirrors `businesses.enquiry_coin_cost`'s
+ * column default, so a business row and an institution (which has no such column) charge the
+ * same thing rather than disagreeing by accident.
+ */
+export const DEFAULT_UNLOCK_COST = 30;
+
+export interface RecipientBilling {
+  /** The wallet to charge. `credit_wallets` is keyed on platform_users.id, so an org bills
+   * through the person who owns it: businesses.owner_id, institutions.platform_user_id. */
+  walletUserId: number;
+  /** What this recipient pays per unlock, from its own configured price. */
+  unlockCost: number;
+  /** For the ledger description — an admin reading the ledger needs a name, not an id. */
+  name: string;
+}
+
+/**
+ * Who pays for this recipient's unlocks, and how much.
+ *
+ * Both branches resolve to a platform user because that is what the credit system is keyed on.
+ * There is no per-business wallet table, and inventing one here would be exactly the separate
+ * credit mechanism this is meant to remove.
+ *
+ * Institutions have no `enquiry_coin_cost` column, so they take the default. Adding one is a
+ * schema change the unlock flow does not need today.
+ */
+export async function findRecipientBilling(recipient: Recipient): Promise<RecipientBilling | undefined> {
+  if (recipient.kind === "institution") {
+    const row = await masterKnex("institutions")
+      .where({ id: recipient.id })
+      .whereNull("deleted_at")
+      .first("platform_user_id", "institution_name");
+    if (!row) return undefined;
+    return {
+      walletUserId: Number(row.platform_user_id),
+      unlockCost: DEFAULT_UNLOCK_COST,
+      name: row.institution_name,
+    };
+  }
+
+  const row = await masterKnex("businesses")
+    .where({ id: recipient.id })
+    .whereNull("deleted_at")
+    .first("owner_id", "business_name", "enquiry_coin_cost");
+  if (!row) return undefined;
+  return {
+    walletUserId: Number(row.owner_id),
+    unlockCost: Number(row.enquiry_coin_cost ?? DEFAULT_UNLOCK_COST),
+    name: row.business_name,
+  };
+}

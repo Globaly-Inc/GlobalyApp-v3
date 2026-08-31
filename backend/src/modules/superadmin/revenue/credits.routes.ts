@@ -5,7 +5,16 @@ import * as repo from "./credits.repository.js";
 import * as creditService from "../../ai-counsellor/services/credit.service.js";
 import type { ChartDataRow, ChartMetric } from "./credits.repository.js";
 
-const VALID_REASONS = ["signup_grant", "message", "purchase", "admin_grant", "subscription_grant"] as const;
+// Mirrors chk_ct_reason on credit_transactions. A value missing here 400s the ledger's own
+// filter dropdown, so the two lists have to move together.
+const VALID_REASONS = [
+  "signup_grant",
+  "message",
+  "purchase",
+  "admin_grant",
+  "subscription_grant",
+  "enquiry_unlock",
+] as const;
 
 const VALID_METRICS = ["total", "by_reason", "by_balance_type", "by_user", "by_region"] as const;
 const VALID_DAYS = [7, 30, 90] as const;
