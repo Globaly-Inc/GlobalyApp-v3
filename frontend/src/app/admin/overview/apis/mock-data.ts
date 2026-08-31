@@ -1,4 +1,4 @@
-import type { DashboardData, DashboardPreset, GrowthPoint, SiteAccessSettings } from "./types";
+import type { DashboardData, DashboardPreset, GrowthPoint, RecentSignup, SiteAccessSettings } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -73,6 +73,28 @@ export const overviewMockApi = {
         businesses: mockGrowth(days, 2),
         activity: mockGrowth(days, 12),
       },
+      user_breakdown: {
+        by_category: [
+          { category: "personal", count: 15 },
+          { category: "business", count: 5 },
+          { category: "uncategorized", count: 2 },
+        ],
+      },
+      extraction: {
+        by_status: [
+          { status: "done", count: 72 },
+          { status: "processing", count: 8 },
+          { status: "pending", count: 5 },
+          { status: "failed", count: 3 },
+        ],
+      },
+      recent_signups: [
+        { id: 1, uuid: "u1", first_name: "Amara", last_name: "Diallo", email: "amara@example.com", created_at: new Date(Date.now() - 1 * 3600_000).toISOString() },
+        { id: 2, uuid: "u2", first_name: "Lena", last_name: "Schmidt", email: "lena@example.com", created_at: new Date(Date.now() - 3 * 3600_000).toISOString() },
+        { id: 3, uuid: "u3", first_name: "James", last_name: "Okafor", email: "james@example.com", created_at: new Date(Date.now() - 8 * 3600_000).toISOString() },
+        { id: 4, uuid: "u4", first_name: null, last_name: null, email: "unknown@example.com", created_at: new Date(Date.now() - 1 * 86_400_000).toISOString() },
+        { id: 5, uuid: "u5", first_name: "Sofia", last_name: "Martínez", email: "sofia@example.com", created_at: new Date(Date.now() - 2 * 86_400_000).toISOString() },
+      ] satisfies RecentSignup[],
     };
   },
 };
