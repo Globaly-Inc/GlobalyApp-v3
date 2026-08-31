@@ -137,9 +137,6 @@ const REGISTRANT_TYPE_LABELS: Record<string, string> = {
   other: "Other",
   newsletter: "Newsletter Subscriber",
 };
-
-// Keep in sync with the frontend's LAUNCH_MS (frontend/src/app/coming-soon/const/index.ts)
-// — this is a marketing date, not something either side reads from the other at runtime.
 const LAUNCH_DATE_LABEL = new Date("2026-09-01T00:00:00+10:00").toLocaleDateString("en-US", {
   month: "long",
   day: "numeric",
