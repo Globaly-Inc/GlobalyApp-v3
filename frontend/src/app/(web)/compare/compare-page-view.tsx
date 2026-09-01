@@ -45,7 +45,7 @@ export function ComparePageView() {
   }
 
   /** Background applied to every cell in the hovered column. */
-  const colBg = (i: number) => hoveredCol === i ? "bg-primary/10" : undefined;
+  const colBg = (i: number) => hoveredCol === i ? "bg-primary/5" : undefined;
   /** onMouseEnter for any cell in course column i. */
   const onEnter = (i: number) => () => setHoveredCol(i);
 
