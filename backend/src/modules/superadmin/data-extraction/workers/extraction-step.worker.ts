@@ -783,8 +783,8 @@ async function handleCoursesStep(jobId: string) {
   if (dispatchErr) {
     await writeJobEvent(jobId, "step_error", {
       level: "warn", phase: "courses",
-      message: `Queue unavailable after dispatching ${dispatched}/${items.length} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
-      data: { dispatched, total: items.length, new_guided_urls: queuedNew },
+      message: `Dispatch interrupted after ${dispatched}/${items.length} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
+      data: { dispatched, total: items.length, new_guided_urls: queuedNew, error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr) },
     });
     throw dispatchErr;
   }
