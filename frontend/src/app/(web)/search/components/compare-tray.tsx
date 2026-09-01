@@ -2,31 +2,31 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ChevronDown, ExternalLink, Layers, X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { ChevronDown, Layers, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "../use-compare-tray";
-import { COMPARE_ROWS } from "../compare-rows";
+
+/** Pages with a course-compare checkbox on their cards — everywhere else the tray no-ops. */
+const COMPARE_ENABLED_PATHS = ["/search", "/personal/explore"];
 
 /**
- * Floating messenger-style compare widget (bottom-right, collapsible).
- * Shared by the search page and the AI counsellor — both feed the same
- * in-memory store. "Compare Now" renders the comparison inline in this
- * widget; "View details" opens the full /compare page in a new tab
- * (the store is backed by localStorage so the new tab loads the same selection).
- *
- * `positionClass` exists because the portal parks its own floating button in this same corner —
- * /personal/explore passes an offset so the two don't sit on top of each other.
+ * Floating messenger-style compare widget (bottom-right, collapsible). Only renders on pages that
+ * actually offer course compare checkboxes (see COMPARE_ENABLED_PATHS) — other call sites (AI
+ * counsellor, embed chat) render it too but it no-ops there. "Compare Now" goes straight to the
+ * full /compare page. The store is in-memory only (resets on refresh), so that link stays a
+ * same-tab client-side navigation — opening in a new tab would start with an empty selection.
  */
 export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ positionClass?: string }> = {}) {
   const { user } = useAuthState();
   const { items, max, remove, clear } = useCompareTray();
   const [collapsed, setCollapsed] = useState(false);
-  const [comparing, setComparing] = useState(false);
+  const pathname = usePathname();
 
-  if (!user || items.length === 0) return null;
-  // Items can drop below 2 while the table is open — fall back to the list.
-  const showTable = comparing && items.length >= 2;
+  if (!user || items.length === 0 || !COMPARE_ENABLED_PATHS.some((p) => pathname.startsWith(p))) return null;
+  // /personal/explore keeps its own compare page so "Compare Now" doesn't drop the portal sidebar.
+  const comparePath = pathname.startsWith("/personal/explore") ? "/personal/explore/compare" : "/compare";
 
   if (collapsed) {
     return (
@@ -45,11 +45,7 @@ export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ p
   }
 
   return (
-    <div
-      className={`fixed ${positionClass} z-40 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl ${
-        showTable ? "w-[42rem]" : "w-80"
-      }`}
-    >
+    <div className={`fixed ${positionClass} z-40 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl`}>
       <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
         <span className="flex items-center gap-1.5 text-sm font-medium">
           <Layers className="size-4 text-primary" /> Compare courses ({items.length}/{max})
@@ -64,89 +60,37 @@ export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ p
         </button>
       </div>
 
-      {showTable ? (
-        <div className="max-h-80 overflow-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                <th className="sticky left-0 bg-muted/95 py-2 px-3 text-left font-medium text-muted-foreground">Field</th>
-                {items.map((i) => (
-                  <th key={i.id} className="min-w-[9rem] py-2 px-3 text-left align-top">
-                    <div className="flex items-start justify-between gap-1">
-                      <span className="font-semibold text-foreground" title={i.name}>{i.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => remove(i.id)}
-                        aria-label={`Remove ${i.name}`}
-                        className="cursor-pointer rounded p-0.5 text-muted-foreground hover:text-destructive"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </div>
-                    {i.institutionName && (
-                      <span className="font-normal text-[11px] text-muted-foreground">{i.institutionName}</span>
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARE_ROWS.map((row) => (
-                <tr key={row.label} className="border-b border-border/50 last:border-b-0">
-                  <td className="sticky left-0 bg-card py-2 px-3 text-muted-foreground">{row.label}</td>
-                  {items.map((i) => (
-                    <td key={i.id} className="py-2 px-3 text-foreground">{row.get(i)}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <ul className="max-h-56 overflow-y-auto">
-          {items.map((i) => (
-            <li key={i.id} className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0">
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium" title={i.name}>{i.name}</p>
-                {i.institutionName && (
-                  <p className="truncate text-[11px] text-muted-foreground">{i.institutionName}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => remove(i.id)}
-                aria-label={`Remove ${i.name}`}
-                className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-3.5" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="max-h-56 overflow-y-auto">
+        {items.map((i) => (
+          <li key={i.id} className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium" title={i.name}>{i.name}</p>
+              {i.institutionName && (
+                <p className="truncate text-[11px] text-muted-foreground">{i.institutionName}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => remove(i.id)}
+              aria-label={`Remove ${i.name}`}
+              className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
 
       <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
-        {showTable ? (
-          <>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setComparing(false)} className="h-8 gap-1.5">
-              <ArrowLeft className="size-3.5" /> Back
-            </Button>
-            <Button size="sm" className="h-8 flex-1 gap-1.5" render={<Link href="/compare" target="_blank" rel="noopener noreferrer" />}>
-              <ExternalLink className="size-3.5" /> View details
-            </Button>
-          </>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            disabled={items.length < 2}
-            onClick={() => setComparing(true)}
-            className="h-8 flex-1 gap-1.5"
-          >
-            <Layers className="size-3.5" /> Compare Now
-          </Button>
-        )}
-        <Button type="button" size="sm" variant="ghost" onClick={() => { clear(); setComparing(false); }} className="h-8">
+        <Button
+          size="sm"
+          disabled={items.length < 2}
+          className="h-8 flex-1 gap-1.5"
+          render={<Link href={comparePath} />}
+        >
+          <Layers className="size-3.5" /> Compare Now
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={clear} className="h-8">
           Clear
         </Button>
       </div>

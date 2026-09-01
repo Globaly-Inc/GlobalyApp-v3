@@ -1,5 +1,6 @@
 "use client";
 
+import { GraduationCap } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
@@ -26,10 +27,13 @@ export function InstitutionLogo({
   name,
   logoUrl,
   className,
+  fallbackIcon,
 }: {
   name: string;
   logoUrl: string | null | undefined;
   className?: string;
+  /** Show a generic study icon instead of the monogram when there's no institution logo — e.g. on the compare page. */
+  fallbackIcon?: boolean;
 }) {
   return (
     <Avatar
@@ -47,7 +51,7 @@ export function InstitutionLogo({
         />
       )}
       <AvatarFallback className="rounded-xl bg-primary/10 text-xs font-semibold text-primary">
-        {monogram(name)}
+        {fallbackIcon ? <GraduationCap className="size-1/2" /> : monogram(name)}
       </AvatarFallback>
     </Avatar>
   );

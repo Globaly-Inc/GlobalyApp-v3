@@ -57,7 +57,7 @@ export function Navbar() {
   const initial = (profile?.first_name?.[0] ?? user?.email?.[0] ?? "U").toUpperCase();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md print:hidden">
       <div className="container mx-auto flex h-16 items-center px-3 sm:px-4 gap-1">
         <Link href="/" className="flex items-center flex-shrink-0">
           <Image src="/globaly-logo.png" alt="Globaly.ai" width={753} height={157} className="h-8 w-auto" priority />
@@ -83,9 +83,6 @@ export function Navbar() {
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
           {!initializing && (
             user ? (
-              // The same profile badge as the portal shell, so signing in doesn't change what the account
-              // control looks like between the marketing site and the app. No credits pill here — there is no
-              // credits balance in V3 to put in it.
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
