@@ -169,6 +169,12 @@ export async function deepScrape(jobId: string, adminId: number) {
   if (job.source_type === "agentcis") {
     throw new BadRequestError("AgentCIS jobs are imported from the AgentCIS API — there is no site to deep-scrape");
   }
+  // The job worker drops messages for exported jobs (and reactivateJob deliberately
+  // doesn't revive them) — raising the cap first would mutate state, report success,
+  // and run nothing. Reject before touching anything.
+  if (job.status === "exported") {
+    throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
+  }
 
   const pageCap = await repo.raisePageCap(jobId, 500);
   await repo.reactivateJob(jobId);

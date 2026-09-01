@@ -65,7 +65,9 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
 
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <RerunExtractionButton jobId={job.id} status={job.status} onReload={onReload} />
-        <DeepScrapeButton jobId={job.id} onReload={onReload} />
+        {job.source_type !== "agentcis" && job.status !== "exported" && (
+          <DeepScrapeButton jobId={job.id} onReload={onReload} />
+        )}
 
         {ACTIVE_STATUSES.includes(job.status) && (
           <Button
