@@ -58,7 +58,7 @@ export default async function RootLayout({
     siteConfig.name
   );
   const isDark = cookieStore.get("theme")?.value === "dark";
-  // Headings are pinned to --font-heading (Fraunces) in globals.css, and a rule on
+  // Headings are pinned to --heading-font (Fraunces) in globals.css, and a rule on
   // the element beats the font inherited from <html>, so the theme font reaches them
   // only if this variable is reassigned. applyThemeSettings does the same thing on
   // the client via the same helper, so a live font change and a fresh render agree.
@@ -80,7 +80,7 @@ export default async function RootLayout({
       style={
         {
           "--primary": settings.primaryColor,
-          ...(headingFont ? { "--font-heading": headingFont } : {}),
+          ...(headingFont ? { "--heading-font": headingFont } : {}),
           fontFamily: settings.font,
         } as React.CSSProperties
       }

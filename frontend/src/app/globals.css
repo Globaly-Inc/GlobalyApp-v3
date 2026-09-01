@@ -10,7 +10,11 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji";
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-fraunces);
+  /* var(--heading-font), not var(--font-fraunces) directly: @theme inline bakes a
+     token's value into the generated CSS, so naming the face here would compile
+     every heading to `font-family: var(--font-fraunces)` and leave nothing for the
+     theme font to reassign. Same indirection --color-primary uses. */
+  --font-heading: var(--heading-font);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -96,6 +100,11 @@
   --navy-foreground: 0 0% 95%;
   --purple-dark: 0 63% 20%;
   --purple-deep: 0 63% 14%;
+
+  /* The heading face. A plain custom property rather than a @theme token, so it
+     survives to runtime: layout.tsx and applyThemeSettings reassign this when a
+     tenant has picked a font, and clear it to fall back to Fraunces. */
+  --heading-font: var(--font-fraunces);
 }
 
 .dark {
