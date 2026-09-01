@@ -1,29 +1,92 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, MapPin, Printer, X } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InstitutionLogo } from "@/components/institution-logo";
-import { cn } from "@/lib/utils";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "../search/use-compare-tray";
 import { COMPARE_GROUPS } from "../search/compare-rows";
+import { getCourseBySlug } from "../search/api";
+import type { CourseDetail } from "../search/types";
 
-const EMPTY_VALUES = new Set(["—", "Fees on enquiry", "Intake TBC"]);
-
-export function ComparePageView() {
+export function ComparePageView({
+  basePath = "/compare",
+  exploreHref = "/search?tab=courses",
+}: Readonly<{ basePath?: string; exploreHref?: string }> = {}) {
   const { user, initializing } = useAuthState();
   const router = useRouter();
   const { items, remove, clear } = useCompareTray();
-  const [hoveredCol, setHoveredCol] = useState<number | null>(null);
+  const [details, setDetails] = useState<Record<string, CourseDetail>>({});
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const firstColRef = useRef<HTMLTableCellElement>(null);
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(false);
+  const COLUMN_WIDTH = 320;
+
+  const updateScrollState = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanPrev(el.scrollLeft > 0);
+    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  };
+
+  useEffect(() => {
+    updateScrollState();
+  }, [items.length]);
+
+  // Tracks slugs already requested — separate from `details` state so Strict Mode's double-invoke
+  // of this effect on mount can't fire the same fetches twice (see AGENTS.md's fetch-on-mount rule).
+  const requestedSlugs = useRef(new Set<string>());
+  const [retryTick, setRetryTick] = useState(0);
+  useEffect(() => {
+    const missing = items.filter((i) => !requestedSlugs.current.has(i.slug));
+    if (missing.length === 0) return;
+    missing.forEach((i) => requestedSlugs.current.add(i.slug));
+    let cancelled = false;
+    void Promise.allSettled(missing.map((i) => getCourseBySlug(i.slug))).then((results) => {
+      if (cancelled) return;
+      let hasFailure = false;
+      setDetails((prev) => {
+        const next = { ...prev };
+        missing.forEach((item, idx) => {
+          const result = results[idx];
+          if (result?.status === "fulfilled" && result.value) {
+            next[item.slug] = result.value;
+          } else {
+            requestedSlugs.current.delete(item.slug);
+            hasFailure = true;
+          }
+        });
+        return next;
+      });
+      if (hasFailure) setRetryTick((t) => t + 1);
+    });
+    return () => {
+      cancelled = true;
+      missing.forEach((i) => requestedSlugs.current.delete(i.slug));
+    };
+  }, [items, retryTick]);
+
+  const scrollByColumn = (dir: 1 | -1) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Measured from the rendered column so "next" always lands exactly on a full course boundary.
+    const step = firstColRef.current?.offsetWidth ?? COLUMN_WIDTH;
+    // Advance by a full page of however many columns are actually visible, not just one.
+    const columnsPerPage = Math.max(1, Math.round(el.clientWidth / step));
+    const currentIndex = Math.round(el.scrollLeft / step);
+    el.scrollTo({ left: (currentIndex + dir * columnsPerPage) * step, behavior: "smooth" });
+  };
 
   useEffect(() => {
     if (!initializing && !user) {
-      router.replace("/auth/sign-in?redirect=/compare");
+      router.replace(`/auth/sign-in?redirect=${basePath}`);
     }
-  }, [initializing, user, router]);
+  }, [initializing, user, router, basePath]);
 
   if (!initializing && !user) return null;
 
@@ -39,92 +102,98 @@ export function ComparePageView() {
             Explore courses and add them to compare side by side.
           </p>
         </div>
-        <Button render={<Link href="/search?tab=courses" />}>Explore Courses</Button>
+        <Button render={<Link href={exploreHref} />}>Explore Courses</Button>
       </div>
     );
   }
 
-  /** Background applied to every cell in the hovered column. */
-  const colBg = (i: number) => hoveredCol === i ? "bg-primary/10" : undefined;
-  /** onMouseEnter for any cell in course column i. */
-  const onEnter = (i: number) => () => setHoveredCol(i);
-
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 print:max-w-none print:px-0 print:py-0">
-      <div className="mb-5 flex items-center justify-between print:hidden">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 text-muted-foreground"
-          render={<Link href="/search?tab=courses" />}
-        >
-          <ArrowLeft className="size-4" /> Back to Search
-        </Button>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.print()}>
-          <Printer className="size-4" /> Print
-        </Button>
+    <div className="mx-auto max-w-7xl print:max-w-none print:p-8">
+      <style>{"@media print { @page { size: landscape; margin: 0; } }"}</style>
+      <div className="mb-6 hidden print:block">
+        <div className="flex items-center justify-between">
+          <Image src="/globaly-logo.png" alt="Globaly.ai" width={753} height={157} className="h-8 w-auto" />
+          <span className="text-xs text-muted-foreground">
+            {new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+          </span>
+        </div>
+        <h1 className="mt-3 text-lg font-semibold text-foreground">Compare Courses</h1>
+      </div>
+      <div className="sticky top-16 z-10 mb-6 flex items-center justify-between bg-background py-3 print:hidden">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" render={<Link href={exploreHref} />}>
+            <ArrowLeft className="size-4" /> Back
+          </Button>
+          <h1 className="text-lg font-semibold text-foreground">Compare List</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => window.print()}>
+            Generate PDF
+          </Button>
+          <button
+            type="button"
+            onClick={() => scrollByColumn(-1)}
+            disabled={!canPrev}
+            aria-label="Scroll to previous course"
+            className="flex size-8 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-accent"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollByColumn(1)}
+            disabled={!canNext}
+            aria-label="Scroll to next course"
+            className="flex size-8 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-accent"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-foreground">Compare Courses</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {items.length} course{items.length !== 1 ? "s" : ""} selected
-        </p>
-      </div>
-
-      {/* onMouseLeave on the table clears the hovered column when the cursor leaves entirely. */}
-      <div className="overflow-x-auto print:overflow-visible">
+      <div
+        ref={scrollRef}
+        onScroll={updateScrollState}
+        className="scrollbar-none overflow-x-auto print:overflow-visible"
+      >
         <table
-          className="w-full border-separate border-spacing-0 text-sm"
-          style={{ minWidth: `${items.length * 240 + 160}px` }}
-          onMouseLeave={() => setHoveredCol(null)}
+          className="table-fixed border-separate border-spacing-0 rounded-xl border border-border text-sm print:w-full!"
+          style={{ width: `${Math.max(items.length, 3) * COLUMN_WIDTH + 176}px` }}
         >
           <thead>
             <tr>
-              <th className="w-44 pb-6 pr-6 align-bottom" />
+              <th className="w-44 border-b border-r border-border p-0 text-center align-middle text-sm font-semibold text-foreground">
+                <div className="flex h-full items-center justify-center px-5 py-5">Compare Courses</div>
+              </th>
               {items.map((item, i) => (
                 <th
                   key={item.id}
-                  onMouseEnter={onEnter(i)}
-                  className={cn(
-                    "min-w-[220px] rounded-t-xl px-5 pb-5 pt-2 align-top text-left transition-colors",
-                    colBg(i),
-                  )}
+                  ref={i === 0 ? firstColRef : undefined}
+                  className="min-w-[220px] border-b border-r border-border px-5 pb-5 pt-5 align-top text-left last:border-r-0"
                 >
-                  <div className="mb-3 flex justify-end print:hidden">
-                    <button
-                      type="button"
-                      onClick={() => remove(item.id)}
-                      aria-label={`Remove ${item.name} from comparison`}
-                      className="text-muted-foreground transition-colors hover:text-destructive"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-
                   <InstitutionLogo
                     name={item.institutionName ?? item.name}
                     logoUrl={item.institutionLogoUrl}
-                    className="mb-3 size-16 rounded-xl"
+                    fallbackIcon
+                    className="mx-auto mb-3 size-16 rounded-xl"
                   />
 
                   <Link
                     href={`/course/${item.slug}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="line-clamp-2 text-sm font-semibold leading-snug text-foreground hover:underline"
+                    className="line-clamp-2 text-center text-sm font-semibold leading-snug text-foreground hover:underline print:line-clamp-none"
                   >
                     {item.name}
                   </Link>
                   {item.institutionName && (
-                    <p className="mt-1 truncate text-xs text-muted-foreground">{item.institutionName}</p>
+                    <p className="mt-1 truncate text-center text-xs text-muted-foreground print:truncate-none">{item.institutionName}</p>
                   )}
-                  {item.countryName && (
-                    <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                      <MapPin className="size-3 shrink-0" />
-                      {item.countryName}
-                    </p>
-                  )}
+                  <p className="mt-1 text-center text-sm font-semibold text-foreground">
+                    {item.annualTuition != null
+                      ? `${item.feeCurrency ?? "AUD"} ${item.annualTuition.toLocaleString()}`
+                      : "$0.00"}
+                  </p>
                 </th>
               ))}
             </tr>
@@ -134,68 +203,70 @@ export function ComparePageView() {
             {COMPARE_GROUPS.map((group) => (
               <Fragment key={group.label}>
                 <tr>
-                  <td className="py-3 pr-6 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <td
+                    colSpan={items.length + 1}
+                    className="border-b border-border bg-primary/5 py-2.5 pl-3 text-sm font-semibold text-foreground print:bg-transparent"
+                  >
                     {group.label}
                   </td>
-                  {items.map((item, i) => (
-                    <td
-                      key={item.id}
-                      onMouseEnter={onEnter(i)}
-                      className={cn("px-5 py-2 transition-colors", colBg(i))}
-                    />
-                  ))}
                 </tr>
 
-                {group.rows.map((row, rowIdx) => {
-                  const divided = rowIdx < group.rows.length - 1;
-                  return (
-                    <tr key={row.label}>
+                {group.label === "Course Details" && (
+                  <tr>
+                    <td className="border-b border-r border-border py-3 pl-3 pr-6 text-xs font-medium text-foreground">
+                      Branch
+                    </td>
+                    {items.map((item) => (
                       <td
-                        className={cn(
-                          "py-3 pr-6 text-xs font-medium text-muted-foreground",
-                          divided && "border-b border-border/40",
-                        )}
+                        key={item.id}
+                        className="border-b border-r border-border px-5 py-3 text-sm last:border-r-0"
                       >
-                        {row.label}
+                        {item.branches?.length ? (
+                          <div className="flex flex-col gap-1">
+                            {item.branches.map((branch) => (
+                              <span key={branch} className="font-medium text-muted-foreground">{branch}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </td>
-                      {items.map((item, i) => {
-                        const value = row.get(item);
-                        return (
-                          <td
-                            key={item.id}
-                            onMouseEnter={onEnter(i)}
-                            className={cn(
-                              "px-5 py-3 text-sm transition-colors",
-                              divided && "border-b border-border/40",
-                              colBg(i),
-                              EMPTY_VALUES.has(value) ? "text-muted-foreground" : "font-medium text-foreground",
-                            )}
-                          >
-                            {value}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
+                    ))}
+                  </tr>
+                )}
+
+                {group.rows.map((row) => (
+                  <tr key={row.label}>
+                    <td className="border-b border-r border-border py-3 pl-3 pr-6 text-xs font-medium text-foreground">
+                      {row.label}
+                    </td>
+                    {items.map((item) => {
+                      const value = row.get(item, details[item.slug]);
+                      return (
+                        <td
+                          key={item.id}
+                          className="border-b border-r border-border px-5 py-3 text-sm font-medium text-muted-foreground last:border-r-0"
+                        >
+                          {value}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
               </Fragment>
             ))}
 
             <tr className="print:hidden">
-              <td className="pt-5" />
-              {items.map((item, i) => (
-                <td
-                  key={item.id}
-                  onMouseEnter={onEnter(i)}
-                  className={cn("rounded-b-xl px-5 pt-4 pb-5 transition-colors", colBg(i))}
-                >
+              <td className="border-r border-border" />
+              {items.map((item) => (
+                <td key={item.id} className="border-r border-border px-5 py-4 text-center last:border-r-0">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="w-full"
-                    render={<Link href={`/course/${item.slug}`} target="_blank" rel="noopener noreferrer" />}
+                    className="w-full border-destructive text-destructive hover:bg-primary/5"
+                    onClick={() => remove(item.id)}
                   >
-                    View Course
+                    Remove From List
                   </Button>
                 </td>
               ))}

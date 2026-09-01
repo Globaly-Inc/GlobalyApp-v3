@@ -6,7 +6,7 @@ import { FOOTER_LINKS, SOCIALS } from "../const/index";
 
 export function Footer() {
   return (
-    <footer className="bg-[hsl(var(--navy))] text-[hsl(var(--navy-foreground))]">
+    <footer className="bg-[hsl(var(--navy))] text-[hsl(var(--navy-foreground))] print:hidden">
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-12">
           <div className="col-span-2 md:col-span-3 lg:col-span-1">

@@ -70,6 +70,7 @@ export function CourseCard({
                       countryName: course.country_name ?? undefined,
                       durationLabel, subjectArea: course.subject_area,
                       nextIntakeLabel, annualTuition, feeCurrency,
+                      branches: course.campus_locations, level: course.degree_level,
                     }}
                   />
                 </div>
@@ -93,6 +94,7 @@ export function CourseCard({
                   countryName: course.country_name ?? undefined,
                   durationLabel, subjectArea: course.subject_area,
                   nextIntakeLabel, annualTuition, feeCurrency,
+                  branches: course.campus_locations, level: course.degree_level,
                 }}
               />
               <FavouriteButton itemType="course" itemId={course.id} />

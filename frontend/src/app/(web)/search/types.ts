@@ -91,6 +91,10 @@ export type CompareCourseItem = {
   nextIntakeLabel?: string;
   annualTuition?: number | null;
   feeCurrency?: string;
+  /** Campus cities offering this course, for the compare page's "Branch" row. */
+  branches?: string[];
+  /** Raw degree_level key (see DEGREE_LABEL) for the compare page's "Level" row. */
+  level?: string | null;
 };
 
 /** Extraction writes the row's caption as `label`; older imports used `name`. */
