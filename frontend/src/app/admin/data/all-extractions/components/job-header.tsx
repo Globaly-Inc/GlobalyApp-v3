@@ -11,6 +11,7 @@ import { ACTIVE_STATUSES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
+import { DeepScrapeButton } from "./deep-scrape-button";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
@@ -64,6 +65,7 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
 
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <RerunExtractionButton jobId={job.id} status={job.status} onReload={onReload} />
+        <DeepScrapeButton jobId={job.id} onReload={onReload} />
 
         {ACTIVE_STATUSES.includes(job.status) && (
           <Button

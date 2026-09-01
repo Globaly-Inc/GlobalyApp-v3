@@ -831,20 +831,43 @@ export async function updateVisaServiceById(id: string, service: Partial<Extract
   logger.info("Re-extracted visa service", { id, name: service.name });
 }
 
-/** Insert a queue item for a discovered URL */
 /**
- * Insert a queue item, or return null if a row for this (job_id, url) already exists —
- * the DB unique constraint is the real dedupe (check-then-insert races between concurrent
- * producers, e.g. overlapping re-runs). On null, the caller must NOT publish: the producer
- * that won the insert already dispatched (or will dispatch) that row.
+ * Insert a queue item, or return null when the row shouldn't be queued:
+ * - a row for this (job_id, url) already exists — the DB unique constraint is the real
+ *   dedupe (check-then-insert races between concurrent producers, e.g. overlapping
+ *   re-runs). The producer that won the insert already dispatched (or will dispatch) it.
+ * - the job is at its page_cap — every queued page costs a scrape + a Gemini extraction,
+ *   so the cap is the job's spending budget; the admin "Deep scrape" action raises it.
+ * On null, the caller must NOT publish.
+ * ponytail: the cap check isn't serialized against concurrent inserts — racing workers
+ * can overshoot by a few rows, fine for a billing guardrail.
  */
 export async function insertQueueItem(jobId: string, url: string): Promise<string | null> {
-  const [row] = await masterKnex(`${S}.extraction_queue`)
-    .insert({ job_id: jobId, url, status: "pending" })
-    .onConflict(["job_id", "url"])
-    .ignore()
-    .returning("id");
-  return row?.id ?? null;
+  const { rows } = await masterKnex.raw(
+    `INSERT INTO ${S}.extraction_queue (job_id, url, status)
+     SELECT :jobId, :url, 'pending'
+     WHERE (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId)
+         < (SELECT page_cap FROM ${S}.extraction_jobs WHERE id = :jobId)
+     ON CONFLICT (job_id, url) DO NOTHING
+     RETURNING id`,
+    { jobId, url },
+  );
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * True once a job's queue has reached its page cap. Callers whose discovery work is
+ * expensive per iteration (a scrape + a Gemini call per listing page) should check this
+ * and stop early — insertQueueItem already refuses at the cap, but by then the listing
+ * page that found those URLs has been paid for.
+ */
+export async function atPageCap(jobId: string): Promise<boolean> {
+  const { rows } = await masterKnex.raw(
+    `SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) >= page_cap AS capped
+     FROM ${S}.extraction_jobs WHERE id = :jobId`,
+    { jobId },
+  );
+  return rows[0]?.capped ?? true;
 }
 
 /** Write a job event to the timeline */

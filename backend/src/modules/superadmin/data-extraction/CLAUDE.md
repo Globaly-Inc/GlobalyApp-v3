@@ -161,6 +161,16 @@ The centralized error handler maps these to HTTP responses.
    verification step passes `force: true` to re-check everything. Incremental passes
    add to `verification_score`/`verification_total`; forced passes overwrite them.
    No V2 equivalent — cost fix, same family as the rerun-resume exception below.
+   Exception: per-job page cap + Deep Scrape (2026-09-01) — every job carries
+   `extraction_jobs.page_cap` (default 500, migration `20260901_002`) and
+   `insertQueueItem` refuses to queue past it; the discovery step also stops
+   crawling list pages once the job is full, since each list page costs a scrape
+   + a Gemini call. 500 pages covers the course catalogue on most sites, and the
+   institution's email/phone/logo come from the homepage overview phase, which
+   uses no queue slots. `POST /jobs/:id/deep-scrape` (admin "Deep Scrape" button
+   in the job header) raises the cap by 500 and re-dispatches the job worker —
+   dedupe skips everything already queued, so only newly discovered pages bill.
+   No V2 equivalent — cost guardrail, explicitly requested (V2 had no page cap).
    Exception: `/jobs-filtered` search/sort/category-filter (2026-08-24) —
    added `q` (institution name/URL search), `sort`, and
    `business_category_id` params to `FilteredJobsQuerySchema`, plus a matching

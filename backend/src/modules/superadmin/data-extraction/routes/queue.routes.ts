@@ -73,4 +73,10 @@ export async function queueRoutes(app: FastifyInstance) {
     const { id } = QueueJobParamSchema.parse(req.params);
     return reply.send(await service.rerunJob(id, adminId(req)));
   });
+
+  // POST /jobs/:id/deep-scrape — raise the page cap by 500 and re-run discovery
+  app.post("/jobs/:id/deep-scrape", async (req, reply) => {
+    const { id } = QueueJobParamSchema.parse(req.params);
+    return reply.send(await service.deepScrape(id, adminId(req)));
+  });
 }

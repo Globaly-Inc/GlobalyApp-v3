@@ -55,6 +55,9 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
+      if (isTransient(err)) {
+        throw new Error(`AI_TRANSIENT: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      }
       throw err;
     }
   }

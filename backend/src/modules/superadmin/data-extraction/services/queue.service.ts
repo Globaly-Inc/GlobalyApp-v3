@@ -157,3 +157,28 @@ export async function rerunJob(jobId: string, adminId: number) {
 
   return { updated: true, mode: "full" };
 }
+
+// Deep scrape: the default page_cap (500) covers the course catalogue on most sites; this
+// raises the budget by another 500 and re-dispatches the job worker, whose discovery then
+// finds and queues the pages the cap refused (insertQueueItem dedupes the rest, so nothing
+// already extracted is re-billed). Re-running the job worker also refreshes the institution
+// overview (email/phone/logo) from the homepage. Explicit admin action = explicit extra spend.
+export async function deepScrape(jobId: string, adminId: number) {
+  const job = await findJobById(jobId);
+  if (!job) throw new NotFoundError("Extraction job not found");
+  if (job.source_type === "agentcis") {
+    throw new BadRequestError("AgentCIS jobs are imported from the AgentCIS API — there is no site to deep-scrape");
+  }
+
+  const pageCap = await repo.raisePageCap(jobId, 500);
+  await repo.reactivateJob(jobId);
+  await logAudit(adminId, "JOB_DEEP_SCRAPE", { entityType: "extraction_jobs", entityId: jobId, details: { page_cap: pageCap } });
+
+  try {
+    await pipelineQueue.publish(EXTRACTION_QUEUES.JOBS, { jobId, resumed: true });
+  } catch {
+    logger.warn("Queue unavailable on deep scrape, worker will poll", { jobId });
+  }
+
+  return { updated: true, page_cap: pageCap };
+}

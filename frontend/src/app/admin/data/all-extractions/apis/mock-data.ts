@@ -211,6 +211,12 @@ export const allExtractionsMockApi = {
     );
   },
 
+  deepScrapeJob: async (id: string): Promise<void> => {
+    console.log("[mock] POST /admin/data-extraction/jobs/" + id + "/deep-scrape");
+    await delay(200);
+    mockJobs = mockJobs.map((j) => (j.id === id ? { ...j, status: "processing" } : j));
+  },
+
   rerunJob: async (id: string): Promise<void> => {
     console.log("[mock] POST /admin/data-extraction/jobs/" + id + "/rerun");
     await delay(200);
