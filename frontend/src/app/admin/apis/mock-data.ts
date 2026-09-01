@@ -6,6 +6,7 @@ function delay(ms: number) {
 
 export const mockMe: AdminUser = {
   id: 1,
+  platform_user_id: 1,
   uuid: "mock-admin-uuid",
   name: "Super Admin",
   email: "admin@example.com",

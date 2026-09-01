@@ -22,6 +22,7 @@ import { ChatInput } from "./chat-input";
 import { SuggestedStarters } from "./suggested-starters";
 import { CreditBanner } from "./credit-banner";
 import { ProfileCompletionBanner } from "./profile-completion-banner";
+import { TestingPhaseBanner } from "./testing-phase-banner";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { LoginPromptModal } from "./login-prompt-modal";
@@ -126,14 +127,17 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
   const sidebar = <ChatSidebar onNewChat={handleNewChat} />;
 
   const composer = (bare: boolean) => (
-    <ChatInput
-      value={draft}
-      onChange={setDraft}
-      onSend={handleSend}
-      disabled={sendStatus === "loading" || guestBlocked}
-      allowAttachments
-      bare={bare}
-    />
+    <>
+      <ChatInput
+        value={draft}
+        onChange={setDraft}
+        onSend={handleSend}
+        disabled={sendStatus === "loading" || guestBlocked}
+        allowAttachments
+        bare={bare}
+      />
+      <TestingPhaseBanner />
+    </>
   );
 
   return (
