@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   Plus,
   MoreHorizontal,
@@ -238,21 +237,6 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
         )}
       </div>
 
-      {/* Identity pinned to the bottom of the rail, matching the rest of the portal's chrome. */}
-      <div className="border-t p-2">
-        <Link
-          href="/personal/profile"
-          className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60"
-        >
-          <Avatar className="size-7">
-            <AvatarImage src={profile?.photo_url ?? undefined} alt="" />
-            <AvatarFallback>{profile?.first_name?.[0]?.toUpperCase() ?? "U"}</AvatarFallback>
-          </Avatar>
-          <span className="min-w-0 flex-1 truncate text-sm">
-            {profile?.first_name ?? "Your account"}
-          </span>
-        </Link>
-      </div>
       {confirmDialog}
     </div>
   );

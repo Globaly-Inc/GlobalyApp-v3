@@ -23,7 +23,7 @@ export function AiPublicHeader() {
         </Link>
         <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
           <Sparkles className="h-4 w-4 text-primary" />
-          AI Counsellor
+          Aly
         </span>
 
         {!initializing && (

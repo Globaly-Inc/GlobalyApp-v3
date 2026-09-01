@@ -158,7 +158,7 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
               </SheetContent>
             </Sheet>
           )}
-          <span className="text-sm font-medium">AI Counsellor</span>
+          <span className="text-sm font-medium">Aly</span>
         </div>
 
         <CreditBanner />

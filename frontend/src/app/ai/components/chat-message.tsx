@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Paperclip, Sparkles } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Paperclip } from "lucide-react";
 import type { CourseCard as CourseCardType, Message, ResponseBlock } from "../apis/types";
+import { AlyAvatar } from "./aly-avatar";
 import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
 import { MessageBlocks } from "./message-blocks";
@@ -72,15 +73,6 @@ function QuotedText({ text }: { text: string }) {
   );
 }
 
-/** Small brand mark in the gutter, so a bubbleless assistant turn still reads as "not you".
- * Hidden on the narrowest containers, where the column can't spare 40px. */
-function AssistantMark() {
-  return (
-    <span className="mt-0.5 hidden size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:flex">
-      <Sparkles className="size-3.5" />
-    </span>
-  );
-}
 
 function Attachments({ paths }: { paths: string[] }) {
   return (
@@ -198,7 +190,7 @@ function AssistantTurn({
 
   return (
     <div className="flex w-full gap-3">
-      <AssistantMark />
+      <AlyAvatar />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {content && <MessageMarkdown text={content} />}
         {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}

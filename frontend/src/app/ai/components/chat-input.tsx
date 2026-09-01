@@ -91,7 +91,7 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments,
             <CornerUpLeft className="mt-0.5 size-3.5 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-muted-foreground">
-                Replying to {replyTo.role === "user" ? "your message" : "AI Counsellor"}
+                Replying to {replyTo.role === "user" ? "your message" : "Aly"}
               </p>
               <p className="line-clamp-2 text-xs text-muted-foreground">{replyTo.content}</p>
             </div>
