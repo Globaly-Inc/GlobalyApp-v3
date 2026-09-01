@@ -50,7 +50,14 @@ export async function listPlatformUsers(
   return buildPaginatedResponse(rows, total, pagination);
 }
 
-export async function updatePlatformUser(id: number, data: { account_status?: number; is_email_verified?: boolean }) {
+export async function updatePlatformUser(
+  id: number,
+  data: { account_status?: number; is_email_verified?: boolean },
+  callerPlatformUserId: number,
+) {
+  if (data.account_status === 0 && id === callerPlatformUserId) {
+    throw new ForbiddenError("You cannot suspend your own account");
+  }
   const row = await repo.updatePlatformUserStatus(id, data);
   if (!row) throw new NotFoundError("Platform user not found");
   return row;

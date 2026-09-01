@@ -49,7 +49,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   app.patch("/platform-users/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
     const data = z.object({ account_status: z.number().int().min(0).max(1).optional(), is_email_verified: z.boolean().optional() }).parse(req.body);
-    const result = await service.updatePlatformUser(id, data);
+    const result = await service.updatePlatformUser(id, data, Number(req.auth.sub));
     return reply.send(result);
   });
 
