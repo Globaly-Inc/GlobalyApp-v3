@@ -6,15 +6,18 @@ import type {
   BusinessThreadWire,
   ChatThread,
   EnquiryMessage,
+  MemberCandidate,
   MessageAttachment,
   StarredMessage,
+  ThreadMembersResult,
+  ThreadRole,
 } from "./types";
 
 /**
  * The business half of enquiry chat. Same conversations as the student side, reached
- * through the business-scoped prefix: every route here sits behind
- * requireBusinessContext + requirePermission("enquiries:respond"), so the org comes from
- * the access token rather than the URL.
+ * through the business-scoped prefix, so the org comes from the access token rather than
+ * the URL. No enquiries:* permission gates these — being on the thread is the
+ * authorization, and every response is already scoped to the caller's own membership.
  *
  * Note the two shapes in play: message-level actions are addressed by MESSAGE id under
  * `/messages/…`, thread-level ones by DISTRIBUTION id under `/:id/messages`. Static
@@ -80,4 +83,35 @@ export const businessMessagesRealApi = {
 
   sendReply: (messageId: number, body: string, attachments: string[] = []): Promise<EnquiryMessage> =>
     httpPost(`/enquiry-distributions/messages/threads/${messageId}`, { body, attachments }),
+
+  // ── Thread membership ──
+  listMembers: (distributionId: string): Promise<ThreadMembersResult> =>
+    httpGet(`/enquiry-distributions/${distributionId}/members`),
+  listMemberCandidates: (distributionId: string): Promise<{ candidates: MemberCandidate[] }> =>
+    httpGet(`/enquiry-distributions/${distributionId}/member-candidates`),
+  addMembers: (distributionId: string, userIds: number[]): Promise<{ added: number }> =>
+    httpPost(`/enquiry-distributions/${distributionId}/members`, { user_ids: userIds }),
+  setMemberRole: (distributionId: string, userId: number, role: ThreadRole): Promise<void> =>
+    httpPatch(`/enquiry-distributions/${distributionId}/members/${userId}`, { role }),
+  removeMember: (distributionId: string, userId: number): Promise<void> =>
+    httpDelete(`/enquiry-distributions/${distributionId}/members/${userId}`),
+
+  /**
+   * Admin only. Two-step by design: the bytes go through uploadAttachment, and this stores the
+   * storage_path it returns. The server re-checks that this caller uploaded that path, which is
+   * what stops a client pointing the thread at any object it can guess.
+   */
+  setThreadPhoto: (distributionId: string, photoPath: string | null): Promise<{ thread_photo: string | null }> =>
+    httpPatch(`/enquiry-distributions/${distributionId}/photo`, { photo_path: photoPath }),
+
+  /** Admin only — 403 otherwise. Null clears the name back to each side's default label. */
+  renameThread: (distributionId: string, title: string | null): Promise<{ title: string | null }> =>
+    httpPatch(`/enquiry-distributions/${distributionId}/title`, { title }),
+
+  /**
+   * 204, or 409 with the reason. Not gated on being an admin — the constraints are about what the
+   * thread would be left with, not about rank. See listMembers' `leave_blocked_reason`.
+   */
+  leaveThread: (distributionId: string): Promise<void> =>
+    httpPostNoContent(`/enquiry-distributions/${distributionId}/leave`),
 };

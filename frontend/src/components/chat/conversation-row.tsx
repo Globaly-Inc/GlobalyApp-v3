@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_ROW, SIDEBAR_ROW_ACTIVE } from "./const";
-import { activityDate, initials, listStamp, previewText } from "./utils";
+import { activityDate, initials, listStamp, previewText, threadTitle, threadAvatar } from "./utils";
 import type { ChatThread } from "./types";
 
 /**
@@ -33,6 +33,7 @@ export function ConversationRow({
   onOpen: () => void;
   onToggleFavorite: () => void;
 }>) {
+  const avatar = threadAvatar(thread);
   const hasUnread = thread.unread_count > 0;
 
   return (
@@ -49,15 +50,15 @@ export function ConversationRow({
         )}
       >
         <Avatar className={cn("shrink-0", compact ? "size-6" : "size-8")}>
-          {thread.counterpart_avatar && <AvatarImage src={thread.counterpart_avatar} alt={thread.counterpart_name} />}
+          {avatar && <AvatarImage src={avatar} alt={threadTitle(thread)} />}
           <AvatarFallback className={cn("bg-muted text-muted-foreground", compact ? "text-[10px]" : "text-xs")}>
-            {initials(thread.counterpart_name)}
+            {initials(threadTitle(thread))}
           </AvatarFallback>
         </Avatar>
 
         <span className="min-w-0 flex-1 text-left">
           <span className="flex items-baseline gap-1.5">
-            <span className="truncate">{thread.counterpart_name}</span>
+            <span className="truncate">{threadTitle(thread)}</span>
             {!compact && (
               <span className="ml-auto shrink-0 text-[10px] font-normal text-muted-foreground">
                 {listStamp(activityDate(thread).toISOString())}

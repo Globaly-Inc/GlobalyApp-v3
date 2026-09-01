@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { MIN_SEARCH_LENGTH } from "./const";
-import { initials, listStamp, previewText } from "./utils";
+import { initials, listStamp, previewText, threadTitle, threadAvatar } from "./utils";
 import type { EnquiryMessage, ChatThread } from "./types";
 
 /**
@@ -65,7 +65,7 @@ export function ChatSearch({
     if (q.length < MIN_SEARCH_LENGTH) return { conversations: [], messages: [] };
 
     const conversations = threads.filter(
-      (t) => t.counterpart_name.toLowerCase().includes(q) || t.course_name.toLowerCase().includes(q),
+      (t) => threadTitle(t).toLowerCase().includes(q) || t.course_name.toLowerCase().includes(q),
     );
 
     const messages: Array<{ message: EnquiryMessage; thread: ChatThread }> = [];
@@ -168,14 +168,14 @@ export function ChatSearch({
                   onClick={() => select(thread.distribution_id)}
                 >
                   <Avatar className="size-8 shrink-0">
-                    {thread.counterpart_avatar && <AvatarImage src={thread.counterpart_avatar} alt={thread.counterpart_name} />}
+                    {threadAvatar(thread) && <AvatarImage src={threadAvatar(thread)!} alt={threadTitle(thread)} />}
                     <AvatarFallback className="bg-muted text-xs text-muted-foreground">
-                      {initials(thread.counterpart_name)}
+                      {initials(threadTitle(thread))}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">
-                      <Highlight text={thread.counterpart_name} query={query.trim()} />
+                      <Highlight text={threadTitle(thread)} query={query.trim()} />
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       <Highlight text={thread.course_name} query={query.trim()} />

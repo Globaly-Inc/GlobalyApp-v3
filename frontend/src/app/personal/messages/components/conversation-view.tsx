@@ -9,6 +9,7 @@ import {
   deleteMessage,
   editMessage,
   fetchThreadMessages,
+  fetchThreads,
   markThreadRead,
   sendThreadMessage,
   toggleMessagePin,
@@ -20,6 +21,7 @@ import { ChatInfoPanel } from "@/components/chat/chat-info-panel";
 import { ConversationHeader } from "@/components/chat/conversation-header";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { MessageList } from "@/components/chat/message-list";
+import { LeaveThreadDialog } from "@/components/chat/leave-thread-dialog";
 import { ThreadPanel } from "./thread-panel";
 import type { EnquiryMessage, ChatThread } from "@/components/chat/types";
 
@@ -51,6 +53,14 @@ export function ConversationView({
 
   // The open thread, by parent id. Held as an id rather than the message object so the
   // panel always renders the store's current copy (reply counts, reactions, pins move).
+  // Leaving is only on offer once the business has closed the enquiry — a student cannot walk out
+  // on a lead an agency is still working. The server enforces the same rule with a 409.
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const leaveThread = useCallback(() => {
+    dispatch(fetchThreads());
+    onBack();
+  }, [dispatch, onBack]);
+
   const [threadParentId, setThreadParentId] = useState<number | null>(null);
   const openThread = useCallback((message: EnquiryMessage) => {
     // Threads are one level deep, so clicking Reply on a reply opens its parent's thread.
@@ -122,6 +132,15 @@ export function ConversationView({
           enquiryHref={`/personal/enquiries/${thread.enquiry_id}`}
           onBack={onBack}
           onToggleFavorite={() => dispatch(toggleThreadFavorite(id))}
+          onLeave={thread.is_closed ? () => setLeaveOpen(true) : undefined}
+        />
+
+        <LeaveThreadDialog
+          open={leaveOpen}
+          onOpenChange={setLeaveOpen}
+          description="This conversation will disappear from your inbox. The agency keeps its record of your enquiry, and you won't be able to reopen the chat."
+          onConfirm={() => messagesApi.leaveThread(id)}
+          onLeft={leaveThread}
         />
 
         {/* Keyed so switching conversations remounts both: the list resets its scroll

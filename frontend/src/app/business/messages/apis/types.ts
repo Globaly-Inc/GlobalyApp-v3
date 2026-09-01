@@ -21,6 +21,12 @@ export type {
 export interface BusinessThreadWire {
   distribution_id: string;
   enquiry_id: string;
+  /** The thread's shared name, or null when nobody has named it. */
+  title: string | null;
+  /** Signed URL for the thread's shared picture, or null when nobody has set one. */
+  thread_photo: string | null;
+  /** This agent's role on the thread — admins may rename it. */
+  my_role: ThreadRole;
   student_name: string;
   student_avatar: string | null;
   course_name: string;
@@ -45,6 +51,9 @@ export interface BusinessStarredWire extends EnquiryMessage {
 export const toChatThread = (t: BusinessThreadWire): ChatThread => ({
   distribution_id: t.distribution_id,
   enquiry_id: t.enquiry_id,
+  title: t.title,
+  thread_photo: t.thread_photo,
+  my_role: t.my_role,
   counterpart_name: t.student_name,
   counterpart_avatar: t.student_avatar,
   course_name: t.course_name,
@@ -61,3 +70,43 @@ export const toStarredMessage = (m: BusinessStarredWire): StarredMessage => ({
   ...m,
   counterpart_name: m.student_name,
 });
+
+// ── Thread membership (the Space roster) ──
+
+export type ThreadRole = "admin" | "member";
+
+export type ThreadMember = {
+  platform_user_id: number;
+  role: ThreadRole;
+  /** 'auto' = the owner or the agent who unlocked. Structural, so not removable. */
+  source: "auto" | "manual";
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  photo_url: string | null;
+  created_at: string;
+};
+
+export type ThreadMembersResult = {
+  /** The caller's own role, so the UI need not find itself in the list. */
+  my_role: ThreadRole;
+  /** Which row in `members` is the caller — the roster offers Leave there and manage elsewhere. */
+  my_user_id: number;
+  can_manage: boolean;
+  /** False while an open thread still needs them — the last member, or the last admin. */
+  can_leave: boolean;
+  /**
+   * Null when they can leave. Otherwise the exact sentence the leave endpoint would throw, so the
+   * panel never has to reason about the rules itself and cannot contradict the server.
+   */
+  leave_blocked_reason: string | null;
+  members: ThreadMember[];
+};
+
+export type MemberCandidate = {
+  platform_user_id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  photo_url: string | null;
+};
