@@ -10,6 +10,7 @@ import { fetchPosts, pollGenerationStatus } from "../store/blog-slice";
 import type { GenerationStatus } from "../apis/types";
 
 const POLL_INTERVAL_MS = 3000;
+const MAX_POLLS = 60; // 3 minutes — hard stop so a stuck job never polls forever
 const TERMINAL: ReadonlySet<GenerationStatus> = new Set(["done", "failed"]);
 
 export function GenerationProgress() {
@@ -17,6 +18,7 @@ export function GenerationProgress() {
   const router = useRouter();
   const jobs = useAppSelector((state) => state.marketingBlog.generationJobs);
   const refreshedRef = useRef(false);
+  const pollCountRef = useRef(0);
 
   useEffect(() => {
     if (jobs.length === 0) return undefined;
@@ -30,9 +32,14 @@ export function GenerationProgress() {
       return undefined;
     }
 
+    if (pollCountRef.current >= MAX_POLLS) return undefined;
+
     refreshedRef.current = false;
     // Poll again once the previous response lands — self-throttling, requests never overlap.
-    const timer = setTimeout(() => dispatch(pollGenerationStatus(jobs.map((j) => j.id))), POLL_INTERVAL_MS);
+    const timer = setTimeout(() => {
+      pollCountRef.current += 1;
+      dispatch(pollGenerationStatus(jobs.map((j) => j.id)));
+    }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
   }, [jobs, dispatch]);
 

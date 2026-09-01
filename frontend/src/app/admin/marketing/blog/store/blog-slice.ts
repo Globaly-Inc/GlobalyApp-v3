@@ -71,7 +71,11 @@ const initialState: BlogState = {
 const blogSlice = createSlice({
   name: "marketingBlog",
   initialState,
-  reducers: {},
+  reducers: {
+    clearGenerationJobs(state) {
+      state.generationJobs = [];
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(fetchPosts.pending, (state) => {
@@ -98,4 +102,5 @@ const blogSlice = createSlice({
   },
 });
 
+export const { clearGenerationJobs } = blogSlice.actions;
 export const blogReducer = blogSlice.reducer;
