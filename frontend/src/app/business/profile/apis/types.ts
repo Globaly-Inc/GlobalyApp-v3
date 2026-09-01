@@ -257,6 +257,8 @@ export type BusinessRelation = {
 
 export type RelationInput = {
   partner_business_id: number;
+  /** Which table partner_business_id points at. Omitted means "business", as the API defaults. */
+  partner_kind?: PartnerKind;
   country_ids?: number[];
   valid_from?: string | null;
   valid_until?: string | null;
@@ -303,9 +305,17 @@ export type PartnerInstitutionCourseListParams = { search?: string; page?: numbe
 
 export type PartnerInstitutionCourseListResult = { data: PartnerInstitutionCourse[]; total: number };
 
-export type BusinessSearchParams = { search?: string; limit?: number };
+export type BusinessSearchParams = { search?: string; limit?: number; include_institutions?: boolean };
 
-export type BusinessSearchResult = { id: number; business_name: string; logo_url: string | null };
+// `business_name` is the label for both kinds — the API aliases institution_name onto it, the
+// same way listRelations coalesces the two into partner_name. `kind` is what disambiguates the
+// id, which is NOT unique across the two tables.
+export type BusinessSearchResult = {
+  kind: PartnerKind;
+  id: number;
+  business_name: string;
+  logo_url: string | null;
+};
 
 export type ActivityLogEntry = {
   id: string;

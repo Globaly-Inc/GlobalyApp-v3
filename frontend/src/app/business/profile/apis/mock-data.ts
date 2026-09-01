@@ -93,8 +93,14 @@ let mockInvitations: InvitedMember[] = [
 ];
 let mockRelations: BusinessRelation[] = [];
 const mockSearchableBusinesses: BusinessSearchResult[] = [
-  { id: 101, business_name: "Acme Education Consultants", logo_url: null },
-  { id: 102, business_name: "Global Study Advisors", logo_url: null },
+  { kind: "business", id: 101, business_name: "Acme Education Consultants", logo_url: null },
+  { kind: "business", id: 102, business_name: "Global Study Advisors", logo_url: null },
+];
+// Deliberately reuses id 101 — the two id spaces really do collide, and the picker has to stay
+// correct when they do.
+const mockSearchableInstitutions: BusinessSearchResult[] = [
+  { kind: "institution", id: 101, business_name: "Riverbend University", logo_url: null },
+  { kind: "institution", id: 205, business_name: "Northgate Institute of Technology", logo_url: null },
 ];
 const mockActivity: { id: string; action: string; details: Record<string, unknown>; created_at: string; admin_first_name: string | null; admin_last_name: string | null }[] = [];
 let mockScholarships: Scholarship[] = [];
@@ -105,7 +111,12 @@ export const businessProfileDetailMockApi = {
     console.log("[mock] GET /businesses/search", params);
     await delay(300);
     const q = params.search?.toLowerCase() ?? "";
-    return mockSearchableBusinesses.filter((b) => b.business_name.toLowerCase().includes(q));
+    const pool = params.include_institutions
+      ? [...mockSearchableBusinesses, ...mockSearchableInstitutions]
+      : mockSearchableBusinesses;
+    return pool
+      .filter((b) => b.business_name.toLowerCase().includes(q))
+      .sort((a, b) => a.business_name.localeCompare(b.business_name));
   },
 
   getBranches: async (params: BranchListParams = {}): Promise<BranchListResult> => {

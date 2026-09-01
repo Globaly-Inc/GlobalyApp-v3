@@ -6,6 +6,9 @@ export const enquiriesApi = createApi({ mock: enquiriesMockApi, real: enquiriesR
 export type {
   Course,
   CreateEnquiryInput,
+  CriterionStatus,
+  EligibilityCriterion,
+  EligibilityVerdict,
   Enquiry,
   EnquiryListItem,
   EnquiryStatus,

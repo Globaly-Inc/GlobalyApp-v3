@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAppDispatch } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 // import { CountryMultiSelect } from "@/app/admin/platform/businesses/components/shared/country-multi-select";
-import type { BusinessRelation, BusinessSearchResult } from "../../apis/types";
+import type { BusinessRelation, BusinessSearchResult, PartnerKind } from "../../apis/types";
 import { businessProfileDetailApi } from "../../apis";
 import { createRelation, updateRelation } from "../../store/business-profile-detail-slice";
 
@@ -35,7 +35,9 @@ export function LinkConsultancyDialog({
   const [countries, setCountries] = useState<Country[]>([]);
   const [results, setResults] = useState<BusinessSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [partnerBusinessId, setPartnerBusinessId] = useState("");
+  // "<kind>:<id>", e.g. "institution:42". The two id spaces collide, so the id alone is not a
+  // usable key for the picker or for what gets submitted.
+  const [partnerRef, setPartnerRef] = useState("");
   const [countryIds, setCountryIds] = useState<number[]>([]);
   const [validFrom, setValidFrom] = useState("");
   const [validUntil, setValidUntil] = useState("");
@@ -45,7 +47,10 @@ export function LinkConsultancyDialog({
   const handleQueryChange = async (query: string) => {
     setLoading(true);
     try {
-      const rows = await businessProfileDetailApi.searchBusinesses({ search: query || undefined });
+      const rows = await businessProfileDetailApi.searchBusinesses({
+        search: query || undefined,
+        include_institutions: true,
+      });
       setResults(rows);
     } finally {
       setLoading(false);
@@ -58,13 +63,13 @@ export function LinkConsultancyDialog({
   useEffect(() => {
     if (!open) return;
     if (editRelation) {
-      setPartnerBusinessId(String(editRelation.partner_id));
+      setPartnerRef(`${editRelation.partner_kind}:${editRelation.partner_id}`);
       setCountryIds(editRelation.country_ids ?? []);
       setValidFrom(editRelation.valid_from ?? "");
       setValidUntil(editRelation.valid_until ?? "");
       setNotes(editRelation.notes ?? "");
     } else {
-      setPartnerBusinessId("");
+      setPartnerRef("");
       setCountryIds([]);
       setValidFrom("");
       setValidUntil("");
@@ -76,7 +81,8 @@ export function LinkConsultancyDialog({
   }, [open, editRelation]);
 
   const handleSubmit = async () => {
-    if (!partnerBusinessId) return;
+    if (!partnerRef) return;
+    const [partnerKind, partnerId] = partnerRef.split(":");
     setSaving(true);
     try {
       if (isEdit && editRelation) {
@@ -98,7 +104,8 @@ export function LinkConsultancyDialog({
           createRelation({
             id: businessId,
             input: {
-              partner_business_id: Number(partnerBusinessId),
+              partner_business_id: Number(partnerId),
+              partner_kind: partnerKind as PartnerKind,
               country_ids: countryIds,
               valid_from: validFrom || null,
               valid_until: validUntil || null,
@@ -156,11 +163,11 @@ export function LinkConsultancyDialog({
               </div>
             ) : (
               <Combobox
-                value={partnerBusinessId}
-                onChange={setPartnerBusinessId}
-                options={results.map((b) => ({ value: String(b.id), label: b.business_name }))}
-                placeholder="Select a consultancy..."
-                searchPlaceholder="Search consultancies..."
+                value={partnerRef}
+                onChange={setPartnerRef}
+                options={results.map((b) => ({ value: `${b.kind}:${b.id}`, label: b.business_name }))}
+                placeholder="Select a consultancy or institution..."
+                searchPlaceholder="Search consultancies and institutions..."
                 loading={loading}
                 onQueryChange={handleQueryChange}
               />
@@ -202,7 +209,7 @@ export function LinkConsultancyDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!partnerBusinessId || saving}>
+          <Button onClick={handleSubmit} disabled={!partnerRef || saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isEdit ? "Save changes" : "Link consultancy"}
           </Button>

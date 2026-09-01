@@ -107,6 +107,196 @@ export function emailLayout({ heading, body, cta, footnote }: LayoutOptions): st
 </html>`;
 }
 
+/**
+ * A label/value block for mails that carry facts rather than prose. Left-aligned inside the
+ * card, whose body cell is centred — a two-word value centred under a centred label reads as
+ * a poster, not a record.
+ *
+ * Rows with no value are dropped rather than rendered empty: "Intake: —" is noise.
+ */
+function detailBlock(rows: { label: string; value: string | null | undefined }[]): string {
+  const cells = rows
+    .filter((r) => r.value)
+    .map(
+      (r, i) => `<tr><td style="padding:${i === 0 ? "14px" : "12px"} 18px 12px;${
+        i === 0 ? "" : `border-top:1px solid ${BRAND.line};`
+      }text-align:left">
+        <p style="margin:0;color:${BRAND.muted};font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">${r.label}</p>
+        <p style="margin:3px 0 0;color:${BRAND.ink};font-size:15px;line-height:22px;font-weight:600">${esc(r.value as string)}</p>
+      </td></tr>`,
+    )
+    .join("");
+
+  if (!cells) return "";
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid ${BRAND.line};border-radius:14px;background-color:#fafafa">${cells}</table>`;
+}
+
+/**
+ * The lead notification a matched business gets the moment an enquiry is distributed to it.
+ *
+ * Carries no student contact detail by design — the whole point of the distribution is that
+ * those details are behind the unlock, and an email is the easiest thing in the product to
+ * forward on to someone who never paid for it.
+ */
+/**
+ * Sent to the STUDENT the moment a business unlocks their enquiry — the only notification in this
+ * module that goes to the person who sent the enquiry rather than to a recipient of it.
+ *
+ * The point is reassurance and consent transparency: something happened, here is who, and here is
+ * what they can now see. `sharedContact` reflects the choice the student made at submission back to
+ * them, because "a business can now see your details" reads very differently depending on whether
+ * their phone number was part of that.
+ */
+export function enquiryUnlockedEmail(options: {
+  businessName?: string | null;
+  courseName?: string | null;
+  institutionName?: string | null;
+  enquiryId?: string | null;
+  sharedContact?: boolean;
+}): { subject: string; html: string; text: string } {
+  const { businessName, courseName, institutionName, enquiryId, sharedContact } = options;
+  const who = businessName ?? "A business";
+  // Straight to the enquiry when we know which one, so the reply is one tap away.
+  const href = enquiryId ? `${config.APP_URL}/personal/enquiries/${enquiryId}` : `${config.APP_URL}/personal/enquiries`;
+
+  const contactLine = sharedContact
+    ? "They can see your profile, email address and phone number, as you agreed when you sent this enquiry."
+    : "They can see your profile and email address. Your phone number stays private — you chose not to share it.";
+
+  const textLines = [
+    `${who} unlocked your enquiry and has started a conversation with you.`,
+    "",
+    courseName ? `Course: ${courseName}` : null,
+    institutionName ? `Institution: ${institutionName}` : null,
+    "",
+    contactLine,
+    "",
+    `Read their message → ${href}`,
+  ].filter((l) => l !== null);
+
+  return {
+    subject: courseName ? `${who} replied about ${courseName}` : `${who} unlocked your enquiry`,
+    text: textLines.join("\n"),
+    html: emailLayout({
+      heading: "Your enquiry was unlocked",
+      body: `<p style="margin:0 0 18px"><strong>${esc(who)}</strong> unlocked your enquiry and has sent you a message.</p>
+             ${detailBlock([
+               { label: "Course", value: courseName },
+               { label: "Institution", value: institutionName },
+             ])}
+             <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">
+               ${esc(contactLine)}
+             </p>`,
+      cta: { label: "Read their message", href },
+      footnote: "You're receiving this because you sent this enquiry on GlobalyApp.",
+    }),
+  };
+}
+
+export function enquiryDistributedEmail(options: {
+  courseName?: string | null;
+  institutionName?: string | null;
+  intake?: string | null;
+  businessName?: string | null;
+}): { subject: string; html: string; text: string } {
+  const { courseName, institutionName, intake, businessName } = options;
+  const href = `${config.APP_URL}/business/enquiries`;
+
+  const textLines = [
+    "You have received a new student enquiry.",
+    "",
+    courseName ? `Course: ${courseName}` : null,
+    institutionName ? `Institution: ${institutionName}` : null,
+    intake ? `Preferred intake: ${intake}` : null,
+    "",
+    "Unlock it in your inbox to see the student's details and reply.",
+    "",
+    `View enquiries → ${href}`,
+  ].filter((l) => l !== null);
+
+  return {
+    subject: courseName ? `New student enquiry — ${courseName}` : "New student enquiry available",
+    text: textLines.join("\n"),
+    html: emailLayout({
+      heading: "New student enquiry",
+      body: `<p style="margin:0 0 18px">A student is asking about a course you represent.</p>
+             ${detailBlock([
+               { label: "Course", value: courseName },
+               { label: "Institution", value: institutionName },
+               { label: "Preferred intake", value: intake },
+             ])}
+             <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">
+               Unlock the enquiry in your inbox to see the student's details and start the conversation.
+             </p>`,
+      cta: { label: "View enquiry", href },
+      footnote: businessName
+        ? `Sent to ${esc(businessName)} because it matches this enquiry.`
+        : "You're receiving this because your business matches this enquiry.",
+    }),
+  };
+}
+
+/**
+ * The fallback notice an institution gets when an enquiry about its own course matched no agent.
+ *
+ * Two audiences in one mail, split on whether the account has been claimed. A claimed institution
+ * is sent to its inbox; an unclaimed one — promoted from an extraction, with an address on file and
+ * nobody signed in — is asked to claim the account first, since it has no way in otherwise.
+ *
+ * Carries no student contact: the institution unlocks the lead in the portal like any other
+ * recipient, and the mail must not be the way around that.
+ */
+export function enquiryInstitutionFallbackEmail(options: {
+  institutionName?: string | null;
+  courseName?: string | null;
+  intake?: string | null;
+  isClaimed: boolean;
+  claimUrl?: string | null;
+}): { subject: string; html: string; text: string } {
+  const { institutionName, courseName, intake, isClaimed, claimUrl } = options;
+  const portalUrl = `${config.APP_URL}/business/enquiries`;
+  const cta = isClaimed
+    ? { label: "View enquiry", href: portalUrl }
+    : { label: "Claim your account", href: claimUrl || portalUrl };
+
+  const ask = isClaimed
+    ? "Unlock the enquiry in your inbox to see the student's details and start the conversation."
+    : "Claim your institution account to read the enquiry and reply to the student directly.";
+
+  return {
+    subject: courseName
+      ? `A student is asking about ${courseName}`
+      : "A student is asking about one of your courses",
+    text: [
+      "A student has enquired about one of your courses, and no agent representing it was available.",
+      "",
+      courseName ? `Course: ${courseName}` : null,
+      institutionName ? `Institution: ${institutionName}` : null,
+      intake ? `Preferred intake: ${intake}` : null,
+      "",
+      ask,
+      "",
+      `${cta.label} → ${cta.href}`,
+    ]
+      .filter((l) => l !== null)
+      .join("\n"),
+    html: emailLayout({
+      heading: "A student is asking about your course",
+      body: `<p style="margin:0 0 18px">This enquiry came to you directly — no agent representing this course was available to take it.</p>
+             ${detailBlock([
+               { label: "Course", value: courseName },
+               { label: "Institution", value: institutionName },
+               { label: "Preferred intake", value: intake },
+             ])}
+             <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${ask}</p>`,
+      cta,
+      footnote: isClaimed
+        ? "You're receiving this because the enquiry is about a course listed under your institution."
+        : "Your institution is listed on Globaly. Claiming the account is free and takes a minute.",
+    }),
+  };
+}
+
 /** The sign-in / verification code mail. Returns the subject too so both call sites stay in step. */
 export function otpEmail(otp: string): { subject: string; html: string; text: string } {
   const digits = otp

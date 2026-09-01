@@ -1,5 +1,7 @@
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import * as creditsRepo from "../repositories/credits.repository.js";
+import { PaymentRequiredError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("credit-service");
@@ -67,6 +69,69 @@ export async function deductCredit(userId: number, messageId: number): Promise<v
       trx,
     );
   });
+}
+
+/** Order the waterfall spends balances in: the ones the user did not pay for go first. */
+const WATERFALL = ["free", "subscription", "purchased"] as const;
+
+/**
+ * Spend `amount` credits, across balance types if one alone does not cover it.
+ *
+ * The general form of `deductCredit` above, which can only ever spend exactly 1 credit from
+ * exactly one balance type. An enquiry unlock costs whatever the business is configured for
+ * (`businesses.enquiry_coin_cost`, 30 by default), which routinely straddles two balances.
+ *
+ * Differences from `deductCredit` that callers need to know about:
+ *   - It THROWS `PaymentRequiredError` when the balance is short, rather than logging and
+ *     returning. A spend that buys something (contact details, in the unlock case) must not
+ *     silently succeed without charging.
+ *   - It runs inside the caller's transaction. That is the whole point: the charge and the thing
+ *     being bought commit or roll back together, so there is no compensating refund to get wrong.
+ *
+ * One ledger row per balance type touched, because `credit_transactions.balance_type` is NOT
+ * NULL and a single row cannot describe a spend that crossed two of them. The admin ledger's
+ * running-balance CTE handles multiple rows at the same timestamp correctly.
+ *
+ * The wallet row is locked FOR UPDATE before it is read, so two concurrent spends serialise
+ * instead of both seeing the pre-spend balance.
+ */
+export async function spendCredits(
+  trx: Knex.Transaction,
+  userId: number,
+  amount: number,
+  opts: { reason: creditsRepo.TransactionRow["reason"]; description: string },
+): Promise<{ spent: number; remaining: number }> {
+  if (amount <= 0) throw new Error(`spendCredits called with a non-positive amount: ${amount}`);
+
+  const wallet = await creditsRepo.getForUpdate(userId, trx);
+  const balances = {
+    free: wallet?.free_balance ?? 0,
+    subscription: wallet?.subscription_balance ?? 0,
+    purchased: wallet?.purchased_balance ?? 0,
+  };
+  const total = balances.free + balances.subscription + balances.purchased;
+
+  // Checked before anything is written, so a short wallet leaves no partial spend behind even
+  // though the transaction would have rolled it back anyway.
+  if (!wallet || total < amount) {
+    throw new PaymentRequiredError(`Insufficient credits — this costs ${amount}, balance is ${total}`);
+  }
+
+  let outstanding = amount;
+  for (const balanceType of WATERFALL) {
+    if (outstanding === 0) break;
+    const take = Math.min(balances[balanceType], outstanding);
+    if (take === 0) continue;
+    await creditsRepo.updateBalance(wallet.id, balanceType, -take, trx);
+    await creditsRepo.recordTransaction(
+      wallet.id,
+      { amount: -take, balanceType, reason: opts.reason, description: opts.description },
+      trx,
+    );
+    outstanding -= take;
+  }
+
+  return { spent: amount, remaining: total - amount };
 }
 
 /** Admin-only: grant credits to a user. */

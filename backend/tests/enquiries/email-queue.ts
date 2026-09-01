@@ -110,11 +110,15 @@ async function cleanupAll(opts: { enquiryIds?: string[]; businessIds?: number[];
     await masterKnex("enquiries").whereIn("id", opts.enquiryIds).delete();
   }
   if (opts.businessIds?.length) {
-    await masterKnex("enquiry_match_directory").whereIn("business_id", opts.businessIds).delete();
+    await masterKnex("business_representations")
+      .whereIn("originator_id", opts.businessIds)
+      .where("originator_type", "business")
+      .delete();
     await masterKnex("businesses").whereIn("id", opts.businessIds).delete();
   }
   if (opts.jobIds?.length) {
     for (const jobId of opts.jobIds) {
+      await masterKnex("institutions").where({ source_job_id: jobId }).delete();
       await masterKnex("superadmin.extraction_courses").where({ job_id: jobId }).delete();
       await masterKnex("superadmin.extraction_jobs").where({ id: jobId }).delete();
     }

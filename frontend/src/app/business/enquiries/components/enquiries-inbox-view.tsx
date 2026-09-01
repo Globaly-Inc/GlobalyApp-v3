@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Coins, Inbox, RotateCw, SearchX, TriangleAlert } from "lucide-react";
+import { Coins, Inbox, Info, RotateCw, SearchX, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -13,24 +13,27 @@ import {
   unlockDistribution,
 } from "../store/business-enquiries-slice";
 import type { InboxFilterKey } from "../const";
-import { applyInboxFilter, defaultFilter, filterCounts } from "../utils";
+import { defaultFilter, filterCounts, statusParam } from "../utils";
 import { CloseEnquiryDialog } from "./close-enquiry-dialog";
 import { ConfirmUnlockDialog } from "./confirm-unlock-dialog";
 import { EnquiryInboxCard, EnquiryInboxCardSkeleton } from "./enquiry-inbox-card";
-import { InboxFilters } from "./inbox-filters";
+import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
+import { Search } from "lucide-react";
+import { INBOX_FILTERS, INBOX_PAGE_SIZE } from "../const";
+import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 
 export function EnquiriesInboxView() {
   const dispatch = useAppDispatch();
-  const { items, status, error, credits, unlockCost, actingId, actionError } = useAppSelector(
-    (s) => s.businessEnquiries,
-  );
+  const { items, status, error, credits, unlockCost, actingId, actionError, total, countsByStatus } =
+    useAppSelector((s) => s.businessEnquiries);
 
-  // Ref guard per AGENTS.md — Strict Mode double-invokes effects on mount.
+  // Ref guard per AGENTS.md — Strict Mode double-invokes effects on mount. The distributions
+  // fetch moved to the filter effect below, which already runs on mount with the defaults.
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    dispatch(fetchDistributions());
     dispatch(fetchCredits());
   }, [dispatch]);
 
@@ -68,9 +71,32 @@ export function EnquiriesInboxView() {
   // landing pill depends on data that arrives after mount, and this avoids setting state
   // in an effect (which this repo lints against) while still honouring a real click.
   const [picked, setPicked] = useState<InboxFilterKey | null>(null);
-  const counts = useMemo(() => filterCounts(items), [items]);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const counts = useMemo(() => filterCounts(countsByStatus), [countsByStatus]);
   const filter = picked ?? defaultFilter(counts);
-  const visible = useMemo(() => applyInboxFilter(items, filter), [items, filter]);
+  // The server applied the status filter, the search and the paging.
+  const visible = items;
+
+  // One effect owns every fetch so the controls cannot race. Debounced for the search box; the
+  // tab and page changes ride the same timer, which costs them 250ms and saves a code path.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      dispatch(fetchDistributions({ page, search: search.trim() || undefined, status: statusParam(filter) }));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [dispatch, page, search, filter]);
+
+  // Reset in the handlers rather than an effect: a setState in an effect body cascades a render,
+  // and here it would also fire a fetch for the stale page before the reset landed.
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
+  const changeFilter = (next: InboxFilterKey) => {
+    setPicked(next);
+    setPage(1);
+  };
 
   const loadingFirstPage = status === "loading" && items.length === 0;
 
@@ -90,9 +116,48 @@ export function EnquiriesInboxView() {
         )}
       </div>
 
-      {items.length > 0 && <InboxFilters counts={counts} active={filter} onChange={setPicked} />}
+      {/* Tabs above the search — the tabs choose WHICH set you are looking at, the search narrows
+          within it, so they read top-to-bottom in that order.
+          
+          Grouped in their own wrapper with an explicit gap rather than left to the page's
+          `space-y-4`: the tabs carry a default `mb-4` of their own, so out here the spacing came
+          from whichever of the two rules tailwind-merge happened to resolve. `mb-0` on the tabs
+          hands the whole gap to this wrapper, so it is one number in one place.
+
+          `flex flex-col gap-4`, NOT `space-y-*`: space-y works by putting a margin on the
+          children, which lost a specificity fight with the tabs' own `mb-*` and collapsed the gap
+          to nothing. Flex `gap` belongs to this container, so no child utility can override it. */}
+      <div className="flex flex-col gap-4">
+        <AdminSegmentedTabs
+          options={INBOX_FILTERS.map((f) => ({ value: f.key, label: f.label, count: counts[f.key] }))}
+          value={filter}
+          onChange={changeFilter}
+          className="mb-0"
+        />
+
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <Input
+            placeholder="Search by course, student or message..."
+            value={search}
+            onChange={(e) => changeSearch(e.target.value)}
+            className="h-9 pl-8 text-sm"
+          />
+        </div>
+      </div>
 
       {/* 402 / 409 land here with the server's own wording. */}
+      {/* Stated once, above the list — the cost is identical on every card, and repeating it on
+          each one was noise that grew with the page size. Same shape as the error banner below,
+          in an informational tone. */}
+      <div className="flex items-start gap-2.5 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-500/30 dark:bg-blue-500/10">
+        <Info className="mt-0.5 size-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+        <p className="text-blue-900 dark:text-blue-200">
+          Unlocking an enquiry costs <span className="font-semibold">{unlockCost} credits</span>. It reveals the
+          student&apos;s full name, contact details and profile, and opens a conversation with them.
+        </p>
+      </div>
+
       {actionError && (
         <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
           <p className="text-destructive">{actionError}</p>
@@ -159,6 +224,11 @@ export function EnquiriesInboxView() {
           ))}
         </div>
       )}
+
+      {/* `total > 0`, not `> INBOX_PAGE_SIZE` — every other paginated list in the app shows this
+          whenever there are rows, because the "Showing 1–5 of 5" line is useful on a single page
+          too. Gating on the page size hid it entirely for anyone with fewer rows than one page. */}
+      {total > 0 && <Pagination page={page} total={total} limit={INBOX_PAGE_SIZE} onPageChange={setPage} />}
 
       <ConfirmUnlockDialog
         open={unlockTarget != null}
