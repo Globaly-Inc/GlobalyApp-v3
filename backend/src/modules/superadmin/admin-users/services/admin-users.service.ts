@@ -36,11 +36,16 @@ export async function listAdmins(pagination: PaginationInput, search?: string) {
 }
 
 /** Every signed-up platform_user — students, business/institution owners, everyone — not just admins. */
-export async function listPlatformUsers(pagination: PaginationInput, search?: string) {
+export async function listPlatformUsers(
+  pagination: PaginationInput,
+  search?: string,
+  type?: repo.PlatformUserType,
+  adminOnly?: boolean,
+) {
   const { limit, offset } = paginationToOffset(pagination);
   const [rows, total] = await Promise.all([
-    repo.listPlatformUsers(limit, offset, search),
-    repo.countPlatformUsers(search),
+    repo.listPlatformUsers(limit, offset, search, type, adminOnly),
+    repo.countPlatformUsers(search, type, adminOnly),
   ]);
   return buildPaginatedResponse(rows, total, pagination);
 }
@@ -49,6 +54,23 @@ export async function updatePlatformUser(id: number, data: { account_status?: nu
   const row = await repo.updatePlatformUserStatus(id, data);
   if (!row) throw new NotFoundError("Platform user not found");
   return row;
+}
+
+
+export async function setPlatformUserAdminRole(
+  id: number,
+  role: "super_admin" | "data_admin" | null,
+  callerPlatformUserId: number,
+) {
+  if (id === callerPlatformUserId) {
+    throw new ForbiddenError("You cannot change your own admin role");
+  }
+  const callerAdmin = await repo.findAdminByPlatformUserId(callerPlatformUserId);
+  if (!callerAdmin || callerAdmin.role !== "super_admin") {
+    throw new ForbiddenError("Only super_admin can grant admin roles");
+  }
+  if (role === null) return repo.deactivateAdminForPlatformUser(id);
+  return repo.upsertAdminForPlatformUser(id, role, callerAdmin.id);
 }
 
 export async function getAdmin(id: number) {

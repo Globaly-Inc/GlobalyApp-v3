@@ -337,9 +337,7 @@ export async function handleMessage(opts: {
       writeData(opts.reply, {
         choices: [{ delta: { content: "I'm sorry, something went wrong on my end. Please try again in a moment." } }],
       });
-      // …and the real error as a named event so the main app can surface it
-      // instead of flashing-and-dropping the apology (which read as "nothing happened").
-      writeEvent(opts.reply, "error", { error: message });
+      writeEvent(opts.reply, "error", { error: "AI Counsellor is temporarily unavailable due to high traffic. Please try again shortly." });
       writeDone(opts.reply);
     }
   }

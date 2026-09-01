@@ -5,12 +5,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAppDispatch } from "@/lib/hooks";
-import { fetchPlatformUsers, updatePlatformUser } from "../store/users-slice";
-import type { PlatformUser } from "../apis/types";
+import { fetchPlatformUsers, updatePlatformUser } from "../store/platform-users-slice";
+import type { ListParams, PlatformUser } from "../apis/types";
 
 export function SuspendPlatformUserDialog({
-  user, onClose,
-}: Readonly<{ user: PlatformUser | null; onClose: () => void }>) {
+  user, refreshParams, onClose,
+}: Readonly<{ user: PlatformUser | null; refreshParams: ListParams; onClose: () => void }>) {
   const dispatch = useAppDispatch();
   const [saving, setSaving] = useState(false);
   const activating = user ? user.account_status === 0 : false;
@@ -28,7 +28,7 @@ export function SuspendPlatformUserDialog({
       return;
     }
     toast.success(`${name} ${activating ? "activated" : "suspended"}`);
-    dispatch(fetchPlatformUsers({}));
+    dispatch(fetchPlatformUsers(refreshParams));
     onClose();
   };
 

@@ -4,6 +4,7 @@ export type AdminRole = "super_admin" | "admin" | "data_admin" | "moderator";
 
 export type AdminUser = {
   id: number;
+  platform_user_id: number;
   uuid: string;
   name: string;
   email: string;

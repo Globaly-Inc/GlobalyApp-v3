@@ -15,6 +15,7 @@ import { businessEnquiriesReducer } from "@/app/business/enquiries/store/busines
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
+import { platformUsersReducer } from "@/app/admin/platform/platform-users/store/platform-users-slice"
 import { businessesReducer } from "@/app/admin/platform/businesses/store/businesses-slice"
 import { institutionDetailReducer } from "@/app/admin/platform/businesses/store/institution-detail-slice"
 import { categoriesReducer } from "@/app/admin/platform/categories/store/categories-slice"
@@ -60,6 +61,7 @@ const appReducer = combineReducers({
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,
+    platformUsers: platformUsersReducer,
     platformBusinesses: businessesReducer,
     platformInstitutionDetail: institutionDetailReducer,
     platformCategories: categoriesReducer,
