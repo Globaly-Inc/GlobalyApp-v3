@@ -8,24 +8,40 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
-import { BadRequestError, ConflictError, NotFoundError } from "../../../shared/errors.js";
+import { BadRequestError, ConflictError, NotFoundError, PaymentRequiredError } from "../../../shared/errors.js";
+import * as platformUsersService from "../../platform-users/services/platform-users.service.js";
+import * as storage from "../../../shared/storage/storageService.js";
 import { logEnquiryAudit } from "../shared/audit.js";
 import * as distributionsRepo from "../repositories/distributions.repository.js";
 import * as creditService from "../../ai-counsellor/services/credit.service.js";
+import * as emailQueueService from "./email-queue.service.js";
 import * as messagesService from "./messages.service.js";
 import { markInConversation, reconcileTenantMirror, syncStatusToTenant } from "./tenant-sync.service.js";
 import type { Recipient } from "../shared/recipient.js";
+import { createChildLogger } from "../../../shared/logger.js";
+import { buildPaginatedResponse, paginationToOffset, type PaginationInput } from "../../../shared/pagination.js";
+
+const logger = createChildLogger("distributions-service");
 
 export async function listForBusiness(
   db: Knex,
   recipient: Recipient,
-  filters: { status?: string; limit?: number; offset?: number },
+  pagination: PaginationInput,
+  filters: { status?: string; search?: string } = {},
 ) {
   // Every write to the tenant mirror is fire-and-forget, and a lead missing from it is
   // invisible here — so repair before reading rather than trusting writes that swallowed
   // their errors. Normally a no-op: it writes nothing when nothing is missing.
   await reconcileTenantMirror(recipient, db);
-  return distributionsRepo.listForBusinessFromTenant(db, filters);
+  const { limit, offset } = paginationToOffset(pagination);
+  const { data, total, counts } = await distributionsRepo.listForBusinessFromTenant(db, { ...filters, limit, offset });
+  // Signed here rather than in the repo: resolvePreviewUrl is an async round trip per path, and
+  // only the rows on this page need one. Null passes straight through, so a locked row costs
+  // nothing.
+  const rows = await Promise.all(
+    data.map(async (row) => ({ ...row, student_photo_url: await storage.resolvePreviewUrl(row.student_photo_url) })),
+  );
+  return { ...buildPaginatedResponse(rows, total, pagination), counts };
 }
 
 /**
@@ -42,6 +58,44 @@ export async function getCreditBalance(recipient: Recipient) {
   // deliberately does not. Reading a balance may mint a wallet, spending never mints credits.
   const balance = await creditService.getBalance(billing.walletUserId);
   return { balance: balance.total, unlock_cost: billing.unlockCost };
+}
+
+/**
+ * The student's full profile, for a recipient that has unlocked this enquiry.
+ *
+ * The paywall is enforced HERE, not in the UI: an unlocked distribution is the only thing that
+ * grants this, and the check runs before a single profile field is read. Calling the endpoint
+ * directly with a locked distribution gets 402; with another recipient's distribution, 404.
+ *
+ * Reuses platform-users' getProfile rather than assembling a second profile reader — it already
+ * returns exactly the qualifications / language tests / academic tests / work history set with
+ * storage URLs resolved. The phone number is stripped unless the student opted in, so the consent
+ * rule holds on this path too and not only on the inbox listing.
+ */
+export async function getStudentProfile(recipient: Recipient, distributionId: string) {
+  const distribution = await distributionsRepo.findForRecipient(distributionId, recipient);
+  // 404, not 403 — another recipient's distribution must not be confirmable as existing.
+  if (!distribution) throw new NotFoundError("Enquiry not found");
+  if (distribution.unlocked_at == null) {
+    throw new PaymentRequiredError("Unlock this enquiry to view the student's profile");
+  }
+
+  const enquiry = await masterKnex("enquiries")
+    .where({ id: distribution.enquiry_id })
+    .first("student_id", "share_contact_number");
+  if (!enquiry) throw new NotFoundError("Enquiry not found");
+
+  const profile = await platformUsersService.getProfile(Number(enquiry.student_id));
+
+  // Same two-gate rule as the inbox listing: unlocking buys the profile, the number needs consent
+  // on top. Destructured out rather than overwritten, so a later change to getProfile's shape
+  // cannot reintroduce it by accident.
+  const { phone, ...rest } = profile as Record<string, unknown> & { phone?: string | null };
+  return {
+    ...rest,
+    phone: enquiry.share_contact_number ? (phone ?? null) : null,
+    phone_withheld: !enquiry.share_contact_number,
+  };
 }
 
 /**
@@ -138,7 +192,36 @@ export async function unlock(recipient: Recipient, distributionId: string, userI
     await markInConversation(recipient, result.distribution.enquiry_id);
   }
 
+  // Tell the student who now has their details, and that a message is waiting.
+  //
+  // Deliberately outside the alreadyUnlocked guard: if the first attempt's enqueue failed, a retry
+  // should still be able to deliver it. The `enquiry_unlocked:<distribution>` dedup key is what
+  // prevents a second mail, and it survives a restart in a way an in-memory guard would not.
+  //
+  // Fire-and-forget, like every other mail in this flow: the unlock is paid for and committed, and
+  // a mail failure must not turn a successful purchase into an error response.
+  await emailQueueService
+    .enqueueUnlockedEmailToStudent(
+      result.distribution.enquiry_id,
+      distributionId,
+      billing.name,
+      // The queue's business_id FKs `businesses`, so an institution recipient records null there.
+      recipient.kind === "business" ? recipient.id : null,
+    )
+    .catch((err) =>
+      logger.error("Failed to queue the unlock notification to the student", {
+        distributionId,
+        error: (err as Error).message,
+      }),
+    );
+
   const contact = await distributionsRepo.findStudentContact(result.distribution.enquiry_id);
+
+  // The consent gate has to be applied HERE too, not just in the inbox listing. This response is
+  // the other way a phone number reaches a business, and spreading `contact` wholesale would hand
+  // over a number the student declined to share — paying for the unlock does not buy it.
+  const { share_contact_number, student_phone, ...contactRest } = contact ?? {};
+
   return {
     distribution_id: distributionId,
     status: "unlocked",
@@ -148,7 +231,9 @@ export async function unlock(recipient: Recipient, distributionId: string, userI
     // a spend that did not happen.
     credits_remaining:
       result.creditsRemaining ?? (await creditService.getBalance(billing.walletUserId)).total,
-    ...contact,
+    ...contactRest,
+    student_phone: share_contact_number ? (student_phone ?? null) : null,
+    student_phone_withheld: contact != null && !share_contact_number,
   };
 }
 

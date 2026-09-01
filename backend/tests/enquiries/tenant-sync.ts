@@ -195,7 +195,7 @@ async function main() {
       eq(tenantRow.status, "distributed", "tenant row status");
 
       const recipient = { kind: "business" as const, id: business.id };
-      const inbox = await distributionsService.listForBusiness(tenantDb, recipient, {});
+      const inbox = (await distributionsService.listForBusiness(tenantDb, recipient, { page: 1, limit: 50 })).data;
       eq(inbox.length, 1, "inbox row count");
       eq(inbox[0].enquiry_id, enquiry.id, "inbox enquiry_id");
       eq(inbox[0].distribution_id, dist.id, "inbox distribution_id");
@@ -217,7 +217,7 @@ async function main() {
         "tenant row is gone before the repair",
       );
 
-      const repaired = await distributionsService.listForBusiness(tenantDb, recipient, {});
+      const repaired = (await distributionsService.listForBusiness(tenantDb, recipient, { page: 1, limit: 50 })).data;
       eq(repaired.length, 1, "the lead is back in the inbox");
       eq(repaired[0].distribution_id, dist.id, "repaired distribution_id");
       // Replayed from the central row, not reset to 'distributed'.

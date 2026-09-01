@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 export interface SegmentOption<T extends string> {
   value: T;
   label: string;
+  /** Optional trailing tally — rendered muted so the label stays the thing you read first. */
+  count?: number;
 }
 
 export function AdminSegmentedTabs<T extends string>({
@@ -25,11 +27,16 @@ export function AdminSegmentedTabs<T extends string>({
           type="button"
           onClick={() => onChange(opt.value)}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 cursor-pointer",
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 cursor-pointer",
             value === opt.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
           )}
         >
           {opt.label}
+          {opt.count != null && (
+            <span className={cn("tabular-nums", value === opt.value ? "text-muted-foreground" : "text-muted-foreground/70")}>
+              {opt.count}
+            </span>
+          )}
         </button>
       ))}
     </div>

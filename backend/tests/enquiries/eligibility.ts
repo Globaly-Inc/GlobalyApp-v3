@@ -239,15 +239,56 @@ async function main() {
     eq(v.criteria[0].status, "pass", "'IELTS' matches 'IELTS Academic'");
   });
 
-  await assert("per-band bar maps the requirement column to the student's sub_scores key", () => {
+  // The key here is `writing`, lowercase — that is what the profile dialog actually stores
+  // (`label.toLowerCase().replace(/[^a-z]+/g, "_")`). This case previously used `Writing` and so
+  // passed against a lookup that could never match real data: every student with all four bands
+  // filled in was reported "has not provided" on all of them.
+  await assert("per-band bar reads the key the profile dialog actually writes", () => {
     const v = evaluate(
       [],
-      student({ languageTests: [{ test_type: "IELTS", overall_score: "6.5", sub_scores: { Writing: "5.0" } }] }),
+      student({ languageTests: [{ test_type: "IELTS", overall_score: "6.5", sub_scores: { writing: "5.0" } }] }),
       [english({ overall_score: "6.0", writing_score: "6.0" })],
     );
     const writing = v.criteria.find((c) => c.label.includes("Writing"));
     eq(writing?.status, "fail", "5.0 writing misses the 6.0 band");
     eq(v.status, "not_eligible");
+  });
+
+  await assert("a filled-in band is never reported as 'not provided'", () => {
+    const v = evaluate(
+      [],
+      student({
+        languageTests: [
+          {
+            test_type: "IELTS",
+            overall_score: "7",
+            sub_scores: { listening: "7.5", reading: "7", writing: "6.5", speaking: "7" },
+          },
+        ],
+      }),
+      [english({ overall_score: "7", listening_score: "6.5", reading_score: "6.5", writing_score: "6.5", speaking_score: "6.5" })],
+    );
+    const bands = v.criteria.filter((c) => c.label.includes("—"));
+    eq(bands.length, 4, "four band criteria");
+    eq(bands.every((b) => b.status === "pass"), true, `all four compared: ${bands.map((b) => `${b.label}=${b.status}`).join(", ")}`);
+    eq(v.status, "eligible");
+  });
+
+  // Whatever spelling reaches the jsonb, the band still resolves.
+  await assert("band lookup tolerates capitalised and _score-suffixed keys", () => {
+    for (const subScores of [
+      { Writing: "5.0" },
+      { writing_score: "5.0" },
+      { "Writing Score": "5.0" },
+    ]) {
+      const v = evaluate(
+        [],
+        student({ languageTests: [{ test_type: "IELTS", overall_score: "6.5", sub_scores: subScores }] }),
+        [english({ overall_score: "6.0", writing_score: "6.0" })],
+      );
+      const writing = v.criteria.find((c) => c.label.includes("Writing"));
+      eq(writing?.status, "fail", `key ${JSON.stringify(Object.keys(subScores)[0])} should still resolve`);
+    }
   });
 
   await assert("missing language test is unknown, not fail", () => {

@@ -17,7 +17,6 @@ export const INTAKE_YEAR_RANGE = 6;
 
 /** Message bounds, shared by the form's zod schema and its character counter so the
  * limit the student sees is the limit that's enforced. Mirrors the backend schema. */
-export const MESSAGE_MIN = 10;
 export const MESSAGE_MAX = 5000;
 
 /** Minimum profile completion required before an enquiry can be sent (v2 parity). */
@@ -111,3 +110,6 @@ export const STATUS_FILTERS: readonly {
   { key: "converted", label: "Converted", statuses: ["converted"] },
   { key: "closed", label: "Closed", statuses: ["closed", "no_match", "expired"] },
 ];
+
+/** Rows per page in My Enquiries. Matches the other paginated lists in the app. */
+export const ENQUIRIES_PAGE_SIZE = 10;

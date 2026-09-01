@@ -114,15 +114,36 @@ export interface EnquiryListRow {
   institution_logo_url: string | null;
 }
 
-export async function listForStudent(
-  studentId: number,
-  opts: { limit: number; offset: number; status?: string },
-): Promise<EnquiryListRow[]> {
+/**
+ * `search` matches the course or the institution, not the message.
+ *
+ * Those are the two things a student can actually recall about an enquiry they sent weeks ago —
+ * and the message is often empty now that it is optional, so searching it would return nothing for
+ * a growing share of rows.
+ */
+function studentEnquiries(studentId: number, opts: { status?: string; search?: string }) {
   const query = masterKnex(`${T} as e`)
     .join("superadmin.extraction_courses as c", "c.id", "e.course_id")
     .leftJoin("superadmin.extraction_institution_overview as o", "o.job_id", "e.extraction_job_id")
     .where("e.student_id", studentId)
-    .whereNull("e.deleted_at")
+    .whereNull("e.deleted_at");
+  // Comma-separated so a UI filter group ("Active" = pending + distributed + unlocked …) maps to
+  // one request. A single value still works — it is just a list of one.
+  if (opts.status) query.whereIn("e.status", opts.status.split(",").map((v) => v.trim()).filter(Boolean));
+  if (opts.search) {
+    const term = `%${opts.search}%`;
+    query.where((q) =>
+      q.whereILike("c.name", term).orWhereILike("c.short_name", term).orWhereILike("o.name", term),
+    );
+  }
+  return query;
+}
+
+export async function listForStudent(
+  studentId: number,
+  opts: { limit: number; offset: number; status?: string; search?: string },
+): Promise<EnquiryListRow[]> {
+  return studentEnquiries(studentId, opts)
     .select(
       "e.id",
       "e.status",
@@ -137,14 +158,30 @@ export async function listForStudent(
     .orderBy("e.created_at", "desc")
     .limit(opts.limit)
     .offset(opts.offset);
-  if (opts.status) query.where("e.status", opts.status);
-  return query;
 }
 
-export async function countForStudent(studentId: number, opts: { status?: string }): Promise<number> {
-  const query = masterKnex(T).where({ student_id: studentId }).whereNull("deleted_at");
-  if (opts.status) query.where("status", opts.status);
-  const [{ count }] = await query.count("id as count");
+/**
+ * Counted through the same builder as the list, so a filtered page can never report the unfiltered
+ * total — the bug that makes a paginator offer page 3 of an empty result.
+ */
+/**
+ * How many enquiries this student has in each status, honouring `search` but NOT `status` — the
+ * chips have to keep showing their own totals while one of them is selected, and they must count
+ * every row rather than the current page.
+ */
+export async function countsByStatusForStudent(
+  studentId: number,
+  opts: { search?: string } = {},
+): Promise<Record<string, number>> {
+  const rows = await studentEnquiries(studentId, opts).groupBy("e.status").select("e.status").count("e.id as count");
+  return Object.fromEntries(rows.map((r: any) => [r.status, Number(r.count)]));
+}
+
+export async function countForStudent(
+  studentId: number,
+  opts: { status?: string; search?: string },
+): Promise<number> {
+  const [{ count }] = await studentEnquiries(studentId, opts).count("e.id as count");
   return Number(count);
 }
 

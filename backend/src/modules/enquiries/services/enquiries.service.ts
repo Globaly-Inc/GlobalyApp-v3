@@ -20,16 +20,20 @@ export interface CreateEnquiryInput {
   course_id: string;
   extraction_job_id?: string | null;
   business_id?: number | null;
-  message: string;
+  message?: string | null;
   preferred_intake?: string | null;
   preferred_year?: number | null;
+  share_contact_number?: boolean;
 }
 
 /**
  * Creates an enquiry for a student. Order of checks matters:
  * profile completeness → course exists → business (if given) is a valid direct
- * target → message length (DB CHECK constraint is the backstop, this is the
- * fast-fail) → insert + audit row, in one transaction.
+ * target → insert + audit row, in one transaction.
+ *
+ * `message` is optional. The course is what identifies the request; requiring prose made the
+ * one action the funnel depends on into a writing task. Length is capped by the Zod schema and
+ * the DB CHECK, with no floor.
  *
  * "Profile complete" is the 100% completion percentage from
  * platform-users/completion.ts — the same freshly-computed figure the profile
@@ -49,9 +53,9 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
     throw new ForbiddenError("Complete your profile before submitting an enquiry");
   }
 
-  if (input.message.length < 10 || input.message.length > 5000) {
-    throw new BadRequestError("Message must be between 10 and 5000 characters");
-  }
+  // One representation for "no message": a whitespace-only textarea and an omitted field both
+  // become NULL, so nothing downstream has to test for both.
+  const message = input.message?.trim() ? input.message.trim() : null;
 
   const course = await repo.findExtractionCourseById(input.course_id);
   if (!course) {
@@ -102,9 +106,12 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
         extraction_job_id: jobId,
         institution_id: institutionId,
         business_id: input.business_id ?? null,
-        message: input.message,
+        message,
         preferred_intake: input.preferred_intake ?? null,
         preferred_year: input.preferred_year ?? null,
+        // A snapshot of what the student agreed to for THIS enquiry, like the eligibility
+        // verdict below — never re-read from a profile setting that could change later.
+        share_contact_number: input.share_contact_number === true,
         // student_country_code needs a countries join (profile only stores country_of_residence_id);
         // ponytail: left null here, matching phase (Phase 5) resolves geography, not creation.
         student_country_code: null,
@@ -147,14 +154,17 @@ export async function createEnquiry(studentId: number, input: CreateEnquiryInput
 export async function listEnquiriesForStudent(
   studentId: number,
   pagination: PaginationInput,
-  status?: string,
+  filters: { status?: string; search?: string } = {},
 ) {
   const { limit, offset } = paginationToOffset(pagination);
-  const [rows, total] = await Promise.all([
-    repo.listForStudent(studentId, { limit, offset, status }),
-    repo.countForStudent(studentId, { status }),
+  const [rows, total, counts] = await Promise.all([
+    repo.listForStudent(studentId, { limit, offset, ...filters }),
+    repo.countForStudent(studentId, filters),
+    // Deliberately search-scoped but not status-scoped: a selected chip must not zero out the
+    // others, and the counts must span every page rather than the one being shown.
+    repo.countsByStatusForStudent(studentId, { search: filters.search }),
   ]);
-  return buildPaginatedResponse(rows, total, pagination);
+  return { ...buildPaginatedResponse(rows, total, pagination), counts };
 }
 
 export async function getEnquiryById(id: string) {

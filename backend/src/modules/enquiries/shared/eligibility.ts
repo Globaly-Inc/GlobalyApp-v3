@@ -104,13 +104,35 @@ const TO_PERCENT: Record<string, (v: number) => number> = {
   cgpa: (v) => (v / 10) * 100,
 };
 
-/** Requirement column -> the key the student's `sub_scores` jsonb uses for the same band. */
+/** Requirement column -> the band's display name. */
 const BAND_KEYS = [
   ["listening_score", "Listening"],
   ["reading_score", "Reading"],
   ["writing_score", "Writing"],
   ["speaking_score", "Speaking"],
 ] as const;
+
+/**
+ * Band lookup, insensitive to how the key was spelled.
+ *
+ * The student's `sub_scores` jsonb is keyed by whatever the profile dialog derived from its field
+ * label — `label.toLowerCase().replace(/[^a-z]+/g, "_")`, so "Listening" is stored as `listening`.
+ * Reading it back as `"Listening"` matched nothing, and a student with all four bands filled in was
+ * reported as "has not provided" on every one of them.
+ *
+ * Stripping to letters on both sides absorbs that and any future spelling: `listening`,
+ * `Listening`, `listening_score` and `Listening Score` all resolve to the same band.
+ */
+function bandScore(subScores: Record<string, unknown> | null | undefined, band: string): string | undefined {
+  if (!subScores) return undefined;
+  const wanted = band.toLowerCase().replace(/[^a-z]/g, "");
+  for (const [key, value] of Object.entries(subScores)) {
+    if (key.toLowerCase().replace(/[^a-z]/g, "").replace(/score$/, "") === wanted) {
+      return value == null ? undefined : String(value);
+    }
+  }
+  return undefined;
+}
 
 /** First number in a free-text score. "6.0-6.5" -> 6, "6.5 overall" -> 6.5, "Credit" -> null. */
 export function parseScore(text: string | number | null | undefined): number | null {
@@ -302,11 +324,12 @@ function englishCriteria(
     }
 
     // Per-band minimums, when extraction captured them. The two sides name the bands
-    // differently — columns here, human labels in the student's sub_scores jsonb.
+    // differently — columns here, the profile dialog's derived keys in the student's sub_scores
+    // jsonb — so the lookup normalises rather than assuming a spelling. See bandScore.
     for (const [column, subScoreKey] of BAND_KEYS) {
       const band = parseScore(req[column]);
       if (band == null) continue;
-      const held = parseScore(match?.sub_scores?.[subScoreKey] as string | undefined);
+      const held = parseScore(bandScore(match?.sub_scores, subScoreKey));
       out.push(
         held == null
           ? { key: "language_test", label: `${name} — ${subScoreKey}`, required: `≥ ${band}`, actual: null, status: "unknown", hint: `Add your ${subScoreKey.toLowerCase()} band score to check this.` }

@@ -19,7 +19,12 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { config } from "../../../config.js";
 import { mailerService } from "../../../shared/mail/mailerService.js";
-import { emailLayout, enquiryDistributedEmail, enquiryInstitutionFallbackEmail } from "../../../shared/mail/templates.js";
+import {
+  emailLayout,
+  enquiryDistributedEmail,
+  enquiryInstitutionFallbackEmail,
+  enquiryUnlockedEmail,
+} from "../../../shared/mail/templates.js";
 import { mintInstitutionClaimUrl } from "../../platform-users/services/institution-claim.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as emailQueueRepo from "../repositories/email-queue.repository.js";
@@ -91,6 +96,14 @@ function renderEmail(
         institutionName: str("institution_name"),
         intake: str("intake"),
         businessName: str("business_name"),
+      });
+    case "enquiry_unlocked":
+      return enquiryUnlockedEmail({
+        businessName: str("business_name"),
+        courseName: str("course_name"),
+        institutionName: str("institution_name"),
+        enquiryId: str("enquiry_id"),
+        sharedContact: payload.shared_contact === true,
       });
     case "enquiry_institution_fallback":
       return enquiryInstitutionFallbackEmail({
@@ -226,6 +239,62 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
       distributionId,
     });
   }
+}
+
+/**
+ * Tells the STUDENT that a business unlocked their enquiry and left them a message.
+ *
+ * Every other mail in this module goes to a recipient of an enquiry; this one goes back to the
+ * person who sent it. Until now the student learned that a business had their details only by
+ * opening the app — the one moment their data actually changed hands was the one moment nothing
+ * told them.
+ *
+ * `business_id` is the unlocker, which is genuinely a business here (an institution recipient
+ * passes null, since the column FKs `businesses`) — it is recorded for the audit trail, not for
+ * addressing: the recipient is the student.
+ *
+ * Dedup key is the distribution, so a repeat unlock — which charges nothing and returns the same
+ * result — cannot mail the student twice.
+ */
+export async function enqueueUnlockedEmailToStudent(
+  enquiryId: string,
+  distributionId: string,
+  unlockerName: string | null,
+  businessId: number | null,
+) {
+  const enquiry = await masterKnex("enquiries as e")
+    .join("platform_users as u", "u.id", "e.student_id")
+    .leftJoin("superadmin.extraction_courses as c", "c.id", "e.course_id")
+    .leftJoin("institutions as i", "i.id", "e.institution_id")
+    .where("e.id", enquiryId)
+    .first(
+      "u.id as student_user_id",
+      "u.email as student_email",
+      "e.share_contact_number",
+      "c.name as course_name",
+      "i.institution_name as institution_name",
+    );
+  // No address, nobody to tell. Not an error: the enquiry and its conversation are unaffected.
+  if (!enquiry?.student_email) return;
+
+  await enqueue({
+    dedupKey: `enquiry_unlocked:${distributionId}`,
+    template: "enquiry_unlocked",
+    payload: {
+      business_name: unlockerName,
+      course_name: enquiry.course_name ?? null,
+      institution_name: enquiry.institution_name ?? null,
+      enquiry_id: enquiryId,
+      // Echoed back so the mail can state what the unlocker can actually see, rather than
+      // describing the feature in the abstract.
+      shared_contact: enquiry.share_contact_number === true,
+    },
+    recipientEmail: enquiry.student_email,
+    recipientUserId: Number(enquiry.student_user_id),
+    businessId,
+    enquiryId,
+    distributionId,
+  });
 }
 
 /**

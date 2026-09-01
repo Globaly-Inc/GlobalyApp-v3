@@ -210,11 +210,12 @@ async function tenantStatus(businessId: number, schemaUuid: string, enquiryId: s
 
 async function listFor(businessId: number, schemaUuid: string) {
   const db = await getKnex(businessId, schemaName(schemaUuid));
-  return service.listForBusiness(db, { kind: "business", id: businessId }, {});
+  const { data } = await service.listForBusiness(db, { kind: "business", id: businessId }, { page: 1, limit: 50 });
+  return data;
 }
 
 /** One enquiry fanned out to `count` provisioned businesses. */
-async function scenario(count: number) {
+async function scenario(count: number, opts: { shareContact?: boolean } = {}) {
   const countryId = await getCountryId("AU");
   const studentId = await makeStudent(countryId);
   const subject = `Dist Subject ${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -233,6 +234,8 @@ async function scenario(count: number) {
       // Matching keys its whole candidate query on this — the same derivation createEnquiry does.
       institution_id: institutionId,
       message: MESSAGE,
+      // Opt-in, default off — the same default the column carries.
+      share_contact_number: opts.shareContact === true,
       student_latitude: -33.8688,
       student_longitude: 151.2093,
       status: "pending",
@@ -457,8 +460,13 @@ async function main() {
       eq(locked!.message_truncated, true, "message is truncated");
       eq(locked!.message!.length < MESSAGE.length, true, "teaser shorter than the real message");
       eq(locked!.message!.endsWith("…"), true, "teaser is elided");
-      eq(locked!.student_email, null, "no contact while locked");
-      eq(locked!.student_name, null, "no name while locked");
+      eq(locked!.student_email, null, "no email while locked");
+      eq(locked!.student_phone, null, "no phone while locked");
+      // First name IS visible before unlock. The surname is withheld from the payload entirely,
+      // not merely blurred in the UI — a blur still ships the real value to the browser.
+      eq(locked!.student_first_name, "Unlock", "first name visible while locked");
+      eq(locked!.student_name, null, "full name withheld while locked");
+      eq(locked!.eligibility_criteria, null, "criteria withheld while locked");
 
       await service.unlock(asBiz(biz.id), (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId);
 
@@ -466,9 +474,106 @@ async function main() {
       eq(unlocked!.is_unlocked, true, "now unlocked");
       eq(unlocked!.message_truncated, false, "no longer truncated");
       eq(unlocked!.message, MESSAGE, "full message");
-      eq(unlocked!.student_name, "Unlock Student", "name revealed");
-      eq(unlocked!.student_phone, "+61400000000", "phone revealed");
+      eq(unlocked!.student_name, "Unlock Student", "full name revealed by unlocking");
+      eq(unlocked!.student_email != null, true, "email revealed by unlocking");
+      // This scenario did not opt in, so paying does not buy the number.
+      eq(unlocked!.student_phone, null, "phone withheld without consent");
+      eq(unlocked!.student_phone_withheld, true, "and the UI is told why");
       eq(unlocked!.coin_cost, DEFAULT_UNLOCK_COST, "cost surfaced in the list");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  // ── Contact-sharing consent ──
+
+  await assert("consent = true: unlocking reveals the phone number", async () => {
+    const s = await scenario(1, { shareContact: true });
+    const biz = s.businesses[0]!;
+    try {
+      await service.unlock(asBiz(biz.id), (await distributionFor(s.enquiry.id, biz.id)).id, s.studentId);
+      const [row] = await listFor(biz.id, biz.schemaUuid);
+      eq(row!.student_phone, "+61400000000", "phone shared as the student agreed");
+      eq(row!.student_phone_withheld, false, "nothing withheld");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  // The whole point of the consent field: paying is necessary but not sufficient.
+  await assert("consent = false: paying for the unlock still does not buy the phone number", async () => {
+    const s = await scenario(1, { shareContact: false });
+    const biz = s.businesses[0]!;
+    try {
+      const result: any = await service.unlock(
+        asBiz(biz.id),
+        (await distributionFor(s.enquiry.id, biz.id)).id,
+        s.studentId,
+      );
+      // Checked on the unlock RESPONSE as well as the listing — it is a second path to the
+      // same data, and gating only the listing would leave it wide open.
+      eq(result.student_phone, null, "unlock response withholds the number");
+      eq(result.student_phone_withheld, true, "and says so");
+      eq(result.student_email != null, true, "email is still what unlocking buys");
+
+      const [row] = await listFor(biz.id, biz.schemaUuid);
+      eq(row!.student_phone, null, "listing withholds it too");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  // ── Full profile behind the paywall ──
+
+  await assert("the student profile endpoint is refused until the distribution is unlocked", async () => {
+    const s = await scenario(1);
+    const biz = s.businesses[0]!;
+    try {
+      const distId = (await distributionFor(s.enquiry.id, biz.id)).id;
+      // Direct service call, bypassing any UI — this is the "cannot be reached by calling the
+      // API directly" requirement.
+      await rejectsWith(
+        () => service.getStudentProfile(asBiz(biz.id), distId),
+        "PaymentRequiredError",
+        "locked profile read",
+      );
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("unlocking grants the full profile, with the phone still consent-gated", async () => {
+    const s = await scenario(1, { shareContact: false });
+    const biz = s.businesses[0]!;
+    try {
+      const distId = (await distributionFor(s.enquiry.id, biz.id)).id;
+      await service.unlock(asBiz(biz.id), distId, s.studentId);
+
+      const profile: any = await service.getStudentProfile(asBiz(biz.id), distId);
+      eq(profile.first_name, "Unlock", "identity");
+      eq(Array.isArray(profile.qualifications), true, "qualifications included");
+      eq(Array.isArray(profile.language_tests), true, "language tests included");
+      eq(profile.profile != null, true, "profile row included");
+      eq(profile.phone, null, "phone withheld — consent was not given");
+      eq(profile.phone_withheld, true, "and flagged");
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  await assert("another recipient's distribution is 404, not 403 — no existence leak", async () => {
+    const s = await scenario(2);
+    const [a, b] = [s.businesses[0]!, s.businesses[1]!];
+    try {
+      const aDist = (await distributionFor(s.enquiry.id, a.id)).id;
+      await service.unlock(asBiz(a.id), aDist, s.studentId);
+      // B unlocked nothing. Asking for A's distribution must not reveal that it exists, let
+      // alone A's paid-for profile read.
+      await rejectsWith(
+        () => service.getStudentProfile(asBiz(b.id), aDist),
+        "NotFoundError",
+        "cross-recipient profile read",
+      );
     } finally {
       await s.cleanup();
     }

@@ -1,6 +1,7 @@
 // Zod schemas for business-facing distribution endpoints — list-only.
 
 import { z } from "zod";
+import { PaginationSchema } from "../../../shared/pagination.js";
 
 // Mirrors chk_business_enquiries_status / chk_enquiries_status — the tenant row's
 // vocabulary, since that is what the list returns.
@@ -15,10 +16,18 @@ export const ENQUIRY_STATUSES = [
   "expired",
 ] as const;
 
-export const ListDistributionsQuerySchema = z.object({
-  status: z.enum(ENQUIRY_STATUSES).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
-  offset: z.coerce.number().int().nonnegative().optional(),
+export const ListDistributionsQuerySchema = PaginationSchema.extend({
+  // A comma-separated list of statuses, not a single enum member: one inbox tab covers several
+  // ("Unlocked" = unlocked, in_conversation, converted). Validated against the enum per item so an
+  // unknown status is still rejected.
+  status: z
+    .string()
+    .optional()
+    .refine(
+      (v) => !v || v.split(",").every((part) => (ENQUIRY_STATUSES as readonly string[]).includes(part.trim())),
+      { message: "Unknown enquiry status" },
+    ),
+  search: z.string().trim().min(1).optional(),
 });
 
 // Response shape for GET /enquiry-distributions — read from the tenant table,
@@ -42,9 +51,12 @@ export const DistributionListItemSchema = z.object({
   accept_count: z.number(),
   max_accepts: z.number(),
 
-  // The student's eligibility rollup, without the criteria behind it — those name their actual
-  // degree and scores, which a locked row has not paid for. Null on pre-check enquiries.
+  // The rollup is visible either way. Null on pre-check enquiries.
   eligibility_status: z.enum(["eligible", "not_eligible", "unknown"]).nullable(),
+
+  // The criteria behind the rollup name the student's actual degree and scores — profile detail
+  // a locked row has not paid for, so this is null until unlocked.
+  eligibility_criteria: z.array(z.unknown()).nullable(),
 
   is_unlocked: z.boolean(),
   coin_cost: z.number(),
@@ -52,10 +64,22 @@ export const DistributionListItemSchema = z.object({
   closed_at: z.coerce.date().nullable(),
   close_reason: z.string().nullable(),
 
-  // Populated only once unlocked.
+  /** Visible before unlock — enough to address someone without identifying them. */
+  student_first_name: z.string().nullable(),
+  /** Signed avatar URL, unlocked only — a face identifies someone as surely as a surname does. */
+  student_photo_url: z.string().nullable(),
+  /** Full name, unlocked only. The surname is withheld rather than sent-and-blurred: a CSS blur
+   *  still ships the real value to the browser. */
   student_name: z.string().nullable(),
+
+  // Populated only once unlocked.
   student_email: z.string().nullable(),
+
+  // Unlocked AND the student opted in at submission. Paying does not override the refusal.
   student_phone: z.string().nullable(),
+  /** True when unlocked but the student declined to share their number — so the UI can say so
+   *  rather than showing a blank that reads as missing data. */
+  student_phone_withheld: z.boolean(),
 });
 
 export const DistributionIdParamSchema = z.object({

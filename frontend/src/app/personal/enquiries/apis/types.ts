@@ -17,7 +17,10 @@ export type Enquiry = {
   /** extraction_institution_overview.id — derived server-side from the course's job. */
   institution_id: number | null;
   business_id: number | null;
-  message: string;
+  /** Optional — an enquiry can be a course and an intake with nothing written. */
+  message: string | null;
+  /** The student agreed to share their phone number with whoever unlocks this enquiry. */
+  share_contact_number: boolean;
   preferred_intake: string | null;
   preferred_year: number | null;
   status: EnquiryStatus;
@@ -54,16 +57,21 @@ export type EnquiryListItem = {
   institution_logo_url: string | null;
 };
 
+export type EnquiryListParams = { page?: number; limit?: number; search?: string; status?: string };
+
 export type PaginatedResponse<T> = {
   data: T[];
   meta: { page: number; limit: number; total: number; totalPages: number };
+  /** Per-status totals, spanning every page — only the enquiries list sends these. */
+  counts?: Record<string, number>;
 };
 
 export type CreateEnquiryInput = {
   course_id: string;
   extraction_job_id?: string | null;
   business_id?: number | null;
-  message: string;
+  message?: string | null;
+  share_contact_number?: boolean;
   preferred_intake?: string | null;
   preferred_year?: number | null;
 };

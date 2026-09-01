@@ -7,6 +7,8 @@ export type {
   CloseResult,
   CreditBalance,
   DistributionListItem,
+  EligibilityCriterion,
   EnquiryMessage,
+  UnlockedStudentProfile,
   UnlockResult,
 } from "./types";

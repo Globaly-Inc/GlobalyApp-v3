@@ -1,9 +1,11 @@
+import { ENQUIRIES_PAGE_SIZE } from "../const";
 import type {
   Course,
   CreateEnquiryInput,
   EligibilityVerdict,
   Enquiry,
   EnquiryListItem,
+  EnquiryListParams,
   PaginatedResponse,
 } from "./types";
 
@@ -16,6 +18,7 @@ const mockEnquiries = new Map<string, Enquiry>();
 mockEnquiries.set("enq-2", {
   id: "enq-2",
   eligibility_snapshot: null,
+  share_contact_number: true,
   unlocked_businesses: [
     {
       distribution_id: "dist-mock-1",
@@ -254,6 +257,7 @@ export const enquiriesMockApi = {
     const enquiry: Enquiry = {
       // Nothing has unlocked a brand-new enquiry yet.
       unlocked_businesses: [],
+      share_contact_number: input.share_contact_number === true,
       id: `enq-${mockEnquiries.size + 1}`,
       student_id: 1,
       course_id: input.course_id,
@@ -265,7 +269,7 @@ export const enquiriesMockApi = {
       institution_name: "Mock Institution",
       institution_logo_url: null,
       business_id: input.business_id ?? null,
-      message: input.message,
+      message: input.message ?? null,
       preferred_intake: input.preferred_intake ?? null,
       preferred_year: input.preferred_year ?? null,
       status: "pending",
@@ -289,8 +293,8 @@ export const enquiriesMockApi = {
     if (!found) throw new Error("Enquiry not found");
     return found;
   },
-  listEnquiries: async (): Promise<PaginatedResponse<EnquiryListItem>> => {
-    console.log("[mock] GET /enquiries");
+  listEnquiries: async (params: EnquiryListParams = {}): Promise<PaginatedResponse<EnquiryListItem>> => {
+    console.log("[mock] GET /enquiries", params);
     await delay(200);
     const data: EnquiryListItem[] = [...mockEnquiries.values()]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -305,6 +309,22 @@ export const enquiriesMockApi = {
         institution_name: "Mock Institution",
         institution_logo_url: null,
       }));
-    return { data, meta: { page: 1, limit: 100, total: data.length, totalPages: 1 } };
+    // Filtered and paged exactly like the server, so mock mode is not a different product:
+    // search over course + institution, and a total that reflects the filter.
+    const term = params.search?.trim().toLowerCase();
+    const filtered = term
+      ? data.filter((e) =>
+          [e.course_name, e.course_short_name, e.institution_name].some(
+            (v) => typeof v === "string" && v.toLowerCase().includes(term),
+          ),
+        )
+      : data;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? ENQUIRIES_PAGE_SIZE;
+    const start = (page - 1) * limit;
+    return {
+      data: filtered.slice(start, start + limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / limit)) },
+    };
   },
 };

@@ -138,6 +138,61 @@ function detailBlock(rows: { label: string; value: string | null | undefined }[]
  * those details are behind the unlock, and an email is the easiest thing in the product to
  * forward on to someone who never paid for it.
  */
+/**
+ * Sent to the STUDENT the moment a business unlocks their enquiry — the only notification in this
+ * module that goes to the person who sent the enquiry rather than to a recipient of it.
+ *
+ * The point is reassurance and consent transparency: something happened, here is who, and here is
+ * what they can now see. `sharedContact` reflects the choice the student made at submission back to
+ * them, because "a business can now see your details" reads very differently depending on whether
+ * their phone number was part of that.
+ */
+export function enquiryUnlockedEmail(options: {
+  businessName?: string | null;
+  courseName?: string | null;
+  institutionName?: string | null;
+  enquiryId?: string | null;
+  sharedContact?: boolean;
+}): { subject: string; html: string; text: string } {
+  const { businessName, courseName, institutionName, enquiryId, sharedContact } = options;
+  const who = businessName ?? "A business";
+  // Straight to the enquiry when we know which one, so the reply is one tap away.
+  const href = enquiryId ? `${config.APP_URL}/personal/enquiries/${enquiryId}` : `${config.APP_URL}/personal/enquiries`;
+
+  const contactLine = sharedContact
+    ? "They can see your profile, email address and phone number, as you agreed when you sent this enquiry."
+    : "They can see your profile and email address. Your phone number stays private — you chose not to share it.";
+
+  const textLines = [
+    `${who} unlocked your enquiry and has started a conversation with you.`,
+    "",
+    courseName ? `Course: ${courseName}` : null,
+    institutionName ? `Institution: ${institutionName}` : null,
+    "",
+    contactLine,
+    "",
+    `Read their message → ${href}`,
+  ].filter((l) => l !== null);
+
+  return {
+    subject: courseName ? `${who} replied about ${courseName}` : `${who} unlocked your enquiry`,
+    text: textLines.join("\n"),
+    html: emailLayout({
+      heading: "Your enquiry was unlocked",
+      body: `<p style="margin:0 0 18px"><strong>${esc(who)}</strong> unlocked your enquiry and has sent you a message.</p>
+             ${detailBlock([
+               { label: "Course", value: courseName },
+               { label: "Institution", value: institutionName },
+             ])}
+             <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">
+               ${esc(contactLine)}
+             </p>`,
+      cta: { label: "Read their message", href },
+      footnote: "You're receiving this because you sent this enquiry on GlobalyApp.",
+    }),
+  };
+}
+
 export function enquiryDistributedEmail(options: {
   courseName?: string | null;
   institutionName?: string | null;

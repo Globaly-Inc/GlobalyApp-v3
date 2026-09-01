@@ -30,8 +30,8 @@ export async function enquiriesRoutes(app: FastifyInstance) {
   });
 
   app.get("/enquiries", async (req, reply) => {
-    const { page, limit, status } = ListEnquiriesQuerySchema.parse(req.query);
-    const result = await service.listEnquiriesForStudent(Number(req.auth.sub), { page, limit }, status);
+    const { page, limit, status, search } = ListEnquiriesQuerySchema.parse(req.query);
+    const result = await service.listEnquiriesForStudent(Number(req.auth.sub), { page, limit }, { status, search });
     return reply.send(result);
   });
 

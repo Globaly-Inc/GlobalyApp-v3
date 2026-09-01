@@ -1,6 +1,5 @@
 import { STATUS_FILTERS, type StatusFilterKey } from "../const";
 
-import type { EnquiryListItem } from "../apis/types";
 
 /** "23 Aug 2026" — same short, unambiguous stamp the earn/services feature uses. */
 export function formatDate(iso: string | null): string {
@@ -65,20 +64,23 @@ export function feeLabel(total: string | null, currency: string | null): string 
   }
 }
 
-/** How many enquiries each list filter would show — the counts on the filter pills. */
-export function filterCounts(items: EnquiryListItem[]): Record<StatusFilterKey, number> {
-  const counts: Record<StatusFilterKey, number> = { all: items.length, active: 0, converted: 0, closed: 0 };
-  for (const item of items) {
-    for (const filter of STATUS_FILTERS) {
-      if (filter.statuses?.includes(item.status)) counts[filter.key] += 1;
-    }
+/**
+ * How many enquiries each pill would show, from the server's per-status totals.
+ *
+ * Counted server-side rather than from the loaded rows: the list is paginated now, so counting
+ * `items` would report "Active 3" when page one happens to hold three of them and there are forty.
+ */
+export function filterCounts(countsByStatus: Record<string, number>): Record<StatusFilterKey, number> {
+  const total = Object.values(countsByStatus).reduce((sum, n) => sum + n, 0);
+  const counts: Record<StatusFilterKey, number> = { all: total, active: 0, converted: 0, closed: 0 };
+  for (const filter of STATUS_FILTERS) {
+    if (!filter.statuses) continue;
+    counts[filter.key] = filter.statuses.reduce((sum, status) => sum + (countsByStatus[status] ?? 0), 0);
   }
   return counts;
 }
 
-/** The items one filter pill shows. `all` keeps the server's order untouched. */
-export function applyStatusFilter(items: EnquiryListItem[], key: StatusFilterKey): EnquiryListItem[] {
-  const statuses = STATUS_FILTERS.find((f) => f.key === key)?.statuses;
-  if (!statuses) return items;
-  return items.filter((item) => statuses.includes(item.status));
+/** The raw statuses one pill covers, as the `status` query param. `all` sends nothing. */
+export function statusParam(key: StatusFilterKey): string | undefined {
+  return STATUS_FILTERS.find((f) => f.key === key)?.statuses?.join(",");
 }

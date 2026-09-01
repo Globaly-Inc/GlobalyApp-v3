@@ -1,7 +1,14 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { enquiriesApi } from "../apis";
 
-import type { Course, CreateEnquiryInput, EligibilityVerdict, Enquiry, EnquiryListItem } from "../apis/types";
+import type {
+  Course,
+  CreateEnquiryInput,
+  EligibilityVerdict,
+  Enquiry,
+  EnquiryListItem,
+  EnquiryListParams,
+} from "../apis/types";
 import type { RootState } from "@/lib/store";
 
 export const createEnquiry = createAsyncThunk("enquiries/create", (input: CreateEnquiryInput) =>
@@ -10,11 +17,14 @@ export const createEnquiry = createAsyncThunk("enquiries/create", (input: Create
 
 export const fetchEnquiries = createAsyncThunk(
   "enquiries/fetchAll",
-  async () => {
-    const list = await enquiriesApi.listEnquiries();
-    return { enquiries: list.data };
+  // `| void` so callers that just want a refresh — the new-enquiry dialog after a successful
+  // create — can dispatch it bare and land on page 1, which is where the new row will be.
+  async (params: EnquiryListParams | void = {}) => {
+    const list = await enquiriesApi.listEnquiries(params || {});
+    return { enquiries: list.data, meta: list.meta, counts: list.counts ?? {} };
   },
-  { condition: (_, { getState }) => (getState() as RootState).enquiries.status !== "loading" },
+  // No in-flight guard: typing in the search box fires a request per debounce tick, and dropping
+  // the newest one would leave the list showing results for an older term.
 );
 
 export const fetchEnquiry = createAsyncThunk("enquiries/fetchOne", (id: string) => enquiriesApi.getEnquiry(id));
@@ -63,6 +73,11 @@ type EnquiriesState = {
   courseOptions: Course[];
   courseOptionsStatus: "idle" | "loading" | "failed";
   status: "idle" | "loading" | "failed";
+  /** Page state for the list — `total` drives the paginator, so it is the FILTERED total. */
+  page: number;
+  total: number;
+  /** Per-status totals from the server — what the filter pills count, across every page. */
+  countsByStatus: Record<string, number>;
   createStatus: "idle" | "saving" | "failed";
   eligibilityByCourse: Record<string, EligibilityVerdict>;
   eligibilityStatus: "idle" | "loading" | "failed";
@@ -75,6 +90,9 @@ const initialState: EnquiriesState = {
   courseOptions: [],
   courseOptionsStatus: "idle",
   status: "idle",
+  page: 1,
+  total: 0,
+  countsByStatus: {},
   createStatus: "idle",
   eligibilityByCourse: {},
   eligibilityStatus: "idle",
@@ -98,6 +116,9 @@ const enquiriesSlice = createSlice({
       .addCase(fetchEnquiries.fulfilled, (state, action) => {
         state.status = "idle";
         state.items = action.payload.enquiries;
+        state.page = action.payload.meta.page;
+        state.total = action.payload.meta.total;
+        state.countsByStatus = action.payload.counts;
       })
       .addCase(fetchEnquiries.rejected, (state, action) => {
         state.status = "failed";

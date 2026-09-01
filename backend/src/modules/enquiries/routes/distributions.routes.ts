@@ -28,9 +28,12 @@ export async function distributionsRoutes(app: FastifyInstance) {
     "/enquiry-distributions",
     { preHandler: [requireBusinessOrInstitutionContext, requireEnquiryPermission("enquiries:view")] },
     async (req, reply) => {
-      const query = ListDistributionsQuerySchema.parse(req.query);
-      const distributions = await service.listForBusiness(req.db, recipientFromRequest(req), query);
-      return reply.send({ data: distributions });
+      const { page, limit, status, search } = ListDistributionsQuerySchema.parse(req.query);
+      // Sends { data, meta } like every other paginated list — the bare { data } it used to
+      // return had no total, so the client could not know how many pages there were.
+      return reply.send(
+        await service.listForBusiness(req.db, recipientFromRequest(req), { page, limit }, { status, search }),
+      );
     },
   );
 
@@ -51,6 +54,24 @@ export async function distributionsRoutes(app: FastifyInstance) {
       const { id } = DistributionIdParamSchema.parse(req.params);
       const result = await service.unlock(recipientFromRequest(req), id, Number(req.auth.sub));
       return reply.send(result);
+    },
+  );
+
+  /**
+   * The student's full profile — what unlocking actually buys beyond a phone number.
+   *
+   * Rides on enquiries:view rather than a new permission: anyone who can see the inbox can see
+   * the profile of a lead their org has already paid for. The paywall is the distribution's
+   * `unlocked_at`, enforced in the service — 402 while locked, 404 for another org's id — so this
+   * cannot be reached by calling the endpoint directly.
+   */
+  app.get(
+    "/enquiry-distributions/:id/student-profile",
+    { preHandler: [requireBusinessOrInstitutionContext, requireEnquiryPermission("enquiries:view")] },
+    async (req, reply) => {
+      const { id } = DistributionIdParamSchema.parse(req.params);
+      const profile = await service.getStudentProfile(recipientFromRequest(req), id);
+      return reply.send(profile);
     },
   );
 

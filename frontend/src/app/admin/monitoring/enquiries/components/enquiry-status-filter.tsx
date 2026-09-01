@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import { INBOX_FILTERS, type InboxFilterKey } from "../const";
 import type { AdminEnquiryStats } from "../apis";
 
@@ -27,41 +26,17 @@ export function EnquiryStatusFilter({
   const countOf = (statuses: readonly string[]) =>
     statuses.reduce((sum, status) => sum + (counts.get(status) ?? 0), 0);
 
+  // Rendered through the shared segmented control rather than a local pill: the business inbox
+  // shows the same three buckets, and two hand-rolled versions of one filter would drift.
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter enquiries by status">
-      <Pill label="All" count={stats?.total ?? 0} active={active === "all"} onClick={() => onChange("all")} />
-      {INBOX_FILTERS.map((filter) => (
-        <Pill
-          key={filter.key}
-          label={filter.label}
-          count={countOf(filter.statuses)}
-          active={active === filter.key}
-          onClick={() => onChange(filter.key)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Pill({
-  label,
-  count,
-  active,
-  onClick,
-}: Readonly<{ label: string; count: number; active: boolean; onClick: () => void }>) {
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant={active ? "default" : "ghost"}
-      aria-pressed={active}
-      onClick={onClick}
-      className="h-8 gap-1.5 rounded-full px-3 text-sm font-medium"
-    >
-      {label}
-      <span className={cn("tabular-nums", active ? "text-primary-foreground/70" : "text-muted-foreground/70")}>
-        {count}
-      </span>
-    </Button>
+    <AdminSegmentedTabs
+      options={[
+        { value: "all" as FilterKey, label: "All", count: stats?.total ?? 0 },
+        ...INBOX_FILTERS.map((f) => ({ value: f.key as FilterKey, label: f.label, count: countOf(f.statuses) })),
+      ]}
+      value={active}
+      onChange={onChange}
+      className="mb-3"
+    />
   );
 }
