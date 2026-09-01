@@ -136,3 +136,37 @@ export const EnquiryMessageSchema = z.object({
   is_mine: z.boolean(),
   sender_role: z.enum(["student", "business"]),
 });
+
+// ── Thread membership ──
+
+export const AddThreadMembersSchema = z.object({
+  user_ids: z.array(z.number().int().positive()).min(1).max(50),
+});
+
+export const ThreadMemberParamsSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.coerce.number().int().positive(),
+});
+
+export const ThreadMemberRoleSchema = z.object({
+  role: z.enum(["admin", "member"]),
+});
+
+/**
+ * The thread's shared picture, as a storage path from the media upload endpoint — not a URL and not
+ * the bytes. Null clears it. The service re-checks that this caller actually uploaded the path.
+ */
+export const ThreadPhotoSchema = z.object({
+  photo_path: z.string().min(1).max(500).nullable(),
+});
+
+/**
+ * A thread's shared name. Nullable on purpose — clearing it is a real action, and null is how each
+ * side goes back to its own default label rather than showing an empty heading.
+ *
+ * Length is capped in the service too, which trims first; this bound is the honest one to report to
+ * a client that sends something absurd.
+ */
+export const ThreadTitleSchema = z.object({
+  title: z.string().max(100, "Keep the name under 100 characters").nullable(),
+});

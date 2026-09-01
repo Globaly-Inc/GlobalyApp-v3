@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import * as service from "../services/enquiries.service.js";
 import * as eligibilityService from "../services/eligibility.service.js";
 import * as messagesService from "../services/messages.service.js";
+import * as threadMembersService from "../services/thread-members.service.js";
 import * as mediaService from "../services/message-media.service.js";
 import {
   CourseIdParamSchema,
@@ -164,5 +165,13 @@ export async function enquiriesRoutes(app: FastifyInstance) {
     const { id } = DistributionIdParamSchema.parse(req.params);
     const is_favorite = await messagesService.toggleFavoriteAsStudent(id, Number(req.auth.sub));
     return reply.send({ is_favorite });
+  });
+
+  // 409 while the enquiry is still open — a student cannot walk out on a lead an agency is
+  // actively working. The UI hides the action then, but the rule is enforced here.
+  app.post("/enquiry-messages/:id/leave", async (req, reply) => {
+    const { id } = DistributionIdParamSchema.parse(req.params);
+    await threadMembersService.leaveAsStudent(id, Number(req.auth.sub));
+    return reply.status(204).send();
   });
 }
