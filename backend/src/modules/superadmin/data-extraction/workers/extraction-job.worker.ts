@@ -184,6 +184,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
           system: SITE_ANALYSIS_SYSTEM,
           prompt: buildUrlDiscoveryPrompt(batch, patterns),
           maxTokens: 65536,
+          tier: "lite",
         });
         if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
         // Heartbeat between batches
@@ -202,6 +203,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
           system: SITE_ANALYSIS_SYSTEM,
           prompt: buildUrlDiscoveryPrompt(batch, patterns),
           maxTokens: 65536,
+          tier: "lite",
         });
         if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
       }

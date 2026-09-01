@@ -673,6 +673,7 @@ async function handleDiscoveryStep(jobId: string) {
       system,
       prompt: courseListPrompt(url, pageText),
       maxTokens: 32768,
+      tier: "lite",
     });
 
     if (result.is_category_listing && result.category_urls?.length) {

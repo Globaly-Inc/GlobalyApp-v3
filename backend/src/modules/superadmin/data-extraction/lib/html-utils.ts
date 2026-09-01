@@ -180,12 +180,40 @@ export function collectGuidedUrls(guided: unknown): string[] {
   return out;
 }
 
+/**
+ * Strip provably information-free junk before sending markdown to the LLM: base64
+ * payloads, HTML comments, runs of identical lines, and blank-line runs. Deliberately
+ * conservative — extraction quality depends on real URLs (curriculum/fees links, logos),
+ * link text (course names live in links), and table rows surviving VERBATIM, so nothing
+ * that carries information is rewritten or shortened. Every stripped byte is a billed
+ * input token the model could never use.
+ */
+function stripMarkdownJunk(md: string): string {
+  let out = md
+    // base64 data URIs: thousands of chars of pure noise (inline images, favicons)
+    .replace(/data:[a-zA-Z0-9/+.-]+;base64,[A-Za-z0-9+/=]{64,}/g, "data:omitted")
+    .replace(/<!--[\s\S]*?-->/g, "");
+
+  const lines = out.split("\n");
+  const deduped: string[] = [];
+  for (const line of lines) {
+    if (line.trim() !== "" && deduped[deduped.length - 1] === line) continue;
+    deduped.push(line);
+  }
+  out = deduped.join("\n");
+
+  return out.replace(/\n{3,}/g, "\n\n");
+}
+
 /** Truncate markdown to a max character length, breaking at line boundaries */
 // ponytail: 120K chars — Gemini 2.5 Flash handles ~1M tokens, 60K was leaving data on the table
 export function truncateMarkdown(md: string, maxLength = 120_000): string {
-  if (md.length <= maxLength) return md;
-  const cut = md.lastIndexOf("\n", maxLength);
-  return md.slice(0, cut > 0 ? cut : maxLength);
+  // Junk removal runs before the cut, so stripped noise buys back budget for real content
+  // instead of the tail of the page being lost to it.
+  const cleaned = stripMarkdownJunk(md);
+  if (cleaned.length <= maxLength) return cleaned;
+  const cut = cleaned.lastIndexOf("\n", maxLength);
+  return cleaned.slice(0, cut > 0 ? cut : maxLength);
 }
 
 /** Extract domain from URL */
