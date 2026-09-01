@@ -240,30 +240,12 @@ async function importTable(
   catMaps: CategoryMaps,
 ): Promise<{ read: number; written: number }> {
   const names = plan.copy.map((c) => c.name);
-  let rows: Record<string, unknown>[] = await src
+  const rows: Record<string, unknown>[] = await src
     .withSchema(plan.sourceSchema)
     .from(plan.table)
     .select(names);
 
   if (opts.dryRun || rows.length === 0) return { read: rows.length, written: 0 };
-
-  const read = rows.length;
-  // extraction_queue's real identity is (job_id, url) — unique since migration
-  // 20260901_001. V2 data can carry duplicate queue rows for one URL (the old discovery
-  // step re-queued on every re-run), which would abort the whole chunk with a unique
-  // violation the id conflict target can't absorb. Collapse them here with the same
-  // preference as the migration's dedupe: completed first, then most recently touched.
-  if (plan.table === "extraction_queue") {
-    const rank = (r: Record<string, unknown>) => (r.status === "completed" ? 2 : r.status === "processing" ? 1 : 0);
-    const ts = (r: Record<string, unknown>) => new Date((r.updated_at ?? r.created_at ?? 0) as string | Date).getTime();
-    const best = new Map<string, Record<string, unknown>>();
-    for (const row of rows) {
-      const key = `${row.job_id} ${row.url}`;
-      const prev = best.get(key);
-      if (!prev || rank(row) > rank(prev) || (rank(row) === rank(prev) && ts(row) > ts(prev))) best.set(key, row);
-    }
-    rows = [...best.values()];
-  }
 
   let written = 0;
   for (let i = 0; i < rows.length; i += opts.batch) {
@@ -281,14 +263,6 @@ async function importTable(
 
     const query = masterKnex(`${SCHEMA}.${plan.table}`).insert(chunk);
     // Rerunnable: re-importing reconciles rows rather than duplicating or failing.
-    // extraction_queue targets its (job_id, url) identity and ignores instead of
-    // merging: a rerun in V3 may have re-created a URL's row under a fresh id, and an
-    // id-merge would rewrite that pkey out from under the queue message holding it.
-    if (plan.table === "extraction_queue") {
-      await query.onConflict(["job_id", "url"]).ignore();
-      written += chunk.length;
-      continue;
-    }
     const conflictKey = plan.hasId ? "id" : CONFLICT_KEYS[plan.table];
     const result = conflictKey
       ? await query.onConflict(conflictKey).merge()
@@ -296,7 +270,7 @@ async function importTable(
     written += chunk.length;
     void result;
   }
-  return { read, written };
+  return { read: rows.length, written };
 }
 
 /** Run the full import. Does NOT destroy masterKnex — callers own its lifecycle. */
