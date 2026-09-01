@@ -107,22 +107,24 @@ const SECONDARY_FETCH_CAP = 20;
 /**
  * Narrow follow-up fetch for a course's own curriculum page, when the primary page's
  * extraction came back with no study_units but flagged a link to one. Every failure
- * mode here logs and returns empty — it must never fail the course write.
+ * mode here logs and returns null — it must never fail the course write. null means
+ * the fetch/extraction FAILED (possibly transiently — don't cache it, a later variant
+ * sharing the URL may retry); an array (even empty) is a real extraction result.
  */
-async function fetchCurriculumUnits(curriculumUrl: string, primaryUrl: string, jobId: string): Promise<ExtractedStudyUnit[]> {
+async function fetchCurriculumUnits(curriculumUrl: string, primaryUrl: string, jobId: string): Promise<ExtractedStudyUnit[] | null> {
   let resolved: URL;
   try {
     resolved = new URL(curriculumUrl, primaryUrl);
   } catch {
     logger.warn("Invalid curriculum_page_url, skipping secondary fetch", { jobId, primaryUrl, curriculumUrl });
-    return [];
+    return null;
   }
 
   try {
     const page = await scrapeMarkdown(resolved.toString(), { onlyMainContent: true });
     if (page.blocked || page.markdown.length < 50) {
       logger.warn("Curriculum page blocked or empty, skipping secondary fetch", { jobId, curriculumUrl: resolved.toString() });
-      return [];
+      return null;
     }
     const result = await extractJson<{ study_units: ExtractedStudyUnit[] }>({
       system: STUDY_UNITS_SYSTEM,
@@ -133,7 +135,7 @@ async function fetchCurriculumUnits(curriculumUrl: string, primaryUrl: string, j
     logger.warn("Curriculum page extraction failed, skipping", {
       jobId, curriculumUrl: resolved.toString(), error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return null;
   }
 }
 
@@ -222,10 +224,19 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     } catch { /* ignore malformed blocklist */ }
   }
 
-  // Mark queue item processing
-  await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
-    status: "processing", updated_at: masterKnex.fn.now(),
-  });
+  // Atomically claim the item. Every producer (job worker, courses/discovery steps, retries,
+  // overlapping reruns) publishes after flipping the row to "pending", so duplicate messages
+  // for the same item — e.g. two admins hitting Rerun at once, each re-dispatching the same
+  // pending/failed pages — die here instead of double-scraping and double-billing Gemini.
+  // Also honours a pause/stop that landed between publish and consume.
+  const claimed = await masterKnex(`${S}.extraction_queue`)
+    .where({ id: queueItemId })
+    .whereIn("status", ["pending", "failed"])
+    .update({ status: "processing", updated_at: masterKnex.fn.now() });
+  if (claimed === 0) {
+    logger.info("Queue item already claimed or in a terminal state, skipping duplicate message", { jobId, queueItemId, url });
+    return;
+  }
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
     processing_heartbeat_at: masterKnex.fn.now(),
   });
@@ -431,8 +442,10 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             } else {
               secondaryFetches++;
               const units = await fetchCurriculumUnits(course.curriculum_page_url, url, jobId);
-              if (cacheKey) curriculumCache.set(cacheKey, units);
-              if (units.length) course.study_units = [...(course.study_units ?? []), ...units];
+              // null = failed fetch/extraction — leave it uncached so a later variant
+              // sharing this URL gets its own retry instead of inheriting the failure.
+              if (units !== null && cacheKey) curriculumCache.set(cacheKey, units);
+              if (units?.length) course.study_units = [...(course.study_units ?? []), ...units];
             }
           }
 

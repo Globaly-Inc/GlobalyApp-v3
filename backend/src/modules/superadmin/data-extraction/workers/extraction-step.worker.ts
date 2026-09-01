@@ -730,35 +730,49 @@ async function handleCoursesStep(jobId: string) {
 
   await writeJobEvent(jobId, "step_start", { phase: "courses", message: `Re-dispatching ${items.length} pending/failed pages` });
 
-  for (const item of items) {
-    await masterKnex(`${S}.extraction_queue`).where({ id: item.id }).update({
-      status: "pending", updated_at: masterKnex.fn.now(),
-    });
-    await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-      jobId, queueItemId: item.id, url: item.url,
-    });
-  }
-
-  // Real bug: this step never looked at guided_urls at all, so adding a new URL under
-  // Intakes/Eligibility/Study Units/Accreditations in the Context tab and hitting
-  // "Re-run" did nothing — no queue item was ever created for it. Queue any guided URL
-  // from these four categories not already in this job's queue; the normal per-page
-  // pipeline (extraction-page.worker.ts) already extracts all of these entity types from
-  // any course page, so no separate extraction logic is needed here.
-  const guided = parseGuidedUrls(job);
-  const guidedUrls = [...new Set(COURSES_STEP_GUIDED_CATEGORIES.flatMap((k) => (guided[k] as string[]) || []))];
-  const existingUrls = guidedUrls.length
-    ? new Set((await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).whereIn("url", guidedUrls).select("url"))
-        .map((r: { url: string }) => r.url))
-    : new Set<string>();
-
+  // Push queue: an item whose message never published is stranded — nothing polls these
+  // rows. If LavinMQ dies mid-loop, stop, record exactly how far dispatch got, and rethrow
+  // so the step shows failed. The stranded remainder stays pending/failed (and any guided
+  // URL inserted-but-unpublished stays pending), so the next Re-run picks all of it up.
+  let dispatched = 0;
   let queuedNew = 0;
-  for (const url of guidedUrls) {
-    if (existingUrls.has(url)) continue;
-    const queueItemId = await insertQueueItem(jobId, url);
-    await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
-    queuedNew++;
+  let dispatchErr: unknown = null;
+  try {
+    for (const item of items) {
+      await masterKnex(`${S}.extraction_queue`).where({ id: item.id }).update({
+        status: "pending", updated_at: masterKnex.fn.now(),
+      });
+      await queueService.publish(EXTRACTION_QUEUES.PAGES, {
+        jobId, queueItemId: item.id, url: item.url,
+      });
+      dispatched++;
+    }
+
+    // Real bug: this step never looked at guided_urls at all, so adding a new URL under
+    // Intakes/Eligibility/Study Units/Accreditations in the Context tab and hitting
+    // "Re-run" did nothing — no queue item was ever created for it. Queue any guided URL
+    // from these four categories not already in this job's queue; the normal per-page
+    // pipeline (extraction-page.worker.ts) already extracts all of these entity types from
+    // any course page, so no separate extraction logic is needed here.
+    const guided = parseGuidedUrls(job);
+    const guidedUrls = [...new Set(COURSES_STEP_GUIDED_CATEGORIES.flatMap((k) => (guided[k] as string[]) || []))];
+    const existingUrls = guidedUrls.length
+      ? new Set((await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).whereIn("url", guidedUrls).select("url"))
+          .map((r: { url: string }) => r.url))
+      : new Set<string>();
+
+    for (const url of guidedUrls) {
+      if (existingUrls.has(url)) continue;
+      const queueItemId = await insertQueueItem(jobId, url);
+      await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
+      queuedNew++;
+    }
+  } catch (err) {
+    dispatchErr = err;
   }
+
+  // Count what actually got queued even on the failure path — those rows exist and will
+  // be skipped as duplicates by later re-runs, so this is the only chance to count them.
   if (queuedNew > 0) {
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: masterKnex.raw("COALESCE(total_pages_found, 0) + ?", [queuedNew]),
@@ -766,10 +780,19 @@ async function handleCoursesStep(jobId: string) {
     });
   }
 
+  if (dispatchErr) {
+    await writeJobEvent(jobId, "step_error", {
+      level: "warn", phase: "courses",
+      message: `Queue unavailable after dispatching ${dispatched}/${items.length} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
+      data: { dispatched, total: items.length, new_guided_urls: queuedNew },
+    });
+    throw dispatchErr;
+  }
+
   await writeJobEvent(jobId, "step_complete", {
     phase: "courses",
-    message: `${items.length} pages re-dispatched, ${queuedNew} new guided URLs queued for extraction`,
-    data: { count: items.length, new_guided_urls: queuedNew },
+    message: `${dispatched} pages re-dispatched, ${queuedNew} new guided URLs queued for extraction`,
+    data: { count: dispatched, new_guided_urls: queuedNew },
   });
 }
 
