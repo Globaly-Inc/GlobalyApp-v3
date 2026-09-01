@@ -76,7 +76,7 @@ export default function HomePage() {
               Connecting Students with Domestic and International Education Providers, Education
               Education Counselors and Service Providers
             </p>
-            <UnifiedSearchBar />
+            <UnifiedSearchBar aiRing />
           </div>
         </div>
       </section>
