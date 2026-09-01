@@ -65,6 +65,21 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * One structured log line per billed call — greppable cost attribution per model
+ * ("llm usage"). The invoice only shows monthly per-SKU totals; this is what lets us
+ * see which phase/model owns the tokens on any given day.
+ */
+function logUsage(model: string, usage?: { promptTokenCount?: number; candidatesTokenCount?: number; cachedContentTokenCount?: number }) {
+  if (!usage) return;
+  logger.info("llm usage", {
+    model,
+    promptTokens: usage.promptTokenCount ?? 0,
+    outputTokens: usage.candidatesTokenCount ?? 0,
+    cachedTokens: usage.cachedContentTokenCount ?? 0,
+  });
+}
+
+/**
  * Send a prompt to Gemini and parse JSON from the response.
  */
 export async function extractJson<T>(opts: {
@@ -72,10 +87,19 @@ export async function extractJson<T>(opts: {
   prompt: string;
   model?: string;
   maxTokens?: number;
+  /**
+   * "lite" routes the call to GEMINI_MODEL_LITE when that env var is set — for simple
+   * structured tasks (URL classification, secondary units/fees fetches, field
+   * verification) that don't need the full model. Falls back to GEMINI_MODEL when unset,
+   * so the downgrade is an env-var opt-in with an instant rollback, never a code change.
+   */
+  tier?: "lite";
 }): Promise<T> {
   const ai = getClient();
+  const modelId = opts.model
+    ?? (opts.tier === "lite" && config.GEMINI_MODEL_LITE ? config.GEMINI_MODEL_LITE : config.GEMINI_MODEL);
   const model = ai.getGenerativeModel({
-    model: opts.model ?? config.GEMINI_MODEL,
+    model: modelId,
     systemInstruction: opts.system,
     generationConfig: {
       maxOutputTokens: opts.maxTokens ?? 16384,
@@ -84,6 +108,7 @@ export async function extractJson<T>(opts: {
   });
 
   const result = await withRetry(() => model.generateContent(opts.prompt));
+  logUsage(modelId, result.response.usageMetadata);
   const text = result.response.text();
   const truncated = result.response.candidates?.[0]?.finishReason === "MAX_TOKENS";
 
@@ -208,8 +233,9 @@ export async function complete(opts: {
   maxTokens?: number;
 }): Promise<string> {
   const ai = getClient();
+  const modelId = opts.model ?? config.GEMINI_MODEL;
   const model = ai.getGenerativeModel({
-    model: opts.model ?? config.GEMINI_MODEL,
+    model: modelId,
     systemInstruction: opts.system,
     generationConfig: {
       maxOutputTokens: opts.maxTokens ?? 2048,
@@ -217,6 +243,7 @@ export async function complete(opts: {
   });
 
   const result = await withRetry(() => model.generateContent(opts.prompt));
+  logUsage(modelId, result.response.usageMetadata);
   return result.response.text();
 }
 

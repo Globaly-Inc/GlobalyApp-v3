@@ -12,7 +12,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown } from "../lib/scraper.js";
-import { truncateMarkdown } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
   courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
@@ -24,7 +24,6 @@ import {
   type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
-import { domainOf } from "../lib/html-utils.js";
 import { classifyFailure, type FailureClass } from "../lib/classify-failure.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
@@ -137,6 +136,7 @@ async function extractSecondaryPage(opts: {
       const result = await extractJson<{ study_units: ExtractedStudyUnit[]; fees: ExtractedFee[] }>({
         system: CURRICULUM_AND_FEES_SYSTEM,
         prompt: curriculumAndFeesPrompt(opts.courseName, opts.url, opts.markdown),
+        tier: "lite",
       });
       return { study_units: result.study_units ?? [], fees: result.fees ?? [] };
     }
@@ -144,12 +144,14 @@ async function extractSecondaryPage(opts: {
       const result = await extractJson<{ study_units: ExtractedStudyUnit[] }>({
         system: STUDY_UNITS_SYSTEM,
         prompt: studyUnitsFromPagePrompt(opts.url, opts.markdown),
+        tier: "lite",
       });
       return { study_units: result.study_units ?? [], fees: null };
     }
     const result = await extractJson<{ fees: ExtractedFee[] }>({
       system: FEES_FROM_PAGE_SYSTEM,
       prompt: feesFromPagePrompt(opts.courseName, opts.url, opts.markdown),
+      tier: "lite",
     });
     return { study_units: null, fees: result.fees ?? [] };
   } catch (err) {

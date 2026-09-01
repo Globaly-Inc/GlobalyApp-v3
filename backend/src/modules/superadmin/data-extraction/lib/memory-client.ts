@@ -173,9 +173,9 @@ export function buildSystemAddendum(recalled: RecalledMemory): string {
 
   if (recalled.lessons.length > 0) {
     const rules = recalled.lessons.map((l) => {
-      let line = `- ${l.rule}`;
-      if (l.example_bad) line += ` (wrong: "${l.example_bad}")`;
-      if (l.example_good) line += ` (correct: "${l.example_good}")`;
+      let line = `- ${l.rule.slice(0, 240)}`;
+      if (l.example_bad) line += ` (wrong: "${String(l.example_bad).slice(0, 120)}")`;
+      if (l.example_good) line += ` (correct: "${String(l.example_good).slice(0, 120)}")`;
       return line;
     });
     parts.push("LEARNED RULES:\n" + rules.join("\n"));

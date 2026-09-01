@@ -97,6 +97,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
         const result = await extractJson<VerifyResult>({
           system: VERIFICATION_SYSTEM,
           prompt: verificationPrompt({ name: course.name, fields: fieldsMap }, liveText),
+          tier: "lite",
         });
 
         for (const r of result.results) {
