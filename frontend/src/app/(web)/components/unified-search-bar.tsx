@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Sparkles, ArrowUp, ChevronDown } from "lucide-react";
+import { Search, Sparkles, ArrowUp } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   CATEGORIES, CATEGORY_SLUG_TO_TAB, AI_PROMPTS_BY_SLUG, SEARCH_SUGGESTIONS_BY_SLUG, SEARCH_DESTINATIONS,
@@ -43,7 +46,13 @@ const MODES: { id: Mode; label: string; Icon: typeof Search }[] = [
   { id: "search", label: "Search", Icon: Search },
 ];
 
-export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?: string }> = {}) {
+export function UnifiedSearchBar({
+  defaultTabSlug, aiRing = false,
+}: Readonly<{
+  defaultTabSlug?: string;
+  /** Home only: the animated AI ring. The other heroes keep a plain card. */
+  aiRing?: boolean;
+}> = {}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("ai");
   // Courses everywhere except the pages that are about something else: a Search from the
@@ -98,7 +107,7 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
 
   return (
     <div className="w-full">
-      <div className="max-w-3xl mx-auto rounded-2xl bg-white shadow-lg p-3 text-left">
+      <div className={cn("max-w-3xl mx-auto rounded-2xl bg-white shadow-lg p-3 text-left", aiRing && "ai-ring")}>
         <input
           type="text"
           value={query}
@@ -129,23 +138,57 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
 
           <div className="flex-1" />
 
-          {/* ponytail: native select, and only for Search — AI mode has no category to filter. */}
+          {/* Only for Search — AI mode has no category to filter.
+
+              The shadcn Select rather than the Combobox the frontend guide prefers: this is the
+              tiny-fixed-enum-at-a-non-standard-size case that guide carves out — five short
+              options in a compact pill row, where a search field and an h-10 trigger would both
+              be out of place. It also fixes the gap the native <select> had: that sized itself to
+              its widest option ("Other Services"), leaving "Courses" stranded from the chevron,
+              while the Select trigger is w-fit around whatever is selected. */}
           {mode === "search" && (
-            <div className="relative flex-shrink-0">
-              <select
-                value={activeSlug}
-                onChange={(e) => setActiveSlug(e.target.value)}
+            <Select value={activeSlug} onValueChange={(v) => v && setActiveSlug(v)}>
+              <SelectTrigger
                 aria-label="Search category"
-                className="appearance-none h-9 pl-3 pr-6 rounded-full bg-transparent text-sm font-medium text-slate-600 hover:text-slate-900 outline-none cursor-pointer"
+                className="h-9 flex-shrink-0 gap-1 rounded-full border-0 px-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 focus-visible:ring-0"
+              >
+                {/* Without the formatter, base-ui renders the raw value — the trigger read
+                    "education-agencies" instead of "Education Counselors". */}
+                <SelectValue>
+                  {(value: string) => categories.find((cat) => cat.slug === value)?.name ?? value}
+                </SelectValue>
+              </SelectTrigger>
+              {/* alignItemWithTrigger is base-ui's default: it lines the selected row up with the
+                  trigger, which parks the popup on top of the pill row. Opening below the trigger
+                  instead keeps the Search toggle and submit button clickable.
+
+                  align="end" hangs it under the chevron, so it stays inside the card's right edge
+                  instead of spilling past it.
+
+                  max-h-80 overrides the primitive's max-h-(--available-height), which was cutting
+                  the list to three rows and adding a scroll arrow: all five fit in 20rem, and the
+                  popup's own overflow-y-auto still scrolls if the viewport is genuinely short.
+
+                  w-auto because the popup otherwise takes the trigger's width, and the padding is
+                  set here rather than in ui/select.tsx so the app's other dropdowns stay as they are. */}
+              <SelectContent
+                side="bottom"
+                align="end"
+                sideOffset={10}
+                alignItemWithTrigger={false}
+                className="w-auto min-w-52 max-h-80 p-1.5"
               >
                 {categories.map((cat) => (
-                  <option key={cat.slug} value={cat.slug}>
+                  <SelectItem
+                    key={cat.slug}
+                    value={cat.slug}
+                    className="rounded-md py-2 pr-9 pl-3"
+                  >
                     {cat.name}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            </div>
+              </SelectContent>
+            </Select>
           )}
 
           <button

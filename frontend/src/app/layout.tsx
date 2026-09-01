@@ -6,7 +6,7 @@ import { siteConfig } from "@/config/site";
 import { ThemeSettingsSync } from "@/components/theme-settings-sync";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
-import { parseThemeSettingsCookie, THEME_SETTINGS_KEY } from "@/lib/theme-settings";
+import { headingFontOverride, parseThemeSettingsCookie, THEME_SETTINGS_KEY } from "@/lib/theme-settings";
 import StoreProvider from "./StoreProvider";
 import "./globals.css";
 
@@ -58,6 +58,11 @@ export default async function RootLayout({
     siteConfig.name
   );
   const isDark = cookieStore.get("theme")?.value === "dark";
+  // Headings are pinned to --heading-font (Fraunces) in globals.css, and a rule on
+  // the element beats the font inherited from <html>, so the theme font reaches them
+  // only if this variable is reassigned. applyThemeSettings does the same thing on
+  // the client via the same helper, so a live font change and a fresh render agree.
+  const headingFont = headingFontOverride(settings.font);
   const supportToken = process.env.NEXT_PUBLIC_GLOBALYOS_SUPPORT_TOKEN;
 
   return (
@@ -75,6 +80,7 @@ export default async function RootLayout({
       style={
         {
           "--primary": settings.primaryColor,
+          ...(headingFont ? { "--heading-font": headingFont } : {}),
           fontFamily: settings.font,
         } as React.CSSProperties
       }

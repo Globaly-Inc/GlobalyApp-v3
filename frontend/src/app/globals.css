@@ -8,9 +8,13 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji";
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji";
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-fraunces);
+  /* var(--heading-font), not var(--font-fraunces) directly: @theme inline bakes a
+     token's value into the generated CSS, so naming the face here would compile
+     every heading to `font-family: var(--font-fraunces)` and leave nothing for the
+     theme font to reassign. Same indirection --color-primary uses. */
+  --font-heading: var(--heading-font);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -96,6 +100,11 @@
   --navy-foreground: 0 0% 95%;
   --purple-dark: 0 63% 20%;
   --purple-deep: 0 63% 14%;
+
+  /* The heading face. A plain custom property rather than a @theme token, so it
+     survives to runtime: layout.tsx and applyThemeSettings reassign this when a
+     tenant has picked a font, and clear it to fall back to Fraunces. */
+  --heading-font: var(--font-fraunces);
 }
 
 .dark {
@@ -151,8 +160,15 @@
     @apply font-sans;
     scroll-behavior: smooth;
   }
-  h1, h2, h3, h4 {
-    @apply font-sans tracking-[-0.01em];
+  /* Headings in Fraunces, body copy in Inter — the pairing GlobalyOS uses. Both faces are
+     already loaded in layout.tsx; --font-sans and this rule are what actually apply them.
+
+     A font-family here beats the one headings would inherit from <html>, so this rule
+     also decides whether /theme-setup's font reaches headings. layout.tsx reassigns
+     --font-heading when a tenant has picked a font, which is what lets the override
+     through while leaving the default pairing intact. */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-[-0.01em];
   }
 }
 
@@ -304,6 +320,84 @@
   .animate-float {
     animation: float 5s ease-in-out infinite;
   }
+
+  /* Animated ring for the home hero's search box — the one place the AI counsellor is the
+     headline feature, so it gets a border that looks like it is thinking.
+
+     The sweep is a conic gradient rotated through a registered custom property (a plain
+     custom property cannot be animated). Where @property is unsupported the gradient simply
+     sits still, which still reads as a brand-coloured ring rather than breaking. */
+  @property --ai-ring-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+  }
+
+  @keyframes ai-ring-spin {
+    to { --ai-ring-angle: 360deg; }
+  }
+
+
+  .ai-ring {
+    position: relative;
+  }
+  /*
+   * Both layers carry the same sweep. Six hue stops rather than three: the halo in the
+   * reference reads as a continuous run of colour, and with a couple of stops a conic gradient
+   * spends most of its circumference on one hue. These are the brand's own family lifted into
+   * the 55-62% lightness range — a 31% maroon cannot glow — closing on gold so the loop has no
+   * seam.
+   */
+  .ai-ring::before,
+  .ai-ring::after {
+    content: "";
+    position: absolute;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--ai-ring-angle),
+      hsl(0 68% 64%) 0deg,
+      hsl(350 78% 76%) 48deg,
+      hsl(336 68% 84%) 96deg,
+      hsl(320 56% 74%) 140deg,
+      hsl(302 48% 64%) 182deg,
+      hsl(330 70% 80%) 220deg,
+      /* the glint: 10deg of light rose, the brightest point of the sweep */
+      hsl(6 96% 92%) 244deg,
+      hsl(6 96% 92%) 254deg,
+      hsl(348 76% 78%) 274deg,
+      hsl(10 70% 66%) 312deg,
+      hsl(0 68% 64%) 360deg
+    );
+    animation: ai-ring-spin 6s linear infinite;
+    pointer-events: none;
+  }
+  /*
+   * The border itself, and nothing else: the gradient is masked to the 2px padding ring, so
+   * the middle is punched out rather than relying on the card's own background to cover it.
+   * That is what keeps the box white instead of tinting it.
+   */
+  .ai-ring::before {
+    inset: 0;
+    padding: 2px;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  /*
+   * A tight halo just outside the edge — the reference's border bleeds a little light. It sits
+   * behind the card (z-index -1) and only reaches 3px out, so it never washes over the surface.
+   */
+  .ai-ring::after {
+    inset: -3px;
+    z-index: -1;
+    filter: blur(7px);
+    opacity: 0.4;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -318,6 +412,10 @@
     transition: none !important;
   }
   .animate-float {
+    animation: none !important;
+  }
+  .ai-ring::before,
+  .ai-ring::after {
     animation: none !important;
   }
 }
