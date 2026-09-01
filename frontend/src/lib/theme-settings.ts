@@ -3,6 +3,11 @@ export const THEME_SETTINGS_EVENT = "theme-settings-change";
 
 export const DEFAULT_PRIMARY = "#7F1D1D";
 
+/** The un-themed body font. Exported so the layout can tell an untouched
+    install from a tenant that has actually picked a font, which is what decides
+    whether the Fraunces heading default holds. */
+export const DEFAULT_FONT = `ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji"`;
+
 const COOKIE_BYTE_BUDGET = 3800;
 
 export type ThemeSettings = {
@@ -16,7 +21,7 @@ export type ThemeSettings = {
 export function defaultThemeSettings(companyName: string): ThemeSettings {
   return {
     primaryColor: DEFAULT_PRIMARY,
-    font: `ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji"`,
+    font: DEFAULT_FONT,
     companyName,
     logoUrl: null,
     faviconUrl: null,

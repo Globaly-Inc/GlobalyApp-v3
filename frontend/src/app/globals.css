@@ -152,7 +152,12 @@
     scroll-behavior: smooth;
   }
   /* Headings in Fraunces, body copy in Inter — the pairing GlobalyOS uses. Both faces are
-     already loaded in layout.tsx; --font-sans and this rule are what actually apply them. */
+     already loaded in layout.tsx; --font-sans and this rule are what actually apply them.
+
+     A font-family here beats the one headings would inherit from <html>, so this rule
+     also decides whether /theme-setup's font reaches headings. layout.tsx reassigns
+     --font-heading when a tenant has picked a font, which is what lets the override
+     through while leaving the default pairing intact. */
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading tracking-[-0.01em];
   }

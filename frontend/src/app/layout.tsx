@@ -6,7 +6,7 @@ import { siteConfig } from "@/config/site";
 import { ThemeSettingsSync } from "@/components/theme-settings-sync";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
-import { parseThemeSettingsCookie, THEME_SETTINGS_KEY } from "@/lib/theme-settings";
+import { DEFAULT_FONT, parseThemeSettingsCookie, THEME_SETTINGS_KEY } from "@/lib/theme-settings";
 import StoreProvider from "./StoreProvider";
 import "./globals.css";
 
@@ -58,6 +58,11 @@ export default async function RootLayout({
     siteConfig.name
   );
   const isDark = cookieStore.get("theme")?.value === "dark";
+  // Headings are pinned to --font-heading (Fraunces) in globals.css, and a rule on
+  // the element beats the font inherited from <html> — so the theme font reached
+  // body copy only. A tenant who has chosen a font gets it on headings as well;
+  // an untouched install keeps the intended Inter/Fraunces pairing.
+  const themedFont = settings.font !== DEFAULT_FONT;
   const supportToken = process.env.NEXT_PUBLIC_GLOBALYOS_SUPPORT_TOKEN;
 
   return (
@@ -75,6 +80,7 @@ export default async function RootLayout({
       style={
         {
           "--primary": settings.primaryColor,
+          ...(themedFont ? { "--font-heading": settings.font } : {}),
           fontFamily: settings.font,
         } as React.CSSProperties
       }
