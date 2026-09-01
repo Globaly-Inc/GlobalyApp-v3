@@ -63,12 +63,16 @@ export async function countRetryableQueueItems(jobId: string) {
 
 // The page/step workers refuse to touch a job whose status is paused/failed/declined —
 // clear that so a resumed rerun's re-dispatched queue items actually get processed
-// instead of silently skipped.
+// instead of silently skipped. Always stamps updated_at/heartbeat so a resumed rerun
+// shows as fresh activity on the job row regardless of its current status.
 export async function reactivateJob(jobId: string) {
   return masterKnex(T_JOBS)
     .where({ id: jobId })
-    .whereIn("status", ["paused", "failed", "declined"])
-    .update({ status: "processing", processing_heartbeat_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() });
+    .update({
+      status: masterKnex.raw("CASE WHEN status IN ('paused', 'failed', 'declined') THEN 'processing' ELSE status END"),
+      processing_heartbeat_at: masterKnex.fn.now(),
+      updated_at: masterKnex.fn.now(),
+    });
 }
 
 // C9: reset-pipeline
