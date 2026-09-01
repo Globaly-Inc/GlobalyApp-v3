@@ -389,6 +389,12 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
       // ── Write each course with child entities ──
       let secondaryFetches = 0;
+      // A page listing one subject as several qualification variants (BEng/MEng/BSc —
+      // see extraction-prompts.ts's "extract one course object per variant" rule) commonly
+      // points every variant at the same shared curriculum link. Without this cache each
+      // variant re-scraped and re-billed Gemini for the identical URL, up to SECONDARY_FETCH_CAP
+      // times per page for what was really one page's worth of content.
+      const curriculumCache = new Map<string, ExtractedStudyUnit[]>();
 
       if (extracted.courses?.length) {
         for (const course of extracted.courses) {
@@ -412,13 +418,20 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           // upsertStudyUnit already dedups by name, so overlap between the two lists
           // collapses instead of duplicating. Bounded per page scrape, logged when hit.
           if (course.curriculum_page_url) {
-            if (secondaryFetches >= SECONDARY_FETCH_CAP) {
+            let cacheKey: string | null = null;
+            try { cacheKey = new URL(course.curriculum_page_url, url).toString(); } catch { /* fetchCurriculumUnits fails the same way below */ }
+
+            if (cacheKey && curriculumCache.has(cacheKey)) {
+              const cached = curriculumCache.get(cacheKey)!;
+              if (cached.length) course.study_units = [...(course.study_units ?? []), ...cached];
+            } else if (secondaryFetches >= SECONDARY_FETCH_CAP) {
               logger.warn("Secondary curriculum-page fetch cap reached, skipping remaining courses", {
                 jobId, url, cap: SECONDARY_FETCH_CAP,
               });
             } else {
               secondaryFetches++;
               const units = await fetchCurriculumUnits(course.curriculum_page_url, url, jobId);
+              if (cacheKey) curriculumCache.set(cacheKey, units);
               if (units.length) course.study_units = [...(course.study_units ?? []), ...units];
             }
           }

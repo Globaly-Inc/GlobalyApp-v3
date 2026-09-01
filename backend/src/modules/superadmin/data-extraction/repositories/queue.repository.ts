@@ -50,6 +50,27 @@ export async function stopAll(jobId: string) {
   return true;
 }
 
+// Rerun (resume path): pending/failed items are real, already-queued work worth retrying
+// without wiping the job — 0 means there's nothing to resume from.
+export async function countRetryableQueueItems(jobId: string) {
+  const row = await masterKnex(T)
+    .where({ job_id: jobId })
+    .whereIn("status", ["pending", "failed"])
+    .count("id as count")
+    .first();
+  return Number(row?.count ?? 0);
+}
+
+// The page/step workers refuse to touch a job whose status is paused/failed/declined —
+// clear that so a resumed rerun's re-dispatched queue items actually get processed
+// instead of silently skipped.
+export async function reactivateJob(jobId: string) {
+  return masterKnex(T_JOBS)
+    .where({ id: jobId })
+    .whereIn("status", ["paused", "failed", "declined"])
+    .update({ status: "processing", processing_heartbeat_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() });
+}
+
 // C9: reset-pipeline
 export async function resetPipeline(jobId: string) {
   const jobCount = await masterKnex(T_JOBS)

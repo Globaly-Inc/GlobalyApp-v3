@@ -144,6 +144,15 @@ The centralized error handler maps these to HTTP responses.
    load), which meant search and sort had to move server-side too or they'd
    silently stop covering anything past the current page. Explicitly
    requested and scoped by the team, not a V2 port.
+   Exception: `POST /jobs/:id/rerun` resumes instead of always restarting
+   (2026-09-01) — if the job has pending/failed queue items, rerun retries
+   just those via the "courses" step instead of `resetPipeline` wiping the
+   whole queue and re-crawling from scratch. A full-job rerun used to
+   re-scrape and re-extract (re-billing Gemini for) every page every time,
+   including ones already successfully extracted; this was a real driver of
+   an August Gemini cost spike. `resetPipeline` (full wipe) is still used
+   when a job has nothing queued yet to resume from — no V2 equivalent to
+   port, this is a cost fix.
 
 ## External FK columns
 
