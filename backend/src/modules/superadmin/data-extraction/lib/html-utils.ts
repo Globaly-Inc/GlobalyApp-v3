@@ -20,7 +20,10 @@ export function looksLikeCourseUrl(url: string): boolean {
   // A catalogue host counts on its own — explorecourses.stanford.edu/search is a
   // course search, but its path carries no signal.
   // School/faculty subdomains (som.ku.edu.np, soe.ku.edu.np) are programme hosts too
-  const catalogueHost = /^(explorecourses|bulletin|catalog|catalogue|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
+  // "catalog(ue)" needs the plural too — seen live on catalogs.uky.edu, which the
+  // singular-only form silently excluded even though it's exactly the kind of catalogue
+  // host this exists for.
+  const catalogueHost = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
 
   let path: string;
   try {

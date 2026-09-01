@@ -682,9 +682,8 @@ async function handleDiscoveryStep(jobId: string) {
     if (result.courses?.length) {
       for (const course of result.courses) {
         const courseUrl = course.url || url;
-        const dup = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId, url: courseUrl }).first("id");
-        if (dup) continue;
         const queueItemId = await insertQueueItem(jobId, courseUrl);
+        if (!queueItemId) continue; // already queued this job — dedupe now enforced by the DB unique constraint
         await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url: courseUrl });
         totalCoursePages++;
       }
@@ -739,9 +738,15 @@ async function handleCoursesStep(jobId: string) {
   let dispatchErr: unknown = null;
   try {
     for (const item of items) {
-      await masterKnex(`${S}.extraction_queue`).where({ id: item.id }).update({
-        status: "pending", updated_at: masterKnex.fn.now(),
-      });
+      // Claim-style guard: only re-flip items still retryable. An unconditional update
+      // here can yank an item that completed after the SELECT above (an in-flight backlog
+      // message, or an overlapping courses-step run) back to "pending", making it
+      // claimable again — a full duplicate scrape + Gemini extraction.
+      const flipped = await masterKnex(`${S}.extraction_queue`)
+        .where({ id: item.id })
+        .whereIn("status", ["pending", "failed"])
+        .update({ status: "pending", updated_at: masterKnex.fn.now() });
+      if (flipped === 0) continue;
       await queueService.publish(EXTRACTION_QUEUES.PAGES, {
         jobId, queueItemId: item.id, url: item.url,
       });
@@ -764,6 +769,7 @@ async function handleCoursesStep(jobId: string) {
     for (const url of guidedUrls) {
       if (existingUrls.has(url)) continue;
       const queueItemId = await insertQueueItem(jobId, url);
+      if (!queueItemId) continue; // lost the insert race to an overlapping run — it dispatches this URL
       await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
       queuedNew++;
     }
@@ -939,9 +945,11 @@ async function handleEnrichmentStep(jobId: string) {
 }
 
 async function handleVerificationStep(jobId: string) {
-  // Delegate to existing verify worker via queue
+  // Delegate to existing verify worker via queue. force: an admin explicitly re-running
+  // this step wants every course re-checked against the live site — the automatic
+  // post-run dispatch (page worker) omits it and verifies only new/changed courses.
   await writeJobEvent(jobId, "step_start", { phase: "verification", message: "Dispatching verification" });
-  await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+  await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId, force: true });
   await writeJobEvent(jobId, "step_complete", {
     phase: "verification",
     message: "Verification dispatched to verify worker",

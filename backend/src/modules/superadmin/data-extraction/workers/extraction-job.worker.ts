@@ -220,6 +220,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     // ── Phase 3: Queue each page for extraction ──
     for (const url of courseUrls) {
       const queueItemId = await insertQueueItem(jobId, url);
+      if (!queueItemId) continue; // already queued (e.g. duplicate JOBS message) — its owner dispatches it
       await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
     }
 
