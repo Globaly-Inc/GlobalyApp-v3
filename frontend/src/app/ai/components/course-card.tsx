@@ -5,7 +5,6 @@ import { CalendarDays, Check, Clock, MapPin, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
 import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
@@ -49,7 +48,6 @@ function toCompareItem(card: CourseCardType): CompareCourseItem {
 }
 
 export function CourseCard({ card }: CourseCardProps) {
-  const { user, initializing } = useAuthState();
   const compare = useCompareTray();
   const compareItem = toCompareItem(card);
   const added = compare.has(compareItem.id);
@@ -155,19 +153,17 @@ export function CourseCard({ card }: CourseCardProps) {
       )}
 
       {/* Compare button — relative + z-10 so it sits above the card-wide link overlay */}
-      {!initializing && user && (
-        <div className="relative z-10 mt-auto flex justify-end border-t bg-muted/20 px-4 py-2">
-          <Button
-            variant={added ? "secondary" : "outline"}
-            size="sm"
-            className="h-7 text-xs"
-            disabled={added || compare.isFull}
-            onClick={() => compare.add(compareItem)}
-          >
-            {added ? <><Check /> Added</> : <><Plus /> Compare</>}
-          </Button>
-        </div>
-      )}
+      <div className="relative z-10 mt-auto flex justify-end border-t bg-muted/20 px-4 py-2">
+        <Button
+          variant={added ? "secondary" : "outline"}
+          size="sm"
+          className="h-7 text-xs"
+          disabled={added || compare.isFull}
+          onClick={() => compare.add(compareItem)}
+        >
+          {added ? <><Check /> Added</> : <><Plus /> Compare</>}
+        </Button>
+      </div>
     </Card>
   );
 }

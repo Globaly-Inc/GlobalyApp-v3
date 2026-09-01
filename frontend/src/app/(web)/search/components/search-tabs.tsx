@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { GraduationCap, Building2, Users, FileCheck, Award } from "lucide-react";
+import { ScrollRow } from "@/components/scroll-row";
 import { SavedTabButton } from "./saved-tab-button";
 import type { SearchTabKey } from "../types";
 
@@ -44,7 +45,7 @@ export function SearchTabs({
 }>) {
   return (
     <div className="flex items-center gap-2 py-3">
-      <div className="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+      <ScrollRow className="-mx-4 min-w-0 flex-1 sm:mx-0" rowClassName="flex items-center gap-2 px-4 sm:px-0">
         {SEARCH_TABS.map(({ key, label, icon: Icon }) => {
           const active = !savedActive && activeTab === key;
           return (
@@ -63,7 +64,7 @@ export function SearchTabs({
             </Link>
           );
         })}
-      </div>
+      </ScrollRow>
 
       <SavedTabButton active={savedActive} basePath={basePath} />
     </div>

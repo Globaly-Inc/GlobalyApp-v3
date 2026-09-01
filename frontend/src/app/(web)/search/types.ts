@@ -341,6 +341,9 @@ export type BusinessRepresentation = {
 
 export type BusinessDetail = SearchBusiness & {
   cover_url: string | null;
+  /** Signed preview URLs for the owner's uploaded media, resolved server-side. */
+  gallery_image_urls: (string | null)[] | null;
+  video_urls: (string | null)[] | null;
   phone: string | null;
   address: string | null;
   state: string | null;
@@ -491,6 +494,15 @@ export const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "fee_asc", label: "Fee: Low to High" },
   { value: "fee_desc", label: "Fee: High to Low" },
   { value: "duration_asc", label: "Duration: Shortest" },
+];
+
+// Every non-course tab: fee and duration don't exist on institutions, counsellors or scholarships.
+// ponytail: only "best_match" is honoured server-side today — the name_* values ride along until
+// the businesses/institutions/scholarships repositories accept a sort (see listPublicInstitutions).
+export const GENERIC_SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "best_match", label: "Relevance" },
+  { value: "name_asc", label: "Name: A to Z" },
+  { value: "name_desc", label: "Name: Z to A" },
 ];
 
 export const CURRENCY_OPTIONS = ["AUD", "USD", "GBP", "CAD", "INR", "NPR"];

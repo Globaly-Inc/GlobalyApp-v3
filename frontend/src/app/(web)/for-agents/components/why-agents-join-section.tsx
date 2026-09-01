@@ -1,4 +1,4 @@
-import { UserCheck, Handshake, Sparkles, ClipboardCheck, BadgePercent } from "lucide-react";
+import { UserCheck, Handshake, Sparkles, BadgePercent } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "../../components/reveal";
 
@@ -16,13 +16,15 @@ const BENEFITS = [
   {
     Icon: Sparkles,
     title: "Get Highly Qualified, Verified Leads",
-    desc: "Receive student leads that are course-matched, eligibility-checked, and genuinely looking to apply. Only pay for the leads you unlock — no hidden fees, no surprises. More quality, less hassle. Real students, real opportunities.",
+    desc: "Receive student leads that are course-matched, verified, and genuinely looking to apply. Only pay for the leads you unlock — no hidden fees, no surprises. More quality, less hassle. Real students, real opportunities.",
   },
+  /* Parked with the eligibility checker — re-import ClipboardCheck when this returns.
   {
     Icon: ClipboardCheck,
     title: "Free Eligibility Testing for Your Students",
     desc: "Use our smart, free eligibility check to instantly assess if a student qualifies for a course based on academic scores, English requirements, and other key criteria. Save time. Manage student expectations early. Close more applications.",
   },
+  */
   {
     Icon: BadgePercent,
     title: "Transparent, Fair Pricing",

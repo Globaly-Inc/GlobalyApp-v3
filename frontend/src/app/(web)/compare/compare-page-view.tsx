@@ -19,6 +19,7 @@ export function ComparePageView({
 }: Readonly<{ basePath?: string; exploreHref?: string }> = {}) {
   const { user, initializing } = useAuthState();
   const router = useRouter();
+
   const { items, remove, clear } = useCompareTray();
   const [details, setDetails] = useState<Record<string, CourseDetail>>({});
   const scrollRef = useRef<HTMLDivElement>(null);

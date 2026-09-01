@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { getBusinessBySubdomain } from "../../search/api";
 import { EntityProfile } from "../../components/profile/entity-profile";
 import {
-  joinParts, toNumber, toProfileRegistration, toProfileSocials, type ProfileData,
+  joinParts, toGalleryItems, toNumber, toProfileRegistration, toProfileSocials, type ProfileData,
 } from "../../components/profile/profile-data";
 import type { BusinessDetail } from "../../search/types";
 import { BusinessServicesSection } from "./components/business-services-section";
@@ -70,6 +70,7 @@ function toProfileData(business: BusinessDetail): ProfileData {
       })),
     ],
     registration: toProfileRegistration(business.business_registration_number, business.registration_licenses),
+    gallery: toGalleryItems(business.gallery_image_urls, business.video_urls),
   };
 }
 

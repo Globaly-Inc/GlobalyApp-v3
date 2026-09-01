@@ -3,12 +3,12 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "../../components/reveal";
 import { SearchResultsMockup } from "../../components/mockups/search-results-mockup";
-import { EligibilityCheckerMockup } from "../../components/mockups/eligibility-checker-mockup";
+// Parked with the eligibility checker: import { EligibilityCheckerMockup } from "../../components/mockups/eligibility-checker-mockup";
 import { VerifiedProfessionalsMockup } from "../../components/mockups/verified-professionals-mockup";
 import { ProfileBuilderMockup } from "../../components/mockups/profile-builder-mockup";
 import { HOW_IT_WORKS } from "../static-content";
 
-const STEP_VISUALS = [SearchResultsMockup, EligibilityCheckerMockup, VerifiedProfessionalsMockup, ProfileBuilderMockup];
+const STEP_VISUALS = [SearchResultsMockup, VerifiedProfessionalsMockup, ProfileBuilderMockup];
 
 export function HowItWorks() {
   return (

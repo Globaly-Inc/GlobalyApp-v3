@@ -3,6 +3,7 @@ import { ProfileHero } from "./profile-hero";
 import { ProfileSection } from "./profile-section";
 import { ProfileContactCard } from "./profile-contact-card";
 import { ProfileLocationsCard } from "./profile-locations-card";
+import { ProfileGallery } from "./profile-gallery";
 import type { ProfileData } from "./profile-data";
 
 /**
@@ -39,6 +40,8 @@ export function EntityProfile({
           {children}
 
           <ProfileLocationsCard locations={data.locations} />
+
+          <ProfileGallery items={data.gallery} />
         </div>
 
         <div className="space-y-4 md:space-y-6">

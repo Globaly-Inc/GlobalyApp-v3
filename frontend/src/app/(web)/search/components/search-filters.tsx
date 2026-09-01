@@ -154,17 +154,17 @@ export function SearchFilters({
     ...(institutions && institutions.length > 0 ? [{
       title: "Institution",
       body: (
-        <SelectField
+        <ComboFilterField
           name="institution"
           value={institution}
-          options={institutions.map((value) => ({ value, label: value }))}
+          options={institutions}
           anyLabel="Any institution"
         />
       ),
     }] : []),
     {
       title: "Duration",
-      body: <SelectField name="duration" value={duration} options={DURATION_OPTIONS} anyLabel="Any duration" />,
+      body: <ComboFilterField name="duration" value={duration} options={DURATION_OPTIONS} anyLabel="Any duration" />,
     },
     ...(intakeYears && intakeYears.length > 0 ? [{
       title: "Intake",

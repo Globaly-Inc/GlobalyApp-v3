@@ -85,7 +85,8 @@ export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
           </div>
 
           <div className="flex w-full shrink-0 flex-row gap-2 self-center sm:w-auto">
-            {/* V1 sent this to a standalone eligibility tool; V3 answers it on this page. */}
+            {/* V1 sent this to a standalone eligibility tool; V3 answers it on this page.
+                Parked for now — uncomment to bring the jump-link back.
             <a
               href="#eligibility"
               // cn, not a template string: the variant's border-input has to win over the base
@@ -93,7 +94,7 @@ export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
               className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 flex-1 gap-1.5 text-xs sm:flex-none")}
             >
               <GraduationCap className="h-3.5 w-3.5" />Check Eligibility
-            </a>
+            </a> */}
             <Link href={`/personal/enquiries?course_id=${course.id}`} className="flex-1 sm:flex-none">
               <Button size="sm" className="h-9 w-full text-xs">Enquire</Button>
             </Link>

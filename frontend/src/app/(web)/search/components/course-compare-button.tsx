@@ -1,15 +1,12 @@
 "use client";
 
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "../use-compare-tray";
 import type { CompareCourseItem } from "../types";
 
 export function CourseCompareButton({ course }: Readonly<{ course: CompareCourseItem }>) {
-  const { user, initializing } = useAuthState();
   const { add, remove, has, isFull } = useCompareTray();
 
-  if (initializing || !user) return null;
   const isComparing = has(course.id);
   const disabled = !isComparing && isFull;
 

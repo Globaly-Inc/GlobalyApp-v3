@@ -8,13 +8,13 @@ import { ProfileSection } from "../../components/profile/profile-section";
 import { ProfileContactCard } from "../../components/profile/profile-contact-card";
 import { ProfileLocationsCard } from "../../components/profile/profile-locations-card";
 import {
-  joinParts, toProfileSocials, type ProfileData, type ProfileLocation,
+  joinParts, toGalleryItems, toProfileSocials, type ProfileData, type ProfileLocation,
 } from "../../components/profile/profile-data";
 import type { InstitutionDetail } from "../../search/types";
 import { InstitutionStats } from "./components/institution-stats";
 import { InstitutionSubjectAreas } from "./components/institution-subject-areas";
 import { InstitutionCoursesSection } from "./components/institution-courses-section";
-import { ProfileGallery, type GalleryItem } from "../../components/profile/profile-gallery";
+import { ProfileGallery } from "../../components/profile/profile-gallery";
 import { InstitutionTeamCard } from "./components/institution-sidebar";
 import { PageViews } from "../../components/page-views";
 
@@ -87,16 +87,8 @@ function toProfileData(institution: InstitutionDetail): ProfileData {
     locations: toLocations(institution),
     // The profile no longer surfaces a Registration & Licenses card.
     registration: [],
+    gallery: toGalleryItems(institution.gallery_image_urls, institution.video_urls),
   };
-}
-
-/** V1's gallery mixes photos and videos in one carousel; V3 stores them in two columns. */
-function toGalleryItems(institution: InstitutionDetail): GalleryItem[] {
-  return [
-    ...(institution.gallery_image_urls ?? []).filter((url): url is string => Boolean(url))
-      .map((url) => ({ type: "image" as const, url })),
-    ...(institution.video_urls ?? []).filter(Boolean).map((url) => ({ type: "video" as const, url })),
-  ];
 }
 
 export default async function InstitutionPage({ params, searchParams }: InstitutionPageProps) {
@@ -157,7 +149,7 @@ export default async function InstitutionPage({ params, searchParams }: Institut
 
           <ProfileLocationsCard locations={profile.locations} />
 
-          <ProfileGallery items={toGalleryItems(institution)} />
+          <ProfileGallery items={profile.gallery} />
         </div>
 
         <div className="space-y-4 md:space-y-6">
