@@ -163,7 +163,8 @@ Extract this JSON:
           "credit_points": null
         }
       ],
-      "curriculum_page_url": "URL to this course's dedicated curriculum/course-structure/programs-of-study page, if linked from this page — else null"
+      "curriculum_page_url": "URL to this course's dedicated curriculum/course-structure/programs-of-study page, if linked from this page — else null",
+      "fees_page_url": "URL to this course's dedicated fees/tuition/cost page, if linked from this page and no real fee figures are stated on THIS page — else null"
     }
   ],
   "campuses_found": [
@@ -192,11 +193,93 @@ Rules:
 - For eligibility requirements, always populate score_type + min_score when a specific numeric threshold is stated, not just in the free-text description: "percentage" for a % figure, "gpa_4" for a GPA (the default scale when no scale is named — most common convention), "gpa_10" only when the page explicitly says the GPA is out of 10, "cgpa" when the page uses that term specifically. Leave both null if no number is stated.
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
-- If fees link to an external PDF or schedule page, include that URL in the fee name (e.g. "See fee schedule: <url>")
+- If this page states no real fee figures but links to a dedicated fees/tuition/cost page (a schedule page, a catalog entry, an external PDF), leave fees empty and set fees_page_url to that link instead — never fabricate a fee entry with no amount just to record the URL
 - If a fee is shown as a range (e.g. "$25,000-$30,000"), set total_amount to the lower bound and keep the full range in the fee's name — never average or invent a single figure. If a page shows both a per-year figure AND a total-program figure, extract BOTH as separate fees array entries distinguished by period_type — never collapse them into one guess.
 - Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")
 - study_units are the individual subjects/units taught within THIS course's curriculum (e.g. a listed core/elective unit with its own code or name) — only include units explicitly listed as part of this course's structure, not unrelated courses mentioned elsewhere on the page. A differently-titled qualification or award-level variant of the same subject (anything containing a degree word/abbreviation — BEng, MEng, BSc, MSc, BA, MA, PhD, "(Hons)", Diploma, Certificate, Bachelor, Master, Doctorate) is ALWAYS its own course per the rule above, NEVER a study_unit, regardless of what list or section it appears under.
-- Set curriculum_page_url whenever a link on this page plausibly leads to THIS course's own detailed curriculum/program-structure page (e.g. "View Degree Program Website", "Course Structure", "Programs of Study", or a "Curriculum" link within a program-specific site) — not a generic institution-wide "Programs" or "Courses" catalog link. Set it EVEN IF you already found some study_units on this page: an admissions or overview page often names only a few example courses, while the dedicated curriculum page lists the full set — more complete data always wins.`;
+- Set curriculum_page_url whenever a link on this page plausibly leads to THIS course's own detailed curriculum/program-structure page (e.g. "View Degree Program Website", "Course Structure", "Programs of Study", or a "Curriculum" link within a program-specific site) — not a generic institution-wide "Programs" or "Courses" catalog link. Set it EVEN IF you already found some study_units on this page: an admissions or overview page often names only a few example courses, while the dedicated curriculum page lists the full set — more complete data always wins.
+- Set fees_page_url whenever a link on this page plausibly leads to THIS course's own fees/tuition/cost detail (e.g. a "Tuition & Fees", "Program Costs", or catalog/schedule link naming this specific program) and this page itself has no fees array entries — not a generic institution-wide tuition homepage.`;
+}
+
+// ── Phase 2i: Fees from a course's secondary fees/tuition page (page worker) ──
+// Mirrors studyUnitsFromPagePrompt — most course overview pages don't carry real fee
+// figures; they link out to a dedicated fees/tuition/catalog page, flagged above as
+// fees_page_url.
+
+export const FEES_FROM_PAGE_SYSTEM = `You are a strict data extraction assistant for an education platform.
+Your ONLY job is to extract the tuition/fee figures explicitly stated on this page for the named course.
+ONLY extract fees EXPLICITLY stated on the page. NEVER invent or estimate a figure.
+Respond in valid JSON only.`;
+
+export function feesFromPagePrompt(courseName: string, url: string, pageText: string) {
+  return `Extract the tuition/fee figures on this page for "${courseName}".
+Source URL: ${url}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "fees": [
+    {
+      "name": "fee description — include the original text verbatim if it's a range or unclear figure",
+      "student_type": "domestic|international|both",
+      "period_type": "Per Year|Per Semester|Total|Per Unit",
+      "currency": "the currency actually shown on the page — null if not stated, never assume",
+      "total_amount": "numeric amount — the lower bound if the page shows a range, null if no real figure is stated"
+    }
+  ]
+}
+
+Rules:
+- If a fee is shown as a range, set total_amount to the lower bound and keep the full range in name
+- If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
+- If no fee figures for this course are stated on this page, return an empty fees array`;
+}
+
+// ── Phase 2j: Combined units + fees from ONE secondary page (page worker) ──
+// The fees fallback commonly resolves to the same catalog page as curriculum_page_url
+// (an Acalog entry bundles both under one "degree requirements" link). Extracting them
+// with two separate Gemini calls billed the identical page content twice — one combined
+// call halves the input tokens for the dominant secondary-fetch case.
+
+export const CURRICULUM_AND_FEES_SYSTEM = `You are a strict data extraction assistant for an education platform.
+Your ONLY job is to extract the study units/subjects and the tuition/fee figures explicitly stated on this page for the named course.
+ONLY extract what is EXPLICITLY stated on the page. NEVER infer, invent, or estimate.
+Respond in valid JSON only.`;
+
+export function curriculumAndFeesPrompt(courseName: string, url: string, pageText: string) {
+  return `Extract the study units/subjects and the tuition/fee figures on this page for "${courseName}".
+Source URL: ${url}
+
+Page content:
+${pageText}
+
+Return JSON:
+{
+  "study_units": [
+    {
+      "unit_code": "code or null",
+      "unit_name": "unit/subject name as it appears in the curriculum",
+      "credit_points": null
+    }
+  ],
+  "fees": [
+    {
+      "name": "fee description — include the original text verbatim if it's a range or unclear figure",
+      "student_type": "domestic|international|both",
+      "period_type": "Per Year|Per Semester|Total|Per Unit",
+      "currency": "the currency actually shown on the page — null if not stated, never assume",
+      "total_amount": "numeric amount — the lower bound if the page shows a range, null if no real figure is stated"
+    }
+  ]
+}
+
+Rules:
+- If a fee is shown as a range, set total_amount to the lower bound and keep the full range in name
+- If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
+- If no fee figures for this course are stated on this page, return an empty fees array
+- If no study units are listed on this page, return an empty study_units array`;
 }
 
 // ── Phase 2h: Study units from a course's secondary curriculum page (page worker) ──

@@ -15,7 +15,7 @@ export function useRerunJob(jobId: string, onReload: () => void) {
   async function rerun() {
     const ok = await confirm(
       "Re-run Extraction?",
-      "This will reset the pipeline and re-crawl the site from scratch. Extracted courses, campuses, and other data will be kept.",
+      "Retries pages that failed or never finished — already-extracted courses, campuses, and other data are left untouched. Only re-crawls from scratch if nothing is left to retry.",
       { confirmLabel: "Re-run", variant: "default" },
     );
     if (!ok) return;
@@ -43,7 +43,7 @@ export type RerunExtractionButtonProps = Readonly<{
 export function RerunExtractionButton({ jobId, status, onReload }: RerunExtractionButtonProps) {
   const { rerun, running, dialog } = useRerunJob(jobId, onReload);
 
-  const label = status === "failed" ? "Re-run Failed Extraction" : "Re-run Entire Extraction";
+  const label = status === "failed" ? "Re-run Failed Extraction" : "Re-run Extraction";
 
   return (
     <>

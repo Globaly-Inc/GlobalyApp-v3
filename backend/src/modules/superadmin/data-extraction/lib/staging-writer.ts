@@ -31,6 +31,8 @@ export interface ExtractedCourse {
   study_units?: ExtractedStudyUnit[];
   /** LLM-flagged link to this course's own curriculum page — routing only, not persisted. */
   curriculum_page_url?: string | null;
+  /** LLM-flagged link to this course's own fees/tuition page — routing only, not persisted. */
+  fees_page_url?: string | null;
 }
 
 export interface ExtractedStudyUnit {
@@ -830,11 +832,19 @@ export async function updateVisaServiceById(id: string, service: Partial<Extract
 }
 
 /** Insert a queue item for a discovered URL */
-export async function insertQueueItem(jobId: string, url: string) {
+/**
+ * Insert a queue item, or return null if a row for this (job_id, url) already exists —
+ * the DB unique constraint is the real dedupe (check-then-insert races between concurrent
+ * producers, e.g. overlapping re-runs). On null, the caller must NOT publish: the producer
+ * that won the insert already dispatched (or will dispatch) that row.
+ */
+export async function insertQueueItem(jobId: string, url: string): Promise<string | null> {
   const [row] = await masterKnex(`${S}.extraction_queue`)
     .insert({ job_id: jobId, url, status: "pending" })
+    .onConflict(["job_id", "url"])
+    .ignore()
     .returning("id");
-  return row.id;
+  return row?.id ?? null;
 }
 
 /** Write a job event to the timeline */

@@ -134,6 +134,33 @@ The centralized error handler maps these to HTTP responses.
    since 2026-08-12 with zero code path writing to it — this is a genuinely
    new capability, explicitly requested and scoped by the team, not a V2
    port (V2 never had this table).
+   Exception: secondary fees-page discovery for course fees (2026-08-31) — mirrors the
+   curriculum-page-discovery exception above: the page worker follows an LLM-flagged
+   `fees_page_url` (falling back to `curriculum_page_url` when unset, since a university
+   catalog entry — e.g. Acalog — commonly bundles curriculum and fees on the same page,
+   under an anchor like "degree requirements" that never gets flagged as fee-related) when
+   a course's primary page has no fee figures at all, instead of the prior behavior of
+   dropping the fee entirely (or, per the old prompt wording, stuffing the link text into
+   a fee's `name` with no `total_amount`). Bounded by the same `SECONDARY_FETCH_CAP` as
+   curriculum discovery. Only fires when the primary page found zero fees, to avoid
+   duplicating a correct fee already extracted. Fixes a real gap: a course's own program
+   page frequently has no tuition figures and links out to a catalog/tuition-schedule page
+   instead (seen live: UK's Acalog catalog entries), which the pipeline previously never
+   followed. Also fixed: `looksLikeCourseUrl`'s catalogueHost regex only matched the
+   singular "catalog." host, silently excluding real catalog hosts like catalogs.uky.edu
+   (plural) from ever being treated as course URLs during discovery.
+   Cost controls (2026-09-01): secondary pages are scraped at most once per page
+   message (shared markdown cache across the curriculum and fees paths — the fees
+   fallback usually resolves to the very page curriculum discovery just scraped), and
+   when a course needs units AND fees from the same page, ONE combined Gemini call
+   (`curriculumAndFeesPrompt`) extracts both instead of two calls over identical content.
+   Exception: incremental verification (2026-09-01) — the verify worker skips courses
+   unchanged since their last verification (`last_verified_at` set and `updated_at` not
+   newer), so the automatic post-run dispatch no longer re-scrapes and re-bills Gemini
+   for the same first-20 courses on every rerun cycle. The Context tab's manual
+   verification step passes `force: true` to re-check everything. Incremental passes
+   add to `verification_score`/`verification_total`; forced passes overwrite them.
+   No V2 equivalent — cost fix, same family as the rerun-resume exception below.
    Exception: `/jobs-filtered` search/sort/category-filter (2026-08-24) —
    added `q` (institution name/URL search), `sort`, and
    `business_category_id` params to `FilteredJobsQuerySchema`, plus a matching
@@ -144,6 +171,15 @@ The centralized error handler maps these to HTTP responses.
    load), which meant search and sort had to move server-side too or they'd
    silently stop covering anything past the current page. Explicitly
    requested and scoped by the team, not a V2 port.
+   Exception: `POST /jobs/:id/rerun` resumes instead of always restarting
+   (2026-09-01) — if the job has pending/failed queue items, rerun retries
+   just those via the "courses" step instead of `resetPipeline` wiping the
+   whole queue and re-crawling from scratch. A full-job rerun used to
+   re-scrape and re-extract (re-billing Gemini for) every page every time,
+   including ones already successfully extracted; this was a real driver of
+   an August Gemini cost spike. `resetPipeline` (full wipe) is still used
+   when a job has nothing queued yet to resume from — no V2 equivalent to
+   port, this is a cost fix.
 
 ## External FK columns
 

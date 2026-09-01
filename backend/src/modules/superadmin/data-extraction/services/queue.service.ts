@@ -6,8 +6,9 @@ import { queueService as pipelineQueue } from "../../../../shared/queue/queueSer
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/queue.repository.js";
-import { findJobById } from "../repositories/jobs.repository.js";
+import { findJobById, updateJob } from "../repositories/jobs.repository.js";
 import { importAgentCIS } from "./agentcis.service.js";
+import { dispatchStep } from "./step.service.js";
 
 const logger = createChildLogger("extraction-queue-service");
 
@@ -97,8 +98,8 @@ export async function resetPipeline(jobId: string, adminId: number) {
   return { updated: true };
 }
 
-// Resets progress/queue like resetPipeline, then re-dispatches to the job worker
-// so a failed job re-crawls from scratch instead of sitting at "pending".
+// Resumes a job's existing pending/failed work where possible, falling back to a full
+// resetPipeline + re-crawl only when there's nothing queued yet to resume (see below).
 //
 // An AgentCIS-sourced job was never crawled from the institution's own website — it was
 // imported wholesale from the AgentCIS API — so re-crawling its institution_url (the real
@@ -120,9 +121,33 @@ export async function rerunJob(jobId: string, adminId: number) {
     return { updated: true, reimport: true };
   }
 
+  // Resume instead of restart: if this job already has pending/failed queue items, retry
+  // just those (via the same "courses" step the Context tab's per-step Re-run uses) instead
+  // of wiping the queue and re-billing Gemini to re-scrape + re-extract every page the job
+  // already finished successfully. "Reset Pipeline" stays the explicit full-recrawl action
+  // for when a genuine from-scratch redo is wanted.
+  const retryable = await repo.countRetryableQueueItems(jobId);
+  if (retryable > 0) {
+    // Reactivate BEFORE dispatching — the page worker skips paused/failed/declined jobs,
+    // so the reverse order would race it into silently dropping the re-dispatched pages.
+    await repo.reactivateJob(jobId);
+    await logAudit(adminId, "JOB_RERUN", { entityType: "extraction_jobs", entityId: jobId, details: { mode: "resume", retryable } });
+    try {
+      await dispatchStep(jobId, { step: "courses" }, adminId);
+    } catch (err) {
+      // Push queue: nothing consumes the reactivated job unless the step message actually
+      // published. Without this rollback a failed dispatch (LavinMQ down) leaves the job
+      // showing "processing" with a fresh heartbeat and no work queued — stalled until
+      // someone notices. Restore the pre-rerun status so the failure state stays truthful.
+      await updateJob(jobId, { status: job.status });
+      throw err;
+    }
+    return { updated: true, mode: "resume" };
+  }
+
   const found = await repo.resetPipeline(jobId);
   if (!found) throw new NotFoundError("Extraction job not found");
-  await logAudit(adminId, "JOB_RERUN", { entityType: "extraction_jobs", entityId: jobId });
+  await logAudit(adminId, "JOB_RERUN", { entityType: "extraction_jobs", entityId: jobId, details: { mode: "full" } });
 
   try {
     await pipelineQueue.publish(EXTRACTION_QUEUES.JOBS, { jobId, resumed: true });
@@ -130,5 +155,5 @@ export async function rerunJob(jobId: string, adminId: number) {
     logger.warn("Queue unavailable on rerun, worker will poll", { jobId });
   }
 
-  return { updated: true };
+  return { updated: true, mode: "full" };
 }

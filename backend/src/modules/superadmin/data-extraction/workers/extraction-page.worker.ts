@@ -16,11 +16,12 @@ import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
   courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
+  feesFromPagePrompt, FEES_FROM_PAGE_SYSTEM, curriculumAndFeesPrompt, CURRICULUM_AND_FEES_SYSTEM,
   visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
   writeCourse, upsertCampus, normaliseCampusName, writeVisaService, insertQueueItem, writeJobEvent,
-  type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedVisaService,
+  type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { domainOf } from "../lib/html-utils.js";
@@ -105,35 +106,68 @@ async function deduplicateCampuses(jobId: string) {
 const SECONDARY_FETCH_CAP = 20;
 
 /**
- * Narrow follow-up fetch for a course's own curriculum page, when the primary page's
- * extraction came back with no study_units but flagged a link to one. Every failure
- * mode here logs and returns empty — it must never fail the course write.
+ * Scrape a secondary page at most once per page message — the curriculum and fees paths
+ * commonly resolve to the SAME catalog page (see the fees fallback in the course loop),
+ * and without this cache that page was scraped and billed once per path per course
+ * variant. Failures are cached too (null): re-scraping an identical URL seconds later
+ * in the same message costs money and almost never recovers.
  */
-async function fetchCurriculumUnits(curriculumUrl: string, primaryUrl: string, jobId: string): Promise<ExtractedStudyUnit[]> {
-  let resolved: URL;
+async function scrapeSecondaryPage(resolvedUrl: string, cache: Map<string, string | null>, jobId: string): Promise<string | null> {
+  if (cache.has(resolvedUrl)) return cache.get(resolvedUrl)!;
+  let markdown: string | null = null;
   try {
-    resolved = new URL(curriculumUrl, primaryUrl);
-  } catch {
-    logger.warn("Invalid curriculum_page_url, skipping secondary fetch", { jobId, primaryUrl, curriculumUrl });
-    return [];
-  }
-
-  try {
-    const page = await scrapeMarkdown(resolved.toString(), { onlyMainContent: true });
-    if (page.blocked || page.markdown.length < 50) {
-      logger.warn("Curriculum page blocked or empty, skipping secondary fetch", { jobId, curriculumUrl: resolved.toString() });
-      return [];
+    const page = await scrapeMarkdown(resolvedUrl, { onlyMainContent: true });
+    if (!page.blocked && page.markdown.length >= 50) {
+      markdown = truncateMarkdown(page.markdown);
+    } else {
+      logger.warn("Secondary page blocked or empty, skipping fetch", { jobId, url: resolvedUrl });
     }
-    const result = await extractJson<{ study_units: ExtractedStudyUnit[] }>({
-      system: STUDY_UNITS_SYSTEM,
-      prompt: studyUnitsFromPagePrompt(resolved.toString(), truncateMarkdown(page.markdown)),
-    });
-    return result.study_units ?? [];
   } catch (err) {
-    logger.warn("Curriculum page extraction failed, skipping", {
-      jobId, curriculumUrl: resolved.toString(), error: err instanceof Error ? err.message : String(err),
+    logger.warn("Secondary page scrape failed, skipping fetch", {
+      jobId, url: resolvedUrl, error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+  }
+  cache.set(resolvedUrl, markdown);
+  return markdown;
+}
+
+/**
+ * One Gemini call per secondary-page need — units, fees, or BOTH in a single combined
+ * call when the same page serves both (the catalog case that motivated fees discovery);
+ * two calls over identical page content was pure duplicate input-token billing.
+ * A null field means that extraction FAILED (possibly transiently — the caller must not
+ * cache it; a later variant sharing the URL may retry); an array (even empty) is a real
+ * extraction result. Never throws — a secondary fetch must never fail the course write.
+ */
+async function extractSecondaryPage(opts: {
+  jobId: string; url: string; markdown: string; courseName: string;
+  wantUnits: boolean; wantFees: boolean;
+}): Promise<{ study_units: ExtractedStudyUnit[] | null; fees: ExtractedFee[] | null }> {
+  try {
+    if (opts.wantUnits && opts.wantFees) {
+      const result = await extractJson<{ study_units: ExtractedStudyUnit[]; fees: ExtractedFee[] }>({
+        system: CURRICULUM_AND_FEES_SYSTEM,
+        prompt: curriculumAndFeesPrompt(opts.courseName, opts.url, opts.markdown),
+      });
+      return { study_units: result.study_units ?? [], fees: result.fees ?? [] };
+    }
+    if (opts.wantUnits) {
+      const result = await extractJson<{ study_units: ExtractedStudyUnit[] }>({
+        system: STUDY_UNITS_SYSTEM,
+        prompt: studyUnitsFromPagePrompt(opts.url, opts.markdown),
+      });
+      return { study_units: result.study_units ?? [], fees: null };
+    }
+    const result = await extractJson<{ fees: ExtractedFee[] }>({
+      system: FEES_FROM_PAGE_SYSTEM,
+      prompt: feesFromPagePrompt(opts.courseName, opts.url, opts.markdown),
+    });
+    return { study_units: null, fees: result.fees ?? [] };
+  } catch (err) {
+    logger.warn("Secondary page extraction failed, skipping", {
+      jobId: opts.jobId, url: opts.url, error: err instanceof Error ? err.message : String(err),
+    });
+    return { study_units: null, fees: null };
   }
 }
 
@@ -222,10 +256,19 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     } catch { /* ignore malformed blocklist */ }
   }
 
-  // Mark queue item processing
-  await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
-    status: "processing", updated_at: masterKnex.fn.now(),
-  });
+  // Atomically claim the item. Every producer (job worker, courses/discovery steps, retries,
+  // overlapping reruns) publishes after flipping the row to "pending", so duplicate messages
+  // for the same item — e.g. two admins hitting Rerun at once, each re-dispatching the same
+  // pending/failed pages — die here instead of double-scraping and double-billing Gemini.
+  // Also honours a pause/stop that landed between publish and consume.
+  const claimed = await masterKnex(`${S}.extraction_queue`)
+    .where({ id: queueItemId })
+    .whereIn("status", ["pending", "failed"])
+    .update({ status: "processing", updated_at: masterKnex.fn.now() });
+  if (claimed === 0) {
+    logger.info("Queue item already claimed or in a terminal state, skipping duplicate message", { jobId, queueItemId, url });
+    return;
+  }
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
     processing_heartbeat_at: masterKnex.fn.now(),
   });
@@ -322,6 +365,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       for (const pUrl of paginationUrls) {
         if (!existingSet.has(pUrl)) {
           const newId = await insertQueueItem(jobId, pUrl);
+          if (!newId) continue; // a parallel page worker already queued this sibling
           await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: newId, url: pUrl });
           queued++;
         }
@@ -389,6 +433,15 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
       // ── Write each course with child entities ──
       let secondaryFetches = 0;
+      // A page listing one subject as several qualification variants (BEng/MEng/BSc —
+      // see extraction-prompts.ts's "extract one course object per variant" rule) commonly
+      // points every variant at the same shared curriculum link. Without this cache each
+      // variant re-scraped and re-billed Gemini for the identical URL, up to SECONDARY_FETCH_CAP
+      // times per page for what was really one page's worth of content.
+      const curriculumCache = new Map<string, ExtractedStudyUnit[]>();
+      // Scraped markdown per secondary URL (null = failed/blocked) — the fees fallback
+      // usually points at the very page curriculum discovery just scraped.
+      const secondaryPageCache = new Map<string, string | null>();
 
       if (extracted.courses?.length) {
         for (const course of extracted.courses) {
@@ -411,15 +464,79 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           // of a ~15-course program). Merge rather than replace — writeCourse's
           // upsertStudyUnit already dedups by name, so overlap between the two lists
           // collapses instead of duplicating. Bounded per page scrape, logged when hit.
+          let currUrl: string | null = null;
           if (course.curriculum_page_url) {
+            try { currUrl = new URL(course.curriculum_page_url, url).toString(); }
+            catch { logger.warn("Invalid curriculum_page_url, skipping secondary fetch", { jobId, url, curriculumUrl: course.curriculum_page_url }); }
+          }
+
+          // Fees usually live on the primary page; when they don't, the LLM flags a link
+          // to the course's own fees/tuition/catalog page instead of fabricating a figure.
+          // A university catalog entry (e.g. Acalog) commonly bundles curriculum AND fees
+          // on the SAME page — its anchor text often reads "degree requirements", so the
+          // LLM flags it as curriculum_page_url only, never a separate fees_page_url. Fall
+          // back to that page too, not just an explicit fees_page_url. Only worth trying
+          // when fees are still empty — unlike curriculum, a correct fee already found on
+          // the primary page shouldn't be risked for a duplicate.
+          let feesUrl: string | null = null;
+          const feesRaw = course.fees?.length ? null : (course.fees_page_url || course.curriculum_page_url);
+          if (feesRaw) {
+            try { feesUrl = new URL(feesRaw, url).toString(); }
+            catch { logger.warn("Invalid fees_page_url, skipping secondary fetch", { jobId, url, feesUrl: feesRaw }); }
+          }
+
+          // Units an earlier variant already extracted from this URL — reuse, don't re-bill.
+          if (currUrl && curriculumCache.has(currUrl)) {
+            const cached = curriculumCache.get(currUrl)!;
+            if (cached.length) course.study_units = [...(course.study_units ?? []), ...cached];
+            currUrl = null;
+          }
+
+          if (currUrl || feesUrl) {
             if (secondaryFetches >= SECONDARY_FETCH_CAP) {
-              logger.warn("Secondary curriculum-page fetch cap reached, skipping remaining courses", {
+              logger.warn("Secondary fetch cap reached, skipping remaining courses", {
                 jobId, url, cap: SECONDARY_FETCH_CAP,
               });
-            } else {
+            } else if (currUrl && currUrl === feesUrl) {
+              // Both point at the same page — one scrape, ONE combined Gemini call.
               secondaryFetches++;
-              const units = await fetchCurriculumUnits(course.curriculum_page_url, url, jobId);
-              if (units.length) course.study_units = [...(course.study_units ?? []), ...units];
+              const md = await scrapeSecondaryPage(currUrl, secondaryPageCache, jobId);
+              if (md) {
+                const r = await extractSecondaryPage({
+                  jobId, url: currUrl, markdown: md, courseName: course.name, wantUnits: true, wantFees: true,
+                });
+                // null = failed extraction — leave it uncached so a later variant
+                // sharing this URL gets its own retry instead of inheriting the failure.
+                if (r.study_units !== null) {
+                  curriculumCache.set(currUrl, r.study_units);
+                  if (r.study_units.length) course.study_units = [...(course.study_units ?? []), ...r.study_units];
+                }
+                if (r.fees?.length) course.fees = r.fees;
+              }
+            } else {
+              if (currUrl) {
+                secondaryFetches++;
+                const md = await scrapeSecondaryPage(currUrl, secondaryPageCache, jobId);
+                if (md) {
+                  const r = await extractSecondaryPage({
+                    jobId, url: currUrl, markdown: md, courseName: course.name, wantUnits: true, wantFees: false,
+                  });
+                  if (r.study_units !== null) {
+                    curriculumCache.set(currUrl, r.study_units);
+                    if (r.study_units.length) course.study_units = [...(course.study_units ?? []), ...r.study_units];
+                  }
+                }
+              }
+              if (feesUrl && secondaryFetches < SECONDARY_FETCH_CAP) {
+                secondaryFetches++;
+                const md = await scrapeSecondaryPage(feesUrl, secondaryPageCache, jobId);
+                if (md) {
+                  const r = await extractSecondaryPage({
+                    jobId, url: feesUrl, markdown: md, courseName: course.name, wantUnits: false, wantFees: true,
+                  });
+                  if (r.fees?.length) course.fees = r.fees;
+                }
+              }
             }
           }
 
