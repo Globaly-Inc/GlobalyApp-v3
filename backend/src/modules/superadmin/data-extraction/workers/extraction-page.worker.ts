@@ -25,6 +25,7 @@ import {
 } from "../lib/staging-writer.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { domainOf } from "../lib/html-utils.js";
+import { classifyFailure, type FailureClass } from "../lib/classify-failure.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -53,18 +54,6 @@ function detectPaginationUrls(baseUrl: string, links: string[], markdown: string
     .filter(n => n !== 1)
     .sort((a, b) => a - b)
     .map(n => { const u = new URL(baseObj!.toString()); u.searchParams.set("page", String(n)); return u.toString(); });
-}
-
-// ponytail: ported from V2's classifyFailure + routeFailure
-type FailureClass = "anti_bot" | "not_found" | "not_a_course" | "ai_5xx" | "parse_error" | "other";
-
-function classifyFailure(error: string): FailureClass {
-  const e = error.toLowerCase();
-  if (e.includes("blocked") || e.includes("minimal_content") || e.includes("empty") || e.includes("anti-bot")) return "anti_bot";
-  if (e.includes("not a course") || e.includes("blog") || e.includes("news") || e.includes("staff")) return "not_a_course";
-  if (e.includes("429") || e.includes("503") || /5\d{2}/.test(e) || e.includes("5xx")) return "ai_5xx";
-  if (e.includes("parse") || e.includes("no structured data")) return "parse_error";
-  return "other";
 }
 
 interface ExtractionResult {

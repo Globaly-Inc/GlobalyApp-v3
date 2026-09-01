@@ -50,6 +50,20 @@ export async function stopAll(jobId: string) {
   return true;
 }
 
+// Deep scrape: raise the job's page budget (see insertQueueItem's cap) so discovery can
+// find and queue another round of pages past the default cap. The exported guard lives
+// in this UPDATE, not in a prior SELECT — a concurrent promotion could flip the job to
+// exported between a check and the increment, mutating a job the worker will then ignore.
+// undefined = job is exported (or gone); the caller must refuse, not report success.
+export async function raisePageCap(jobId: string, by: number) {
+  const [row] = await masterKnex(T_JOBS)
+    .where({ id: jobId })
+    .whereNot("status", "exported")
+    .increment("page_cap", by)
+    .returning("page_cap");
+  return row?.page_cap as number | undefined;
+}
+
 // Rerun (resume path): pending/failed items are real, already-queued work worth retrying
 // without wiping the job — 0 means there's nothing to resume from.
 export async function countRetryableQueueItems(jobId: string) {

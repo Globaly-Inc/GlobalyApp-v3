@@ -39,6 +39,7 @@ import {
   writeVisaService,
   updateVisaServiceById,
   normaliseVisaServiceName,
+  atPageCap,
   type ExtractedCampus,
   type InstitutionOverview,
   type ExtractedVisaService,
@@ -651,6 +652,13 @@ async function handleDiscoveryStep(jobId: string) {
 
   async function processListUrl(url: string, depth: number) {
     if (depth > maxDepth) return;
+    // Page cap: each list page costs a scrape + a Gemini call just to discover URLs that
+    // insertQueueItem would then refuse — stop crawling entirely once the job is full.
+    // The admin "Deep scrape" action raises the cap and re-runs discovery.
+    if (await atPageCap(jobId)) {
+      logger.info("Page cap reached, stopping discovery", { jobId, url });
+      return;
+    }
     await heartbeat(jobId);
 
     const markdown = await scrapeUrl(url);
