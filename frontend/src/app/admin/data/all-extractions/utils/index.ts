@@ -1,4 +1,4 @@
-import type { TimestampedRow } from "../apis/types";
+import type { CourseAssignment, JunctionSlug, TimestampedRow } from "../apis/types";
 
 /**
  * The subset of `values` that differs from `original`.
@@ -55,4 +55,41 @@ export function latestTimestamp(rows: TimestampedRow[] | null | undefined): stri
     if (t && (!best || t > best)) best = t;
   }
   return best;
+}
+
+export type PendingCourseLink = { junction: JunctionSlug; course_id: string; entity_id: string };
+
+export function pendingCourseLinks(
+  selections: { junction: JunctionSlug; entityId?: string; assignments?: CourseAssignment[]; entityCol: string }[],
+  courseIds: string[],
+): PendingCourseLink[] {
+  return selections.flatMap(({ junction, entityId, assignments, entityCol }) => {
+    if (!entityId) return [];
+    const alreadyLinked = new Set((assignments ?? []).filter((a) => a[entityCol] === entityId).map((a) => a.course_id));
+    return courseIds.filter((id) => !alreadyLinked.has(id)).map((course_id) => ({ junction, course_id, entity_id: entityId }));
+  });
+}
+
+/**
+ * Runs `tasks` with at most `limit` in flight at once, collecting per-task results instead
+ * of failing the whole batch on the first rejection — used for bulk admin actions (e.g.
+ * updating/linking up to 50 courses) that hit plain request/response endpoints with no
+ * queue behind them, so a burst of 100+ simultaneous requests doesn't strain the DB pool.
+ */
+export async function runLimited<T>(tasks: (() => Promise<T>)[], limit: number): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      const task = tasks[i]!;
+      try {
+        results[i] = { status: "fulfilled", value: await task() };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results;
 }

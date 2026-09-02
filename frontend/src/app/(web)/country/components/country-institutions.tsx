@@ -20,7 +20,10 @@ export function CountryInstitutions({
       {institutions.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {institutions.map((inst) => (
-            <Card key={inst.id} className="transition-shadow hover:shadow-md">
+            <Card key={inst.id} className="relative transition-shadow hover:shadow-md">
+              {inst.slug && (
+                <Link href={`/institution/${inst.slug}`} target = "_blank" className="absolute inset-0 z-10" aria-label={inst.business_name} />
+              )}
               <CardContent className="flex items-center gap-3 p-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
                   {inst.logo_url ? (

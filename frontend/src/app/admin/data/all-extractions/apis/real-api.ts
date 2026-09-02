@@ -304,9 +304,15 @@ export const allExtractionsRealApi = {
 
   // ── Course Fees ────────────────────────────────────────────────
 
-  getCourseFees: async (jobId: string): Promise<CourseFee[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/course-fees
-    return [] as CourseFee[];
+  getCourseFees: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<CourseFee>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<CourseFee>>(`/admin/data-extraction/jobs/${jobId}/course-fees?${query}`);
   },
 
   createCourseFee: async (params: { job_id: string } & CourseFeeParams): Promise<CourseFee> => {

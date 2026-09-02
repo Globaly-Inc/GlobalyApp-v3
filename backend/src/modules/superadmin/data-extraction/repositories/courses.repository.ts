@@ -34,8 +34,20 @@ export async function countCoursesByJob(jobId: string, filters: CourseListFilter
   return Number(row.count);
 }
 
-export async function countCourseFeesByJob(jobId: string) {
-  const [row] = await masterKnex(`${S}.extraction_course_fees`).where({ job_id: jobId }).count("id as count");
+export type CourseFeeListFilters = { search?: string };
+
+function filteredCourseFeesQuery(jobId: string, { search }: CourseFeeListFilters) {
+  const q = masterKnex(`${S}.extraction_course_fees`).where({ job_id: jobId });
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
+}
+
+export async function listCourseFeesByJob(jobId: string, limit: number, offset: number, filters: CourseFeeListFilters = {}) {
+  return filteredCourseFeesQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countCourseFeesByJob(jobId: string, filters: CourseFeeListFilters = {}) {
+  const [row] = await filteredCourseFeesQuery(jobId, filters).count("id as count");
   return Number(row.count);
 }
 

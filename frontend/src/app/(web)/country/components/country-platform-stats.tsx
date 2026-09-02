@@ -8,9 +8,7 @@ export function CountryPlatformStats({
   agentsCount,
 }: Readonly<{ country: CountryDetail; institutionsCount: number; coursesCount: number; agentsCount: number }>) {
   const stats = [
-    country.universities_count_label || institutionsCount > 0
-      ? { icon: Building2, label: "Institutions", value: country.universities_count_label ?? String(institutionsCount) }
-      : null,
+    institutionsCount > 0 ? { icon: Building2, label: "Institutions", value: String(institutionsCount) } : null,
     coursesCount > 0 ? { icon: GraduationCap, label: "Services", value: String(coursesCount) } : null,
     agentsCount > 0 ? { icon: UserCheck, label: "Education Counselors", value: String(agentsCount) } : null,
     country.student_count_label ? { icon: Users, label: "Students", value: country.student_count_label } : null,

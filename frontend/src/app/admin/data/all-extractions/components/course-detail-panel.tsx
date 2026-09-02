@@ -13,8 +13,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LookupCombobox } from "@/components/lookup-combobox";
 import { Textarea } from "@/components/ui/textarea";
-import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { allExtractionsApi } from "../apis";
 import { saveFormAndLearn } from "./editable-field";
 import { StudyOptionForm } from "./study-option-form";
@@ -166,8 +166,6 @@ export function CourseDetailPanel({
   onChanged: () => void;
 }>) {
   const [busy, setBusy] = useState(false);
-  const [degreeLevels, setDegreeLevels] = useState<{ value: string; label: string }[]>([]);
-  const [subjectAreas, setSubjectAreas] = useState<{ value: string; label: string }[]>([]);
   const [editingDescription, setEditingDescription] = useState(false);
   const [description, setDescription] = useState(course.description ?? "");
   const [addingOption, setAddingOption] = useState(false);
@@ -179,15 +177,6 @@ export function CourseDetailPanel({
     setEditingDescription(false);
   }, [course]);
 
-  useEffect(() => {
-    const toOptions = (rows: { name: string }[]) => rows.map((r) => ({ value: r.name, label: r.name }));
-    categoriesApi.getLookups("degree-levels", { limit: 100 })
-      .then((res) => setDegreeLevels(toOptions(res.data)))
-      .catch(() => setDegreeLevels([]));
-    categoriesApi.getLookups("areas-of-study", { limit: 100 })
-      .then((res) => setSubjectAreas(toOptions(res.data)))
-      .catch(() => setSubjectAreas([]));
-  }, []);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true);
@@ -291,23 +280,21 @@ export function CourseDetailPanel({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Degree level</Label>
-            <Combobox
-              options={degreeLevels}
+            <LookupCombobox
+              kind="degree-levels"
               value={course.degree_level ?? ""}
               onChange={(v) => patchCourse({ degree_level: v || null })}
               placeholder="Select degree level"
-              loading={degreeLevels.length === 0}
               creatable
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Subject area</Label>
-            <Combobox
-              options={subjectAreas}
+            <LookupCombobox
+              kind="areas-of-study"
               value={course.subject_area ?? ""}
               onChange={(v) => patchCourse({ subject_area: v || null })}
               placeholder="Select subject area"
-              loading={subjectAreas.length === 0}
               creatable
             />
           </div>

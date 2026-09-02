@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, CheckCircle2, ExternalLink, Flag, Plus, Search, Trash2 } from "lucide-react";
+import { BookOpen, CheckCircle2, ExternalLink, Flag, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -35,6 +35,7 @@ export function CourseListPanel({
   onAdd,
   saving,
   onBulkVerify,
+  onBulkUpdate,
   onDelete,
   onBulkDelete,
   compact,
@@ -61,6 +62,7 @@ export function CourseListPanel({
   onAdd: () => void;
   saving: boolean;
   onBulkVerify: (approve: boolean) => void;
+  onBulkUpdate: () => void;
   onDelete: (id: string) => void;
   onBulkDelete: () => void;
   compact: boolean;
@@ -132,33 +134,47 @@ export function CourseListPanel({
           <div className="flex items-center gap-1.5">
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-xs cursor-pointer"
+              size={compact ? "icon-sm" : "sm"}
+              className={cn("cursor-pointer", compact ? "h-7 w-7" : "h-7 gap-1.5 text-xs")}
+              disabled={saving}
+              onClick={onBulkUpdate}
+              title={`Update ${selectedIds.length}`}
+            >
+              <Pencil className="h-3 w-3" />
+              {!compact && `Update ${selectedIds.length}`}
+            </Button>
+            <Button
+              variant="outline"
+              size={compact ? "icon-sm" : "sm"}
+              className={cn("cursor-pointer", compact ? "h-7 w-7" : "h-7 gap-1.5 text-xs")}
               disabled={saving}
               onClick={() => onBulkVerify(true)}
+              title={`Approve ${selectedIds.length}`}
             >
               <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-              Approve {selectedIds.length}
+              {!compact && `Approve ${selectedIds.length}`}
             </Button>
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-xs text-destructive cursor-pointer"
+              size={compact ? "icon-sm" : "sm"}
+              className={cn("cursor-pointer text-destructive", compact ? "h-7 w-7" : "h-7 gap-1.5 text-xs")}
               disabled={saving}
               onClick={() => onBulkVerify(false)}
+              title={`Flag ${selectedIds.length}`}
             >
               <Flag className="h-3 w-3" />
-              Flag {selectedIds.length}
+              {!compact && `Flag ${selectedIds.length}`}
             </Button>
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-xs text-destructive cursor-pointer"
+              size={compact ? "icon-sm" : "sm"}
+              className={cn("cursor-pointer text-destructive", compact ? "h-7 w-7" : "h-7 gap-1.5 text-xs")}
               disabled={saving}
               onClick={onBulkDelete}
+              title={`Delete ${selectedIds.length}`}
             >
               <Trash2 className="h-3 w-3" />
-              Delete {selectedIds.length}
+              {!compact && `Delete ${selectedIds.length}`}
             </Button>
           </div>
         )}

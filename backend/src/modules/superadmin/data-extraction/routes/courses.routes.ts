@@ -72,6 +72,15 @@ export async function coursesRoutes(app: FastifyInstance) {
     return reply.send(await service.listIntakes(id, limit, offset, pagination, { search }));
   });
 
+  // GET /jobs/:id/course-fees — paginated + searchable, unlike course-links' full dump
+  app.get("/jobs/:id/course-fees", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const pagination = PaginationSchema.parse(req.query);
+    const { search } = z.object({ search: z.string().optional() }).parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    return reply.send(await service.listCourseFees(id, limit, offset, pagination, { search }));
+  });
+
   // C15: POST /jobs/:jobId/courses
   app.post("/jobs/:jobId/courses", async (req, reply) => {
     const { jobId } = JobIdParamSchema.parse(req.params);

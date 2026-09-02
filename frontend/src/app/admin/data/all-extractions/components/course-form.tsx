@@ -1,7 +1,7 @@
 "use client";
 
 import { z } from "zod";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BookOpen, Loader2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,8 @@ import { Combobox } from "@/components/combobox";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LookupCombobox } from "@/components/lookup-combobox";
 import { Textarea } from "@/components/ui/textarea";
-import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { STUDY_MODE_OPTIONS } from "../const";
 import type { CreateCourseParams } from "../apis/types";
 
@@ -46,18 +46,7 @@ export function CourseForm({
   const [subjectArea, setSubjectArea] = useState("");
   const [duration, setDuration] = useState("");
   const [description, setDescription] = useState("");
-  const [degreeLevels, setDegreeLevels] = useState<{ value: string; label: string }[]>([]);
-  const [subjectAreas, setSubjectAreas] = useState<{ value: string; label: string }[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    categoriesApi.getLookups("degree-levels", { limit: 100 })
-      .then((res) => setDegreeLevels(res.data.map((d) => ({ value: d.name, label: d.name }))))
-      .catch(() => setDegreeLevels([]));
-    categoriesApi.getLookups("areas-of-study", { limit: 100 })
-      .then((res) => setSubjectAreas(res.data.map((a) => ({ value: a.name, label: a.name }))))
-      .catch(() => setSubjectAreas([]));
-  }, []);
 
   const handleSave = () => {
     const result = courseSchema.safeParse({
@@ -137,14 +126,7 @@ export function CourseForm({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label>Degree level</Label>
-            <Combobox
-              options={degreeLevels}
-              value={degreeLevel}
-              onChange={setDegreeLevel}
-              placeholder="Select"
-              loading={degreeLevels.length === 0}
-              creatable
-            />
+            <LookupCombobox kind="degree-levels" value={degreeLevel} onChange={setDegreeLevel} placeholder="Select" creatable />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Study mode</Label>
@@ -153,12 +135,11 @@ export function CourseForm({
 
           <div className="flex flex-col gap-1.5">
             <Label>Subject area</Label>
-            <Combobox
-              options={subjectAreas}
+            <LookupCombobox
+              kind="areas-of-study"
               value={subjectArea}
               onChange={setSubjectArea}
               placeholder="Select or type subject area"
-              loading={subjectAreas.length === 0}
               creatable
             />
           </div>
