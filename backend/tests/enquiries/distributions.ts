@@ -147,7 +147,8 @@ async function makeRecipient(
       first_name: "Dist",
       last_name: "Owner",
       email: `dist-owner-${suffix}@example.com`,
-      is_verified: true,
+      account_status: 1,
+      is_business_account: true,
     })
     .returning("id");
   const [row] = await masterKnex("businesses")
@@ -296,7 +297,10 @@ async function main() {
       eq(result.already_unlocked, false, "not a repeat unlock");
       eq(result.coin_cost, DEFAULT_UNLOCK_COST, "charged the business's own enquiry_coin_cost");
       eq(result.student_first_name, "Unlock", "student first name revealed");
-      eq(result.student_phone, "+61400000000", "student phone revealed");
+      // What unlocking buys is the identity, not the number: the base scenario carries no
+      // consent, so the phone stays withheld. Both consent branches have their own cases below.
+      eq(result.student_email != null, true, "student email revealed");
+      eq(result.student_phone, null, "phone still needs consent, which this student did not give");
       eq(await balanceOf(biz.ownerId), before - DEFAULT_UNLOCK_COST, "wallet debited");
       eq(result.credits_remaining, before - DEFAULT_UNLOCK_COST, "and the response says so");
 

@@ -12,5 +12,9 @@ export type {
   EnquiryMessage,
   MessageAttachment,
   MessageReaction,
+  MemberCandidate,
   StarredMessage,
+  ThreadMember,
+  ThreadMembersResult,
+  ThreadRole,
 } from "./types";

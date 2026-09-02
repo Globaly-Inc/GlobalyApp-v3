@@ -13,6 +13,7 @@ import * as platformUsersService from "../../platform-users/services/platform-us
 import * as storage from "../../../shared/storage/storageService.js";
 import { logEnquiryAudit } from "../shared/audit.js";
 import * as distributionsRepo from "../repositories/distributions.repository.js";
+import * as threadMembersRepo from "../repositories/thread-members.repository.js";
 import * as creditService from "../../ai-counsellor/services/credit.service.js";
 import * as emailQueueService from "./email-queue.service.js";
 import * as messagesService from "./messages.service.js";
@@ -165,6 +166,11 @@ export async function unlock(recipient: Recipient, distributionId: string, userI
     // The conversation is what the unlock buys, so it opens with a message in the same
     // transaction rather than waiting for someone to type one.
     await messagesService.seedOnUnlock(trx, distributionId, userId);
+
+    // …and with its membership. Same transaction for the same reason: an unlocked thread must
+    // never exist without an admin, or nobody can add anyone to it. The owner administers it,
+    // the agent who spent the credits is on it, everyone else is invited.
+    await threadMembersRepo.seedOnUnlock(trx, distributionId, recipient, userId);
 
     await logEnquiryAudit(userId, "distribution.unlocked", {
       entityType: "distribution",

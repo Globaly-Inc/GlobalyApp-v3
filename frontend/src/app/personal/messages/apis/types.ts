@@ -21,6 +21,10 @@ export type {
 export interface ThreadWire {
   distribution_id: string;
   enquiry_id: string;
+  /** Named by the agency's thread admin, if at all. Students cannot rename. */
+  title: string | null;
+  /** Set by the agency's thread admin too — the same picture the agents see. */
+  thread_photo: string | null;
   business_name: string;
   logo_url: string | null;
   course_name: string;
@@ -43,6 +47,8 @@ export interface StarredWire extends EnquiryMessage {
 export const toChatThread = (t: ThreadWire): ChatThread => ({
   distribution_id: t.distribution_id,
   enquiry_id: t.enquiry_id,
+  title: t.title,
+  thread_photo: t.thread_photo,
   counterpart_name: t.business_name,
   counterpart_avatar: t.logo_url,
   course_name: t.course_name,

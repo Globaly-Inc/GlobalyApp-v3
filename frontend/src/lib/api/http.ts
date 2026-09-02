@@ -6,6 +6,7 @@ import {
   isTokenExpired,
   saveTokens,
 } from "@/lib/session";
+import { parseBody } from "./parse-body";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3`;
@@ -250,7 +251,7 @@ export async function httpGet<T>(path: string, init?: RequestInit): Promise<T> {
     fetch(`${BASE_URL}${path}`, { ...init, headers: { ...authHeaders(), ...init?.headers } }),
   );
   if (!res.ok) throw await readError(res);
-  return res.json() as Promise<T>;
+  return parseBody<T>(res);
 }
 
 // Public auth endpoints signal bad credentials with 401 (e.g. "Invalid OTP", lockout, expired
@@ -273,7 +274,7 @@ async function httpWithBody<T>(
     });
   const res = PUBLIC_AUTH_PATHS.has(path) ? await attempt() : await withRefreshRetry(attempt);
   if (!res.ok) throw await readError(res);
-  return res.json() as Promise<T>;
+  return parseBody<T>(res);
 }
 
 export function httpPost<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
@@ -295,7 +296,7 @@ async function httpFormWithBody<T>(method: "POST" | "PATCH", path: string, form:
     fetch(`${BASE_URL}${path}`, { ...init, method, headers: { ...authHeaders(), ...init?.headers }, body: form }),
   );
   if (!res.ok) throw await readError(res);
-  return res.json() as Promise<T>;
+  return parseBody<T>(res);
 }
 
 export function httpPostForm<T>(path: string, form: FormData, init?: RequestInit): Promise<T> {
@@ -306,7 +307,7 @@ export function httpPatchForm<T>(path: string, form: FormData, init?: RequestIni
   return httpFormWithBody<T>("PATCH", path, form, init);
 }
 
-/** POST that expects an empty body (204). Calling httpPost for these would throw on res.json(). */
+/** POST that expects an empty body (204). httpPost handles 204 too — this just types it as void. */
 export async function httpPostNoContent(path: string, body?: unknown, init?: RequestInit): Promise<void> {
   const res = await withRefreshRetry(() =>
     fetch(`${BASE_URL}${path}`, {

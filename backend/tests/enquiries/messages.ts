@@ -35,6 +35,7 @@ import { runMatching } from "../../src/modules/enquiries/services/matching.servi
 import * as distributions from "../../src/modules/enquiries/services/distributions.service.js";
 import * as messages from "../../src/modules/enquiries/services/messages.service.js";
 import * as media from "../../src/modules/enquiries/services/message-media.service.js";
+import * as creditService from "../../src/modules/ai-counsellor/services/credit.service.js";
 import { UNLOCK_GREETING } from "../../src/modules/enquiries/services/messages.service.js";
 
 /** The services now address a recipient (business or institution) rather than a bare id. */
@@ -146,9 +147,19 @@ async function makeJobAndCourse(subject: string) {
 }
 
 async function makeRecipient(jobId: string, courseId: string, subject: string, offsetDeg = 0) {
-  const owner = await masterKnex("platform_users").orderBy("id").first();
-  if (!owner) throw new Error("no platform_users row available to own the test business");
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // Its own owner, not the first row in the table. Two reasons now: the wallet that pays for the
+  // unlock is keyed on the owner, and since threads became Spaces the owner is also the thread's
+  // admin — borrowing a real user made them silent admin of every test thread.
+  const [owner] = await masterKnex("platform_users")
+    .insert({
+      first_name: "Msg",
+      last_name: "Owner",
+      email: `msg-owner-${suffix}@example.com`,
+      account_status: 1,
+      is_business_account: true,
+    })
+    .returning("id");
   const [row] = await masterKnex("businesses")
     .insert({
       owner_id: owner.id,
@@ -174,7 +185,21 @@ async function makeRecipient(jobId: string, courseId: string, subject: string, o
     longitude: 151.21,
     enquiry_enabled: true,
   });
-  return { id: row.id, schemaUuid: row.schema_name };
+  // Enough for the handful of unlocks any one case does.
+  await creditService.grantCredits(owner.id, 5000, "free", "admin_grant", "messages test seed");
+  return { id: row.id, schemaUuid: row.schema_name, ownerId: owner.id };
+}
+
+/**
+ * Put a colleague on a thread. Since threads became Spaces, being in the business is no longer
+ * enough to see one — and the cases below are about per-agent state (unread cursors, stars,
+ * favourites), not about who may join. The membership rules themselves live in thread-members.ts.
+ */
+async function addToThread(distributionId: string, userId: number): Promise<void> {
+  await masterKnex("enquiry_thread_members")
+    .insert({ distribution_id: distributionId, platform_user_id: userId, role: "member", source: "manual" })
+    .onConflict(["distribution_id", "platform_user_id"])
+    .ignore();
 }
 
 async function distributionFor(enquiryId: string, businessId: number) {
@@ -192,7 +217,7 @@ async function scenario(businessCount: number) {
   const subject = `Msg Subject ${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const { jobId, courseId, institutionId } = await makeJobAndCourse(subject);
 
-  const businesses: Array<{ id: number; schemaUuid: string }> = [];
+  const businesses: Array<{ id: number; schemaUuid: string; ownerId: number }> = [];
   for (let i = 0; i < businessCount; i++) {
     businesses.push(await makeRecipient(jobId, courseId, subject, i * 0.01));
   }
@@ -247,7 +272,10 @@ async function scenario(businessCount: number) {
       await masterKnex("superadmin.extraction_courses").where({ job_id: jobId }).delete();
       await masterKnex("superadmin.extraction_jobs").where({ id: jobId }).delete();
       await masterKnex("platform_user_profiles").where({ user_id: studentId }).delete();
-      await masterKnex("platform_users").whereIn("id", [studentId, agentId]).delete();
+      // Owners last: businesses reference them. Wallets and ledger rows cascade off the user.
+      await masterKnex("platform_users")
+        .whereIn("id", [studentId, agentId, ...businesses.map((b) => b.ownerId)])
+        .delete();
     },
   };
 }
@@ -902,6 +930,8 @@ async function main() {
       await s.unlock(0);
       const distId = await s.dist(0);
 
+      await addToThread(distId, mateId);
+
       // The unlock greeting was sent BY this business, so it is not unread for it.
       eq((await messages.listThreadsForBusiness(asBiz(biz.id), s.agentId))[0]!.unread_count, 0, "own greeting");
 
@@ -974,6 +1004,7 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
+      await addToThread(distId, mateId);
       const mine = await messages.sendAsBusiness(distId, asBiz(biz.id), s.agentId, "Happy to help with that.");
       const studentMsg = await messages.sendAsStudent(distId, s.studentId, "Thanks!");
 
@@ -1017,6 +1048,7 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
+      await addToThread(distId, mateId);
       const studentMsg = await messages.sendAsStudent(distId, s.studentId, "Do you offer scholarships?");
 
       eq(await messages.toggleStarAsBusiness(studentMsg.id, asBiz(biz.id), s.agentId), true, "starred");
@@ -1093,6 +1125,8 @@ async function main() {
     try {
       await s.unlock(0);
       const distId = await s.dist(0);
+
+      await addToThread(distId, mateId);
 
       eq(await messages.toggleFavoriteAsBusiness(distId, asBiz(biz.id), s.agentId), true, "favourited");
       eq((await messages.listThreadsForBusiness(asBiz(biz.id), s.agentId))[0]!.is_favorite, true, "shows in my inbox");

@@ -60,4 +60,12 @@ export const messagesRealApi = {
 
   sendReply: (messageId: number, body: string, attachments: string[] = []): Promise<EnquiryMessage> =>
     httpPost(`/enquiry-messages/threads/${messageId}`, { body, attachments }),
+
+  /**
+   * 204, or 409 while the enquiry is still open — a student cannot walk out on a lead an agency is
+   * actively working. The UI only offers this once `thread.is_closed`, but the rule is the
+   * server's.
+   */
+  leaveThread: (distributionId: string): Promise<void> =>
+    httpPostNoContent(`/enquiry-messages/${distributionId}/leave`),
 };
