@@ -7,6 +7,11 @@ import * as service from "../superadmin/marketing/guides/services/guides.service
 export default async function guidesPublicModule(app: FastifyInstance) {
   app.register(
     async (scoped) => {
+      scoped.get("/", async (_req, reply) => {
+        const guides = await service.listPublishedGuides();
+        return reply.send(guides);
+      });
+
       scoped.get("/:slug", async (req, reply) => {
         const { slug } = req.params as { slug: string };
         const guide = await service.getPublicGuideBySlug(slug);
