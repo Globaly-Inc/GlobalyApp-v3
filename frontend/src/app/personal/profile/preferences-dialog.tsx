@@ -64,13 +64,16 @@ const schema: z.ZodType<FormState> = z
   });
 
 function toForm(profile: StudentProfile): FormState {
-  const startDate = profile.expected_start_date ? new Date(profile.expected_start_date) : null;
+  // Parsed via regex, not `new Date()` — a date-only string parses as UTC midnight, and the
+  // local getMonth()/getFullYear() getters then read a shifted date for any timezone west of
+  // UTC, silently selecting the wrong intake month.
+  const startDate = profile.expected_start_date?.match(/^(\d{4})-(\d{2})-\d{2}$/);
   return {
     destinations: (profile.preferred_destinations ?? []).map(String),
     fields: profile.preferred_fields ?? [],
     degreeLevel: profile.preferred_degree_levels?.[0] ?? "",
-    expectedStartMonth: startDate ? (INTAKE_MONTHS[startDate.getMonth()] ?? "") : "",
-    expectedStartYear: startDate ? String(startDate.getFullYear()) : "",
+    expectedStartMonth: startDate ? (INTAKE_MONTHS[Number(startDate[2]) - 1] ?? "") : "",
+    expectedStartYear: startDate?.[1] ?? "",
     budgetCurrency: profile.budget_currency ?? "",
     budgetMin: profile.budget_min != null ? String(profile.budget_min) : "",
     budgetMax: profile.budget_max != null ? String(profile.budget_max) : "",

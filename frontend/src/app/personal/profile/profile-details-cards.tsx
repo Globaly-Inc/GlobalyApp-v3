@@ -43,11 +43,11 @@ export function ProfileDetailsCards({
     .filter(Boolean)
     .join(", ");
 
+  if (readOnly) return null;
+
   return (
     <>
-      {/* Personal and contact info are always private — no toggle, matching the fixed "Always
-          private" pill (no onToggle passed to PrivacyBadge renders it disabled/dimmed). */}
-      <SectionCard icon={User} title="Personal Details" badge={<PrivacyBadge isPublic={false} />} onEdit={readOnly ? undefined : onEditPersonal}>
+      <SectionCard icon={User} title="Personal Details" badge={<PrivacyBadge isPublic={false} />} onEdit={onEditPersonal}>
         <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
           <Field label="Full Name" value={`${profile.first_name} ${profile.last_name}`} />
           <Field label="Date of Birth" value={formatDate(profile.date_of_birth)} />
@@ -56,17 +56,15 @@ export function ProfileDetailsCards({
         </div>
       </SectionCard>
 
-      <SectionCard icon={Mail} title="Contact Details" badge={<PrivacyBadge isPublic={false} />} onEdit={readOnly ? undefined : onEditContact}>
+      <SectionCard icon={Mail} title="Contact Details" badge={<PrivacyBadge isPublic={false} />} onEdit={onEditContact}>
         <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
           <div>
             <p className="text-xs text-muted-foreground">Email</p>
             <div className="mt-0.5 flex items-center gap-2">
               <p className="text-sm font-medium text-foreground">{profile.email}</p>
-              {!readOnly && (
-                <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={onEditContact}>
-                  Change
-                </Button>
-              )}
+              <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={onEditContact}>
+                Change
+              </Button>
             </div>
           </div>
           <Field

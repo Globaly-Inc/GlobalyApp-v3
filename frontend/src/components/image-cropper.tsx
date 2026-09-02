@@ -11,9 +11,10 @@ import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 
 type CropShape = "circle" | "square" | "cover";
 const DIMENSIONS: Record<CropShape, { canvasW: number; canvasH: number; cropW: number; cropH: number; outputW: number; outputH: number }> = {
-  circle: { canvasW: 280, canvasH: 280, cropW: 260, cropH: 260, outputW: 400, outputH: 400 },
-  square: { canvasW: 280, canvasH: 280, cropW: 260, cropH: 260, outputW: 400, outputH: 400 },
-  cover: { canvasW: 460, canvasH: 140, cropW: 440, cropH: 88, outputW: 1500, outputH: 300 },
+  circle: { canvasW: 360, canvasH: 360, cropW: 320, cropH: 320, outputW: 400, outputH: 400 },
+  square: { canvasW: 360, canvasH: 360, cropW: 320, cropH: 320, outputW: 400, outputH: 400 },
+  // Same 5:1 crop ratio as before, just scaled up for a bigger, easier-to-use dialog.
+  cover: { canvasW: 640, canvasH: 160, cropW: 600, cropH: 120, outputW: 1500, outputH: 300 },
 };
 
 export function ImageCropper({
@@ -40,14 +41,21 @@ export function ImageCropper({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const effectiveMinZoom = fitZoom * 0.7;
   const effectiveMaxZoom = fitZoom * 1.7;
 
   useEffect(() => {
     if (!open || !imageSrc) return;
+    setLoadError(false);
 
     const img = new Image();
+    // crossOrigin is required to export a canvas from any non-same-origin image, or the canvas
+    // is "tainted" and toBlob() throws. Callers loading an already-uploaded remote image route
+    // it through /api/image-proxy first (see cropped-file-input.tsx) so it's same-origin here —
+    // this attribute is then a no-op, kept only for a caller that ever passes a raw remote URL
+    // directly. onerror below still guards against a genuine load failure either way.
     img.crossOrigin = "anonymous";
     img.onload = () => {
       imageRef.current = img;
@@ -61,6 +69,7 @@ export function ImageCropper({
       setPosition({ x: 0, y: 0 });
       setImageLoaded(true);
     };
+    img.onerror = () => setLoadError(true);
     img.src = imageSrc;
 
     return () => setImageLoaded(false);
@@ -162,55 +171,65 @@ export function ImageCropper({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Crop Image</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-4">
           <div
-            className="relative cursor-move overflow-hidden rounded-lg bg-muted"
+            className="relative flex cursor-move items-center justify-center overflow-hidden rounded-lg bg-muted"
             style={{ width: canvasW, height: canvasH }}
           >
-            <canvas
-              ref={canvasRef}
-              width={canvasW}
-              height={canvasH}
-              onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
-              onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
-              onMouseUp={() => setIsDragging(false)}
-              onMouseLeave={() => setIsDragging(false)}
-              onTouchStart={(e) => handlePointerDown(e.touches[0]!.clientX, e.touches[0]!.clientY)}
-              onTouchMove={(e) => handlePointerMove(e.touches[0]!.clientX, e.touches[0]!.clientY)}
-              onTouchEnd={() => setIsDragging(false)}
-              className="touch-none"
-            />
+            {loadError ? (
+              <p className="max-w-xs px-4 text-center text-sm text-muted-foreground">
+                Couldn't load this image for editing. Try "Change image" and re-upload it instead.
+              </p>
+            ) : (
+              <canvas
+                ref={canvasRef}
+                width={canvasW}
+                height={canvasH}
+                onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
+                onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
+                onMouseUp={() => setIsDragging(false)}
+                onMouseLeave={() => setIsDragging(false)}
+                onTouchStart={(e) => handlePointerDown(e.touches[0]!.clientX, e.touches[0]!.clientY)}
+                onTouchMove={(e) => handlePointerMove(e.touches[0]!.clientX, e.touches[0]!.clientY)}
+                onTouchEnd={() => setIsDragging(false)}
+                className="touch-none"
+              />
+            )}
           </div>
 
-          <div className="flex w-full items-center gap-3">
-            <ZoomOut className="h-4 w-4 text-muted-foreground" />
-            <Slider
-              value={zoom}
-              onValueChange={(v) => setZoom(v as number)}
-              min={effectiveMinZoom}
-              max={effectiveMaxZoom}
-              step={0.01}
-              className="flex-1"
-            />
-            <ZoomIn className="h-4 w-4 text-muted-foreground" />
-            <Button variant="outline" size="icon" onClick={handleReset} type="button">
-              <RotateCcw className="h-4 w-4" />
-            </Button>
-          </div>
+          {!loadError && (
+            <>
+              <div className="flex w-full items-center gap-3">
+                <ZoomOut className="h-4 w-4 text-muted-foreground" />
+                <Slider
+                  value={zoom}
+                  onValueChange={(v) => setZoom(v as number)}
+                  min={effectiveMinZoom}
+                  max={effectiveMaxZoom}
+                  step={0.01}
+                  className="flex-1"
+                />
+                <ZoomIn className="h-4 w-4 text-muted-foreground" />
+                <Button variant="outline" size="icon" onClick={handleReset} type="button">
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </div>
 
-          <p className="text-xs text-muted-foreground">Drag to reposition, use the slider to zoom.</p>
+              <p className="text-xs text-muted-foreground">Drag to reposition, use the slider to zoom.</p>
+            </>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
-          <Button onClick={handleCrop} disabled={isSaving}>
+          <Button onClick={handleCrop} disabled={isSaving || loadError}>
             {isSaving ? "Saving..." : "Apply"}
           </Button>
         </DialogFooter>

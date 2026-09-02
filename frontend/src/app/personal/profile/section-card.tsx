@@ -32,7 +32,7 @@ export function SectionCard({
               size="icon-sm"
               onClick={onEdit}
               aria-label={`Edit ${title}`}
-              className="opacity-0 transition-opacity group-hover/card:opacity-100"
+              className="opacity-100 transition-opacity group-focus-within/card:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100"
             >
               <Pencil className="h-4 w-4" />
             </Button>
@@ -77,7 +77,7 @@ export function OneToManySection({
               size="sm"
               onClick={onAdd}
               aria-label={`Add ${title}`}
-              className="gap-1.5 opacity-0 transition-opacity group-hover/card:opacity-100"
+              className="gap-1.5 opacity-100 transition-opacity group-focus-within/card:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100"
             >
               <Plus className="h-3.5 w-3.5" />
               Add

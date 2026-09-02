@@ -43,7 +43,16 @@ export function ItemRow({
         {meta && <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">{meta}</div>}
       </div>
       {(onEdit || onDelete) && (
-        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        // Visible by default — touch and keyboard users have no hover state to reveal these
+        // otherwise. Only devices that actually support hover (a mouse) dim them until hover
+        // or keyboard focus, via the `(hover: hover)` media feature rather than a screen-size
+        // breakpoint, which would wrongly key this off viewport width instead of input type.
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-1 opacity-100 transition-opacity group-focus-within:opacity-100",
+            "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100",
+          )}
+        >
           {onEdit && (
             <Button variant="ghost" size="icon-xs" onClick={onEdit} aria-label="Edit">
               <Pencil className="h-3.5 w-3.5" />
