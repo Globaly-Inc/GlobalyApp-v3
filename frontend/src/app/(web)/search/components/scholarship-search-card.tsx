@@ -2,12 +2,13 @@ import Link from "next/link";
 import { Award, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Money } from "../../components/money";
 import { BASIS_LABEL, type SearchScholarship } from "../types";
 
 export function ScholarshipSearchCard({ scholarship: s }: Readonly<{ scholarship: SearchScholarship }>) {
   const location = [s.city, s.country].filter(Boolean).join(", ");
-  const awardLabel = s.coverage_amount != null
-    ? `${s.coverage_currency ?? ""} ${Number(s.coverage_amount).toLocaleString()}`.trim()
+  const award = s.coverage_amount != null
+    ? <Money amount={s.coverage_amount} currency={s.coverage_currency} />
     : s.coverage_type.replace(/_/g, " ");
 
   return (
@@ -34,7 +35,7 @@ export function ScholarshipSearchCard({ scholarship: s }: Readonly<{ scholarship
         </div>
 
         <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 px-4 py-3 flex flex-col justify-center gap-2">
-          <p className="text-sm font-bold text-primary leading-tight whitespace-nowrap capitalize">{awardLabel}</p>
+          <p className="text-sm font-bold text-primary leading-tight whitespace-nowrap capitalize">{award}</p>
           {s.deadline && <p className="text-xs text-muted-foreground">Deadline {new Date(s.deadline).toLocaleDateString()}</p>}
           <Link href={`/scholarships/${s.slug}`}>
             <Button size="sm" className="w-full text-xs h-9">View & Apply</Button>

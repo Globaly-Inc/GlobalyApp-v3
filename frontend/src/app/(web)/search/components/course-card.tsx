@@ -2,8 +2,10 @@ import Link from "next/link";
 import { Calendar, Clock, FileText, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { flagFromIso2 } from "@/lib/utils";
+import { CampusChips } from "./campus-chips";
 import { CourseCompareButton } from "./course-compare-button";
 import { FavouriteButton } from "./favourite-button";
+import { Money } from "../../components/money";
 import { coursePrice, formatDuration, formatNextIntake } from "../course-card-utils";
 import type { FeePeriod, SearchCourse } from "../types";
 
@@ -30,6 +32,7 @@ export function CourseCard({
   const nextIntakeLabel = formatNextIntake(course.next_intake_year, course.next_intake_month);
   const price = coursePrice(course, feePeriod);
   const flag = flagFromIso2(course.country_code ?? "");
+  const campuses = course.campus_locations ?? [];
 
   const feeCurrency = course.domestic_currency ?? course.international_currency ?? undefined;
   const annualTuition = course.domestic_fee_total != null
@@ -71,6 +74,7 @@ export function CourseCard({
                   {flag && <span aria-hidden="true">{flag}</span>}
                 </p>
               )}
+              <CampusChips locations={campuses} />
             </div>
 
             <div className="pointer-events-auto relative z-10 flex shrink-0 items-center gap-3 self-start">
@@ -103,7 +107,11 @@ export function CourseCard({
           {price ? (
             <div>
               <p className="text-xs text-muted-foreground">{price.label}</p>
-              <p className="text-xl font-bold leading-tight text-foreground">{price.amount}</p>
+              <Money
+                amount={price.amount}
+                currency={price.currency}
+                className="text-xl font-bold leading-tight text-foreground"
+              />
             </div>
           ) : (
             <p className="text-xs italic text-muted-foreground">Fees on enquiry</p>

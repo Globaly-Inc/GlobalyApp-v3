@@ -8,6 +8,8 @@ import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InstitutionLogo } from "@/components/institution-logo";
 import { useAuthState } from "@/app/auth/store/auth-slice";
+import { useCurrency } from "../components/currency-context";
+import { Money } from "../components/money";
 import { useCompareTray } from "../search/use-compare-tray";
 import { COMPARE_GROUPS } from "../search/compare-rows";
 import { getCourseBySlug } from "../search/api";
@@ -18,6 +20,7 @@ export function ComparePageView({
   exploreHref = "/search?tab=courses",
 }: Readonly<{ basePath?: string; exploreHref?: string }> = {}) {
   const { user, initializing } = useAuthState();
+  const { currency } = useCurrency();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -218,9 +221,11 @@ export function ComparePageView({
                     <p className="mt-1 truncate text-center text-xs text-muted-foreground print:truncate-none">{item.institutionName}</p>
                   )}
                   <p className="mt-1 text-center text-sm font-semibold text-foreground">
-                    {item.annualTuition != null
-                      ? `${item.feeCurrency ?? "AUD"} ${item.annualTuition.toLocaleString()}`
-                      : "$0.00"}
+                    {item.annualTuition != null ? (
+                      <Money amount={item.annualTuition} currency={item.feeCurrency ?? "AUD"} />
+                    ) : (
+                      "Fees on enquiry"
+                    )}
                   </p>
                 </th>
               ))}
@@ -269,7 +274,7 @@ export function ComparePageView({
                       {row.label}
                     </td>
                     {items.map((item) => {
-                      const value = row.get(item, details[item.slug]);
+                      const value = row.get(item, details[item.slug], currency);
                       return (
                         <td
                           key={item.id}

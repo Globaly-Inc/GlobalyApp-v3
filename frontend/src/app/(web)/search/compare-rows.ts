@@ -1,11 +1,15 @@
+import { DEFAULT_CURRENCY, displayMoney, normalizeCurrency, toAmount } from "../data/currency-rates";
 import { DEGREE_LABEL, type CompareCourseItem, type CourseDetail } from "./types";
 
-type CompareRow = { label: string; get: (i: CompareCourseItem, detail?: CourseDetail) => string };
+/** `currency` is the code the reader picked in the navbar — every row that shows money takes it. */
+type CompareRow = {
+  label: string;
+  get: (i: CompareCourseItem, detail?: CourseDetail, currency?: string) => string;
+};
 
-const formatTuition = (i: CompareCourseItem) =>
-  i.annualTuition != null
-    ? `${i.feeCurrency ?? "AUD"} ${i.annualTuition.toLocaleString()}`
-    : "Fees on enquiry";
+const formatTuition = (i: CompareCourseItem, _detail?: CourseDetail, currency = DEFAULT_CURRENCY) =>
+  displayMoney(toAmount(i.annualTuition), null, normalizeCurrency(i.feeCurrency ?? "AUD"), currency)?.text
+    ?? "Fees on enquiry";
 
 const eligibilityFor = (detail: CourseDetail | undefined, applicableTo: string) =>
   detail?.eligibility.find((e) => e.applicable_to === applicableTo || e.applicable_to === "both")?.description ?? "—";

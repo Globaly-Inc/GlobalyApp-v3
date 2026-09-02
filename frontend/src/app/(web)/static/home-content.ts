@@ -16,7 +16,8 @@ export const STUDENT_FEATURES = [
   // Parked with the eligibility checker (course-hero's Check Eligibility link is commented out too):
   // "Check your eligibility for desired programs",
   "Send enquiries to verified education counselors and institutions",
-  "Find scholarships for your desired degree",
+  // Parked until scholarships ship:
+  // "Find scholarships for your desired degree",
   "Get AI-powered education counselling",
   // Parked until the LMS ships (business/lms and personal/learning are ComingSoon pages):
   // "Earn certifications and badges through training programs",

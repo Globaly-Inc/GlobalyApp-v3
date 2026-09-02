@@ -22,6 +22,7 @@ import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
 import { NAV_LINKS } from "../const/index";
+import { CurrencySelect } from "./currency-select";
 
 /** Where a signed-in user's own profile lives. */
 function profileHref(user: AuthUser | null): string {
@@ -81,6 +82,7 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+          <CurrencySelect className="hidden sm:flex" />
           {!initializing && (
             user ? (
               <DropdownMenu>
@@ -196,6 +198,7 @@ export function Navbar() {
                   </Link>
                 ))}
                 <div className="mt-4 flex flex-col gap-2">
+                  <CurrencySelect className="w-full justify-between border-white/40 bg-transparent text-white hover:bg-white/10 hover:text-white sm:hidden" />
                   {!initializing && (
                     user ? (
                       // The drawer replaces the dropdown below lg, so it offers the same destinations rather
