@@ -1,4 +1,6 @@
 import type { LucideIcon } from "lucide-react";
+import type { AdminRole } from "./apis/types";
+import { ADMIN_ROLES } from "./consts";
 import {
   BarChart3,
   Settings,
@@ -33,28 +35,34 @@ export interface AdminNavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  roles?: AdminRole[];
 }
 
 export interface AdminNavGroup {
   label: string;
   icon: LucideIcon;
   items: AdminNavItem[];
+  roles?: AdminRole[];
 }
+
+const GENERAL_ADMIN: AdminRole[] = ["super_admin", "admin", "moderator"];
 
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     icon: BarChart3,
     label: "Overview",
+    roles: GENERAL_ADMIN,
     items: [{ icon: LayoutDashboard, label: "Dashboard", href: "/admin/overview" }],
   },
   {
     icon: Building2,
     label: "Platform",
+    roles: GENERAL_ADMIN,
     items: [
       { icon: Building2, label: "Businesses", href: "/admin/platform/businesses" },
       { icon: Users, label: "Users", href: "/admin/platform/users" },
       { icon: Layers, label: "Categories", href: "/admin/platform/categories" },
-      { icon: Globe, label: "Countries", href: "/admin/platform/countries" },
+      { icon: Globe, label: "Countries", href: "/admin/platform/countries", roles: ADMIN_ROLES },
       // { icon: Settings, label: "Feature flags", href: "/admin/platform/feature-flags" },
     ],
   },
@@ -71,6 +79,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     icon: Shield,
     label: "Monitoring",
+    roles: GENERAL_ADMIN,
     items: [
       // { icon: Flag, label: "Moderation", href: "/admin/monitoring/moderation" },
       // { icon: GraduationCap, label: "Training", href: "/admin/monitoring/training" },
@@ -86,6 +95,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     icon: BookMarked,
     label: "Marketing",
+    roles: GENERAL_ADMIN,
     items: [
       { icon: BookMarked, label: "Blogs", href: "/admin/marketing/blog" },
       { icon: BookOpen, label: "Guides", href: "/admin/marketing/guides" },
@@ -97,6 +107,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     icon: Coins,
     label: "Revenue",
+    roles: GENERAL_ADMIN,
     items: [
       { icon: CreditCard, label: "Credits", href: "/admin/revenue/subscriptions/credits" },
       { icon: CreditCard, label: "Subscriptions", href: "/admin/revenue/subscriptions" },
@@ -105,13 +116,17 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     icon: Settings,
     label: "Settings",
+    roles: GENERAL_ADMIN,
     items: [{ icon: Settings, label: "Integrations", href: "/admin/settings/integrations" }],
   },
 ];
 
 export function getVisibleNavGroups(role: string | null | undefined): AdminNavGroup[] {
-  if (role === "data_admin") return ADMIN_NAV_GROUPS.filter((g) => g.label === "Data");
-  return ADMIN_NAV_GROUPS;
+  const canSee = (roles?: AdminRole[]) => !roles || !role || roles.includes(role as AdminRole);
+  return ADMIN_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => canSee(item.roles ?? group.roles)),
+  })).filter((group) => group.items.length > 0);
 }
 
 /** Exact match, otherwise prefix match (query strings stripped first). */
