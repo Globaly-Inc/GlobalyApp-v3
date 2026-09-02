@@ -49,6 +49,10 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
   GEMINI_MODEL_LITE: z.string().default("gemini-3.5-flash-lite"),
+  // LLM fallback — used when Gemini is unavailable (billing hold, rate limit exhausted, etc.)
+  // Set either OPENROUTER_API_KEY or OPENAI_API_KEY; OpenRouter takes precedence if both are set.
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().default("anthropic/claude-haiku-4.5"),
   // Diagnostic kill-switch for the counsellor's tool loop (Phase 7). "false" reverts every
   // turn to the pre-Phase-7 path (searchAll + plain streamChat) — the A/B for the
   // one-turn-lag investigation. Remove once the lag's root cause is confirmed.

@@ -136,8 +136,8 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
         })}
       </div>
       {selected.length > 0 && (
-        <Button size="sm" className="self-start rounded-full px-4" onClick={sendSelected}>
-          Ask ({selected.length})
+        <Button size="lg" className="self-start rounded-full px-6" onClick={sendSelected}>
+          Send ({selected.length})
         </Button>
       )}
     </div>
@@ -203,7 +203,7 @@ function AssistantTurn({
         {content && <MessageMarkdown text={content} />}
         {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}
         {cards.length > 0 && (
-          <div className={CARD_GRID}>
+          <div className={cards.length === 1 ? "w-full max-w-[300px]" : CARD_GRID}>
             {cards.map((card, i) => (
               <CourseCard key={card.id ?? i} card={card} />
             ))}
