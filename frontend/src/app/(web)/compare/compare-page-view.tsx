@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InstitutionLogo } from "@/components/institution-logo";
@@ -19,8 +19,31 @@ export function ComparePageView({
 }: Readonly<{ basePath?: string; exploreHref?: string }> = {}) {
   const { user, initializing } = useAuthState();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const { items, remove, clear } = useCompareTray();
+  const { items, add, remove, clear } = useCompareTray();
+
+  // Seed store when opened in a new tab — store is in-memory, doesn't survive tab boundary.
+  // Primary: localStorage (set by CompareTray before opening the tab — works for all courses).
+  // Fallback: ?slugs= param (for slug-based courses from the search page).
+  useEffect(() => {
+    if (items.length > 0) return;
+    const stored = localStorage.getItem("compare_items");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          parsed.forEach((item) => add(item));
+          localStorage.removeItem("compare_items");
+          return;
+        }
+      } catch { /* fall through to slug param */ }
+    }
+    const slugs = searchParams.get("slugs");
+    if (!slugs) return;
+    slugs.split(",").filter(Boolean).forEach((slug) => add({ id: slug, slug, name: slug }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [details, setDetails] = useState<Record<string, CourseDetail>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const firstColRef = useRef<HTMLTableCellElement>(null);

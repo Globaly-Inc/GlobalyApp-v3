@@ -107,6 +107,8 @@ export const InstitutionPatchSchema = z.object({
   city: z.string().nullable(),
   address: z.string().nullable(),
   postcode: z.string().nullable(),
+  logo_url: z.string().nullable(),
+  cover_url: z.string().nullable(),
 }).partial().strict();
 
 export const EnquirySettingsPatchSchema = z.object({

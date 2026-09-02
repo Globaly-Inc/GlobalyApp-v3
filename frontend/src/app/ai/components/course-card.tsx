@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, Check, Clock, MapPin, Plus } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { CalendarDays, Check, Clock, GraduationCap, MapPin, Monitor, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
@@ -10,13 +9,10 @@ import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
 import { InstitutionLogo } from "@/components/institution-logo";
 
-type CourseCardProps = {
-  card: CourseCardType;
-};
+type CourseCardProps = { card: CourseCardType };
 
 function prettify(value: string): string {
-  const spaced = value.replace(/_/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  return value.replace(/_/g, " ").trim().replace(/^\w/, (c) => c.toUpperCase());
 }
 
 function formatFee(amount: number | null, currency: string): string | null {
@@ -27,8 +23,7 @@ function formatFee(amount: number | null, currency: string): string | null {
 
 function degreeLevelOf(card: CourseCardType): string {
   if (card.degree_level) return prettify(card.degree_level);
-  const m = /\b(Graduate Certificate|Graduate Diploma|Bachelor|Master|Doctor|PhD|Diploma|Certificate|Associate)\b/i
-    .exec(card.course_name);
+  const m = /\b(Graduate Certificate|Graduate Diploma|Bachelor|Master|Doctor|PhD|Diploma|Certificate|Associate)\b/i.exec(card.course_name);
   return m?.[0] ?? "";
 }
 
@@ -55,115 +50,125 @@ export function CourseCard({ card }: CourseCardProps) {
   const fee = formatFee(card.annual_tuition_fee, card.currency);
   const place = [card.city, card.country].filter(Boolean).join(", ");
   const nextIntake = card.intakes[0] ?? null;
+  const studyMode = card.study_modes?.[0] ? prettify(card.study_modes[0]) : null;
+  const degreeLabel = degreeLevelOf(card);
 
-  // Card-wide link: internal slug wins, external source_url as fallback.
   const href = card.slug ? `/course/${card.slug}` : (card.source_url ?? null);
   const isExternal = !card.slug && !!card.source_url;
 
   return (
-    <Card
-      size="sm"
-      className="group relative flex h-full w-full flex-col gap-0 overflow-hidden py-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
-    >
-      {/* Card-wide clickable overlay — sits behind interactive children */}
+    <div className="group relative flex h-72 w-full flex-col overflow-hidden rounded-2xl shadow-md ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl">
+      {/* Card-wide link */}
       {href && (
         isExternal
-          ? <a href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-0" aria-label={card.course_name} />
-          : <Link href={href} className="absolute inset-0 z-0" aria-label={card.course_name} />
+          ? <a href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" aria-label={card.course_name} />
+          : <Link href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" aria-label={card.course_name} />
       )}
 
-      {/* Cover image hero — falls back to a gradient brand wash when the institution has no cover */}
+      {/* Full-bleed background */}
       {card.institution_cover_url ? (
-        <div className="relative h-28 w-full overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={card.institution_cover_url}
-            alt={card.institution_name}
-            className="h-full w-full object-cover"
-          />
-          <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-          <div className="absolute bottom-2.5 left-3">
-            <InstitutionLogo name={card.institution_name} logoUrl={card.institution_logo_url} className="size-10 ring-2 ring-white/80" />
-          </div>
-        </div>
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={card.institution_cover_url}
+          alt={card.institution_name}
+          className="absolute inset-0 h-full w-full object-cover scale-100 transition-all duration-500 group-hover:scale-105 group-hover:blur-[2px]"
+        />
       ) : (
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-br from-primary/12 via-primary/5 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-primary/40" />
       )}
 
-      {/* Course name */}
-      <div className={card.institution_cover_url ? "px-4 pt-3" : "relative px-4 pt-4"}>
-        <p
-          className="line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight text-foreground"
-          title={card.course_name}
-        >
-          {card.course_name}
-        </p>
-        {degreeLevelOf(card) && (
-          <Badge variant="secondary" className="mt-1.5 border-0 bg-primary/10 text-primary">
-            {degreeLevelOf(card)}
-          </Badge>
-        )}
+      {/* Base scrim */}
+      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+      {/* Hover scrim */}
+      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/40 to-black/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+      {/* Logo — top-left */}
+      <div className="relative z-20 p-3 pointer-events-none">
+        <InstitutionLogo
+          name={card.institution_name}
+          logoUrl={card.institution_logo_url}
+          className="size-10 rounded-xl ring-2 ring-white/30 shadow-md"
+        />
       </div>
 
-      {/* Institution + location */}
-      <div className={`flex items-center gap-2.5 px-4 pt-3 ${card.institution_cover_url ? "" : "relative"}`}>
-        {!card.institution_cover_url && (
-          <InstitutionLogo name={card.institution_name} logoUrl={card.institution_logo_url} />
-        )}
-        <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-foreground" title={card.institution_name}>
-            {card.institution_name}
-          </p>
-          {place && (
-            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-              <MapPin className="size-3 shrink-0" />
-              <span className="truncate">{place}</span>
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Tuition strip */}
-      {fee && (
-        <div className="mx-4 mt-3 flex items-baseline justify-between rounded-lg border border-primary/15 bg-primary/[0.06] px-3 py-2">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Tuition</span>
-          <span className="text-sm font-semibold tabular-nums text-foreground">
-            {fee}
-            <span className="ml-1 text-[10px] font-normal text-muted-foreground">/ year</span>
-          </span>
-        </div>
-      )}
-
-      {/* Duration + next intake inline */}
-      {(card.duration || nextIntake) && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3">
-          {card.duration && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Clock className="size-3.5 shrink-0" />
-              {card.duration}
-            </span>
-          )}
-          {nextIntake && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <CalendarDays className="size-3.5 shrink-0" />
-              Intake: {nextIntake}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Compare button — relative + z-10 so it sits above the card-wide link overlay */}
-      <div className="relative z-10 mt-auto flex justify-end border-t bg-muted/20 px-4 py-2">
+      {/* Compare button — top-right, above the link overlay */}
+      <div className="absolute right-3 top-3 z-20">
         <Button
-          variant={added ? "secondary" : "outline"}
+          variant="ghost"
           size="sm"
-          className="h-7 text-xs"
+          className={`h-7 gap-1 rounded-full px-2.5 text-[11px] backdrop-blur-sm ${
+            added
+              ? "bg-white/30 text-white"
+              : "bg-black/30 text-white/80 hover:bg-white/20 hover:text-white"
+          }`}
           disabled={added || compare.isFull}
           onClick={() => compare.add(compareItem)}
         >
-          {added ? <><Check /> Added</> : <><Plus /> Compare</>}
+          {added ? <><Check className="size-3" /> Added</> : <><Plus className="size-3" /> Compare</>}
         </Button>
       </div>
-    </Card>
+
+      {/* Content overlay — anchored to bottom, pointer-events-none so link overlay handles clicks */}
+      <div className="relative z-20 mt-auto flex flex-col gap-1 p-4 pointer-events-none">
+        {/* Institution + location */}
+        <div className="flex items-center gap-1 text-[11px] text-white/80">
+          <span className="font-semibold text-white">{card.institution_name}</span>
+          {place && (
+            <>
+              <span>·</span>
+              <MapPin className="size-3 shrink-0" />
+              <span className="truncate">{place}</span>
+            </>
+          )}
+        </div>
+
+        {/* Course name */}
+        <p className="line-clamp-2 text-base font-bold leading-snug text-white drop-shadow" title={card.course_name}>
+          {card.course_name}
+        </p>
+
+        {/* Badges */}
+        {(degreeLabel || studyMode) && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {degreeLabel && (
+              <Badge className="gap-0.5 border-0 bg-white/20 px-1.5 py-0 text-[10px] font-medium text-white backdrop-blur-sm">
+                <GraduationCap className="size-2.5" />{degreeLabel}
+              </Badge>
+            )}
+            {studyMode && (
+              <Badge className="gap-0.5 border-0 bg-white/20 px-1.5 py-0 text-[10px] font-medium text-white backdrop-blur-sm">
+                <Monitor className="size-2.5" />{studyMode}
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Divider */}
+        {(fee || card.duration || nextIntake) && (
+          <div className="mt-1.5 border-t border-white/20" />
+        )}
+
+        {/* Fee + meta */}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {card.duration && (
+              <span className="flex items-center gap-1 text-[11px] text-white/85">
+                <Clock className="size-3 shrink-0" />{card.duration}
+              </span>
+            )}
+            {nextIntake && (
+              <span className="flex items-center gap-1 text-[11px] text-white/85">
+                <CalendarDays className="size-3 shrink-0" />Intake: {nextIntake}
+              </span>
+            )}
+          </div>
+          {fee && (
+            <span className="shrink-0 text-sm font-bold tabular-nums text-white">
+              {fee}<span className="ml-0.5 text-[10px] font-normal text-white/70">/yr</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

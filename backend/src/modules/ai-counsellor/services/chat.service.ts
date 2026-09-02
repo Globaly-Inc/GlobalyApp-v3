@@ -14,6 +14,7 @@ import * as creditService from "./credit.service.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import type { EmbedContext } from "./embed.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
+import * as storage from "../../../shared/storage/storageService.js";
 
 const logger = createChildLogger("chat-service");
 
@@ -22,23 +23,23 @@ const HISTORY_LIMIT = 20;
 /** Attach the institution's logo/city to each card from the DB, keyed on the course
  * id the model cited. Decorative, so a lookup failure leaves the cards untouched
  * rather than costing the student their answer. */
-async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedCard[]> {
+export async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedCard[]> {
   if (!cards.length) return cards;
   try {
     const media = await knowledgeRepo.institutionMediaByCourseIds(cards.map((c) => c.id));
     if (!media.length) return cards;
     const byCourseId = new Map(media.map((m) => [m.course_id, m]));
-    return cards.map((card) => {
+    return Promise.all(cards.map(async (card) => {
       const m = byCourseId.get(card.id);
       if (!m) return card;
       return {
         ...card,
         institution_logo_url: m.logo_url,
-        institution_cover_url: m.cover_url,
+        institution_cover_url: await storage.resolvePreviewUrl(m.cover_url),
         institution_website: m.website,
         city: card.city ?? m.city ?? undefined,
       };
-    });
+    }));
   } catch (err) {
     logger.warn("Card logo enrichment failed", { err: String(err) });
     return cards;
