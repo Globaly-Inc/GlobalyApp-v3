@@ -12,7 +12,7 @@ export type CroppedFileInputHandle = { pick: () => void };
 export const CroppedFileInput = forwardRef<
   CroppedFileInputHandle,
   Readonly<{
-    cropShape?: "circle" | "square";
+    cropShape?: "circle" | "square" | "cover";
     onCropped: (file: File) => void;
     isSaving?: boolean;
   }>

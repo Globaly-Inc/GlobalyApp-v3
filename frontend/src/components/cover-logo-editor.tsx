@@ -41,11 +41,15 @@ export function CoverLogoEditor({
   const logoPickerRef = useRef<CroppedFileInputHandle>(null);
 
   return (
-    <div className={cn("relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48", className)}>
+    <div className={cn("relative h-40 overflow-hidden bg-muted sm:h-48", className)}>
       {coverUrl && (
+        // object-contain: never scales past 1:1, so it can't "zoom" into the image — the crop
+        // dialog's 5:1 output keeps it wide enough that the leftover top/bottom gap stays small
+        // at realistic banner widths.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full select-none object-contain" draggable={false} />
       )}
+      {coverUrl && <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />}
       {onCoverFile && (
         <>
           <Button
@@ -58,7 +62,7 @@ export function CoverLogoEditor({
             {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
             Edit cover
           </Button>
-          <CroppedFileInput ref={coverPickerRef} cropShape="square" onCropped={onCoverFile} isSaving={coverUploading} />
+          <CroppedFileInput ref={coverPickerRef} cropShape="cover" onCropped={onCoverFile} isSaving={coverUploading} />
         </>
       )}
 

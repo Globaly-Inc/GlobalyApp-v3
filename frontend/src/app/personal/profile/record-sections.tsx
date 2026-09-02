@@ -3,12 +3,17 @@
 import { useState } from "react";
 import { GraduationCap, Briefcase, Award, Languages } from "lucide-react";
 import { PrivacyBadge } from "@/components/privacy-badge";
+import { Badge } from "@/components/ui/badge";
 import { OneToManySection } from "./section-card";
 import { ItemRow } from "./item-row";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import { useTests } from "./use-tests";
 import { testImage } from "@/lib/tests-catalog";
 import type { AcademicTest, LanguageTest, Qualification, WorkExperience } from "../apis/types";
+
+function subScoreLabel(key: string) {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 function formatMonthYear(value: string | null): string | null {
   if (!value) return null;
@@ -22,10 +27,6 @@ function formatRange(start: string | null, end: string | null, isCurrent: boolea
   return `${formatMonthYear(start) ?? "—"} – ${isCurrent ? "Present" : (formatMonthYear(end) ?? "—")}`;
 }
 
-function formatDate(value: string | null) {
-  return value ? value.split("T")[0] : null;
-}
-
 export function RecordSections({
   qualifications,
   workExperiences,
@@ -33,6 +34,7 @@ export function RecordSections({
   languageTests,
   isSectionPublic,
   toggleVisibility,
+  readOnly = false,
   onAddQualification,
   onEditQualification,
   onDeleteQualification,
@@ -52,6 +54,8 @@ export function RecordSections({
   languageTests: LanguageTest[];
   isSectionPublic: (key: string) => boolean;
   toggleVisibility: (key: string) => void;
+  /** Preview mode: no add/edit/delete or privacy-toggle controls anywhere in this section. */
+  readOnly?: boolean;
   onAddQualification: () => void;
   onEditQualification: (item: Qualification) => void;
   onDeleteQualification: (id: string) => void;
@@ -75,19 +79,29 @@ export function RecordSections({
         icon={GraduationCap}
         title="Education Background"
         count={qualifications.length}
-        onAdd={onAddQualification}
+        onAdd={readOnly ? undefined : onAddQualification}
         emptyText="No education history added yet."
-        badge={<PrivacyBadge isPublic={isSectionPublic("education")} onToggle={() => toggleVisibility("education")} />}
+        badge={<PrivacyBadge isPublic={isSectionPublic("education")} onToggle={readOnly ? undefined : () => toggleVisibility("education")} />}
       >
-        <div className="space-y-2">
+        <div className="space-y-3">
           {qualifications.map((q) => (
             <ItemRow
               key={q.id}
-              title={q.degree_title || q.qualification_type || "Qualification"}
-              subtitle={[q.institution_name, q.subject_area].filter(Boolean).join(" · ")}
-              meta={formatRange(q.start_date, q.end_date, q.is_current)}
-              onEdit={() => onEditQualification(q)}
-              onDelete={() => setPendingDelete({ label: "qualification", onConfirm: () => onDeleteQualification(q.id) })}
+              icon={GraduationCap}
+              title={q.degree_title || "Qualification"}
+              titleBadge={q.qualification_type && <Badge variant="secondary">{q.qualification_type}</Badge>}
+              subtitle={q.institution_name}
+              meta={
+                <>
+                  {q.subject_area && <span>{q.subject_area}</span>}
+                  {formatRange(q.start_date, q.end_date, q.is_current) && (
+                    <span>{formatRange(q.start_date, q.end_date, q.is_current)}</span>
+                  )}
+                  {q.grade_value && <span>{q.grading_system ?? "GPA"}: {q.grade_value}</span>}
+                </>
+              }
+              onEdit={readOnly ? undefined : () => onEditQualification(q)}
+              onDelete={readOnly ? undefined : () => setPendingDelete({ label: "qualification", onConfirm: () => onDeleteQualification(q.id) })}
             />
           ))}
         </div>
@@ -97,19 +111,22 @@ export function RecordSections({
         icon={Briefcase}
         title="Work Experience"
         count={workExperiences.length}
-        onAdd={onAddWorkExperience}
-        emptyText="No work experience added yet."
-        badge={<PrivacyBadge isPublic={isSectionPublic("work_experience")} onToggle={() => toggleVisibility("work_experience")} />}
+        onAdd={readOnly ? undefined : onAddWorkExperience}
+        emptyText="No work experiences added yet."
+        badge={<PrivacyBadge isPublic={isSectionPublic("work_experience")} onToggle={readOnly ? undefined : () => toggleVisibility("work_experience")} />}
       >
-        <div className="space-y-2">
+        <div className="space-y-3">
           {workExperiences.map((w) => (
             <ItemRow
               key={w.id}
+              icon={Briefcase}
               title={w.job_title}
               subtitle={w.organization_name}
-              meta={formatRange(w.start_date, w.end_date, w.is_current)}
-              onEdit={() => onEditWorkExperience(w)}
-              onDelete={() => setPendingDelete({ label: "work experience", onConfirm: () => onDeleteWorkExperience(w.id) })}
+              meta={formatRange(w.start_date, w.end_date, w.is_current) && (
+                <span>{formatRange(w.start_date, w.end_date, w.is_current)}</span>
+              )}
+              onEdit={readOnly ? undefined : () => onEditWorkExperience(w)}
+              onDelete={readOnly ? undefined : () => setPendingDelete({ label: "work experience", onConfirm: () => onDeleteWorkExperience(w.id) })}
             />
           ))}
         </div>
@@ -117,22 +134,36 @@ export function RecordSections({
 
       <OneToManySection
         icon={Award}
-        title="Academic Test"
+        title="Academic Tests"
         count={academicTests.length}
-        onAdd={onAddAcademicTest}
+        onAdd={readOnly ? undefined : onAddAcademicTest}
         emptyText="No academic test scores added yet."
-        badge={<PrivacyBadge isPublic={isSectionPublic("academic_tests")} onToggle={() => toggleVisibility("academic_tests")} />}
+        badge={<PrivacyBadge isPublic={isSectionPublic("academic_tests")} onToggle={readOnly ? undefined : () => toggleVisibility("academic_tests")} />}
       >
-        <div className="space-y-2">
+        <div className="space-y-3">
           {academicTests.map((t) => (
             <ItemRow
               key={t.id}
-              title={t.test_type ?? "Test"}
+              icon={Award}
               imageUrl={testImage(t.test_type, tests)}
-              subtitle={t.test_status === "completed" ? `Score: ${t.overall_score ?? "—"}` : "Awaiting results"}
-              meta={formatDate(t.test_date)}
-              onEdit={() => onEditAcademicTest(t)}
-              onDelete={() => setPendingDelete({ label: "academic test", onConfirm: () => onDeleteAcademicTest(t.id) })}
+              title={t.test_type ?? "Test"}
+              titleBadge={
+                t.test_status === "completed" ? (
+                  <Badge variant="secondary">Score: {t.overall_score ?? "—"}</Badge>
+                ) : (
+                  <Badge variant="secondary">Awaiting results</Badge>
+                )
+              }
+              meta={
+                t.sub_scores &&
+                Object.entries(t.sub_scores).map(([key, value]) => (
+                  <span key={key} className="capitalize">
+                    {subScoreLabel(key)}: {value}
+                  </span>
+                ))
+              }
+              onEdit={readOnly ? undefined : () => onEditAcademicTest(t)}
+              onDelete={readOnly ? undefined : () => setPendingDelete({ label: "academic test", onConfirm: () => onDeleteAcademicTest(t.id) })}
             />
           ))}
         </div>
@@ -140,22 +171,36 @@ export function RecordSections({
 
       <OneToManySection
         icon={Languages}
-        title="Language Test"
+        title="Language Tests"
         count={languageTests.length}
-        onAdd={onAddLanguageTest}
+        onAdd={readOnly ? undefined : onAddLanguageTest}
         emptyText="No language test scores added yet."
-        badge={<PrivacyBadge isPublic={isSectionPublic("language_tests")} onToggle={() => toggleVisibility("language_tests")} />}
+        badge={<PrivacyBadge isPublic={isSectionPublic("language_tests")} onToggle={readOnly ? undefined : () => toggleVisibility("language_tests")} />}
       >
-        <div className="space-y-2">
+        <div className="space-y-3">
           {languageTests.map((t) => (
             <ItemRow
               key={t.id}
-              title={t.test_type ?? "Test"}
+              icon={Languages}
               imageUrl={testImage(t.test_type, tests)}
-              subtitle={t.test_status === "completed" ? `Score: ${t.overall_score ?? "—"}` : "Awaiting results"}
-              meta={formatDate(t.test_date)}
-              onEdit={() => onEditLanguageTest(t)}
-              onDelete={() => setPendingDelete({ label: "language test", onConfirm: () => onDeleteLanguageTest(t.id) })}
+              title={t.test_type ?? "Test"}
+              titleBadge={
+                t.test_status === "completed" ? (
+                  <Badge variant="secondary">Score: {t.overall_score ?? "—"}</Badge>
+                ) : (
+                  <Badge variant="secondary">Awaiting results</Badge>
+                )
+              }
+              meta={
+                t.sub_scores &&
+                Object.entries(t.sub_scores).map(([key, value]) => (
+                  <span key={key} className="capitalize">
+                    {subScoreLabel(key)}: {value}
+                  </span>
+                ))
+              }
+              onEdit={readOnly ? undefined : () => onEditLanguageTest(t)}
+              onDelete={readOnly ? undefined : () => setPendingDelete({ label: "language test", onConfirm: () => onDeleteLanguageTest(t.id) })}
             />
           ))}
         </div>

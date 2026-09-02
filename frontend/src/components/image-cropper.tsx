@@ -9,9 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 
-const CANVAS_SIZE = 280;
-const CROP_SIZE = 260;
-const OUTPUT_SIZE = 400;
+type CropShape = "circle" | "square" | "cover";
+const DIMENSIONS: Record<CropShape, { canvasW: number; canvasH: number; cropW: number; cropH: number; outputW: number; outputH: number }> = {
+  circle: { canvasW: 280, canvasH: 280, cropW: 260, cropH: 260, outputW: 400, outputH: 400 },
+  square: { canvasW: 280, canvasH: 280, cropW: 260, cropH: 260, outputW: 400, outputH: 400 },
+  cover: { canvasW: 460, canvasH: 140, cropW: 440, cropH: 88, outputW: 1500, outputH: 300 },
+};
 
 export function ImageCropper({
   open,
@@ -25,9 +28,10 @@ export function ImageCropper({
   onOpenChange: (open: boolean) => void;
   imageSrc: string;
   onCropComplete: (croppedBlob: Blob) => void;
-  cropShape?: "circle" | "square";
+  cropShape?: CropShape;
   isSaving?: boolean;
 }>) {
+  const { canvasW, canvasH, cropW, cropH, outputW, outputH } = DIMENSIONS[cropShape];
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -47,9 +51,10 @@ export function ImageCropper({
     img.crossOrigin = "anonymous";
     img.onload = () => {
       imageRef.current = img;
-      const baseScale = Math.min(CANVAS_SIZE / img.width, CANVAS_SIZE / img.height);
-      const scaledSize = Math.min(img.width, img.height) * baseScale;
-      const zoomToFillCrop = CROP_SIZE / scaledSize;
+      const baseScale = Math.min(canvasW / img.width, canvasH / img.height);
+      const scaledW = img.width * baseScale;
+      const scaledH = img.height * baseScale;
+      const zoomToFillCrop = Math.max(cropW / scaledW, cropH / scaledH);
       const calculatedFitZoom = Math.max(1, zoomToFillCrop);
       setFitZoom(calculatedFitZoom);
       setZoom(calculatedFitZoom);
@@ -59,7 +64,7 @@ export function ImageCropper({
     img.src = imageSrc;
 
     return () => setImageLoaded(false);
-  }, [imageSrc, open]);
+  }, [imageSrc, open, canvasW, canvasH, cropW, cropH]);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -67,26 +72,26 @@ export function ImageCropper({
     const img = imageRef.current;
     if (!canvas || !ctx || !img) return;
 
-    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.clearRect(0, 0, canvasW, canvasH);
 
-    const scale = Math.min(CANVAS_SIZE / img.width, CANVAS_SIZE / img.height) * zoom;
+    const scale = Math.min(canvasW / img.width, canvasH / img.height) * zoom;
     const scaledWidth = img.width * scale;
     const scaledHeight = img.height * scale;
-    const x = (CANVAS_SIZE - scaledWidth) / 2 + position.x;
-    const y = (CANVAS_SIZE - scaledHeight) / 2 + position.y;
+    const x = (canvasW - scaledWidth) / 2 + position.x;
+    const y = (canvasH - scaledHeight) / 2 + position.y;
     ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
 
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.fillRect(0, 0, canvasW, canvasH);
 
     ctx.globalCompositeOperation = "destination-out";
     ctx.beginPath();
-    const cropX = (CANVAS_SIZE - CROP_SIZE) / 2;
-    const cropY = (CANVAS_SIZE - CROP_SIZE) / 2;
+    const cropX = (canvasW - cropW) / 2;
+    const cropY = (canvasH - cropH) / 2;
     if (cropShape === "circle") {
-      ctx.arc(CANVAS_SIZE / 2, CANVAS_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
+      ctx.arc(canvasW / 2, canvasH / 2, cropW / 2, 0, Math.PI * 2);
     } else {
-      ctx.rect(cropX, cropY, CROP_SIZE, CROP_SIZE);
+      ctx.rect(cropX, cropY, cropW, cropH);
     }
     ctx.fill();
     ctx.globalCompositeOperation = "source-over";
@@ -95,12 +100,12 @@ export function ImageCropper({
     ctx.lineWidth = 2;
     ctx.beginPath();
     if (cropShape === "circle") {
-      ctx.arc(CANVAS_SIZE / 2, CANVAS_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
+      ctx.arc(canvasW / 2, canvasH / 2, cropW / 2, 0, Math.PI * 2);
     } else {
-      ctx.rect(cropX, cropY, CROP_SIZE, CROP_SIZE);
+      ctx.rect(cropX, cropY, cropW, cropH);
     }
     ctx.stroke();
-  }, [zoom, position, cropShape]);
+  }, [zoom, position, cropShape, canvasW, canvasH, cropW, cropH]);
 
   useEffect(() => {
     if (imageLoaded) drawCanvas();
@@ -125,30 +130,31 @@ export function ImageCropper({
     if (!img) return;
 
     const outputCanvas = document.createElement("canvas");
-    outputCanvas.width = OUTPUT_SIZE;
-    outputCanvas.height = OUTPUT_SIZE;
+    outputCanvas.width = outputW;
+    outputCanvas.height = outputH;
     const ctx = outputCanvas.getContext("2d");
     if (!ctx) return;
 
-    const scale = Math.min(CANVAS_SIZE / img.width, CANVAS_SIZE / img.height) * zoom;
+    const scale = Math.min(canvasW / img.width, canvasH / img.height) * zoom;
     const scaledWidth = img.width * scale;
     const scaledHeight = img.height * scale;
-    const imgX = (CANVAS_SIZE - scaledWidth) / 2 + position.x;
-    const imgY = (CANVAS_SIZE - scaledHeight) / 2 + position.y;
-    const cropX = (CANVAS_SIZE - CROP_SIZE) / 2;
-    const cropY = (CANVAS_SIZE - CROP_SIZE) / 2;
+    const imgX = (canvasW - scaledWidth) / 2 + position.x;
+    const imgY = (canvasH - scaledHeight) / 2 + position.y;
+    const cropX = (canvasW - cropW) / 2;
+    const cropY = (canvasH - cropH) / 2;
     const srcX = (cropX - imgX) / scale;
     const srcY = (cropY - imgY) / scale;
-    const srcSize = CROP_SIZE / scale;
+    const srcW = cropW / scale;
+    const srcH = cropH / scale;
 
     if (cropShape === "circle") {
       ctx.beginPath();
-      ctx.arc(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2, OUTPUT_SIZE / 2, 0, Math.PI * 2);
+      ctx.arc(outputW / 2, outputH / 2, outputW / 2, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
     }
 
-    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outputW, outputH);
     outputCanvas.toBlob((blob) => {
       if (blob) onCropComplete(blob);
     }, "image/png", 0.95);
@@ -164,12 +170,12 @@ export function ImageCropper({
         <div className="flex flex-col items-center gap-4">
           <div
             className="relative cursor-move overflow-hidden rounded-lg bg-muted"
-            style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}
+            style={{ width: canvasW, height: canvasH }}
           >
             <canvas
               ref={canvasRef}
-              width={CANVAS_SIZE}
-              height={CANVAS_SIZE}
+              width={canvasW}
+              height={canvasH}
               onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
               onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
               onMouseUp={() => setIsDragging(false)}

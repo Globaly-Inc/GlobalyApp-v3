@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { geoApi, type Country } from "../../geo/apis";
@@ -50,6 +51,8 @@ import { SectionError } from "@/components/feed/components/section-error";
 
 export function ProfileView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preview = searchParams.get("preview") === "1";
   const dispatch = useAppDispatch();
   const { profile, qualifications, languageTests, academicTests, workExperiences, status, error } = useAppSelector((state) => state.profile);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -189,12 +192,19 @@ export function ProfileView() {
 
   return (
     <div className="space-y-6">
+      {preview && (
+        <Link href="/personal/profile" className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:underline">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Profile Editing
+        </Link>
+      )}
       <ProfileHeroCard
         profile={profile}
         initial={initial}
         imageUploading={imageUploading}
         onImageFile={handleImageFile}
         countries={countries}
+        readOnly={preview}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -202,8 +212,10 @@ export function ProfileView() {
           <ProfileDetailsCards
             profile={profile}
             countryName={countryName}
+            countries={countries}
             isSectionPublic={isSectionPublic}
             toggleVisibility={toggleVisibility}
+            readOnly={preview}
             onEditPersonal={() => setPersonalOpen(true)}
             onEditContact={() => setContactOpen(true)}
           />
@@ -215,6 +227,7 @@ export function ProfileView() {
             languageTests={languageTests}
             isSectionPublic={isSectionPublic}
             toggleVisibility={toggleVisibility}
+            readOnly={preview}
             onAddQualification={() => setQualificationDialog({ open: true, item: null })}
             onEditQualification={(q) => setQualificationDialog({ open: true, item: q })}
             onDeleteQualification={(id) => dispatch(removeQualification(id))}
@@ -233,7 +246,7 @@ export function ProfileView() {
         <ProfileSidebar
           completion={completion}
           profile={profile}
-          countryName={countryName}
+          preview={preview}
           onEditPreferences={() => setPreferencesOpen(true)}
         />
       </div>
