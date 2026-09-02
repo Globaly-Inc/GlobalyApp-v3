@@ -23,6 +23,13 @@ const FONT = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica 
 const logoUrl = () => `https://storage.googleapis.com/globalyapp-public-images/logos/globalyapp-logo.jpeg`;
 
 /**
+ * Where the RECIPIENT's browser goes. Not `config.APP_URL` — that is this API's own origin,
+ * and a link to it lands on the API, not the app. Every other module already reads
+ * WEB_APP_URL; the enquiry mails were the ones that didn't.
+ */
+const web = (path: string) => `${config.WEB_APP_URL.replace(/\/$/, "")}${path}`;
+
+/**
  * Escape values that came from a user before they go into mail HTML. The recipient of an invitation
  * is not the person who typed the name on it, so an unescaped name is markup injection into someone
  * else's inbox.
@@ -43,12 +50,30 @@ type LayoutOptions = {
   cta?: { label: string; href: string };
   /** Small print above the divider. */
   footnote?: string;
+  /**
+   * "wide" (600px) for mails carrying a list; the default 480px suits a short notice but
+   * squeezes a stack of cards into a column too narrow to scan.
+   *
+   * 600px is the width every major client has handled for twenty years — going past it starts
+   * to clip in Outlook's reading pane, so this is a deliberate two-step, not a free dial.
+   */
+  size?: "default" | "wide";
+  /**
+   * Body alignment. Centred reads well for one short paragraph and an OTP code; a list of
+   * cards must be left-aligned or every row's text floats away from its own left edge.
+   */
+  align?: "center" | "left";
 };
 
-export function emailLayout({ heading, body, cta, footnote }: LayoutOptions): string {
+export function emailLayout({ heading, body, cta, footnote, size = "default", align = "center" }: LayoutOptions): string {
+  const wide = size === "wide";
+  const maxWidth = wide ? 600 : 480;
+  // Narrower side padding on the wide layout: it already has the room, and on a 375px phone
+  // 40px gutters plus the page's own 20px leave the content squeezed into ~315px.
+  const pad = wide ? "32px 28px 36px" : "36px 40px 40px";
   const button = cta
-    ? `<tr><td align="center" style="padding-top:8px">
-         <a href="${cta.href}" style="display:inline-block;background:${BRAND.primary};color:#ffffff;font-size:15px;font-weight:600;padding:12px 26px;border-radius:9999px;text-decoration:none">${cta.label}</a>
+    ? `<tr><td align="center" style="padding-top:${wide ? "28px" : "8px"}">
+         <a href="${cta.href}" style="display:inline-block;background:${BRAND.primary};color:#ffffff;font-size:15px;font-weight:600;padding:13px 30px;border-radius:9999px;text-decoration:none">${cta.label}</a>
        </td></tr>`
     : "";
 
@@ -67,12 +92,12 @@ export function emailLayout({ heading, body, cta, footnote }: LayoutOptions): st
   <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:${BRAND.page};padding:40px 20px">
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:480px;background-color:#ffffff;border-radius:16px;overflow:hidden">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;max-width:${maxWidth}px;background-color:#ffffff;border-radius:16px;overflow:hidden">
           <!-- Brand bar: the one flash of colour, and it survives clients that drop background
                images because it is a solid-colour cell. -->
           <tr><td style="height:4px;background-color:${BRAND.gold};line-height:4px;font-size:0">&nbsp;</td></tr>
           <tr>
-            <td style="padding:36px 40px 40px">
+            <td style="padding:${pad}">
               <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
                 <tr>
                   <td align="center" style="padding-bottom:20px">
@@ -80,12 +105,12 @@ export function emailLayout({ heading, body, cta, footnote }: LayoutOptions): st
                   </td>
                 </tr>
                 <tr>
-                  <td align="center" style="padding-bottom:20px">
-                    <h1 style="margin:0;color:${BRAND.ink};font-size:22px;line-height:30px;font-weight:700">${heading}</h1>
+                  <td align="center" style="padding-bottom:${wide ? "10px" : "20px"}">
+                    <h1 style="margin:0;color:${BRAND.ink};font-size:${wide ? "24px" : "22px"};line-height:32px;font-weight:700">${heading}</h1>
                   </td>
                 </tr>
                 <tr>
-                  <td align="center" style="color:${BRAND.body};font-size:15px;line-height:23px">${body}</td>
+                  <td align="${align}" style="color:${BRAND.body};font-size:15px;line-height:23px">${body}</td>
                 </tr>
                 ${button}
                 ${small}
@@ -131,13 +156,225 @@ function detailBlock(rows: { label: string; value: string | null | undefined }[]
   return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid ${BRAND.line};border-radius:14px;background-color:#fafafa">${cells}</table>`;
 }
 
+export interface DigestItem {
+  /** Pre-unlock only. The surname, email and phone are what the unlock is charged for. */
+  studentFirstName?: string | null;
+  courseName?: string | null;
+  institutionName?: string | null;
+  intake?: string | null;
+}
+
+/** How many enquiries a summary actually lists; the rest are counted, not printed. */
+const DIGEST_PREVIEW = 5;
+
+const REDACT_BG = "#d7dbe0";
+/** Rough rendered width of one &nbsp; at the 12px these bars use — the unit the bars are built from. */
+const NBSP_PX = 2.6;
+
 /**
- * The lead notification a matched business gets the moment an enquiry is distributed to it.
+ * A redaction bar, matching the `<Redacted />` placeholder on the inbox card (`w-20` for a
+ * surname, `w-28` for an address).
  *
- * Carries no student contact detail by design — the whole point of the distribution is that
- * those details are behind the unlock, and an email is the easiest thing in the product to
- * forward on to someone who never paid for it.
+ * Width is carried by non-breaking spaces rather than a CSS width: Outlook's Word engine
+ * ignores width on an inline span, and a bar that collapses in one client is worse than one
+ * that is a few pixels off everywhere. The text colour is set to the background so the spaces
+ * stay invisible even where the background paints and the radius does not. Nothing here
+ * derives from real data — there is no hidden value to reveal.
  */
+const redacted = (px: number) =>
+  `<span style="border-radius:3px;background-color:${REDACT_BG};color:${REDACT_BG};font-size:12px">${"&nbsp;".repeat(
+    Math.round(px / NBSP_PX),
+  )}</span>`;
+
+/**
+ * How wide one student's bar should be.
+ *
+ * Constant-width bars down a list read as a template placeholder rather than as withheld
+ * information — real surnames and addresses are not all the same length. Seeded off the first
+ * name so a given student's bar is stable across mails, and so the two bars on one card do not
+ * come out identical.
+ */
+function redactionWidth(seed: string | null | undefined, base: number, salt = 0): number {
+  // Position-weighted, and salted per bar: a plain character sum makes the two bars on one
+  // card move together, which is its own kind of obviously-generated.
+  const sum = [...(seed ?? "?")].reduce((acc, ch, i) => acc + ch.charCodeAt(0) * (i + 1), salt);
+  return base + (sum % 7) * 6;
+}
+
+/**
+ * One enquiry, rendered the way the business already sees it in the inbox
+ * (`enquiry-inbox-card.tsx`): avatar initial, real first name beside a redacted surname, a
+ * redacted address, then the course and institution.
+ *
+ * The mail is deliberately a copy of the card and not a richer view — the recipient should
+ * recognise the row when they open the inbox, and everything past this point is what the
+ * unlock is charged for. The `@gmail.com` is a fixed placeholder exactly as on the card, not
+ * the student's real provider: it conveys the shape of an address without implying anything
+ * about the student.
+ */
+function enquiryCard(item: DigestItem): string {
+  const first = item.studentFirstName?.trim();
+  const initial = first ? esc(first[0].toUpperCase()) : "&#8226;";
+  // Institution and intake share one muted line: two facts, one row, rather than two thin
+  // lines that make every card taller than the thing it describes.
+  const meta = [item.institutionName, item.intake && `Intake ${item.intake}`].filter(Boolean) as string[];
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border:1px solid #e8eaed;border-radius:12px;background-color:#fcfcfd">
+    <tr>
+      <td style="padding:18px 20px">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+          <tr>
+            <td width="52" valign="top" style="width:52px;padding-right:14px">
+              <table cellpadding="0" cellspacing="0" role="presentation" style="border-radius:10px;background-color:#f4eaea">
+                <tr><td align="center" valign="middle" style="width:38px;height:38px;color:${BRAND.primary};font-family:${FONT};font-size:15px;font-weight:700">${initial}</td></tr>
+              </table>
+            </td>
+            <td valign="top">
+              <p style="margin:0;color:${BRAND.ink};font-size:15px;line-height:21px;font-weight:600">${
+                first ? `${esc(first)} ` : ""
+              }${redacted(redactionWidth(first, 62))}</p>
+              <p style="margin:5px 0 0;color:${BRAND.faint};font-size:13px;line-height:18px">${redacted(
+                redactionWidth(first, 94, 37),
+              )}@gmail.com</p>
+            </td>
+          </tr>
+        </table>
+        <!-- Separator inside the card: the identity above it is "who", everything below is
+             "what they asked about". Without it the two blocks read as one list of five lines. -->
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+          <tr><td style="height:1px;background-color:#eceef1;line-height:1px;font-size:0;padding:0">&nbsp;</td></tr>
+        </table>
+        <p style="margin:14px 0 0;color:${BRAND.ink};font-size:16px;line-height:23px;font-weight:600">${esc(
+          item.courseName ?? "Course enquiry",
+        )}</p>
+        ${
+          meta.length
+            ? `<p style="margin:5px 0 0;color:${BRAND.muted};font-size:13px;line-height:19px">${meta
+                .map((m) => esc(m))
+                .join(" &nbsp;&middot;&nbsp; ")}</p>`
+            : ""
+        }
+      </td>
+    </tr>
+  </table>`;
+}
+
+/**
+ * The stack of enquiry cards.
+ *
+ * Separate bordered cards with real gaps between them, not one table split by hairlines: at
+ * six enquiries the hairline version read as a single dense block, which is what made the
+ * first Gmail render feel cramped.
+ *
+ * No per-card link. One enquiry is not an errand — the single CTA at the foot of the mail
+ * opens the inbox, where the same cards are actionable.
+ *
+ * A card with no course still renders — dropping it would silently lose an enquiry from a
+ * summary whose whole promise is that nothing is missed.
+ */
+function listBlock(items: DigestItem[]): string {
+  if (items.length === 0) return "";
+  const rows = items
+    .map(
+      (item, i) =>
+        `<tr><td style="padding-top:${i === 0 ? 0 : 12}px">${enquiryCard(item)}</td></tr>`,
+    )
+    .join("");
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%">${rows}</table>`;
+}
+
+/**
+ * The 5-minute summary: every enquiry that reached one recipient inside the window, as one mail.
+ *
+ * Exists because the per-enquiry mail does not survive volume — a business matched by 100
+ * enquiries in a minute got 100 messages, and the provider rejected most of them. One message
+ * per recipient per window is both readable and within any sane sending rate.
+ *
+ * Only rendered for two or more enquiries; a window holding exactly one still sends
+ * `enquiryDistributedEmail`, which reads better for the single case.
+ *
+ * `items` is the FULL set the mail accounts for — the count in the heading comes from its
+ * length. Only the first five are printed; a hundred rows would make an unreadable mail and a
+ * count plus an inbox link is the more useful thing at that size. The unlisted ones are not
+ * pending anything: they are already in the recipient's inbox, which is what the CTA opens.
+ */
+export function enquiryDigestEmail(options: {
+  items: DigestItem[];
+  businessName?: string | null;
+  /** Length of the collection window, so the mail can say over what period these arrived. */
+  windowMinutes?: number;
+  /** Institution-fallback digests: an unclaimed institution has no inbox to open yet. */
+  claimUrl?: string | null;
+}): { subject: string; html: string; text: string } {
+  const { items, businessName, windowMinutes = 5, claimUrl } = options;
+  const total = items.length;
+  const cta = claimUrl
+    ? { label: "Claim your account", href: claimUrl }
+    : { label: "Open your inbox", href: web("/business/enquiries") };
+
+  const shown = items.slice(0, DIGEST_PREVIEW);
+  const hidden = total - shown.length;
+  const period = windowMinutes === 1 ? "minute" : `${windowMinutes} minutes`;
+
+  // States the count AND the period: "6 new enquiries" alone leaves the recipient wondering
+  // whether that is today's total or a backlog they have been ignoring.
+  const lead = claimUrl
+    ? `${total} students enquired about your courses in the last ${period}, and no agent representing them was available.`
+    : `${total} students enquired about courses you represent in the last ${period}.`;
+
+  const more =
+    hidden > 0
+      ? `Showing the ${shown.length} most recent. ${hidden} more ${hidden === 1 ? "is" : "are"} waiting in your inbox.`
+      : null;
+
+  const textLines = [
+    lead,
+    "",
+    ...shown.map((item) =>
+      [
+        `• ${item.courseName ?? "Course enquiry"}`,
+        [item.studentFirstName, item.institutionName, item.intake && `Intake ${item.intake}`]
+          .filter(Boolean)
+          .join(" · ") || null,
+      ]
+        .filter((l) => l !== null)
+        .join("\n  "),
+    ),
+    "",
+    more,
+    more ? "" : null,
+    `${cta.label} → ${cta.href}`,
+  ].filter((l) => l !== null);
+
+  return {
+    subject: `${total} new student enquiries`,
+    text: textLines.join("\n"),
+    html: emailLayout({
+      size: "wide",
+      align: "left",
+      heading: `${total} new student enquiries`,
+      body: `<p style="margin:0 0 20px;color:${BRAND.muted};font-size:15px;line-height:23px">${esc(lead)}</p>
+             ${listBlock(shown)}
+             ${
+               more
+                 ? `<p style="margin:16px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${esc(more)}</p>`
+                 : ""
+             }
+             <p style="margin:20px 0 0;color:${BRAND.faint};font-size:13px;line-height:20px">
+               ${
+                 claimUrl
+                   ? "Claim your institution account to read these enquiries and reply to the students directly."
+                   : "Unlock an enquiry to see the student's full details and start the conversation."
+               }
+             </p>`,
+      cta,
+      footnote: businessName
+        ? `Sent to ${esc(businessName)} because it matches these enquiries.`
+        : "You're receiving this because these enquiries match courses you represent.",
+    }),
+  };
+}
+
 /**
  * Sent to the STUDENT the moment a business unlocks their enquiry — the only notification in this
  * module that goes to the person who sent the enquiry rather than to a recipient of it.
@@ -157,7 +394,7 @@ export function enquiryUnlockedEmail(options: {
   const { businessName, courseName, institutionName, enquiryId, sharedContact } = options;
   const who = businessName ?? "A business";
   // Straight to the enquiry when we know which one, so the reply is one tap away.
-  const href = enquiryId ? `${config.APP_URL}/personal/enquiries/${enquiryId}` : `${config.APP_URL}/personal/enquiries`;
+  const href = enquiryId ? web(`/personal/enquiries/${enquiryId}`) : web("/personal/enquiries");
 
   const contactLine = sharedContact
     ? "They can see your profile, email address and phone number, as you agreed when you sent this enquiry."
@@ -193,18 +430,33 @@ export function enquiryUnlockedEmail(options: {
   };
 }
 
+/**
+ * The lead notification a matched business gets for a single enquiry — what a 5-minute
+ * digest window containing exactly one enquiry still renders as, since a one-item list
+ * reads as bureaucracy where this reads as news.
+ *
+ * Carries no student contact detail by design — the whole point of the distribution is that
+ * those details are behind the unlock, and an email is the easiest thing in the product to
+ * forward on to someone who never paid for it. `studentFirstName` is the one exception, and
+ * only because the inbox card already shows it before unlocking.
+ */
 export function enquiryDistributedEmail(options: {
   courseName?: string | null;
   institutionName?: string | null;
   intake?: string | null;
   businessName?: string | null;
+  studentFirstName?: string | null;
+  distributionId?: string | null;
 }): { subject: string; html: string; text: string } {
-  const { courseName, institutionName, intake, businessName } = options;
-  const href = `${config.APP_URL}/business/enquiries`;
+  const { courseName, institutionName, intake, businessName, studentFirstName, distributionId } = options;
+  // Straight to the enquiry when we know which one — "open and review it" should be one tap,
+  // not a hunt through the inbox. Older queued rows have no distribution_id and fall back.
+  const href = distributionId ? web(`/business/enquiries/${distributionId}/student`) : web("/business/enquiries");
 
   const textLines = [
     "You have received a new student enquiry.",
     "",
+    studentFirstName ? `Student: ${studentFirstName}` : null,
     courseName ? `Course: ${courseName}` : null,
     institutionName ? `Institution: ${institutionName}` : null,
     intake ? `Preferred intake: ${intake}` : null,
@@ -218,15 +470,15 @@ export function enquiryDistributedEmail(options: {
     subject: courseName ? `New student enquiry — ${courseName}` : "New student enquiry available",
     text: textLines.join("\n"),
     html: emailLayout({
+      // Same shell as the summary, so a business that gets one enquiry and a business that
+      // gets nine are looking at the same email, not two different products.
+      size: "wide",
+      align: "left",
       heading: "New student enquiry",
-      body: `<p style="margin:0 0 18px">A student is asking about a course you represent.</p>
-             ${detailBlock([
-               { label: "Course", value: courseName },
-               { label: "Institution", value: institutionName },
-               { label: "Preferred intake", value: intake },
-             ])}
-             <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">
-               Unlock the enquiry in your inbox to see the student's details and start the conversation.
+      body: `<p style="margin:0 0 20px;color:${BRAND.muted};font-size:15px;line-height:23px">A student is asking about a course you represent.</p>
+             ${listBlock([{ studentFirstName, courseName, institutionName, intake }])}
+             <p style="margin:20px 0 0;color:${BRAND.faint};font-size:13px;line-height:20px">
+               Unlock the enquiry to see the student's details and start the conversation.
              </p>`,
       cta: { label: "View enquiry", href },
       footnote: businessName
@@ -254,7 +506,7 @@ export function enquiryInstitutionFallbackEmail(options: {
   claimUrl?: string | null;
 }): { subject: string; html: string; text: string } {
   const { institutionName, courseName, intake, isClaimed, claimUrl } = options;
-  const portalUrl = `${config.APP_URL}/business/enquiries`;
+  const portalUrl = web("/business/enquiries");
   const cta = isClaimed
     ? { label: "View enquiry", href: portalUrl }
     : { label: "Claim your account", href: claimUrl || portalUrl };

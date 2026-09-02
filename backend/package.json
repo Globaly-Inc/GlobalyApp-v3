@@ -24,6 +24,7 @@
     "test:saved-items": "node --import tsx tests/saved-items.ts",
     "test:page-views": "node --import tsx tests/page-views.ts",
     "test:enquiry-messages": "node --import tsx tests/enquiries/messages.ts",
+    "test:enquiry-email-queue": "node --import tsx tests/enquiries/email-queue.ts",
     "test:scraper-cascade": "node --import tsx tests/scraper-cascade.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",
     "test:rack-chunk-budget": "node --import tsx tests/rack-chunk-budget.ts",

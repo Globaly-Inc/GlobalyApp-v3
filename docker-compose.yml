@@ -136,6 +136,47 @@ services:
     networks:
       - globalyapp
 
+  # No profile, like auth-worker: both enquiry workers must always run. Without the
+  # match worker nothing consumes `enquiry_created`, so no enquiry is ever distributed;
+  # without the email worker every queued notification sits pending forever.
+  enquiry-match-worker:
+    container_name: globalyapp-enquiry-match-worker
+    image: globalyapp-backend:local
+    command: npm run job:enquiry-match
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  enquiry-email-worker:
+    container_name: globalyapp-enquiry-email-worker
+    image: globalyapp-backend:local
+    command: npm run job:enquiry-email
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   business-claim-requests-worker:
     container_name: globalyapp-business-claim-requests-worker
     image: globalyapp-backend:local

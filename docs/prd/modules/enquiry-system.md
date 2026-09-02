@@ -29,7 +29,7 @@ In scope for v1, matching what the old system actually needed and what v3 alread
 - Unlock-to-pay paywall against a wallet/ledger (must be built — v3 has none today, see §8).
 - Accept/reject of an unlocked distribution with a max-accepts cap per enquiry (fixing the old system's known race condition by doing it with a row lock, not a naive count).
 - One conversation per (enquiry, business), opened on accept, with append-only chat messages.
-- Email notification on new distribution (immediate-if-idle, else batched) via a durable outbox table.
+- Email notification on new distribution via a durable outbox table: one mail to the recipient's own inbox (not per team member), batched into a 5-minute summary (§17).
 - Audit logging of every lifecycle transition into the existing `globalyapp.audit_logs`.
 - Admin visibility into distributions, per-business coin cost configuration, suspension.
 
@@ -322,7 +322,7 @@ Distance is computed against `enquiry_match_directory.latitude/longitude` (busin
 
 - Matcher writes one `enquiry_distributions` row per matched business, `ON CONFLICT (enquiry_id, business_id) DO NOTHING` — duplicate prevention is a DB constraint, not an app-level check-then-insert (upgrade over the old system, which only had an application check). **[PROPOSED]**
 - `coin_cost` per distribution = `businesses.enquiry_coin_cost` (default 30, single consistent default — the old system's inconsistency between the distribution default (30) and unlock fallback default (20) is explicitly not repeated here). **[PROPOSED]**
-- Each new distribution triggers: (a) an email-queue row per recipient team member (§17), (b) nothing to a `notifications` table — none exists and none is proposed (§4 Out of Scope).
+- Each new distribution triggers: (a) exactly ONE email-queue row, addressed to the recipient's own inbox — `businesses.email` (owner as fallback) or `institutions.email` (§17), (b) nothing to a `notifications` table — none exists and none is proposed (§4 Out of Scope).
 - Distribution worker resolves recipient users for a business via the existing `agents` / tenant-membership tables, not a bespoke lookup. **[V3-REQUIRED, reuse existing tables]**
 
 ## 14. Business Workflow
@@ -350,9 +350,14 @@ Distance is computed against `enquiry_match_directory.latitude/longitude` (busin
 
 ## 17. Email/Notification Workflow
 
-- On each new distribution, insert one `enquiry_email_queue` row per recipient team member with a `dedup_key`. **[PROPOSED]**
-- If the recipient has no other `pending` queue rows, fire an immediate send job to the LavinMQ email worker; otherwise the row waits for the next scheduled batch sweep (preserves old system's "immediate if idle, else batched" behaviour, FR-ENQ-010/022 equivalent).
-- Batch sweep is a cron-style worker entrypoint (mirroring `job:auth`/`job:extraction*` convention), processing pending rows up to a cap per business per run.
+- On each new distribution, insert exactly ONE `enquiry_email_queue` row with a `dedup_key`, addressed to the recipient's shared inbox: `businesses.email` (falling back to the owner's address when unset) or `institutions.email`. **Team members are NOT mailed individually** — that fan-out turned one enquiry into one message per member and was the multiplier behind the volume problem. The enquiry is still visible to every member in the inbox UI. `recipient_user_id` is therefore always NULL and the dedup key ends in `:business` / `:institution`.
+- **[SUPERSEDED]** ~~If the recipient has no other `pending` queue rows, fire an immediate send job; otherwise the row waits for the next batch sweep ("immediate if idle, else batched").~~ That rule never held under load: one enquiry fans out to every member of every matched business, so a burst of 100 enquiries meant ~800 messages and the provider rejected the tail. **New-enquiry notices are now queued only, never sent on the request path.**
+- **5-minute summary.** `sweepDigests()` collects every pending row for one `(recipient_email, template)` group whose *oldest* row has aged past `ENQUIRY_EMAIL_WINDOW_MS` (default 5 min) and sends **one** mail listing all of them, each deep-linked to `/business/enquiries/<distribution_id>/student`. Batched templates: `enquiry_distributed`, `enquiry_institution_fallback`. `enquiry_unlocked` (to the student) still sends immediately.
+- The window is tumbling, not sliding: once a group is due, the sweep takes everything currently pending for it. At most one summary per address per template per window, and no permanent un-sent tail behind the cutoff. A group of exactly one renders the single-enquiry mail, not a one-item list.
+- Grouping is on `recipient_email`, not `business_id` — someone who belongs to two matched businesses gets one mail, with the business named per row.
+- Concurrency: each group is claimed with `FOR UPDATE SKIP LOCKED`. A digest resolves N rows with one message, so a lost race would mean a duplicate *summary*; a second worker finds zero rows and moves on.
+- The summary carries only pre-unlock fields (student **first name**, course, institution, intake). Contact details stay behind the paywall — an email is the easiest thing in the product to forward to someone who never paid.
+- Sweep runs as a long-lived worker (`npm run job:enquiry-email`, `ENQUIRY_EMAIL_POLL_MS`, default 60s); `--once` does a single pass for cron or a manual drain.
 - Delivery uses the existing `nodemailer`-backed mail path (`mailerService.sendMail`), fire-and-forget from the request path, never blocking distribution. **[V3-REQUIRED, reuse existing]**
 - No in-app notification table (§4 Out of Scope) — email is the only notification channel for v1.
 
