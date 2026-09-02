@@ -10,8 +10,8 @@ import { joinParts, type ProfileLocation } from "./profile-data";
 
 /**
  * The Locations card from V1: city filter chips, a horizontally scrolling card per location, and
- * a Google map underneath that pans to whichever card is selected. The map renders nothing when
- * NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is unset, so the list above it is always the source of truth.
+ * a Google map underneath that pans to whichever card is selected. Without
+ * NEXT_PUBLIC_GOOGLE_MAPS_API_KEY the map falls back to a keyless single-pin embed iframe.
  */
 export function ProfileLocationsCard({
   locations, cityLink,

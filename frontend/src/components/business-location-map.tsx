@@ -57,6 +57,27 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
   return loaderPromise;
 }
 
+function EmbedMap({
+  locations,
+  selectedId,
+}: Readonly<{ locations: MapLocation[]; selectedId?: string | null }>) {
+  const loc = locations.find((l) => l.id === selectedId) ?? locations[0];
+  if (!loc) return null;
+  const query =
+    loc.latitude != null && loc.longitude != null
+      ? `${loc.latitude},${loc.longitude}`
+      : (loc.address ?? loc.name);
+  return (
+    <iframe
+      title={`Map of ${loc.name}`}
+      src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=14&output=embed`}
+      className="h-72 w-full rounded-lg border border-border"
+      loading="lazy"
+      referrerPolicy="no-referrer-when-downgrade"
+    />
+  );
+}
+
 export function BusinessLocationMap({
   locations,
   selectedId,
@@ -70,9 +91,8 @@ export function BusinessLocationMap({
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   useEffect(() => {
-    // Silent absence is indistinguishable from a broken map — say so once, in dev only.
     if (!apiKey && process.env.NODE_ENV !== "production") {
-      console.warn("[map] NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is not set — the locations map will not render.");
+      console.warn("[map] NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is not set — falling back to the keyless embed map (single pin, no panning).");
     }
     if (!apiKey || !containerRef.current) return;
     let cancelled = false;
@@ -151,32 +171,9 @@ export function BusinessLocationMap({
     }
   }, [ready, selectedId]);
 
-  // Nothing to fall back to when there is no key at all — the location list above stands alone.
-  if (!apiKey) return null;
-
-  // Google's own error panel is unreadable to a visitor, and it has already been painted into the
-  // container by the time we get here, so the container is dropped and replaced with a link that
-  // needs no API key, no billing and no activation.
-  // Google has already painted its own grey error panel into the container by now, so the container
-  // is dropped and replaced with a link that needs no key.
-  if (failed) {
-    const withAddress = locations.find((l) => l.address);
-    return (
-      <div className="flex h-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border bg-muted/30 px-4 text-center">
-        <p className="text-xs text-muted-foreground">Map unavailable right now.</p>
-        {withAddress?.address && (
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(withAddress.address)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs font-medium text-primary hover:underline"
-          >
-            Open in Google Maps →
-          </a>
-        )}
-      </div>
-    );
-  }
+  // No key, or Google rejected the key (its grey error panel has already been painted into the
+  // container by then) — either way, swap in the keyless embed so a map still shows.
+  if (!apiKey || failed) return <EmbedMap locations={locations} selectedId={selectedId} />;
 
   return <div ref={containerRef} className="h-72 w-full rounded-lg border border-border" />;
 }

@@ -19,11 +19,8 @@ RUN apt-get update && apt-get install -y nginx \
 
 ARG NEXT_PUBLIC_MOCK_DATA
 ARG NEXT_PUBLIC_API_URL
-# Inlined into the client bundle at build time — the locations map renders nothing without it.
-ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 ENV NEXT_PUBLIC_MOCK_DATA=$NEXT_PUBLIC_MOCK_DATA
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
