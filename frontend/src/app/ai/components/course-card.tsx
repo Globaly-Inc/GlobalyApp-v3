@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { CalendarDays, Check, Clock, GraduationCap, MapPin, Monitor, Plus } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
@@ -10,13 +9,10 @@ import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
 import { InstitutionLogo } from "@/components/institution-logo";
 
-type CourseCardProps = {
-  card: CourseCardType;
-};
+type CourseCardProps = { card: CourseCardType };
 
 function prettify(value: string): string {
-  const spaced = value.replace(/_/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  return value.replace(/_/g, " ").trim().replace(/^\w/, (c) => c.toUpperCase());
 }
 
 function formatFee(amount: number | null, currency: string): string | null {
@@ -27,8 +23,7 @@ function formatFee(amount: number | null, currency: string): string | null {
 
 function degreeLevelOf(card: CourseCardType): string {
   if (card.degree_level) return prettify(card.degree_level);
-  const m = /\b(Graduate Certificate|Graduate Diploma|Bachelor|Master|Doctor|PhD|Diploma|Certificate|Associate)\b/i
-    .exec(card.course_name);
+  const m = /\b(Graduate Certificate|Graduate Diploma|Bachelor|Master|Doctor|PhD|Diploma|Certificate|Associate)\b/i.exec(card.course_name);
   return m?.[0] ?? "";
 }
 
@@ -62,113 +57,118 @@ export function CourseCard({ card }: CourseCardProps) {
   const isExternal = !card.slug && !!card.source_url;
 
   return (
-    <Card className="group relative flex h-full w-full flex-col overflow-hidden rounded-2xl border-0 bg-card pt-0 shadow-md ring-1 ring-border/60 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:ring-primary/30">
-      {/* Card-wide clickable overlay */}
+    <div className="group relative flex h-72 w-full flex-col overflow-hidden rounded-2xl shadow-md ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl">
+      {/* Card-wide link */}
       {href && (
         isExternal
-          ? <a href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-0" aria-label={card.course_name} />
-          : <Link href={href} className="absolute inset-0 z-0" aria-label={card.course_name} />
+          ? <a href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" aria-label={card.course_name} />
+          : <Link href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" aria-label={card.course_name} />
       )}
 
-      {/* Cover — real image or gradient fallback */}
-      <div className="relative h-24 w-full shrink-0 overflow-hidden">
-        {card.institution_cover_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={card.institution_cover_url}
-            alt={card.institution_name}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-        ) : (
-          <div className="h-full w-full bg-gradient-to-br from-primary/30 via-primary/15 to-indigo-500/10" />
-        )}
-        {/* Scrim so text below reads cleanly */}
-        <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-card via-card/20 to-transparent" />
-      </div>
+      {/* Full-bleed background */}
+      {card.institution_cover_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={card.institution_cover_url}
+          alt={card.institution_name}
+          className="absolute inset-0 h-full w-full object-cover scale-100 transition-all duration-500 group-hover:scale-105 group-hover:blur-[2px]"
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-primary/40" />
+      )}
 
-      {/* Logo — overlaps the cover/body boundary */}
-      <div className="relative z-10 -mt-5 px-4">
+      {/* Base scrim */}
+      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+      {/* Hover scrim */}
+      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/40 to-black/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+      {/* Logo — top-left */}
+      <div className="relative z-20 p-3 pointer-events-none">
         <InstitutionLogo
           name={card.institution_name}
           logoUrl={card.institution_logo_url}
-          className="size-10 rounded-xl ring-2 ring-card shadow-sm"
+          className="size-10 rounded-xl ring-2 ring-white/30 shadow-md"
         />
       </div>
 
-      {/* Body */}
-      <div className="flex flex-1 flex-col gap-2.5 px-4 pb-3 pt-2">
-        {/* Institution + location */}
-        <div>
-          <p className="truncate text-xs font-semibold text-foreground" title={card.institution_name}>
-            {card.institution_name}
-          </p>
-          {place && (
-            <p className="mt-0.5 flex items-center gap-0.5 text-[11px] text-muted-foreground">
-              <MapPin className="size-3 shrink-0" />
-              <span className="truncate">{place}</span>
-            </p>
-          )}
-        </div>
-
-        {/* Divider */}
-        <div className="h-px bg-border/60" />
-
-        {/* Course name */}
-        <p className="line-clamp-2 text-sm font-bold leading-snug text-foreground" title={card.course_name}>
-          {card.course_name}
-        </p>
-
-        {/* Badges row */}
-        <div className="flex flex-wrap gap-1.5">
-          {degreeLabel && (
-            <Badge variant="secondary" className="gap-1 border-0 bg-primary/10 text-[10px] font-medium text-primary">
-              <GraduationCap className="size-3" />{degreeLabel}
-            </Badge>
-          )}
-          {studyMode && (
-            <Badge variant="secondary" className="gap-1 border-0 bg-muted text-[10px] font-medium text-muted-foreground">
-              <Monitor className="size-3" />{studyMode}
-            </Badge>
-          )}
-        </div>
-
-        {/* Fee + meta — pushed to bottom */}
-        <div className="mt-auto flex flex-col gap-1.5 pt-1">
-          {fee && (
-            <div className="flex items-center justify-between rounded-lg bg-primary/[0.07] px-3 py-1.5">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Tuition / yr</span>
-              <span className="text-sm font-bold tabular-nums text-foreground">{fee}</span>
-            </div>
-          )}
-          {(card.duration || nextIntake) && (
-            <div className="flex flex-wrap gap-x-3 gap-y-1 px-0.5">
-              {card.duration && (
-                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Clock className="size-3 shrink-0" />{card.duration}
-                </span>
-              )}
-              {nextIntake && (
-                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <CalendarDays className="size-3 shrink-0" />Intake: {nextIntake}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="relative z-10 flex justify-end border-t border-border/50 bg-muted/20 px-3 py-1.5">
+      {/* Compare button — top-right, above the link overlay */}
+      <div className="absolute right-3 top-3 z-20">
         <Button
-          variant={added ? "secondary" : "ghost"}
+          variant="ghost"
           size="sm"
-          className="h-6 gap-1 px-2 text-[11px]"
+          className={`h-7 gap-1 rounded-full px-2.5 text-[11px] backdrop-blur-sm ${
+            added
+              ? "bg-white/30 text-white"
+              : "bg-black/30 text-white/80 hover:bg-white/20 hover:text-white"
+          }`}
           disabled={added || compare.isFull}
           onClick={() => compare.add(compareItem)}
         >
           {added ? <><Check className="size-3" /> Added</> : <><Plus className="size-3" /> Compare</>}
         </Button>
       </div>
-    </Card>
+
+      {/* Content overlay — anchored to bottom, pointer-events-none so link overlay handles clicks */}
+      <div className="relative z-20 mt-auto flex flex-col gap-1 p-4 pointer-events-none">
+        {/* Institution + location */}
+        <div className="flex items-center gap-1 text-[11px] text-white/80">
+          <span className="font-semibold text-white">{card.institution_name}</span>
+          {place && (
+            <>
+              <span>·</span>
+              <MapPin className="size-3 shrink-0" />
+              <span className="truncate">{place}</span>
+            </>
+          )}
+        </div>
+
+        {/* Course name */}
+        <p className="line-clamp-2 text-base font-bold leading-snug text-white drop-shadow" title={card.course_name}>
+          {card.course_name}
+        </p>
+
+        {/* Badges */}
+        {(degreeLabel || studyMode) && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {degreeLabel && (
+              <Badge className="gap-0.5 border-0 bg-white/20 px-1.5 py-0 text-[10px] font-medium text-white backdrop-blur-sm">
+                <GraduationCap className="size-2.5" />{degreeLabel}
+              </Badge>
+            )}
+            {studyMode && (
+              <Badge className="gap-0.5 border-0 bg-white/20 px-1.5 py-0 text-[10px] font-medium text-white backdrop-blur-sm">
+                <Monitor className="size-2.5" />{studyMode}
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Divider */}
+        {(fee || card.duration || nextIntake) && (
+          <div className="mt-1.5 border-t border-white/20" />
+        )}
+
+        {/* Fee + meta */}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {card.duration && (
+              <span className="flex items-center gap-1 text-[11px] text-white/85">
+                <Clock className="size-3 shrink-0" />{card.duration}
+              </span>
+            )}
+            {nextIntake && (
+              <span className="flex items-center gap-1 text-[11px] text-white/85">
+                <CalendarDays className="size-3 shrink-0" />Intake: {nextIntake}
+              </span>
+            )}
+          </div>
+          {fee && (
+            <span className="shrink-0 text-sm font-bold tabular-nums text-white">
+              {fee}<span className="ml-0.5 text-[10px] font-normal text-white/70">/yr</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -112,8 +112,8 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
   };
 
   return (
-    <div className="flex flex-col gap-3 pt-2">
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-2.5 pt-1">
+      <div className="flex flex-wrap gap-1.5">
         {chips.map((chip) => {
           const active = selected.includes(chip);
           return (
@@ -122,12 +122,12 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
               type="button"
               onClick={() => toggle(chip)}
               className={cn(
-                "rounded-2xl border-2 px-5 py-3 text-base font-semibold shadow-sm transition-all",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                "active:scale-[0.97]",
+                "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                "active:scale-[0.96]",
                 active
-                  ? "border-primary bg-primary/15 text-primary shadow-primary/20 shadow-md scale-[1.02]"
-                  : "border-border/80 bg-card text-foreground hover:border-primary/60 hover:bg-primary/8 hover:shadow-md hover:scale-[1.01]",
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/30 scale-[1.02]"
+                  : "border-border/70 bg-muted/50 text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground hover:shadow-sm",
               )}
             >
               {chip}
@@ -136,8 +136,8 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
         })}
       </div>
       {selected.length > 0 && (
-        <Button size="lg" className="self-start rounded-full px-6" onClick={sendSelected}>
-          Send ({selected.length})
+        <Button size="sm" className="self-start rounded-full px-4 h-7 text-xs gap-1.5" onClick={sendSelected}>
+          Send {selected.length > 1 && `(${selected.length})`}
         </Button>
       )}
     </div>

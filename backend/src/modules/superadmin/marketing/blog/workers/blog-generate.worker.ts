@@ -25,6 +25,7 @@ import * as postsRepo from "../repositories/posts.repository.js";
 import { generateArticle } from "../services/article-prompt.js";
 import type { GeneratedArticle, LinkManifestEntry } from "../services/article-prompt.js";
 import { generateCoverImage } from "../lib/higgsfield.js";
+import { fetchCoverImage as pexelsCoverImage } from "../lib/pexels.js";
 import { BLOG_GENERATE_QUEUE } from "../services/generation.service.js";
 
 const logger = createChildLogger("blog-generate-worker");
@@ -57,13 +58,16 @@ async function searchKnowledge(keywords: string[], country: string | null): Prom
   }
 }
 
-/** Best-effort cover: generate -> upload -> URL, or a note explaining why there is none.
+/** Best-effort cover: Higgsfield → Pexels fallback → upload → URL.
  * Never throws — a cover problem must never fail the surrounding blog job. */
 async function buildCover(article: GeneratedArticle): Promise<{ url: string | null; note: string | null }> {
   const prompt = `Editorial blog cover image for an article titled "${article.title}" about ${article.focus_keyword}. Clean, modern, study-abroad / international-education theme. No text overlay.`;
-  const buffer = await generateCoverImage(prompt);
+  // Pexels query is simpler keywords — better search results than the full Higgsfield prompt.
+  const pexelsQuery = [article.focus_keyword, "education", "university"].join(" ");
+
+  const buffer = (await generateCoverImage(prompt)) ?? (await pexelsCoverImage(pexelsQuery));
   if (!buffer) {
-    return { url: null, note: process.env.HIGGSFIELD_API_KEY ? "cover: generation failed" : "cover: HIGGSFIELD_API_KEY not set" };
+    return { url: null, note: "cover: no image source configured (set PEXELS_API_KEY or HIGGSFIELD_API_KEY)" };
   }
 
   try {

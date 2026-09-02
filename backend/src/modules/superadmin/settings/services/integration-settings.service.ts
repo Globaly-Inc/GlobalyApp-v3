@@ -14,6 +14,7 @@ const ENV_FALLBACK: Record<IntegrationKey, string | undefined> = {
   gsc_site_url: "GSC_SITE_URL",
   globalyos_crm_api_key: "GLOBALYOS_CRM_API_KEY",
   globalyos_crm_url: "GLOBALYOS_CRM_URL",
+  pexels_api_key: "PEXELS_API_KEY",
 };
 
 const cache = new Map<IntegrationKey, { value: string | null; at: number }>();
