@@ -41,13 +41,18 @@ export function CoverLogoEditor({
   const logoPickerRef = useRef<CroppedFileInputHandle>(null);
 
   return (
-    <div className={cn("relative h-40 overflow-hidden bg-muted sm:h-48", className)}>
+    <div
+      className={cn(
+        "relative h-40 overflow-hidden sm:h-48",
+        coverUrl ? "bg-muted" : "bg-gradient-to-br from-primary to-primary/70",
+        className,
+      )}
+    >
       {coverUrl && (
-        // object-contain: never scales past 1:1, so it can't "zoom" into the image — the crop
-        // dialog's 5:1 output keeps it wide enough that the leftover top/bottom gap stays small
-        // at realistic banner widths.
+        // object-cover: the crop dialog's 5:1 output is wider than the banner at every real
+        // breakpoint, so this only ever crops the sides — no upscale, no letterbox gap.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full select-none object-contain" draggable={false} />
+        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full select-none object-cover" draggable={false} />
       )}
       {coverUrl && <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />}
       {onCoverFile && (
