@@ -57,6 +57,14 @@ export async function deleteGuide(id: number) {
 
 // ─── Public reads (is_published = true only, never returns pdf_url — see service) ────────
 
+export async function listPublishedGuides() {
+  return masterKnex(TABLE)
+    .where({ is_published: true })
+    .whereNull("deleted_at")
+    .orderBy("created_at", "desc")
+    .select("id", "title", "slug", "country", "context", "background_image_url", "pdf_cover_image_url", "created_at");
+}
+
 export async function findPublishedGuideBySlug(slug: string) {
   return masterKnex(TABLE).where({ slug, is_published: true }).whereNull("deleted_at").first();
 }

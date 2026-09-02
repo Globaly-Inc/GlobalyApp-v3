@@ -62,6 +62,11 @@ function serializePublicGuide(row: Record<string, unknown>) {
   return rest;
 }
 
+export async function listPublishedGuides() {
+  const rows = await guidesRepo.listPublishedGuides();
+  return rows.map(serializePublicGuide);
+}
+
 export async function getPublicGuideBySlug(slug: string) {
   const row = await guidesRepo.findPublishedGuideBySlug(slug);
   return row ? serializePublicGuide(row) : null;
