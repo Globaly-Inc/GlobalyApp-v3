@@ -205,10 +205,10 @@ function IntakeCard({
       <CardContent className="flex flex-col gap-3 p-4">
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <Field icon={Type} label="Intake Name" value={intake.intake_name} onSave={(v) => onSaveField("intake_name", v)} />
-          <Field icon={Calendar} label="Start Date" value={toDateInput(intake.start_date)} onSave={(v) => onSaveField("start_date", v)} />
-          <Field icon={Calendar} label="End Date" value={toDateInput(intake.end_date)} onSave={(v) => onSaveField("end_date", v)} />
-          <Field icon={CalendarClock} label="Admission Deadline" value={toDateInput(intake.admission_deadline)} onSave={(v) => onSaveField("admission_deadline", v)} />
-          <Field icon={CalendarDays} label="Orientation" value={toDateInput(intake.orientation_date)} onSave={(v) => onSaveField("orientation_date", v)} />
+          <Field icon={Calendar} label="Start Date" type="date" value={toDateInput(intake.start_date)} onSave={(v) => onSaveField("start_date", v)} />
+          <Field icon={Calendar} label="End Date" type="date" value={toDateInput(intake.end_date)} onSave={(v) => onSaveField("end_date", v)} />
+          <Field icon={CalendarClock} label="Admission Deadline" type="date" value={toDateInput(intake.admission_deadline)} onSave={(v) => onSaveField("admission_deadline", v)} />
+          <Field icon={CalendarDays} label="Orientation" type="date" value={toDateInput(intake.orientation_date)} onSave={(v) => onSaveField("orientation_date", v)} />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

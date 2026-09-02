@@ -61,6 +61,7 @@ export type EditableFieldProps = Readonly<{
   value: string | null | undefined;
   onSave: (next: string | null) => Promise<unknown>;
   multiline?: boolean;
+  type?: string;
   className?: string;
   placeholder?: string;
 }>;
@@ -70,6 +71,7 @@ export function EditableField({
   value,
   onSave,
   multiline = false,
+  type = "text",
   className,
   placeholder = "—",
 }: EditableFieldProps) {
@@ -105,6 +107,7 @@ export function EditableField({
         <div className="mt-0.5 flex items-start gap-1">
           <InputEl
             autoFocus
+            type={multiline ? undefined : type}
             value={draft}
             disabled={saving}
             onChange={(e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => setDraft(e.target.value)}
