@@ -63,11 +63,21 @@ export async function findReadyDigestGroups(
 }
 
 /**
- * Takes ownership of one group's pending rows for the life of the transaction.
+ * Takes ownership of one group — the whole group, not just the rows it returns — for the life
+ * of the transaction. Returns [] when another sweep already owns it.
  *
- * SKIP LOCKED is the whole point: a digest resolves N rows with ONE mail, so two sweeps
- * reading the same group would each send a summary. A second worker gets zero rows back
- * here and moves to the next group instead of blocking on the first one's SMTP call.
+ * The advisory lock is load-bearing, and row locks alone are NOT enough. `LIMIT n ... FOR
+ * UPDATE SKIP LOCKED` only skips rows that are already locked, so when a recipient has more
+ * than `limit` rows pending, a second overlapping sweep skips the first one's locked rows and
+ * happily claims the remainder — then sends a SECOND summary for the same window, and sends it
+ * concurrently, past the in-process rate limit that assumes serial sends. The lock is on the
+ * group key so the second sweep gets nothing and moves on, which is what the digest promises:
+ * one mail per recipient per window.
+ *
+ * `pg_try_advisory_xact_lock` (not the blocking variant) so a busy group is skipped rather
+ * than queued behind another worker's SMTP round-trip; it releases on commit or rollback, so a
+ * crashed sweep frees the group without a reaper. Same mechanism as
+ * `superadmin/data-extraction/repositories/jobs.repository.ts`.
  */
 export async function claimGroup(
   trx: Knex.Transaction,
@@ -75,6 +85,11 @@ export async function claimGroup(
   recipientEmail: string,
   limit: number,
 ): Promise<QueueRow[]> {
+  const { rows } = await trx.raw("SELECT pg_try_advisory_xact_lock(hashtext(?)::bigint) AS locked", [
+    `enquiry_digest:${template}:${recipientEmail.toLowerCase()}`,
+  ]);
+  if (!rows[0]?.locked) return [];
+
   return trx(T)
     .where({ status: "pending", template, recipient_email: recipientEmail })
     .orderBy("created_at", "asc")

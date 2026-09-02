@@ -108,6 +108,11 @@ export async function enqueue(opts: EnqueueOpts) {
 
   // Batched templates are queued and nothing more — sweepDigests() owns them from here.
   // Everything else sends inline, as it always did.
+  //
+  // This makes delivery of new-enquiry notices a HARD dependency on the enquiry-email worker
+  // actually running (`npm run job:enquiry-email` — the enquiry-email-worker Compose service,
+  // and worker-enquiry-email.yml in the GitOps repo). There is no inline fallback left: if
+  // nothing sweeps, these rows sit `pending` forever and no business hears about its leads.
   if (!BATCHED_TEMPLATES.includes(opts.template)) {
     await sendQueuedRow(row.id);
   }
@@ -253,10 +258,12 @@ export async function sendQueuedRow(id: string): Promise<void> {
 /**
  * Sends one recipient's summary for one template, and resolves every row it covered.
  *
- * The claim, the send and the status update are one transaction. `claimGroup` uses
- * SKIP LOCKED, so a concurrent sweep gets zero rows here and moves on rather than sending
- * a second copy of the same summary — which is the failure this whole protocol exists to
- * prevent, since a digest resolves N rows with a single message.
+ * The claim, the send and the status update are one transaction. `claimGroup` takes an
+ * advisory lock on the group before reading it, so a concurrent sweep gets zero rows here and
+ * moves on rather than sending a second copy of the same summary — the failure this protocol
+ * exists to prevent, since a digest resolves N rows with a single message. Row-level
+ * SKIP LOCKED alone would not do it: past the cap there are unlocked rows left for a second
+ * sweep to pick up and mail separately.
  *
  * ponytail: the SMTP call sits inside the transaction, holding the row locks for one
  * round-trip. That is what `sendQueuedRow` already does, and it is the crash-safe

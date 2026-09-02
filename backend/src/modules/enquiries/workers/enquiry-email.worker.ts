@@ -18,13 +18,28 @@ import { sweepDigests } from "../services/email-queue.service.js";
 const logger = createChildLogger("enquiry-email-worker");
 const POLL_MS = Number(process.env.ENQUIRY_EMAIL_POLL_MS) || 60_000;
 
+// A sweep sends serially behind a ~1.2s throttle, so a backlog of groups can easily
+// outrun POLL_MS. Overlapping ticks are not harmless: two passes over the same group
+// produce two summaries for one window when the group holds more rows than one digest
+// claims. claimGroup's advisory lock is the real guard (it also covers a second
+// replica); this flag stops a single process from stacking passes it cannot keep up
+// with, and keeps sends serial so the rate limit means something.
+let running = false;
+
 // The catch is load-bearing, not defensive noise: an unhandled rejection in a
 // setInterval callback takes the process down, and a dead sweeper is silent.
 async function tick() {
+  if (running) {
+    logger.warn("Previous enquiry email sweep still running — skipping this tick");
+    return;
+  }
+  running = true;
   try {
     await sweepDigests();
   } catch (err) {
     logger.error("Enquiry email sweep failed", { error: err });
+  } finally {
+    running = false;
   }
 }
 
@@ -35,7 +50,5 @@ if (process.argv.includes("--once")) {
   process.exit(0);
 }
 
-// ponytail: fixed interval, no overlap guard — a pass that outruns POLL_MS just
-// overlaps itself, and SKIP LOCKED makes that safe rather than duplicative.
 setInterval(tick, POLL_MS);
 logger.info(`Enquiry email worker polling every ${POLL_MS}ms`);

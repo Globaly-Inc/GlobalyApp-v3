@@ -58,6 +58,18 @@ async function sweepWithWindow(ms: number) {
   }
 }
 
+/** Runs `fn` with the per-digest row cap forced to `cap`, then restores it. */
+async function withDigestCap<T>(cap: number, fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.ENQUIRY_EMAIL_DIGEST_CAP;
+  process.env.ENQUIRY_EMAIL_DIGEST_CAP = String(cap);
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env.ENQUIRY_EMAIL_DIGEST_CAP;
+    else process.env.ENQUIRY_EMAIL_DIGEST_CAP = previous;
+  }
+}
+
 let passed = 0;
 let failed = 0;
 
@@ -577,6 +589,42 @@ async function main() {
       eq(after.filter((r: any) => r.status === "sent").length, 2, "both rows resolved exactly once");
     } finally {
       await masterKnex("user_business_index").where({ business_id: businessId }).delete();
+      await cleanupAll({ enquiryIds, businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  // ── 9b. A group BIGGER than one digest must still not split across overlapping sweeps ──
+  // Row-level SKIP LOCKED does not cover this on its own: past the cap there are unlocked rows
+  // left over, so a second sweep claims those and mails a separate summary for the same window.
+  // The group-level advisory lock in claimGroup is what makes this one mail.
+  await assert("a group larger than the digest cap still yields one summary per sweep", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Cap Race Subject");
+    const businessId = await makeBusiness();
+    const enquiryIds: string[] = [];
+    try {
+      const inbox = await businessInbox(businessId);
+      for (let i = 0; i < 5; i++) {
+        const enquiryId = await makeEnquiry(studentId, courseId);
+        enquiryIds.push(enquiryId);
+        const distId = await makeDistribution(enquiryId, businessId);
+        await emailQueueService.enqueueDistributionEmails(enquiryId, distId, businessId);
+      }
+
+      // Cap 2 against 5 pending rows: without the group lock the second sweep picks up rows
+      // 3 and 4 and sends a second mail concurrently.
+      const mine = await withDigestCap(2, () =>
+        withCapturedMail(async (sent) => {
+          await Promise.all([sweepWithWindow(0), sweepWithWindow(0)]);
+          return sent.filter((m) => m.to === inbox);
+        }),
+      );
+
+      eq(mine.length, 1, "one summary, not one per overlapping sweep");
+      const rows = await masterKnex("enquiry_email_queue").whereIn("enquiry_id", enquiryIds);
+      eq(rows.filter((r: any) => r.status === "sent").length, 2, "only the claimed rows were resolved");
+      eq(rows.filter((r: any) => r.status === "pending").length, 3, "the surplus waits for the next sweep");
+    } finally {
       await cleanupAll({ enquiryIds, businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
     }
   });
