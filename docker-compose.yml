@@ -29,13 +29,11 @@ services:
       args:
         NEXT_PUBLIC_MOCK_DATA: ${NEXT_PUBLIC_MOCK_DATA}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
     env_file:
       - ./frontend/.env
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_MOCK_DATA: ${NEXT_PUBLIC_MOCK_DATA}
-      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
     # command: tail -f /dev/null
     ports:
       - "3001:3001"
@@ -53,13 +51,11 @@ services:
   #     args:
   #       NEXT_PUBLIC_MOCK_DATA: ${NEXT_PUBLIC_MOCK_DATA}
   #       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-  #       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
   #   env_file:
   #     - ./frontend/.env
   #   environment:
   #     NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
   #     NEXT_PUBLIC_MOCK_DATA: ${NEXT_PUBLIC_MOCK_DATA}
-  #     NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
   #   command: service nginx start && yarn start
   #   ports:
   #     - "4000:3001"
