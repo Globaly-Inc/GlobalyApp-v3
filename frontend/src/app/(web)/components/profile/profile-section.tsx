@@ -19,5 +19,6 @@ export function ProfileSection({
 
 /** Scraped rows often store bare hostnames — the browser would treat those as relative paths. */
 export function externalUrl(url: string): string {
-  return url.startsWith("http") ? url : `https://${url}`;
+  const trimmed = url.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }

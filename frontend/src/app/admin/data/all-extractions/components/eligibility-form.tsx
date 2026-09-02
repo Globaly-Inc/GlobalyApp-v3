@@ -95,8 +95,8 @@ export function EligibilityForm({
       min_score_percent: isPercentage ? d.score : null,
       min_score: isPercentage ? null : d.score,
       description: d.description,
-      language_tests: languageTests.filter((t) => t.test_type_name.trim() && t.overall_score?.toString().trim()),
-      academic_tests: academicTests.filter((t) => t.test_name.trim() && t.score?.toString().trim()),
+      language_tests: languageTests?.filter((t) => t.test_type_name?.trim()),
+      academic_tests: academicTests?.filter((t) => t.test_name?.trim()),
     });
   };
 
@@ -214,7 +214,7 @@ export function EligibilityForm({
                 <div className="w-48">
                   <Combobox
                     options={ENGLISH_TEST_OPTIONS}
-                    value={test.test_type_name}
+                    value={test.test_type_name ?? ""}
                     onChange={(v) => patchLanguage(index, { test_type_name: v })}
                     placeholder="Select test"
                     creatable
@@ -272,14 +272,14 @@ export function EligibilityForm({
               <div className="w-48">
                 <Combobox
                   options={ACADEMIC_TEST_OPTIONS}
-                  value={test.test_name}
+                  value={test.test_name ?? ""}
                   onChange={(v) => patchAcademic(index, { test_name: v })}
                   placeholder="Select test"
                   creatable
                 />
               </div>
               <Input
-                value={test.score}
+                value={test.score ?? ""}
                 onChange={(e) => patchAcademic(index, { score: e.target.value })}
                 placeholder="Min score"
                 className="h-10 w-40"
