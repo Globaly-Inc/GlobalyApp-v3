@@ -209,7 +209,7 @@ export default function HomePage() {
             {BLOG_POSTS.map((post, i) => (
               <Reveal key={post.title} delay={i * 0.1}>
                 <Link href={post.href} className="group block h-full">
-                  <Card className="overflow-hidden h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
+                  <Card className="overflow-hidden p-0 gap-0 h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
                     <div className="w-32 shrink-0 sm:w-full aspect-square sm:aspect-[4/3] overflow-hidden bg-muted">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -413,7 +413,7 @@ export default function HomePage() {
                 nativeButton={false}
                 render={<Link href="/search" />}
               >
-                Explore Marketplace
+                Search Courses
               </Button>
             </div>
           </Reveal>
