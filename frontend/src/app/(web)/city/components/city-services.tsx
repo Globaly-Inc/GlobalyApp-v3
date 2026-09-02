@@ -3,7 +3,7 @@ import { ArrowRight, GraduationCap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatNumber } from "@/lib/utils";
+import { Money } from "../../components/money";
 import { Reveal } from "../../components/reveal";
 import type { SearchCourse } from "../../search/types";
 
@@ -31,9 +31,11 @@ export function CityServices({ cityName, courses }: Readonly<{ cityName: string;
                 <div className="mt-2 flex items-center gap-2">
                   {course.subject_area && <Badge variant="outline" className="text-xs">{course.subject_area}</Badge>}
                   {course.international_fee_total && (
-                    <span className="text-xs text-muted-foreground">
-                      {course.international_currency} {formatNumber(Number(course.international_fee_total))}
-                    </span>
+                    <Money
+                      amount={course.international_fee_total}
+                      currency={course.international_currency}
+                      className="text-xs text-muted-foreground"
+                    />
                   )}
                 </div>
               </CardContent>

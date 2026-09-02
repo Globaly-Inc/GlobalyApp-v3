@@ -6,6 +6,7 @@ import {
   Leaf, Music, Palette, PenTool, Plane, Scale, Stethoscope, Wrench, type LucideIcon,
 } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
+import { Money } from "../../../components/money";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import { DEGREE_LABEL, type SubjectAreaSummary } from "../../../search/types";
 
@@ -35,16 +36,6 @@ function areaIcon(areaName: string): LucideIcon {
     if (key.includes(word)) return icon;
   }
   return BookOpen;
-}
-
-/** Intl rejects anything that isn't a 3-letter code, and scraped rows carry things like "AUD$". */
-function formatCost(value: number, currency: string | null) {
-  const code = (/[A-Za-z]{3}/.exec(currency ?? "")?.[0] ?? "USD").toUpperCase();
-  try {
-    return new Intl.NumberFormat("en", { style: "currency", currency: code, maximumFractionDigits: 0 }).format(value);
-  } catch {
-    return `${code} ${Math.round(value).toLocaleString()}`;
-  }
 }
 
 /**
@@ -85,9 +76,11 @@ export function InstitutionSubjectAreas({
 
               {area.cost_min != null && area.cost_max != null && (
                 <p className="text-base font-semibold text-muted-foreground">
-                  {area.cost_min === area.cost_max
-                    ? formatCost(area.cost_min, area.currency)
-                    : `${formatCost(area.cost_min, area.currency)} – ${formatCost(area.cost_max, area.currency)}`}
+                  <Money
+                    amount={area.cost_min}
+                    to={area.cost_min === area.cost_max ? null : area.cost_max}
+                    currency={area.currency}
+                  />
                 </p>
               )}
             </div>

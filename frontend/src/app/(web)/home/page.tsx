@@ -16,7 +16,9 @@ import { useParallax } from "../hooks/use-scroll-animation";
 import { useIsMobile } from "../hooks/use-is-mobile";
 import type { Destination } from "../data/destinations";
 import { getFeaturedCountries } from "../data/countries-api";
-import { BLOG_POSTS } from "../data/blog-posts";
+import { orderDestinationsForVisitor } from "../data/destination-order";
+import { getPosts } from "../blog/api";
+import type { PublicBlogPost } from "../blog/types";
 import {
   TYPING_PHRASES,
   STUDENT_FEATURES,
@@ -33,15 +35,21 @@ export default function HomePage() {
   const isMobile = useIsMobile();
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [destinationsLoading, setDestinationsLoading] = useState(true);
+  const [posts, setPosts] = useState<PublicBlogPost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(true);
 
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     getFeaturedCountries()
-      .then((data) => setDestinations(data.slice(0, 8)))
+      .then((data) => setDestinations(orderDestinationsForVisitor(data).slice(0, 8)))
       .catch(() => {})
       .finally(() => setDestinationsLoading(false));
+    getPosts({})
+      .then((res) => setPosts(res.data.slice(0, 4)))
+      .catch(() => {})
+      .finally(() => setPostsLoading(false));
   }, []);
 
   return (
@@ -73,10 +81,10 @@ export default function HomePage() {
               </span>
             </h1>
             <p className="text-white/80 mb-8 text-base sm:text-xl font-medium px-2">
-              Connecting Students with Domestic and International Education Providers, Education
+              Connecting Students with Domestic and International Education Providers,
               Education Counselors and Service Providers
             </p>
-            <UnifiedSearchBar aiRing />
+            <UnifiedSearchBar />
           </div>
         </div>
       </section>
@@ -187,6 +195,7 @@ export default function HomePage() {
       </section>
 
       {/* ── BLOG ARTICLES ── */}
+      {(postsLoading || posts.length > 0) && (
       <section className="py-16 bg-background">
         <div className="container mx-auto px-4">
           <Reveal className="flex items-center justify-between mb-2">
@@ -206,32 +215,48 @@ export default function HomePage() {
             </div>
           </Reveal>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-            {BLOG_POSTS.map((post, i) => (
-              <Reveal key={post.title} delay={i * 0.1}>
-                <Link href={post.href} className="group block h-full">
-                  <Card className="overflow-hidden p-0 gap-0 h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
-                    <div className="w-32 shrink-0 sm:w-full aspect-square sm:aspect-[4/3] overflow-hidden bg-muted">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={post.image}
-                        alt={post.title}
-                        className="w-full h-full object-cover md:transition-transform md:duration-700 md:group-hover:scale-110"
-                        loading="lazy"
-                      />
-                    </div>
-                    <CardContent className="p-3 sm:p-4 flex-1 min-w-0 flex flex-col justify-center sm:block">
-                      <p className="text-xs text-muted-foreground mb-1.5">{post.date}</p>
-                      <h3 className="font-semibold text-sm line-clamp-2 sm:line-clamp-3 mb-2 group-hover:text-primary transition-colors">
-                        {post.title}
-                      </h3>
-                      <Badge variant="secondary" className="text-xs w-fit">
-                        {post.category}
-                      </Badge>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </Reveal>
-            ))}
+            {postsLoading
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="rounded-xl h-32 sm:h-64" />
+                ))
+              : posts.map((post, i) => (
+                  <Reveal key={post.id} delay={i * 0.1}>
+                    <Link href={`/blog/${post.id}`} className="group block h-full">
+                      <Card className="overflow-hidden p-0 gap-0 h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
+                        <div className="w-32 shrink-0 sm:w-full aspect-square sm:aspect-[4/3] overflow-hidden bg-muted">
+                          {post.cover_image_url && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={post.cover_image_url}
+                              alt={post.title}
+                              className="w-full h-full object-cover md:transition-transform md:duration-700 md:group-hover:scale-110"
+                              loading="lazy"
+                            />
+                          )}
+                        </div>
+                        <CardContent className="p-3 sm:p-4 flex-1 min-w-0 flex flex-col justify-center sm:block">
+                          {post.published_at && (
+                            <p className="text-xs text-muted-foreground mb-1.5">
+                              {new Date(post.published_at).toLocaleDateString("en-AU", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </p>
+                          )}
+                          <h3 className="font-semibold text-sm line-clamp-2 sm:line-clamp-3 mb-2 group-hover:text-primary transition-colors">
+                            {post.title}
+                          </h3>
+                          {(post.country_focus ?? post.category) && (
+                            <Badge variant="secondary" className="text-xs w-fit">
+                              {post.country_focus ?? post.category}
+                            </Badge>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  </Reveal>
+                ))}
           </div>
           <Reveal className="text-center mt-8">
             <Button
@@ -245,6 +270,7 @@ export default function HomePage() {
           </Reveal>
         </div>
       </section>
+      )}
 
       {/* ── FOR EDUCATION PROVIDERS ── */}
       <section className="py-16 bg-primary/5">
@@ -392,7 +418,7 @@ export default function HomePage() {
       <section className="py-20 bg-[hsl(var(--purple-dark))] text-white">
         <div className="container mx-auto px-4">
           <Reveal className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to start your global journey?</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to start your education journey?</h2>
             <p className="text-white/70 mb-10 text-lg">
               Join thousands of students, institutions, and education counselors already using Globaly.app to
               connect and grow.

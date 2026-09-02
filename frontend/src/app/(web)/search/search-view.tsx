@@ -2,24 +2,16 @@ import {
   getCourseFilters, getCourses, getEducationAgencies, getInstitutionFilters, getInstitutions, getVisaServiceFilters,
   getMigrationAgents, getScholarshipsSearch, getServices, getStudentJobs, getVisaServices,
 } from "./api";
-import type {
-  FeePeriod, SearchBusiness, SearchCourse, SearchJob, SearchScholarship, SearchService, SearchTabKey,
-} from "./types";
+import type { FeePeriod, SearchTabKey } from "./types";
 import { DEFAULT_FEE_PERIOD, FEE_PERIOD_OPTIONS } from "./types";
 import { SearchTabs } from "./components/search-tabs";
 import { SearchFilters } from "./components/search-filters";
 import { SearchBar } from "./components/search-bar";
 import { SearchSortControls } from "./components/search-sort-controls";
 import { MobileFiltersSheet } from "./components/mobile-filters-sheet";
-import { CourseCard } from "./components/course-card";
-import { BusinessCard } from "./components/business-card";
-import { InstitutionCard } from "./components/institution-card";
-import { JobCard } from "./components/job-card";
-import { ScholarshipSearchCard } from "./components/scholarship-search-card";
-import { ServiceSearchCard } from "./components/service-search-card";
 import { SavedTab } from "./components/saved-tab";
 import { SearchEmptyState } from "./components/search-empty-state";
-import { SearchPagination } from "./components/search-pagination";
+import { SearchResults } from "./components/search-results";
 
 /** The query string this view reads — `/search` and `/personal/explore` each hand it their own searchParams. */
 export type SearchViewParams = {
@@ -157,11 +149,10 @@ export async function SearchView({
     : DEFAULT_FEE_PERIOD;
 
   // `base` is only what survives a tab switch — a degree level or job type means nothing on another
-  // tab, so the tab rail deliberately drops them. `search` is dropped too: a term matching a course
-  // name (or any other tab's naming) reads as "no results" on a tab it was never meant for.
-  const base = { country: filters.country, city: filters.city };
-  // Paging must carry the whole active filter set forward instead, or page 2 quietly returns rows the
-  // reader's own filters exclude. Everything except `page` itself rides along.
+  // tab, so the tab rail deliberately drops them.
+  const base = { country: filters.country, city: filters.city, search: filters.search };
+  // The full active filter set, minus `page` — the identity of the current result set, which
+  // remounts SearchResults whenever the reader changes a filter.
   const query: Record<string, string> = Object.fromEntries(
     Object.entries(params).filter(([key, value]) => key !== "page" && value),
   ) as Record<string, string>;
@@ -247,23 +238,16 @@ export async function SearchView({
                 {results.length === 0 ? (
                   <SearchEmptyState name={TAB_NAMES[activeTab]} clearHref={basePath} />
                 ) : (
-                  <div className="space-y-4">
-                    {activeTab === "courses" &&
-                      (results as SearchCourse[]).map((c) => <CourseCard key={c.id} course={c} feePeriod={feePeriod} />)}
-                    {activeTab === "jobs" &&
-                      (results as SearchJob[]).map((j) => <JobCard key={j.id} job={j} />)}
-                    {activeTab === "scholarships" &&
-                      (results as SearchScholarship[]).map((s) => <ScholarshipSearchCard key={s.id} scholarship={s} />)}
-                    {activeTab === "services" &&
-                      (results as SearchService[]).map((s) => <ServiceSearchCard key={s.id} service={s} />)}
-                    {activeTab === "institutions" &&
-                      (results as SearchBusiness[]).map((b) => <InstitutionCard key={b.id} institution={b} />)}
-                    {(activeTab === "education-agencies" || activeTab === "visa-services" || activeTab === "migration-agents") &&
-                      (results as SearchBusiness[]).map((b) => <BusinessCard key={b.id} business={b} />)}
-                  </div>
+                  <SearchResults
+                    // Remount on any query change so a filter switch drops the pages already appended.
+                    key={new URLSearchParams(query).toString()}
+                    tab={activeTab}
+                    initial={results}
+                    totalPages={meta.totalPages}
+                    filters={filters}
+                    feePeriod={feePeriod}
+                  />
                 )}
-
-                <SearchPagination meta={meta} page={page} query={query} pathname={basePath} />
               </div>
             </div>
           </div>

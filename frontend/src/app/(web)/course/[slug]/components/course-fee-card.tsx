@@ -1,4 +1,5 @@
 import { Wallet } from "lucide-react";
+import { Money } from "../../../components/money";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import type { CourseDetail, FeeInstallment } from "../../../search/types";
 
@@ -15,11 +16,10 @@ function FeeTile({
 
   // A single entry is just the total restated — only a real schedule is worth expanding.
   const schedule = (installments ?? []).filter((i) => i.amount != null);
-  const prefix = currency ? `${currency} ` : "";
 
   return (
     <div className="rounded-xl border border-border bg-muted/30 p-4">
-      <p className="text-2xl font-bold text-foreground">{prefix}{amount.toLocaleString()}</p>
+      <Money amount={amount} currency={currency} className="block text-2xl font-bold text-foreground" />
       <p className="mt-1 text-xs text-muted-foreground">{label}</p>
 
       {schedule.length > 1 && (
@@ -32,7 +32,7 @@ function FeeTile({
             {schedule.map((item, i) => (
               <li key={`${item.label ?? item.name ?? i}`} className="flex justify-between gap-3 text-xs">
                 <span className="text-muted-foreground">{item.label || item.name || `Instalment ${i + 1}`}</span>
-                <span className="font-medium text-foreground">{prefix}{Number(item.amount).toLocaleString()}</span>
+                <Money amount={item.amount} currency={currency} className="font-medium text-foreground" />
               </li>
             ))}
           </ul>

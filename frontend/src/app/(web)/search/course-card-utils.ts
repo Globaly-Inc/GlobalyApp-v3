@@ -17,7 +17,8 @@ export function formatNextIntake(year: number | null, month: number | null): str
   return month ? `${MONTH_NAMES[month - 1]} ${year}` : String(year);
 }
 
-export type CoursePrice = { label: string; amount: string };
+/** Numbers, not a formatted string — <Money> renders them in the currency the reader picked. */
+export type CoursePrice = { label: string; amount: number; currency: string };
 
 /**
  * The card shows one headline figure, in whichever period the Course Fee control asks for.
@@ -33,10 +34,7 @@ export function coursePrice(course: SearchCourse, period: FeePeriod = DEFAULT_FE
   const installment = useDomestic ? course.domestic_fee_installment : course.international_fee_installment;
   const total = Number(useDomestic ? course.domestic_fee_total : course.international_fee_total);
 
-  const format = (label: string, value: number): CoursePrice => ({
-    label,
-    amount: `${currency} ${Math.round(value).toLocaleString()}`.trim(),
-  });
+  const format = (label: string, value: number): CoursePrice => ({ label, amount: value, currency });
 
   if (period === "per_semester" && installment != null) {
     const n = Number(installment);
