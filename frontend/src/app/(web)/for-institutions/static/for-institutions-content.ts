@@ -30,7 +30,7 @@ export const FAQS = [
   },
   {
     q: "Can we manage and update our courses easily?",
-    a: "Yes, Globaly provides a user-friendly portal that allows you to add, edit, or remove course listings anytime. You can also include eligibility requirements, fees, study units, and accreditations with ease. All the updates to the course will be notified to all the associate branches and partners — all at once.",
+    a: "Yes, Globaly provides a user-friendly portal that allows you to add, edit, or remove course listings anytime. You can also include entry requirements, fees, study units, and accreditations with ease. All the updates to the course will be notified to all the associate branches and partners — all at once.",
   },
   {
     q: "Can we add branches from other locations?",
@@ -38,7 +38,7 @@ export const FAQS = [
   },
   {
     q: "How does Globaly ensure the quality of student enquiries?",
-    a: "Student enquiries come from verified users who complete essential profile information. You will receive enquiries that match your eligibility criteria from all around the world.",
+    a: "Student enquiries come from verified users who complete essential profile information. You will receive enquiries that match your courses from all around the world.",
   },
   {
     q: "Is there a cost to list our institution and courses?",
@@ -72,8 +72,8 @@ export const WHY_JOIN = [
   },
   {
     Icon: GraduationCap,
-    title: "Access Highly Qualified, Pre-Checked Student Leads",
-    desc: "Receive student inquiries through verified education counselors with eligibility-checked applications, reducing application errors and improving conversion rates.",
+    title: "Access Highly Qualified Student Leads",
+    desc: "Receive student inquiries through verified education counselors with complete applications, reducing application errors and improving conversion rates.",
   },
   /* Parked until the LMS ships:
   {
@@ -172,7 +172,7 @@ export const OWN_DATA_ITEMS = [
   },
   {
     title: "Real-Time Data Sync for Education Counselors & Students",
-    desc: "Ensure your verified education counselors and prospective students always see your latest course offerings, eligibility criteria, and intake schedules.",
+    desc: "Ensure your verified education counselors and prospective students always see your latest course offerings, entry requirements, and intake schedules.",
   },
   {
     title: "Embed Powerful Course Search",
@@ -194,8 +194,10 @@ export const AGENT_NETWORK_ITEMS = [
     title: "Direct Partnership Management",
     desc: "Grant education counselor branches access to represent you in specific regions, manage certifications, and track partner performance effortlessly.",
   },
+  /* Parked with the eligibility checker:
   {
     title: "Eligibility-Checked Leads",
     desc: "Receive student inquiries that have already been matched against your course requirements, academic scores, and intake dates.",
   },
+  */
 ];

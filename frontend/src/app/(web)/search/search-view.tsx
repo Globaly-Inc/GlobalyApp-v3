@@ -234,7 +234,7 @@ export async function SearchView({
               <p className="text-sm text-foreground">
                 {meta.total.toLocaleString()} {TAB_NAMES[activeTab].toLowerCase()}
               </p>
-              {activeTab === "courses" && <SearchSortControls />}
+              <SearchSortControls feeControls={activeTab === "courses"} />
             </div>
 
             <div className="flex flex-col md:flex-row gap-6">

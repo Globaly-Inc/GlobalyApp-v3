@@ -554,7 +554,8 @@ export async function findPublicBusinessBySubdomain(subdomain: string) {
     .where("b.is_published", true)
     .whereNull("b.deleted_at")
     .where("b.subdomain", subdomain)
-    .select(...BUSINESS_COLUMNS)
+    // Media Gallery on the public profile — storage paths here, resolved by withImagePreviews.
+    .select(...BUSINESS_COLUMNS, "b.gallery_images", "b.video_urls")
     .first();
   return business ?? null;
 }

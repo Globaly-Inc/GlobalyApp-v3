@@ -170,7 +170,8 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     const business = await repo.findPublicBusinessBySubdomain(subdomain);
     if (!business) throw new NotFoundError("Business not found");
 
-    const { schema_name, schema_provisioned_at, ...publicBusiness } = business;
+    // gallery_images/video_urls are raw storage paths — only their resolved forms go out.
+    const { schema_name, schema_provisioned_at, gallery_images, video_urls, ...publicBusiness } = business;
     // Team Members has its own owner-controlled visibility toggle (public_visibility.team) —
     // hidden by default only when explicitly turned off, same convention the other section
     // toggles use.
@@ -180,8 +181,8 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     // Promoted-but-unclaimed listings have no tenant schema yet (see promote.service) —
     // their branches/team/services sections are simply empty.
     const hasSchema = Boolean(schema_provisioned_at);
-    const [{ logo_url, cover_url }, branches, members, services, representations] = await Promise.all([
-      withImagePreviews(publicBusiness),
+    const [media, branches, members, services, representations] = await Promise.all([
+      withImagePreviews({ ...publicBusiness, gallery_images, video_urls }),
       hasSchema ? repo.listPublicBranches(business.id, schema_name) : Promise.resolve([]),
       hasSchema && showTeam ? repo.listPublicMembers(business.id, schema_name) : Promise.resolve([]),
       hasSchema ? repo.listPublicServices(business.id, schema_name) : Promise.resolve([]),
@@ -191,7 +192,11 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     return reply.send({
       ...publicBusiness,
       ...(showRegistration ? {} : { business_registration_number: null, registration_licenses: null }),
-      logo_url, cover_url, branches, members, services, representations,
+      logo_url: media.logo_url,
+      cover_url: media.cover_url,
+      gallery_image_urls: media.gallery_image_urls ?? [],
+      video_urls: media.video_urls ?? [],
+      branches, members, services, representations,
     });
   });
 }

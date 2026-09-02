@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Building2, Mail, MapPin, Phone } from "lucide-react";
 import { BusinessLocationMap } from "@/components/business-location-map";
+import { ScrollRow } from "@/components/scroll-row";
 import { ProfileSection } from "./profile-section";
 import { joinParts, type ProfileLocation } from "./profile-data";
 
@@ -54,7 +55,7 @@ export function ProfileLocationsCard({
           </div>
         )}
 
-        <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+        <ScrollRow className="-mx-1" rowClassName="flex snap-x gap-3 px-1 pb-2">
           {displayed.map((loc) => (
             <button
               key={loc.id}
@@ -88,7 +89,7 @@ export function ProfileLocationsCard({
               )}
             </button>
           ))}
-        </div>
+        </ScrollRow>
 
         <BusinessLocationMap
           selectedId={selectedId}

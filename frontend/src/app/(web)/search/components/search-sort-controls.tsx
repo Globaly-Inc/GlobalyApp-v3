@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { flagFromIso2 } from "@/lib/utils";
-import { CURRENCY_OPTIONS, DEFAULT_FEE_PERIOD, FEE_PERIOD_OPTIONS, SORT_OPTIONS } from "../types";
+import { CURRENCY_OPTIONS, DEFAULT_FEE_PERIOD, FEE_PERIOD_OPTIONS, GENERIC_SORT_OPTIONS, SORT_OPTIONS } from "../types";
 
 // Inline triggers: the results bar reads as a sentence ("Course Fee: Per Semester"), so the
 // Combobox drops its bordered box and full width and keeps only the value plus its chevron.
@@ -28,7 +28,8 @@ function Control({ label, children }: Readonly<{ label: string; children: React.
   );
 }
 
-export function SearchSortControls() {
+/** `feeControls` is the courses tab only — every other tab shows Sort on its own. */
+export function SearchSortControls({ feeControls = false }: Readonly<{ feeControls?: boolean }> = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -43,34 +44,38 @@ export function SearchSortControls() {
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <Control label="Course Fee:">
-        <Combobox
-          className={TRIGGER}
-          contentClassName="w-44"
-          options={FEE_PERIOD_OPTIONS}
-          value={searchParams.get("fee_period") ?? DEFAULT_FEE_PERIOD}
-          onChange={(v) => updateParam("fee_period", v === DEFAULT_FEE_PERIOD ? "" : v)}
-          searchPlaceholder="Search periods..."
-        />
-      </Control>
+      {feeControls && (
+        <>
+          <Control label="Course Fee:">
+            <Combobox
+              className={TRIGGER}
+              contentClassName="w-44"
+              options={FEE_PERIOD_OPTIONS}
+              value={searchParams.get("fee_period") ?? DEFAULT_FEE_PERIOD}
+              onChange={(v) => updateParam("fee_period", v === DEFAULT_FEE_PERIOD ? "" : v)}
+              searchPlaceholder="Search periods..."
+            />
+          </Control>
 
-      {/* Filters to courses actually quoted in this currency — V3 has no FX conversion. */}
-      <Control label="Currency:">
-        <Combobox
-          className={TRIGGER}
-          contentClassName="w-44"
-          options={CURRENCY_ITEMS}
-          value={searchParams.get("currency") ?? ""}
-          onChange={(v) => updateParam("currency", v)}
-          searchPlaceholder="Search currencies..."
-        />
-      </Control>
+          {/* Filters to courses actually quoted in this currency — V3 has no FX conversion. */}
+          <Control label="Currency:">
+            <Combobox
+              className={TRIGGER}
+              contentClassName="w-44"
+              options={CURRENCY_ITEMS}
+              value={searchParams.get("currency") ?? ""}
+              onChange={(v) => updateParam("currency", v)}
+              searchPlaceholder="Search currencies..."
+            />
+          </Control>
+        </>
+      )}
 
       <Control label="Sort:">
         <Combobox
           className={TRIGGER}
           contentClassName="w-52"
-          options={SORT_OPTIONS}
+          options={feeControls ? SORT_OPTIONS : GENERIC_SORT_OPTIONS}
           value={searchParams.get("sort") ?? "best_match"}
           onChange={(v) => updateParam("sort", v === "best_match" ? "" : v)}
           searchPlaceholder="Search sorting..."

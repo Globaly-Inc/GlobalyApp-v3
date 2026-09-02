@@ -65,6 +65,8 @@ function toProfileData(provider: VisaServiceProviderDetail): ProfileData {
       }]
       : [],
     registration: registrationRows(provider),
+    // Scraped catalog entries have no owner to upload media, so there is never a gallery.
+    gallery: [],
   };
 }
 

@@ -5,6 +5,7 @@
 // one if a page needs keyboard/ARIA tab semantics later.
 
 import { cn } from "@/lib/utils";
+import { ScrollRow } from "@/components/scroll-row";
 
 export interface SegmentOption<T extends string> {
   value: T;
@@ -20,7 +21,7 @@ export function AdminSegmentedTabs<T extends string>({
   className,
 }: Readonly<{ options: readonly SegmentOption<T>[]; value: T; onChange: (value: T) => void; className?: string }>) {
   return (
-    <div className={cn("flex items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1 mb-4 w-fit max-w-full", className)}>
+    <ScrollRow className={cn("mb-4 w-fit max-w-full", className)} rowClassName="flex items-center gap-1 rounded-lg bg-muted p-1">
       {options.map((opt) => (
         <button
           key={opt.value}
@@ -39,6 +40,6 @@ export function AdminSegmentedTabs<T extends string>({
           )}
         </button>
       ))}
-    </div>
+    </ScrollRow>
   );
 }

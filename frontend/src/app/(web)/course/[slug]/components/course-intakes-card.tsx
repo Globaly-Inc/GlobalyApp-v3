@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CalendarCheck, CalendarClock, CalendarDays } from "lucide-react";
+import { ScrollRow } from "@/components/scroll-row";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import { MONTH_NAMES, type CourseDetail } from "../../../search/types";
 
@@ -48,7 +49,7 @@ export function CourseIntakesCard({ intakes }: Readonly<{ intakes: Intake[] }>) 
         <p className="text-sm italic text-muted-foreground">No intakes configured yet.</p>
       ) : (
         <div className="space-y-4">
-          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          <ScrollRow className="-mx-1" rowClassName="flex gap-2 px-1 pb-1">
             {intakes.map((intake) => (
               <button
                 key={intake.id}
@@ -63,7 +64,7 @@ export function CourseIntakesCard({ intakes }: Readonly<{ intakes: Intake[] }>) 
                 {intakeLabel(intake)}
               </button>
             ))}
-          </div>
+          </ScrollRow>
 
           <div className="grid gap-4 rounded-lg border border-border bg-muted/30 p-4 sm:grid-cols-3">
             <Detail icon={CalendarDays} label="Intake starts" value={formatDate(active.start_date)} />

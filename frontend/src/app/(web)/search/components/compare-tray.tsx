@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Layers, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "../use-compare-tray";
 
 /** Pages with a course-compare checkbox on their cards — everywhere else the tray no-ops. */
@@ -19,12 +18,11 @@ const COMPARE_ENABLED_PATHS = ["/search", "/personal/explore"];
  * same-tab client-side navigation — opening in a new tab would start with an empty selection.
  */
 export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ positionClass?: string }> = {}) {
-  const { user } = useAuthState();
   const { items, max, remove, clear } = useCompareTray();
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
-  if (!user || items.length === 0 || !COMPARE_ENABLED_PATHS.some((p) => pathname.startsWith(p))) return null;
+  if (items.length === 0 || !COMPARE_ENABLED_PATHS.some((p) => pathname.startsWith(p))) return null;
   // /personal/explore keeps its own compare page so "Compare Now" doesn't drop the portal sidebar.
   const comparePath = pathname.startsWith("/personal/explore") ? "/personal/explore/compare" : "/compare";
 

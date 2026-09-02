@@ -13,17 +13,18 @@ export const STUDENT_FEATURES = [
   "Explore domestic and international study options",
   "Save and compare your courses and their fees",
   "Connect with institutions and education consultants",
-  "Check your eligibility for desired programs",
+  // Parked with the eligibility checker (course-hero's Check Eligibility link is commented out too):
+  // "Check your eligibility for desired programs",
   "Send enquiries to verified education counselors and institutions",
   "Find scholarships for your desired degree",
-  "Get AI-powered education counselling and eligibility guidance",
+  "Get AI-powered education counselling",
   // Parked until the LMS ships (business/lms and personal/learning are ComingSoon pages):
   // "Earn certifications and badges through training programs",
 ];
 
 export const PROVIDER_FEATURES = [
   "Increase reach and visibility in the global market",
-  "Manage all your course and their eligibility",
+  "Manage all your courses and their entry requirements",
   "Share course updates and critical information to all",
   "Connect and Collaborate with verified Education Counselors",
   "Connect with qualified local and international students",

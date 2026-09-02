@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { ScrollRow } from "@/components/scroll-row";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
   fetchCategories, fetchCounts, fetchDocuments, fetchFaqs, fetchGuides,
@@ -130,7 +131,7 @@ export function AiKnowledgeView() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="w-full overflow-x-auto border-b border-border md:w-auto">
+        <ScrollRow className="w-full border-b border-border md:w-auto">
           <div className="inline-flex w-max gap-1 pb-px">
             {KNOWLEDGE_TABS.map((entry) => (
               <button
@@ -149,7 +150,7 @@ export function AiKnowledgeView() {
               </button>
             ))}
           </div>
-        </div>
+        </ScrollRow>
 
         {showSearch && (
           <div className="relative w-full md:w-72">

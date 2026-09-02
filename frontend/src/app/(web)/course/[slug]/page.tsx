@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCourseBySlug, getTests } from "../../search/api";
 import { ProfileLocationsCard } from "../../components/profile/profile-locations-card";
-import { ProfileGallery, type GalleryItem } from "../../components/profile/profile-gallery";
-import type { ProfileLocation } from "../../components/profile/profile-data";
+import { ProfileGallery } from "../../components/profile/profile-gallery";
+import { toGalleryItems, type ProfileLocation } from "../../components/profile/profile-data";
 import type { CourseDetail } from "../../search/types";
 import { CourseHero } from "./components/course-hero";
 import { CourseStats } from "./components/course-stats";
@@ -44,10 +44,9 @@ function toLocations(course: CourseDetail): ProfileLocation[] {
   }));
 }
 
-function toGalleryItems(course: CourseDetail): GalleryItem[] {
-  return (course.institution?.gallery_image_urls ?? [])
-    .filter(Boolean)
-    .map((url) => ({ type: "image" as const, url }));
+/** The course's own image first, then the awarding institution's photos. */
+function courseGallery(course: CourseDetail) {
+  return toGalleryItems([course.image_url, ...(course.institution?.gallery_image_urls ?? [])], null);
 }
 
 export default async function CoursePage({ params }: CoursePageProps) {
@@ -75,7 +74,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
           <CourseIntakesCard intakes={course.intakes} />
           <ProfileLocationsCard locations={toLocations(course)} cityLink={course.city_link} />
           <CourseWeatherCard weather={course.weather} countryName={course.country_name} />
-          <ProfileGallery items={toGalleryItems(course)} />
+          <ProfileGallery items={courseGallery(course)} />
         </div>
 
         <div className="space-y-4 md:space-y-6">

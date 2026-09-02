@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Globe, BookOpen, Briefcase, Home, Calendar, Clock, Eye, GraduationCap, Plane, MapPin, PenLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ScrollRow } from "@/components/scroll-row";
 import { getFilters, getPosts } from "./api";
 import type { PublicBlogPost } from "./types";
 import { BlogHeroHeading } from "./components/blog-hero-heading";
@@ -214,7 +215,7 @@ export default async function BlogPage({
       {(filters.categories.length > 0 || filters.countries.length > 0) && (
       <section className="sticky top-16 z-10 bg-background/95 backdrop-blur border-b border-border">
         <div className="container max-w-6xl mx-auto px-4">
-          <div className="flex items-center gap-1.5 overflow-x-auto py-3 animate-fade-in">
+          <ScrollRow className="animate-fade-in" rowClassName="flex items-center gap-1.5 py-3">
             {topicOptions.map((t) => {
               const active = topic === t.value;
               return (
@@ -248,7 +249,7 @@ export default async function BlogPage({
                 </Link>
               );
             })}
-          </div>
+          </ScrollRow>
         </div>
       </section>
       )}

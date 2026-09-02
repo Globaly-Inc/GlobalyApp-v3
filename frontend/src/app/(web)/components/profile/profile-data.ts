@@ -4,6 +4,7 @@
 // can't drift apart again.
 
 import type { SocialName } from "../social-icon";
+import type { GalleryItem } from "./profile-gallery";
 
 export type ProfileLocation = {
   id: string;
@@ -39,7 +40,23 @@ export type ProfileData = {
   socials: ProfileSocial[];
   locations: ProfileLocation[];
   registration: ProfileRegistration[];
+  /** Media Gallery items — empty when the owner has uploaded nothing. */
+  gallery: GalleryItem[];
 };
+
+/**
+ * Images and videos arrive in two columns (`gallery_images`/`video_urls`, both resolved to signed
+ * preview URLs server-side) but render as one carousel, so every detail page maps them here.
+ */
+export function toGalleryItems(
+  images: readonly (string | null)[] | null | undefined,
+  videos: readonly (string | null)[] | null | undefined,
+): GalleryItem[] {
+  return [
+    ...(images ?? []).filter((url): url is string => Boolean(url)).map((url) => ({ type: "image" as const, url })),
+    ...(videos ?? []).filter((url): url is string => Boolean(url)).map((url) => ({ type: "video" as const, url })),
+  ];
+}
 
 type SocialSource = {
   facebook_url?: string | null;

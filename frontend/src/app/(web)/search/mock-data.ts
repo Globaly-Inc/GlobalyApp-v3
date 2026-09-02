@@ -506,6 +506,7 @@ export function mockGetBusinessBySubdomain(subdomain: string): BusinessDetail | 
         latitude: null, longitude: null, business_registration_number: null, registration_licenses: null,
         category_name: category,
         facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
+        gallery_image_urls: [], video_urls: [],
         branches: [], members: [], services: [], representations: [],
       };
     }

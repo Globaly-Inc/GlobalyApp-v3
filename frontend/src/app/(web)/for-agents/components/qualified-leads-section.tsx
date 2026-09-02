@@ -7,12 +7,14 @@ import { Reveal } from "../../components/reveal";
 const POINTS = [
   {
     title: "Verified, Course-Matched Leads",
-    desc: "Only receive student enquiries that match your institution partnerships and meet basic eligibility requirements.",
+    desc: "Only receive student enquiries that match your institution partnerships and the courses you represent.",
   },
+  /* Parked with the eligibility checker:
   {
     title: "Built-In Free Eligibility Check",
     desc: "Instantly assess academic, English, and visa eligibility before committing to a lead — manage expectations early and boost conversion rates.",
   },
+  */
   {
     title: "Flexible, Lead-Based Payments",
     desc: "Pay only for the leads you choose to unlock. No hidden fees, no aggregator commission deals behind your back.",
@@ -34,7 +36,7 @@ export function QualifiedLeadsSection() {
             </h2>
             <p className="text-muted-foreground mb-8">
               Stop wasting time on unfiltered inquiries. With Globaly.app, you&apos;ll receive highly qualified,
-              eligibility-checked student leads actively looking to apply. Focus on closing real students, not
+              verified student leads actively looking to apply. Focus on closing real students, not
               chasing dead ends.
             </p>
             <div className="space-y-5">

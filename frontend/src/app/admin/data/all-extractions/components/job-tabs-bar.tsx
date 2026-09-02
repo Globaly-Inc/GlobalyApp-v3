@@ -16,6 +16,7 @@ import {
   Globe2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ScrollRow } from "@/components/scroll-row";
 import type { TabCounts } from "../apis/types";
 
 export type JobTab =
@@ -66,7 +67,7 @@ export function JobTabsBar({
     t.value === "institution" && institutionLabel ? { ...t, label: institutionLabel } : t,
   );
   return (
-    <div className="w-full overflow-x-auto border-b border-border">
+    <ScrollRow className="w-full border-b border-border">
       <div className="inline-flex w-max gap-1 pb-px">
         {visibleTabs.map((tab) => {
           const isActive = active === tab.value;
@@ -99,6 +100,6 @@ export function JobTabsBar({
           );
         })}
       </div>
-    </div>
+    </ScrollRow>
   );
 }
