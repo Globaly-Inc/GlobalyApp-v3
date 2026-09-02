@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { DollarSign, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { FieldError } from "@/components/field-error";
@@ -131,13 +131,15 @@ export function FeeForm({
 
     setErrors({});
     const d = result.data;
-    const payload: FeeInstallment[] = d.installments.map((i) => ({
-      label: i.label.trim() || "Installment",
-      amount: sumLines(i.lines),
-      lines: i.lines
-        .filter((l) => l.fee_type.trim() && Boolean(l.amount.trim()))
-        .map((l) => ({ fee_type: l.fee_type.trim(), amount: Number(l.amount) || 0 })),
-    }));
+    const payload: FeeInstallment[] = d.installments
+      .map((i) => {
+        const lines = i.lines
+          .filter((l) => l.fee_type.trim() && Boolean(l.amount.trim()))
+          .map((l) => ({ fee_type: l.fee_type.trim(), amount: Number(l.amount) || 0 }));
+        const amount = lines.reduce((sum, l) => sum + l.amount, 0);
+        return { label: i.label.trim() || "Installment", amount, lines };
+      })
+      .filter((i) => i.lines.length > 0);
 
     onSave({
       name: d.name,
@@ -158,7 +160,7 @@ export function FeeForm({
           {fee ? "Edit Course Fee" : "Add Course Fee"}
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+      <CardContent className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto">
         <div className="flex flex-col gap-2">
           <Label className="text-xs uppercase tracking-wide text-muted-foreground">
             Fee structure <span className="text-destructive">*</span>
@@ -315,16 +317,16 @@ export function FeeForm({
           <Switch checked={saveForReuse} onCheckedChange={setSaveForReuse} />
         </div>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
-            Cancel
-          </Button>
-          <Button className="gap-1.5 cursor-pointer" onClick={submit} disabled={saving}>
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save Fee
-          </Button>
-        </div>
       </CardContent>
+      <CardFooter className="justify-end gap-2">
+        <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button className="gap-1.5 cursor-pointer" onClick={submit} disabled={saving}>
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Save Fee
+        </Button>
+      </CardFooter>
     </Card>
   );
 }
