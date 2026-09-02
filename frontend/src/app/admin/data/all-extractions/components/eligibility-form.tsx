@@ -1,16 +1,16 @@
 "use client";
 
 import { z } from "zod";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { GraduationCap, Languages, Loader2, Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LookupCombobox } from "@/components/lookup-combobox";
 import { Textarea } from "@/components/ui/textarea";
-import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import {
   ACADEMIC_TEST_OPTIONS, APPLICABLE_TO_OPTIONS, ENGLISH_SUBSCORES, ENGLISH_TEST_OPTIONS, SCORE_TYPE_OPTIONS,
 } from "../const";
@@ -54,14 +54,7 @@ export function EligibilityForm({
   const [description, setDescription] = useState(requirement?.description ?? "");
   const [languageTests, setLanguageTests] = useState<LanguageTest[]>(requirement?.language_tests ?? []);
   const [academicTests, setAcademicTests] = useState<AcademicTest[]>(requirement?.academic_tests ?? []);
-  const [degreeLevels, setDegreeLevels] = useState<{ value: string; label: string }[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    categoriesApi.getLookups("degree-levels", { limit: 100 })
-      .then((res) => setDegreeLevels(res.data.map((d) => ({ value: d.name, label: d.name }))))
-      .catch(() => setDegreeLevels([]));
-  }, []);
 
   const isPercentage = scoreType === "percentage";
   const scoreLabel = SCORE_TYPE_OPTIONS.find((o) => o.value === scoreType)?.label ?? "Score";
@@ -102,8 +95,8 @@ export function EligibilityForm({
       min_score_percent: isPercentage ? d.score : null,
       min_score: isPercentage ? null : d.score,
       description: d.description,
-      language_tests: languageTests.filter((t) => t.test_type_name.trim()),
-      academic_tests: academicTests.filter((t) => t.test_name.trim()),
+      language_tests: languageTests.filter((t) => t.test_type_name.trim() && t.overall_score?.toString().trim()),
+      academic_tests: academicTests.filter((t) => t.test_name.trim() && t.score?.toString().trim()),
     });
   };
 
@@ -115,7 +108,7 @@ export function EligibilityForm({
           {requirement ? "Edit Eligibility" : "Create Eligibility"}
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto">
         <div className="flex flex-col gap-2">
           <Label className="text-xs uppercase tracking-wide text-muted-foreground">Applicable to</Label>
           <div className="flex flex-wrap items-center gap-6">
@@ -155,11 +148,12 @@ export function EligibilityForm({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="flex flex-col gap-1.5">
               <Label>Min Degree Level</Label>
-              <Combobox
-                options={[{ value: ANY_DEGREE, label: "— Any —" }, ...degreeLevels]}
+              <LookupCombobox
+                kind="degree-levels"
                 value={degreeLevel}
                 onChange={setDegreeLevel}
                 placeholder="— Any —"
+                pinnedOptions={[{ value: ANY_DEGREE, label: "— Any —" }]}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -244,12 +238,12 @@ export function EligibilityForm({
                 </Button>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {ENGLISH_SUBSCORES.map(({ key }) => (
+                {ENGLISH_SUBSCORES.map(({ key, label }) => (
                   <Input
                     key={key}
-                    value={(test as any)[key]?.toString() ?? ""}
-                    onChange={(e) => patchLanguage(index, { [key]: e.target.value ? Number(e.target.value) : null })}
-                    placeholder={key.charAt(0).toUpperCase() + key.slice(1)}
+                    value={(test as any)[key] ?? ""}
+                    onChange={(e) => patchLanguage(index, { [key]: e.target.value })}
+                    placeholder={label}
                     className="h-8 text-xs"
                     inputMode="decimal"
                   />
@@ -303,16 +297,16 @@ export function EligibilityForm({
           ))}
         </div>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
-            Cancel
-          </Button>
-          <Button className="gap-1.5 cursor-pointer" disabled={saving} onClick={handleSave}>
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            {requirement ? "Save" : "Create"}
-          </Button>
-        </div>
       </CardContent>
+      <CardFooter className="justify-end gap-2">
+        <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button className="gap-1.5 cursor-pointer" disabled={saving} onClick={handleSave}>
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {requirement ? "Save" : "Create"}
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

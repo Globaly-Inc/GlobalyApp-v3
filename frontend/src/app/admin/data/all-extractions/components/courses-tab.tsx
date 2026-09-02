@@ -6,10 +6,10 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { latestTimestamp } from "../utils";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { latestTimestamp, pendingCourseLinks, runLimited } from "../utils";
+import type { CourseBulkLinkSelection, CourseBulkUpdatePatch } from "./course-bulk-update-form";
 import { CourseDetailPanel } from "./course-detail-panel";
-import { CourseForm } from "./course-form";
+import { CourseFormDialogs } from "./course-form-dialogs";
 import { CourseListPanel } from "./course-list-panel";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
@@ -17,6 +17,8 @@ import type { SortOrder } from "../const";
 import type { CampusFull, CourseFull, CourseLinks, CreateCourseParams, ExtractionJob } from "../apis/types";
 
 const DEFAULT_PAGE_SIZE = 10;
+
+const BULK_UPDATE_CONCURRENCY = 6;
 
 export function CoursesTab({
   jobId,
@@ -43,6 +45,7 @@ export function CoursesTab({
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [adding, setAdding] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
@@ -170,6 +173,46 @@ export function CoursesTab({
     }
   };
 
+  const bulkUpdate = async (patch: CourseBulkUpdatePatch, linkSelection: CourseBulkLinkSelection) => {
+    setSaving(true);
+    try {
+      const patchTasks = Object.keys(patch).length
+        ? selectedIds.map((id) => () => allExtractionsApi.saveAndLearn({ table: "extraction_courses", id, patch, job_id: jobId }))
+        : [];
+
+      const linkTasks = pendingCourseLinks(
+        [
+          { junction: "course-fees", entityId: linkSelection.feeId, assignments: links?.fee_assignments, entityCol: "course_fee_id" },
+          { junction: "intakes", entityId: linkSelection.intakeId, assignments: links?.intake_assignments, entityCol: "intake_id" },
+          { junction: "eligibility-requirements", entityId: linkSelection.eligibilityId, assignments: links?.eligibility_assignments, entityCol: "eligibility_requirement_id" },
+        ],
+        selectedIds,
+      ).map((l) => () => allExtractionsApi.assignJunction(l.junction, { job_id: jobId, course_id: l.course_id, entity_id: l.entity_id }));
+
+      const results = await runLimited([...patchTasks, ...linkTasks], BULK_UPDATE_CONCURRENCY);
+      const failed = results.filter((r) => r.status === "rejected");
+      const succeeded = results.length - failed.length;
+
+      if (failed.length === 0) {
+        toast.success(`${selectedIds.length} course${selectedIds.length === 1 ? "" : "s"} updated`);
+      } else if (succeeded === 0) {
+        const first = failed[0] as PromiseRejectedResult;
+        toast.error("Update failed", { description: (first.reason as Error)?.message });
+      } else {
+        toast.warning(`${succeeded} of ${results.length} update${results.length === 1 ? "" : "s"} succeeded`, {
+          description: `${failed.length} failed — try again for the affected courses.`,
+        });
+      }
+
+      setBulkUpdating(false);
+      setSelectedIds([]);
+      await load();
+      onReload();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const bulkVerify = async (approve: boolean) => {
     setSaving(true);
     try {
@@ -211,11 +254,17 @@ export function CoursesTab({
         </Card>
       )}
 
-      <Dialog open={adding} onOpenChange={setAdding}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
-          <CourseForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
-        </DialogContent>
-      </Dialog>
+      <CourseFormDialogs
+        jobId={jobId}
+        adding={adding}
+        onAddingChange={setAdding}
+        onCreate={handleCreate}
+        bulkUpdating={bulkUpdating}
+        onBulkUpdatingChange={setBulkUpdating}
+        bulkCount={selectedIds.length}
+        onBulkUpdate={bulkUpdate}
+        saving={saving}
+      />
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -247,6 +296,7 @@ export function CoursesTab({
             onAdd={() => setAdding(true)}
             saving={saving}
             onBulkVerify={bulkVerify}
+            onBulkUpdate={() => setBulkUpdating(true)}
             onDelete={deleteCourse}
             onBulkDelete={bulkDelete}
             compact={!!selected}

@@ -510,14 +510,26 @@ export const allExtractionsMockApi = {
 
   // ── Course Fees ────────────────────────────────────────────────
 
-  getCourseFees: async (jobId: string): Promise<CourseFee[]> => {
-    console.log("[mock] GET course-fees for job", jobId);
+  getCourseFees: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<CourseFee>> => {
+    console.log("[mock] GET course-fees for job", jobId, params);
     await delay(250);
     const now = new Date().toISOString();
-    return [
+    const all: CourseFee[] = [
       { id: "fee-1", name: "Standard Tuition", student_type: "domestic", period_type: "Per Year", currency: "CAD", total_amount: 12500, created_at: now },
       { id: "fee-2", name: "International Tuition", student_type: "international", period_type: "Per Year", currency: "CAD", total_amount: 28000, created_at: now },
     ];
+    const filtered = params.search
+      ? all.filter((f) => (f.name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
   },
 
   createCourseFee: async (params: { job_id: string } & CourseFeeParams): Promise<CourseFee> => {

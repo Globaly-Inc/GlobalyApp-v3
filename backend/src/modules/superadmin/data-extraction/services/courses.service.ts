@@ -82,6 +82,20 @@ export async function listIntakes(
   return buildPaginatedResponse(rows, total, pagination);
 }
 
+export async function listCourseFees(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [rows, total] = await Promise.all([
+    repo.listCourseFeesByJob(jobId, limit, offset, filters),
+    repo.countCourseFeesByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(rows, total, pagination);
+}
+
 export async function createCourse(jobId: string, input: CreateCourseInput, adminId: number) {
   const row = await repo.insertCourse({
     job_id: jobId,
