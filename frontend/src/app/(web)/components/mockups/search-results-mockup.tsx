@@ -11,7 +11,7 @@ const results = [
 
 export function SearchResultsMockup() {
   return (
-    <MockupFrame label="globaly.app / search">
+    <MockupFrame label="globalyapp.com / search">
       <div className="space-y-4">
         <div className="relative animate-fade-in" style={{ animationDelay: "0ms", animationFillMode: "both" }}>
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

@@ -143,7 +143,7 @@ export function ComparePageView({
       <style>{"@media print { @page { size: landscape; margin: 0; } }"}</style>
       <div className="mb-6 hidden print:block">
         <div className="flex items-center justify-between">
-          <Image src="/globaly-logo.png" alt="Globaly.ai" width={753} height={157} className="h-8 w-auto" />
+          <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-8 w-auto" />
           <span className="text-xs text-muted-foreground">
             {new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
           </span>

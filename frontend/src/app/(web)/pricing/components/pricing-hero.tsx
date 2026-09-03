@@ -1,12 +1,19 @@
+"use client";
+
 import { ArrowDown, GraduationCap, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Audience } from "../data";
 import { trustStats } from "../data";
+import { usePlatformStats } from "../../hooks/use-platform-stats";
+import { formatStatValue } from "../../types";
 
 export function PricingHero({
   audience,
   setAudience,
 }: Readonly<{ audience: Audience; setAudience: (a: Audience) => void }>) {
+  const { stats, loading } = usePlatformStats();
+
   return (
     <>
       <section className="relative overflow-hidden bg-[hsl(var(--purple-dark))] py-20 text-white">
@@ -59,7 +66,13 @@ export function PricingHero({
           <div className="grid grid-cols-2 gap-6 text-center md:grid-cols-4">
             {trustStats.map((s) => (
               <div key={s.label}>
-                <p className="text-2xl font-bold text-foreground">{s.value}</p>
+                {loading ? (
+                  <Skeleton className="mx-auto mb-1 h-8 w-20" />
+                ) : (
+                  <p className="text-2xl font-bold text-foreground">
+                    {formatStatValue(stats?.[s.key])}
+                  </p>
+                )}
                 <p className="text-sm text-muted-foreground">{s.label}</p>
               </div>
             ))}

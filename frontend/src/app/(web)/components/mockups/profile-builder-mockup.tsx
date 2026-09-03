@@ -1,5 +1,5 @@
 import { CheckCircle2, Circle } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { MockupBar, MockupFrame } from "./mockup-frame";
 
@@ -17,6 +17,8 @@ export function ProfileBuilderMockup() {
       <div className="space-y-4">
         <div className="flex items-center gap-3 animate-fade-in" style={{ animationDelay: "0ms", animationFillMode: "both" }}>
           <Avatar className="h-12 w-12 border-2 border-primary/20">
+            {/* Falls back to the initials until a photo lands in /public/people. */}
+            <AvatarImage src="/people/aanya-sharma.jpg" alt="Aanya Sharma" />
             <AvatarFallback className="bg-primary/10 text-primary font-semibold">AS</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">

@@ -82,7 +82,7 @@ export function RoleSelectView() {
       <div className="w-full max-w-2xl">
         <div className="flex justify-center mb-8">
           <Link href="/">
-            <Image src="/globaly-logo.png" alt="Globaly.app" width={753} height={157} className="h-10 w-auto" />
+            <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-10 w-auto" />
           </Link>
         </div>
         <div className="text-center mb-10">
