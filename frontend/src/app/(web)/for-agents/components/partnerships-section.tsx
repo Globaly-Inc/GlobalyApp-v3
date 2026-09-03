@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, Handshake, Building2, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "../../components/reveal";
+import { PartnershipConnectMockup } from "../../components/mockups/partnership-connect-mockup";
 
 const POINTS = [
   {
-    title: "Verified Public Agent Profile",
+    title: "Verified Public Education Counselor Profile",
     desc: "Showcase your services, accreditations, and institution partnerships where students and providers are actively searching.",
   },
   {
@@ -24,21 +25,35 @@ const POINTS = [
 
 export function PartnershipsSection() {
   return (
-    <section className="py-16 bg-background">
+    <section className="relative py-20 bg-background overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 -z-10 hidden md:block" aria-hidden>
+        <Handshake
+          className="absolute left-[6%] top-[12%] h-12 w-12 text-primary/10 animate-float"
+          style={{ animationDelay: "0s", "--float-rotate": "-8deg" } as React.CSSProperties}
+        />
+        <Building2
+          className="absolute right-[8%] top-[8%] h-10 w-10 text-primary/10 animate-float"
+          style={{ animationDelay: "1.2s", "--float-rotate": "6deg" } as React.CSSProperties}
+        />
+        <GraduationCap
+          className="absolute left-[10%] bottom-[10%] h-11 w-11 text-primary/10 animate-float"
+          style={{ animationDelay: "2s", "--float-rotate": "-6deg" } as React.CSSProperties}
+        />
+      </div>
+
       <div className="container mx-auto px-4">
-        <div className="grid md:grid-cols-2 gap-12 items-center">
-          <Reveal direction="left">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://images.pexels.com/photos/8069428/pexels-photo-8069428.jpeg?auto=compress&cs=tinysrgb&w=1280&h=960&dpr=1&fit=crop"
-              alt="Education agent and university representatives shaking hands in a business meeting"
-              loading="lazy"
-              width={1280}
-              height={960}
-              className="w-full h-auto rounded-2xl shadow-xl object-cover aspect-[4/3]"
-            />
+        <div className="grid md:grid-cols-2 gap-16 items-center">
+          <Reveal direction="left" className="order-2 md:order-1">
+            <div className="relative mx-auto max-w-sm md:max-w-none">
+              <div
+                className="absolute -inset-6 -z-10 rounded-full bg-primary/15 blur-3xl"
+                aria-hidden
+              />
+              <PartnershipConnectMockup />
+            </div>
           </Reveal>
-          <Reveal direction="right">
+
+          <Reveal direction="right" className="order-1 md:order-2">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">
               Get Discovered. Build <span className="highlight-text active">Direct Partnerships.</span>
             </h2>
@@ -60,7 +75,7 @@ export function PartnershipsSection() {
             </div>
             <div className="flex gap-3 mt-8">
               <Button className="rounded-full px-8" render={<Link href="/auth/sign-up" />}>
-                Claim Your Agent Profile
+                Claim Your Education Counselor Profile
               </Button>
               <Button variant="outline" className="rounded-full" render={<Link href="/search?tab=institutions" />}>
                 Start Exploring

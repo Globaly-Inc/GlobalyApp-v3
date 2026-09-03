@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,32 +9,30 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { LanguageTest, LanguageTestInput } from "../apis/types";
-import { useValidatedForm } from "./validation";
+import { useValidatedForm, sanitizeDecimalInput } from "./validation";
 import { FieldError } from "./field-error";
+import { useTests } from "./use-tests";
+import { overallScoreRange, subScoreRange, rangeHint, rangePlaceholder } from "./test-score-ranges";
 
-const TEST_TYPES = ["IELTS", "TOEFL", "PTE", "Duolingo", "OET", "SAT", "GMAT", "ACT", "GRE", "LSAT"];
-const TEST_TYPE_OPTIONS = TEST_TYPES.map((t) => ({ value: t, label: t }));
-
+/**
+ * Which sub-scores a test breaks down into. Keyed by the catalogue's test name; a test an admin adds
+ * that isn't listed here simply collects an overall score, which is the sane default.
+ */
 const SUB_SCORE_FIELDS: Record<string, string[]> = {
   IELTS: ["Reading", "Writing", "Listening", "Speaking"],
   TOEFL: ["Reading", "Writing", "Listening", "Speaking"],
   PTE: ["Reading", "Writing", "Listening", "Speaking"],
   Duolingo: ["Literacy", "Comprehension", "Conversation", "Production"],
   OET: ["Reading", "Writing", "Listening", "Speaking"],
-  SAT: ["Math", "Reading & Writing"],
-  GMAT: ["Quantitative", "Verbal", "Integrated Reasoning", "Analytical Writing"],
-  ACT: ["English", "Math", "Reading", "Science"],
-  GRE: ["Verbal", "Quantitative", "Analytical Writing"],
-  LSAT: [],
 };
 
 const schema: z.ZodType<LanguageTestInput> = z
   .object({
     test_status: z.string(),
     test_type: z.string().min(1, "Required"),
-    overall_score: z.string(),
+    overall_score: z.string().refine((v) => v === "" || Number.isFinite(Number(v)), "Must be a number"),
     test_date: z.string(),
-    sub_scores: z.record(z.string(), z.string()),
+    sub_scores: z.record(z.string(), z.string().refine((v) => v === "" || Number.isFinite(Number(v)), "Must be a number")),
     sort_order: z.number(),
   })
   .refine((v) => v.test_status !== "completed" || v.overall_score !== "", { message: "Required", path: ["overall_score"] })
@@ -44,7 +43,7 @@ function toInput(item: LanguageTest | null): LanguageTestInput {
     test_status: item?.test_status ?? "completed",
     test_type: item?.test_type ?? "",
     overall_score: item?.overall_score ?? "",
-    test_date: item?.test_date ?? "",
+    test_date: item?.test_date ?? new Date().toISOString().slice(0, 10),
     sub_scores: item?.sub_scores ?? {},
     sort_order: item?.sort_order ?? 0,
   };
@@ -63,12 +62,12 @@ export function TestScoreDialog({
   onSave: (data: LanguageTestInput) => Promise<boolean>;
   saving: boolean;
 }>) {
+  const tests = useTests("language");
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
 
-  const handleOpenChange = (next: boolean) => {
-    if (next) reset(toInput(item));
-    onOpenChange(next);
-  };
+  useEffect(() => {
+    if (open) reset(toInput(item));
+  }, [open, item]);
 
   const handleSubmit = async () => {
     const data = validate();
@@ -79,21 +78,30 @@ export function TestScoreDialog({
 
   const subFields = form.test_type ? (SUB_SCORE_FIELDS[form.test_type] ?? []) : [];
   const completed = form.test_status === "completed";
+  // The options are the admin-managed catalogue, each carrying its own logo.
+  const testOptions = tests.map((test) => ({
+    value: test.name,
+    label: test.name,
+    icon: test.image_url ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={test.image_url} alt="" className="size-4 object-contain" />
+    ) : undefined,
+  }));
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{item ? "Edit Test Score" : "Add Test Score"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Test Type *</Label>
             <Combobox
               value={form.test_type ?? ""}
               onChange={(v) => setForm((f) => ({ ...f, test_type: v, sub_scores: {} }))}
               placeholder="Select test"
-              options={TEST_TYPE_OPTIONS}
+              options={testOptions}
               aria-invalid={!!errors.test_type}
             />
             <FieldError message={errors.test_type} />
@@ -120,16 +128,25 @@ export function TestScoreDialog({
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Overall Score *</Label>
+                  <Label>
+                    Overall Score
+                    {overallScoreRange(form.test_type ?? "") && (
+                      <span className="font-normal text-muted-foreground">{rangeHint(overallScoreRange(form.test_type ?? ""))}</span>
+                    )}
+                  </Label>
                   <Input
+                    type="number"
+                    step="any"
+                    inputMode="decimal"
+                    placeholder={rangePlaceholder(overallScoreRange(form.test_type ?? "")) || "Score"}
                     value={form.overall_score ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, overall_score: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, overall_score: sanitizeDecimalInput(e.target.value) }))}
                     aria-invalid={!!errors.overall_score}
                   />
                   <FieldError message={errors.overall_score} />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label>Test Date *</Label>
+                  <Label>Test Date</Label>
                   <DatePicker
                     value={form.test_date ?? ""}
                     onChange={(v) => setForm((f) => ({ ...f, test_date: v }))}
@@ -142,21 +159,32 @@ export function TestScoreDialog({
                 </div>
               </div>
               {subFields.length > 0 && (
-                <div className="grid grid-cols-2 gap-3">
-                  {subFields.map((label) => {
-                    const key = label.toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
-                    return (
-                      <div className="space-y-2" key={key}>
-                        <Label>{label}</Label>
-                        <Input
-                          value={form.sub_scores?.[key] ?? ""}
-                          onChange={(e) =>
-                            setForm((f) => ({ ...f, sub_scores: { ...f.sub_scores, [key]: e.target.value } }))
-                          }
-                        />
-                      </div>
-                    );
-                  })}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sub-scores</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {subFields.map((label) => {
+                      const key = label.toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
+                      const range = subScoreRange(form.test_type ?? "", label);
+                      return (
+                        <div className="space-y-2" key={key}>
+                          <Label>
+                            {label}
+                            {range && <span className="font-normal text-muted-foreground">{rangeHint(range)}</span>}
+                          </Label>
+                          <Input
+                            type="number"
+                            step="any"
+                            inputMode="decimal"
+                            placeholder={rangePlaceholder(range) || "Score"}
+                            value={form.sub_scores?.[key] ?? ""}
+                            onChange={(e) =>
+                              setForm((f) => ({ ...f, sub_scores: { ...f.sub_scores, [key]: sanitizeDecimalInput(e.target.value) } }))
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </>

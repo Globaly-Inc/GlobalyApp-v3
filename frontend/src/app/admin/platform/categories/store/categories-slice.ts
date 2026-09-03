@@ -3,7 +3,7 @@ import { categoriesApi } from "../apis";
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, PaginationMeta,
+  ModerationStatus, PaginationMeta, Test, TestInput,
 } from "../apis/types";
 
 type ListState<T> = { data: T[] } & PaginationMeta;
@@ -20,9 +20,27 @@ export const fetchBusinessCategories = createAsyncThunk(
   "platformCategories/fetchBusinessCategories",
   (params: ListParams = {}) => categoriesApi.getBusinessCategories({ limit: PAGE_LIMIT, ...params }),
 );
+/**
+ * Active business categories for dropdowns in OTHER screens (businesses list filter,
+ * add-business picker, extraction jobs). Own slot so catalog-page paging/searching never
+ * changes what those dropdowns show, and unpaginated so options aren't truncated at PAGE_LIMIT.
+ */
+export const fetchBusinessCategoryOptions = createAsyncThunk(
+  "platformCategories/fetchBusinessCategoryOptions",
+  // ponytail: one page of 100; revisit if the category catalog ever outgrows it
+  async () => (await categoriesApi.getBusinessCategories({ limit: 100, active: true })).data,
+);
+
 export const fetchServiceCategories = createAsyncThunk(
   "platformCategories/fetchServiceCategories",
   (params: ListParams = {}) => categoriesApi.getServiceCategories({ limit: PAGE_LIMIT, ...params }),
+);
+
+/** Same as businessCategoryOptions but for service categories (service form picker,
+ * add-business allowed-services card, business-category editor's default-services picker). */
+export const fetchServiceCategoryOptions = createAsyncThunk(
+  "platformCategories/fetchServiceCategoryOptions",
+  async () => (await categoriesApi.getServiceCategories({ limit: 100, active: true })).data,
 );
 
 /**
@@ -39,6 +57,14 @@ export const fetchLookup = createAsyncThunk(
   "platformCategories/fetchLookup",
   ({ kind, ...params }: { kind: LookupKind } & ListParams) =>
     categoriesApi.getLookups(kind, { limit: PAGE_LIMIT, ...params }),
+);
+/**
+ * Tests sit outside fetchCatalog for the same reason other-service categories do — that thunk maps its
+ * results by index, and the tab is rarely the first an admin lands on. Fetched when the tab opens.
+ */
+export const fetchTests = createAsyncThunk(
+  "platformCategories/fetchTests",
+  (params: ListParams = {}) => categoriesApi.getTests({ limit: PAGE_LIMIT, ...params }),
 );
 export const fetchFeeTypes = createAsyncThunk(
   "platformCategories/fetchFeeTypes",
@@ -102,16 +128,18 @@ function mutation<Arg>(
   return createAsyncThunk(`platformCategories/${name}`, async (arg: Arg, { dispatch, getState }) => {
     await run(arg);
     const state = (getState() as { platformCategories: CategoriesState }).platformCategories;
-    await dispatch(refetch(arg, state) as never);
+    const actions = refetch(arg, state);
+    await Promise.all((Array.isArray(actions) ? actions : [actions]).map((a) => dispatch(a as never)));
   });
 }
 
 const apiKind = (kind: CategoryKind) => kind === "business" ? "business" as const : kind === "other_service" ? "other-service" as const : "service" as const;
 
+// Also refreshes the options slot so dropdowns elsewhere pick up activate/deactivate immediately.
 const refetchFor = (kind: CategoryKind, state: CategoriesState) => {
-  if (kind === "business") return fetchBusinessCategories({ page: state.businessCategories.page });
+  if (kind === "business") return [fetchBusinessCategories({ page: state.businessCategories.page }), fetchBusinessCategoryOptions()];
   if (kind === "other_service") return fetchOtherServiceCategories({ page: state.otherServiceCategories.page });
-  return fetchServiceCategories({ page: state.serviceCategories.page });
+  return [fetchServiceCategories({ page: state.serviceCategories.page }), fetchServiceCategoryOptions()];
 };
 
 export const toggleCategory = mutation<{ kind: CategoryKind; id: number; is_active: boolean }>(
@@ -145,6 +173,18 @@ export const toggleLookup = mutation<{ kind: LookupKind; id: number; is_active: 
     const page = kind === "degree-levels" ? state.degreeLevels.page : state.areasOfStudy.page;
     return fetchLookup({ kind, page });
   },
+);
+
+export const saveTest = mutation<{ id: number | null; input: TestInput }>(
+  "saveTest",
+  ({ id, input }) => (id ? categoriesApi.updateTest(id, input) : categoriesApi.createTest(input)),
+  (_arg, state) => fetchTests({ page: state.tests.page }),
+);
+
+export const toggleTest = mutation<{ id: number; is_active: boolean }>(
+  "toggleTest",
+  ({ id, is_active }) => categoriesApi.updateTest(id, { is_active }),
+  (_arg, state) => fetchTests({ page: state.tests.page }),
 );
 
 export const saveFeeType = mutation<{ id: number | null; input: FeeTypeInput }>(
@@ -185,10 +225,13 @@ export const removeAccreditation = mutation<number>(
 
 export type CategoriesState = {
   businessCategories: ListState<Category>;
+  businessCategoryOptions: Category[];
   serviceCategories: ListState<Category>;
+  serviceCategoryOptions: Category[];
   otherServiceCategories: ListState<Category>;
   degreeLevels: ListState<Lookup>;
   areasOfStudy: ListState<Lookup>;
+  tests: ListState<Test>;
   feeTypes: ListState<FeeType>;
   accreditations: ListState<Accreditation>;
   issuingOrganizations: IssuingOrganization[];
@@ -198,8 +241,9 @@ export type CategoriesState = {
 };
 
 const initialState: CategoriesState = {
-  businessCategories: emptyList(), serviceCategories: emptyList(), otherServiceCategories: emptyList(),
-  degreeLevels: emptyList(), areasOfStudy: emptyList(),
+  businessCategories: emptyList(), businessCategoryOptions: [],
+  serviceCategories: emptyList(), serviceCategoryOptions: [], otherServiceCategories: emptyList(),
+  degreeLevels: emptyList(), areasOfStudy: emptyList(), tests: emptyList(),
   feeTypes: emptyList(), accreditations: emptyList(),
   issuingOrganizations: [], countries: [],
   status: "idle", error: null,
@@ -226,8 +270,14 @@ const categoriesSlice = createSlice({
       .addCase(fetchBusinessCategories.fulfilled, (state, action) => {
         state.businessCategories = { data: action.payload.data, ...action.payload.meta };
       })
+      .addCase(fetchBusinessCategoryOptions.fulfilled, (state, action) => {
+        state.businessCategoryOptions = action.payload;
+      })
       .addCase(fetchServiceCategories.fulfilled, (state, action) => {
         state.serviceCategories = { data: action.payload.data, ...action.payload.meta };
+      })
+      .addCase(fetchServiceCategoryOptions.fulfilled, (state, action) => {
+        state.serviceCategoryOptions = action.payload;
       })
       .addCase(fetchOtherServiceCategories.fulfilled, (state, action) => {
         state.otherServiceCategories = { data: action.payload.data, ...action.payload.meta };
@@ -239,6 +289,9 @@ const categoriesSlice = createSlice({
         const list = { data: action.payload.data, ...action.payload.meta };
         if (action.meta.arg.kind === "degree-levels") state.degreeLevels = list;
         else state.areasOfStudy = list;
+      })
+      .addCase(fetchTests.fulfilled, (state, action) => {
+        state.tests = { data: action.payload.data, ...action.payload.meta };
       })
       .addCase(fetchFeeTypes.fulfilled, (state, action) => {
         state.feeTypes = { data: action.payload.data, ...action.payload.meta };

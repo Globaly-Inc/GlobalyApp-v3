@@ -1,6 +1,11 @@
 import { createChildLogger } from "../../../shared/logger.js";
-import { courseSlug } from "../../search/utils/slug.js";
 import * as knowledge from "../repositories/knowledge.repository.js";
+import type { ProfileContext } from "../repositories/knowledge.repository.js";
+import type { CounsellingContext } from "../repositories/sessions.repository.js";
+// One card mapping and one chunk-budget rule for both retrieval paths — a divergence
+// here would mean the legacy path and the tool path emitting different course-card
+// shapes, or handing the model different amounts of rack context for the same question.
+import { capPerDocument, courseCardFields } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
 import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
@@ -58,6 +63,28 @@ const TIER_LABEL: Record<string, string> = {
   other: "general source",
 };
 
+/**
+ * Verification and expiry, stated inline so the model can qualify a figure instead of
+ * asserting it. Silent when a source carries neither.
+ */
+function freshnessOf(row: { last_verified_at: string | null; effective_until: string | null }): string {
+  const parts: string[] = [];
+  if (row.last_verified_at) parts.push(`verified ${String(row.last_verified_at).slice(0, 10)}`);
+  if (row.effective_until) parts.push(`stated valid until ${String(row.effective_until).slice(0, 10)}`);
+  return parts.length ? `, ${parts.join(", ")}` : "";
+}
+
+/** Rack retrieval: chunk-level only — the whole-page path was retired in 20260822_001. */
+async function matchRack(
+  vector: number[],
+  countryCode: string | null,
+  trace: (step: string) => void,
+): Promise<knowledge.KnowledgeChunkResult[]> {
+  const capped = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 8, countryCode));
+  trace(`Knowledge rack: ${capped.length} chunks found`);
+  return capped;
+}
+
 export interface RagOutput {
   contextText: string;
   sources: Array<{ type: string; id: string; title: string }>;
@@ -97,7 +124,7 @@ export async function searchAll(opts: {
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
-  const [courses, visas, institutions, agents, maraAgents, knowledgeVisas, faqs, guides, documents] = await Promise.all([
+  const [courses, visas, institutions, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = await Promise.all([
     opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
       : knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
         .then(r => { trace(`Courses: ${r.length} found`); return r; })
@@ -124,11 +151,10 @@ export async function searchAll(opts: {
     knowledge.searchCountryGuides({ query: searchQuery, limit: 2 })
       .then(r => { trace(`Country guides: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Country guide search failed", { err: String(err) }); return []; }),
-    // Rack documents are semantic (vector) search on the raw query. Skipped in embed
+    // Rack retrieval is semantic (vector) search on the raw query. Skipped in embed
     // mode — crawled institution updates must not surface under another business's brand.
     embedScoped || !embeddingConfigured() ? none : embed(opts.query)
-      .then(v => knowledge.matchKnowledgeDocuments(v, 6, countryCode))
-      .then(r => { trace(`Knowledge rack: ${r.length} found`); return r; })
+      .then(v => matchRack(v, countryCode, trace))
       .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
   ]);
 
@@ -173,13 +199,7 @@ export async function searchAll(opts: {
         c.eligibility.length
           ? `  Eligibility: ${c.eligibility.map(e => e.description ?? e.name).join("; ")}`
           : "",
-        `  CARD_FIELDS: ${JSON.stringify({
-          id: c.id, slug: courseSlug(c.name, c.id), name: c.name, institution: c.institution_name,
-          degree_level: c.degree_level, duration: c.duration_weeks ? `${c.duration_weeks} weeks` : null,
-          fees: fee?.total_amount ?? null, currency: fee?.currency ?? null,
-          country: c.institution_country ?? c.country_code, city: c.campuses[0]?.campus_name ?? null,
-          intakes: intakeNames, study_modes: modes, source_url: c.source_url,
-        })}`,
+        `  CARD_FIELDS: ${JSON.stringify(courseCardFields(c))}`,
         "",
       );
       sources.push({ type: "course", id: c.id, title: c.name });
@@ -299,26 +319,102 @@ export async function searchAll(opts: {
     parts.push(lines.filter(Boolean).join("\n"));
   }
 
-  if (documents.length) {
-    // Trust-tier first, similarity second — official sources lead the context.
-    documents.sort((a, b) =>
-      (TIER_RANK[a.trust_tier] ?? 2) - (TIER_RANK[b.trust_tier] ?? 2) || b.similarity - a.similarity,
-    );
-    const lines = ["--- KNOWLEDGE ARTICLES (crawled sources, most authoritative first) ---"];
-    for (const d of documents) {
-      lines.push(
-        `Article: ${d.title ?? d.url} (${d.source_domain}, ${d.category_label}, ${TIER_LABEL[d.trust_tier] ?? "general source"})`,
-        // Full pages run to thousands of words; cap each so four articles can't crowd out course data.
-        `  ${d.markdown.slice(0, 1500)}`,
-        `  Source: ${d.url}`,
-        "",
-      );
-      sources.push({ type: "document", id: d.id, title: d.title ?? d.url });
-    }
-    parts.push(lines.join("\n"));
+  if (rackHits.length) {
+    const rendered = renderRackHits(rackHits);
+    parts.push(rendered.text);
+    sources.push(...rendered.sources);
   }
 
   const contextText = parts.join("\n\n");
   trace(`Context: ${contextText.length} chars, ${sources.length} sources`);
   return { contextText, sources, traceSteps };
+}
+
+/** Rack chunks as prompt text + deduped sources — one format for every retrieval path. */
+function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[]): {
+  text: string;
+  sources: RagOutput["sources"];
+} {
+  // Trust-tier first, similarity second — official sources lead the context.
+  rackHits.sort((a, b) =>
+    (TIER_RANK[a.trust_tier] ?? 2) - (TIER_RANK[b.trust_tier] ?? 2) || b.similarity - a.similarity,
+  );
+  const lines = ["--- KNOWLEDGE ARTICLES (retrieved passages, most authoritative first) ---"];
+  const sources: RagOutput["sources"] = [];
+  // Two chunks of one document are one source to the student.
+  const cited = new Set<string>();
+  for (const d of rackHits) {
+    const tier = TIER_LABEL[d.trust_tier] ?? "general source";
+    const origin = d.source_type === "file" ? (d.file_name ?? "uploaded document") : d.source_domain;
+    const where = [d.title, d.heading_path].filter(Boolean).join(" › ");
+    const page = d.page_number ? ` (page ${d.page_number})` : "";
+    // The whole chunk goes in: it is section-sized by construction, which is the
+    // point of chunking — no truncation, so the answer can't be cut off.
+    lines.push(
+      `Passage: ${where || origin} (${origin}, ${d.category_label}, ${tier}${freshnessOf(d)})`,
+      ...d.content.split("\n").map((line) => `  ${line}`),
+      `  Source: ${d.url ?? d.file_name ?? origin}${page}`,
+      "",
+    );
+    if (!cited.has(d.document_id)) {
+      cited.add(d.document_id);
+      sources.push({ type: "document", id: d.document_id, title: where || origin });
+    }
+  }
+  return { text: lines.join("\n"), sources };
+}
+
+/** The student's situation as one line of search text, or null when nothing is known.
+ * Exported for the self-check script only. */
+export function situationText(
+  profile: ProfileContext | null,
+  ctx: CounsellingContext | null | undefined,
+): string | null {
+  const p = profile?.profile;
+  const parts = [
+    p?.nationality && `nationality ${p.nationality}`,
+    p?.country_of_residence && `living in ${p.country_of_residence}`,
+    p?.degree_level && `highest degree ${p.degree_level}`,
+    p?.preferred_destinations && `preferred destinations ${JSON.stringify(p.preferred_destinations)}`,
+    (p?.budget_min != null || p?.budget_max != null) &&
+      `budget ${p?.budget_currency ?? ""} ${p?.budget_min ?? "?"}-${p?.budget_max ?? "?"}`,
+    ctx?.goals?.length && `goals: ${ctx.goals.join(", ")}`,
+    ctx?.interests?.length && `interests: ${ctx.interests.join(", ")}`,
+    ctx?.constraints?.length && `constraints: ${ctx.constraints.join(", ")}`,
+    ctx?.stage && `journey stage: ${ctx.stage}`,
+  ].filter((v): v is string => typeof v === "string" && v.length > 0);
+  return parts.length ? parts.join("; ") : null;
+}
+
+/**
+ * Proactive Knowledge Rack pass for tool-mode turns.
+ *
+ * The tool loop only reaches the rack when the model decides to search, and it searches
+ * in the student's literal words — so guidance that applies to the student's SITUATION
+ * (a visa rule for their destination, an admission consideration for their background,
+ * a counselling guideline for their stage) never surfaced unless asked about directly.
+ * This runs one vector search per turn seeded with message + profile + session context
+ * and hands the result to the prompt as a briefing, not an answer.
+ */
+export async function counsellorBriefing(opts: {
+  message: string;
+  profile: ProfileContext | null;
+  counsellingContext?: CounsellingContext | null;
+  onTrace?: (step: string) => void;
+}): Promise<{ text: string; sources: RagOutput["sources"] }> {
+  const empty = { text: "", sources: [] };
+  if (!embeddingConfigured()) return empty;
+  try {
+    const situation = situationText(opts.profile, opts.counsellingContext);
+    const query = situation ? `${opts.message}\nStudent situation: ${situation}` : opts.message;
+    const countryCode = await detectCountryCode(query);
+    const vector = await embed(query);
+    const hits = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 6, countryCode));
+    opts.onTrace?.(`Knowledge rack briefing: ${hits.length} passages`);
+    if (!hits.length) return empty;
+    return renderRackHits(hits);
+  } catch (err) {
+    logger.warn("Counsellor briefing failed", { err: String(err) });
+    return empty; // ponytail: briefing is additive — a failure costs guidance, never the turn
+  }
 }

@@ -17,9 +17,11 @@ export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
   "Get Started": [
     { label: "For Students", href: "/for-students" },
     { label: "For Institutions", href: "/for-institutions" },
-    { label: "For Agents", href: "/for-agents" },
-    { label: "Pricing", href: "/pricing" },
-    { label: "Ambassador Program", href: "/for-students" },
+    { label: "For Education Counselors", href: "/for-agents" },
+    // Parked until the feature ships. Pricing has a page but no live plans, and the Ambassador
+    // Program has no page at all — its link pointed at /for-students.
+    // { label: "Pricing", href: "/pricing" },
+    // { label: "Ambassador Program", href: "/for-students" },
   ],
   "Explore Destinations": [
     { label: "Australia", href: "/country/australia" },
@@ -31,9 +33,11 @@ export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
   Search: [
     { label: "Courses", href: "/search?tab=courses" },
     { label: "Institutions", href: "/search?tab=institutions" },
-    { label: "Agents", href: "/search?tab=education-agencies" },
+    { label: "Education Counselors", href: "/search?tab=education-agencies" },
     { label: "Scholarships", href: "/scholarships" },
-    { label: "Jobs", href: "/search?tab=jobs" },
+    // Parked with the Jobs tab itself (see search-tabs.tsx): /students/jobs returns no rows, and the
+    // tab is not in the rail, so this link landed on a tab the page no longer offers.
+    // { label: "Jobs", href: "/search?tab=jobs" },
   ],
   Resources: [
     { label: "Blog", href: "/blog" },
@@ -43,8 +47,10 @@ export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
   ],
   Contact: [
     { label: "support@globaly.app", href: "mailto:support@globaly.app" },
-    { label: "🇦🇺 Sydney, Australia", href: "#" },
-    { label: "🇺🇸 Delaware, USA", href: "#" },
+    // Addresses, not destinations: href "" makes the footer render them as plain text rather than
+    // a link that goes nowhere.
+    { label: "🇦🇺 Sydney, Australia", href: "" },
+    { label: "🇺🇸 Delaware, USA", href: "" },
   ],
 };
 
@@ -57,12 +63,12 @@ export const SOCIALS: { name: SocialName; href: string; label: string }[] = [
 ];
 
 // No "Services" entry here on purpose — the marketplace is reached from the hero search switcher
-// ("Other Services"), alongside Courses / Institutions / Agents / Visas, because it is something people
+// ("Other Services"), alongside Courses / Institutions / Education Counselors / Visas, because it is something people
 // search rather than another marketing page.
 export const NAV_LINKS = [
   { label: "For Students", href: "/for-students" },
   { label: "For Institutions", href: "/for-institutions" },
-  { label: "For Agents", href: "/for-agents" },
+  { label: "For Education Counselors", href: "/for-agents" },
   { label: "Blog", href: "/blog" },
 ];
 
@@ -89,13 +95,30 @@ import { GraduationCap, Building2, Users, Stamp, Handshake } from "lucide-react"
 
 // The hero search switcher. Every slug but `other-services` resolves to /search?tab=<slug>; that one goes to
 // the peer-to-peer marketplace instead — see SEARCH_DESTINATIONS below and unified-search-bar's submit().
+//
+// Courses and Other Services are not businesses, so they stay hardcoded; the entries between them
+// mirror the admin-managed business_categories catalog, fetched at runtime. This list is also what
+// the switcher falls back to when that request fails.
 export const CATEGORIES = [
   { slug: "courses", name: "Courses", Icon: GraduationCap },
   { slug: "institutions", name: "Institutions", Icon: Building2 },
-  { slug: "agents", name: "Agents", Icon: Users },
-  { slug: "visas", name: "Visas", Icon: Stamp },
+  { slug: "education-agencies", name: "Education Counselors", Icon: Users },
+  { slug: "visa-services", name: "Visa Services", Icon: Stamp },
   { slug: "other-services", name: "Other Services", Icon: Handshake },
 ];
+
+/**
+ * business_categories.slug → the search tab that serves it.
+ *
+ * A category with no entry here (accreditation_body, immigration_departments) has nowhere to
+ * search, so the switcher drops it — as it does any tab that is not currently in the rail.
+ */
+export const CATEGORY_SLUG_TO_TAB: Record<string, string> = {
+  institutions: "institutions",
+  education_agency: "education-agencies",
+  visa_services: "visa-services",
+  migration_agents: "migration-agents",
+};
 
 /**
  * Slugs whose search lives outside /search, as `[path, queryParam]`.
@@ -109,7 +132,7 @@ export const SEARCH_DESTINATIONS: Record<string, { path: string; param: string }
 
 export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
   courses: [
-    "What courses can I study abroad?",
+    "What courses can I study at home or overseas?",
     "What are the popular courses in Australia?",
     "What are the programs for bachelor's degrees?",
     "What scholarships are available for international students?",
@@ -120,17 +143,17 @@ export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
     "Which countries offer affordable tuition for international students?",
     "What are the highest-ranked universities for business?",
   ],
-  agents: [
-    "What do education agents do?",
-    "Do I need an education agent to apply abroad?",
-    "How are education agents paid?",
-    "Find education agents who place students in the USA.",
+  "education-agencies": [
+    "What do education counselors do?",
+    "Do I need an education counselor to apply to a course?",
+    "How are education counselors paid?",
+    "Find education counselors who place students in the USA.",
   ],
-  visas: [
+  "visa-services": [
     "What is a student visa and how does it work?",
     "What documents are needed for a student visa?",
     "Can international students work on a student visa?",
-    "What are the post-study work visa options abroad?",
+    "What are the post-study work visa options for international students?",
   ],
   // Its own set, so switching to Other Services in AI mode doesn't leave course prompts on screen via the
   // `?? AI_PROMPTS_BY_SLUG.courses` fallback.
@@ -140,4 +163,19 @@ export const AI_PROMPTS_BY_SLUG: Record<string, string[]> = {
     "Where can I find a tutor for my course?",
     "What help do other students offer where I'm going?",
   ],
+};
+
+/**
+ * Public bucket for hero videos, posters and marketing photos. They live in GCS rather than
+ * `public/`, so the repo and the deployed bundle stay free of tens of megabytes of media.
+ */
+export const MEDIA_URL = "https://storage.googleapis.com/globalyapp-public-images/photos";
+
+/** Popular search terms per category, shown as one-tap chips under the bar in Search mode. */
+export const SEARCH_SUGGESTIONS_BY_SLUG: Record<string, string[]> = {
+  courses: ["MBA", "MSc Information Technology", "Nursing", "Data Science"],
+  institutions: ["University of Melbourne", "University of Toronto", "TAFE", "Community colleges"],
+  "education-agencies": ["Education Counselors for Australia", "Education Counselors for Canada", "Education Counselors for the UK", "Education Counselors for the USA"],
+  "visa-services": ["Student visa", "Post-study work visa", "Dependent visa", "Visitor visa"],
+  "other-services": ["Airport pickup", "Accommodation", "Tutoring", "SIM card"],
 };

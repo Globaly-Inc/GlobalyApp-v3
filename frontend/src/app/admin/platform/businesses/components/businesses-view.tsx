@@ -6,9 +6,11 @@ import { Building2, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Pagination } from "@/components/ui/pagination";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchBusinessCategories } from "@/app/admin/platform/categories/store/categories-slice";
+import { fetchBusinessCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import {
   deleteBusinessThunk,
   fetchBusinesses,
@@ -18,7 +20,7 @@ import {
   updateBusinessStatus,
 } from "../store/businesses-slice";
 import { filterBusinessesBySourceAndOwnership } from "../utils";
-import type { Business } from "../apis/types";
+import type { Business, BusinessSort, ListingRef } from "../apis/types";
 import { BusinessCard } from "./shared/business-card";
 import { DeleteBusinessDialog } from "./shared/delete-business-dialog";
 import { BulkDeleteDialog } from "./shared/bulk-delete-dialog";
@@ -29,17 +31,35 @@ import { BusinessSelectionBar } from "./shared/business-selection-bar";
 export function BusinessesView() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { businesses, status } = useAppSelector((state) => state.platformBusinesses);
-  const categories = useAppSelector((state) => state.platformCategories.businessCategories.data);
+  const { businesses, total, status } = useAppSelector((state) => state.platformBusinesses);
+  const categories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
 
   const [tab, setTab] = useState<"businesses" | "services" | "claims">("businesses");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [ownershipFilter, setOwnershipFilter] = useState("all");
+  const [sort, setSort] = useState("name_asc");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
 
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Server-side filters change the result set, so a stale page would fall off the end.
+  const resetPage = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(1);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setDebouncedSearch(value), 300);
+  };
+
+  // The list mixes both tables, so business 19 and institution 19 are different rows with the
+  // same id — row identity (React keys, selection) must be {kind, id}, not id alone.
+  const keyOf = (b: Business) => `${b.kind}-${b.id}`;
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [publishBusyId, setPublishBusyId] = useState<number | null>(null);
   const [claimRequestBusy, setClaimRequestBusy] = useState(false);
   const [claimRequestTarget, setClaimRequestTarget] = useState<ClaimRequestTarget | null>(null);
@@ -53,14 +73,17 @@ export function BusinessesView() {
     if (fetchedCategoriesRef.current) return;
     fetchedCategoriesRef.current = true;
     if (categories.length > 0) return;
-    dispatch(fetchBusinessCategories({}));
+    dispatch(fetchBusinessCategoryOptions());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const buildBusinessesParams = () => ({
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     category: categoryFilter !== "all" ? Number(categoryFilter) : undefined,
+    sort: sort as BusinessSort,
+    page,
+    limit,
   });
 
   const lastBusinessesFetchKey = useRef<string | null>(null);
@@ -71,10 +94,17 @@ export function BusinessesView() {
     lastBusinessesFetchKey.current = key;
     dispatch(fetchBusinesses(params));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, search, statusFilter, categoryFilter]);
+  }, [dispatch, debouncedSearch, statusFilter, categoryFilter, sort, page, limit]);
 
   const categoryOptions = useMemo(
-    () => [{ value: "all", label: "All categories" }, ...categories.map((c) => ({ value: String(c.id), label: c.name }))],
+    () => [
+      { value: "all", label: "All categories" },
+      ...categories.map((c) => ({
+        value: String(c.id),
+        label: c.name,
+        icon: <DynamicIcon name={c.icon} fallback="Building2" className="h-4 w-4" />,
+      })),
+    ],
     [categories],
   );
 
@@ -83,15 +113,28 @@ export function BusinessesView() {
     [businesses, sourceFilter, ownershipFilter],
   );
 
-  const visibleIds = filteredBusinesses.map((b) => b.id);
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  // The claims tab is the same list, pre-filtered: anything an admin has sent a claim
+  // request for and nobody has accepted yet. Accepted ones flip to "claimed" and drop out.
+  const displayed = tab === "claims"
+    ? businesses.filter((b) => b.claim_status === "claim_pending")
+    : filteredBusinesses;
+
+  const visibleKeys = filteredBusinesses.map(keyOf);
+  const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => selected.has(k));
   const someSelected = selected.size > 0;
 
-  const toggleOne = (id: number) => {
+  /** The selected rows as {kind, id} refs — every mutation routes by kind. */
+  const selectedRefs = (): ListingRef[] =>
+    [...selected].map((k) => {
+      const [kind, id] = k.split("-");
+      return { kind: kind as ListingRef["kind"], id: Number(id) };
+    });
+
+  const toggleOne = (key: string) => {
     setSelected((s) => {
       const next = new Set(s);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -99,16 +142,16 @@ export function BusinessesView() {
   const toggleAllVisible = () => {
     setSelected((s) => {
       const next = new Set(s);
-      if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id));
-      else visibleIds.forEach((id) => next.add(id));
+      if (allVisibleSelected) visibleKeys.forEach((k) => next.delete(k));
+      else visibleKeys.forEach((k) => next.add(k));
       return next;
     });
   };
 
   const clearSelection = () => setSelected(new Set());
 
-  const runVerify = (id: number) =>
-    dispatch(updateBusinessStatus({ id, status: "verified" }))
+  const runVerify = (b: Business) =>
+    dispatch(updateBusinessStatus({ kind: b.kind, id: b.id, status: "verified" }))
       .unwrap()
       .then(() => {
         toast.success("Business verified");
@@ -116,8 +159,8 @@ export function BusinessesView() {
       })
       .catch((e: Error) => toast.error("Couldn't update status", { description: e.message }));
 
-  const runSuspend = (id: number) =>
-    dispatch(updateBusinessStatus({ id, status: "suspended" }))
+  const runSuspend = (b: Business) =>
+    dispatch(updateBusinessStatus({ kind: b.kind, id: b.id, status: "suspended" }))
       .unwrap()
       .then(() => {
         toast.success("Business suspended");
@@ -130,12 +173,15 @@ export function BusinessesView() {
     setClaimRequestBusy(true);
     try {
       if (claimRequestTarget.kind === "single") {
-        await dispatch(sendClaimRequest(claimRequestTarget.business.id)).unwrap();
-        toast.success("Claim request sent to the business owner");
+        const b = claimRequestTarget.business;
+        await dispatch(sendClaimRequest({ kind: b.kind, id: b.id })).unwrap();
+        // The link goes to the listing's own contact email when nobody owns it yet — see
+        // sendClaimRequest / sendInstitutionClaimRequest on the backend.
+        toast.success(`Claim request sent to ${b.owner_email ?? b.email ?? "the listed contact"}`);
       } else {
-        const ids = Array.from(selected);
-        await dispatch(sendBulkClaimRequests(ids)).unwrap();
-        toast.success(`Queued claim requests for ${ids.length} businesses`);
+        const refs = selectedRefs();
+        await dispatch(sendBulkClaimRequests(refs)).unwrap();
+        toast.success(`Queued claim requests for ${refs.length} businesses`);
         clearSelection();
       }
       setClaimRequestTarget(null);
@@ -146,10 +192,10 @@ export function BusinessesView() {
     }
   };
 
-  const runTogglePublish = async (id: number, next: boolean) => {
-    setPublishBusyId(id);
+  const runTogglePublish = async (b: Business, next: boolean) => {
+    setPublishBusyId(b.id);
     try {
-      await dispatch(updateBusinessPublished({ id, is_published: next })).unwrap();
+      await dispatch(updateBusinessPublished({ kind: b.kind, id: b.id, is_published: next })).unwrap();
       toast.success(next ? "Business published" : "Business unpublished");
     } catch (e) {
       toast.error("Couldn't update publish status", { description: (e as Error).message });
@@ -162,7 +208,7 @@ export function BusinessesView() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await dispatch(deleteBusinessThunk(deleteTarget.id)).unwrap();
+      await dispatch(deleteBusinessThunk({ kind: deleteTarget.kind, id: deleteTarget.id })).unwrap();
       toast.success("Business deleted");
       setDeleteTarget(null);
       dispatch(fetchBusinesses(buildBusinessesParams()));
@@ -174,31 +220,31 @@ export function BusinessesView() {
   };
 
   const bulkUpdateStatus = async (target: "verified" | "suspended") => {
-    const ids = Array.from(selected);
-    if (ids.length === 0) return;
+    const refs = selectedRefs();
+    if (refs.length === 0) return;
     setBulkBusy(true);
     const results = await Promise.all(
-      ids.map((id) => dispatch(updateBusinessStatus({ id, status: target })).unwrap().then(() => true).catch(() => false)),
+      refs.map((r) => dispatch(updateBusinessStatus({ ...r, status: target })).unwrap().then(() => true).catch(() => false)),
     );
     const ok = results.filter(Boolean).length;
     setBulkBusy(false);
     clearSelection();
-    toast[ok < ids.length ? "error" : "success"](`Updated ${ok} of ${ids.length}`);
+    toast[ok < refs.length ? "error" : "success"](`Updated ${ok} of ${refs.length}`);
     dispatch(fetchBusinesses(buildBusinessesParams()));
   };
 
   const bulkDelete = async () => {
-    const ids = Array.from(selected);
-    if (ids.length === 0) return;
+    const refs = selectedRefs();
+    if (refs.length === 0) return;
     setBulkBusy(true);
     const results = await Promise.all(
-      ids.map((id) => dispatch(deleteBusinessThunk(id)).unwrap().then(() => true).catch(() => false)),
+      refs.map((r) => dispatch(deleteBusinessThunk(r)).unwrap().then(() => true).catch(() => false)),
     );
     const ok = results.filter(Boolean).length;
     setBulkBusy(false);
     setBulkDeleteOpen(false);
     clearSelection();
-    toast[ok < ids.length ? "error" : "success"](`Deleted ${ok} of ${ids.length}`);
+    toast[ok < refs.length ? "error" : "success"](`Deleted ${ok} of ${refs.length}`);
     dispatch(fetchBusinesses(buildBusinessesParams()));
   };
 
@@ -209,28 +255,32 @@ export function BusinessesView() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
-  } else if (filteredBusinesses.length === 0) {
+  } else if (displayed.length === 0) {
     list = (
       <div className="py-12 text-center text-muted-foreground">
         <Building2 className="mx-auto mb-3 h-12 w-12 opacity-30" />
-        <p>No businesses found.</p>
+        <p>{tab === "claims" ? "No pending claim requests." : "No businesses found."}</p>
       </div>
     );
   } else {
     list = (
       <div className="space-y-3">
-        {filteredBusinesses.map((b) => (
+        {displayed.map((b) => (
           <BusinessCard
-            key={b.id}
+            key={keyOf(b)}
             business={b}
-            selected={selected.has(b.id)}
-            onToggleSelect={() => toggleOne(b.id)}
-            onView={() => router.push(`/admin/platform/businesses/${b.id}`)}
-            onVerify={() => runVerify(b.id)}
-            onSuspend={() => runSuspend(b.id)}
-            onTogglePublish={() => runTogglePublish(b.id, !b.is_published)}
+            selected={selected.has(keyOf(b))}
+            onToggleSelect={() => toggleOne(keyOf(b))}
+            onView={() => router.push(`/admin/platform/businesses/${b.id}?kind=${b.kind}`)}
+            onVerify={() => runVerify(b)}
+            onSuspend={() => runSuspend(b)}
+            onTogglePublish={() => runTogglePublish(b, !b.is_published)}
             onDelete={() => setDeleteTarget(b)}
-            onSendClaimRequest={() => setClaimRequestTarget({ kind: "single", business: b })}
+            onSendClaimRequest={() =>
+              // Recipient decided here, from the row: the owner's address if this listing has an
+              // owner, otherwise its own contact email. Same rule the backend applies.
+              setClaimRequestTarget({ kind: "single", business: b, recipient: b.owner_email ?? b.email })
+            }
             publishBusy={publishBusyId === b.id}
             claimRequestBusy={claimRequestBusy && claimRequestTarget?.kind === "single" && claimRequestTarget.business.id === b.id}
           />
@@ -262,36 +312,51 @@ export function BusinessesView() {
         onChange={setTab}
       />
 
-      {tab !== "businesses" ? (
+      {tab === "services" ? (
         <div className="py-12 text-center text-muted-foreground">
-          <p>{tab === "services" ? "Services" : "Claim requests"} management is coming soon.</p>
+          <p>Services management is coming soon.</p>
         </div>
+      ) : tab === "claims" ? (
+        list
       ) : (
         <>
       <BusinessFiltersBar
         search={search}
-        onSearchChange={setSearch}
+        onSearchChange={handleSearchChange}
         statusFilter={statusFilter}
-        onStatusChange={setStatusFilter}
+        onStatusChange={resetPage(setStatusFilter)}
         categoryFilter={categoryFilter}
-        onCategoryChange={setCategoryFilter}
+        onCategoryChange={resetPage(setCategoryFilter)}
         categoryOptions={categoryOptions}
         sourceFilter={sourceFilter}
         onSourceChange={setSourceFilter}
         ownershipFilter={ownershipFilter}
         onOwnershipChange={setOwnershipFilter}
+        sort={sort}
+        onSortChange={resetPage(setSort)}
       />
 
       {status !== "loading" && filteredBusinesses.length > 0 && (
         <div className="flex items-center gap-3 px-1">
           <Checkbox checked={allVisibleSelected} onCheckedChange={toggleAllVisible} aria-label="Select all visible" />
           <span className="text-xs text-muted-foreground">
-            {someSelected ? `${selected.size} selected` : `Select all ${visibleIds.length} visible`}
+            {someSelected ? `${selected.size} selected` : `Select all ${visibleKeys.length} visible`}
           </span>
         </div>
       )}
 
       {list}
+
+      {status !== "loading" && total > 0 && (
+        <Pagination
+          page={page}
+          limit={limit}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={resetPage(setLimit)}
+          align="end"
+        />
+      )}
 
       {someSelected && (
         <BusinessSelectionBar

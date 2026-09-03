@@ -7,7 +7,7 @@ import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js"
 import { streamChat } from "../lib/gemini-stream.js";
 import { buildSystemPrompt } from "../services/prompt.service.js";
 import * as rag from "../services/rag.service.js";
-import { parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
+import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { ForbiddenError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
@@ -20,6 +20,7 @@ export async function guestRoutes(app: FastifyInstance) {
     const input = GuestMessageSchema.parse(req.body ?? {});
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip;
     const fingerprintHash = guestService.hashFingerprint(input.fingerprint, ip);
+    const ipHash = guestService.hashIp(ip);
 
     // Embed visitors are gated by the business's monthly quota, not the
     // one-reply fingerprint wall — the widget is useless at 1 message/visitor.
@@ -27,7 +28,7 @@ export async function guestRoutes(app: FastifyInstance) {
       ? await embedService.buildEmbedContext(await embedService.resolveActiveConfig(input.embed_key))
       : undefined;
     if (!embed) {
-      const gate = await guestService.checkGuestGate(fingerprintHash);
+      const gate = await guestService.checkGuestGate(fingerprintHash, ipHash);
       if (!gate.allowed) {
         throw new ForbiddenError("Guest limit reached. Create a free account to continue chatting.");
       }
@@ -69,10 +70,12 @@ export async function guestRoutes(app: FastifyInstance) {
 
       const cards = parseCards(result.fullText);
       const chips = parseChips(result.fullText);
+      const blocks = parseBlocks(result.fullText);
       const cleanText = stripBlocks(result.fullText);
 
       if (cards.length) writeEvent(reply, "cards", cards);
       if (chips.length) writeEvent(reply, "chips", chips);
+      if (blocks.length) writeEvent(reply, "blocks", blocks);
 
       writeEvent(reply, "usage", result.usage);
       writeDone(reply);
@@ -87,6 +90,7 @@ export async function guestRoutes(app: FastifyInstance) {
       // Persist guest session (fire-and-forget)
       guestService.createGuestSession({
         fingerprintHash,
+        ipHash,
         messageContent: input.content,
         responseContent: cleanText,
         responseSources: ragOutput.sources,

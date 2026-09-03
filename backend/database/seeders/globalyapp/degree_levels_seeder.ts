@@ -12,6 +12,7 @@ const DEGREE_LEVELS = [
   { id: 7, slug: "master", name: "Master's", sort_order: 7 },
   { id: 8, slug: "doctoral", name: "Doctoral (PhD)", sort_order: 8 },
   { id: 9, slug: "other", name: "Other", sort_order: 9 },
+  { id: 10, slug: "high_school", name: "High School", sort_order: 10 },
 ];
 
 export async function seed(knex: Knex): Promise<void> {

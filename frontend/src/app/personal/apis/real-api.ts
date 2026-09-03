@@ -1,5 +1,9 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm } from "@/lib/api/http";
+import type { Lookup, Paginated, SearchListParams } from "@/app/admin/platform/categories/apis/types";
+import type { PlatformTest } from "@/lib/tests-catalog";
 import type {
+  AcademicTest,
+  AcademicTestInput,
   FullProfile,
   LanguageTest,
   LanguageTestInput,
@@ -11,6 +15,15 @@ import type {
   WorkExperience,
   WorkExperienceInput,
 } from "./types";
+
+function toSearchQuery(params: SearchListParams): string {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.search) q.set("search", params.search);
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
 
 type PlatformUserMeResponse = {
   first_name: string;
@@ -46,9 +59,11 @@ type PlatformUserMeResponse = {
     linkedin_url: string | null;
     website_url: string | null;
     onboarding_completed: boolean;
+    public_visibility: Record<string, boolean> | null;
   } | null;
   qualifications: Qualification[];
   language_tests: LanguageTest[];
+  academic_tests: AcademicTest[];
   work_experiences: WorkExperience[];
 };
 
@@ -86,7 +101,7 @@ function toStudentProfile(raw: PlatformUserMeResponse): StudentProfile {
     linkedin_url: profile?.linkedin_url ?? null,
     website_url: profile?.website_url ?? null,
     onboarding_completed: profile?.onboarding_completed ?? false,
-    // Straight through from the server — the browser no longer computes this.
+    public_visibility: profile?.public_visibility ?? null,
     completion: raw.completion ?? null,
   };
 }
@@ -125,6 +140,7 @@ export const personalRealApi = {
       profile: toStudentProfile(raw),
       qualifications: raw.qualifications,
       languageTests: raw.language_tests,
+      academicTests: raw.academic_tests,
       workExperiences: raw.work_experiences,
     };
   },
@@ -141,9 +157,23 @@ export const personalRealApi = {
     httpPatch(`/platform-users/me/language-tests/${id}`, patch),
   removeLanguageTest: (id: string): Promise<void> => httpDelete(`/platform-users/me/language-tests/${id}`),
 
+  addAcademicTest: (input: AcademicTestInput): Promise<AcademicTest> =>
+    httpPost("/platform-users/me/academic-tests", input),
+  updateAcademicTest: (id: string, patch: Partial<AcademicTestInput>): Promise<AcademicTest> =>
+    httpPatch(`/platform-users/me/academic-tests/${id}`, patch),
+  removeAcademicTest: (id: string): Promise<void> => httpDelete(`/platform-users/me/academic-tests/${id}`),
+
   addWorkExperience: (input: WorkExperienceInput): Promise<WorkExperience> =>
     httpPost("/platform-users/me/work-experiences", input),
   updateWorkExperience: (id: string, patch: Partial<WorkExperienceInput>): Promise<WorkExperience> =>
     httpPatch(`/platform-users/me/work-experiences/${id}`, patch),
   removeWorkExperience: (id: string): Promise<void> => httpDelete(`/platform-users/me/work-experiences/${id}`),
+
+  getDegreeLevels: (params: SearchListParams = {}): Promise<Paginated<Lookup>> =>
+    httpGet(`/platform-users/degree-levels${toSearchQuery(params)}`),
+  getAreasOfStudy: (params: SearchListParams = {}): Promise<Paginated<Lookup>> =>
+    httpGet(`/platform-users/areas-of-study${toSearchQuery(params)}`),
+
+  /** The platform test catalogue — the same public list the course pages read, not a portal-only copy. */
+  getTests: (): Promise<PlatformTest[]> => httpGet("/search/tests"),
 };

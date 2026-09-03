@@ -15,6 +15,8 @@ import {
   CreateStudyUnitSchema,
   PatchStudyUnitSchema,
   CreateStagedAccreditationSchema,
+  LibraryAccreditationSchema,
+  PatchLibraryAccreditationSchema,
   CreateAgentSchema,
   CreateCampusSchema,
   JunctionParamSchema,
@@ -135,6 +137,34 @@ export async function stagedRoutes(app: FastifyInstance) {
   app.delete("/staged-accreditations/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     return reply.send(await service.deleteAccreditation(id, adminId(req)));
+  });
+
+  // SA3: GET /jobs/:id/accreditations — scraped rows + junction assignments for the tab
+  app.get("/jobs/:id/accreditations", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.getJobAccreditations(id));
+  });
+
+  // ── Global accreditation library (superadmin.accreditations) ──
+
+  app.get("/accreditation-library", async (_req, reply) => {
+    return reply.send(await service.listLibraryAccreditations());
+  });
+
+  app.post("/accreditation-library", async (req, reply) => {
+    const input = LibraryAccreditationSchema.parse(req.body);
+    return reply.status(201).send(await service.createLibraryAccreditation(input, adminId(req)));
+  });
+
+  app.patch("/accreditation-library/:id", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const input = PatchLibraryAccreditationSchema.parse(req.body);
+    return reply.send(await service.patchLibraryAccreditation(id, input, adminId(req)));
+  });
+
+  app.delete("/accreditation-library/:id", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.deleteLibraryAccreditation(id, adminId(req)));
   });
 
   // ── Agents ──

@@ -15,6 +15,8 @@ const logger = createChildLogger("storage-service");
 const ALLOWED_MIME_TYPES = new Set([
   // Images
   "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml",
+  // Videos (gallery uploads)
+  "video/mp4", "video/webm", "video/quicktime",
   // Documents
   "application/pdf",
   "application/msword",
@@ -204,8 +206,32 @@ export function toStoragePath(raw: string): string {
   return withoutQuery.slice(idx + marker.length).split("/").slice(1).join("/");
 }
 
-/** Resolve a stored path (or null) to a signed, viewable URL — the shared "preview this image" call. */
-export function resolvePreviewUrl(path: string | null | undefined): Promise<string | null> {
-  if (!path) return Promise.resolve(null);
-  return getSignedViewUrl(toStoragePath(path));
+/**
+ * Resolve a stored path (or null) to a signed, viewable URL — the shared
+ * "preview this image" call.
+ *
+ * Never throws. Signing needs a reachable GCS_KEY_FILE, and when that is missing or
+ * the bucket rejects us this used to propagate out of GET /platform-users/me as a
+ * 500 — taking down the whole profile, and with it every feature gated on profile
+ * completion, because one avatar could not be signed. A missing image is cosmetic;
+ * losing the profile is not. So it degrades to null and logs loudly enough that the
+ * misconfiguration is still visible.
+ */
+export async function resolvePreviewUrl(path: string | null | undefined): Promise<string | null> {
+  if (!path) return null;
+  // External URLs (e.g. seeded pexels.com images) are already viewable — signing them as a
+  // bucket path produced storage.googleapis.com/<bucket>/https%3A//... broken links.
+  if (/^https?:\/\//i.test(path) && !path.includes("storage.googleapis.com/")) {
+    return path;
+  }
+  try {
+    return await getSignedViewUrl(toStoragePath(path));
+  } catch (err) {
+    logger.error("Could not sign a preview URL — returning null so the caller still responds", {
+      path,
+      gcsConfigured: isConfigured(),
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }

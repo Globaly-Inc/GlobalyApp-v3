@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import type { LucideIcon } from "lucide-react";
 import {
   Building2,
   MapPin,
@@ -11,124 +10,33 @@ import {
   Calendar,
   GraduationCap,
   Clock,
-  Loader2,
-  RefreshCcw,
-  Settings2,
   ShieldCheck,
+  Globe2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { allExtractionsApi } from "../apis";
-import { fmtTime, latestTimestamp } from "../utils";
+import { latestTimestamp } from "../utils";
+import { ACTIVE_STATUSES } from "../const";
 import type { JobFull } from "../apis/types";
 import type { JobTab } from "./job-tabs-bar";
 import { QueuePanel } from "./queue-panel";
-
-type ContextKey = "branches_urls" | "agents_urls" | "course_list_urls" | "extract_fields";
-
-type TabCard = {
-  key: string;
-  label: string;
-  icon: LucideIcon;
-  count: number;
-  updated: string | null;
-  tab: JobTab;
-  /** Pipeline step to dispatch for a re-run. Absent = no Run button. */
-  step?: string;
-  /** Guided-URL key that must be filled in before the step can run. */
-  contextKey?: ContextKey;
-  contextLabel?: string;
-  /** Set when the card shows a Run button the backend can't serve job-wide yet. */
-  runBlockedReason?: string;
-};
+import { TabSummaryCard, type ContextKey, type TabCard } from "./tab-summary-card";
 
 // ponytail: V3's course_data step is per-course (needs course_id), so the four
 // course-data cards show Run disabled and point at the Courses tab instead.
 const PER_COURSE_ONLY = "Re-run this from a course row in the Courses tab — V3 runs course data per course";
 
-function TabSummaryCard({
-  card,
-  busy,
-  hasContext,
-  onRun,
-  onJumpToTab,
-}: Readonly<{
-  card: TabCard;
-  busy: boolean;
-  hasContext: boolean;
-  onRun: () => void;
-  onJumpToTab: (tab: JobTab) => void;
-}>) {
-  const isEmpty = card.count === 0 && !card.updated;
-  const runnable = Boolean(card.step) || Boolean(card.runBlockedReason);
-
+function SectionHeader({ title, description, cards }: Readonly<{ title: string; description: string; cards: TabCard[] }>) {
+  const done = cards.filter((c) => c.count > 0 || c.updated).length;
   return (
-    <Card className="transition-shadow hover:shadow-sm">
-      <CardContent className="p-4 space-y-2">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => onJumpToTab(card.tab)}
-            className="flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary cursor-pointer"
-          >
-            <card.icon className="h-4 w-4" />
-            {card.label}
-          </button>
-          <span className={`text-xl font-bold ${isEmpty ? "text-muted-foreground/60" : ""}`}>{card.count}</span>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {isEmpty ? "Not extracted yet" : `Last updated: ${fmtTime(card.updated)}`}
-        </p>
-
-        {runnable && hasContext && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 w-full gap-1.5 text-xs cursor-pointer"
-            disabled={busy || Boolean(card.runBlockedReason)}
-            title={card.runBlockedReason}
-            onClick={onRun}
-          >
-            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCcw className="h-3 w-3" />}
-            {card.updated ? "Re-run" : "Run"}
-          </Button>
-        )}
-
-        {runnable && !hasContext && (
-          <div className="flex gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 flex-1 gap-1.5 text-xs"
-              disabled
-              title={`Add ${card.contextLabel} in the Context tab first`}
-            >
-              <RefreshCcw className="h-3 w-3" />
-              Run
-            </Button>
-            <Button
-              size="sm"
-              className="h-7 flex-1 gap-1.5 text-xs cursor-pointer"
-              onClick={() => onJumpToTab("context")}
-            >
-              <Settings2 className="h-3 w-3" />
-              Add Context
-            </Button>
-          </div>
-        )}
-
-        {!runnable && card.contextKey && !hasContext && (
-          <Button
-            size="sm"
-            className="h-7 w-full gap-1.5 text-xs cursor-pointer"
-            onClick={() => onJumpToTab("context")}
-          >
-            <Settings2 className="h-3 w-3" />
-            Add Context
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+    <div className="flex items-baseline justify-between gap-3 mb-3">
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <span className="shrink-0 text-xs font-medium text-muted-foreground">{done} of {cards.length} extracted</span>
+    </div>
   );
 }
 
@@ -137,8 +45,10 @@ export function OverviewTab({
   onJumpToTab,
   onReload,
 }: Readonly<{ full: JobFull; onJumpToTab: (tab: JobTab) => void; onReload: () => void }>) {
-  const { job, overview, campuses, agents, courses, courseLinks } = full;
+  const { job, overview, campuses, agents, tabCounts, courseLinks, visaServices } = full;
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const jobActive = ACTIVE_STATUSES.includes(job.status);
+  const isVisaServiceJob = job.source_type === "visa_service";
 
   const guided = (job.guided_urls ?? {}) as Record<string, unknown>;
   const hasContext = (key?: ContextKey) => {
@@ -169,20 +79,26 @@ export function OverviewTab({
     { key: "agents", label: "Agents", icon: Users, count: agents.length, updated: latestTimestamp(agents), tab: "agents", step: "agents", contextKey: "agents_urls", contextLabel: "agents URLs" },
   ];
 
+  const visaServiceCards: TabCard[] = [
+    { key: "visa_services", label: "Visa Services", icon: Globe2, count: visaServices.length, updated: latestTimestamp(visaServices), tab: "visa_services", step: "visa_services", contextKey: "services_urls", contextLabel: "services URLs" },
+  ];
+
   const courseCards: TabCard[] = [
-    { key: "courses", label: "Courses", icon: BookOpen, count: courses?.length, updated: latestTimestamp(courses), tab: "courses", contextKey: "course_list_urls", contextLabel: "course list URLs" },
+    { key: "courses", label: "Courses", icon: BookOpen, count: tabCounts.courses, updated: null, tab: "courses", step: "discovery", contextKey: "course_list_urls", contextLabel: "course list URLs" },
     { key: "fees", label: "Fees", icon: DollarSign, count: courseLinks.course_fees.length, updated: latestTimestamp(courseLinks.course_fees), tab: "fees", runBlockedReason: PER_COURSE_ONLY, contextKey: "extract_fields", contextLabel: "extract fields" },
     { key: "intakes", label: "Intakes", icon: Calendar, count: courseLinks.intakes.length, updated: latestTimestamp(courseLinks.intakes), tab: "intakes", runBlockedReason: PER_COURSE_ONLY, contextKey: "extract_fields", contextLabel: "extract fields" },
     { key: "eligibility", label: "Eligibility", icon: GraduationCap, count: courseLinks.eligibility_requirements.length, updated: latestTimestamp(courseLinks.eligibility_requirements), tab: "eligibility", runBlockedReason: PER_COURSE_ONLY, contextKey: "extract_fields", contextLabel: "extract fields" },
     { key: "units", label: "Study Units", icon: BookOpen, count: courseLinks.study_units.length, updated: latestTimestamp(courseLinks.study_units), tab: "units", runBlockedReason: PER_COURSE_ONLY, contextKey: "extract_fields", contextLabel: "extract fields" },
-    { key: "study_options", label: "Study Options", icon: Clock, count: courseLinks.study_options.length, updated: latestTimestamp(courseLinks.study_options), tab: "study_options" },
-    { key: "accreditations", label: "Accreditations", icon: ShieldCheck, count: courseLinks.accreditations.length, updated: latestTimestamp(courseLinks.accreditations), tab: "accreditations" },
+    { key: "study_options", label: "Study Options", icon: Clock, count: courseLinks.study_options.length, updated: latestTimestamp(courseLinks.study_options), tab: "study_options", step: "courses" },
+    { key: "accreditations", label: "Accreditations", icon: ShieldCheck, count: courseLinks.accreditations.length, updated: latestTimestamp(courseLinks.accreditations), tab: "accreditations", step: "courses" },
   ];
 
   const renderCard = (card: TabCard) => (
     <TabSummaryCard
       key={card.key}
       card={card}
+      jobStatus={job.status}
+      jobActive={jobActive}
       busy={busyKey === card.key}
       hasContext={hasContext(card.contextKey)}
       onRun={() => runStep(card)}
@@ -196,19 +112,33 @@ export function OverviewTab({
         <CardHeader>
           <CardTitle className="text-base">Extraction Details by Tab</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Institution data</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <CardContent className="space-y-6">
+          <section>
+            <SectionHeader
+              title={isVisaServiceJob ? "Business Data" : "Institution Data"}
+              description={isVisaServiceJob ? "Overview, branches, and agents for this business." : "Overview, branches, and agents for this institution."}
+              cards={institutionCards}
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {institutionCards.map(renderCard)}
             </div>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Course data</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {courseCards.map(renderCard)}
-            </div>
-          </div>
+          </section>
+
+          {isVisaServiceJob ? (
+            <section className="border-t border-border pt-6">
+              <SectionHeader title="Visa Service Data" description="Individual visa/migration services offered by this provider." cards={visaServiceCards} />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {visaServiceCards.map(renderCard)}
+              </div>
+            </section>
+          ) : (
+            <section className="border-t border-border pt-6">
+              <SectionHeader title="Course Data" description="Courses and their linked fees, intakes, and requirements." cards={courseCards} />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {courseCards.map(renderCard)}
+              </div>
+            </section>
+          )}
         </CardContent>
       </Card>
 

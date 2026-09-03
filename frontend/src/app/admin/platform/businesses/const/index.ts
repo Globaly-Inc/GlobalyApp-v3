@@ -34,6 +34,13 @@ export const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "user-created", label: "User created" },
 ];
 
+export const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "name_asc", label: "Name (A-Z)" },
+  { value: "name_desc", label: "Name (Z-A)" },
+  { value: "created_desc", label: "Created (newest)" },
+  { value: "created_asc", label: "Created (oldest)" },
+];
+
 export const OWNERSHIP_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All ownership" },
   { value: "owned", label: "Owned" },
@@ -44,6 +51,12 @@ export const BRANCH_TYPES: { value: BranchType; label: string }[] = [
   { value: "same_company", label: "Same Company" },
   { value: "subsidiary", label: "Subsidiary" },
   { value: "franchise", label: "Franchise" },
+];
+
+export const BRANCH_TYPE_OPTIONS: { value: BranchType; label: string; desc: string }[] = [
+  { value: "same_company", label: "Same Company", desc: "Another office of the same registered company" },
+  { value: "subsidiary", label: "Subsidiary Company", desc: "A separate company owned or controlled by your business" },
+  { value: "franchise", label: "Franchise", desc: "An independently owned business operating under your brand" },
 ];
 
 export const URL_FIELDS: Array<[keyof BusinessCreateInput, string]> = [

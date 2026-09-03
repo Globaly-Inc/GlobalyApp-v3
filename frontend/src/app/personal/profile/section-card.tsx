@@ -18,16 +18,22 @@ export function SectionCard({
   children: React.ReactNode;
 }>) {
   return (
-    <Card>
-      <CardHeader>
+    <Card className="group/card">
+      <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
+          <Icon className="h-4 w-4 text-primary" />
           {title}
           {badge}
         </CardTitle>
         {onEdit && (
           <CardAction>
-            <Button variant="ghost" size="icon-sm" onClick={onEdit} aria-label={`Edit ${title}`}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onEdit}
+              aria-label={`Edit ${title}`}
+              className="opacity-100 transition-opacity group-focus-within/card:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100"
+            >
               <Pencil className="h-4 w-4" />
             </Button>
           </CardAction>
@@ -45,30 +51,46 @@ export function OneToManySection({
   onAdd,
   children,
   emptyText,
+  badge,
 }: Readonly<{
   icon: ComponentType<{ className?: string }>;
   title: string;
   count: number;
-  onAdd: () => void;
+  onAdd?: () => void;
   children: React.ReactNode;
   emptyText: string;
+  badge?: React.ReactNode;
 }>) {
   return (
-    <Card>
-      <CardHeader>
+    <Card className="group/card">
+      <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
+          <Icon className="h-4 w-4 text-primary" />
           {title}
           {count > 0 && <Badge variant="secondary">{count}</Badge>}
+          {badge}
         </CardTitle>
-        <CardAction>
-          <Button variant="ghost" size="icon-sm" onClick={onAdd} aria-label={`Add ${title}`}>
-            <Plus className="h-4 w-4" />
-          </Button>
-        </CardAction>
+        {onAdd && (
+          <CardAction>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAdd}
+              aria-label={`Add ${title}`}
+              className="gap-1.5 opacity-100 transition-opacity group-focus-within/card:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add
+            </Button>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
-        {count === 0 ? <p className="text-sm text-muted-foreground">{emptyText}</p> : children}
+        {count === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
+        ) : (
+          children
+        )}
       </CardContent>
     </Card>
   );
@@ -78,7 +100,7 @@ export function Field({ label, value }: Readonly<{ label: string; value: React.R
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium text-foreground">{value || "—"}</p>
+      <p className="mt-0.5 text-sm font-semibold text-foreground">{value || "—"}</p>
     </div>
   );
 }

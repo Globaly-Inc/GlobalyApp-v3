@@ -1,10 +1,11 @@
 // Monitoring module — admin oversight views with no business ownership of their own
-// (scholarships today; a sibling of platform/, marketing/, etc.).
+// (scholarships and enquiries today; a sibling of platform/, marketing/, etc.).
 // All routes require super_admin or data_admin, matching platform/index.ts's gate.
 
 import type { FastifyInstance } from "fastify";
 import { ForbiddenError } from "../../../shared/errors.js";
 import { ALLOWED_ROLES } from "../consts.js";
+import enquiriesModule from "./enquiries/index.js";
 import scholarshipsModule from "./scholarships/index.js";
 
 export default async function monitoringModule(app: FastifyInstance) {
@@ -15,4 +16,5 @@ export default async function monitoringModule(app: FastifyInstance) {
   });
 
   app.register(scholarshipsModule, { prefix: "/scholarships" });
+  app.register(enquiriesModule, { prefix: "/enquiries" });
 }

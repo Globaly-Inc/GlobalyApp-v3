@@ -2,8 +2,8 @@
 
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Combobox } from "@/components/combobox";
-import { OWNERSHIP_FILTER_OPTIONS, SOURCE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS } from "../../const";
+import { Combobox, type ComboboxOption } from "@/components/combobox";
+import { OWNERSHIP_FILTER_OPTIONS, SORT_OPTIONS, SOURCE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS } from "../../const";
 
 export function BusinessFiltersBar({
   search,
@@ -17,6 +17,8 @@ export function BusinessFiltersBar({
   onSourceChange,
   ownershipFilter,
   onOwnershipChange,
+  sort,
+  onSortChange,
 }: Readonly<{
   search: string;
   onSearchChange: (value: string) => void;
@@ -24,11 +26,13 @@ export function BusinessFiltersBar({
   onStatusChange: (value: string) => void;
   categoryFilter: string;
   onCategoryChange: (value: string) => void;
-  categoryOptions: { value: string; label: string }[];
+  categoryOptions: ComboboxOption[];
   sourceFilter: string;
   onSourceChange: (value: string) => void;
   ownershipFilter: string;
   onOwnershipChange: (value: string) => void;
+  sort: string;
+  onSortChange: (value: string) => void;
 }>) {
   return (
     <div className="flex flex-wrap gap-3">
@@ -45,6 +49,7 @@ export function BusinessFiltersBar({
       <Combobox options={categoryOptions} value={categoryFilter} onChange={onCategoryChange} className="h-10 w-44 cursor-pointer" />
       <Combobox options={SOURCE_FILTER_OPTIONS} value={sourceFilter} onChange={onSourceChange} className="h-10 w-44 cursor-pointer" />
       <Combobox options={OWNERSHIP_FILTER_OPTIONS} value={ownershipFilter} onChange={onOwnershipChange} className="h-10 w-44 cursor-pointer" />
+      <Combobox options={SORT_OPTIONS} value={sort} onChange={onSortChange} className="h-10 w-44 cursor-pointer" />
     </div>
   );
 }

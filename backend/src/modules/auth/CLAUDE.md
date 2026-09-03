@@ -61,6 +61,7 @@ All user types authenticate through the same `POST /verify-otp` endpoint. There 
 |--------|------|---------|----------|
 | `is_personal_account` | boolean | `false` | User completes personal onboarding (`POST /platform-users/me/onboarding/personal`) |
 | `is_business_account` | boolean | `false` | User registers a business or accepts a business agent invitation |
+| `is_institution_account` | boolean | `false` | User onboards an institution or claims a promoted one |
 | `account_categories` | jsonb | `[]` | Appended on each onboarding/invitation — tracks history of all roles |
 
 `account_categories` example:
@@ -92,13 +93,84 @@ Entries are append-only and deduplicated (same type+role pair is not added twice
 // Base token (after login — admin user)
 { sub: platformUserId, type: "admin", email, role: "super_admin" | "admin" | "data_admin" | "moderator" }
 
-// Scoped token (business account, once they have a business)
-{ sub: platformUserId, type: "platform_user", email, orgId: schema_name, orgRole: "owner" | "admin" | "manager" | "counsellor" | "member" }
+// Scoped token (org account — a business OR an institution)
+{ sub: platformUserId, type: "platform_user", email,
+  orgId: schema_name, orgType: "business" | "institution",
+  orgRole: "owner" | "admin" | "manager" | "counsellor" | "member" }
 ```
 
 - `sub` is ALWAYS the `platform_users.id`
 - `type` is determined by checking `superadmin.admin_users` at login time — NOT from a stored flag
-- `orgId` + `orgRole` are set at `POST /verify-otp` time from the user's (single) business membership — the frontend doesn't need `/switch-account` for this
+- `orgId` + `orgRole` are set at `POST /verify-otp` time from the user's (single) org membership — the frontend doesn't need `/switch-account` for this
+
+## Org Context: Businesses and Institutions
+
+A business and an institution are both **orgs with their own uuid tenant schema**, so they
+share one context concept — one `orgId` claim, one `req.db`. `orgType` says which master
+table `orgId` points at.
+
+| | Business | Institution |
+|---|---|---|
+| Master table | `businesses` | `institutions` |
+| Membership index (master) | `user_business_index` | `user_institution_index` |
+| Membership (tenant, authoritative) | `agents` + `roles` | `members` (role is plain text) |
+| Enterable when | `account_status = 1` | `account_status = 1` (+ a provisioned schema) |
+| Request decorations | `req.business`, `req.businessId` | `req.institution`, `req.institutionId` |
+| Guard | `requireBusinessContext` | `requireInstitutionContext` |
+| Authorisation | `requirePermission("module:action")` | `requireInstitutionRole("admin")` |
+
+- **An absent `orgType` means business.** Tokens minted before institution context existed
+  carry no `orgType`; `tenant.plugin.ts` and `requireBusinessContext` both treat that as
+  business so those tokens keep working until they expire.
+- **Both kinds activate identically:** promote leaves `account_status = 0` and no schema;
+  accepting the claim email provisions the schema, creates the owner membership, then flips
+  `account_status` to 1 — in that order, so nothing is enterable before it is complete.
+  `schema_provisioned_at` is stamped by `provisionSchema` itself (every provisioning path gets
+  it, not just claims) and is what `migrate:tenants` filters on.
+- Institutions have **no `permissions`/`role_permissions` tables** — `requirePermission` does
+  not apply to them. `requireInstitutionRole` reads `members.role` from the tenant (not the
+  JWT) so a role change takes effect immediately. An owner passes every role check.
+- **Login scopes to the business when a user has both**, keeping every existing business
+  login byte-identical. Such a user reaches institution context via
+  `POST /auth/switch-account { org_id }`, which infers the kind from whichever table owns the
+  schema_name and re-checks membership against the tenant.
+- `POST /refresh` honours `auth_sessions.org_id` — the org this session last switched to —
+  across both kinds, so an institution switch survives a silent refresh exactly like a
+  business one. It falls back to the default (business-first) when nothing is recorded or the
+  membership no longer holds.
+- `GET /me` and `POST /verify-otp` both return `businesses[]` **and** `institutions[]`.
+- The institution catalog is **not** stored in the tenant schema. It is read through
+  `institutions.source_job_id` from `superadmin.extraction_*`. The tenant schema holds only
+  tenant-owned state (`members`), which is why promote can create a listing with no schema at
+  all. There is no per-tenant catalog override table yet.
+
+### Membership is written in TWO places — always both
+
+Membership lives in the tenant schema (authoritative for role) **and** in a master-DB index
+(what login reads). They must move together on add, role change, and removal.
+
+| | Tenant (authoritative) | Master index (login) |
+|---|---|---|
+| Business | `agents` + `roles` | `user_business_index` |
+| Institution | `members` | `user_institution_index` |
+
+Write only the tenant row → login cannot see the org (it can't scan tenant schemas), so the
+user can never enter it. Write only the index → every role check fails. **Neither mistake
+throws.** A stale index also means `/auth/me` reports the wrong role and the JWT's `orgRole`
+carries it — authorisation itself is safe, because `requirePermission` and
+`requireInstitutionRole` both resolve the role from the tenant, never from the claim.
+
+- **Institutions: go through `platform-users/services/institution-members.service.ts`**
+  (`addMember` / `updateMemberRole` / `removeMember`). It does both writes. Do not touch
+  `members` or `user_institution_index` directly. Today's callers are `onboardInstitution` and
+  `acceptInstitutionClaim`; when member invitations land, their accept path calls `addMember`
+  too — that is the whole reason the choke point exists.
+- **Businesses** enforce the same invariant by convention across four call sites
+  (`registerBusiness`, admin `createBusiness`, `acceptClaim`, agent `acceptInvitation`), plus
+  `updateAgent` / `removeAgent` which sync the index. Those two take a `businessId` parameter
+  purely so they can. Worth collapsing into a shared helper next time this area is touched.
+- Both `insertUser*Index` upserts clear `deleted_at` on merge, so re-adding a previously
+  removed member revives their row instead of merging onto an invisible tombstone.
 
 ## Business Context on Refresh
 
@@ -135,7 +207,8 @@ On agent invitation acceptance:
 ```
 POST /platform-users/me/onboarding/personal    → sets is_personal_account=true, appends to account_categories
 POST /platform-users/me/onboarding/business     → sets is_business_account=true, appends to account_categories, provisions tenant schema
-POST /platform-users/me/onboarding/institution  → creates institution record (no tenant schema)
+POST /platform-users/me/onboarding/institution  → sets is_institution_account=true, provisions tenant schema,
+                                                   indexes membership, returns an institution-scoped token
 ```
 
 A user can call both personal and business onboarding — they coexist. There are no separate category/sub-category selection steps; the type is included in the onboarding request body (`individual_category` for personal, `business_type` for business).
@@ -175,4 +248,5 @@ Defined in `core/plugins/auth.plugin.ts`:
 - `/api/v3/admin/users/invite/accept`
 - `/api/v3/agents/invite/accept`
 - `/api/v3/businesses/claim/accept`, `/api/v3/businesses/claim/request`
+- `/api/v3/institutions/claim/accept`, `/api/v3/institutions/claim/request`
 - `/healthz`, `/health/*`

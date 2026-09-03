@@ -1,20 +1,17 @@
 import { z } from "zod";
+import { isValidPhoneForCountry } from "@/app/admin/platform/businesses/utils";
 
-const phoneSchema = z.string().trim().min(1, "Phone number is required");
+const phoneCountryIdSchema = z.string().trim().min(1, "Phone code is required");
+const phoneNumberSchema = z.string().trim().min(1, "Phone number is required");
 const countryIdSchema = z.string().trim().min(1, "Country is required");
 const addressSchema = z.string().trim().min(1, "Address is required");
-const subdomainSchema = z
-  .string()
-  .trim()
-  .min(1, "Subdomain is required")
-  .regex(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and hyphens allowed");
-const businessNameSchema = z.string().trim().min(1, "Institution name is required");
+const businessNameSchema = z.string().trim().min(1, "Business name is required");
 
 const BUSINESS_FIELD_SCHEMAS = {
-  phone: phoneSchema,
+  phoneCountryId: phoneCountryIdSchema,
+  phoneNumber: phoneNumberSchema,
   countryId: countryIdSchema,
   address: addressSchema,
-  subdomain: subdomainSchema,
   businessName: businessNameSchema,
 };
 
@@ -24,33 +21,25 @@ export function validateBusinessField(field: keyof typeof BUSINESS_FIELD_SCHEMAS
 }
 
 export function validateBusinessDetails(values: {
-  phone: string;
+  phoneCountryId: string;
+  phoneNumber: string;
+  phoneIso2: string | null | undefined;
   countryId: string;
   address: string;
-  subdomain: string;
   businessName: string;
-  businessType: string | null;
+  isInstitution: boolean;
 }): Record<string, string> | null {
   const fieldErrors: Record<string, string> = {};
-  for (const field of ["phone", "countryId", "address"] as const) {
+  for (const field of ["phoneCountryId", "phoneNumber", "countryId", "address", "businessName"] as const) {
     const error = validateBusinessField(field, values[field]);
     if (error) fieldErrors[field] = error;
   }
-  if (values.businessType === "institution") {
+  if (values.isInstitution) {
     const businessNameError = validateBusinessField("businessName", values.businessName);
     if (businessNameError) fieldErrors.businessName = businessNameError;
-  } else {
-    const subdomainError = validateBusinessField("subdomain", values.subdomain);
-    if (subdomainError) fieldErrors.subdomain = subdomainError;
+  }
+  if (!fieldErrors.phoneCountryId && !fieldErrors.phoneNumber && !isValidPhoneForCountry(values.phoneNumber, values.phoneIso2 ?? undefined)) {
+    fieldErrors.phoneNumber = "Enter a valid phone number for the selected country";
   }
   return Object.keys(fieldErrors).length ? fieldErrors : null;
-}
-
-export function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-/, "")
-    .replace(/-$/, "");
 }

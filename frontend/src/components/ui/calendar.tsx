@@ -12,6 +12,7 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ]
+const MONTH_ITEMS: Record<string, string> = Object.fromEntries(MONTHS.map((m, i) => [String(i), m]))
 
 function isSameDay(a: Date | undefined, b: Date | undefined) {
   return !!a && !!b && a.toDateString() === b.toDateString()
@@ -22,16 +23,20 @@ export type CalendarProps = {
   onSelect: (date: Date) => void
   fromYear?: number
   toYear?: number
+  /** Month/year to open on when nothing is selected yet. Defaults to 18 years back (date-of-birth
+   *  fields, this component's original use case) — pass `new Date()` for any field where the
+   *  likely value is near today (validity windows, deadlines, etc). */
+  defaultMonth?: Date
   disabled?: (date: Date) => boolean
   className?: string
 }
 
-function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }: Readonly<CalendarProps>) {
+function Calendar({ selected, onSelect, fromYear, toYear, defaultMonth, disabled, className }: Readonly<CalendarProps>) {
   const currentYear = new Date().getFullYear()
   const minYear = fromYear ?? currentYear - 100
   const maxYear = toYear ?? currentYear
 
-  const [viewDate, setViewDate] = React.useState(() => selected ?? new Date(maxYear - 18, 0, 1))
+  const [viewDate, setViewDate] = React.useState(() => selected ?? defaultMonth ?? new Date(maxYear - 18, 0, 1))
 
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
@@ -41,6 +46,10 @@ function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }:
     for (let y = maxYear; y >= minYear; y--) list.push(y)
     return list
   }, [minYear, maxYear])
+  const yearItems = React.useMemo(
+    () => Object.fromEntries(years.map((y) => [String(y), String(y)])),
+    [years],
+  )
 
   const firstWeekday = new Date(year, month, 1).getDay()
   const totalDays = new Date(year, month + 1, 0).getDate()
@@ -60,7 +69,7 @@ function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }:
         >
           <ChevronLeftIcon className="h-4 w-4" />
         </Button>
-        <Select value={String(month)} onValueChange={(v) => setViewDate(new Date(year, Number(v), 1))}>
+        <Select items={MONTH_ITEMS} value={String(month)} onValueChange={(v) => setViewDate(new Date(year, Number(v), 1))}>
           <SelectTrigger className="flex-1">
             <SelectValue />
           </SelectTrigger>
@@ -70,7 +79,7 @@ function Calendar({ selected, onSelect, fromYear, toYear, disabled, className }:
             ))}
           </SelectContent>
         </Select>
-        <Select value={String(year)} onValueChange={(v) => setViewDate(new Date(Number(v), month, 1))}>
+        <Select items={yearItems} value={String(year)} onValueChange={(v) => setViewDate(new Date(Number(v), month, 1))}>
           <SelectTrigger className="w-[90px]">
             <SelectValue />
           </SelectTrigger>

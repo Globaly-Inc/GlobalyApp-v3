@@ -1,6 +1,8 @@
-// Scraper — Crawl4AI primary, Firecrawl fallback.
-// Direct port of V1 supabase/functions/_shared/crawl4ai.ts.
+// Scraper — Scrapling (via its own MCP server) primary, Crawl4AI then Firecrawl fallback.
+// Crawl4AI/Firecrawl cascade is a direct port of V1 supabase/functions/_shared/crawl4ai.ts.
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { siteOf } from "./html-utils.js";
@@ -16,13 +18,32 @@ export interface ScrapeOptions {
   forceFirecrawl?: boolean;
   /** Firecrawl mobile emulation — some anti-bot walls only serve the mobile site. */
   mobile?: boolean;
+  /**
+   * Firecrawl proxy tier. "basic" (default) is a datacenter IP — the first thing a
+   * university-wide WAF (Akamai/Cloudflare) blackholes. "auto" retries through
+   * Firecrawl's residential/stealth proxy only if basic gets blocked (no extra
+   * credit cost otherwise); "stealth" forces it. Unset = Firecrawl's own default.
+   */
+  proxy?: "basic" | "stealth" | "auto";
+  /**
+   * Click open any collapsed accordion/details/toggle before capturing (Firecrawl
+   * executeJavascript action). Real bug, seen live on harvard.edu's "programs" pages:
+   * the page isn't blocked at all (Firecrawl returns success every time) — the actual
+   * degree listing only renders after a client click, so a static/rendered snapshot
+   * comes back as an empty accordion shell (~95 chars) and our own length gate then
+   * misclassifies it as "blocked", burning retries on proxy/mobile escalation that can
+   * never fix a JS-interaction-gated page. Safe to always set: the click script no-ops
+   * via querySelectorAll if nothing matches, so it never breaks a normal page.
+   */
+  expandCollapsed?: boolean;
 }
 
 export interface ScrapeResult {
   markdown: string;
   links: string[];
-  scraper: "crawl4ai" | "firecrawl" | "none";
+  scraper: "scrapling" | "crawl4ai" | "firecrawl" | "none";
   blocked?: boolean;
+  notFound?: boolean;
   error?: string;
 }
 
@@ -39,6 +60,43 @@ export interface DiscoveryResult {
 }
 
 const MIN_CONTENT_LEN = 200;
+
+const NOT_FOUND_PATTERNS = [
+  /page (could not be found|not found|doesn['’]?t exist|does not exist)/i,
+  /\b404\b[^a-z0-9]{0,20}(error|not found|page)/i,
+  /we (can|could)['’]?n[o]?t find (that|this|the) page/i,
+  /sorry,? (we )?(couldn['’]?t|could not|can['’]?t) find/i,
+];
+const ACCESS_DENIED_PATTERNS = [
+  /access (denied|forbidden)/i,
+  /you don['’]?t have permission to access/i,
+];
+const NO_CONTENT_PATTERNS = [...NOT_FOUND_PATTERNS, ...ACCESS_DENIED_PATTERNS];
+
+// ponytail: phrase-based soft-404 detector, not a content-density model — add one if a
+// real page keeps slipping through with boilerplate-only content but no matching phrase.
+function isUsableContent(content: string): boolean {
+  if (content.length < MIN_CONTENT_LEN) return false;
+  return !NO_CONTENT_PATTERNS.some((re) => re.test(content));
+}
+
+/** True only for "this URL doesn't exist" phrasing — not access-denied/anti-bot walls. */
+function isDeadUrl(content: string): boolean {
+  return NOT_FOUND_PATTERNS.some((re) => re.test(content));
+}
+
+function isDeadUrlSignal(content: string, error?: string | null): boolean {
+  if (isDeadUrl(content)) return true;
+  return !!error && /\b404\b/.test(error);
+}
+
+/** Human-readable reason a rejected scrape had no usable content, for admin-visible errors. */
+function unusableReason(content: string): string {
+  if (content.length < MIN_CONTENT_LEN) return `page content too short (${content.length} chars)`;
+  if (isDeadUrl(content)) return "source page reports the content doesn't exist (404 / not found)";
+  if (ACCESS_DENIED_PATTERNS.some((re) => re.test(content))) return "page reports access denied (possible anti-bot block)";
+  return "page content unusable";
+}
 
 // ─── Human-like fetch helpers ───────────────────────────────────────────────
 
@@ -133,6 +191,14 @@ function getCrawl4aiConfig() {
   return { baseUrl: normalised, apiKey: config.CRAWL4AI_API_KEY };
 }
 
+function getScraplingConfig() {
+  const baseUrlRaw = config.SCRAPLING_BASE_URL;
+  if (!baseUrlRaw) return null;
+  const baseUrl = baseUrlRaw.replace(/\/+$/, "");
+  const normalised = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return { baseUrl: normalised, apiKey: config.SCRAPLING_API_KEY };
+}
+
 function getFirecrawlKey() {
   return config.FIRECRAWL_API_KEY || null;
 }
@@ -188,7 +254,115 @@ async function crawl4aiScrape(
   }
 }
 
+// ─── Scrapling (via its own MCP server) ────────────────────────────────────
+
+let mcpClient: Client | null = null;
+let mcpClientBaseUrl: string | null = null;
+
+const MCP_CONNECT_TIMEOUT_MS = 8_000;
+const MCP_CONNECT_ATTEMPTS = 2;
+
+async function getMcpClient(cfg: { baseUrl: string; apiKey?: string }): Promise<Client> {
+  if (mcpClient && mcpClientBaseUrl === cfg.baseUrl) return mcpClient;
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MCP_CONNECT_ATTEMPTS; attempt++) {
+    const transport = new StreamableHTTPClientTransport(new URL(`${cfg.baseUrl}/mcp`), {
+      requestInit: cfg.apiKey ? { headers: { Authorization: `Bearer ${cfg.apiKey}` } } : undefined,
+    });
+    const client = new Client({ name: "globalyapp-backend", version: "1.0.0" });
+    try {
+      await client.connect(transport, { timeout: MCP_CONNECT_TIMEOUT_MS });
+      logger.info(`scrapling mcp connected at ${cfg.baseUrl}/mcp`);
+      mcpClient = client;
+      mcpClientBaseUrl = cfg.baseUrl;
+      return client;
+    } catch (err) {
+      lastErr = err;
+      logger.warn(`scrapling mcp connect attempt ${attempt}/${MCP_CONNECT_ATTEMPTS} failed — ${err instanceof Error ? err.message : String(err)}`);
+      if (attempt < MCP_CONNECT_ATTEMPTS) await politeDelay(500, 500);
+    }
+  }
+  const reason = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new Error(`scrapling mcp unreachable after ${MCP_CONNECT_ATTEMPTS} attempts: ${reason}`);
+}
+
+type ScraplingExtractionType = "markdown" | "html";
+
+interface ScraplingToolResult {
+  status?: number;
+  content?: string[];
+  url?: string;
+}
+
+const SCRAPLING_TIERS: { tool: string; timeoutMs: number; args: Record<string, unknown> }[] = [
+  { tool: "get", timeoutMs: 22_000, args: { timeout: 10 } },
+  { tool: "stealthy_fetch", timeoutMs: 30_000, args: { timeout: 25_000, network_idle: true, solve_cloudflare: true } },
+  { tool: "fetch", timeoutMs: 35_000, args: { timeout: 30_000, network_idle: true } },
+];
+
+async function scraplingScrape(
+  url: string,
+  cfg: { baseUrl: string; apiKey?: string },
+  extractionType: ScraplingExtractionType,
+): Promise<{ content: string; tierUsed?: string; error?: string }> {
+  let client: Client;
+  try {
+    client = await getMcpClient(cfg);
+  } catch (err) {
+    // Connection-level failure (server down/unreachable) — drop the cached client so the next call retries fresh.
+    mcpClient = null;
+    mcpClientBaseUrl = null;
+    return { content: "", error: err instanceof Error ? err.message : "scrapling mcp connection error" };
+  }
+
+  let lastError: string | undefined;
+  for (const tier of SCRAPLING_TIERS) {
+    logger.info(`scrapling mcp: calling tool "${tier.tool}" for ${url}`);
+    try {
+      const result = await client.callTool(
+        { name: tier.tool, arguments: { url, extraction_type: extractionType, ...tier.args } },
+        undefined,
+        { timeout: tier.timeoutMs },
+      );
+      if (result.isError) {
+        lastError = `${tier.tool}: ${JSON.stringify(result.content)}`;
+        logger.warn(`scrapling mcp: tool "${tier.tool}" errored for ${url} — ${lastError}`);
+        continue;
+      }
+      const structured = result.structuredContent as ScraplingToolResult | undefined;
+      const content = structured?.content?.join("\n") ?? "";
+      if (isUsableContent(content)) {
+        logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars)`);
+        return { content, tierUsed: tier.tool };
+      }
+      lastError = `${tier.tool}: ${unusableReason(content)}`;
+      logger.info(`scrapling mcp: tool "${tier.tool}" insufficient for ${url} (${content.length} chars) — escalating`);
+    } catch (err) {
+      lastError = err instanceof Error ? `${tier.tool}: ${err.message}` : `${tier.tool} error`;
+      logger.warn(`scrapling mcp: tool "${tier.tool}" threw for ${url} — ${lastError}`);
+      mcpClient = null;
+      mcpClientBaseUrl = null;
+      try {
+        client = await getMcpClient(cfg);
+      } catch (reconnectErr) {
+        lastError = reconnectErr instanceof Error ? reconnectErr.message : "scrapling mcp reconnect failed";
+        break;
+      }
+    }
+  }
+  return { content: "", error: lastError ?? "all scrapling tiers exhausted" };
+}
+
 // ─── Firecrawl ──────────────────────────────────────────────────────────────
+
+// Generic click-open for common accordion/tab/toggle patterns — not Harvard-specific,
+// add more selectors here if another site's collapse pattern slips through. Wrapped in
+// try/catch per element and run via forEach (never throws on zero matches), unlike
+// Firecrawl's dedicated `click` action which fails the whole scrape if the selector
+// isn't found on the page.
+const EXPAND_COLLAPSED_SCRIPT =
+  `document.querySelectorAll('.c-accordion__header, [aria-expanded="false"], details:not([open]) summary, .accordion-header, .accordion-title, [data-toggle="collapse"], [data-bs-toggle="collapse"]').forEach(function(el){ try { el.click(); } catch(e) {} });`;
 
 async function firecrawlScrape(
   url: string,
@@ -206,6 +380,11 @@ async function firecrawlScrape(
         onlyMainContent: opts.onlyMainContent ?? true,
         waitFor: opts.waitFor ?? 2000,
         ...(opts.mobile ? { mobile: true } : {}),
+        proxy: opts.proxy ?? "auto",
+        ...(opts.expandCollapsed ? { actions: [
+          { type: "executeJavascript", script: EXPAND_COLLAPSED_SCRIPT },
+          { type: "wait", milliseconds: 1500 },
+        ] } : {}),
       }),
     });
     const data: any = await res.json().catch(() => ({}));
@@ -222,6 +401,16 @@ export async function scrapeRenderedHtml(
   url: string,
   opts: { waitFor?: number } = {},
 ): Promise<{ html: string; error?: string }> {
+  const scrapling = getScraplingConfig();
+  if (scrapling) {
+    const s = await scraplingScrape(url, scrapling, "html");
+    if (isUsableContent(s.content)) {
+      logger.info(`scrapling OK (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
+      return { html: s.content };
+    }
+    logger.warn(`scrapling insufficient (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
+  }
+
   const apiKey = getFirecrawlKey();
   if (!apiKey) return { html: "", error: "firecrawl not configured" };
   try {
@@ -243,16 +432,31 @@ export async function scrapeRenderedHtml(
 
 /**
  * Scrape a URL to markdown.
- * Cascade: Crawl4AI fit → Crawl4AI raw → Firecrawl.
+ * Cascade: Scrapling → Crawl4AI fit → Crawl4AI raw → Firecrawl.
  */
 export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Promise<ScrapeResult> {
   const fcKey = getFirecrawlKey();
+  const scrapling = opts.forceFirecrawl ? null : getScraplingConfig();
   const c4 = opts.forceFirecrawl ? null : getCrawl4aiConfig();
+
+  // Path 0: Scrapling available
+  if (scrapling) {
+    const s = await scraplingScrape(url, scrapling, "markdown");
+    if (isUsableContent(s.content)) {
+      logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
+      return {
+        markdown: s.content,
+        links: opts.withLinks ? extractLinksFromMarkdown(s.content) : [],
+        scraper: "scrapling",
+      };
+    }
+    logger.warn(`scrapling insufficient for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
+  }
 
   // Path A: Crawl4AI available
   if (c4) {
     const a1 = await crawl4aiScrape(url, "fit", c4);
-    if (a1.markdown.length >= MIN_CONTENT_LEN) {
+    if (isUsableContent(a1.markdown)) {
       return {
         markdown: a1.markdown,
         links: opts.withLinks ? extractLinksFromMarkdown(a1.markdown) : [],
@@ -260,7 +464,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
       };
     }
     const a2 = await crawl4aiScrape(url, "raw", c4);
-    if (a2.markdown.length >= MIN_CONTENT_LEN) {
+    if (isUsableContent(a2.markdown)) {
       return {
         markdown: a2.markdown,
         links: opts.withLinks ? extractLinksFromMarkdown(a2.markdown) : [],
@@ -270,18 +474,33 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     // Crawl4AI blocked — try Firecrawl
     if (fcKey) {
       const fc = await firecrawlScrape(url, fcKey, opts);
-      if (fc.markdown.length >= MIN_CONTENT_LEN) {
+      if (isUsableContent(fc.markdown)) {
         return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl" };
       }
-      return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true, error: fc.error || a2.error || a1.error || "Empty page" };
+      return {
+        markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true,
+        error: fc.error || a2.error || a1.error || unusableReason(fc.markdown),
+        notFound: isDeadUrlSignal(fc.markdown, fc.error)
+          || isDeadUrlSignal(a2.markdown, a2.error)
+          || isDeadUrlSignal(a1.markdown, a1.error),
+      };
     }
-    return { markdown: "", links: [], scraper: "crawl4ai", blocked: true, error: a2.error || a1.error || "Empty page" };
+    return {
+      markdown: "", links: [], scraper: "crawl4ai", blocked: true,
+      error: a2.error || a1.error || unusableReason(a2.markdown),
+      notFound: isDeadUrlSignal(a2.markdown, a2.error) || isDeadUrlSignal(a1.markdown, a1.error),
+    };
   }
 
   // Path B: Firecrawl-only
   if (fcKey) {
     const fc = await firecrawlScrape(url, fcKey, opts);
-    return { markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: fc.markdown.length < MIN_CONTENT_LEN, error: fc.error };
+    const usable = isUsableContent(fc.markdown);
+    return {
+      markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: !usable,
+      error: fc.error || (usable ? undefined : unusableReason(fc.markdown)),
+      notFound: !usable && isDeadUrlSignal(fc.markdown, fc.error),
+    };
   }
 
   return { markdown: "", links: [], scraper: "none", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)" };

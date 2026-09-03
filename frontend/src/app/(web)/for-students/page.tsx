@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { MEDIA_URL } from "../const/index";
 import { Reveal } from "../components/reveal";
 import { AutoplayVideo } from "../components/autoplay-video";
 import { UnifiedSearchBar } from "../components/unified-search-bar";
@@ -12,13 +13,12 @@ import { getFeaturedCountries } from "../data/countries-api";
 import type { Destination } from "../data/destinations";
 import { getEducationAgencies, getInstitutions } from "../search/api";
 import type { SearchBusiness } from "../search/types";
-import { getPosts } from "../blog/api";
+import { LatestBlogSection } from "../components/latest-blog-section";
 import { DestinationsCarousel } from "./components/destinations-carousel";
 import { InstitutionsCarousel } from "./components/institutions-carousel";
 import { HowItWorks } from "./components/how-it-works";
 import { AgentsCarousel } from "./components/agents-carousel";
-import { BlogCarousel } from "./components/blog-carousel";
-import { STATIC_BLOG_POSTS, STUDENT_TYPING_PHRASES, type BlogCardData } from "./static-content";
+import { STUDENT_TYPING_PHRASES } from "./static-content";
 
 export default function ForStudentsPage() {
   const { displayText, showCursor } = useTypingEffect(STUDENT_TYPING_PHRASES);
@@ -29,7 +29,6 @@ export default function ForStudentsPage() {
   const [institutionsLoading, setInstitutionsLoading] = useState(true);
   const [agents, setAgents] = useState<SearchBusiness[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
-  const [blogPosts, setBlogPosts] = useState<BlogCardData[]>([]);
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -50,21 +49,15 @@ export default function ForStudentsPage() {
       .then((res) => setAgents(res.data.slice(0, 8)))
       .catch(() => {})
       .finally(() => setAgentsLoading(false));
-
-    getPosts({})
-      .then((res) => setBlogPosts(res.data.slice(0, 5)))
-      .catch(() => {});
   }, []);
-
-  const displayedBlogPosts: BlogCardData[] = blogPosts.length > 0 ? blogPosts : STATIC_BLOG_POSTS;
 
   return (
     <>
       {/* ── 1. HERO ─────────────────────────────────────────────────────── */}
-      <section className="relative min-h-[calc(100svh-64px)] flex items-center overflow-hidden">
+      <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
         <AutoplayVideo
-          src="https://videos.pexels.com/video-files/7945680/7945680-hd_1920_1080_25fps.mp4"
-          poster="https://images.pexels.com/photos/1205651/pexels-photo-1205651.jpeg?auto=compress&cs=tinysrgb&w=1920"
+          src={`${MEDIA_URL}/students-hero.mp4`}
+          poster={`${MEDIA_URL}/students-hero-poster.webp`}
           className="absolute inset-0 w-full h-full object-cover scale-105"
           style={{ transformOrigin: "center" }}
         />
@@ -94,7 +87,7 @@ export default function ForStudentsPage() {
       <InstitutionsCarousel institutions={institutions} loading={institutionsLoading} />
       <HowItWorks />
       <AgentsCarousel agents={agents} loading={agentsLoading} />
-      <BlogCarousel posts={displayedBlogPosts} />
+      <LatestBlogSection subtitle="Expert insights on international education and student success." />
 
       {/* ── 7. CTA BANNER ───────────────────────────────────────────────── */}
       <section className="py-20 bg-[hsl(var(--purple-dark))] text-white overflow-hidden relative">
@@ -109,13 +102,13 @@ export default function ForStudentsPage() {
               your journey for free.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="lg" className="btn-gold rounded-full px-10" render={<Link href="/auth/sign-up" />}>
+              <Button size="lg" className="btn-gold h-11 rounded-full px-10" render={<Link href="/auth/sign-up" />}>
                 Join for Free
               </Button>
               <Button
                 variant="outline"
                 size="lg"
-                className="rounded-full px-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                className="h-11 rounded-full px-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
                 render={<Link href="/search" />}
               >
                 Explore Courses

@@ -1,5 +1,5 @@
 import type {
-  AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthUser, SendOtpParams,
+  AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthMeInstitution, AuthUser, SendOtpParams,
   SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
 } from "./types";
 
@@ -28,7 +28,7 @@ export const authMockApi = {
     if (otp !== MOCK_OTP) {
       throw new Error(`Invalid or expired code. (mock mode: use ${MOCK_OTP})`);
     }
-    mockUser = { email, type: "platform_user", role: null, user_category: null, businesses: [], orgId: null };
+    mockUser = { email, first_name: "Mock", last_name: "User", type: "platform_user", role: null, is_admin: false, user_category: null, is_personal_account: false, businesses: [], institutions: [], orgId: null };
     return mockUser;
   },
 
@@ -47,6 +47,12 @@ export const authMockApi = {
         is_owner: true,
       },
     ];
+  },
+
+  listMyInstitutions: async (): Promise<AuthMeInstitution[]> => {
+    console.log("[mock] GET /auth/me (institutions)");
+    await delay(200);
+    return [];
   },
 
   getMe: async (): Promise<AuthUser> => {

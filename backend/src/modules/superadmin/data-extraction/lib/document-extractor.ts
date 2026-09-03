@@ -23,6 +23,12 @@ export interface DocInput {
   file_url: string;
   file_name: string;
   guidance?: string;
+  /**
+   * Override the return cap. The extraction pipeline feeds documents into a prompt
+   * so 40k chars is deliberate there; the Knowledge Rack stores the text and chunks
+   * it, where truncating a 130KB research doc would silently lose most of it.
+   */
+  max_chars?: number;
 }
 
 export interface DocResult {
@@ -100,6 +106,7 @@ async function downloadFile(fileUrl: string): Promise<Buffer | null> {
 async function extractPdfWithGemini(
   pdfBuffer: Buffer,
   fileName: string,
+  maxChars: number = MAX_RETURN_CHARS,
 ): Promise<string | null> {
   if (!config.GEMINI_API_KEY) return null;
 
@@ -118,13 +125,13 @@ async function extractPdfWithGemini(
         },
       },
       {
-        text: `Convert this PDF (${fileName}) to clean markdown. Return the FULL text verbatim. Preserve tables using markdown table syntax. Preserve headings, bullet points, and amounts. Do NOT summarise, paraphrase, or omit any sections. Do NOT add commentary. Output ONLY the document content.`,
+        text: `Convert this PDF (${fileName}) to clean markdown. Return the FULL text verbatim. Preserve tables using markdown table syntax. Preserve headings, bullet points, and amounts. Emit an HTML comment "<!-- page N -->" at the start of each page's content so the text stays traceable to its page. Do NOT summarise, paraphrase, or omit any sections. Do NOT add commentary. Output ONLY the document content.`,
       },
     ]);
 
     const content = result.response.text();
     if (!content || content.trim().length < 20) return null;
-    return truncate(content, MAX_RETURN_CHARS);
+    return truncate(content, maxChars);
   } catch (err) {
     logger.warn(`PDF vision extraction failed for ${fileName}: ${err}`);
     return null;
@@ -145,6 +152,7 @@ export function createDocumentExtractor() {
     if (cached) return { ...cached, source };
 
     const ext = extOf(doc.file_name) || extOf(doc.file_url);
+    const maxChars = doc.max_chars ?? MAX_RETURN_CHARS;
 
     // Unsupported binary formats — skip without fetching
     if (UNSUPPORTED_EXTENSIONS.has(ext)) {
@@ -169,7 +177,7 @@ export function createDocumentExtractor() {
       } else if (buf.length > MAX_PDF_BYTES) {
         error = "too_large";
       } else {
-        const extracted = await extractPdfWithGemini(buf, doc.file_name);
+        const extracted = await extractPdfWithGemini(buf, doc.file_name, maxChars);
         if (extracted) {
           text = extracted;
         } else {
@@ -177,7 +185,7 @@ export function createDocumentExtractor() {
         }
       }
     } else if (TEXT_EXTENSIONS.has(ext)) {
-      text = truncate(buf.toString("utf-8"), MAX_RETURN_CHARS);
+      text = truncate(buf.toString("utf-8"), maxChars);
     } else {
       error = "unsupported_format";
     }

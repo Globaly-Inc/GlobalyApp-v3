@@ -1,5 +1,11 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { Suspense } from "react";
+import { MessagesView } from "./components/messages-view";
 
+// useSearchParams (the ?thread= deep link) needs a Suspense boundary in the App Router.
 export default function MessagesPage() {
-  return <ComingSoon title="Messages" />;
+  return (
+    <Suspense fallback={null}>
+      <MessagesView />
+    </Suspense>
+  );
 }

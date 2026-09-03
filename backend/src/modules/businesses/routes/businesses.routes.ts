@@ -3,16 +3,17 @@
 import type { FastifyInstance } from "fastify";
 import {
   BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema, ClaimAcceptSchema, ClaimRequestByEmailSchema,
+  AiAssistSchema,
 } from "../schemas/businesses.schema.js";
-import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
+import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/businesses.service.js";
 
 export async function businessRoutes(app: FastifyInstance) {
   app.post("/claim/accept", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (req, reply) => {
-    const { token } = ClaimAcceptSchema.parse(req.body);
-    const result = await service.acceptClaim(token);
+    const { token, first_name, last_name } = ClaimAcceptSchema.parse(req.body);
+    const result = await service.acceptClaim(token, { first_name, last_name });
     return reply.send(result);
   });
 
@@ -34,10 +35,9 @@ export async function businessRoutes(app: FastifyInstance) {
     return reply.status(201).send(result);
   });
 
-  // Business context required: search other businesses (e.g. to link a partner)
-  app.get("/search", { preHandler: requireBusinessContext }, async (req, reply) => {
-    const { search, limit } = BusinessSearchQuerySchema.parse(req.query);
-    const result = await service.searchBusinesses(req.auth.orgId!, search, limit);
+  app.get("/search", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { search, limit, include_institutions } = BusinessSearchQuerySchema.parse(req.query);
+    const result = await service.searchBusinesses(req.auth, search, limit, include_institutions);
     return reply.send(result);
   });
 
@@ -51,6 +51,16 @@ export async function businessRoutes(app: FastifyInstance) {
   app.patch("/me", { preHandler: requireBusinessContext }, async (req, reply) => {
     const data = BusinessProfilePatchSchema.parse(req.body);
     const result = await service.updateProfile(req.auth.orgId!, data);
+    return reply.send(result);
+  });
+
+  // Business context required: AI-assisted profile copy — a draft to review, not to publish verbatim.
+  app.post("/me/ai-assist", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const input = AiAssistSchema.parse(req.body);
+    const result = await service.generateProfileText(input);
     return reply.send(result);
   });
 }

@@ -3,7 +3,7 @@
   "name": "branch-name-convention",
   "target": "branch",
   "source_type": "Repository",
-  "source": "Globaly-Inc/GlobalyOS-v3",
+  "source": "Globaly-Inc/GlobalyApp-v3",
   "enforcement": "active",
   "conditions": {
     "ref_name": {
@@ -21,6 +21,7 @@
         "refs/heads/dev-design**",
         "refs/heads/dev-feat**",
         "refs/heads/dev-hotfix**",
+        "refs/heads/dev-docs**",
         "refs/heads/devops**"
       ],
       "include": [

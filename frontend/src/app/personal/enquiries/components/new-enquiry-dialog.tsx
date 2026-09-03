@@ -3,32 +3,50 @@
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
+import { LoaderCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Combobox, type ComboboxOption } from "@/components/combobox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { type ComboboxOption } from "@/components/combobox";
 import { useValidatedForm } from "@/app/personal/profile/validation";
 import { FieldError } from "@/app/personal/profile/field-error";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { createEnquiry, fetchCourseOptions, fetchEnquiries } from "../store/enquiries-slice";
-import { INTAKE_MONTHS, defaultIntakeYear, INTAKE_YEAR_RANGE } from "../const";
+import { createEnquiry, fetchCourseOptions, fetchEligibility, fetchEnquiries } from "../store/enquiries-slice";
+import { MESSAGE_MAX, defaultIntakeYear } from "../const";
+import { durationLabel, prettyMode } from "../utils";
+import { CoursePickerFields } from "./course-picker-fields";
+import { EligibilityBanner } from "./eligibility-banner";
+import { IntakeFields } from "./intake-fields";
+
 import type { CreateEnquiryInput } from "../apis/types";
 
 const schema: z.ZodType<CreateEnquiryInput> = z.object({
   course_id: z.string().uuid("Select a course"),
   extraction_job_id: z.string().uuid().nullable().optional(),
   business_id: z.number().int().positive().nullable().optional(),
-  message: z.string().min(10, "At least 10 characters").max(5000, "5000 characters max"),
+  // Optional: the course is what identifies the enquiry. Only the ceiling is enforced, matching
+  // CreateEnquirySchema — a floor on an optional field just reads as a bug.
+  message: z.string().max(MESSAGE_MAX, `${MESSAGE_MAX} characters max`).optional(),
   preferred_intake: z.string().nullable().optional(),
   preferred_year: z.number().int().nullable().optional(),
+  share_contact_number: z.boolean().optional(),
 });
 
 function emptyInput(courseId: string | null): CreateEnquiryInput {
   return {
     course_id: courseId ?? "",
     message: "",
+    // Opt-in: never pre-ticked. A pre-checked consent box is not consent.
+    share_contact_number: false,
     preferred_intake: "",
     preferred_year: defaultIntakeYear(),
   };
@@ -40,26 +58,42 @@ function emptyInput(courseId: string | null): CreateEnquiryInput {
  * button) never fires Dialog's onOpenChange, so a reset there would be skipped.
  *
  * `prefillCourseId` is supplied by the parent (from ?course_id= on the deep link
- * from /personal/courses) and only for the first open, so a lingering query param
+ * from the course search) and only for the first open, so a lingering query param
  * can't keep re-prefilling later opens.
  */
 export function NewEnquiryDialog({
   open,
   onOpenChange,
   prefillCourseId = null,
-}: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void; prefillCourseId?: string | null }>) {
+  onSubmitted,
+}: Readonly<{
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  prefillCourseId?: string | null;
+  /** Fired after the enquiry is accepted, with the consent the student actually gave — the parent
+   *  owns the disclaimer, since this dialog has already closed by then. */
+  onSubmitted?: (sharedContact: boolean) => void;
+}>) {
   const dispatch = useAppDispatch();
   const createStatus = useAppSelector((s) => s.enquiries.createStatus);
   const { form, setForm, errors, validate } = useValidatedForm(schema, () => emptyInput(prefillCourseId));
 
   const courses = useAppSelector((s) => s.enquiries.courseOptions);
-  const coursesLoading = useAppSelector((s) => s.enquiries.courseOptionsStatus === "loading");
+  const courseOptionsStatus = useAppSelector((s) => s.enquiries.courseOptionsStatus);
+  const coursesLoading = courseOptionsStatus === "loading";
+
+  // Eligibility for whichever course is currently picked. Purely informational: it never gates
+  // submission, and the server does not re-check it as a condition either.
+  const verdict = useAppSelector((s) =>
+    form.course_id ? (s.enquiries.eligibilityByCourse[form.course_id] ?? null) : null,
+  );
+  const eligibilityLoading = useAppSelector((s) => s.enquiries.eligibilityStatus === "loading");
 
   // Institution is a filter for the course list — never submitted, since the
   // backend derives the stored institution from the chosen course.
   //
   // null means "not touched, follow the selected course". That matters for the
-  // ?course_id= deep link from /personal/courses: the course arrives prefilled
+  // ?course_id= deep link from a search-result Enquire button: course arrives prefilled
   // before the options have loaded, so the institution can only be resolved once
   // they arrive. Deriving avoids a set-state-in-effect (which this repo lints
   // against) and keeps the field correct in that race. An explicit "" means the
@@ -69,11 +103,27 @@ export function NewEnquiryDialog({
   const selectedCourse = courses.find((c) => c.id === form.course_id);
   const institutionJobId = institutionTouched ?? selectedCourse?.job_id ?? "";
 
+  // Arriving from a course's Enquire button (?course_id=), the course is already decided —
+  // the institution and course pickers would only offer a way to change it, so the preview
+  // stands in for both. The pickers come back if that id can't be resolved (a stale link,
+  // or the catalog failed to load), so the dialog is never stuck on a course the student
+  // can neither see nor change.
+  const courseLocked =
+    !!prefillCourseId &&
+    courseOptionsStatus !== "failed" &&
+    (courses.length === 0 || !!selectedCourse);
+
   // Load the picker's options the first time the dialog opens. The thunk's own
   // `condition` makes this a no-op once they're cached.
   useEffect(() => {
     if (open) dispatch(fetchCourseOptions());
   }, [open, dispatch]);
+
+  // Re-checked whenever the picked course changes. The thunk's own `condition` makes a repeat
+  // for the same course a no-op, so switching back and forth doesn't refetch.
+  useEffect(() => {
+    if (open && form.course_id) dispatch(fetchEligibility(form.course_id));
+  }, [open, form.course_id, dispatch]);
 
   const institutionOptions: ComboboxOption[] = useMemo(() => {
     const byJob = new Map<string, string>();
@@ -95,6 +145,11 @@ export function NewEnquiryDialog({
           // Institution in the label so search finds a course either way, and so
           // same-named courses at different institutions stay distinguishable.
           label: c.institution_name ? `${c.name} — ${c.institution_name}` : c.name,
+          // Second line: what the course actually is, so two similar names can be
+          // told apart in the list without opening anything.
+          description: [c.degree_level, durationLabel(c.duration_weeks), prettyMode(c.study_mode)]
+            .filter(Boolean)
+            .join(" · "),
         }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [courses, institutionJobId],
@@ -114,10 +169,12 @@ export function NewEnquiryDialog({
     setForm((f) => ({ ...f, course_id: courseId }));
   };
 
+  const saving = createStatus === "saving";
+
   const handleSubmit = async () => {
     const data = validate();
     if (!data) return;
-    // An untouched Select leaves "" behind; store null instead so the card can
+    // An untouched month leaves "" behind; store null instead so the card can
     // tell "no intake chosen" from a real value.
     const result = await dispatch(createEnquiry({
       ...data,
@@ -127,15 +184,19 @@ export function NewEnquiryDialog({
       toast.error("Couldn't send enquiry", { description: result.error.message ?? "Please try again." });
       return;
     }
-    toast.success("Enquiry sent!");
+    // No success toast: the disclaimer dialog IS the confirmation. Two success signals for one
+    // action is noise, and a toast cannot carry a privacy notice the student may want to re-read.
     onOpenChange(false);
+    onSubmitted?.(data.share_contact_number === true);
     // Refresh the list so the new enquiry appears without a page reload.
     dispatch(fetchEnquiries());
   };
 
+  const messageLength = form.message?.length ?? 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>New Enquiry</DialogTitle>
           <DialogDescription>
@@ -145,87 +206,86 @@ export function NewEnquiryDialog({
         {/* flex/gap, not space-y — space-y inflates height around Combobox focus
             guards inside a Dialog (see frontend/AGENTS.md). */}
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label>Institution</Label>
-            <Combobox
-              options={institutionOptions}
-              value={institutionJobId}
-              onChange={handleInstitutionChange}
-              placeholder="All institutions"
-              searchPlaceholder="Search institutions..."
-              emptyText="No institutions found."
-              loading={coursesLoading}
-            />
-          </div>
+          <CoursePickerFields
+            locked={courseLocked}
+            selectedCourse={selectedCourse}
+            courseId={form.course_id}
+            institutionJobId={institutionJobId}
+            institutionOptions={institutionOptions}
+            courseOptions={courseOptions}
+            loading={coursesLoading}
+            error={errors.course_id}
+            onInstitutionChange={handleInstitutionChange}
+            onCourseChange={handleCourseChange}
+          />
 
           <div className="flex flex-col gap-2">
-            <Label>Course *</Label>
-            <Combobox
-              options={courseOptions}
-              value={form.course_id}
-              onChange={handleCourseChange}
-              placeholder="Select a course"
-              searchPlaceholder="Search courses..."
-              emptyText={institutionJobId ? "No courses for this institution." : "No courses found."}
-              loading={coursesLoading}
-              aria-invalid={!!errors.course_id}
-            />
-            <FieldError message={errors.course_id} />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Message *</Label>
+            <Label htmlFor="enquiry-message">
+              Message <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
             <Textarea
-              value={form.message}
+              id="enquiry-message"
+              value={form.message ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-              placeholder="Tell them what you'd like to know (10-5000 characters)"
+              placeholder="Ask about entry requirements, fees, scholarships, or anything else you need to know."
               rows={5}
+              maxLength={MESSAGE_MAX}
               aria-invalid={!!errors.message}
+              className="min-h-28 resize-y"
             />
-            <FieldError message={errors.message} />
+            <div className="flex items-start justify-between gap-3">
+              <FieldError message={errors.message} />
+              {/* Shown only once there is something to count. A "0/5000" against an optional
+                  field reads as an unmet requirement. */}
+              {messageLength > 0 && (
+                <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {messageLength}/{MESSAGE_MAX}
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-2">
-              <Label>Preferred Intake</Label>
-              <Select
-                value={form.preferred_intake ?? ""}
-                onValueChange={(v) => setForm((f) => ({ ...f, preferred_intake: String(v) }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select month" />
-                </SelectTrigger>
-                <SelectContent>
-                  {INTAKE_MONTHS.map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Preferred Year</Label>
-              <Select
-                value={String(form.preferred_year ?? "")}
-                onValueChange={(v) => setForm((f) => ({ ...f, preferred_year: Number(v) }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: INTAKE_YEAR_RANGE }, (_, i) => new Date().getFullYear() + i).map((y) => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <EligibilityBanner verdict={verdict} loading={eligibilityLoading && !verdict} />
+
+          <IntakeFields
+            month={form.preferred_intake ?? ""}
+            year={String(form.preferred_year ?? "")}
+            onMonthChange={(v) => setForm((f) => ({ ...f, preferred_intake: v }))}
+            onYearChange={(v) => setForm((f) => ({ ...f, preferred_year: v ? Number(v) : null }))}
+          />
+
+          {/* Opt-in, and never a blocker on submitting — declining is a valid choice, so this
+              carries no Required marker and no validation. The distinction between this and the
+              profile data shared regardless is made in EnquirySubmittedDialog, not here. */}
+          <Label
+            htmlFor="share-contact"
+            className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 font-normal"
+          >
+            <Checkbox
+              id="share-contact"
+              checked={form.share_contact_number ?? false}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({ ...f, share_contact_number: checked === true }))
+              }
+              className="mt-0.5"
+            />
+            <span className="text-sm">
+              I&apos;m okay with sharing my contact number and receiving calls from the
+              business/institution.
+            </span>
+          </Label>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={createStatus === "saving"}>
-            {createStatus === "saving" ? "Sending..." : "Send Enquiry"}
+          <Button onClick={handleSubmit} disabled={saving}>
+            {saving ? (
+              <LoaderCircle className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Send className="size-4" aria-hidden />
+            )}
+            {saving ? "Sending..." : "Send Enquiry"}
           </Button>
         </DialogFooter>
       </DialogContent>

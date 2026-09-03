@@ -1,5 +1,6 @@
 import type {
-  BlogKeyword, BlogKeywordInput, BlogPost, BlogPostInput, BlogPostListParams, Paginated,
+  BlogKeyword, BlogKeywordInput, BlogPost, BlogPostInput, BlogPostListParams,
+  GenerationInput, GenerationJob, GenerationStatus, Paginated,
 } from "./types";
 
 function delay(ms: number) {
@@ -17,6 +18,41 @@ function paginate<T>(rows: T[], { page = 1, limit = 20 }: BlogPostListParams): P
 let nextId = 100;
 const newId = () => ++nextId;
 
+const generationJobs: GenerationJob[] = [];
+
+/** Fakes the pending -> running -> done worker lifecycle so the progress panel has
+ * something to poll against in mock mode. Mirrors what blog-generate.worker.ts does
+ * for real: inserts an AI draft post and links the job to it. */
+function simulateGenerationJob(id: number, input: GenerationInput): void {
+  const setStatus = (status: GenerationStatus) => {
+    const job = generationJobs.find((j) => j.id === id);
+    if (job) job.status = status;
+  };
+
+  setTimeout(() => setStatus("running"), 1200);
+  setTimeout(() => {
+    const focusKeyword = input.keywords[0] ?? "new topic";
+    const post: BlogPost = {
+      id: newId(), title: `AI Draft: ${focusKeyword}`, slug: `ai-draft-${id}`,
+      excerpt: "AI-generated draft — review before publishing.",
+      content: `<h1>${focusKeyword}</h1><p>Generated content for ${input.keywords.join(", ")}.</p>`,
+      category: input.topic ?? null, country_focus: input.country ?? null, tags: input.keywords,
+      creator_id: 1, author_name: "Globaly AI", author_avatar_url: null, cover_image_url: null,
+      is_published: false, published_at: null, views: 0, reading_time_minutes: 3,
+      meta_title: `AI Draft: ${focusKeyword}`.slice(0, 60), meta_description: "AI-generated draft, needs review.",
+      focus_keyword: focusKeyword, seo_score: 40, canonical_url: null, og_image_url: null,
+      generated_by_ai: true,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    posts.unshift(post);
+    const job = generationJobs.find((j) => j.id === id);
+    if (job) {
+      job.status = "done";
+      job.blog_post_id = post.id;
+    }
+  }, 3200);
+}
+
 const posts: BlogPost[] = [
   {
     id: 1, title: "5 Things to Know Before Studying in Canada", slug: "5-things-before-studying-canada",
@@ -26,6 +62,7 @@ const posts: BlogPost[] = [
     is_published: true, published_at: "2026-01-02T00:00:00.000Z", views: 342, reading_time_minutes: 4,
     meta_title: "5 Things to Know Before Studying in Canada", meta_description: "A quick checklist for prospective international students moving to Canada.",
     focus_keyword: "studying in canada", seo_score: 70, canonical_url: null, og_image_url: null,
+    generated_by_ai: false,
     created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-02T00:00:00.000Z",
   },
   {
@@ -35,6 +72,7 @@ const posts: BlogPost[] = [
     creator_id: 1, author_name: "Globaly Team", author_avatar_url: null, cover_image_url: null,
     is_published: false, published_at: null, views: 0, reading_time_minutes: 3,
     meta_title: null, meta_description: null, focus_keyword: null, seo_score: 20, canonical_url: null, og_image_url: null,
+    generated_by_ai: false,
     created_at: "2026-01-05T00:00:00.000Z", updated_at: "2026-01-05T00:00:00.000Z",
   },
 ];
@@ -65,7 +103,7 @@ export const blogMockApi = {
     console.log("[mock] POST /admin/platform/blog/posts", input);
     await delay(300);
     const row: BlogPost = {
-      ...input, id: newId(), creator_id: 1, views: 0, seo_score: 0,
+      ...input, id: newId(), creator_id: 1, views: 0, seo_score: 0, generated_by_ai: false,
       reading_time_minutes: Math.max(1, Math.round((input.content ?? "").replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length / 200)),
       published_at: input.is_published ? new Date().toISOString() : null,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -96,6 +134,22 @@ export const blogMockApi = {
     console.log("[mock] POST /admin/platform/blog/posts/cover-image", file.name);
     await delay(300);
     return { url: URL.createObjectURL(file) };
+  },
+
+  createGeneration: async (input: GenerationInput): Promise<{ jobIds: number[] }> => {
+    console.log("[mock] POST /admin/platform/blog/generation", input);
+    await delay(300);
+    const jobIds = Array.from({ length: input.count }, () => newId());
+    for (const id of jobIds) {
+      generationJobs.push({ id, status: "pending", error: null, blog_post_id: null });
+      simulateGenerationJob(id, input);
+    }
+    return { jobIds };
+  },
+  getGenerationStatus: async (ids: number[]): Promise<GenerationJob[]> => {
+    console.log("[mock] GET /admin/platform/blog/generation", ids);
+    await delay(200);
+    return ids.map((id) => generationJobs.find((j) => j.id === id) ?? { id, status: "failed", error: "Job not found", blog_post_id: null });
   },
 
   getKeywords: async (isActive?: boolean): Promise<BlogKeyword[]> => {

@@ -56,21 +56,25 @@ export function useFieldSaver(jobId: string, reload: () => Promise<unknown> | vo
  * A labelled value that turns into an input on click. The pencil only appears on
  * hover; ✓ / ✕ (or Enter / Escape) commit or discard.
  */
+export type EditableFieldProps = Readonly<{
+  label: string;
+  value: string | null | undefined;
+  onSave: (next: string | null) => Promise<unknown>;
+  multiline?: boolean;
+  type?: string;
+  className?: string;
+  placeholder?: string;
+}>;
+
 export function EditableField({
   label,
   value,
   onSave,
   multiline = false,
+  type = "text",
   className,
   placeholder = "—",
-}: Readonly<{
-  label: string;
-  value: string | null | undefined;
-  onSave: (next: string | null) => Promise<unknown>;
-  multiline?: boolean;
-  className?: string;
-  placeholder?: string;
-}>) {
+}: EditableFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [saving, setSaving] = useState(false);
@@ -103,6 +107,7 @@ export function EditableField({
         <div className="mt-0.5 flex items-start gap-1">
           <InputEl
             autoFocus
+            type={multiline ? undefined : type}
             value={draft}
             disabled={saving}
             onChange={(e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => setDraft(e.target.value)}

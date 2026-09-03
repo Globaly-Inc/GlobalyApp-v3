@@ -1,10 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { usersApi } from "../apis";
-import type { AdminInvitation, AdminUser, InviteAdminParams, ListParams } from "../apis/types";
-
-export const fetchUsers = createAsyncThunk("adminUsers/fetchUsers", (params: ListParams = {}) =>
-  usersApi.listUsers(params),
-);
+import type { AdminInvitation, InviteAdminParams, ListParams } from "../apis/types";
 
 export const fetchInvitations = createAsyncThunk("adminUsers/fetchInvitations", (params: ListParams = {}) =>
   usersApi.listInvitations(params),
@@ -14,15 +10,15 @@ export const inviteAdmin = createAsyncThunk("adminUsers/inviteAdmin", (params: I
   usersApi.inviteAdmin(params),
 );
 
+export const resendInvitation = createAsyncThunk("adminUsers/resendInvitation", (id: string) =>
+  usersApi.resendInvitation(id),
+);
+
 type PaginatedList<T> = { data: T[]; page: number; limit: number; total: number; totalPages: number };
 
 type ListStatus = "idle" | "loading" | "failed";
 
 type UsersState = {
-  users: PaginatedList<AdminUser>;
-  usersStatus: ListStatus;
-  usersError: string | null;
-
   invitations: PaginatedList<AdminInvitation>;
   invitationsStatus: ListStatus | "inviting";
   invitationsError: string | null;
@@ -31,10 +27,6 @@ type UsersState = {
 const emptyList = { data: [], page: 1, limit: 10, total: 0, totalPages: 1 };
 
 const initialState: UsersState = {
-  users: { ...emptyList },
-  usersStatus: "idle",
-  usersError: null,
-
   invitations: { ...emptyList },
   invitationsStatus: "idle",
   invitationsError: null,
@@ -46,18 +38,6 @@ const usersSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchUsers.pending, (state) => {
-        state.usersStatus = "loading";
-        state.usersError = null;
-      })
-      .addCase(fetchUsers.fulfilled, (state, action) => {
-        state.usersStatus = "idle";
-        state.users = { ...action.payload.meta, data: action.payload.data };
-      })
-      .addCase(fetchUsers.rejected, (state, action) => {
-        state.usersStatus = "failed";
-        state.usersError = action.error.message ?? "Failed to load users.";
-      })
       .addCase(fetchInvitations.pending, (state) => {
         state.invitationsStatus = "loading";
         state.invitationsError = null;

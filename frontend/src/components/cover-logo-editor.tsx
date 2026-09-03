@@ -1,9 +1,16 @@
 "use client";
 
-import { useRef, type ChangeEvent } from "react";
-import { Camera, Loader2 } from "lucide-react";
+import { useRef } from "react";
+import { Camera, ImagePlus, Loader2, Move } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { CroppedFileInput, type CroppedFileInputHandle } from "@/components/cropped-file-input";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,6 +27,8 @@ export function CoverLogoEditor({
   onLogoFile,
   logoUploading = false,
   className,
+  hideLogo = false,
+  roundPhoto = false,
 }: Readonly<{
   coverUrl?: string | null;
   onCoverFile?: (file: File) => void;
@@ -29,53 +38,93 @@ export function CoverLogoEditor({
   onLogoFile: (file: File) => void;
   logoUploading?: boolean;
   className?: string;
+  /** Skip the overlapping logo button — for callers that render the logo themselves alongside other header content. */
+  hideLogo?: boolean;
+  /** A person's photo: full-bleed circle (object-cover, no padding/background) instead of a padded square logo tile. */
+  roundPhoto?: boolean;
 }>) {
-  const coverInputRef = useRef<HTMLInputElement>(null);
-  const logoInputRef = useRef<HTMLInputElement>(null);
-
-  const handlePick = (onFile: (file: File) => void) => (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (file) onFile(file);
-  };
+  const coverPickerRef = useRef<CroppedFileInputHandle>(null);
+  const logoPickerRef = useRef<CroppedFileInputHandle>(null);
 
   return (
-    <div className={cn("relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48", className)}>
-      {coverUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+    <div
+      className={cn(
+        "relative h-40 overflow-hidden sm:h-48",
+        coverUrl ? "bg-muted" : "bg-gradient-to-br from-primary to-primary/70",
+        className,
       )}
+    >
+      {coverUrl && (
+        // object-cover: the crop dialog's 5:1 output is wider than the banner at every real
+        // breakpoint, so this only ever crops the sides — no upscale, no letterbox gap.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full select-none object-cover" draggable={false} />
+      )}
+      {coverUrl && <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />}
       {onCoverFile && (
         <>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="absolute right-4 top-4 gap-1.5"
-            disabled={coverUploading}
-            onClick={() => coverInputRef.current?.click()}
-          >
-            {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-            Edit cover
-          </Button>
-          <input ref={coverInputRef} type="file" accept="image/*" hidden onChange={handlePick(onCoverFile)} />
+          {coverUrl ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="secondary" size="sm" className="absolute right-4 top-4 gap-1.5" disabled={coverUploading} />
+                }
+              >
+                {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                Edit cover
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => coverPickerRef.current?.adjust(coverUrl)}>
+                  <Move className="h-4 w-4" />
+                  Adjust image
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => coverPickerRef.current?.pick()}>
+                  <ImagePlus className="h-4 w-4" />
+                  Change image
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute right-4 top-4 gap-1.5"
+              disabled={coverUploading}
+              onClick={() => coverPickerRef.current?.pick()}
+            >
+              {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+              Edit cover
+            </Button>
+          )}
+          <CroppedFileInput ref={coverPickerRef} cropShape="cover" onCropped={onCoverFile} isSaving={coverUploading} />
         </>
       )}
 
-      <button
-        type="button"
-        className="group absolute -bottom-12 left-6 cursor-pointer"
-        onClick={() => logoInputRef.current?.click()}
-        aria-label="Edit logo"
-      >
-        <Avatar className="size-24 border-4 border-background">
-          {logoUrl && <AvatarImage src={logoUrl} alt="" />}
-          <AvatarFallback className="text-2xl">{logoFallback}</AvatarFallback>
-        </Avatar>
-        <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
-          {logoUploading ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Camera className="h-5 w-5 text-white" />}
-        </span>
-      </button>
-      <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={handlePick(onLogoFile)} />
+      {!hideLogo && (
+        <button
+          type="button"
+          className="group absolute -bottom-12 left-10 cursor-pointer"
+          onClick={() => logoPickerRef.current?.pick()}
+          aria-label="Edit logo"
+        >
+          <Avatar
+            className={cn("size-24 rounded-xl border-4 border-background shadow-lg", !roundPhoto && "bg-white")}
+          >
+            {logoUrl && (
+              <AvatarImage
+                src={logoUrl}
+                alt=""
+                className={cn("rounded-lg", roundPhoto ? "object-cover" : "object-contain p-1")}
+              />
+            )}
+            <AvatarFallback className="rounded-lg text-2xl">{logoFallback}</AvatarFallback>
+          </Avatar>
+          <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
+            {logoUploading ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Camera className="h-5 w-5 text-white" />}
+          </span>
+        </button>
+      )}
+      <CroppedFileInput ref={logoPickerRef} cropShape="square" onCropped={onLogoFile} isSaving={logoUploading} />
     </div>
   );
 }

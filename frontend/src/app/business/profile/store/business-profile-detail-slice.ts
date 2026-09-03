@@ -6,7 +6,9 @@ import { businessProfileDetailApi } from "../apis";
 import type {
   ActivityListParams, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchPatch, BusinessRelation,
   BusinessService, InvitedMember, LinkExistingBranchInput, Member, MemberInviteInput, MemberListParams, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch, ServiceSearchParams,
+  Permission, RelationInput, RelationListParams, RelationPatch, Role, RoleCreateInput, RolePatch,
+  SchemaFieldValue, Scholarship, ScholarshipInput,
+  ScholarshipListParams, ScholarshipPatch, ServiceInput, ServicePatch, ServiceSearchParams,
 } from "../apis/types";
 
 // ─── Branches ────────────────────────────────────────────────────────────────
@@ -101,25 +103,89 @@ export const cancelInvitation = createAsyncThunk(
     return invitationId;
   },
 );
+export const resendInvitation = createAsyncThunk(
+  "businessProfileDetail/resendInvitation",
+  ({ invitationId }: { id: number; invitationId: string }) => businessProfileDetailApi.resendInvitation(invitationId),
+);
+
+// ─── Roles (Members → Roles sub-tab) ─────────────────────────────────────────
+// ponytail: orgBase switches the API prefix for institution tokens (/institutions/roles vs /businesses/roles)
+function getOrgBase(getState: () => unknown): string {
+  const state = getState() as { auth?: { user?: { user_category?: string | null } } };
+  return state.auth?.user?.user_category === "institution" ? "/institutions" : "/businesses";
+}
+
+export const fetchRoles = createAsyncThunk("businessProfileDetail/fetchRoles", (_: void, { getState }) => businessProfileDetailApi.getRoles(getOrgBase(getState)));
+export const fetchPermissions = createAsyncThunk("businessProfileDetail/fetchPermissions", (_: void, { getState }) => businessProfileDetailApi.getPermissions(getOrgBase(getState)));
+export const createRole = createAsyncThunk(
+  "businessProfileDetail/createRole",
+  ({ input }: { input: RoleCreateInput }, { getState }) => businessProfileDetailApi.createRole(input, getOrgBase(getState)),
+);
+export const updateRole = createAsyncThunk(
+  "businessProfileDetail/updateRole",
+  ({ roleId, patch }: { roleId: number; patch: RolePatch }, { getState }) => businessProfileDetailApi.updateRole(roleId, patch, getOrgBase(getState)),
+);
+export const deleteRole = createAsyncThunk(
+  "businessProfileDetail/deleteRole",
+  async ({ roleId }: { roleId: number }, { getState }) => {
+    await businessProfileDetailApi.deleteRole(roleId, getOrgBase(getState));
+    return roleId;
+  },
+);
 
 // ─── Relations (Partners tab) ─────────────────────────────────────────────────
 export const fetchRelations = createAsyncThunk(
   "businessProfileDetail/fetchRelations",
-  ({ params }: { id: number; params?: RelationListParams }) => businessProfileDetailApi.getRelations(params),
+  ({ params }: { id: number; params?: RelationListParams }, { getState }) =>
+    businessProfileDetailApi.getRelations(params, getOrgBase(getState)),
 );
 export const createRelation = createAsyncThunk(
   "businessProfileDetail/createRelation",
-  ({ input }: { id: number; input: RelationInput }) => businessProfileDetailApi.createRelation(input),
+  ({ input }: { id: number; input: RelationInput }, { getState }) =>
+    businessProfileDetailApi.createRelation(input, getOrgBase(getState)),
 );
 export const updateRelation = createAsyncThunk(
   "businessProfileDetail/updateRelation",
-  ({ relationId, patch }: { id: number; relationId: string; patch: RelationPatch }) => businessProfileDetailApi.updateRelation(relationId, patch),
+  ({ relationId, patch }: { id: number; relationId: string; patch: RelationPatch }, { getState }) =>
+    businessProfileDetailApi.updateRelation(relationId, patch, getOrgBase(getState)),
 );
 export const deleteRelation = createAsyncThunk(
   "businessProfileDetail/deleteRelation",
-  async ({ relationId }: { id: number; relationId: string }) => {
-    await businessProfileDetailApi.deleteRelation(relationId);
+  async ({ relationId }: { id: number; relationId: string }, { getState }) => {
+    await businessProfileDetailApi.deleteRelation(relationId, getOrgBase(getState));
     return relationId;
+  },
+);
+
+// ─── Scholarships ────────────────────────────────────────────────────────────
+export const fetchScholarships = createAsyncThunk(
+  "businessProfileDetail/fetchScholarships",
+  ({ params }: { id: number; params?: ScholarshipListParams }) => businessProfileDetailApi.getScholarships(params),
+);
+export const createScholarship = createAsyncThunk(
+  "businessProfileDetail/createScholarship",
+  ({ input }: { id: number; input: ScholarshipInput }) => businessProfileDetailApi.createScholarship(input),
+);
+export const updateScholarship = createAsyncThunk(
+  "businessProfileDetail/updateScholarship",
+  ({ scholarshipId, patch }: { id: number; scholarshipId: number; patch: ScholarshipPatch }) =>
+    businessProfileDetailApi.updateScholarship(scholarshipId, patch),
+);
+export const toggleScholarshipPublished = createAsyncThunk(
+  "businessProfileDetail/toggleScholarshipPublished",
+  ({ scholarshipId, is_published }: { id: number; scholarshipId: number; is_published: boolean }) =>
+    businessProfileDetailApi.updateScholarship(scholarshipId, { is_published }),
+);
+export const toggleScholarshipFeatured = createAsyncThunk(
+  "businessProfileDetail/toggleScholarshipFeatured",
+  ({ scholarshipId, is_featured }: { id: number; scholarshipId: number; is_featured: boolean }) =>
+    businessProfileDetailApi.updateScholarship(scholarshipId, { is_featured }),
+);
+export const deleteScholarship = createAsyncThunk(
+  "businessProfileDetail/deleteScholarship",
+  async ({ scholarshipId }: { id: number; scholarshipId: number }) => {
+    await businessProfileDetailApi.deleteScholarship(scholarshipId);
+    return scholarshipId;
   },
 );
 
@@ -139,13 +205,16 @@ type BusinessProfileDetailState = {
   members: ListState<Member>;
   invitations: ListState<InvitedMember>;
   memberRoles: MemberRole[];
+  roles: ListState<Role>;
+  permissions: Permission[];
   relations: ListState<BusinessRelation>;
+  scholarships: ListState<Scholarship>;
   activity: ListState<ActivityLogEntry>;
 };
 
 const initialState: BusinessProfileDetailState = {
   branches: emptyList(), services: emptyList(), members: emptyList(), invitations: emptyList(),
-  memberRoles: [], relations: emptyList(), activity: emptyList(),
+  memberRoles: [], roles: emptyList(), permissions: [], relations: emptyList(), scholarships: emptyList(), activity: emptyList(),
 };
 
 const businessProfileDetailSlice = createSlice({
@@ -218,6 +287,23 @@ const businessProfileDetailSlice = createSlice({
         if (wasPresent) state.invitations.total = Math.max(0, state.invitations.total - 1);
       })
 
+      .addCase(fetchRoles.pending, (state) => { state.roles.status = "loading"; })
+      .addCase(fetchRoles.fulfilled, (state, action) => {
+        state.roles = { items: action.payload, status: "idle", error: null, total: action.payload.length };
+      })
+      .addCase(fetchRoles.rejected, (state, action) => { state.roles.status = "failed"; state.roles.error = action.error.message ?? "Failed to load roles."; })
+      .addCase(fetchPermissions.fulfilled, (state, action) => { state.permissions = action.payload; })
+      .addCase(createRole.fulfilled, (state, action) => { state.roles.items.push(action.payload); state.roles.total += 1; })
+      .addCase(updateRole.fulfilled, (state, action) => {
+        const i = state.roles.items.findIndex((r) => r.id === action.payload.id);
+        if (i >= 0) state.roles.items[i] = action.payload;
+      })
+      .addCase(deleteRole.fulfilled, (state, action) => {
+        const wasPresent = state.roles.items.some((r) => r.id === action.payload);
+        state.roles.items = state.roles.items.filter((r) => r.id !== action.payload);
+        if (wasPresent) state.roles.total = Math.max(0, state.roles.total - 1);
+      })
+
       .addCase(fetchRelations.pending, (state) => { state.relations.status = "loading"; })
       .addCase(fetchRelations.fulfilled, (state, action) => {
         state.relations = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
@@ -232,6 +318,30 @@ const businessProfileDetailSlice = createSlice({
         const wasPresent = state.relations.items.some((r) => r.id === action.payload);
         state.relations.items = state.relations.items.filter((r) => r.id !== action.payload);
         if (wasPresent) state.relations.total = Math.max(0, state.relations.total - 1);
+      })
+
+      .addCase(fetchScholarships.pending, (state) => { state.scholarships.status = "loading"; })
+      .addCase(fetchScholarships.fulfilled, (state, action) => {
+        state.scholarships = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
+      })
+      .addCase(fetchScholarships.rejected, (state, action) => { state.scholarships.status = "failed"; state.scholarships.error = action.error.message ?? "Failed to load scholarships."; })
+      .addCase(createScholarship.fulfilled, (state, action) => { state.scholarships.items.unshift(action.payload); state.scholarships.total += 1; })
+      .addCase(updateScholarship.fulfilled, (state, action) => {
+        const i = state.scholarships.items.findIndex((s) => s.id === action.payload.id);
+        if (i >= 0) state.scholarships.items[i] = action.payload;
+      })
+      .addCase(toggleScholarshipPublished.fulfilled, (state, action) => {
+        const s = state.scholarships.items.find((x) => x.id === action.payload.id);
+        if (s) s.is_published = action.payload.is_published;
+      })
+      .addCase(toggleScholarshipFeatured.fulfilled, (state, action) => {
+        const s = state.scholarships.items.find((x) => x.id === action.payload.id);
+        if (s) s.is_featured = action.payload.is_featured;
+      })
+      .addCase(deleteScholarship.fulfilled, (state, action) => {
+        const wasPresent = state.scholarships.items.some((s) => s.id === action.payload);
+        state.scholarships.items = state.scholarships.items.filter((s) => s.id !== action.payload);
+        if (wasPresent) state.scholarships.total = Math.max(0, state.scholarships.total - 1);
       })
 
       .addCase(fetchActivity.pending, (state) => { state.activity.status = "loading"; })

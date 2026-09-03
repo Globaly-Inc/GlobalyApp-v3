@@ -116,6 +116,80 @@ The centralized error handler maps these to HTTP responses.
    checks on deletes).
 5. **No new features.** Extraction module is a parity port. New
    capabilities go in separate PRs after parity is confirmed.
+   Exception: Scrapling was added ahead of Crawl4AI in the scrape cascade
+   (2026-08-20) as an explicit, approved deviation from parity — not a V2
+   behavior.
+   Exception: secondary curriculum-page discovery for study_units
+   (2026-08-22) — the page worker now follows an LLM-flagged
+   `curriculum_page_url` when a course's primary page yields no units, per
+   `docs/data-extraction/2026-08-21-study-units-discovery-design.md`. Not a
+   V2 behavior; approved to fix a real data-quality gap (study units either
+   missing entirely or, on some national sites, individually miscategorized
+   as standalone courses).
+   Exception: visa-service extraction pipeline (2026-08-22) — a full
+   `source_type: "visa_service"` branch through the SAME job/page workers
+   (own site-analysis prompt, own URL heuristic `looksLikeVisaServiceUrl`,
+   own entity prompt, writes `extraction_visa_services` via
+   `writeVisaService`). `extraction_visa_services` existed in the schema
+   since 2026-08-12 with zero code path writing to it — this is a genuinely
+   new capability, explicitly requested and scoped by the team, not a V2
+   port (V2 never had this table).
+   Exception: secondary fees-page discovery for course fees (2026-08-31) — mirrors the
+   curriculum-page-discovery exception above: the page worker follows an LLM-flagged
+   `fees_page_url` (falling back to `curriculum_page_url` when unset, since a university
+   catalog entry — e.g. Acalog — commonly bundles curriculum and fees on the same page,
+   under an anchor like "degree requirements" that never gets flagged as fee-related) when
+   a course's primary page has no fee figures at all, instead of the prior behavior of
+   dropping the fee entirely (or, per the old prompt wording, stuffing the link text into
+   a fee's `name` with no `total_amount`). Bounded by the same `SECONDARY_FETCH_CAP` as
+   curriculum discovery. Only fires when the primary page found zero fees, to avoid
+   duplicating a correct fee already extracted. Fixes a real gap: a course's own program
+   page frequently has no tuition figures and links out to a catalog/tuition-schedule page
+   instead (seen live: UK's Acalog catalog entries), which the pipeline previously never
+   followed. Also fixed: `looksLikeCourseUrl`'s catalogueHost regex only matched the
+   singular "catalog." host, silently excluding real catalog hosts like catalogs.uky.edu
+   (plural) from ever being treated as course URLs during discovery.
+   Cost controls (2026-09-01): secondary pages are scraped at most once per page
+   message (shared markdown cache across the curriculum and fees paths — the fees
+   fallback usually resolves to the very page curriculum discovery just scraped), and
+   when a course needs units AND fees from the same page, ONE combined Gemini call
+   (`curriculumAndFeesPrompt`) extracts both instead of two calls over identical content.
+   Exception: incremental verification (2026-09-01) — the verify worker skips courses
+   unchanged since their last verification (`last_verified_at` set and `updated_at` not
+   newer), so the automatic post-run dispatch no longer re-scrapes and re-bills Gemini
+   for the same first-20 courses on every rerun cycle. The Context tab's manual
+   verification step passes `force: true` to re-check everything. Incremental passes
+   add to `verification_score`/`verification_total`; forced passes overwrite them.
+   No V2 equivalent — cost fix, same family as the rerun-resume exception below.
+   Exception: per-job page cap + Deep Scrape (2026-09-01) — every job carries
+   `extraction_jobs.page_cap` (default 500, migration `20260901_002`) and
+   `insertQueueItem` refuses to queue past it; the discovery step also stops
+   crawling list pages once the job is full, since each list page costs a scrape
+   + a Gemini call. 500 pages covers the course catalogue on most sites, and the
+   institution's email/phone/logo come from the homepage overview phase, which
+   uses no queue slots. `POST /jobs/:id/deep-scrape` (admin "Deep Scrape" button
+   in the job header) raises the cap by 500 and re-dispatches the job worker —
+   dedupe skips everything already queued, so only newly discovered pages bill.
+   No V2 equivalent — cost guardrail, explicitly requested (V2 had no page cap).
+   Exception: `/jobs-filtered` search/sort/category-filter (2026-08-24) —
+   added `q` (institution name/URL search), `sort`, and
+   `business_category_id` params to `FilteredJobsQuerySchema`, plus a matching
+   `exclude_statuses` param. V2's ExtractionDashboard had none of these; it
+   fetched the whole filtered set and searched/sorted/paginated client-side.
+   The all-extractions dashboard moved to true server-side pagination
+   (page/limit only, fetched per click instead of walking every page on every
+   load), which meant search and sort had to move server-side too or they'd
+   silently stop covering anything past the current page. Explicitly
+   requested and scoped by the team, not a V2 port.
+   Exception: `POST /jobs/:id/rerun` resumes instead of always restarting
+   (2026-09-01) — if the job has pending/failed queue items, rerun retries
+   just those via the "courses" step instead of `resetPipeline` wiping the
+   whole queue and re-crawling from scratch. A full-job rerun used to
+   re-scrape and re-extract (re-billing Gemini for) every page every time,
+   including ones already successfully extracted; this was a real driver of
+   an August Gemini cost spike. `resetPipeline` (full wipe) is still used
+   when a job has nothing queued yet to resume from — no V2 equivalent to
+   port, this is a cost fix.
 
 ## External FK columns
 

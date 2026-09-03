@@ -16,9 +16,41 @@ export const CourseListQuery = SearchListQuery.extend({
   currency: z.string().min(1).optional(),
   intake_year: z.coerce.number().int().optional(),
   sort: z.enum(["best_match", "fee_asc", "fee_desc", "duration_asc"]).optional(),
+  /** Awarding institution, exactly as the course carries it — the facet list supplies the values. */
+  institution: z.string().min(1).optional(),
+  /** Duration bucket in weeks, "min-max"; an open upper end is allowed ("157-"). */
+  duration: z.string().regex(/^\d+-\d*$/).optional(),
 });
 
 export const JobListQuery = SearchListQuery.extend({
   job_type: z.string().min(1).optional(),
   is_remote: z.coerce.boolean().optional(),
+});
+
+export const VisaServiceListQuery = SearchListQuery.extend({
+  licensed_only: z.coerce.boolean().optional(),
+  // A property of the services a provider offers; the facet endpoint supplies the values.
+  service_type: z.string().min(1).optional(),
+});
+
+/** The agent tabs (education agents, migration agents) — business rows rather than scraped ones. */
+export const BusinessTabListQuery = SearchListQuery.extend({
+  verified_only: z.coerce.boolean().optional(),
+});
+
+export const InstitutionListQuery = SearchListQuery.extend({
+  institution_type: z.string().min(1).optional(),
+  // Answered from the institution's catalog: it matches when one of its courses does.
+  subject_area: z.string().min(1).optional(),
+  degree_level: z.string().min(1).optional(),
+  study_mode: z.string().min(1).optional(),
+  /** "YYYY-MM", straight off the filter's <input type="month">. */
+  intake_from: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+});
+
+export const ServiceListQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  search: z.string().min(1).optional(),
+  category: z.string().min(1).optional(),
 });

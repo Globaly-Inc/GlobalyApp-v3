@@ -6,9 +6,10 @@ import { randomInt, randomBytes, createHash, scryptSync, timingSafeEqual, random
 import jwt from "jsonwebtoken";
 import { config } from "../../config.js";
 import { createChildLogger } from "../../shared/logger.js";
-import { AppError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
+import { AppError, ForbiddenError, NotFoundError, UnauthorizedError } from "../../shared/errors.js";
 import { queueService } from "../../shared/queue/queueService.js";
 import { mailerService } from "../../shared/mail/mailerService.js";
+import * as storage from "../../shared/storage/storageService.js";
 import { emailLayout, otpEmail, esc } from "../../shared/mail/templates.js";
 
 import * as platformUserRepo from "../platform-users/repositories/platform-users.repository.js";
@@ -73,12 +74,15 @@ function deriveDeviceLabel(ua?: string): string | null {
   return "Unknown";
 }
 
+export type OrgType = "business" | "institution";
+
 function signAccessToken(user: {
   id: number;
   email: string;
   adminRole?: string;
   orgId?: string;
   orgRole?: string;
+  orgType?: OrgType;
 }) {
   const payload: Record<string, unknown> = {
     sub: user.id,
@@ -89,6 +93,9 @@ function signAccessToken(user: {
   if (user.orgId) {
     payload.orgId = user.orgId;
     payload.orgRole = user.orgRole;
+    // Always stamped from here on. The tenant plugin still treats an absent orgType as
+    // "business" so tokens minted before institution context existed keep working.
+    payload.orgType = user.orgType ?? "business";
   }
 
   return jwt.sign(payload, config.JWT_SECRET as jwt.Secret, {
@@ -97,11 +104,62 @@ function signAccessToken(user: {
 }
 
 /**
- * Mints a business-scoped access token outside the login flow — e.g. right after a logged-in
- * user registers their own business, so they don't have to sign in again to get org context.
+ * Mints an org-scoped access token outside the login flow — e.g. right after a logged-in user
+ * registers their own business or institution, so they don't have to sign in again to get
+ * org context.
  */
-export function issueScopedAccessToken(user: { id: number; email: string }, orgId: string, orgRole: string) {
-  return signAccessToken({ id: user.id, email: user.email, orgId, orgRole });
+export function issueScopedAccessToken(
+  user: { id: number; email: string },
+  orgId: string,
+  orgRole: string,
+  orgType: OrgType = "business",
+) {
+  return signAccessToken({ id: user.id, email: user.email, orgId, orgRole, orgType });
+}
+
+/**
+ * Which org a freshly minted token should be scoped to.
+ *
+ * `preferredOrgId` is the org this session last switched to (`auth_sessions.org_id`, written by
+ * switchAccount). Honouring it is what stops a silent /refresh from dragging a user who
+ * switched org back to their default one. It is searched across BOTH kinds, so an institution
+ * switch survives a refresh exactly like a business switch does.
+ *
+ * Falling back, business wins when the user has both: it keeps every existing business user's
+ * login byte-identical to before institution context existed. Such a user reaches their
+ * institution with POST /auth/switch-account.
+ */
+async function resolveOrgScope(userId: number, preferredOrgId?: string | null) {
+  const [businesses, institutions] = await Promise.all([
+    platformUserRepo.listUserBusinesses(userId),
+    platformUserRepo.listUserInstitutions(userId),
+  ]);
+
+  const scoped = (
+    org: { org_id: string; role: string } | undefined,
+    orgType: OrgType,
+  ) => (org ? { businesses, institutions, orgId: org.org_id, orgRole: org.role, orgType } : null);
+
+  // The remembered org only counts while the membership still holds — listUser* already
+  // exclude revoked/soft-deleted rows, so a user removed from that org falls back instead of
+  // being handed a token for something they can no longer enter.
+  if (preferredOrgId) {
+    const remembered =
+      scoped(businesses.find((b) => b.org_id === preferredOrgId), "business") ??
+      scoped(institutions.find((i) => i.org_id === preferredOrgId), "institution");
+    if (remembered) return remembered;
+  }
+
+  return (
+    scoped(businesses[0], "business") ??
+    scoped(institutions[0], "institution") ?? {
+      businesses,
+      institutions,
+      orgId: undefined,
+      orgRole: undefined,
+      orgType: undefined,
+    }
+  );
 }
 
 // ── email queue ──
@@ -144,24 +202,25 @@ export async function registerUser(
   email: string,
   refToken?: string,
 ) {
+  // Checked BEFORE the account lookup and keyed on the business's own contact email, because a
+  // promoted listing has no owner to find it by and its claimant usually has no account yet —
+  // the old owner-based check only ever fired for people who had already registered. Naming the
+  // listing leaks nothing: promoted listings are public catalog entries.
+  const pendingBusiness = await businessRepo.findUnclaimedBusinessByContactEmail(email);
+  if (pendingBusiness) {
+    throw new AppError(
+      `A business profile ("${pendingBusiness.business_name}") already exists for this email. Would you like to claim it?`,
+      409,
+      "BUSINESS_CLAIM_AVAILABLE",
+    );
+  }
+
   const existing = await platformUserRepo.findByEmail(email);
   if (existing) {
-    // A business was pre-seeded for this exact person (owner account created ahead of time by an
-    // admin) and they haven't claimed it yet — tell them plainly, rather than the generic
-    // anti-enumeration response below, so they can claim instead of hitting a dead end.
-    const pendingBusiness = await businessRepo.findUnclaimedBusinessByOwnerId(existing.id);
-    if (pendingBusiness) {
-      throw new AppError(
-        `A business profile ("${pendingBusiness.business_name}") already exists for this email. Would you like to claim it?`,
-        409,
-        "BUSINESS_CLAIM_AVAILABLE",
-      );
-    }
-
     // Anti-enumeration: return identical response, send "someone tried to register" email
     queueEmail({
       to: email,
-      subject: "Registration attempt on your Globaly account",
+      subject: "Registration attempt on your GlobalyApp account",
       html: emailLayout({
         heading: "Someone tried to sign up with your email",
         body: `<p style="margin:0">An account already exists for this address. If that was you, sign in instead — no new account was created.</p>`,
@@ -184,6 +243,7 @@ export async function registerUser(
     last_name: lastName,
     email,
     account_status: 0, // inactive until OTP verified
+    is_personal_account: true,
     meta: pendingReferral ? { pending_referral: pendingReferral } : undefined,
   });
 
@@ -279,12 +339,21 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     logger.warn("Referral attribution deferred", { userId: user.id, err: err.message }),
   );
 
-  const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
+  const adminRecordAny = await adminRepo.findAdminByPlatformUserIdIncludingInactive(user.id);
+  if (adminRecordAny && !adminRecordAny.is_active) {
+    throw new ForbiddenError("This user is not active. Please contact administrator.");
+  }
+  const adminRecord = adminRecordAny;
 
   // Create a new session (multi-device — doesn't kill other sessions)
   const { raw: rawRefresh, hashed: hashedRefresh } = encodeRefreshToken(user.id);
   const family = randomUUID();
   const sessionExpiry = new Date(Date.now() + config.SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+  // A platform_user can own several orgs; login has no "which one did they pick last" signal
+  // of its own (that lives on the session, updated by switchAccount), so a fresh login starts
+  // on their default org. This session's org_id is what /refresh will honor from here on.
+  const scope = await resolveOrgScope(user.id);
 
   await authRepo.createSession({
     platform_user_id: user.id,
@@ -294,22 +363,19 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     user_agent: meta?.userAgent ?? null,
     device_label: deriveDeviceLabel(meta?.userAgent),
     expires_at: sessionExpiry,
+    org_id: scope.orgId ?? null,
   });
-
-  // Business accounts have exactly one business today (no multi-business picker), so scope the
-  // token to it right away instead of making the client round-trip through a separate switch call.
-  const businesses = await platformUserRepo.listUserBusinesses(user.id);
-  const primaryBusiness = businesses[0];
 
   const accessToken = signAccessToken({
     id: user.id,
     email: user.email,
     adminRole: adminRecord?.role,
-    orgId: primaryBusiness?.org_id,
-    orgRole: primaryBusiness?.role,
+    orgId: scope.orgId,
+    orgRole: scope.orgRole,
+    orgType: scope.orgType,
   });
 
-  logger.info("User authenticated", { userId: user.id, isAdmin: !!adminRecord });
+  logger.info("User authenticated", { userId: user.id, isAdmin: !!adminRecord, orgType: scope.orgType });
   return {
     access_token: accessToken,
     refresh_token: rawRefresh,
@@ -319,7 +385,8 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
       type: adminRecord ? ("admin" as const) : ("platform_user" as const),
       role: adminRecord?.role ?? null,
     },
-    businesses,
+    businesses: scope.businesses,
+    institutions: scope.institutions,
   };
 }
 
@@ -350,15 +417,20 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
 
     // Token valid — rotate
     const adminRecord = await adminRepo.findAdminByPlatformUserId(userId);
-    const businesses = await platformUserRepo.listUserBusinesses(userId);
-    const primaryBusiness = businesses[0];
+    // Honor whichever org this session last switched to (switchAccount records it), falling
+    // back to the default if none was recorded or membership no longer holds — e.g. the user
+    // was removed from it since. Without this, every refresh (which happens silently in the
+    // background) would reset a user with multiple orgs back to whichever sorts first,
+    // undoing any switch they'd made.
+    const scope = await resolveOrgScope(userId, session.org_id);
 
     const accessToken = signAccessToken({
       id: userId,
       email: user.email,
       adminRole: adminRecord?.role,
-      orgId: primaryBusiness?.org_id,
-      orgRole: primaryBusiness?.role,
+      orgId: scope.orgId,
+      orgRole: scope.orgRole,
+      orgType: scope.orgType,
     });
 
     const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(userId);
@@ -393,30 +465,75 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
 }
 
 /**
- * Kept as a backend capability for future multi-business use (an agent belonging to more than
- * one business, or an explicit account picker) even though today's frontend doesn't call it —
- * business accounts are auto-scoped to their one business at login/registration time instead.
+ * Re-scopes the access token to a specific org, by schema_name — used by the header switcher
+ * (a user holding more than one org) and by /business/profile/:id reconciling context to
+ * whatever org a deep link names.
+ *
+ * The org kind is inferred from which table owns the schema_name — the caller does not have
+ * to say. Membership is re-checked against the tenant (`agents` / `members`) rather than the
+ * master index, so a revoked membership cannot be re-scoped into.
+ *
+ * When the caller's refresh token is supplied, the choice is recorded on that session so
+ * /refresh keeps honoring it instead of resetting to their default org on the next silent
+ * refresh. Applies to both kinds.
  */
-export async function switchAccount(userId: number, orgId: string) {
+export async function switchAccount(userId: number, orgId: string, refreshToken?: string) {
   const user = await platformUserRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
+  // Only after membership is confirmed — remembering an org the caller can't enter would make
+  // every later refresh fall back anyway, and hide the real problem.
+  const rememberOnSession = async () => {
+    if (!refreshToken) return;
+    const session = await authRepo.findSessionByRefreshToken(hashToken(refreshToken));
+    if (session?.platform_user_id === userId) {
+      await authRepo.updateSessionOrgId(session.id, orgId);
+    }
+  };
+
   const business = await platformUserRepo.findBusinessByDbName(orgId);
-  if (!business) throw new NotFoundError("Business not found");
+  if (business) {
+    const db = await getKnex(business.id, schemaName(business.schema_name));
+    // deleted_at MUST be filtered here, exactly as requirePermission does. Without it a
+    // removed agent still gets an orgId-scoped token: it 403s on permissioned routes but
+    // passes every route guarded only by requireBusinessContext, and the tenant db handle
+    // is attached either way. It also produced a confusing failure — switching "worked",
+    // then every business page reported "Not a member of this business".
+    const agent = await db("agents")
+      .join("roles", "agents.role_id", "roles.id")
+      .where("agents.platform_user_id", userId)
+      .whereNull("agents.deleted_at")
+      .select("roles.name as role")
+      .first();
 
-  const db = await getKnex(business.id, schemaName(business.schema_name));
-  const agent = await db("agents")
-    .join("roles", "agents.role_id", "roles.id")
-    .where("agents.platform_user_id", userId)
-    .select("roles.name as role")
-    .first();
+    if (!agent) throw new UnauthorizedError("Not a member of this business");
+    await rememberOnSession();
 
-  if (!agent) throw new UnauthorizedError("Not a member of this business");
+    logger.info("Account switched", { userId, orgId, orgType: "business", role: agent.role });
+    return {
+      access_token: issueScopedAccessToken({ id: user.id, email: user.email }, orgId, agent.role, "business"),
+      org_type: "business" as const,
+    };
+  }
 
-  const accessToken = issueScopedAccessToken({ id: user.id, email: user.email }, orgId, agent.role);
+  const institution = await platformUserRepo.findInstitutionBySchemaName(orgId);
+  if (!institution) throw new NotFoundError("Organisation not found");
 
-  logger.info("Account switched", { userId, orgId, role: agent.role });
-  return { access_token: accessToken };
+  // Pool key is the schema uuid — institution ids would collide with business ids.
+  const db = await getKnex(institution.schema_name, schemaName(institution.schema_name));
+  const member = await db("members")
+    .where({ platform_user_id: userId, account_status: 1 })
+    .whereNull("deleted_at")
+    .first("role");
+
+  if (!member) throw new UnauthorizedError("Not a member of this institution");
+  await rememberOnSession();
+
+  logger.info("Account switched", { userId, orgId, orgType: "institution", role: member.role });
+  return {
+    access_token: issueScopedAccessToken({ id: user.id, email: user.email }, orgId, member.role, "institution"),
+    org_type: "institution" as const,
+  };
 }
 
 export async function logout(userId: number, refreshToken?: string) {
@@ -440,25 +557,49 @@ export async function getMe(auth: AuthClaims) {
   const user = await platformUserRepo.findById(id);
   if (!user) throw new NotFoundError("User not found");
 
+  // platform_users.photo_url/cover_url are storage paths, not URLs — sign them the same way
+  // platform-users.service.ts does, so every /me-shaped response resolves to a viewable image.
+  const [photo_url, cover_url] = await Promise.all([
+    storage.resolvePreviewUrl(user.photo_url),
+    storage.resolvePreviewUrl(user.cover_url),
+  ]);
+
+  // Looked up unconditionally, not gated on `auth.type === "admin"`: `type` reflects what the
+  // CURRENT token can do (a business-scoped token reads "platform_user" even for an admin who
+  // switched into a business they own), but `is_admin`/`admin_role` answer "is this person also
+  // an admin" independent of that scoping, so the frontend can still show a "Super Admin" entry
+  // after a switch instead of losing it.
+  const adminRecord = await adminRepo.findAdminByPlatformUserId(id);
+
   const result: Record<string, unknown> = {
     ...user,
+    photo_url,
+    cover_url,
     type: auth.type,
+    is_admin: !!adminRecord,
+    admin_role: adminRecord?.role ?? null,
+    admin_id: adminRecord?.id ?? null,
   };
-
-  if (auth.type === "admin") {
-    const adminRecord = await adminRepo.findAdminByPlatformUserId(id);
-    if (adminRecord) {
-      result.admin_role = adminRecord.role;
-      result.admin_id = adminRecord.id;
-    }
-  }
 
   if (auth.orgId) {
     result.orgId = auth.orgId;
     result.orgRole = auth.orgRole;
+    // Absent on tokens minted before institution context existed — those are businesses.
+    result.orgType = auth.orgType ?? "business";
   }
 
-  result.businesses = await platformUserRepo.listUserBusinesses(id);
+  // Both lists, so the frontend can offer a picker and know which switch-account targets
+  // exist. Membership in either is what makes /auth/switch-account succeed.
+  const [businesses, institutions] = await Promise.all([
+    platformUserRepo.listUserBusinesses(id),
+    platformUserRepo.listUserInstitutions(id),
+  ]);
+  result.businesses = await Promise.all(
+    businesses.map(async (b) => ({ ...b, logo_url: await storage.resolvePreviewUrl(b.logo_url) })),
+  );
+  result.institutions = await Promise.all(
+    institutions.map(async (i) => ({ ...i, logo_url: await storage.resolvePreviewUrl(i.logo_url) })),
+  );
 
   return { user: result };
 }

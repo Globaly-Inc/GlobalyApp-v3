@@ -19,7 +19,7 @@ import { createChildLogger } from "./shared/logger.js";
 // Modules
 import authModule from "./modules/auth/index.js";
 import superadminModule from "./modules/superadmin/index.js";
-import platformUsersModule from "./modules/platform-users/index.js";
+import platformUsersModule, { publicPlatformUsersModule } from "./modules/platform-users/index.js";
 import businessesModule from "./modules/businesses/index.js";
 import placesModule from "./modules/places/index.js";
 import agentsModule from "./modules/agents/index.js";
@@ -32,8 +32,11 @@ import scholarshipsPublicModule from "./modules/scholarships/index.js";
 import aiCounsellorModule, { publicAiCounsellorModule } from "./modules/ai-counsellor/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
 import coursesModule from "./modules/courses/index.js";
+import savedItemsModule from "./modules/saved-items/index.js";
 import referralsModule, { publicReferralsModule } from "./modules/referrals/index.js";
 import waitlistModule from "./modules/waitlist/index.js";
+import guidesPublicModule from "./modules/guides-public/index.js";
+import publicPageViewsModule from "./modules/page-views/index.js";
 
 const logger = createChildLogger("server");
 
@@ -42,7 +45,14 @@ export async function buildServer() {
 
   // --- Framework plugins ---
   await app.register(cors, { origin: config.CORS_ORIGINS, credentials: true });
-  await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+  // ponytail: 100/min per IP could not survive a single portal page load (a dozen endpoints, ×2 for
+  // Strict Mode, × every open tab) — and IP is the wrong key twice over: every dev tab is 127.0.0.1,
+  // and in production a whole office behind one NAT shared one bucket. Brute-force protection is not
+  // here anyway; it is the tight per-route limits in modules/auth/consts.ts, which are untouched.
+  await app.register(rateLimit, {
+    max: config.NODE_ENV === "production" ? 600 : 5000,
+    timeWindow: "1 minute",
+  });
   await app.register(multipart, { limits: { fileSize: config.GCS_MAX_FILE_SIZE_MB * 1024 * 1024 } });
   await app.register(errorHandlerPlugin);
   await app.register(requestContextPlugin);
@@ -62,12 +72,15 @@ export async function buildServer() {
     await protectedApp.register(aiCounsellorModule);   // AI counsellor — chat, credits, sessions, embed configs
     await protectedApp.register(enquiriesModule);      // student enquiry creation + lookup
     await protectedApp.register(coursesModule);        // student course browse (extracted courses)
+    await protectedApp.register(savedItemsModule);     // heart/shortlist of courses + institutions
     await protectedApp.register(referralsModule);           // Earn → Referrals: own code, stats, history
   });
 
   await app.register(blogModule);            // public blog reads (no auth)
+  await app.register(guidesPublicModule);    // public guide landing pages + lead capture (no auth)
   await app.register(publicServicesModule);  // public marketplace browse (no auth)
   await app.register(geoModule);              // public geo reads (no auth)
+  await app.register(publicPlatformUsersModule); // public country/city lookups (no auth)
   await app.register(searchModule);          // public search reads (no auth)
   await app.register(scholarshipsPublicModule); // public scholarships reads (no auth)
   await app.register(publicAiCounsellorModule); // guest + embed-widget AI chat (no auth)
@@ -75,6 +88,7 @@ export async function buildServer() {
   // never acquire the auth hook — public by construction, not by an allow-list.
   await app.register(publicReferralsModule);
   await app.register(waitlistModule);        // coming-soon page sign-up (no auth)
+  await app.register(publicPageViewsModule); // visit counter on public detail pages (no auth)
 
   // --- Health checks ---
   app.get("/healthz", async () => ({ status: "ok" }));

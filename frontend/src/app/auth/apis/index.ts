@@ -3,4 +3,4 @@ import { authMockApi } from "./mock-data";
 import { authRealApi } from "./real-api";
 
 export const authApi = createApi({ mock: authMockApi, real: authRealApi });
-export type { AuthMeBusiness, AuthUser } from "./types";
+export type { AuthMeBusiness, AuthMeInstitution, AuthUser } from "./types";

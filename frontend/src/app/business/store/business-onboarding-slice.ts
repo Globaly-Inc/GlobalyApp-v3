@@ -1,10 +1,18 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessApi } from "../apis";
-import type { BusinessProfile, BusinessProfilePatch, UpdateSubCategoryParams } from "../apis/types";
+import type { BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, InstitutionRegisterInput } from "../apis/types";
 
-export const updateSubCategory = createAsyncThunk(
-  "businessOnboarding/updateSubCategory",
-  (params: UpdateSubCategoryParams) => businessApi.updateSubCategory(params),
+// Result isn't stored in this slice's state — a successful registration hard-navigates
+// to /business (same reload rationale the business switcher already uses), so there's
+// no stale profile/org state left behind to reconcile.
+export const registerBusiness = createAsyncThunk(
+  "businessOnboarding/registerBusiness",
+  (input: BusinessRegisterInput) => businessApi.registerBusiness(input),
+);
+
+export const registerInstitution = createAsyncThunk(
+  "businessOnboarding/registerInstitution",
+  (input: InstitutionRegisterInput) => businessApi.registerInstitution(input),
 );
 
 export const fetchMyProfile = createAsyncThunk("businessOnboarding/fetchMyProfile", () =>
@@ -57,6 +65,28 @@ const businessOnboardingSlice = createSlice({
       .addCase(updateMyProfile.rejected, (state, action) => {
         state.status = "failed";
         state.error = action.error.message ?? "Failed to save.";
+      })
+      .addCase(registerBusiness.pending, (state) => {
+        state.status = "saving";
+        state.error = null;
+      })
+      .addCase(registerBusiness.fulfilled, (state) => {
+        state.status = "idle";
+      })
+      .addCase(registerBusiness.rejected, (state, action) => {
+        state.status = "failed";
+        state.error = action.error.message ?? "Failed to create business.";
+      })
+      .addCase(registerInstitution.pending, (state) => {
+        state.status = "saving";
+        state.error = null;
+      })
+      .addCase(registerInstitution.fulfilled, (state) => {
+        state.status = "idle";
+      })
+      .addCase(registerInstitution.rejected, (state, action) => {
+        state.status = "failed";
+        state.error = action.error.message ?? "Failed to create institution.";
       });
   },
 });

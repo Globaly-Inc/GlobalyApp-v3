@@ -11,7 +11,7 @@
  *
  * Covers:
  *  1. Successful creation with a valid input → pending row + one audit_logs row.
- *  2. Rejection for a profile-incomplete student (onboarding_completed = false) — 403 (ForbiddenError).
+ *  2. Rejection for a profile-incomplete student (completion < 100%) — 403 (ForbiddenError).
  *  3. Rejection for an invalid course_id.
  *  4. Rejection for message too short (<10 chars).
  *  5. Rejection for message too long (>5000 chars).
@@ -53,7 +53,13 @@ async function expectThrows(fn: () => Promise<unknown>, ErrClass: any, label: st
   throw new Error(`${label}: expected ${ErrClass.name}, but no error was thrown`);
 }
 
-async function makeTestStudent(onboardingCompleted: boolean): Promise<number> {
+/**
+ * `complete` seeds all 8 criteria of platform-users/completion.ts (name, photo,
+ * nationality, residence, one qualification, one language test, budget,
+ * destinations) so loadCompletion returns 100 — the gate createEnquiry checks.
+ * `false` leaves the profile bare, which is the 403 case.
+ */
+async function makeTestStudent(complete: boolean): Promise<number> {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const [user] = await masterKnex("platform_users")
     .insert({
@@ -62,13 +68,27 @@ async function makeTestStudent(onboardingCompleted: boolean): Promise<number> {
       email: `enquiry-test-${suffix}@example.com`,
       account_status: 1,
       is_personal_account: true,
+      photo_url: complete ? "test/photo.jpg" : null,
     })
     .returning("id");
   await masterKnex("platform_user_profiles").insert({
     user_id: user.id,
-    onboarding_completed: onboardingCompleted,
     individual_category: "student",
+    onboarding_completed: complete,
+    ...(complete
+      ? {
+          nationality_id: 1,
+          country_of_residence_id: 1,
+          budget_min: 10000,
+          budget_max: 50000,
+          preferred_destinations: JSON.stringify([1]),
+        }
+      : {}),
   });
+  if (complete) {
+    await masterKnex("platform_user_qualifications").insert({ user_id: user.id });
+    await masterKnex("platform_user_language_tests").insert({ user_id: user.id });
+  }
   return user.id;
 }
 
@@ -96,6 +116,8 @@ async function makeTestJobAndCourse(): Promise<{ jobId: string; courseId: string
 
 async function cleanupStudent(studentId: number) {
   await masterKnex("enquiries").where({ student_id: studentId }).delete();
+  await masterKnex("platform_user_qualifications").where({ user_id: studentId }).delete();
+  await masterKnex("platform_user_language_tests").where({ user_id: studentId }).delete();
   await masterKnex("audit_logs").where({ platform_user_id: studentId }).delete();
   await masterKnex("platform_user_profiles").where({ user_id: studentId }).delete();
   await masterKnex("platform_users").where({ id: studentId }).delete();

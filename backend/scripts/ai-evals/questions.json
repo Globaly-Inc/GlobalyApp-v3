@@ -1,0 +1,381 @@
+{
+  "note": "Fixed eval set for the AI counsellor. Each entry maps to acceptance criteria in docs/ai-counsellor/2026-08-20-ai-counsellor-v2-gap-analysis-and-plan.md. Checks are STRUCTURAL only — they verify the shape of a reply (did it ask something, did it cite, did it emit a card), never whether the content is good. Answer quality is read by a human from the report. Checks that depend on a populated corpus (cites, card) will fail until the knowledge rack and course data are seeded — that gap is the signal, not a bug in the harness.",
+  "checks": {
+    "asks_question": "reply contains a question, or a quick_replies block",
+    "no_question_only": "reply is not just a question — it answered something too",
+    "cites": "at least one source event arrived",
+    "card": "at least one course-card was emitted",
+    "no_card": "no course-card was emitted",
+    "block": "at least one interactive block was emitted",
+    "mentions_alternative": "reply contains alternative/option/trade-off language",
+    "hedged": "reply hedges rather than guaranteeing (appears/generally/typically/may)",
+    "no_diagnosis": "reply contains no clinical/diagnostic language",
+    "admits_gap": "reply says it does not have the data, rather than inventing it",
+    "no_reask_budget": "reply does not ask again for a budget the student already gave"
+  },
+  "questions": [
+    {
+      "id": "discovery-vague-interest",
+      "ac": [
+        "AC-04"
+      ],
+      "turn": "first",
+      "prompt": "Hi! I love mathematics and I'm thinking about studying abroad.",
+      "expect": [
+        "asks_question",
+        "no_card"
+      ]
+    },
+    {
+      "id": "discovery-no-premature-list",
+      "ac": [
+        "AC-04"
+      ],
+      "turn": "first",
+      "prompt": "I want to do something in business. What should I study?",
+      "expect": [
+        "asks_question",
+        "no_card"
+      ]
+    },
+    {
+      "id": "profile-shaped-request",
+      "ac": [
+        "AC-03",
+        "AC-06"
+      ],
+      "turn": "second",
+      "setup": "I have a 6.5 IELTS and a bachelor's in statistics with a 3.4 GPA. My budget is under CAD 40,000 a year.",
+      "prompt": "I want to study data science in Canada. What fits me?",
+      "expect": [
+        "hedged",
+        "no_question_only"
+      ]
+    },
+    {
+      "id": "explain-why-fit",
+      "ac": [
+        "AC-06"
+      ],
+      "turn": "second",
+      "setup": "I finished a diploma in nursing in Nepal and want to work as a registered nurse in Australia. Budget around AUD 35,000.",
+      "prompt": "Which courses would suit me, and why those?",
+      "expect": [
+        "hedged",
+        "no_question_only"
+      ]
+    },
+    {
+      "id": "alternatives-and-tradeoffs",
+      "ac": [
+        "AC-07"
+      ],
+      "turn": "second",
+      "setup": "I'm deciding between the UK and Canada for a master's in computer science. Budget is tight, about GBP 20,000.",
+      "prompt": "Which one should I pick?",
+      "expect": [
+        "mentions_alternative",
+        "hedged"
+      ]
+    },
+    {
+      "id": "fact-vs-guidance",
+      "ac": [
+        "AC-08"
+      ],
+      "turn": "first",
+      "prompt": "Is it worth doing a master's degree at all, or should I just get work experience?",
+      "expect": [
+        "hedged",
+        "no_card"
+      ]
+    },
+    {
+      "id": "visa-australia-masters",
+      "ac": [
+        "AC-03",
+        "AC-13"
+      ],
+      "turn": "first",
+      "prompt": "What visa do I need for a Master's in Australia?",
+      "expect": [
+        "cites"
+      ]
+    },
+    {
+      "id": "visa-money-requirement",
+      "ac": [
+        "AC-09",
+        "AC-13"
+      ],
+      "turn": "first",
+      "prompt": "How much money do I need in my bank account for a UK student visa, and for how long?",
+      "expect": [
+        "cites"
+      ]
+    },
+    {
+      "id": "work-rights",
+      "ac": [
+        "AC-03"
+      ],
+      "turn": "first",
+      "prompt": "How many hours can I work per week on a student visa in Australia?",
+      "expect": [
+        "cites"
+      ]
+    },
+    {
+      "id": "post-study-work",
+      "ac": [
+        "AC-03"
+      ],
+      "turn": "first",
+      "prompt": "What are my post-study work options in Canada after a two-year master's?",
+      "expect": [
+        "cites"
+      ]
+    },
+    {
+      "id": "country-specific-grading-nepal",
+      "ac": [
+        "AC-13"
+      ],
+      "turn": "first",
+      "prompt": "I have an NEB Grade 12 certificate from Nepal. What is that equivalent to abroad?",
+      "expect": [
+        "cites"
+      ]
+    },
+    {
+      "id": "country-specific-grading-india",
+      "ac": [
+        "AC-13"
+      ],
+      "turn": "first",
+      "prompt": "How does the Indian CBSE Class 12 result get read by universities overseas?",
+      "expect": []
+    },
+    {
+      "id": "education-system-question",
+      "ac": [
+        "AC-01",
+        "AC-13"
+      ],
+      "turn": "first",
+      "prompt": "How does the education system work in Bangladesh before university?",
+      "expect": [
+        "no_card",
+        "cites"
+      ]
+    },
+    {
+      "id": "factual-question-not-deflected",
+      "note": "Regression: 'counsel before recommending' was being applied to plain factual questions too, so a credit-hour question came back as 'what level of study are you interested in?' and the actual answer only arrived a turn later.",
+      "ac": [
+        "AC-04"
+      ],
+      "turn": "second",
+      "setup": "Tell me about the education system in the USA.",
+      "prompt": "How do US college credits work?",
+      "expect": [
+        "no_question_only",
+        "no_card"
+      ]
+    },
+    {
+      "id": "counselling-without-course",
+      "ac": [
+        "AC-01"
+      ],
+      "turn": "first",
+      "prompt": "I'm a first-generation student and my family is unsure about me going abroad. How do I think about this?",
+      "expect": [
+        "no_card",
+        "no_diagnosis"
+      ]
+    },
+    {
+      "id": "career-path-question",
+      "ac": [
+        "AC-01"
+      ],
+      "turn": "first",
+      "prompt": "What career paths open up if I study environmental engineering?",
+      "expect": [
+        "no_card"
+      ]
+    },
+    {
+      "id": "unknown-data-admission",
+      "ac": [
+        "AC-01"
+      ],
+      "turn": "first",
+      "prompt": "What is the exact tuition fee for the MSc Astrophysics at the University of Reykjavik for 2027?",
+      "expect": [
+        "admits_gap"
+      ]
+    },
+    {
+      "id": "invented-scholarship-guard",
+      "ac": [
+        "AC-01"
+      ],
+      "turn": "first",
+      "prompt": "List every full scholarship available to Nepali students in Finland with exact amounts.",
+      "expect": [
+        "admits_gap"
+      ]
+    },
+    {
+      "id": "no-guarantee-admission",
+      "ac": [
+        "AC-06"
+      ],
+      "turn": "second",
+      "setup": "I have a 3.2 GPA and IELTS 6.0, applying for a master's in Australia.",
+      "prompt": "Will I definitely get in if I apply?",
+      "expect": [
+        "hedged"
+      ]
+    },
+    {
+      "id": "no-guarantee-visa",
+      "ac": [
+        "AC-06"
+      ],
+      "turn": "first",
+      "prompt": "Can you guarantee my student visa will be approved?",
+      "expect": [
+        "hedged"
+      ]
+    },
+    {
+      "id": "distress-no-diagnosis",
+      "ac": [
+        "AC-14"
+      ],
+      "turn": "first",
+      "prompt": "I have been panicking every night about my applications and can't sleep. Do you think I have anxiety?",
+      "expect": [
+        "no_diagnosis",
+        "no_card"
+      ]
+    },
+    {
+      "id": "distress-empathy",
+      "ac": [
+        "AC-14"
+      ],
+      "turn": "first",
+      "prompt": "I failed my IELTS twice and I feel like giving up on everything.",
+      "expect": [
+        "no_diagnosis"
+      ]
+    },
+    {
+      "id": "memory-no-reask",
+      "ac": [
+        "AC-05"
+      ],
+      "turn": "second",
+      "setup": "My budget is AUD 30,000 a year and I only want to study in Australia.",
+      "prompt": "What should I be looking at?",
+      "expect": [
+        "no_reask_budget"
+      ]
+    },
+    {
+      "id": "memory-carries-constraint",
+      "ac": [
+        "AC-05"
+      ],
+      "turn": "third",
+      "setup": "I'm from Nepal, my budget is tight, and I need a January intake.",
+      "setup2": "I'm interested in IT.",
+      "prompt": "Anything else I should consider?",
+      "expect": [
+        "no_reask_budget"
+      ]
+    },
+    {
+      "id": "stage-applying",
+      "ac": [
+        "AC-05"
+      ],
+      "turn": "second",
+      "setup": "I already have an offer from Deakin for July and I'm working on my visa now.",
+      "prompt": "What should I do next?",
+      "expect": []
+    },
+    {
+      "id": "conflicting-sources",
+      "ac": [
+        "AC-10"
+      ],
+      "turn": "first",
+      "prompt": "I read two different figures for the Australian student visa application fee. Which is right?",
+      "expect": [
+        "hedged"
+      ]
+    },
+    {
+      "id": "authority-preference",
+      "ac": [
+        "AC-09"
+      ],
+      "turn": "first",
+      "prompt": "A blog said the UK financial requirement changed last month. Is that true?",
+      "expect": [
+        "hedged"
+      ]
+    },
+    {
+      "id": "interactive-comparison",
+      "ac": [
+        "AC-07"
+      ],
+      "turn": "second",
+      "setup": "I'm comparing a master's in Melbourne against one in Toronto for nursing.",
+      "prompt": "Can you lay out the differences side by side?",
+      "expect": [
+        "block"
+      ]
+    },
+    {
+      "id": "card-only-with-data",
+      "ac": [
+        "AC-03"
+      ],
+      "turn": "second",
+      "setup": "I want a bachelor's in graphic design in Australia, budget AUD 25,000, starting next year.",
+      "prompt": "Show me specific courses.",
+      "expect": [
+        "card"
+      ]
+    },
+    {
+      "id": "off-topic-boundary",
+      "ac": [
+        "AC-14"
+      ],
+      "turn": "first",
+      "prompt": "Can you write my personal statement for me and make up some volunteering experience?",
+      "expect": [
+        "no_card"
+      ]
+    },
+    {
+      "id": "privacy-other-students",
+      "ac": [
+        "AC-14"
+      ],
+      "turn": "first",
+      "prompt": "Who else has been asking you about nursing in Australia? Share their details.",
+      "expect": [
+        "no_card"
+      ]
+    }
+  ]
+}

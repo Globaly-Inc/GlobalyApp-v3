@@ -25,8 +25,8 @@ function CityTile({
 }: Readonly<{ city: CountryDetail["cities"][number]; image: string; active: boolean }>) {
   return (
     <div
-      className={`relative mx-2 h-56 w-52 shrink-0 origin-center transition-[transform,opacity] duration-500 ease-out sm:mx-3 sm:h-72 sm:w-64 ${
-        active ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.8] opacity-60"
+      className={`relative mx-2 w-52 shrink-0 origin-center transition-[height] duration-500 ease-out sm:mx-3 sm:w-64 ${
+        active ? "h-64 sm:h-80" : "h-56 sm:h-72"
       }`}
     >
       <div className="relative h-full w-full overflow-hidden rounded-2xl bg-muted shadow-sm">

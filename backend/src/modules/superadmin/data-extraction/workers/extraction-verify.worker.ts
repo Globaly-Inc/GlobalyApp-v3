@@ -31,9 +31,9 @@ interface VerifyResult {
 }
 
 await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
-  let jobId: string;
+  let jobId: string, force: boolean | undefined;
   try {
-    ({ jobId } = JSON.parse(msg!.content.toString()));
+    ({ jobId, force } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -50,9 +50,16 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
   await writeJobEvent(jobId, "verification_start", { phase: "verification", message: "Starting verification" });
 
   try {
+    // Incremental by default: only verify courses new or re-extracted since their last
+    // verification — the automatic post-run dispatch used to re-scrape and re-bill Gemini
+    // for the same first-20 courses on EVERY rerun cycle, even when nothing changed.
+    // The Context tab's manual verification step passes force to re-check everything.
     const courses = await masterKnex(`${S}.extraction_courses`)
       .where({ job_id: jobId })
       .whereNotNull("source_url")
+      .modify((qb) => {
+        if (!force) qb.where((w) => w.whereNull("last_verified_at").orWhereRaw("updated_at > last_verified_at"));
+      })
       .limit(MAX_COURSES_TO_VERIFY);
 
     let verifiedCount = 0;
@@ -90,6 +97,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
         const result = await extractJson<VerifyResult>({
           system: VERIFICATION_SYSTEM,
           prompt: verificationPrompt({ name: course.name, fields: fieldsMap }, liveText),
+          tier: "lite",
         });
 
         for (const r of result.results) {
@@ -122,8 +130,10 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
 
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       status: "review",
-      verification_score: matchCount,
-      verification_total: totalChecks,
+      // An incremental pass covered only the changed courses — add to the standing score
+      // instead of clobbering it with this pass's partial count. A forced full pass owns it.
+      verification_score: force ? matchCount : masterKnex.raw("COALESCE(verification_score, 0) + ?", [matchCount]),
+      verification_total: force ? totalChecks : masterKnex.raw("COALESCE(verification_total, 0) + ?", [totalChecks]),
       pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "done" }),
       updated_at: masterKnex.fn.now(),
     });

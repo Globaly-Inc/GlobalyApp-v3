@@ -1,10 +1,10 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { ApiError } from "@/lib/api/http";
 import { allExtractionsApi } from "../apis";
-import type { DashboardMode } from "../const";
-import type { CreateJobParams, ExtractionJob, JobFull } from "../apis/types";
+import type { CreateJobParams, ExistingJobConflict, ExtractionJob, GetJobsParams, JobFull, JobsPageMeta } from "../apis/types";
 
-export const fetchAllExtractions = createAsyncThunk("dataAllExtractions/fetch", (mode: DashboardMode) =>
-  allExtractionsApi.getJobs(mode),
+export const fetchAllExtractions = createAsyncThunk("dataAllExtractions/fetch", (params: GetJobsParams) =>
+  allExtractionsApi.getJobs(params),
 );
 
 export const fetchJobDetail = createAsyncThunk("dataAllExtractions/fetchDetail", (id: string) => allExtractionsApi.getJob(id));
@@ -21,8 +21,34 @@ export const resetPipeline = createAsyncThunk("dataAllExtractions/resetPipeline"
   return id;
 });
 
-export const createJob = createAsyncThunk("dataAllExtractions/create", (params: CreateJobParams) =>
-  allExtractionsApi.createJob(params),
+type CreateJobRejectPayload = { message: string; existingJob?: ExistingJobConflict };
+
+export const createJob = createAsyncThunk<ExtractionJob, CreateJobParams, { rejectValue: CreateJobRejectPayload }>(
+  "dataAllExtractions/create",
+  async (params, { rejectWithValue }) => {
+    try {
+      return await allExtractionsApi.createJob(params);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Please try again.";
+      const details = err instanceof ApiError ? err.details : undefined;
+      const existingJob =
+        details && typeof details === "object" && "existing_job_id" in details
+          ? (details as { existing_job_id: string; institution_name: string | null; website: string | null; email: string | null; phone: string | null })
+          : undefined;
+      return rejectWithValue({
+        message,
+        existingJob: existingJob
+          ? {
+              id: existingJob.existing_job_id,
+              institutionName: existingJob.institution_name,
+              website: existingJob.website,
+              email: existingJob.email,
+              phone: existingJob.phone,
+            }
+          : undefined,
+      });
+    }
+  },
 );
 
 export const declineJob = createAsyncThunk("dataAllExtractions/decline", async (id: string) => {
@@ -52,6 +78,7 @@ export const promoteJob = createAsyncThunk("dataAllExtractions/promote", async (
 
 type AllExtractionsState = {
   jobs: ExtractionJob[];
+  meta: JobsPageMeta;
   jobDetail: ExtractionJob | null;
   jobFull: JobFull | null;
   jobFullStatus: "idle" | "loading" | "failed";
@@ -61,6 +88,7 @@ type AllExtractionsState = {
 
 const initialState: AllExtractionsState = {
   jobs: [],
+  meta: { page: 1, limit: 10, total: 0, totalPages: 1 },
   jobDetail: null,
   jobFull: null,
   jobFullStatus: "idle",
@@ -80,7 +108,8 @@ const allExtractionsSlice = createSlice({
       })
       .addCase(fetchAllExtractions.fulfilled, (state, action) => {
         state.status = "idle";
-        state.jobs = action.payload;
+        state.jobs = action.payload.jobs;
+        state.meta = action.payload.meta;
       })
       .addCase(fetchAllExtractions.rejected, (state, action) => {
         state.status = "failed";
@@ -117,11 +146,17 @@ const allExtractionsSlice = createSlice({
       })
       .addCase(createJob.fulfilled, (state, action) => {
         state.jobs = [action.payload, ...state.jobs];
+        state.meta.total += 1;
+        state.meta.totalPages = Math.max(1, Math.ceil(state.meta.total / state.meta.limit));
       })
       .addCase(declineJob.fulfilled, (state, action) => {
         state.jobs = state.jobs.map((j) => (j.id === action.payload ? { ...j, status: "declined" } : j));
       })
       .addCase(deleteJob.fulfilled, (state, action) => {
+        if (state.jobs.some((j) => j.id === action.payload)) {
+          state.meta.total = Math.max(0, state.meta.total - 1);
+          state.meta.totalPages = Math.max(1, Math.ceil(state.meta.total / state.meta.limit));
+        }
         state.jobs = state.jobs.filter((j) => j.id !== action.payload);
       })
       .addCase(pauseJob.fulfilled, (state, action) => {

@@ -1,14 +1,26 @@
 // Knowledge Rack routes: categories, sources, documents, crawl dispatch.
 
+import type { MultipartFields } from "@fastify/multipart";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { BadRequestError } from "../../../../shared/errors.js";
 import * as service from "../services/rack.service.js";
 import { UuidParamSchema } from "../schemas/content.schema.js";
 import {
-  CrawlSourceSchema, CreateCategorySchema, CreateSourceSchema,
-  DocumentQuerySchema, PatchCategorySchema, PatchSourceSchema, SourceQuerySchema,
+  CrawlSourceSchema, CreateCategorySchema, CreateSourceSchema, DocumentQuerySchema,
+  PatchCategorySchema, PatchSourceSchema, SourceQuerySchema, UploadSourceSchema,
 } from "../schemas/rack.schema.js";
 
 const adminId = (req: FastifyRequest) => Number(req.auth!.sub);
+
+/** Multipart text fields arrive as { type: "field", value } — flatten for Zod. */
+function textFields(fields: MultipartFields): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, field] of Object.entries(fields)) {
+    const one = Array.isArray(field) ? field[0] : field;
+    if (one?.type === "field" && typeof one.value === "string") out[key] = one.value;
+  }
+  return out;
+}
 
 export async function rackRoutes(app: FastifyInstance) {
   app.get("/rack/overview", async (_req, reply) => reply.send(await service.overview()));
@@ -49,6 +61,23 @@ export async function rackRoutes(app: FastifyInstance) {
   app.delete("/sources/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     return reply.send(await service.deleteSource(id, adminId(req)));
+  });
+
+  // Multipart: text fields must precede the file part so they are parsed by the
+  // time req.file() resolves — the frontend FormData is built in that order.
+  app.post("/sources/upload", async (req, reply) => {
+    const file = await req.file();
+    if (!file) throw new BadRequestError("No file uploaded");
+    const buffer = await file.toBuffer();
+    const input = UploadSourceSchema.parse(textFields(file.fields));
+    return reply.status(201).send(
+      await service.uploadSource(input, { name: file.filename, buffer }, adminId(req)),
+    );
+  });
+
+  app.post("/sources/:id/verify", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.verifySource(id, adminId(req)));
   });
 
   app.post("/sources/:id/crawl", async (req, reply) => {

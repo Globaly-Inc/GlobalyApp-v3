@@ -3,6 +3,9 @@
 import type { FastifyInstance } from "fastify";
 import * as repo from "../repositories/referrals.repository.js";
 
+// ponytail: static until the credits phase introduces real reward config (env/DB-driven per INV-10).
+const REFERRAL_CONFIG = { student_referral_reward: 20, business_referral_reward: 100, w2_days: 14 };
+
 export async function referralsRoutes(app: FastifyInstance) {
   /**
    * Code + stats + history in ONE response.
@@ -29,6 +32,7 @@ export async function referralsRoutes(app: FastifyInstance) {
 
     return reply.send({
       code: code?.code ?? null,
+      config: REFERRAL_CONFIG,
       stats,
       referrals: referrals.map((r) => ({
         id: r.id,

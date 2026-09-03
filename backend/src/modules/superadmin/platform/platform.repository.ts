@@ -11,7 +11,7 @@ import { findAdminByPlatformUserId } from "../admin-users/repositories/admin-use
 const now = () => masterKnex.fn.now();
 
 // business-* sibling modules use this to verify a business exists before touching its sub-resources.
-export { findBusinessById } from "./businesses/repositories/businesses.repository.js";
+export { findBusinessById, findInstitutionById } from "./businesses/repositories/businesses.repository.js";
 
 // ─── User management ───────────────────────────────────────────────────────
 
@@ -94,7 +94,11 @@ export async function findCountryById(id: number) {
 // Public, unauthenticated reads — see modules/geo/routes/public-geo.routes.ts.
 export async function listFeaturedCountries() {
   return masterKnex("countries")
-    .select("id", "name", "slug", "flag_emoji")
+    .select(
+      "id", "name", "slug", "flag_emoji", "iso2", "hero_image_url", "thumbnail_image_url",
+      "universities_count_label", "avg_tuition_min", "avg_tuition_max", "avg_tuition_currency",
+      "cost_of_living_label",
+    )
     .where({ is_active: true, is_featured: true })
     .whereNull("deleted_at")
     .orderBy("sort_order")
@@ -137,6 +141,7 @@ export async function findPublicCityBySlug(citySlug: string, countrySlug?: strin
       "ci.population_label", "ci.area_label", "ci.weather_label", "ci.timezone", "ci.highlights",
       "ci.is_featured", "ci.meta_title", "ci.meta_description",
       "co.id as country_id", "co.name as country_name", "co.slug as country_slug", "co.flag_emoji as country_flag_emoji",
+      "co.hero_image_url as country_hero_image_url",
     )
     .first();
 }

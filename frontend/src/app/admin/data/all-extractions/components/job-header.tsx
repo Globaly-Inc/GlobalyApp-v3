@@ -2,18 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RotateCcw, Square, Upload, XCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Landmark, RotateCcw, Square, Upload, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useAppDispatch } from "@/lib/hooks";
-import { ACTIVE_STATUSES } from "../const";
+import { ACTIVE_STATUSES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
+import { DeepScrapeButton } from "./deep-scrape-button";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
-const PUBLISH_ROW_STATUSES = ["review", "verified", "done", "approved", "exported"];
 
 export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onReload: () => void }>) {
   const router = useRouter();
@@ -53,6 +54,9 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
         </Button>
+        <div className={cn("flex h-16 w-16 shrink-0 items-center justify-center rounded-md", (STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending).className)}>
+          <Landmark className="h-8 w-8" />
+        </div>
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-foreground truncate">{job.institution_name || "Extraction Review"}</h1>
           <p className="text-xs text-muted-foreground truncate">{job.institution_url}</p>
@@ -61,6 +65,9 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
 
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <RerunExtractionButton jobId={job.id} status={job.status} onReload={onReload} />
+        {job.source_type !== "agentcis" && job.status !== "exported" && (
+          <DeepScrapeButton jobId={job.id} onReload={onReload} />
+        )}
 
         {ACTIVE_STATUSES.includes(job.status) && (
           <Button
@@ -94,7 +101,7 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
           </Button>
         )}
 
-        {PUBLISH_ROW_STATUSES.includes(job.status) && (
+        {PUBLISHABLE_STATUSES.includes(job.status) && (
           <>
             {job.status !== "exported" && (
               <Button

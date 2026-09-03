@@ -1,0 +1,771 @@
+{
+  "$comment": "GlobalyApp AI Counselling - domestic education system profiles. Research date 2026-08-21. DOCUMENTATION ONLY - not for implementation. Verification values: 'confirmed' = read from a Tier 1/2 source during research; 'warn' = secondary-sourced or unread official source, must be verified before the AI states it as fact; 'unresolved' = information not found.",
+  "meta": {
+    "research_date": "2026-08-21",
+    "countries": 8,
+    "scope": "Domestic education systems only. Cross-country equivalency deliberately out of scope.",
+    "companion_files": [
+      "qualifications.csv",
+      "grading_systems.csv",
+      "credit_systems.csv",
+      "terminology.csv"
+    ],
+    "source_documents": [
+      "../NEPAL.md", "../INDIA.md", "../BANGLADESH.md", "../CHINA.md",
+      "../AUSTRALIA.md", "../CANADA.md", "../UNITED_KINGDOM.md", "../UNITED_STATES.md"
+    ]
+  },
+
+  "research_updates_2026_08_21b": {
+    "$comment": "Second research pass: failed retrievals retried and priority gaps worked. Entries marked SUPERSEDES correct a claim made elsewhere in this file - the update wins.",
+    "retrievals_retried": [
+      {"target": "AQF Second Edition (January 2013) PDF", "outcome": "OBTAINED via the Internet Archive after direct aqf.edu.au downloads failed twice", "impact": "All AQF volumes of learning are now official; the Juris Doctor / 'Doctor of ...' title rules and a previously-missing Higher Doctoral Degree qualification type were recovered"},
+      {"target": "Bangladesh BNQF government copy", "outcome": "Still TLS-blocked; the ILO mirror already used remains the source", "impact": "none - content already obtained"},
+      {"target": "CHSI dual-credential page", "outcome": "PERMANENTLY BLOCKED to automated access. Four attempts across three different CHSI URLs plus a text-proxy all returned HTTP 412; the block is domain-wide, not page-specific", "impact": "Requires manual browser retrieval. Substance independently corroborated by ACEI, Transcript Research, Nuffic, IQAS Alberta and Kayee Meck Translation"}
+    ],
+    "resolved": [
+      {
+        "country": "India",
+        "gap": "CBSE grading - positional vs absolute (was Tier-1 blocker #2)",
+        "status": "RESOLVED from CBSE's own documents",
+        "finding": "CBSE grading is POSITIONAL for BOTH Class 10 and Class 12. Grades A-1 to D-2 each take 1/8th of the PASSED candidates in rank order; E = failed. Nine-point scale for external examination subjects; a separate FIVE-point scale (A-E) for internal assessment. Qualifying mark 33% per subject, with 33% separately in theory and practical plus 33% aggregate where practicals apply. Positional grading is used where more than 500 candidates passed the subject.",
+        "SUPERSEDES": "The earlier hypothesis that Class 10 used absolute bands while Class 12 was positional. That was WRONG. Also supersedes the 'E1/E2' grade labels - CBSE has a single E.",
+        "source": "CBSE 'Grading System in CBSE For 10th & 12th' and 'Scheme of Examinations and Pass Criteria' (cbse.gov.in)",
+        "verification": "confirmed"
+      },
+      {
+        "country": "India",
+        "gap": "State board grading matrix (was Tier-1 blocker #1)",
+        "status": "PARTIALLY RESOLVED - five major boards documented",
+        "finding": "Pass marks range from 30% to 35% across boards (West Bengal and Karnataka 30%, CBSE and UP 33%, Maharashtra and Tamil Nadu 35%). Grade MODELS differ fundamentally: positional rank (CBSE), absolute mark bands (Tamil Nadu, West Bengal), percentage plus Division (Maharashtra), inverted 1-9 (CISCE). CRITICALLY, grade labels collide: 'A1' means top-eighth-of-passers at CBSE but 91-100 marks in Tamil Nadu.",
+        "boards_documented": ["Maharashtra (MSBSHSE)", "Uttar Pradesh (UPMSP)", "West Bengal (WBCHSE)", "Tamil Nadu (DGE)", "Karnataka (DPUE)"],
+        "verification": "warn"
+      },
+      {
+        "country": "Bangladesh",
+        "gap": "SSC/HSC mark bands (was Tier-1 blocker #4)",
+        "status": "RESOLVED",
+        "finding": "A+ 80+; A 70-79; A- 60-69; B 50-59; C 40-49; D 33-39; F below 33. Pass threshold 33% (grade D). There is NO B+ grade - seven grades total - and a full 1.00-point gap between B (3.00) and C (2.00).",
+        "verification": "warn"
+      },
+      {
+        "country": "Bangladesh",
+        "gap": "The 4th-subject GPA rule (was Tier-1 blocker #5)",
+        "status": "RESOLVED - formula established",
+        "formula": "GPA = [ sum(grade points of compulsory subjects) + (4th-subject grade point - 2.00) ] / (number of COMPULSORY subjects)",
+        "finding": "The bonus is added to the NUMERATOR while the 4th subject is EXCLUDED from the denominator, so with five compulsory subjects an A+ in the 4th subject adds +0.60 to the final GPA. The bonus applies only above 2.00. Failing the 4th subject does not affect the GPA; failing any compulsory subject drops the total to 0.00.",
+        "consequence": "A GPA of 5.00 does not necessarily mean A+ in every subject, and a GPA cannot be reconstructed from subject grades without knowing the 4th-subject arrangement.",
+        "verification": "warn"
+      },
+      {
+        "country": "Bangladesh",
+        "gap": "Higher-education grading scales (was Tier-1 blocker #9)",
+        "status": "RESOLVED",
+        "finding": "Bangladesh HAS a national higher-education grading scheme: the UGC Uniform Grading Scheme, applying to all public and private universities from session 2006-2007, on a 4.00 CGPA maximum. A+ 80%+ = 4.00; A 75-<80 = 3.75; A- 70-<75 = 3.50; B+ 65-<70 = 3.25; B 60-<65 = 3.00; B- 55-<60 = 2.75; C+ 50-<55 = 2.50; C 45-<50 = 2.25; D 40-<45 = 2.00; F <40 = 0.00. Plus I (incomplete) and W (withdrawn). Regular 0.25 steps.",
+        "SUPERSEDES": "The claim that Bangladeshi higher-education grading is purely institution-set with no national scheme.",
+        "caveat": "A further 2022 UGC attempt at a single system 'could not be enforced due to practical and policy hurdles' - so adherence is not universal. Still read the transcript's own scale.",
+        "verification": "confirmed"
+      },
+      {
+        "country": "Canada",
+        "gap": "Secondary diplomas of 9 of 13 jurisdictions (was Tier-1 blocker #6)",
+        "status": "RESOLVED - all 13 jurisdictions now have a credit total",
+        "credits_for_a_complete_diploma": {"Nova Scotia": 18, "Prince Edward Island": 20, "Saskatchewan": 24, "Ontario": 30, "Manitoba": 30, "Newfoundland and Labrador": 36, "British Columbia": 80, "Yukon": 80, "Alberta": 100, "New Brunswick": "100 credit-HOURS", "Northwest Territories": 100, "Nunavut": "100 minimum", "Quebec": "course-based (DES then CEGEP)"},
+        "pass_marks_found": {"Prince Edward Island": "50%", "New Brunswick": "60%"},
+        "finding": "Complete Canadian secondary diplomas require anywhere from 18 to 100 credits. Two useful simplifications: Yukon follows British Columbia's curriculum and graduation programme entirely, and NWT/Nunavut have historically used Alberta's course naming (though NWT is mid-transition to BC's curriculum).",
+        "key_source_discovered": "CMEC publishes a per-jurisdiction Student Transfer Guide series at cmec.ca/docs/transferguide/ covering grade structures, graduation credentials, requirements, issuing authorities and grading - the single best source class for Canadian provincial detail",
+        "verification": "confirmed for Ontario, BC, Quebec, New Brunswick, PEI, Newfoundland and Labrador, Manitoba; warn for the rest"
+      },
+      {
+        "country": "Canada",
+        "gap": "No pan-Canadian framework covers sub-degree qualifications",
+        "status": "CORRECTED - provincial frameworks exist",
+        "finding": "Ontario operates a full 13-level Ontario Qualifications Framework (OQF) covering all non-religious postsecondary certificate, diploma and degree programs, including apprenticeship certificates. Levels: 1 Certificate I; 2 Certificate II; 3 Certificate of Apprenticeship; 4 Certificate of Qualification; 5 Certificate III (Ontario College Certificate); 6 Diploma I; 7 Diploma II (Ontario College Diploma); 8 Ontario College Advanced Diploma; 9 Post-Diploma Certificate (Ontario College Graduate Certificate); 10 Bachelor's Degree; 11 Bachelor's Degree Honours; 12 Master's Degree; 13 Doctoral Degree.",
+        "SUPERSEDES": "The statement that Canada has nothing placing college diplomas relative to degrees. The correct statement is that there is no PAN-CANADIAN framework, but at least one province has one.",
+        "warning": "OQF levels are Ontario's own numbering and are NOT comparable with the AQF, SCQF, RQF, BNQF, NHEQF or NCrF. An OQF level 8 Advanced Diploma is not an AQF level 8 Bachelor Honours Degree. Always name the framework alongside the level.",
+        "verification": "confirmed"
+      },
+      {
+        "country": "Canada",
+        "gap": "College credential taxonomy (was Tier-1 blocker #7)",
+        "status": "RESOLVED for Ontario",
+        "finding": "Ontario College Certificate = two semesters (one year), OQF 5. Ontario College Diploma = at least four semesters (two years), OQF 7. Ontario College Advanced Diploma = six semesters (three years), OQF 8. Ontario College Graduate Certificate = one year or less, OQF 9 - a POST-diploma/post-degree credential ABOVE the Advanced Diploma despite the word 'certificate'.",
+        "verification": "warn"
+      },
+      {
+        "country": "Australia",
+        "gap": "AQF volumes of learning unverified; which qualifications are Masters (Extended)",
+        "status": "RESOLVED - AQF PDF obtained and read",
+        "official_volumes_of_learning": {"Senior Secondary Certificate of Education": "typically 2 years", "Certificate I": "0.5-1 year", "Certificate II": "0.5-1 year", "Certificate III": "1-2 years (up to 4 via indentured training/employment)", "Certificate IV": "0.5-2 years", "Diploma": "1-2 years", "Advanced Diploma": "1.5-2 years", "Associate Degree": "2 years", "Bachelor Degree": "3-4 years", "Bachelor Honours Degree": "typically 1 year FOLLOWING a Bachelor Degree, or embedded in a Bachelor Degree as an additional year", "Graduate Certificate": "0.5-1 year", "Graduate Diploma": "1-2 years", "Masters Degree (Research)": "1-2 years; 1.5 yr after an AQF 7 in the same discipline, 1 yr after an AQF 8, 2 yr after an AQF 7 in a different discipline", "Masters Degree (Coursework)": "same formulation as Research", "Masters Degree (Extended)": "3-4 years following completion of a minimum of a 3 year level 7 qualification", "Doctoral Degree": "3-4 years"},
+        "volume_of_learning_definition": "The volume of learning identifies the notional duration of all activities required for the achievement of the learning outcomes specified for a particular AQF qualification type. It is expressed in equivalent full-time years.",
+        "SUPERSEDES": "The conflicting secondary figures for Diploma ('1.5-2 years') and Advanced Diploma ('2-3 years'). Both are REFUTED - the official figures are 1-2 and 1.5-2 respectively.",
+        "doctor_title_rules": {"Juris Doctor": "permitted for a Masters Degree (Extended) for legal practice", "Doctor of ...": "permitted for a Masters Degree (Extended) for FIVE professions: medical practice; physiotherapy; dentistry; optometry and veterinary practice", "footnote": "Ministerial Council for Tertiary Education and Employment (MCTEE), 19 November 2010", "further_additions": "permitted via the AQF Qualification Type Addition and Removal Policy where there is a clear industry, professional or community need and a sound educational rationale"},
+        "new_qualification_type_found": {"name": "Higher Doctorate / Higher Doctoral Degree", "level": 10, "basis": "may be awarded on the basis of an internationally recognised original contribution to knowledge rather than through the process of supervised independent study"},
+        "verification": "confirmed"
+      },
+      {
+        "country": "United Kingdom",
+        "gap": "The official 9-1 to A*-G GCSE comparison (was Tier-1 blocker #8)",
+        "status": "RESOLVED",
+        "finding": "Ofqual publishes THREE anchor points, not a full mapping: the bottom of grade 7 is comparable to the bottom of the old grade A; the bottom of grade 4 to the bottom of the old grade C; the bottom of grade 1 to the bottom of the old grade G. GRADE 9 HAS NO OLD-SCALE EQUIVALENT - it was introduced to provide greater differentiation among top performers. Grades 4, 5 and 6 collectively replace the old B and C. Grade 4 is the 'standard pass', grade 5 the 'strong pass', though there is no single official pass rule for every purpose.",
+        "SUPERSEDES": "The uncertain row-by-row table extracted from the UK ENIC guide, which implied 8 = A*.",
+        "ai_rule": "Use the three anchors only and state explicitly that grade 9 has no old-scale equivalent. Do not construct a one-to-one mapping - Ofqual deliberately does not publish one.",
+        "verification": "confirmed"
+      },
+      {
+        "country": "United Kingdom",
+        "gap": "A level grade scale; degree classification boundaries",
+        "status": "RESOLVED",
+        "a_level_scale": "A*, A, B, C, D, E plus U. Six passing grades plus U. A* introduced in 2010. E is the minimum pass; U means the paper did not reach E and does not count as a pass. A levels RETAINED letters while England's GCSEs moved to 9-1.",
+        "degree_classifications": {"First-Class Honours (1st)": "70% or higher", "Upper Second-Class Honours (2:1)": "60-69%", "Lower Second-Class Honours (2:2)": "50-59%", "Third-Class Honours (3rd)": "40-49%", "caveat": "Standard across most UK universities but institution-set; some institutions apply borderline or discretion rules"},
+        "counselling_point": "Because a UK 2:1 starts at 60%, a UK transcript showing 62% is a GOOD result - routinely misread by people from percentage systems where 60% is unremarkable.",
+        "still_open": "UK master's classification conventions (Distinction / Merit / Pass) and their boundaries",
+        "verification": "warn"
+      },
+      {
+        "country": "China (mainland)",
+        "gap": "The credit system (was Tier-1 blocker #10)",
+        "status": "PARTIALLY RESOLVED - and the earlier claim was too strong",
+        "finding": "China's Ministry of Education announced national teaching quality standards for bachelor's degree programmes on 30 January 2018, covering 92 broad subject areas across 587 disciplines, and these DO specify credit-hours per discipline. A Chinese bachelor's typically requires 160-180 credits (MOE 2023 statistics; the standard four-year system accounts for 87.5% of national undergraduate programmes). The hours-per-credit conversion is institution-set - one reported convention is one 45-minute class hour per week over an ~18-week semester.",
+        "SUPERSEDES": "The claim that no national Chinese credit specification exists. The correct statement is that there is no single national credit-to-notional-hours FORMULA comparable to India's 30 hours or Bangladesh's 40.",
+        "consequence": "This makes the cross-country credit warning sharper: a Chinese 160-180 credit bachelor's, a US 120-credit bachelor's, a UK 360-credit bachelor's and an Indian 120-credit bachelor's are all first degrees whose credit numbers differ by up to a factor of three because the units are entirely different.",
+        "verification": "warn"
+      },
+      {
+        "country": "China (mainland)",
+        "gap": "Adult / self-study / online higher-education routes",
+        "status": "RESOLVED",
+        "finding": "China issues THREE categories of Higher Education Qualification Certificate: regular higher education, adult higher education, and self-taught examination. Crucially, the different study modes are INDICATED ON THE CERTIFICATES THEMSELVES, so the AI does not have to infer the route. Four forms of adult continuing education exist: the adult university entrance exam, self-taught higher education examinations, TV university modern open distance education, and online education. The self-taught route (zikao) has an entirely open enrolment policy accepting applicants from all backgrounds and academic levels, with candidates registering with a provincial Self-taught Higher Education Examinations Committee and completing at their own pace.",
+        "ai_rule": "Ask the student to read the certificate's own wording. All three categories are CHSI-verifiable and nationally recognised; describe the route neutrally and accurately, and do not rank it.",
+        "verification": "warn"
+      },
+      {
+        "country": "United States",
+        "gap": "Community college to university transfer and articulation (was Tier-2 #11, the largest US gap)",
+        "status": "RESOLVED at policy level",
+        "finding": "At least 31 states have policies requiring a transferable core of lower-division courses AND statewide guaranteed transfer of an associate degree. States are increasingly setting statewide credit transfer requirements rather than relying on institution-level agreements. Documented examples: North Carolina's Comprehensive Articulation Agreement between the NC Community College System and the UNC System; Florida, where completing an Associate in Arts at any Florida state college guarantees admission to one of Florida's 12 public universities; Colorado's GT Pathways and 'Degrees with Designation'; Hawaii's Automatic Admission program for the seven UH community colleges.",
+        "caveats": ["The guarantee is state-specific", "It usually attaches to a particular degree type - typically the Associate in Arts (AA), not the applied AAS", "19 or more states have no such statewide policy, so transfer there is institution-by-institution"],
+        "authoritative_source": "Education Commission of the States, '50-State Comparison: Transfer and Articulation Policies' (ecs.org/50-state-comparison-transfer-and-articulation/) - a single source covering all 50 states",
+        "verification": "confirmed"
+      },
+      {
+        "country": "Nepal",
+        "gap": "NEB grade boundaries and pass criteria (Tier-1 blocker #3)",
+        "status": "NOT RESOLVED - and the conflict WIDENED",
+        "finding": "A fourth variant of the pass criteria emerged and directly contradicts the first: it states a per-subject minimum of grade D (35%, GPA 1.6) AND an overall GPA of 2.0 (50%) to pass. The earlier Claim A stated there is NO aggregate minimum. Both come from Nepali education sources. The AI must NOT state an aggregate requirement.",
+        "what_was_established": "The Letter Grading Directive 2078's contents are now documented: issued by MoEST for Classes 1-12, developed in line with the National Curriculum Framework 2076, and it defines credit hour, letter grading and grade point, specifies how internal, practical and theoretical assessment marks convert to letter grades, and covers grade categories, achievement levels, grade improvement examinations, certification requirements and the roles of the Ministry, CDC, NEB, Education Development and Coordination Units and schools. This confirms the directive is the correct authority for everything currently marked warn.",
+        "new_finding_requiring_verification": "A source states that NEB results show ONLY letter grades and that numerical marks are not included in official results. If correct this is operationally important - a Nepali student may have no percentage to report - but it conflicts with the 75-theory/25-internal marks structure documented elsewhere. Confirm at NEB what an official Grade 12 grade sheet displays.",
+        "verification": "unresolved"
+      }
+    ]
+  },
+
+  "cross_country_rules": {
+    "anti_fabrication": [
+      {
+        "rule": "Never compare raw credit counts across countries.",
+        "why": "A credit is 10 notional hours in the UK (CATS/SCQF), 25-30 in ECTS, 30 in India (NCrF), 40 in Bangladesh (BNQF, lecture-based), and approximately 45 in the US (34 CFR 600.2). Canada's CDQF and China define no notional-hour value at all.",
+        "instead": "Reason in years of full-time study or notional hours, state the assumption, and defer the formal judgement to the destination institution or a recognised evaluator.",
+        "verification": "confirmed"
+      },
+      {
+        "rule": "Never convert a GPA between scales, or into a foreign scale.",
+        "why": "Scales in play across these eight countries include 4.0 (two structurally different variants in Nepal alone), 5.00 (Bangladesh school), 10-point (India higher education), 7-point (Australia), 4.0/4.3/4.33/9-point/12-point (Canada), and weighted GPAs above 4.0 (US high school).",
+        "instead": "Report each figure with its scale, maximum, document and institution. Where a conversion is needed, use the issuing institution's own conversion certificate (common in India) or the destination's published method.",
+        "verification": "confirmed"
+      },
+      {
+        "rule": "Never convert a rank or an examination score into a grade or percentage.",
+        "applies_to": ["Australia ATAR (a percentile rank, 0.00-99.95)", "China gaokao score (provincially referenced)", "Quebec R-score (cote R)", "US SAT/ACT", "India JEE/NEET percentile"],
+        "verification": "confirmed"
+      },
+      {
+        "rule": "Only one officially published grade conversion was found in this entire research project.",
+        "detail": "CBSE's x 9.5 conversion from the Class 10 CGPA (approximately 2011-2017 era) to a percentage. Every other conversion the AI might be tempted to apply is unofficial.",
+        "verification": "confirmed"
+      },
+      {
+        "rule": "Do not assert a qualification framework level for a country that has none.",
+        "countries_without_a_numbered_national_framework": ["United States", "China (mainland)"],
+        "countries_with_a_degree-only_framework": ["Canada (CDQF covers bachelor's/master's/doctoral only)"],
+        "verification": "warn",
+        "note": "The absence was not positively confirmed from an official source for the US or China. Priority gap."
+      }
+    ],
+    "first_questions_by_country": {
+      "Nepal": "Which year did you study (pre- or post-2016)? Which board issued the Grade 12 award - NEB, or Cambridge/IB? Which university awarded your degree, and was it 3 or 4 years?",
+      "India": "WHICH BOARD? Which year? Was your bachelor's degree 3 or 4 years, and how many credits?",
+      "Bangladesh": "Which board (general regional / BMEB madrasah / BTEB technical)? Is the GPA on the 5.00 school scale or a 4.00 university scale? Was your bachelor's 3, 4 or 5 years?",
+      "China (mainland)": "How many years was the programme (2-3 = zhuanke, 4-5 = benke)? Do you have BOTH a graduation certificate and a degree certificate? Which province and year for the gaokao?",
+      "Australia": "Which state or territory (which Year 12 certificate)? Is the figure an ATAR (a rank), a GPA (out of 7) or a WAM (a percentage)? Was 'Honours' integrated or a standalone year?",
+      "Canada": "WHICH PROVINCE OR TERRITORY? Was it Quebec (DES + CEGEP + 3-year degree)? What is the GPA scale maximum?",
+      "United Kingdom": "WHICH UK NATION? (GCSE grading, year numbering and degree length all differ.) Honours or Ordinary, and what classification? Which university (for a Scottish 'MA')?",
+      "United States": "Which state? Is the GPA weighted or unweighted, high school or college? Is the institution accredited by a USDE/CHEA-recognised accreditor?"
+    },
+    "highest_risk_facts": [
+      {"country": "United Kingdom", "fact": "An 'MA (Hons)' from Aberdeen, Edinburgh, Glasgow or St Andrews is an UNDERGRADUATE degree (SCQF 10 / FHEQ 6).", "verification": "confirmed"},
+      {"country": "China (mainland)", "fact": "China issues TWO separate documents for higher education - a graduation certificate and a degree certificate - and either can be missing.", "verification": "confirmed"},
+      {"country": "Bangladesh", "fact": "School GPA is on a 5.00 scale while university CGPA is typically 4.00. A student legitimately holds both.", "verification": "warn"},
+      {"country": "Canada", "fact": "Quebec secondary education ends at Secondary V, which 'corresponds to grade 11 in other jurisdictions'; CEGEP follows; a Quebec bachelor's degree is typically 3 years and is complete.", "verification": "confirmed"},
+      {"country": "Australia", "fact": "The ATAR is a rank (0.00-99.95), not a mark. An ATAR of 70 means the top 30% of the cohort.", "verification": "confirmed"},
+      {"country": "India", "fact": "Both 3-year (120-credit, NHEQF 5.5) and 4-year Honours (160-credit, NHEQF 6) bachelor's degrees are currently awarded, and '(Hons)' is ambiguous between the pre-NEP 3-year specialised degree and the NEP 4-year degree.", "verification": "confirmed"},
+      {"country": "United Kingdom", "fact": "Northern Ireland's school year numbering is offset by one from England's - NI Year 12 is the GCSE year.", "verification": "confirmed"},
+      {"country": "United States", "fact": "A high school GPA above 4.0 is a weighted GPA; college transcripts report the unweighted figure.", "verification": "warn"},
+      {"country": "Nepal", "fact": "'SLC' means the Grade 10 exam pre-2016 and the Grade 12 exam in NQF policy language.", "verification": "confirmed"},
+      {"country": "cross-country", "fact": "Professional medical/law qualifications are placed at OPPOSITE framework levels: Canada's CDQF calls MD/DDS/JD 'bachelor's programs in academic standing'; the UK places MB BS/BDS at FHEQ 7 (master's level); Australia reportedly classifies JD/MD as AQF 9 Masters (Extended); the US has no framework level to state.", "verification": "confirmed"}
+    ]
+  },
+
+  "countries": [
+    {
+      "country": "Nepal",
+      "governance_model": "unitary_federal_hybrid",
+      "governance_note": "Federal republic since 2015. Basic and secondary education constitutionally assigned to 753 local levels; higher education remains federal (UGC). 7 provinces.",
+      "school_structure": "Basic Education Grades 1-8 (compulsory, free, ages ~5-12); Secondary Education Grades 9-12 (free, not compulsory, ages ~13-16)",
+      "structural_reform": {"year": "2016/2017", "change": "The older four-tier legal structure (primary 1-5, lower secondary 6-8, secondary 9-10, higher secondary 11-12) was abolished in favour of two levels: Basic (1-8) and Secondary (9-12).", "verification": "warn"},
+      "school_boards": {"count": 1, "detail": "NEB is the only general-education school board. Plus CTEVT (vocational) as a parallel stream. NO provincial school boards.", "verification": "warn"},
+      "qualification_framework": {
+        "name": "National Qualifications Framework (NQF) of Nepal",
+        "approved": "2020-05-03",
+        "levels": 8,
+        "structure": "Two parallel level columns in one framework: NQ Level (General Education) and NVQ Level (TVET), plus TVET and GE qualification titles, ISCED levels and permeability arrows.",
+        "descriptor_basis": "Learning outcomes; cites SAQA (South Africa) 2013 and ILO",
+        "isced_mapping": [1, 2, 3, 6, 7, 8],
+        "isced_note": "ISCED levels 4 and 5 are NOT used in the framework's mapping.",
+        "formal_education_starts_at": "Level 4 (both NQ and NVQ), because Grades 1-8 are compulsory basic education by law",
+        "credit_values": "none published",
+        "implementation": "Partial; NVQF reported as implemented up to NVQ Level 5",
+        "verification": "confirmed",
+        "source": "CTEVT/NSTB, National Qualifications Framework of Nepal: Short Explanation, September 2019; nvqs.org.np"
+      },
+      "authorities": {
+        "ministry": "Ministry of Education, Science and Technology (MoEST)",
+        "ministry_caveat": "Restructured in May 2026; URLs in flux - verify before citing",
+        "curriculum": "Curriculum Development Centre (CDC)",
+        "school_examinations": "National Examinations Board (NEB)",
+        "school_statistics": "Centre for Education and Human Resource Development (CEHRD)",
+        "school_inspection": "Education Review Office (ERO)",
+        "higher_education": "University Grants Commission (UGC) Nepal",
+        "tvet": "Council for Technical Education and Vocational Training (CTEVT)",
+        "skills_testing": "National Skill Testing Board (NSTB) / Nepal Vocational Qualifications System (NVQS)"
+      },
+      "recognition_test": "Is the awarding university on UGC Nepal's recognised list? For technical awards, is the institution CTEVT-affiliated?",
+      "key_statistics": {
+        "source": "Government of Nepal, Flash I Report 2081 (2024/25)",
+        "students_grades_11_12": 673855,
+        "ner_grades_11_12_percent": 37.1,
+        "ner_grades_9_10_percent": 75.8,
+        "ger_grades_9_10_percent": 99.1,
+        "survival_rate_to_grade_10_percent": 66.9,
+        "science_share_grades_11_12_percent": 18.8,
+        "community_school_share_grades_11_12_percent": 67.0,
+        "verification": "confirmed"
+      },
+      "ai_rules": [
+        "'SLC' is ambiguous - Grade 10 pre-2016, Grade 12 in NQF language. Always ask the year and grade.",
+        "'College' usually means a Grade 11-12 institution, not higher education.",
+        "Two structurally different 4.0 GPA scales exist (NEB school 0.4 steps; universities US-style steps).",
+        "Bachelor's degrees are 3 OR 4 years - read the transcript; the NQF says 'at least 4 years'.",
+        "Most bachelor's students study at an affiliated college but hold a UNIVERSITY degree - ask which university.",
+        "Nepali certificate dates are Bikram Sambat years (BS is approximately AD + 56/57).",
+        "Community and institutional (public and private) school students sit the SAME NEB examinations."
+      ],
+      "top_gaps": [
+        "Exact NEB grade boundaries and pass criteria (Letter Grading Directive 2078) - all boundary numbers are secondary-sourced and pass criteria sources conflict",
+        "Primary confirmation that a CTEVT Diploma is equivalent to Grade 12 for university admission",
+        "Whether Grade 11 is nationally examined",
+        "Per-university bachelor's degree lengths (3 vs 4 years)"
+      ]
+    },
+    {
+      "country": "India",
+      "governance_model": "concurrent_federal",
+      "governance_note": "Education is on the Constitution's Concurrent List - both the Union and the States legislate. ~30+ state school boards plus 3 national boards.",
+      "school_structure": "NEP 2020: Foundational (3 yrs pre-school + Grades 1-2, ages 3-8); Preparatory (3-5, ages 8-11); Middle (6-8, ages 11-14); Secondary (9-12, ages 14-18). Grade numbering unchanged.",
+      "structural_reform": {"year": "2020", "change": "NEP 2020 (approved 29 July 2020) replaced the 10+2 structure with 5+3+3+4. Class 10 and Class 12 board examinations remain the operative qualifications.", "verification": "warn"},
+      "school_boards": {"count": "not confirmed", "detail": "3 national boards (CBSE, CISCE, NIOS) plus one or more per state. The existing Globaly knowledge base states '~60 boards nationally'; this research could not confirm a total. DO NOT state a count.", "verification": "unresolved"},
+      "qualification_framework": {
+        "name": "NHEQF (higher education) + NCrF (all streams) + NSQF (vocational) + NCF (school curriculum)",
+        "nheqf": {"authority": "UGC", "levels": [4.5, 5, 5.5, 6, 6.5, 7, 8], "basis": "outcome-based", "quality_assurance": "NAAC, established by the UGC in 1994", "verification": "confirmed"},
+        "ncrf": {"authority": "MoE high-level committee (UGC, AICTE, NCVET, NCERT, DoSEL, DoHE, MoE, MSDE, CBSE, NIOS, DGT)", "year": 2023, "levels": "1-8, with 0.5 steps in higher education", "school_levels": {"grade_5": 1, "grade_8": 2, "grade_10": 3, "grade_12": 4}, "higher_education_levels": "4.5 to 8", "vocational_levels": "1 to 8", "credit_definition": {"notional_hours_per_credit": 30, "hours_per_year": 1200, "credits_per_year": 40, "credits_per_semester": 20, "exit_module_credits": 4, "exclusion": "pre-school up to grade 5"}, "verification": "confirmed"},
+        "credit_bank": {"name": "Academic Bank of Credits (ABC)", "credit_validity_years": 7, "post_validity": "re-entry requires validation of prior learning", "verification": "confirmed"}
+      },
+      "authorities": {
+        "ministry": "Ministry of Education (MoE) - DoSEL (school) and DoHE (higher)",
+        "curriculum": "NCERT (National Curriculum Framework; NCF-SE released 23 August 2023)",
+        "national_boards": ["CBSE (AISSE / AISSCE)", "CISCE (ICSE / ISC)", "NIOS (open schooling)"],
+        "higher_education": "UGC (recognition), AICTE (technical approval), NAAC (accreditation), NBA (programme accreditation)",
+        "testing": "NTA (JEE Main, NEET UG, CUET, UGC NET)",
+        "vocational": "NCVET (regulator), DGT (ITIs), PSSCIVE (curriculum), MSDE (ministry)",
+        "inbound_equivalence": "AIU (Association of Indian Universities)",
+        "statistics": "UDISE+ (school), AISHE (higher education)"
+      },
+      "recognition_test": "Is the awarding university UGC-recognised? For technical programmes, is it AICTE-approved? (NAAC/NBA accreditation is a quality signal, not the recognition test.)",
+      "key_statistics": {
+        "school_source": "UDISE+ 2023-24",
+        "students_millions": 248,
+        "schools_millions": 1.47,
+        "teachers_millions": 9.8,
+        "dropout_secondary_percent": 14.1,
+        "government_school_share_of_schools_percent": 69,
+        "higher_education_source": "AISHE 2021-22",
+        "universities": 1168,
+        "colleges": 45473,
+        "standalone_institutions": 12002,
+        "enrolment_millions": 43.3,
+        "ger_percent": 28.4,
+        "gender_parity_index": 1.01,
+        "verification": "confirmed"
+      },
+      "ai_rules": [
+        "'WHICH BOARD?' is the first question - it determines the grading scale, pass criteria and certificate name.",
+        "'(Hons)' is ambiguous - pre-NEP 3-year specialised honours vs NEP 4-year Honours (160 credits). Ask the duration.",
+        "3-year and 4-year bachelor's degrees are both currently awarded, at different NHEQF levels.",
+        "'Diploma' has four meanings - polytechnic (post-Class-10), NEP UG Diploma, PG Diploma, or PGDM.",
+        "CISCE grades run 1 (best) to 9 (worst) - the opposite direction to almost everything else.",
+        "CBSE Class 12 grading is positional (rank in octiles), so do not convert a letter grade to a percentage - use the marks.",
+        "India is mid-reform: cite the framework, then read the transcript.",
+        "Many Indian universities issue a CGPA-to-percentage conversion certificate - ask for it rather than computing one.",
+        "45,473 colleges award degrees on behalf of ~1,168 universities - ask which university awarded it."
+      ],
+      "top_gaps": [
+        "CBSE grading rules - Class 10 vs Class 12, positional vs absolute (a documented source conflict)",
+        "A board-by-board grading, pass-criteria and certificate-name matrix for the ~30+ state boards",
+        "CISCE official grading and pass criteria (sources conflict on ICSE pass marks)",
+        "Current state-by-state adoption status of the 4-year UG programme",
+        "Polytechnic-Diploma-to-B.Tech. lateral-entry rules"
+      ]
+    },
+    {
+      "country": "Bangladesh",
+      "governance_model": "unitary",
+      "governance_note": "One national curriculum (NCTB), one qualification framework (BNQF), one grading system across all boards. Two ministries split school education: MoPME (primary) and MoE (secondary and higher).",
+      "school_structure": "1 year pre-primary; Primary Grades 1-5 (Class I-V); Junior secondary Grades 6-8; Secondary Grades 9-10 (SSC); Higher secondary Grades 11-12 (HSC)",
+      "school_boards": {"count": 11, "detail": "9 general regional boards (Dhaka, Chattogram, Rajshahi, Jashore, Cumilla, Sylhet, Barishal, Dinajpur, Mymensingh) + BMEB (Madrasah) + BTEB (Technical). The 9 general boards are regional administrative units of ONE national system.", "verification": "confirmed"},
+      "parallel_streams": ["General (SSC / HSC)", "Religious/Madrasah (Dakhil = SSC-equivalent since 1985; Alim = HSC-equivalent since 1987)", "Vocational (SSC (Voc) + NSC 3; HSC (Voc)/(BMT) + NSC 5 - DUAL certification)"],
+      "qualification_framework": {
+        "name": "Bangladesh National Qualifications Framework (BNQF)",
+        "publisher": "Ministry of Education, Bangladesh (September 2021 document)",
+        "approved": "2021-01-31",
+        "levels": 10,
+        "structure": "Two parts - TVET & Skills + Schools (Levels 1-6) and Higher Education (Levels 7-10)",
+        "provenance": "Formed by combining the UGC's National Qualifications Framework of Bangladesh (2019) and the Department of Technical Education's Bangladesh Qualifications Framework (2020)",
+        "descriptor_basis": "Bloom's Taxonomy, referencing the EQF and European NQFs",
+        "level_placements": {"3": ["NSC 3", "SSC", "Dakhil", "SSC (Voc)"], "5": ["NSC 5", "HSC", "Alim", "HSC (Voc)", "HSC (BMT)"], "6": ["NSC 6", "Diploma (Engineering / Agriculture / Medical Technology)"], "7": ["Bachelor's 3yr/120cr", "Bachelor's 4yr/140cr", "Bachelor's 5yr/160cr"], "8": ["PG Certificate/30cr", "PG Diploma/40cr"], "9": ["Master's Coursework/40cr", "Master's Mixed/20cr+dissertation", "Master's Research"], "10": ["Doctoral Research", "Doctoral Mixed Mode/30cr+thesis"]},
+        "credit_definition": {"lecture_tutorial_seminar_hours": 40, "lab_studio_clinical_hours": 60, "industrial_workplace_hours": 80, "basis": "1 hour face-to-face per week for 14 weeks = 1 credit (lecture); 1.5 hours (lab); 2 hours (workplace)"},
+        "mechanisms": ["RPL (Recognition of Prior Learning)", "APEL (Accredited Prior Experiential Learning)", "credit transfer", "lifelong learning at any level"],
+        "tvet_credit_system": "stated as still to be developed",
+        "accreditation_body": "Bangladesh Accreditation Council (BAC)",
+        "verification": "confirmed"
+      },
+      "authorities": {
+        "primary_ministry": "Ministry of Primary and Mass Education (MoPME)",
+        "secondary_higher_ministry": "Ministry of Education (MoE)",
+        "curriculum": "National Curriculum and Textbook Board (NCTB) - curriculum and free textbooks from pre-primary to higher secondary",
+        "madrasah": "Bangladesh Madrasah Education Board (BMEB)",
+        "technical": "Bangladesh Technical Education Board (BTEB)",
+        "higher_education": "UGC Bangladesh",
+        "accreditation": "Bangladesh Accreditation Council (BAC); institutional IQACs",
+        "affiliating_university": "National University (~1,688 affiliated colleges)",
+        "statistics": "BANBEIS"
+      },
+      "recognition_test": "For school qualifications: was it issued by one of the 11 boards? For higher education: is the awarding university UGC-approved? For technical awards: is the institution BTEB-affiliated?",
+      "distinctive_features": [
+        "The 4th-subject GPA rule: an optional fourth subject contributes (its grade point - 2.0), never below zero. A reported GPA cannot be reverse-engineered from subject grades.",
+        "Dual certification: SSC (Voc) confers both an SSC and an NSC 3; HSC (Voc)/(BMT) confers both an HSC and an NSC 5.",
+        "The BTEB Diploma is 4 years at BNQF Level 6 - a level ABOVE the HSC - and explicitly 'interfaces with the HE qualifications'.",
+        "A 1-year master's is normal (BNQF Level 9 permits 1-2 years; a coursework master's requires only 40 credits).",
+        "Notional hours per credit differ by activity type (40/60/80), so a 4-credit subject can represent 160-320 notional hours."
+      ],
+      "admission": {
+        "gst_cluster": {"universities": 19, "portal": "gstadmission.ac.bd", "eligibility_2025_26": {"recency": "SSC or equivalent in 2021, 2022 or 2023 AND HSC or equivalent in 2024 or 2025", "science": "combined GPA 8.00 with at least 3.50 in each, including the fourth subject", "humanities": "combined GPA 6.00 with at least 3.00 in each, including the fourth subject", "commerce": "combined GPA 6.50 with at least 3.00 in each, including the fourth subject"}, "note": "Combined SSC + HSC GPA out of a maximum of 10.00. Hard recency rule can lock out students with a gap - a genuine reason Bangladeshi students look abroad.", "verification": "confirmed", "volatility": "VOLATILE - re-verify per cycle"},
+        "outside_gst": "Dhaka University, BUET, the engineering cluster, the medical admission test, National University and private universities all run separate processes - NOT researched"
+      },
+      "ai_rules": [
+        "GPA is on a 5.00 scale at school and typically 4.00 at university - the same student holds both.",
+        "The 4th-subject rule means an SSC/HSC GPA is not a plain average of subject grades.",
+        "'SSC' and 'HSC' also exist in India as state-board names - establish the country first.",
+        "'College' means either Grades 11-12 or a National University-affiliated degree college.",
+        "Bachelor's degrees come in 3, 4 and 5-year forms (120/140/160 credits) - duration and credits matter more than the name.",
+        "Aliya (BMEB) and Qawmi madrasahs are different systems - do not assume BMEB equivalency for a Qawmi qualification."
+      ],
+      "top_gaps": [
+        "Official SSC/HSC mark-to-grade band table and pass criteria (only the A+ band was corroborated)",
+        "The official 4th-subject GPA computation rule",
+        "Bangladeshi higher-education grading scales",
+        "Current NCTB curriculum and assessment status (reformed and subsequently revised in the early-to-mid 2020s)",
+        "BNQF level placement of Fazil and Kamil",
+        "Qawmi madrasah qualification recognition status"
+      ]
+    },
+    {
+      "country": "China (mainland)",
+      "scope_note": "Mainland China only. Hong Kong SAR, Macau SAR and Taiwan operate separate systems.",
+      "governance_model": "unitary_with_provincial_examination_administration",
+      "school_structure": "6+3+3 = 12 years. Primary 6 years (start age 6, seven in some areas); junior secondary 3 years; senior secondary 3 years. Nine-year compulsory free education = primary + junior secondary.",
+      "qualification_framework": {
+        "name": "NONE - China has no numbered national qualifications framework",
+        "verification": "warn",
+        "note": "Absence not positively confirmed - PRIORITY GAP. Qualifications are defined instead by law (the Degrees Law 2024 and the Vocational Education Law 2022), the zhuanke/benke distinction, the discipline catalogue, and the dual-credential system.",
+        "instead": [
+          {"instrument": "Law of the PRC on Academic Degrees ('Degrees Law')", "passed": 2024, "in_force": "2025-01-01", "replaces": "Regulations on Academic Degrees (1980, last updated 2004)", "content": "Three-tier system (bachelor's/master's/doctoral) with academic degrees, professional degrees and other types, conferred by categories of academic disciplines and professional degrees", "verification": "confirmed"},
+          {"instrument": "Vocational Education Law of the PRC", "promulgated": 1996, "amended": 2022, "in_force": "2022-05-01", "articles": 69, "content": "Vocational education holds 'equally important status as general education'; the transition 'from level to type'; equal further-education and employment opportunities; the vocational undergraduate route", "verification": "confirmed"}
+        ]
+      },
+      "dual_credential_system": {
+        "graduation_certificate": {"chinese": "毕业证书", "certifies": "completion of the programme's coursework"},
+        "degree_certificate": {"chinese": "学位证书", "certifies": "conferral of the degree"},
+        "critical_fact": "They are verified separately, and 'it is possible to hold a graduation certificate without a degree certificate, and vice versa'.",
+        "zhuanke_outcome": "graduation certificate only - no bachelor's degree",
+        "benke_outcome": "graduation certificate AND bachelor's degree certificate (if degree requirements met)",
+        "translation_trap": "A 'Benke Certificate of Graduation' is often translated as 'Diploma' - so 'Diploma' on a translated Chinese credential may denote a 4-5 year undergraduate programme.",
+        "verification": "confirmed",
+        "source": "CHSI (chsi.com.cn), MOE-authorised"
+      },
+      "verification_channel": {
+        "operator": "CSSD - Center for Student Services and Development, Ministry of Education",
+        "portal": "CHSI (chsi.com.cn)",
+        "consolidation": "Since August 2022 CHSI is 'the sole official portal for verifying both graduation and degree certificates'",
+        "also_verifies": ["senior middle school graduation certificates", "provincial examination results"],
+        "verification": "confirmed"
+      },
+      "examinations": {
+        "zhongkao": {"chinese": "中考", "level": "end of Grade 9", "dual_function": "junior high graduation AND senior high admission", "age": "~15", "administration": "locally/provincially", "verification": "confirmed"},
+        "huikao": {"chinese": "会考", "introduced": 1993, "function": "senior secondary graduation requirement, testing all curriculum subjects", "counts_for_admission": false, "verification": "confirmed"},
+        "academic_proficiency_test": {"chinese": "学业水平测试", "function": "tests fewer subjects", "counts_for_admission": true, "since": "the 2014 reforms", "verification": "confirmed"},
+        "gaokao": {"chinese": "高考", "level": "end of Grade 12", "administration": "provincial, under national MOE policy", "total_score": "commonly 750 (unverified)", "models": {"3+3": {"structure": "3 mandatory (Chinese, Maths, Foreign Language) + any 3 of 6 (Physics, Chemistry, Biology, Politics, History, Geography)", "regions": 6, "examples": ["Beijing", "Shanghai", "Shandong"], "first_adopters": "Shanghai and Zhejiang, 2017"}, "3+1+2": {"structure": "3 mandatory + physics OR history + 2 of 4 (chemistry, biology, political ideology, geography)", "provinces": 23, "recent_adopters_2022_announcement_from_2025": ["Sichuan", "Henan", "Shanxi", "Shaanxi", "Yunnan", "Qinghai", "Ningxia", "Inner Mongolia"]}}, "reform_coverage": "By 2025, 29 provincial-level regions had implemented the new gaokao, 23 using 3+1+2", "interpretation_requirement": "Requires FOUR facts: province, year, subject model, and score. Must not be converted.", "verification": "confirmed"}
+      },
+      "higher_education": {
+        "zhuanke": {"chinese": "专科", "duration": "2-3 years", "character": "more practically-oriented than bachelor's programmes", "documents": "graduation certificate only", "upgrade_route": "zhuanshengben (专升本) - 'part-time bridging programs leading to a Bachelor's degree'", "evaluator_note": "How to characterise a 3-year zhuanke against foreign qualifications is CONTESTED among credential evaluators", "verification": "confirmed"},
+        "benke": {"chinese": "本科", "duration": "4-5 years", "documents": "graduation certificate + bachelor's degree certificate", "verification": "confirmed"},
+        "vocational_undergraduate": {"chinese": "职业本科", "basis": "2022 Vocational Education Law - qualifying higher vocational programmes 'may be extended to undergraduate vocational education, with the approval of the education administrative department under the State Council'", "implication": "'Vocational' no longer implies sub-degree in China", "verification": "confirmed"},
+        "institutional_tiers": {"current": "Double First Class (双一流)", "historical": ["Project 985", "Project 211"], "note": "Prestige designations, NOT qualification levels", "verification": "warn"}
+      },
+      "grading": {
+        "scale": "100-point, with 60 as the minimum pass at 'almost all' Chinese universities",
+        "descriptors": {"90-100": "优秀 Excellent", "80-89": "良好 Good", "70-79": "中等 Average", "60-69": "及格 Pass", "below_60": "不及格 Fail"},
+        "national_gpa": "NONE - 'The Ministry of Education does not mandate a single national GPA scale'; institutions differ (some use 85% as the 'A' threshold, others 90%). Fudan, Shanghai Jiao Tong and Zhejiang each have their own tables.",
+        "verification": "warn"
+      },
+      "key_statistics": {"higher_education_students_2023": "over 47 million (MOE)", "tertiary_institutions_2024": "3,119 (3,167 by June 2025)", "higher_education_ger_2024_percent": 60.8, "verification": "confirmed for the MOE figure; warn for the rest"},
+      "ai_rules": [
+        "Always ask whether the student has BOTH a graduation certificate and a degree certificate.",
+        "Zhuanke (2-3 years) is not a bachelor's degree, even if the student says 'university'.",
+        "'Diploma' on a translated Chinese credential may mean a 4-5 year benke graduation certificate.",
+        "A gaokao score requires province, year, subject model and score to interpret - never convert it.",
+        "No national GPA scale exists - any GPA on a Chinese transcript is that university's own conversion.",
+        "Huikao (graduation, not for admission) and the Academic Proficiency Test (counts for admission) are DIFFERENT examinations.",
+        "Under the 3+1+2 model, the physics-vs-history choice at Grade 10 gates programme eligibility three years later.",
+        "Point students to CHSI/CSSD verification - two separate reports may be needed."
+      ],
+      "top_gaps": [
+        "The CHSI dual-credential explanation page (returned HTTP 412 to automated fetching)",
+        "China's credit system - whether a national credit definition or credit minima exist",
+        "Whether China has a national qualifications framework with levels (positive confirmation of the absence)",
+        "Adult / self-study (自考) / online higher-education routes - structure, documentation and status",
+        "Whether zhuanshengben graduates receive the same certificates as direct-entry benke graduates"
+      ]
+    },
+    {
+      "country": "Australia",
+      "governance_model": "federal_with_a_single_national_framework",
+      "governance_note": "6 states and 2 territories govern school education; higher education (TEQSA) and VET (ASQA) are nationally regulated. The AQF covers school, VET and higher education on ONE ladder.",
+      "school_structure": "Foundation year (age ~5); Primary Foundation-Year 6; Secondary Years 7-12. Compulsory from age 6 to 17 (or Year 10 completion), with slight state variation. Australian Curriculum (ACARA) covers Foundation to Year 10; Years 11-12 are jurisdiction-designed.",
+      "foundation_year_names": ["Kindergarten (NSW, ACT)", "Preparatory/Prep (Vic, Qld, Tas)", "Reception (SA)", "Pre-primary (WA)", "Transition (NT)"],
+      "foundation_year_names_verification": "warn - the SET of names is confirmed by ACARA-derived sources; the name-to-jurisdiction mapping is not",
+      "senior_secondary_certificates": [
+        {"jurisdiction": "New South Wales", "certificate": "HSC", "full_name": "Higher School Certificate"},
+        {"jurisdiction": "Victoria", "certificate": "VCE", "full_name": "Victorian Certificate of Education"},
+        {"jurisdiction": "Queensland", "certificate": "QCE", "full_name": "Queensland Certificate of Education"},
+        {"jurisdiction": "South Australia", "certificate": "SACE", "full_name": "South Australian Certificate of Education"},
+        {"jurisdiction": "Western Australia", "certificate": "WACE", "full_name": "Western Australian Certificate of Education"},
+        {"jurisdiction": "Tasmania", "certificate": "TCE", "full_name": "Tasmanian Certificate of Education", "authority": "TASC"},
+        {"jurisdiction": "Northern Territory", "certificate": "NTCET", "full_name": "Northern Territory Certificate of Education and Training", "note": "based on and administered through SACE, using SACE subjects and the SACE Board's assessment and moderation"},
+        {"jurisdiction": "Australian Capital Territory", "certificate": "ACT Senior Secondary Certificate", "authority": "BSSS", "note": "package-based, including tertiary, accredited and vocational options"}
+      ],
+      "senior_secondary_note": "All eight are nationally recognised, all sit at the AQF's single 'Senior Secondary Certificate of Education' position, and all are used to generate an ATAR.",
+      "qualification_framework": {
+        "name": "Australian Qualifications Framework (AQF)",
+        "current_edition": "AQF Second Edition, January 2013 (effective 1 January 2013); the revised 10-level AQF was introduced in 2011",
+        "levels": 10,
+        "plus": "a distinct Senior Secondary Certificate of Education entry",
+        "scope": "school, vocational education and training, and higher education on one framework",
+        "basis": "learning outcomes; levels indicate 'relative complexity and/or depth of achievement and the autonomy required'",
+        "size_measure": "volume of learning (years of full-time equivalent study); the Volume of Learning explanation was updated in May 2014",
+        "higher_education_span": "levels 5 (Diploma) to 10 (Doctoral Degree)",
+        "level_map": {"1": "Certificate I", "2": "Certificate II", "3": "Certificate III", "4": "Certificate IV", "5": "Diploma", "6": ["Advanced Diploma", "Associate Degree"], "7": "Bachelor Degree", "8": ["Bachelor Honours Degree", "Graduate Certificate", "Graduate Diploma"], "9": ["Masters Degree (Research)", "Masters Degree (Coursework)", "Masters Degree (Extended)"], "10": "Doctoral Degree"},
+        "legacy_edition": "AQF 2007 Edition - 15 qualification types, NO numbered levels; applies to enrolments before January 2015",
+        "review": "A Review of the Australian Qualifications Framework was conducted (submissions published by the Department of Education); outcome not established - a third edition would change level assignments",
+        "verification": "confirmed for level assignments; volumes of learning are WARN (the AQF PDF download failed)"
+      },
+      "atar": {
+        "full_name": "Australian Tertiary Admission Rank",
+        "nature": "A RANK, not a mark or score",
+        "range": "0.00 to 99.95",
+        "meaning": "the holder's percentile position out of all students completing the certificate in that year, within their age group",
+        "worked_example": "An ATAR of 75.00 means results higher than, or as well as, 75 per cent of all students in that year. An ATAR of 70 means the top 30 per cent.",
+        "scaling": "Subject marks are SCALED before aggregation, 'which allows a fair comparison of students who have studied different combinations of courses'",
+        "admission_figure": "Admission to most tertiary courses uses the SELECTION RANK = ATAR + any applicable adjustments",
+        "must_not": "Never convert an ATAR into a percentage or a GPA",
+        "verification": "confirmed"
+      },
+      "authorities": {
+        "framework": "AQF",
+        "curriculum": "ACARA (Australian Curriculum, Foundation to Year 10)",
+        "higher_education_regulator": "TEQSA",
+        "vet_regulator": "ASQA (under the National Vocational Education and Training Regulator Act 2011)",
+        "vet_register": "training.gov.au",
+        "international_course_register": "CRICOS (updates monthly)",
+        "senior_secondary_certifying_authorities": "ACACA collectively; one per jurisdiction",
+        "admissions_centres": ["UAC (NSW/ACT)", "VTAC (Vic)", "QTAC (Qld)", "SATAC (SA/NT)", "TISC (WA)"]
+      },
+      "recognition_test": "Three public registers: TEQSA (higher education providers and accredited courses), training.gov.au (RTOs and their scope of registration), CRICOS (courses open to student-visa holders).",
+      "vet": {
+        "providers": "RTOs only - 'TAFEs, private providers, enterprise registered training organisations, and community RTOs'",
+        "basis": "competency-based; units of competency with assessment requirements; NOT normally graded",
+        "training_packages": "nationally endorsed, industry-developed, aligned to the AQF",
+        "note": "A TAFE Diploma and a private RTO's Diploma in the same training package are the SAME qualification.",
+        "verification": "confirmed"
+      },
+      "credits": {
+        "national_unit": "EFTSL (Equivalent Full-Time Student Load) - 1.0 EFTSL = one year of full-time study",
+        "credit_points": "institution-set and NOT comparable across institutions (example: 128 points = 2.0 EFTSL for an Associate Degree; 192 points = 3.0 EFTSL for a 3-year Bachelor Degree at one institution)",
+        "ai_rule": "Reason in AQF levels and EFTSL/years, not credit points",
+        "verification": "warn"
+      },
+      "ai_rules": [
+        "The ATAR is a rank, not a mark - never convert it.",
+        "A Bachelor Honours Degree is AQF Level 8, a level ABOVE Bachelor Degree (AQF 7), at the same level as a Graduate Certificate/Diploma.",
+        "Eight different Year 12 certificates, one AQF position - record which, treat as the same level.",
+        "The 7-point GPA and the WAM are two different measures, and neither is a 4.0 GPA.",
+        "HD/D/C/P boundaries are institution-set - an HD may start at 80% or 85%.",
+        "'Kindergarten' means the first year of school in NSW/ACT but pre-school elsewhere.",
+        "Australian VET is competency-based, not graded.",
+        "A Statement of Attainment is NOT a qualification - it certifies some units only.",
+        "Non-ATAR entry (VET, portfolio, mature-age, bridging, Diploma pathways) is institutionalised, not exceptional."
+      ],
+      "top_gaps": [
+        "The AQF Second Edition PDF and the May 2014 Volume of Learning explanation (download timed out; volumes unverified and one secondary source conflicts)",
+        "Senior secondary grading conventions per certificate (HSC bands, VCE study scores, etc.)",
+        "Which Australian professional qualifications are AQF 9 Masters (Extended) - notably the JD and MD",
+        "Whether the 7-point GPA scale is genuinely near-universal",
+        "EFTSL's official definition"
+      ]
+    },
+    {
+      "country": "Canada",
+      "governance_model": "fully_decentralised",
+      "governance_note": "Education is 'the exclusive jurisdiction of provinces and territories'. There is NO federal department of education, no national curriculum, no national school-leaving examination and no national grading scale. 13 systems (10 provinces + 3 territories).",
+      "coordination": {"body": "CMEC (Council of Ministers of Education, Canada)", "founded": 1967, "role": "an intergovernmental body that 'contributes to the exercise of the exclusive jurisdiction of provinces and territories over education'", "verification": "confirmed"},
+      "recognition_body": {"name": "CICIC (Canadian Information Centre for International Credentials)", "status": "Canada's National Information Centre, fulfilling 'Canada's obligations under UNESCO conventions'", "product": "the Directory of Educational Institutions in Canada (DLI-filterable)", "verification": "confirmed"},
+      "qualification_framework": {
+        "name": "Canadian Degree Qualifications Framework (CDQF)",
+        "instrument": "Ministerial Statement on Quality Assurance of Degree Education in Canada, 2007",
+        "endorsed_by": "all provinces and territories, through CMEC",
+        "scope": "DEGREES ONLY - bachelor's, master's, doctoral",
+        "critical_limitation": "The CDQF does NOT cover secondary school diplomas, college/polytechnic certificates and diplomas, CEGEP DECs, or apprenticeship/trade qualifications. Canada has no single ladder placing a college diploma relative to a bachelor's degree. DO NOT INVENT A LEVEL.",
+        "standards": "'degree level expectations' (DLEs), cumulative - 'each degree level presupposes the accomplishment of an earlier one'",
+        "six_dimensions": ["Depth and Breadth of Knowledge", "Knowledge of Methodologies", "Application of Knowledge", "Communication Skills", "Awareness of Limits of Knowledge", "Professional Capacity/Autonomy"],
+        "bachelor": {"length": "typically six to eight semesters or more", "credits": "normally 90-120 credits, or the equivalent", "length_explanation": "'Owing primarily to variations in pre-university studies among the provinces/territories'", "admission": "'a secondary school or CEGEP diploma and/or university preparatory courses, a minimum grade-point average'", "second_entry": "'normally require at least two or three years of completed degree-level studies or in some cases the prior or concurrent completion of another undergraduate degree'", "program_types": ["broad education", "in-depth disciplinary", "applied focus", "professional focus"], "critical_fact": "'Though considered to be bachelor's programs in academic standing, some professional programs yield degrees with other nomenclature' - examples given: DDS, MD, LLB, JD"},
+        "master": {"length": "typically from two to six semesters", "admission": "'an undergraduate degree with an appropriate specialization or an undergraduate degree with relevant bridging studies'", "types": ["research-oriented", "profession-oriented (e.g. MSW)"]},
+        "doctoral": {"length": "typically three to six years", "admission": "'a master's degree with an appropriate specialization or a master's degree with appropriate bridging studies'", "types": [{"type": "research-oriented", "award": "PhD", "examples": ["PhD (Psychology)", "PhD (Education)", "PhD (Music)"]}, {"type": "practice-oriented", "note": "'typically involve more course work'; may require a dissertation where there is an internship or exhibition requirement", "examples": ["EdD (Education)", "MusDoc (Music)", "PsyD (Psychology)"]}]},
+        "credit_definition": "NOT defined in notional hours (absence confirmed in the document read); the CDQF's primary duration unit is the SEMESTER",
+        "verification": "confirmed"
+      },
+      "two_structural_patterns": {
+        "outside_quebec": {"schooling_years": 12, "secondary_end": "Grade 12", "credential": "provincial secondary school diploma", "bachelor_length": "typically 4 years"},
+        "quebec": {"schooling_years": 11, "elementary": "6 years", "secondary": "5 years (Secondary I-V, ages 12-17)", "secondary_end": "Secondary V - 'corresponds to grade 11 in other jurisdictions'", "credential": "DES (Diplôme d'études secondaires)", "then": "CEGEP - 'encompasses grade 12 from high school and the first year of university'; pre-university 2 years OR technical generally 3 years, both leading to a DEC/DCS", "bachelor_length": "typically 3 years post-DEC, and COMPLETE", "verification": "confirmed"}
+      },
+      "secondary_diplomas_researched": [
+        {"jurisdiction": "Ontario", "credential": "OSSD (Ontario Secondary School Diploma)", "credits": 30, "composition": "18 compulsory + 12 optional (Grade 9 entry 1999-2000 onward); 17 compulsory + 13 optional (Grade 9 entry 2024-25 onward)", "other_requirements": ["pass the OSSLT, or complete the OLC4O course", "40 hours of community involvement (not paid work, not credit-bearing)"], "verification": "confirmed"},
+        {"jurisdiction": "British Columbia", "credential": "B.C. Certificate of Graduation ('Dogwood Diploma')", "credits": 80, "composition": "52 required (including 8 Career Education) + minimum 28 elective", "other_requirements": ["provincial numeracy and literacy assessments"], "verification": "confirmed"},
+        {"jurisdiction": "Alberta", "credential": "Alberta High School Diploma", "credits": 100, "composition": "mainly at the '30' level", "note": "The reported subject-requirement figures are internally inconsistent - VERIFY. The 30-1 vs 30-2 course level matters for admission.", "verification": "warn"},
+        {"jurisdiction": "Québec", "credential": "DES", "note": "11 years of schooling; CEGEP follows", "verification": "confirmed"}
+      ],
+      "secondary_diplomas_unresearched": ["Saskatchewan", "Manitoba", "New Brunswick", "Nova Scotia", "Prince Edward Island", "Newfoundland and Labrador", "Yukon", "Northwest Territories", "Nunavut"],
+      "credit_warning": "Canadian secondary credits are NOT comparable across provinces: 30 (Ontario), 80 (BC) and 100 (Alberta) each represent a COMPLETE diploma.",
+      "grading": {
+        "national_scale": "NONE - 'grading practices, GPA scales, and academic calendar structures vary by province and even by institution'",
+        "documented_variation": ["4.0 (Ontario predominantly)", "4.0 or 4.33 (Alberta, by institution)", "percentage or 4.3 (Quebec French-language universities)", "4.3 (Queen's)", "9-point (York)", "12-point (McMaster, Carleton)"],
+        "quebec_admission_measure": "Cote R / R-score - NOT a GPA or a percentage; NOT researched (priority gap)",
+        "verification": "warn"
+      },
+      "international_students": {"requirement": "a letter of acceptance from a DLI (Designated Learning Institution) - 'a school approved by a provincial or territorial government to host international students'", "eca_clarification": "An ECA (Educational Credential Assessment) is required only for SKILLED MIGRATION (e.g. Express Entry), NOT for admission - admission decisions belong to each DLI", "verification": "confirmed"},
+      "recognition_test": "Is the institution in CICIC's Directory of Educational Institutions in Canada? Does it have provincial degree-granting authority? For international students, is it a DLI? (Canada has no national institutional accreditor in the US sense.)",
+      "ai_rules": [
+        "'WHICH PROVINCE OR TERRITORY?' is the first question.",
+        "Québec is structurally different: 11 years of school + CEGEP + a 3-year bachelor's degree, which is complete.",
+        "Canadian secondary credits are not comparable across provinces.",
+        "MD, DDS, JD and LLB are bachelor's-level programs in Canada's own framework; EdD, PsyD and MusDoc are genuinely doctoral.",
+        "University GPA scales vary by institution - always ask the maximum.",
+        "The CDQF covers only degrees - do not invent a level for a college diploma or a DEC.",
+        "An ECA is an immigration document, not an admission requirement.",
+        "In Canada, 'college' means a career-focused post-secondary institution."
+      ],
+      "top_gaps": [
+        "The secondary school diplomas of the other 9 jurisdictions",
+        "Québec's R-score (cote R)",
+        "Canadian college/polytechnic credential taxonomy (certificate vs diploma vs advanced diploma vs applied degree)",
+        "College-to-university transfer arrangements, including provincial transfer systems",
+        "Verified GPA scales for major Canadian universities"
+      ]
+    },
+    {
+      "country": "United Kingdom",
+      "governance_model": "four_devolved_systems",
+      "governance_note": "'The devolved administrations of the UK govern their own primary and secondary education systems. While the system and awards offered in England, Northern Ireland, and Wales are broadly similar, the Scottish system is quite distinct from its counterparts.'",
+      "principal_source": "UK ENIC, Guide to the Education Systems of the UK (84 pages, copyright 2023). UK ENIC is the UK National Information Centre for the recognition and comparison of international qualifications.",
+      "frameworks": [
+        {"name": "RQF (Regulated Qualifications Framework)", "jurisdiction": "England and Northern Ireland", "scope": "non-higher-education general and vocational qualifications", "levels": "8 levels + 3 entry levels", "introduced": "October 2015", "size_measure": "Total Qualification Time (TQT) - taught hours plus self-study", "descriptor_basis": "knowledge and understanding, and skills", "regulators": ["Ofqual (England)", "CCEA Regulation (Northern Ireland)"], "verification": "confirmed"},
+        {"name": "FHEQ (Framework for Higher Education Qualifications)", "jurisdiction": "England, Northern Ireland and Wales", "levels": "4-8", "overseen_by": "QAA", "verification": "confirmed"},
+        {"name": "SCQF (Scottish Credit and Qualifications Framework)", "jurisdiction": "Scotland", "scope": "all Scottish mainstream qualifications", "levels": 12, "measures": ["levels (difficulty)", "credit points (volume)"], "credit_definition": "1 SCQF credit point = 10 notional hours of learner effort", "descriptor_headings": ["knowledge and understanding", "practice (applied knowledge and understanding)", "generic cognitive skills", "communication, numeracy and IT skills", "autonomy, accountability and working with others"], "verification": "confirmed"},
+        {"name": "CQFW (Credit and Qualifications Framework for Wales)", "jurisdiction": "Wales", "launched": 2003, "scope": "higher education, regulated vocational and general education and training", "verification": "confirmed"},
+        {"name": "FQHEIS", "jurisdiction": "Scotland", "scope": "higher education", "relationship": "corresponds to SCQF levels 7-12", "verification": "confirmed"}
+      ],
+      "superseded_frameworks": [{"name": "QCF", "period": "2008-2015"}, {"name": "NQF", "period": "to 2008"}, {"name": "NICATS", "period": "1999-2002"}],
+      "school_structures": {
+        "England": ["Reception (Foundation stage)", "Years 1-2 (KS1)", "Years 3-6 (KS2)", "Years 7-9 (KS3)", "Years 10-11 (KS4)", "Years 12-13 (KS5/Post-16)"],
+        "Northern_Ireland": ["Primary 1-2 / Years 1-2 (Foundation stage)", "Primary 3-4 / Years 3-4 (KS1)", "Primary 5-7 / Years 5-7 (KS2)", "Secondary 1-3 / Years 8-10 (KS3)", "Secondary 4-5 / Years 11-12 (KS4)", "Secondary 6-7 / Years 13-14 (KS5/Post-16)"],
+        "Northern_Ireland_warning": "NI year numbering is OFFSET BY ONE from England's. NI Year 12 = the GCSE year = England's Year 11.",
+        "Wales": ["Reception (Foundation stage)", "Years 1-2", "Years 3-6", "Years 7-11 (secondary)", "Years 12-13 (post-16)"],
+        "Scotland": ["Early learning / P1 (Early)", "P2-4 (First)", "P5-7 (Second)", "S1-3 (Third and fourth)", "S4-6 (Senior phase)"],
+        "verification": "confirmed"
+      },
+      "compulsory_education": {"England": "to age 18", "Northern_Ireland": "to the end of the school year in which they turn 16", "Scotland": "to age 15 or 16 depending on birthday", "Wales": "to age 15 or 16 depending on birthday", "verification": "confirmed"},
+      "curricula": ["National Curriculum for England", "Northern Ireland Curriculum", "Curriculum for Excellence (Scotland)", "Curriculum for Wales"],
+      "gcse": {
+        "when": "end of Year 11 (NI Year 12)",
+        "compulsory_subjects": "English and mathematics everywhere; science also in England and Wales; Welsh compulsory in Wales",
+        "typical_number": "8 to 10 subjects",
+        "grading": {"England": "9 (highest) to 1 (lowest); U unclassified", "Wales": "A* (highest) to G (lowest); U unclassified", "Northern_Ireland": "A* to G with a C* grade introduced in 2019 sitting BETWEEN C and B"},
+        "9_1_introduction": "2017 for English and mathematics; all subjects by 2019. Prior to 2019 pupils may have received a mixture of letter and numerical grades.",
+        "good_pass": "A grade of C or 4",
+        "rqf_level_by_grade": {"9-4 / A*-C": 2, "3-1 / D-G": 1},
+        "assessment": "linear in England; some GCSEs allow staged assessment in Wales and Northern Ireland",
+        "boards": ["AQA", "Pearson Edexcel", "OCR", "Eduqas", "CCEA", "WJEC"],
+        "wales_note": "Wales uses a single-board (WJEC) model for Wales-specific GCSEs. WJEC operates as Eduqas in England and NI.",
+        "wales_reform": "New suite of GCSEs: first teaching 2025, first certification 2027",
+        "caution": "Do NOT treat grade 9 as equal to A* - the numeric scale has more pass grades and a more selective top grade.",
+        "verification": "confirmed"
+      },
+      "scotland_qualifications": {"National 1": "SCQF 1", "National 2": "SCQF 2", "National 3": "SCQF 3", "National 4": "SCQF 4", "National 5": "SCQF 5 (typically S4; 24 SCQF credit points)", "Higher": "SCQF 6 (typically S5; the university-facing exam; 24 credit points)", "Advanced Higher": "SCQF 7 (typically S6; 32 credit points)", "Scottish Baccalaureate": "SCQF 7", "verification": "confirmed for levels; warn for credit points and year of study"},
+      "higher_education_levels": {
+        "FHEQ_4_SCQF_7": ["Certificate of Higher Education (CertHE)", "Higher National Certificate (HNC)"],
+        "FHEQ_5_SCQF_8": ["Diploma of Higher Education (DipHE)", "Higher National Diploma (HND)", "Foundation degree (England/Wales/NI only)"],
+        "FHEQ_6_SCQF_10": ["Bachelor degree with Honours"],
+        "SCQF_9": ["Bachelor degree (ordinary)"],
+        "FHEQ_6_SCQF_9_and_10": ["Graduate Certificate", "Graduate Diploma"],
+        "FHEQ_7_SCQF_11": ["Master's degrees (MA, MSc, MPhil, MRes)", "Integrated Master's degrees (MChem, MEng, MPhys)", "Primary qualifications (or first degrees) in medicine, dentistry and veterinary science (MB BS, MB ChB, BDS, BVSc, BVMS)", "Postgraduate Diplomas", "Postgraduate Certificates"],
+        "FHEQ_8_SCQF_12": ["Doctoral degrees (PhD/DPhil, EdD, DBA)"],
+        "qf_ehea_mapping": {"FHEQ 6 / SCQF 10": "first cycle", "FHEQ 7 / SCQF 11": "second cycle", "FHEQ 8 / SCQF 12": "third cycle"},
+        "verification": "confirmed"
+      },
+      "degrees": {
+        "honours_england_wales_ni": {"level": "FHEQ 6", "duration": "three or four years", "credits": "CATS 360-480", "grading": "First class (1st), upper second (2.1), lower second (2.2), third class (3rd)"},
+        "honours_scotland": {"level": "SCQF 10", "duration": "four years", "credits": "480 SCQF credits, minimum 180 at SCQF 9-10 including minimum 90 at SCQF 10", "grading": "same classification"},
+        "ordinary_england_wales_ni": {"level": "FHEQ 6", "duration": "three years", "credits": "CATS 360", "grading": "Pass / fail - NO CLASSIFICATION", "note": "'much less common'; also known as Pass degrees"},
+        "ordinary_scotland": {"level": "SCQF 9", "duration": "three years", "credits": "360 SCQF credits, minimum 60 at SCQF 9", "grading": "Pass / fail"},
+        "scottish_ancient_universities_trap": "At Aberdeen, Edinburgh, Glasgow and St Andrews, undergraduate degrees are titled MA (Master of Arts) or MA (Master of Arts) (Hons) - these are UNDERGRADUATE degrees.",
+        "verification": "confirmed"
+      },
+      "credits": {"CATS": "1 credit = 10 hours of notional learning time", "SCQF": "1 credit point = 10 notional learning hours", "ECTS": "1 credit = 25-30 hours of student workload, referenced in HEAR / European Diploma Supplement transcripts", "verification": "confirmed"},
+      "institutions": {"Recognised Body": "has degree-awarding powers", "Listed Body": "delivers courses leading to another body's degrees", "University Title": "the right to be called a university", "ai_rule": "Always ask WHO AWARDED the degree", "verification": "confirmed"},
+      "uk_qualifications_offered_outside_the_uk": ["IGCSE", "Cambridge International Certificate of Education (ICE)", "Cambridge GCE Ordinary level (O level)", "International A level", "Cambridge Advanced International Certificate of Education (AICE) Diploma", "International Project Qualification (IPQ)", "International BTECs", "SQA Advanced qualifications"],
+      "uk_qualifications_offered_outside_the_uk_note": "UK ENIC treats these as a DISTINCT CATEGORY from domestic UK GCSEs and A levels. When a student in Nepal, India, Bangladesh or China says 'A-Levels' or 'O-Levels', they most likely hold one of these.",
+      "recognition_of_foreign_qualifications": {"body": "UK ENIC", "product": "Statement of Comparability - a paid per-credential service", "caveat": "There is NO central UK list of acceptable overseas qualifications - each university sets its own entry requirements per country", "verification": "confirmed"},
+      "ai_rules": [
+        "GCSE grading differs by nation: 9-1 (England), A*-G (Wales/NI), plus NI's C* from 2019.",
+        "Northern Ireland's year numbering is offset by one - NI Year 12 = England Year 11.",
+        "'MA (Hons)' at Aberdeen, Edinburgh, Glasgow or St Andrews is an undergraduate degree.",
+        "UK medicine/dentistry/veterinary first degrees are FHEQ 7 / SCQF 11 - master's level.",
+        "A Scottish Honours degree is 4 years / 480 SCQF credits; an England/Wales/NI Honours degree is 3 or 4 years / 360-480 CATS.",
+        "A Bachelor (Ordinary)/Pass degree is Pass/Fail with no classification.",
+        "'Graduate' (FHEQ 6) and 'Postgraduate' (FHEQ 7) are different levels.",
+        "A UK credit is 10 notional hours - not ECTS, Indian or Bangladeshi credits.",
+        "A GCSE's grade determines its RQF level (9-4 = level 2; 3-1 = level 1)."
+      ],
+      "top_gaps": [
+        "The official 9-1 to A*-G GCSE comparison (the extracted table's alignment is uncertain; '9 = A*' is a known misconception)",
+        "A level grading (A*-E, U) - not captured verbatim",
+        "UK degree classification percentage boundaries and master's classification conventions",
+        "The QAA 2024 FHEQ document (newer than the ENIC guide used)",
+        "UK ENIC's 'Qualifications can cross boundaries' cross-framework comparison document",
+        "The UK ENIC guide's sections on UK qualifications offered outside the UK"
+      ]
+    },
+    {
+      "country": "United States",
+      "governance_model": "fully_decentralised_state_and_district",
+      "governance_note": "Under the 10th Amendment, and because the Constitution never mentions education, states hold primary legal authority. Federal statutes prohibit the federal government from 'mandating, directing, or controlling' instructional content or curriculum. 50 states + DC + territories, with further district-level variation. Colorado, Massachusetts and Pennsylvania allow local districts to determine most or all graduation requirements.",
+      "qualification_framework": {
+        "name": "NONE",
+        "detail": "The US has no numbered national level framework, no national level descriptors, no national qualification-type register, and no national body that places a qualification on a level.",
+        "verification": "warn",
+        "note": "The absence was NOT positively confirmed from an official source - priority gap. A voluntary non-governmental instrument (the Degree Qualifications Profile) has been promoted, and some states have their own frameworks.",
+        "what_exists_instead": ["the federally defined credit hour (34 CFR 600.2)", "federal institution categories (34 CFR 600.4, 600.5, 600.6)", "the accreditation system", "de facto degree conventions (60-credit associate, 120-credit bachelor's, 4.0 GPA, A-F grades)"]
+      },
+      "credit_hour": {
+        "authority": "34 CFR 600.2 (federal regulation)",
+        "definition_verbatim": "a credit hour is an amount of student work defined by an institution, as approved by the institution's accrediting agency or State approval agency, that is consistent with commonly accepted practice in postsecondary education and that (1) Reasonably approximates not less than (i) One hour of classroom or direct faculty instruction and a minimum of two hours of out-of-class student work each week for approximately fifteen weeks for one semester or trimester hour of credit, or ten to twelve weeks for one quarter hour of credit, or the equivalent amount of work over a different period of time; or (ii) At least an equivalent amount of work as required in paragraph (1)(i) of this definition for other academic activities as established by the institution, including laboratory work, internships, practica, studio work, and other academic work leading to the award of credit hours; and (2) Permits an institution, in determining the amount of work associated with a credit hour, to take into account a variety of delivery methods, measurements of student work, academic calendars, disciplines, and degree levels.",
+        "derived": {"hours_per_credit_per_week": 3, "semester_weeks": 15, "quarter_weeks": "10-12", "notional_hours_per_semester_credit": "approximately 45"},
+        "carnegie_unit": "The definition 'approximates the original time-based Carnegie unit' but requires evaluation against 'intended learning outcomes' and 'evidence of student achievement'. High school 'credits' are Carnegie-unit based and are a DIFFERENT unit from college credit hours.",
+        "reported_conversion": "1 semester hour = 1.5 quarter hours",
+        "verification": "confirmed"
+      },
+      "high_school_diploma": {
+        "set_by": "state education departments, or in some states local school districts",
+        "credit_requirement": "most states require between 18 and 26 credits; most commonly 20-24; national range from 13 to 40",
+        "other_requirements": "may include completing service hours, maintaining a minimum grade point average, or passing standardized tests",
+        "national_examination": "none",
+        "warning": "A US high school credit count is uninterpretable without the state. A diploma earned with 13 credits and one earned with 40 credits are BOTH complete diplomas.",
+        "diploma_types": "Many states issue more than one diploma type (standard / advanced / alternative) - NOT researched",
+        "verification": "warn"
+      },
+      "equivalency": {"GED": "'a group of four academic subject tests ... certifying academic knowledge equivalent to a high school diploma'; 'an alternative to the U.S. high school diploma'", "HiSET": "the other main equivalency route", "verification": "confirmed"},
+      "degrees": {
+        "associate": {"credits": "~60 semester credits", "duration": "~2 years", "types": ["AA", "AS", "AAS"], "function": "both a terminal credential and the first half of a bachelor's degree via transfer", "verification": "warn"},
+        "bachelor": {"credits": "~120 (range 120-132)", "duration": "~4 years", "note": "typically includes substantial general-education breadth requirements outside the major", "verification": "warn"},
+        "master": {"credits": "30-60", "duration": "1-2 years", "verification": "warn"},
+        "doctoral_research": {"credits": "60-90 coursework + dissertation", "duration": "4-7 years", "verification": "warn"},
+        "jd": {"credits": "~83-90 semester credits (documented: Penn 86; Notre Dame minimum 90)", "duration": "3 years", "entry": "after a bachelor's degree", "framework_level": "none - the US has no framework", "verification": "warn"},
+        "md": {"credits": "varies widely (one documented example: 182)", "duration": "4 years", "entry": "after a bachelor's degree", "framework_level": "none", "verification": "warn"}
+      },
+      "grading": {
+        "convention": "letter grades A-F on a 0.0-4.0 GPA scale (A=4.0, B=3.0, C=2.0, D=1.0, F=0.0), 'with small variations by school'",
+        "national_scale": "NONE",
+        "weighted_gpa": "adds bonus points for advanced classes - 'typically +0.5 for Honors and +1.0 for AP or IB courses' - and CAN EXCEED 4.0",
+        "critical_quote": "'College registrars report the unweighted GPA on official transcripts. Colleges typically recalculate weighted GPAs back to unweighted when comparing applicants, because bonus-point rules differ across school districts.'",
+        "latin_honours": {"cum_laude": "'with honor', ~3.5-3.7", "magna_cum_laude": "'with great honor', ~3.7-3.9", "summa_cum_laude": "'with highest honor', ~3.9+", "caveat": "'The ranges of GPAs that correspond with which category differ from institution to institution... a 3.79 GPA may qualify as cum laude at one college and no honor at another.'"},
+        "verification": "warn"
+      },
+      "accreditation": {
+        "two_types": {"institutional": "'regional, national faith-related and national career-related accrediting organizations that review entire institutions'", "programmatic": "'accrediting organizations that review specific programs'"},
+        "recognisers": ["the U.S. Secretary of Education (USDE), which recognises accreditors 'as reliable authorities concerning the quality of education or training'", "CHEA"],
+        "chea_standard": "'the eligibility standard that the majority of institutions or programs each accredits are degree-granting'",
+        "public_databases": ["CHEA directories and Digital Almanac - 'over 44,000 accredited programs'", "DAPIP (U.S. Department of Education)"],
+        "recognition_test": "Is the awarding institution accredited by an accreditor recognised by the U.S. Secretary of Education and/or CHEA? For a professional qualification, is the programme accredited by the relevant programmatic accreditor?",
+        "terminology_caution": "The 'regional' vs 'national' accreditor distinction changed around 2020 - verify current terminology",
+        "verification": "confirmed"
+      },
+      "admission": {"basis": "holistic review - transcript, GPA, course rigour (AP/IB/Honors), standardized tests where required, essays, recommendations, extracurriculars", "tests": "SAT or ACT - privately administered ADMISSION TESTS, not qualifications; many institutions now test-optional", "community_colleges": "typically open-access", "international": "institution-specific; often a NACES-member evaluation of foreign credentials", "existing_globaly_kb_quote": "'recognition is decentralized. Universities evaluate credentials in-house or require a NACES-member evaluation (WES, ECE, etc.). Requirements are institution-specific.'", "verification": "warn"},
+      "ai_rules": [
+        "There is no US qualifications framework - describe by type, credits, duration, entry requirement and accreditation, and never assert a level.",
+        "A high school GPA above 4.0 is weighted; a college GPA on a transcript is unweighted.",
+        "High school credit requirements range from 13 to 40 across states - a raw count says nothing without the state.",
+        "'Diploma' in US usage means the certificate document, not a sub-degree qualification.",
+        "'College' means higher education in the US - the opposite of the Nepal/Bangladesh/UK/Canada senses.",
+        "'Accredited' means accredited by a USDE/CHEA-recognised accreditor - a real and occasionally failed test.",
+        "The federally defined credit hour (~45 notional hours per semester credit) must not be equated with UK, ECTS, Indian or Bangladeshi credits.",
+        "'Freshman/sophomore/junior/senior' are ambiguous between high school and college."
+      ],
+      "top_gaps": [
+        "Community college to university transfer and articulation, including statewide transfer systems",
+        "State-by-state high school graduation requirements and diploma types",
+        "Positive confirmation that the US has no national qualifications framework",
+        "34 CFR 600.4, 600.5 and 600.6 - the federal institution definitions",
+        "The current federal position on the regional vs national accreditor distinction",
+        "SAT and ACT structure, scoring, and the current extent of test-optional admission"
+      ]
+    }
+  ]
+}

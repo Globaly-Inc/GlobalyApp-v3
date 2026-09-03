@@ -27,6 +27,13 @@ export async function embedRoutes(app: FastifyInstance) {
     if (!updated) throw new NotFoundError("Embed config not found");
     return reply.send({ ok: true });
   });
+
+  app.patch("/embed/configs/:id/activate", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { id } = EmbedConfigIdParamSchema.parse(req.params);
+    const updated = await embedRepo.reactivate(id, Number(req.business!.id));
+    if (!updated) throw new NotFoundError("Embed config not found");
+    return reply.send({ ok: true });
+  });
 }
 
 /** Public branding resolve for the /embed/:key page — never exposes usage or instructions. */

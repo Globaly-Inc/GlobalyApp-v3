@@ -43,7 +43,10 @@ export function useParallax(speed = 0.25) {
         if (node) {
           const rect = node.getBoundingClientRect();
           const center = rect.top + rect.height / 2 - window.innerHeight / 2;
-          setOffset(center * speed);
+          // ponytail: bound travel to +/- (height * speed / 2) so the paired scale(1 + speed)
+          // always covers it and the media can never slip out of its card
+          const progress = Math.max(-1, Math.min(1, center / ((window.innerHeight + rect.height) / 2)));
+          setOffset((progress * rect.height * speed) / 2);
         }
         ticking = false;
       });
@@ -69,5 +72,5 @@ export function useParallax(speed = 0.25) {
     };
   }, [speed]);
 
-  return { ref, transform: `translateY(${offset}px)` } as const;
+  return { ref, transform: `translateY(${offset}px) scale(${1 + speed})` } as const;
 }

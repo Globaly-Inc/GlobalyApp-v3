@@ -12,7 +12,7 @@ import type { CityOption } from "@/app/admin/platform/categories/apis/types";
 import { fetchCountries } from "@/app/admin/platform/categories/store/categories-slice";
 import type { Branch, BranchType, SharedServices } from "../../apis/types";
 import { createBranch, updateBranch } from "../../store/businesses-slice";
-import { buildPhone, isValidEmail, isValidUrl } from "../../utils";
+import { isValidEmail, isValidUrl } from "../../utils";
 import { BranchStepper } from "./branch-stepper";
 import { CreateBranchDetailsStep, EMPTY_BRANCH_FORM } from "./create-branch-details-step";
 import { CreateBranchCopyStep } from "./create-branch-copy-step";
@@ -52,9 +52,6 @@ export function CreateBranchDialog({
     setStep(0);
     if (editBranch) {
       const country = countries.find((c) => c.name === editBranch.country);
-      const phoneCountry = editBranch.phone
-        ? countries.find((c) => c.phoneCode && editBranch.phone!.startsWith(c.phoneCode))
-        : undefined;
       setForm({
         ...EMPTY_BRANCH_FORM,
         name: editBranch.name,
@@ -63,8 +60,7 @@ export function CreateBranchDialog({
         address: editBranch.address ?? "",
         state: editBranch.state ?? "",
         email: editBranch.email ?? "",
-        phoneCountryId: phoneCountry ? String(phoneCountry.id) : "",
-        phoneNumber: phoneCountry ? editBranch.phone!.slice(phoneCountry.phoneCode!.length).trim() : (editBranch.phone ?? ""),
+        phone: editBranch.phone ?? "",
       });
       setBranchType(editBranch.branch_type);
       setCopyDescription(editBranch.share_description);
@@ -97,13 +93,6 @@ export function CreateBranchDialog({
     [countries],
   );
   const cityOptions = useMemo(() => cities.map((c) => ({ value: c.name, label: c.name })), [cities]);
-  const phoneCountryOptions = useMemo(
-    () =>
-      countries
-        .filter((c) => c.phoneCode)
-        .map((c) => ({ value: String(c.id), label: `${c.name} (${c.phoneCode})`, icon: <span>{flagFromIso2(c.iso2)}</span> })),
-    [countries],
-  );
 
   const handleCityChange = (cityName: string) => {
     set("city", cityName);
@@ -131,8 +120,6 @@ export function CreateBranchDialog({
     if (!validateDetails()) return;
     setSaving(true);
     try {
-      const phoneCode = countries.find((c) => String(c.id) === form.phoneCountryId)?.phoneCode ?? "";
-      const phone = buildPhone(phoneCode, form.phoneNumber);
       const country = countries.find((c) => String(c.id) === form.countryId);
       const input = {
         name: form.name,
@@ -140,7 +127,7 @@ export function CreateBranchDialog({
         state: form.state || null,
         city: form.city || null,
         address: form.address || null,
-        phone: phone || null,
+        phone: form.phone || null,
         email: form.email || null,
         branch_type: branchType,
         share_description: copyDescription,
@@ -193,7 +180,6 @@ export function CreateBranchDialog({
               cityOptions={cityOptions}
               citiesLoading={citiesLoading}
               onCityChange={handleCityChange}
-              phoneCountryOptions={phoneCountryOptions}
               branchType={branchType}
               onBranchTypeChange={setBranchType}
             />

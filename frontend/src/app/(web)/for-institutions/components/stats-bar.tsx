@@ -5,7 +5,7 @@ import { PLATFORM_STATS } from "../../const/index";
 const STATS = [
   { value: PLATFORM_STATS.institutions, label: "Institutions", Icon: Building2 },
   { value: PLATFORM_STATS.courses, label: "Courses", Icon: BookOpen },
-  { value: PLATFORM_STATS.agents, label: "Agents", Icon: Handshake },
+  { value: PLATFORM_STATS.agents, label: "Education Counselors", Icon: Handshake },
   { value: PLATFORM_STATS.countries, label: "Countries", Icon: Globe },
   { value: PLATFORM_STATS.cities, label: "Cities", Icon: MapPin },
 ];

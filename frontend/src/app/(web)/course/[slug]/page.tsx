@@ -1,13 +1,20 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCourseBySlug } from "../../search/api";
+import { getCourseBySlug, getTests } from "../../search/api";
+import { ProfileLocationsCard } from "../../components/profile/profile-locations-card";
+import { ProfileGallery } from "../../components/profile/profile-gallery";
+import { toGalleryItems, type ProfileLocation } from "../../components/profile/profile-data";
+import type { CourseDetail } from "../../search/types";
 import { CourseHero } from "./components/course-hero";
+import { CourseStats } from "./components/course-stats";
 import { CourseDescription } from "./components/course-description";
-import { CourseDetailsCard } from "./components/course-details-card";
-import { CourseWebsiteCard } from "./components/course-website-card";
-import { CourseFeesCard } from "./components/course-fees-card";
+import { CourseFeeCard } from "./components/course-fee-card";
 import { CourseIntakesCard } from "./components/course-intakes-card";
+import { CourseWeatherCard } from "./components/course-weather-card";
+import { CourseAwardedByCard, CourseConnectCard } from "./components/course-sidebar";
 import { CourseEntryRequirementsCard } from "./components/course-entry-requirements-card";
+import { PageViews } from "../../components/page-views";
 
 type CoursePageProps = Readonly<{ params: Promise<{ slug: string }> }>;
 
@@ -21,32 +28,64 @@ export async function generateMetadata({ params }: CoursePageProps): Promise<Met
   };
 }
 
+/** Where the course is taught — the awarding institution's campuses, same card the profile uses. */
+function toLocations(course: CourseDetail): ProfileLocation[] {
+  return course.campuses.map((campus) => ({
+    id: campus.id,
+    name: campus.name || course.institution?.name || course.name,
+    address: campus.address,
+    city: campus.city,
+    state: campus.state,
+    country: campus.country,
+    email: campus.email,
+    phone: campus.phone,
+    latitude: null,
+    longitude: null,
+  }));
+}
+
+/** The course's own image first, then the awarding institution's photos. */
+function courseGallery(course: CourseDetail) {
+  return toGalleryItems([course.image_url, ...(course.institution?.gallery_image_urls ?? [])], null);
+}
+
 export default async function CoursePage({ params }: CoursePageProps) {
   const { slug } = await params;
-  const course = await getCourseBySlug(slug);
+  const [course, tests] = await Promise.all([getCourseBySlug(slug), getTests()]);
   if (!course) notFound();
 
   return (
-    <div>
+    <div className="container mx-auto max-w-6xl space-y-4 px-4 py-6 md:space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+          <Link href="/search?tab=courses" className="hover:text-primary">Courses</Link> / {course.name}
+        </p>
+        <PageViews type="course" id={course.id} className="shrink-0" />
+      </div>
+
       <CourseHero course={course} />
+      <CourseStats course={course} />
 
-      <section className="py-8">
-        <div className="container max-w-6xl mx-auto px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <CourseDescription description={course.description} />
-            </div>
+      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
+        <div className="space-y-4 md:space-y-6 lg:col-span-2">
+          <CourseDescription description={course.description} />
+          <CourseFeeCard course={course} />
+          <CourseIntakesCard intakes={course.intakes} />
+          <ProfileLocationsCard locations={toLocations(course)} cityLink={course.city_link} />
+          <CourseWeatherCard weather={course.weather} countryName={course.country_name} />
+          <ProfileGallery items={courseGallery(course)} />
+        </div>
 
-            <div className="flex flex-col gap-4">
-              <CourseDetailsCard course={course} />
-              {course.source_url && <CourseWebsiteCard url={course.source_url} />}
-              <CourseFeesCard course={course} />
-              <CourseIntakesCard intakes={course.intakes} />
-              <CourseEntryRequirementsCard eligibility={course.eligibility} englishRequirements={course.englishRequirements} />
-            </div>
+        <div className="space-y-4 md:space-y-6">
+          <CourseAwardedByCard course={course} />
+          <CourseConnectCard institution={course.institution} />
+          {/* Anchor target for the hero CTA and the search card's Eligibility button. */}
+          <div id="eligibility" className="scroll-mt-24">
+            <CourseEntryRequirementsCard eligibility={course.eligibility} englishRequirements={course.englishRequirements} tests={tests} />
           </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

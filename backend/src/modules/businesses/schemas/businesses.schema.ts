@@ -4,9 +4,9 @@ import { z } from "zod";
 import { BUSINESS_TYPES } from "../consts.js";
 
 export const BusinessRegisterSchema = z.object({
-  subdomain: z.string().min(3).max(20).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Lowercase alphanumeric with hyphens"),
   business_name: z.string().min(1).max(200),
   business_type: z.enum(BUSINESS_TYPES).optional(),
+  business_category_id: z.number().int().positive().optional(),
   description: z.string().max(5000).optional(),
   phone: z.string().max(50).optional(),
   country_id: z.number().int().positive().optional(),
@@ -26,6 +26,7 @@ export const BusinessProfilePatchSchema = z.object({
   description: z.string().min(1, REQUIRED).max(5000).nullable(),
   logo_url: z.string().nullable(),   // relative storage path or full URL
   cover_url: z.string().nullable(),  // relative storage path or full URL
+  website: z.string().url().nullable(),
   email: z.string().min(1, REQUIRED).email("Enter a valid email").nullable(),
   phone: z.string().min(1, REQUIRED).max(50).nullable(),
   country_id: z.number().int().positive().nullable(),
@@ -41,24 +42,54 @@ export const BusinessProfilePatchSchema = z.object({
   twitter_url: z.string().url().nullable(),
   youtube_url: z.string().url().nullable(),
   whatsapp_url: z.string().url().nullable(),
+  tiktok_url: z.string().url().nullable(),
+  threads_url: z.string().url().nullable(),
+  messenger_url: z.string().url().nullable(),
+  telegram_url: z.string().url().nullable(),
+  line_url: z.string().url().nullable(),
+  viber_url: z.string().url().nullable(),
   gallery_images: z.array(z.string()).nullable(),
   video_urls: z.array(z.string()).nullable(),
   registration_licenses: z.record(z.unknown()).nullable(),
   is_published: z.boolean(),
   onboarding_completed: z.boolean(),
+  cover_position: z.object({ x: z.number(), y: z.number(), zoom: z.number() }).nullable(),
+  show_team_public: z.boolean(),
+  // Per-section public/private map, e.g. { contact: true, registration: false }.
+  public_visibility: z.record(z.string(), z.boolean()).nullable(),
+  currency: z.string().max(10).nullable(), // business's default currency for its own listings/fees
 }).partial().strict();
 
 export const BusinessSearchQuerySchema = z.object({
   search: z.string().optional(),
   limit: z.coerce.number().int().positive().max(50).default(10),
+  // Not z.coerce.boolean(): that coerces the STRING "false" to true, and this flag decides
+  // whether rows with a colliding id space enter a picker, so silently defaulting to on is the
+  // one failure mode it must not have.
+  include_institutions: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
 });
 
+// first/last name are collected HERE rather than at promote time: extraction never captures a
+// contact person, so the claimant is the first real source of a name. It becomes their
+// platform_user and is written onto the listing row as well.
 export const ClaimAcceptSchema = z.object({
   token: z.string().min(1),
+  first_name: z.string().trim().min(1).max(100),
+  last_name: z.string().trim().min(1).max(100),
 });
 
 export const ClaimRequestByEmailSchema = z.object({
   email: z.string().email(),
+});
+
+export const AiAssistSchema = z.object({
+  field: z.enum(["description"]),
+  business_name: z.string().max(200).optional(),
+  business_type: z.string().max(50).optional(),
+  hint: z.string().max(500).optional(),
 });
 
 export type BusinessRegisterInput = z.infer<typeof BusinessRegisterSchema>;
@@ -66,3 +97,4 @@ export type BusinessProfilePatchInput = z.infer<typeof BusinessProfilePatchSchem
 export type BusinessSearchQueryInput = z.infer<typeof BusinessSearchQuerySchema>;
 export type ClaimAcceptInput = z.infer<typeof ClaimAcceptSchema>;
 export type ClaimRequestByEmailInput = z.infer<typeof ClaimRequestByEmailSchema>;
+export type AiAssistInput = z.infer<typeof AiAssistSchema>;

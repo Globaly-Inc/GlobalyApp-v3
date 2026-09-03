@@ -2,20 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock, Eye, ImageOff, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Clock, Eye, ImageOff, Loader2, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/combobox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
 import { BLOG_TABS, COUNTRY_FILTER_OPTIONS, TOPIC_FILTER_TABS } from "../const";
-import { fetchKeywords, fetchPosts, removePost } from "../store/blog-slice";
+import { clearGenerationJobs, fetchKeywords, fetchPosts, removePost } from "../store/blog-slice";
 import type { BlogTab } from "../types";
 import type { BlogPost, BlogTopic } from "../apis/types";
 import { BlogKeywordsManager } from "./blog-keywords-manager";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
+import { GenerateDialog } from "./generate-dialog";
+import { GenerationProgress } from "./generation-progress";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -40,6 +49,12 @@ function PostRow({ post, onEdit, onDelete }: Readonly<{ post: BlogPost; onEdit: 
           {post.category && <Badge variant="outline">{post.category}</Badge>}
           <Badge variant={post.is_published ? "default" : "secondary"}>{post.is_published ? "Published" : "Draft"}</Badge>
           {post.seo_score !== null && <Badge variant="outline" className="font-mono">SEO {post.seo_score}</Badge>}
+          {post.generated_by_ai && !post.is_published && (
+            <Badge variant="outline" className="gap-1 border-primary/40 text-primary">
+              <Sparkles className="h-3 w-3" />
+              AI generated — needs review
+            </Badge>
+          )}
         </div>
         <p className="truncate text-sm font-semibold text-foreground">{post.title}</p>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -71,15 +86,14 @@ export function BlogView() {
   const router = useRouter();
   const { posts, status } = useAppSelector((state) => state.marketingBlog);
   const [tab, setTab] = useState<BlogTab>("all");
+  const [publish, setPublish] = useState("all");
   const [topic, setTopic] = useState<BlogTopic | "all">("all");
   const [country, setCountry] = useState("all");
   const [search, setSearch] = useState("");
+  const [sortByViews, setSortByViews] = useState(false);
   const [deleting, setDeleting] = useState<{ id: number; title: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  // React state updates aren't visible until the next render, so a very fast
-  // second click on "Delete" (before the button's `disabled` prop re-renders)
-  // can dispatch a duplicate DELETE for an id the first call already removed —
-  // this ref blocks that synchronously, the same guard shape as the mount-fetch ref below.
+  const [generateOpen, setGenerateOpen] = useState(false);
   const deletingRef = useRef(false);
 
   const fetchedRef = useRef(false);
@@ -89,6 +103,10 @@ export function BlogView() {
     dispatch(fetchPosts());
     dispatch(fetchKeywords());
   }, [dispatch]);
+
+  // Clear stale generation jobs when leaving the blog section so they don't
+  // restart polling on the next mount.
+  useEffect(() => () => { dispatch(clearGenerationJobs()); }, [dispatch]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -100,22 +118,16 @@ export function BlogView() {
     });
   }, [posts, topic, country, search]);
 
-  const counts = useMemo(
-    () => ({
-      all: filtered.length,
-      drafts: filtered.filter((p) => !p.is_published).length,
-      published: filtered.filter((p) => p.is_published).length,
-    }),
-    [filtered],
-  );
+  const visiblePosts = useMemo(() => {
+    let result = filtered;
+    if (publish === "drafts") result = result.filter((p) => !p.is_published);
+    if (publish === "published") result = result.filter((p) => p.is_published);
 
-  const visiblePosts =
-    tab === "drafts" ? filtered.filter((p) => !p.is_published) : tab === "published" ? filtered.filter((p) => p.is_published) : filtered;
-
-  const tabsWithCounts = BLOG_TABS.map((t) => ({
-    ...t,
-    label: t.value === "keywords" ? t.label : `${t.label} (${counts[t.value as "all" | "drafts" | "published"]})`,
-  }));
+    if (sortByViews) {
+      return [...result].sort((a, b) => b.views - a.views);
+    }
+    return result;
+  }, [filtered, publish, sortByViews]);
 
   const handleConfirmDelete = async () => {
     if (!deleting || deletingRef.current) return;
@@ -140,12 +152,20 @@ export function BlogView() {
           <p className="mt-1 text-muted-foreground">{posts.length} total posts</p>
         </div>
         {tab !== "keywords" && (
-          <Button className="h-10 gap-1.5" onClick={() => router.push("/admin/marketing/blog/new")}>
-            <Plus className="h-4 w-4" />
-            New Post
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="h-10 gap-1.5" onClick={() => setGenerateOpen(true)}>
+              <Sparkles className="h-4 w-4" />
+              Generate with AI
+            </Button>
+            <Button className="h-10 gap-1.5" onClick={() => router.push("/admin/marketing/blog/new")}>
+              <Plus className="h-4 w-4" />
+              New Post
+            </Button>
+          </div>
         )}
       </div>
+
+      {tab !== "keywords" && <GenerationProgress />}
 
       {tab !== "keywords" && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -154,19 +174,43 @@ export function BlogView() {
             <Input placeholder="Search posts..." className="h-9 pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">Topic:</span>
-            <AdminSegmentedTabs options={TOPIC_FILTER_TABS} value={topic} onChange={setTopic} className="mb-0" />
-          </div>
+          <Select value={publish} onValueChange={(v) => setPublish(v ?? "all")}>
+            <SelectTrigger className="w-40 h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="drafts">Drafts</SelectItem>
+              <SelectItem value="published">Published</SelectItem>
+            </SelectContent>
+          </Select>
 
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">Country:</span>
-            <Combobox value={country} onChange={setCountry} options={COUNTRY_FILTER_OPTIONS} className="w-48 h-9" />
-          </div>
+          <Select value={topic} onValueChange={(v) => { if (v === "all" || v === "Study" || v === "Work" || v === "Live") setTopic(v); }}>
+            <SelectTrigger className="w-40 h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TOPIC_FILTER_TABS.map((t) => (
+                <SelectItem key={t.value} value={t.value}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Combobox value={country} onChange={setCountry} options={COUNTRY_FILTER_OPTIONS} className="w-48 h-9" />
+
+          <Button
+            variant={sortByViews ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSortByViews(!sortByViews)}
+          >
+            {sortByViews ? "Most popular" : "Newest"}
+          </Button>
         </div>
       )}
 
-      <AdminSegmentedTabs options={tabsWithCounts} value={tab} onChange={setTab} />
+      <AdminSegmentedTabs options={BLOG_TABS} value={tab} onChange={setTab} />
 
       {tab === "keywords" ? (
         <BlogKeywordsManager />
@@ -198,6 +242,8 @@ export function BlogView() {
         onConfirm={handleConfirmDelete}
         deleting={busy}
       />
+
+      <GenerateDialog open={generateOpen} onOpenChange={setGenerateOpen} onStarted={() => setTab("all")} />
     </div>
   );
 }

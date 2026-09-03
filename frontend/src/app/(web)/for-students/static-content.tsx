@@ -50,7 +50,7 @@ export const STATIC_BLOG_POSTS: BlogCardData[] = [
     title: "Is Australia the Right Destination for You?",
     slug: "is-australia-right-for-you",
     published_at: "2025-01-20",
-    category: "Study Abroad",
+    category: "International Study",
     cover_image_url: "https://cdn.sanity.io/images/0jnrsohu/production/8bfe74c0a6e1b97e50a67a3c3e93cd1ad9de8c7b-1200x630.jpg",
   },
   {
@@ -86,20 +86,22 @@ export const HOW_IT_WORKS: HowItWorksStep[] = [
     desc: "Discover top programs and institutions that align with your career goals from over 175,000 options worldwide.",
     link: { label: "Explore Course and University", href: "/search" },
   },
+  /* Parked with the eligibility checker — keep STEP_VISUALS in how-it-works.tsx in sync when it returns.
   {
     step: 2,
     title: "Check Your Eligibility",
     desc: "Ensure the perfect match for programs that suit your qualifications, budget, and interests.",
     link: null,
   },
+  */
   {
-    step: 3,
+    step: 2,
     title: "Connect with Verified Professionals",
     desc: "Access expert guidance from certified and trust-scored professionals and institutions to ensure a smooth application process.",
     link: { label: "Explore Professionals", href: "/search?tab=education-agencies" },
   },
   {
-    step: 4,
+    step: 3,
     title: "Get Enrolled",
     desc: "Seamlessly complete your enrollment and embark on your global education journey with confidence.",
     link: { label: "Get Started", href: "/auth/sign-up" },

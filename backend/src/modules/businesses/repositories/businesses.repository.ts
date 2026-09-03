@@ -16,19 +16,65 @@ export async function findBusinessByDbName(dbName: string): Promise<BusinessReco
 }
 
 
+/**
+ * One row per selectable org. `kind` is not decoration: businesses and institutions are separate
+ * tables with colliding id spaces, so a bare id is ambiguous and whatever stores the pick has to
+ * store the kind alongside it — the same reason enquiry_distributions models a recipient as two
+ * nullable columns and listRelations returns `partner_kind`.
+ */
+export type OrgSearchResult = {
+  kind: "business" | "institution";
+  id: number;
+  business_name: string;
+  logo_url: string | null;
+};
+
+/**
+ * Institutions are opt-in rather than always included: this endpoint also backs the branch
+ * picker, whose `business_branches.linked_business_id` is an app-level FK to businesses.id with
+ * no kind column. Returning institutions there by default would let someone link one and write
+ * an id that silently resolves to a different business.
+ *
+ * Neither half gates on published/verified status — the businesses half never has, and a
+ * consultancy declaring which institution it represents needs the promoted-but-unclaimed ones,
+ * which are exactly the ones `is_published` excludes.
+ */
 export async function searchBusinesses(
   search: string | undefined,
-  excludeId: string,
+  excludeId: string | undefined,
   limit: number,
-): Promise<Pick<BusinessRecord, "id" | "business_name" | "logo_url">[]> {
-  const query = masterKnex<BusinessRecord>("businesses")
-    .select("id", "business_name", "logo_url")
+  includeInstitutions = false,
+): Promise<OrgSearchResult[]> {
+  const businesses = masterKnex<BusinessRecord>("businesses")
+    .select(masterKnex.raw("'business' as kind"), "id", "business_name", "logo_url")
     .whereNull("deleted_at")
-    .whereNot("id", excludeId)
     .orderBy("business_name")
     .limit(limit);
-  if (search) query.whereILike("business_name", `%${search}%`);
-  return query;
+  if (excludeId) businesses.whereNot("id", excludeId);
+  if (search) businesses.whereILike("business_name", `%${search}%`);
+  if (!includeInstitutions) return businesses as unknown as Promise<OrgSearchResult[]>;
+
+  // `institution_name as business_name`: one label column for two tables, the convention
+  // listRelations already uses (COALESCE(business_name, institution_name) as partner_name), so
+  // the picker renders both without branching on kind.
+  //
+  // excludeId is deliberately NOT applied here. It exists to keep the caller's own business out
+  // of its own partner list, and ids collide across the tables — applying it would drop an
+  // unrelated institution that happens to share the number.
+  const institutions = masterKnex("institutions")
+    .select(masterKnex.raw("'institution' as kind"), "id", "institution_name as business_name", "logo_url")
+    .whereNull("deleted_at")
+    .orderBy("institution_name")
+    .limit(limit);
+  if (search) institutions.whereILike("institution_name", `%${search}%`);
+
+  // Merged in JS rather than as a SQL UNION: `limit` is capped at 50, and one ordered list out
+  // of two ordered lists is not worth a subquery wrapper to get ORDER BY/LIMIT applied to the
+  // union rather than to its last branch.
+  const [bizRows, instRows] = await Promise.all([businesses, institutions]);
+  return [...(bizRows as unknown as OrgSearchResult[]), ...(instRows as OrgSearchResult[])]
+    .sort((a, b) => a.business_name.localeCompare(b.business_name))
+    .slice(0, limit);
 }
 
 export async function insertBusiness(data: {
@@ -37,6 +83,7 @@ export async function insertBusiness(data: {
   business_name: string;
   account_status: number;
   business_type?: string | null;
+  business_category_id?: number | null;
   description?: string | null;
   phone?: string | null;
   country_id?: number | null;
@@ -45,6 +92,7 @@ export async function insertBusiness(data: {
   address?: string | null;
   postcode?: string | null;
   registration_licenses?: Record<string, unknown> | null;
+  claim_status?: string;
 }): Promise<BusinessRecord> {
   const [row] = await masterKnex<BusinessRecord>("businesses").insert(data).returning("*");
   return row;
@@ -66,14 +114,40 @@ export async function updateBusinessProfile(id: string, data: Record<string, unk
   return row;
 }
 
+export async function appendBusinessMedia(
+  id: string,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("businesses")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_append(coalesce(??, ARRAY[]::text[]), ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
+export async function removeBusinessMedia(
+  id: string,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("businesses")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_remove(??, ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
 export async function findByClaimToken(token: string): Promise<BusinessRecord | undefined> {
   return masterKnex<BusinessRecord>("businesses").where({ claim_token: token }).whereNull("deleted_at").first();
 }
 
-/** The business a platform_user owns that they haven't finished claiming yet (pre-seeded by an admin). */
-export async function findUnclaimedBusinessByOwnerId(ownerId: number): Promise<BusinessRecord | undefined> {
+
+export async function findUnclaimedBusinessByContactEmail(email: string): Promise<BusinessRecord | undefined> {
   return masterKnex<BusinessRecord>("businesses")
-    .where({ owner_id: ownerId })
+    .whereRaw("lower(email) = lower(?)", [email])
     .whereNot("claim_status", "claimed")
     .whereNull("deleted_at")
     .first();

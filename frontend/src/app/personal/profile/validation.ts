@@ -10,3 +10,10 @@ export function fromMonthInput(value: string, sep: "/" | "-" = "/"): string {
   const m = value.match(/^(\d{4})-(\d{2})$/);
   return m ? `${m[2]}${sep}${m[1]}` : "";
 }
+
+export function sanitizeDecimalInput(value: string): string {
+  const cleaned = value.replace(/[^0-9.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot === -1) return cleaned;
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+}

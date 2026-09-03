@@ -79,6 +79,7 @@ export async function extractFromAggregator(
   let queued = 0;
   for (const courseUrl of result.courseUrls) {
     const queueItemId = await insertQueueItem(jobId, courseUrl);
+    if (!queueItemId) continue; // already queued by another producer
     try {
       await queueService.publish(EXTRACTION_QUEUES.PAGES, {
         jobId,

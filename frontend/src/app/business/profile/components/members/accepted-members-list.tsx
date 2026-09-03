@@ -2,15 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Trash2, Users } from "lucide-react";
+import { Crown, Loader2, Pencil, Shield, Trash2, User, Users } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMembers, removeMember } from "../../store/business-profile-detail-slice";
 import type { Member } from "../../apis/types";
 
 const PAGE_SIZE = 10;
+
+const ROLE_CONFIG: Record<string, { icon: typeof Crown; className: string }> = {
+  owner: { icon: Crown, className: "bg-amber-100 text-amber-700 border-amber-200" },
+  admin: { icon: Shield, className: "bg-blue-100 text-blue-700 border-blue-200" },
+};
+const DEFAULT_ROLE_CONFIG = { icon: User, className: "bg-muted text-muted-foreground" };
 
 export function AcceptedMembersList({
   businessId,
@@ -18,6 +26,7 @@ export function AcceptedMembersList({
 }: Readonly<{ businessId: number; onEdit: (member: Member) => void }>) {
   const dispatch = useAppDispatch();
   const { items: members, status, total } = useAppSelector((state) => state.businessProfileDetail.members);
+  const { user } = useAuthState();
   const [page, setPage] = useState(1);
 
   const fetchedIdRef = useRef<number | null>(null);
@@ -61,34 +70,48 @@ export function AcceptedMembersList({
   return (
     <>
       <div className="space-y-2">
-        {members.map((m) => (
-          <div key={m.id} className="flex items-center justify-between rounded-lg border p-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase">
-                {(m.first_name ?? "?").slice(0, 2)}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{m.first_name ? `${m.first_name} ${m.last_name}` : "—"}</span>
-                  {m.role_display && <span className="text-xs text-muted-foreground">{m.role_display}</span>}
-                  {m.admin_point_of_contact && <Badge variant="outline">POC</Badge>}
-                  {m.account_status !== 1 && <Badge variant="secondary">Inactive</Badge>}
+        {members.map((m) => {
+          const cfg = ROLE_CONFIG[m.is_owner ? "owner" : m.role] ?? DEFAULT_ROLE_CONFIG;
+          const RoleIcon = cfg.icon;
+          return (
+            <div key={m.id} className="flex items-center justify-between rounded-lg border p-3">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-9 w-9">
+                  {m.photo_url && <AvatarImage src={m.photo_url} alt="" />}
+                  <AvatarFallback className="text-xs font-semibold uppercase">{(m.first_name ?? "?").slice(0, 2)}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{m.first_name ? `${m.first_name} ${m.last_name}` : "—"}</span>
+                    {m.email === user?.email && <Badge variant="outline" className="text-[10px] px-1.5 py-0">You</Badge>}
+                    {m.role_display && (
+                      <Badge className={`${cfg.className} border-0 flex w-fit items-center gap-1`}>
+                        <RoleIcon className="h-3 w-3" />
+                        {m.is_owner ? "Owner" : m.role_display}
+                      </Badge>
+                    )}
+                    {m.admin_point_of_contact && <Badge variant="outline">POC</Badge>}
+                    {m.account_status !== 1 && <Badge variant="secondary">Inactive</Badge>}
+                    {m.is_public && <Badge variant="secondary">Public profile</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {[m.position, m.email, m.phone].filter(Boolean).join(" • ") || "—"}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">{[m.email, m.phone].filter(Boolean).join(" • ") || "—"}</p>
+              </div>
+              <div className="flex gap-1">
+                <Button size="icon-sm" variant="ghost" onClick={() => onEdit(m)} aria-label="Edit member">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                {!m.is_owner && (
+                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(m.id)} aria-label="Remove member">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
-            <div className="flex gap-1">
-              <Button size="icon-sm" variant="ghost" onClick={() => onEdit(m)} aria-label="Edit member">
-                <Pencil className="h-4 w-4" />
-              </Button>
-              {!m.is_owner && (
-                <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(m.id)} aria-label="Remove member">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
     </>

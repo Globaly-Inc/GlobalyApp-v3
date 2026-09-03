@@ -1,13 +1,16 @@
-import type { BusinessProfile, BusinessProfilePatch, SelectOption, UpdateSubCategoryParams } from "./types";
+import type {
+  BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
+  RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const MOCK_BUSINESS_CATEGORIES: SelectOption[] = [
-  { value: "1", label: "Education Agent" },
-  { value: "2", label: "Institution" },
-  { value: "3", label: "Service Provider" },
+const MOCK_BUSINESS_CATEGORIES: BusinessCategoryOption[] = [
+  { value: "1", label: "Education Agency", slug: "education_agency", description: "Education Consultants and Migration Agents", icon: "Users" },
+  { value: "2", label: "Institutions", slug: "institutions", description: "Universities, colleges, and educational institutions", icon: "Building2" },
+  { value: "3", label: "Visa Services", slug: "visa_services", description: "Visa application and immigration support services", icon: "FileCheck" },
 ];
 
 let mockProfile: BusinessProfile = {
@@ -31,12 +34,52 @@ let mockProfile: BusinessProfile = {
   latitude: null,
   longitude: null,
   onboarding_completed: false,
+  status: "unverified",
+  cover_position: null,
+  is_published: false,
+  show_team_public: true,
+  public_visibility: {},
+  currency: null,
+  gallery_images: null,
+  video_urls: null,
+  registration_licenses: null,
+  linkedin_url: null,
+  facebook_url: null,
+  instagram_url: null,
+  twitter_url: null,
+  youtube_url: null,
+  whatsapp_url: null,
+  tiktok_url: null,
+  threads_url: null,
+  messenger_url: null,
+  telegram_url: null,
+  line_url: null,
+  viber_url: null,
 };
 
 export const businessMockApi = {
-  updateSubCategory: async (params: UpdateSubCategoryParams): Promise<void> => {
-    console.log("[mock] POST /user/update", params);
-    await delay(300);
+  registerInstitution: async (input: InstitutionRegisterInput): Promise<RegisterInstitutionResult> => {
+    console.log("[mock] POST /platform-users/me/onboarding/institution", input);
+    await delay(500);
+    const subdomain = input.institution_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").split("-").filter(Boolean).join("-").slice(0, 20) || "institution";
+    return {
+      institution: { id: 1, org_id: "mock-inst-org-id", subdomain, institution_name: input.institution_name },
+      access_token: "mock-access-token",
+      message: "Institution created.",
+    };
+  },
+
+  registerBusiness: async (input: BusinessRegisterInput): Promise<RegisterBusinessResult> => {
+    console.log("[mock] POST /businesses/register", input);
+    await delay(500);
+    // Mirrors the backend: subdomain is derived from the name, never sent by the client.
+    const subdomain = input.business_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").split("-").filter(Boolean).join("-").slice(0, 20) || "business";
+    mockProfile = { ...mockProfile, ...input, subdomain, onboarding_completed: true };
+    return {
+      org: { id: mockProfile.id, org_id: mockProfile.schema_name, subdomain, business_name: input.business_name },
+      access_token: "mock-access-token",
+      message: "Business created.",
+    };
   },
 
   getMyProfile: async (): Promise<BusinessProfile> => {
@@ -52,15 +95,31 @@ export const businessMockApi = {
     return mockProfile;
   },
 
-  uploadImage: async (category: "logo" | "cover", file: File): Promise<{ storage_path: string }> => {
+  uploadImage: async (category: "logo" | "cover" | "gallery", file: File): Promise<{ storage_path: string }> => {
     console.log(`[mock] POST /businesses/me/files?category=${category}`, file.name);
     await delay(400);
     const url = URL.createObjectURL(file);
-    mockProfile = { ...mockProfile, [category === "logo" ? "logo_url" : "cover_url"]: url };
+    if (category === "logo" || category === "cover") {
+      mockProfile = { ...mockProfile, [category === "logo" ? "logo_url" : "cover_url"]: url };
+    } else if (file.type.startsWith("video/")) {
+      mockProfile = { ...mockProfile, video_urls: [...(mockProfile.video_urls ?? []), url] };
+    } else {
+      mockProfile = { ...mockProfile, gallery_images: [...(mockProfile.gallery_images ?? []), url] };
+    }
     return { storage_path: url };
   },
 
-  getBusinessCategories: async (search?: string): Promise<SelectOption[]> => {
+  deleteMedia: async (url: string, type: "gallery" | "video"): Promise<void> => {
+    console.log(`[mock] DELETE /businesses/me/media`, { url, type });
+    await delay(300);
+    if (type === "video") {
+      mockProfile = { ...mockProfile, video_urls: (mockProfile.video_urls ?? []).filter((u) => u !== url) };
+    } else {
+      mockProfile = { ...mockProfile, gallery_images: (mockProfile.gallery_images ?? []).filter((u) => u !== url) };
+    }
+  },
+
+  getBusinessCategories: async (search?: string): Promise<BusinessCategoryOption[]> => {
     console.log("[mock] GET /businesses/business-categories", search);
     await delay(200);
     if (!search) return MOCK_BUSINESS_CATEGORIES;

@@ -1,6 +1,8 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { personalApi } from "../apis";
 import type {
+  AcademicTest,
+  AcademicTestInput,
   LanguageTest,
   LanguageTestInput,
   Qualification,
@@ -25,27 +27,64 @@ export const updateSubCategory = createAsyncThunk("profile/updateSubCategory", (
   personalApi.updateSubCategory(params),
 );
 
-export const addQualification = createAsyncThunk("profile/addQualification", (input: QualificationInput) =>
-  personalApi.addQualification(input),
+// Adding/removing a qualification or a language test flips the "Education background" /
+// "Test scores" criterion, so the server's completion percentage changes. It lives on
+// state.profile, which only fetchFullProfile/updateProfile write — so re-read it, the same
+// way the photo upload in profile-view.tsx does. The browser must not recompute the
+// percentage itself; the backend is the single source of truth (see backend completion.ts).
+// Both criteria are "count > 0", so the edit thunks can't change them and don't refetch.
+export const addQualification = createAsyncThunk(
+  "profile/addQualification",
+  async (input: QualificationInput, { dispatch }) => {
+    const row = await personalApi.addQualification(input);
+    dispatch(fetchFullProfile());
+    return row;
+  },
 );
 export const editQualification = createAsyncThunk(
   "profile/editQualification",
   ({ id, patch }: { id: string; patch: Partial<QualificationInput> }) => personalApi.updateQualification(id, patch),
 );
-export const removeQualification = createAsyncThunk("profile/removeQualification", async (id: string) => {
-  await personalApi.removeQualification(id);
-  return id;
-});
+export const removeQualification = createAsyncThunk(
+  "profile/removeQualification",
+  async (id: string, { dispatch }) => {
+    await personalApi.removeQualification(id);
+    dispatch(fetchFullProfile());
+    return id;
+  },
+);
 
-export const addLanguageTest = createAsyncThunk("profile/addLanguageTest", (input: LanguageTestInput) =>
-  personalApi.addLanguageTest(input),
+export const addLanguageTest = createAsyncThunk(
+  "profile/addLanguageTest",
+  async (input: LanguageTestInput, { dispatch }) => {
+    const row = await personalApi.addLanguageTest(input);
+    dispatch(fetchFullProfile());
+    return row;
+  },
 );
 export const editLanguageTest = createAsyncThunk(
   "profile/editLanguageTest",
   ({ id, patch }: { id: string; patch: Partial<LanguageTestInput> }) => personalApi.updateLanguageTest(id, patch),
 );
-export const removeLanguageTest = createAsyncThunk("profile/removeLanguageTest", async (id: string) => {
-  await personalApi.removeLanguageTest(id);
+export const removeLanguageTest = createAsyncThunk(
+  "profile/removeLanguageTest",
+  async (id: string, { dispatch }) => {
+    await personalApi.removeLanguageTest(id);
+    dispatch(fetchFullProfile());
+    return id;
+  },
+);
+
+// Academic tests are not a completion criterion (same as work experience), so no refetch needed.
+export const addAcademicTest = createAsyncThunk("profile/addAcademicTest", (input: AcademicTestInput) =>
+  personalApi.addAcademicTest(input),
+);
+export const editAcademicTest = createAsyncThunk(
+  "profile/editAcademicTest",
+  ({ id, patch }: { id: string; patch: Partial<AcademicTestInput> }) => personalApi.updateAcademicTest(id, patch),
+);
+export const removeAcademicTest = createAsyncThunk("profile/removeAcademicTest", async (id: string) => {
+  await personalApi.removeAcademicTest(id);
   return id;
 });
 
@@ -65,6 +104,7 @@ type ProfileState = {
   profile: StudentProfile | null;
   qualifications: Qualification[];
   languageTests: LanguageTest[];
+  academicTests: AcademicTest[];
   workExperiences: WorkExperience[];
   status: "idle" | "loading" | "saving" | "failed";
   error: string | null;
@@ -74,6 +114,7 @@ const initialState: ProfileState = {
   profile: null,
   qualifications: [],
   languageTests: [],
+  academicTests: [],
   workExperiences: [],
   status: "idle",
   error: null,
@@ -104,9 +145,14 @@ const profileSlice = createSlice({
         state.profile = action.payload.profile;
         state.qualifications = action.payload.qualifications;
         state.languageTests = action.payload.languageTests;
+        state.academicTests = action.payload.academicTests;
         state.workExperiences = action.payload.workExperiences;
       })
       .addCase(fetchFullProfile.rejected, (state, action) => {
+        // A dispatch skipped by the `condition` above is a de-dup, not a failure. Recording it as
+        // one flipped status out of "loading" while the real request was still in flight, so the
+        // shell dropped its spinner and rendered a profile-less page.
+        if (action.meta.condition) return;
         state.status = "failed";
         state.error = action.error.message ?? "Failed to load your profile.";
       })
@@ -139,6 +185,15 @@ const profileSlice = createSlice({
       })
       .addCase(removeLanguageTest.fulfilled, (state, action) => {
         state.languageTests = state.languageTests.filter((t) => t.id !== action.payload);
+      })
+      .addCase(addAcademicTest.fulfilled, (state, action) => {
+        state.academicTests = upsert(state.academicTests, action.payload);
+      })
+      .addCase(editAcademicTest.fulfilled, (state, action) => {
+        state.academicTests = upsert(state.academicTests, action.payload);
+      })
+      .addCase(removeAcademicTest.fulfilled, (state, action) => {
+        state.academicTests = state.academicTests.filter((t) => t.id !== action.payload);
       })
       .addCase(addWorkExperience.fulfilled, (state, action) => {
         state.workExperiences = upsert(state.workExperiences, action.payload);

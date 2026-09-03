@@ -3,6 +3,25 @@ export const THEME_SETTINGS_EVENT = "theme-settings-change";
 
 export const DEFAULT_PRIMARY = "#7F1D1D";
 
+/** The un-themed body font. Exported so the layout can tell an untouched
+    install from a tenant that has actually picked a font, which is what decides
+    whether the Fraunces heading default holds. */
+export const DEFAULT_FONT = `ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji"`;
+
+/**
+ * The heading face for a given body font, or null to leave the Fraunces default
+ * in place.
+ *
+ * globals.css pins h1-h6 to the heading face, and a font-family on the element
+ * beats the one inherited from <html>, so the theme font only reaches headings if
+ * something reassigns --heading-font. Both callers — the server layout and
+ * applyThemeSettings below — go through here, because when they disagreed the
+ * headings went stale on every client-side font change.
+ */
+export function headingFontOverride(font: string): string | null {
+  return font === DEFAULT_FONT ? null : font;
+}
+
 const COOKIE_BYTE_BUDGET = 3800;
 
 export type ThemeSettings = {
@@ -16,7 +35,7 @@ export type ThemeSettings = {
 export function defaultThemeSettings(companyName: string): ThemeSettings {
   return {
     primaryColor: DEFAULT_PRIMARY,
-    font: `ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji"`,
+    font: DEFAULT_FONT,
     companyName,
     logoUrl: null,
     faviconUrl: null,
@@ -64,6 +83,12 @@ export function applyThemeSettings(settings: ThemeSettings) {
   const root = document.documentElement;
   root.style.setProperty("--primary", settings.primaryColor);
   root.style.fontFamily = settings.font;
+
+  // removeProperty, not just a skipped set: going back to the default font has to
+  // drop a previous override, or the headings keep the font the user just left.
+  const heading = headingFontOverride(settings.font);
+  if (heading) root.style.setProperty("--heading-font", heading);
+  else root.style.removeProperty("--heading-font");
   document.title = settings.companyName;
 
   const icon = settings.faviconUrl || settings.logoUrl;

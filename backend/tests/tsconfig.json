@@ -1,0 +1,15 @@
+{
+  // IDE/typecheck project for the standalone test scripts. The main tsconfig only
+  // includes src/ (its rootDir/outDir drive the real build), so without this file the
+  // editor opens tests in an inferred project with no Node types — "Cannot find name
+  // 'process'". Never emits; run tests with `node --import tsx tests/<name>.ts`.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["./**/*", "../src/**/*"]
+}

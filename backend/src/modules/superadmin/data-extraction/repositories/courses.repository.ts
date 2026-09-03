@@ -5,6 +5,7 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
 export type CourseListFilters = { search?: string; status?: string };
+export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc";
 
 function filteredCoursesQuery(jobId: string, { search, status }: CourseListFilters) {
   const q = masterKnex(T).where({ job_id: jobId });
@@ -13,12 +14,40 @@ function filteredCoursesQuery(jobId: string, { search, status }: CourseListFilte
   return q;
 }
 
-export async function listCoursesByJob(jobId: string, limit: number, offset: number, filters: CourseListFilters = {}) {
-  return filteredCoursesQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+// Default ("oldest") matches the endpoint's original hardcoded order — unchanged for
+// any caller that doesn't pass sort.
+export async function listCoursesByJob(
+  jobId: string, limit: number, offset: number,
+  filters: CourseListFilters = {}, sort: CourseSort = "oldest",
+) {
+  const q = filteredCoursesQuery(jobId, filters).limit(limit).offset(offset);
+  switch (sort) {
+    case "name_asc": return q.orderBy("name", "asc");
+    case "name_desc": return q.orderBy("name", "desc");
+    case "newest": return q.orderBy("created_at", "desc");
+    default: return q.orderBy("created_at", "asc");
+  }
 }
 
 export async function countCoursesByJob(jobId: string, filters: CourseListFilters = {}) {
   const [row] = await filteredCoursesQuery(jobId, filters).count("id as count");
+  return Number(row.count);
+}
+
+export type CourseFeeListFilters = { search?: string };
+
+function filteredCourseFeesQuery(jobId: string, { search }: CourseFeeListFilters) {
+  const q = masterKnex(`${S}.extraction_course_fees`).where({ job_id: jobId });
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
+}
+
+export async function listCourseFeesByJob(jobId: string, limit: number, offset: number, filters: CourseFeeListFilters = {}) {
+  return filteredCourseFeesQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countCourseFeesByJob(jobId: string, filters: CourseFeeListFilters = {}) {
+  const [row] = await filteredCourseFeesQuery(jobId, filters).count("id as count");
   return Number(row.count);
 }
 
@@ -30,6 +59,76 @@ export async function countCoursesByStatus(jobId: string) {
     .count("id as count")
     .groupBy("verification_status");
   return rows.map((r) => ({ status: (r.verification_status as string | null) ?? "unverified", count: Number(r.count) }));
+}
+
+export type StudyUnitListFilters = { search?: string };
+
+function filteredStudyUnitsQuery(jobId: string, { search }: StudyUnitListFilters) {
+  const q = masterKnex(`${S}.extraction_study_units`).where({ job_id: jobId });
+  if (search) q.where((b) => b.whereILike("unit_name", `%${search}%`).orWhereILike("unit_code", `%${search}%`));
+  return q;
+}
+
+export async function listStudyUnitsByJob(jobId: string, limit: number, offset: number, filters: StudyUnitListFilters = {}) {
+  return filteredStudyUnitsQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countStudyUnitsByJob(jobId: string, filters: StudyUnitListFilters = {}) {
+  const [row] = await filteredStudyUnitsQuery(jobId, filters).count("id as count");
+  return Number(row.count);
+}
+
+export type StudyOptionListFilters = { search?: string };
+
+function filteredStudyOptionsQuery(jobId: string, { search }: StudyOptionListFilters) {
+  const q = masterKnex(`${S}.extraction_study_options`).where({ job_id: jobId });
+  if (search) {
+    q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("study_mode", `%${search}%`).orWhereILike("applicable_to", `%${search}%`));
+  }
+  return q;
+}
+
+export async function listStudyOptionsByJob(jobId: string, limit: number, offset: number, filters: StudyOptionListFilters = {}) {
+  return filteredStudyOptionsQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countStudyOptionsByJob(jobId: string, filters: StudyOptionListFilters = {}) {
+  const [row] = await filteredStudyOptionsQuery(jobId, filters).count("id as count");
+  return Number(row.count);
+}
+
+export type EligibilityListFilters = { search?: string };
+
+function filteredEligibilityQuery(jobId: string, { search }: EligibilityListFilters) {
+  const q = masterKnex(`${S}.extraction_eligibility_requirements`).where({ job_id: jobId });
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
+}
+
+export async function listEligibilityByJob(jobId: string, limit: number, offset: number, filters: EligibilityListFilters = {}) {
+  return filteredEligibilityQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countEligibilityByJob(jobId: string, filters: EligibilityListFilters = {}) {
+  const [row] = await filteredEligibilityQuery(jobId, filters).count("id as count");
+  return Number(row.count);
+}
+
+export type IntakeListFilters = { search?: string };
+
+function filteredIntakesQuery(jobId: string, { search }: IntakeListFilters) {
+  const q = masterKnex(`${S}.extraction_intakes`).where({ job_id: jobId });
+  if (search) q.whereILike("intake_name", `%${search}%`);
+  return q;
+}
+
+export async function listIntakesByJob(jobId: string, limit: number, offset: number, filters: IntakeListFilters = {}) {
+  return filteredIntakesQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countIntakesByJob(jobId: string, filters: IntakeListFilters = {}) {
+  const [row] = await filteredIntakesQuery(jobId, filters).count("id as count");
+  return Number(row.count);
 }
 
 export async function findCourseById(id: string) {
@@ -54,6 +153,15 @@ export async function updateCoursesByIds(ids: string[], data: Record<string, unk
     .update({ ...data, updated_at: masterKnex.fn.now() });
 }
 
+export async function deleteCourse(id: string) {
+  const count = await masterKnex(T).where({ id }).delete();
+  return count > 0;
+}
+
+export async function deleteCoursesByIds(ids: string[]) {
+  return masterKnex(T).whereIn("id", ids).delete();
+}
+
 // ── Course links (13-key bundle for RC2) ──
 
 export async function getCourseLinks(jobId: string) {
@@ -75,10 +183,14 @@ export async function getCourseLinks(jobId: string) {
 
   const queries = Object.entries(tables).map(([key, table]) => {
     // accreditations is a standalone table — no job_id filter
-    const query =
-      key === "accreditations"
-        ? masterKnex(table).select("*")
-        : masterKnex(table).where({ job_id: jobId });
+    if (key === "accreditations") {
+      return masterKnex(table).select("*").then((rows) => [key, rows] as const);
+    }
+    const query = key.endsWith("_assignments")
+      ? masterKnex(table).select(`${table}.*`, `${T}.name as course_name`)
+        .leftJoin(T, `${table}.course_id`, `${T}.id`)
+        .where(`${table}.job_id`, jobId)
+      : masterKnex(table).where({ job_id: jobId });
     return query.then((rows) => [key, rows] as const);
   });
 

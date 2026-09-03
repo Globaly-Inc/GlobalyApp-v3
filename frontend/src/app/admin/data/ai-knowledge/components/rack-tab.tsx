@@ -2,157 +2,46 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Brain, FileText, Library, Link2, Loader2, Pencil, Plus, RefreshCw, Trash2, X,
+  Brain, CalendarClock, FileText, Library, Link2, Loader2, Pencil, Plus, RefreshCw, ShieldCheck,
+  Trash2, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Combobox } from "@/components/combobox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { aiKnowledgeApi } from "../apis";
 import {
-  CATEGORY_KIND_OPTIONS, CRAWL_FREQUENCY_OPTIONS, CRAWL_STATUS_TONE, TRUST_TIER_OPTIONS, TRUST_TIER_TONE,
+  CRAWL_FREQUENCY_OPTIONS, CRAWL_STATUS_TONE, TRUST_TIER_OPTIONS, TRUST_TIER_TONE,
 } from "../const";
-import type {
-  CategoryKind, CategoryParams, CrawlFrequency, RackCategory, RackDocument,
-  RackSource, SourceParams, TrustTier,
-} from "../apis/types";
+import type { RackCategory, RackDocument, RackSource } from "../apis/types";
+import { CategoryForm } from "./category-form";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { SourceForm } from "./source-form";
+import { UploadSourceForm } from "./upload-source-form";
 import { EmptyState, ListSkeleton } from "./shared";
 import { DocumentDrawer } from "./document-drawer";
 
-function CategoryForm({
-  category, saving, onCancel, onSave,
-}: Readonly<{ category?: RackCategory; saving: boolean; onCancel: () => void; onSave: (v: CategoryParams) => void }>) {
-  const [slug, setSlug] = useState(category?.slug ?? "");
-  const [label, setLabel] = useState(category?.label ?? "");
-  const [kind, setKind] = useState<CategoryKind>(category?.kind ?? "visa");
-  const [country, setCountry] = useState(category?.country_code ?? "");
+const SIX_MONTHS_MS = 182 * 24 * 60 * 60 * 1000;
 
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Label *</Label>
-        <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Australia — Visa" className="h-8 text-xs" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Slug *</Label>
-        <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="au-visa" className="h-8 text-xs" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Kind</Label>
-        <Combobox
-          options={CATEGORY_KIND_OPTIONS}
-          value={kind}
-          onChange={(v) => setKind(v as CategoryKind)}
-          className="h-8 cursor-pointer text-xs"
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Country code</Label>
-        <Input value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} maxLength={2} placeholder="AU" className="h-8 text-xs" />
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" className="h-7 cursor-pointer text-xs" onClick={onCancel}>Cancel</Button>
-        <Button
-          size="sm" className="h-7 cursor-pointer text-xs" disabled={saving}
-          onClick={() => {
-            if (!label.trim() || !slug.trim()) { toast.error("Label and slug are required"); return; }
-            onSave({
-              label: label.trim(), slug: slug.trim(), kind,
-              country_code: country.trim() ? country.trim() : null,
-            });
-          }}
-        >
-          Save
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function SourceForm({
-  source, categoryId, saving, onCancel, onSave,
-}: Readonly<{
-  source?: RackSource; categoryId: string; saving: boolean;
-  onCancel: () => void; onSave: (v: SourceParams) => void;
-}>) {
-  const [url, setUrl] = useState(source?.url ?? "");
-  const [title, setTitle] = useState(source?.title ?? "");
-  const [trustTier, setTrustTier] = useState<TrustTier>(source?.trust_tier ?? "other");
-  const [frequency, setFrequency] = useState<CrawlFrequency>(source?.crawl_frequency ?? "monthly");
-  const [maxPages, setMaxPages] = useState(String(source?.max_pages ?? ""));
-  const [active, setActive] = useState(source?.active ?? true);
-
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 p-4">
-        <p className="font-semibold text-foreground">{source ? "Edit source" : "New source"}</p>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label>URL *</Label>
-            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://immi.homeaffairs.gov.au/visas/student" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Student visa hub" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Trust tier</Label>
-            <Combobox
-              options={TRUST_TIER_OPTIONS}
-              value={trustTier}
-              onChange={(v) => setTrustTier(v as TrustTier)}
-              className="cursor-pointer"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Crawl frequency</Label>
-            <Combobox
-              options={CRAWL_FREQUENCY_OPTIONS}
-              value={frequency}
-              onChange={(v) => setFrequency(v as CrawlFrequency)}
-              className="cursor-pointer"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Max pages per crawl</Label>
-            <Input type="number" value={maxPages} onChange={(e) => setMaxPages(e.target.value)} placeholder="25" />
-          </div>
-        </div>
-
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-          <Switch checked={active} onCheckedChange={setActive} />
-          Active
-        </label>
-
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" className="gap-1.5 cursor-pointer" onClick={onCancel}>
-            <X className="h-3.5 w-3.5" />
-            Cancel
-          </Button>
-          <Button
-            className="cursor-pointer" disabled={saving}
-            onClick={() => {
-              if (!url.trim()) { toast.error("URL is required"); return; }
-              onSave({
-                category_id: categoryId, url: url.trim(), title: title.trim() || null,
-                trust_tier: trustTier, crawl_frequency: frequency,
-                max_pages: maxPages.trim() ? Number(maxPages) : null, active,
-              });
-            }}
-          >
-            {source ? "Save changes" : "Add source"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
+/**
+ * Verification state of a source. Red beats amber: a figure past its stated validity
+ * is wrong now, where an unverified one is only unconfirmed.
+ */
+function freshness(source: RackSource): { label: string; tone: string } | null {
+  if (source.effective_until && new Date(source.effective_until) < new Date()) {
+    return { label: `Expired ${source.effective_until}`, tone: "bg-red-100 text-red-800" };
+  }
+  if (!source.last_verified_at) {
+    return { label: "Never verified", tone: "bg-amber-100 text-amber-900" };
+  }
+  if (Date.now() - new Date(source.last_verified_at).getTime() > SIX_MONTHS_MS) {
+    return {
+      label: `Verified ${new Date(source.last_verified_at).toLocaleDateString()}`,
+      tone: "bg-amber-100 text-amber-900",
+    };
+  }
+  return null;
 }
 
 export function RackTab({
@@ -172,6 +61,7 @@ export function RackTab({
   const [addingCategory, setAddingCategory] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [addingSource, setAddingSource] = useState(false);
+  const [uploadingSource, setUploadingSource] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
   const [openDocumentId, setOpenDocumentId] = useState<string | null>(null);
@@ -294,11 +184,28 @@ export function RackTab({
                   {sources.length} source{sources.length === 1 ? "" : "s"}
                 </p>
               </div>
-              <Button className="gap-1.5 cursor-pointer" disabled={addingSource} onClick={() => { setAddingSource(true); setEditingSourceId(null); }}>
-                <Plus className="h-4 w-4" />
-                Add source
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline" className="gap-1.5 cursor-pointer" disabled={uploadingSource}
+                  onClick={() => { setUploadingSource(true); setAddingSource(false); setEditingSourceId(null); }}
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload document
+                </Button>
+                <Button className="gap-1.5 cursor-pointer" disabled={addingSource} onClick={() => { setAddingSource(true); setUploadingSource(false); setEditingSourceId(null); }}>
+                  <Plus className="h-4 w-4" />
+                  Add source
+                </Button>
+              </div>
             </div>
+
+            {uploadingSource && (
+              <UploadSourceForm
+                categoryId={selected.id}
+                onCancel={() => setUploadingSource(false)}
+                onDone={() => { setUploadingSource(false); onReloadSources(selected.id); }}
+              />
+            )}
 
             {addingSource && (
               <SourceForm
@@ -314,8 +221,8 @@ export function RackTab({
 
             {loading && <ListSkeleton rows={3} />}
 
-            {!loading && sources.length === 0 && !addingSource && (
-              <EmptyState icon={Link2} title="No sources yet" hint="Add a government or institution page to crawl." />
+            {!loading && sources.length === 0 && !addingSource && !uploadingSource && (
+              <EmptyState icon={Link2} title="No sources yet" hint="Add a page to crawl, or upload a PDF/MD/TXT document." />
             )}
 
             {sources.map((source) =>
@@ -346,19 +253,39 @@ export function RackTab({
                               {CRAWL_STATUS_TONE[source.last_status]?.label ?? source.last_status}
                             </Badge>
                           )}
+                          {(() => {
+                            const stale = freshness(source);
+                            return stale ? (
+                              <Badge className={`gap-1 text-[10px] ${stale.tone}`}>
+                                <CalendarClock className="h-3 w-3" />
+                                {stale.label}
+                              </Badge>
+                            ) : null;
+                          })()}
+                          {source.source_type === "file" && (
+                            <Badge variant="outline" className="gap-1 text-[10px]">
+                              <Upload className="h-3 w-3" />
+                              Upload
+                            </Badge>
+                          )}
                           {!source.active && <Badge className="bg-muted text-[10px] text-muted-foreground">Inactive</Badge>}
                         </div>
-                        <p className="mt-1 truncate text-xs text-muted-foreground">{source.url}</p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {source.source_type === "file" ? source.file_name : source.url}
+                        </p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <FileText className="h-3 w-3" />
                             {source.doc_count} document{source.doc_count === 1 ? "" : "s"}
                           </span>
+                          {source.source_type !== "file" && (
+                            <span>
+                              {CRAWL_FREQUENCY_OPTIONS.find((f) => f.value === source.crawl_frequency)?.label}
+                            </span>
+                          )}
                           <span>
-                            {CRAWL_FREQUENCY_OPTIONS.find((f) => f.value === source.crawl_frequency)?.label}
-                          </span>
-                          <span>
-                            Last crawled: {source.last_crawled_at ? new Date(source.last_crawled_at).toLocaleString() : "Never"}
+                            {source.source_type === "file" ? "Uploaded" : "Last crawled"}:{" "}
+                            {source.last_crawled_at ? new Date(source.last_crawled_at).toLocaleString() : "Never"}
                           </span>
                         </div>
                         {source.last_error && (
@@ -368,12 +295,27 @@ export function RackTab({
                           <p className="mt-1 text-[11px] text-muted-foreground">
                             Last run: {source.crawl_summary.added} added · {source.crawl_summary.updated} updated ·{" "}
                             {source.crawl_summary.unchanged} unchanged · {source.crawl_summary.failed} failed ·{" "}
-                            {source.crawl_summary.embedded} embedded (via {source.crawl_summary.discovery_method})
+                            {source.crawl_summary.chunks ?? 0} chunks, {source.crawl_summary.embedded} embedded (via{" "}
+                            {source.crawl_summary.discovery_method})
                           </p>
                         )}
                       </div>
 
                       <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost" size="icon-sm" className="cursor-pointer"
+                          title={source.last_verified_at
+                            ? `Last verified ${new Date(source.last_verified_at).toLocaleString()} — confirm again`
+                            : "Mark as verified — you have confirmed this content is still true"}
+                          disabled={saving}
+                          onClick={() => run(
+                            () => aiKnowledgeApi.verifySource(source.id),
+                            "Marked as verified", () => onReloadSources(selected.id),
+                          )}
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                        </Button>
+                        {source.source_type !== "file" && (
                         <Button
                           variant="outline" className="gap-1.5 px-3 cursor-pointer"
                           disabled={saving || source.last_status === "queued" || source.last_status === "crawling"}
@@ -389,6 +331,7 @@ export function RackTab({
                           )}
                           Crawl
                         </Button>
+                        )}
                         <Button variant="ghost" size="icon-sm" className="cursor-pointer" title="Edit" onClick={() => { setEditingSourceId(source.id); setAddingSource(false); }}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>

@@ -6,14 +6,19 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { latestTimestamp } from "../utils";
+import { latestTimestamp, pendingCourseLinks, runLimited } from "../utils";
+import type { CourseBulkLinkSelection, CourseBulkUpdatePatch } from "./course-bulk-update-form";
 import { CourseDetailPanel } from "./course-detail-panel";
-import { CourseForm } from "./course-form";
+import { CourseFormDialogs } from "./course-form-dialogs";
 import { CourseListPanel } from "./course-list-panel";
 import { StepActionBar } from "./step-action-bar";
+import { useConfirmDelete } from "./use-confirm-delete";
+import type { SortOrder } from "../const";
 import type { CampusFull, CourseFull, CourseLinks, CreateCourseParams, ExtractionJob } from "../apis/types";
 
 const DEFAULT_PAGE_SIZE = 10;
+
+const BULK_UPDATE_CONCURRENCY = 6;
 
 export function CoursesTab({
   jobId,
@@ -36,21 +41,28 @@ export function CoursesTab({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sort, setSort] = useState<SortOrder>("name_asc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [adding, setAdding] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  // Accepts overrides so callers that also reset page/search/statusFilter (e.g. after a
+  // delete) can force this fetch to use the new values immediately — setState is async,
+  // so reading the state variables here right after calling their setters would still
+  // see the pre-reset values from this render's closure.
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder }) => {
     try {
       const [coursesRes, courseLinks, campusRows, queue] = await Promise.all([
         allExtractionsApi.getCourses(jobId, {
-          page,
-          limit,
-          search: search.trim() || undefined,
-          status: statusFilter === "all" ? undefined : statusFilter,
+          page: overrides?.page ?? page,
+          limit: overrides?.limit ?? limit,
+          search: (overrides?.search ?? search).trim() || undefined,
+          status: (overrides?.status ?? statusFilter) === "all" ? undefined : (overrides?.status ?? statusFilter),
+          sort: overrides?.sort ?? sort,
         }),
         allExtractionsApi.getCourseLinks(jobId),
         allExtractionsApi.getCampuses(jobId),
@@ -67,7 +79,7 @@ export function CoursesTab({
     } finally {
       setLoading(false);
     }
-  }, [jobId, page, limit, search, statusFilter]);
+  }, [jobId, page, limit, search, statusFilter, sort]);
 
   useEffect(() => {
     if (!fetchedRef.current) {
@@ -80,10 +92,10 @@ export function CoursesTab({
     return () => clearTimeout(t);
   }, [load]);
 
-  // Any filter change invalidates the current page.
+  // Any filter/sort change invalidates the current page.
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, sort]);
 
   const handleCreate = async (values: CreateCourseParams) => {
     setSaving(true);
@@ -92,6 +104,7 @@ export function CoursesTab({
       toast.success("Course added");
       setAdding(false);
       await load();
+      onReload(); // other tabs' course-linking pickers read the job-level course list too
       setSelectedId(created.id);
     } catch (e) {
       toast.error("Failed to add course", { description: (e as Error).message });
@@ -101,6 +114,104 @@ export function CoursesTab({
   };
 
   const selected = courses?.find((c) => c.id === selectedId) ?? null;
+  const { confirm, dialog: confirmDialog } = useConfirmDelete();
+
+  // Clears every list-level UI control back to defaults — used after a delete so the
+  // view doesn't sit on a stale filter/page/selection pointing at rows that are gone.
+  const resetListState = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setSort("name_asc");
+    setPage(1);
+    setLimit(DEFAULT_PAGE_SIZE);
+    setSelectedIds([]);
+    setSelectedId(null);
+  };
+
+  const deleteCourse = async (id: string) => {
+    if (!(await confirm("Delete course?", "This will permanently delete the course and its linked fees, intakes, and other data."))) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await allExtractionsApi.deleteCourse(id);
+      toast.success("Course deleted");
+      resetListState();
+      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all", sort: "name_asc" });
+      onReload();
+    } catch (e) {
+      toast.error("Delete failed", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    const many = selectedIds.length > 1;
+    if (!(await confirm(many ? `Delete ${selectedIds.length} courses?` : "Delete course?", "This will permanently delete the selected courses and their linked fees, intakes, and other data."))) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const { queued } = await allExtractionsApi.bulkDeleteCourses(selectedIds);
+      toast.success(`${queued} course${many ? "s" : ""} queued for deletion`);
+      // Fire-and-forget — a background worker does the actual deletes. Remove the rows
+      // optimistically first (the server hasn't caught up yet), then reset every other
+      // list control back to defaults and force a reload with those defaults explicitly
+      // (resetListState's setState calls haven't committed yet, so `load()` alone would
+      // still read the pre-reset page/search/status from this render's closure).
+      const deletedIds = new Set(selectedIds);
+      setCourses((prev) => prev.filter((c) => !deletedIds.has(c.id)));
+      setTotal((prev) => Math.max(0, prev - deletedIds.size));
+      resetListState();
+      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all", sort: "name_asc" });
+      onReload();
+    } catch (e) {
+      toast.error("Delete failed", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const bulkUpdate = async (patch: CourseBulkUpdatePatch, linkSelection: CourseBulkLinkSelection) => {
+    setSaving(true);
+    try {
+      const patchTasks = Object.keys(patch).length
+        ? selectedIds.map((id) => () => allExtractionsApi.saveAndLearn({ table: "extraction_courses", id, patch, job_id: jobId }))
+        : [];
+
+      const linkTasks = pendingCourseLinks(
+        [
+          { junction: "course-fees", entityId: linkSelection.feeId, assignments: links?.fee_assignments, entityCol: "course_fee_id" },
+          { junction: "intakes", entityId: linkSelection.intakeId, assignments: links?.intake_assignments, entityCol: "intake_id" },
+          { junction: "eligibility-requirements", entityId: linkSelection.eligibilityId, assignments: links?.eligibility_assignments, entityCol: "eligibility_requirement_id" },
+        ],
+        selectedIds,
+      ).map((l) => () => allExtractionsApi.assignJunction(l.junction, { job_id: jobId, course_id: l.course_id, entity_id: l.entity_id }));
+
+      const results = await runLimited([...patchTasks, ...linkTasks], BULK_UPDATE_CONCURRENCY);
+      const failed = results.filter((r) => r.status === "rejected");
+      const succeeded = results.length - failed.length;
+
+      if (failed.length === 0) {
+        toast.success(`${selectedIds.length} course${selectedIds.length === 1 ? "" : "s"} updated`);
+      } else if (succeeded === 0) {
+        const first = failed[0] as PromiseRejectedResult;
+        toast.error("Update failed", { description: (first.reason as Error)?.message });
+      } else {
+        toast.warning(`${succeeded} of ${results.length} update${results.length === 1 ? "" : "s"} succeeded`, {
+          description: `${failed.length} failed — try again for the affected courses.`,
+        });
+      }
+
+      setBulkUpdating(false);
+      setSelectedIds([]);
+      await load();
+      onReload();
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const bulkVerify = async (approve: boolean) => {
     setSaving(true);
@@ -143,11 +254,17 @@ export function CoursesTab({
         </Card>
       )}
 
-      {adding && (
-        <div className="mb-3">
-          <CourseForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
-        </div>
-      )}
+      <CourseFormDialogs
+        jobId={jobId}
+        adding={adding}
+        onAddingChange={setAdding}
+        onCreate={handleCreate}
+        bulkUpdating={bulkUpdating}
+        onBulkUpdatingChange={setBulkUpdating}
+        bulkCount={selectedIds.length}
+        onBulkUpdate={bulkUpdate}
+        saving={saving}
+      />
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -167,6 +284,8 @@ export function CoursesTab({
             onSearchChange={setSearch}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
+            sort={sort}
+            onSortChange={setSort}
             onPageChange={setPage}
             selectedId={selectedId}
             onSelect={setSelectedId}
@@ -177,6 +296,9 @@ export function CoursesTab({
             onAdd={() => setAdding(true)}
             saving={saving}
             onBulkVerify={bulkVerify}
+            onBulkUpdate={() => setBulkUpdating(true)}
+            onDelete={deleteCourse}
+            onBulkDelete={bulkDelete}
             compact={!!selected}
           />
 
@@ -196,6 +318,7 @@ export function CoursesTab({
         </div>
       )}
 
+      {confirmDialog}
     </div>
   );
 }

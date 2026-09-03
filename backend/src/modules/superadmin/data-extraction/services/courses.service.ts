@@ -11,11 +11,12 @@ export async function listCourses(
   limit: number,
   offset: number,
   pagination: PaginationInput,
-  filters: { search?: string; status?: string },
+  filters: { search?: string; status?: string; sort?: repo.CourseSort },
 ) {
+  const { sort, ...listFilters } = filters;
   const [courses, total, statusCounts] = await Promise.all([
-    repo.listCoursesByJob(jobId, limit, offset, filters),
-    repo.countCoursesByJob(jobId, filters),
+    repo.listCoursesByJob(jobId, limit, offset, listFilters, sort),
+    repo.countCoursesByJob(jobId, listFilters),
     repo.countCoursesByStatus(jobId),
   ]);
   return { ...buildPaginatedResponse(courses, total, pagination), statusCounts };
@@ -23,6 +24,76 @@ export async function listCourses(
 
 export async function getCourseLinks(jobId: string) {
   return repo.getCourseLinks(jobId);
+}
+
+export async function listStudyUnits(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [studyUnits, total] = await Promise.all([
+    repo.listStudyUnitsByJob(jobId, limit, offset, filters),
+    repo.countStudyUnitsByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(studyUnits, total, pagination);
+}
+
+export async function listStudyOptions(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [studyOptions, total] = await Promise.all([
+    repo.listStudyOptionsByJob(jobId, limit, offset, filters),
+    repo.countStudyOptionsByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(studyOptions, total, pagination);
+}
+
+export async function listEligibility(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [rows, total] = await Promise.all([
+    repo.listEligibilityByJob(jobId, limit, offset, filters),
+    repo.countEligibilityByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(rows, total, pagination);
+}
+
+export async function listIntakes(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [rows, total] = await Promise.all([
+    repo.listIntakesByJob(jobId, limit, offset, filters),
+    repo.countIntakesByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(rows, total, pagination);
+}
+
+export async function listCourseFees(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [rows, total] = await Promise.all([
+    repo.listCourseFeesByJob(jobId, limit, offset, filters),
+    repo.countCourseFeesByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(rows, total, pagination);
 }
 
 export async function createCourse(jobId: string, input: CreateCourseInput, adminId: number) {
@@ -76,6 +147,20 @@ export async function rejectCourse(id: string, adminId: number) {
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_REJECT", { entityType: "extraction_courses", entityId: id });
   return { updated: true };
+}
+
+export async function deleteCourse(id: string, adminId: number) {
+  const found = await repo.deleteCourse(id);
+  if (!found) throw new NotFoundError("Course not found");
+  await logAudit(adminId, "COURSE_DELETE", { entityType: "extraction_courses", entityId: id });
+  return { deleted: true };
+}
+
+export async function bulkDeleteCourses(ids: string[], adminId: number) {
+  const deleted = await repo.deleteCoursesByIds(ids);
+  if (deleted === 0) throw new NotFoundError("No courses found");
+  await logAudit(adminId, "COURSE_DELETE", { entityType: "extraction_courses", details: { ids, count: deleted } });
+  return { deleted };
 }
 
 // ── Accreditation links ──

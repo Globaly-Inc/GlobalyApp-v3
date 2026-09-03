@@ -52,6 +52,19 @@ export const LookupInputSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
+/**
+ * A standardised test in the platform catalogue. `category` is the academic/language split, not the
+ * test's name — the name is what course and profile rows carry as free text.
+ */
+export const TestInputSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  slug,
+  category: z.enum(["academic", "language"]),
+  image_url: z.string().trim().min(1).max(2000).nullable().optional(),
+  sort_order: z.number().int().min(0).optional(),
+  is_active: z.boolean().optional(),
+});
+
 export const FeeTypeInputSchema = z.object({
   name: z.string().trim().min(1).max(200),
   slug,
@@ -81,6 +94,7 @@ export type SchemaFieldEntityType = z.infer<typeof SchemaFieldEntityTypeSchema>;
 export type SchemaFieldInput = z.infer<typeof SchemaFieldInputSchema>;
 export type DefaultServicesInput = z.infer<typeof DefaultServicesInputSchema>;
 export type LookupInput = z.infer<typeof LookupInputSchema>;
+export type TestInput = z.infer<typeof TestInputSchema>;
 export type FeeTypeInput = z.infer<typeof FeeTypeInputSchema>;
 export type IssuingOrgInput = z.infer<typeof IssuingOrgInputSchema>;
 export type AccreditationInput = z.infer<typeof AccreditationInputSchema>;

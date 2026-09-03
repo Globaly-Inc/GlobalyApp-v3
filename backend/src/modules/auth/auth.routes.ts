@@ -29,6 +29,7 @@ const RefreshSchema = z.object({
 
 const SwitchAccountSchema = z.object({
   org_id: z.string().min(1),
+  refresh_token: z.string().min(1).optional(),
 });
 
 export async function authRoutes(app: FastifyInstance) {
@@ -83,8 +84,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/switch-account", {
     config: { rateLimit: RATE_LIMITS.switchAccount },
   }, async (req, reply) => {
-    const { org_id } = SwitchAccountSchema.parse(req.body);
-    const result = await service.switchAccount(Number(req.auth.sub), org_id);
+    const { org_id, refresh_token } = SwitchAccountSchema.parse(req.body);
+    const result = await service.switchAccount(Number(req.auth.sub), org_id, refresh_token);
     return reply.send(result);
   });
 

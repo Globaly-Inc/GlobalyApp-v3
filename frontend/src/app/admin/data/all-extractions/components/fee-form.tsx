@@ -1,12 +1,14 @@
 "use client";
 
+import { z } from "zod";
 import { useEffect, useState } from "react";
 import { DollarSign, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
+import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -34,6 +36,43 @@ const toInstallments = (fee?: CourseFee): Installment[] =>
 
 const sumLines = (lines: Line[]) => lines.reduce((total, l) => total + (Number(l.amount) || 0), 0);
 
+const feeSchema = z.object({
+  studentType: z.string().min(1, "Please select who the fee applies to"),
+  periodType: z.string().trim().min(1, "Period type is required"),
+  currency: z.string().trim().min(1, "Currency is required"),
+  name: z.string().trim().transform((v) => v || null),
+  installments: z.array(
+    z.object({
+      label: z.string(),
+      lines: z.array(
+        z.object({
+          fee_type: z.string(),
+          amount: z.string(),
+        })
+      ),
+    })
+  ).refine((insts) => {
+    let totalLinesCount = 0;
+    let missingType = false;
+    let missingAmount = false;
+    insts.forEach((inst) => {
+      inst.lines.forEach((line) => {
+        const hasType = Boolean(line.fee_type.trim());
+        const amt = Number(line.amount);
+        const hasAmount = Boolean(line.amount.trim()) && !isNaN(amt) && amt > 0;
+        if (hasType || hasAmount) {
+          totalLinesCount++;
+          if (!hasType) missingType = true;
+          if (!hasAmount) missingAmount = true;
+        }
+      });
+    });
+    return totalLinesCount > 0 && !missingType && !missingAmount;
+  }, {
+    message: "At least one valid fee line with a fee type and amount (> 0) is required",
+  }),
+});
+
 export function FeeForm({
   fee,
   saving,
@@ -52,6 +91,7 @@ export function FeeForm({
   const [installments, setInstallments] = useState<Installment[]>(() => toInstallments(fee));
   const [saveForReuse, setSaveForReuse] = useState(fee?.save_for_reuse ?? false);
   const [feeTypes, setFeeTypes] = useState<{ value: string; label: string }[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     categoriesApi.getFeeTypes({ limit: 100 })
@@ -61,32 +101,51 @@ export function FeeForm({
 
   const total = installments.reduce((sum, i) => sum + sumLines(i.lines), 0);
 
-  const patchInstallment = (index: number, patch: Partial<Installment>) =>
-    setInstallments((list) => list.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  const clearError = (key: string) => {
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: "" }));
+  };
 
-  const patchLine = (index: number, lineIndex: number, patch: Partial<Line>) =>
+  const patchInstallment = (index: number, patch: Partial<Installment>) => {
+    clearError("installments");
+    setInstallments((list) => list.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  const patchLine = (index: number, lineIndex: number, patch: Partial<Line>) => {
+    clearError("installments");
     patchInstallment(index, {
       lines: installments[index]!.lines.map((l, i) => (i === lineIndex ? { ...l, ...patch } : l)),
     });
+  };
 
   const submit = () => {
-    const payload: FeeInstallment[] = installments.map((i) => ({
-      label: i.label.trim() || "Installment",
-      amount: sumLines(i.lines),
-      lines: i.lines
-        .filter((l) => l.fee_type.trim() || l.amount.trim())
-        .map((l) => ({ fee_type: l.fee_type.trim(), amount: Number(l.amount) || 0 })),
-    }));
-    if (!studentType) {
-      toast.error("Pick who the fee applies to");
+    const result = feeSchema.safeParse({ studentType, periodType, currency, name, installments });
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        if (!errs[key]) errs[key] = issue.message;
+      }
+      setErrors(errs);
       return;
     }
+
+    setErrors({});
+    const d = result.data;
+    const payload: FeeInstallment[] = d.installments
+      .map((i) => {
+        const lines = i.lines
+          .filter((l) => l.fee_type.trim() && Boolean(l.amount.trim()))
+          .map((l) => ({ fee_type: l.fee_type.trim(), amount: Number(l.amount) || 0 }));
+        const amount = lines.reduce((sum, l) => sum + l.amount, 0);
+        return { label: i.label.trim() || "Installment", amount, lines };
+      })
+      .filter((i) => i.lines.length > 0);
+
     onSave({
-      // Omitted when blank: an older backend rejects an explicit null here.
-      ...(name.trim() ? { name: name.trim() } : fee?.name ? { name: null } : {}),
-      student_type: studentType,
-      period_type: periodType,
-      currency,
+      name: d.name,
+      student_type: d.studentType,
+      period_type: d.periodType,
+      currency: d.currency,
       total_amount: total,
       installments: payload,
       save_for_reuse: saveForReuse,
@@ -101,49 +160,72 @@ export function FeeForm({
           {fee ? "Edit Course Fee" : "Add Course Fee"}
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+      <CardContent className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto">
         <div className="flex flex-col gap-2">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Fee structure</Label>
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+            Fee structure <span className="text-destructive">*</span>
+          </Label>
           <div className="flex flex-wrap items-center gap-6">
             {STUDENT_TYPE_OPTIONS.map((option) => (
               <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm">
                 <Checkbox
                   checked={studentType === option.value}
-                  onCheckedChange={() => setStudentType(option.value)}
+                  onCheckedChange={() => {
+                    setStudentType(option.value);
+                    clearError("studentType");
+                  }}
                 />
                 {option.label}
               </label>
             ))}
           </div>
+          <FieldError message={errors.studentType} />
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="fee-period">Period Type</Label>
+            <Label htmlFor="fee-period">
+              Period Type <span className="text-destructive">*</span>
+            </Label>
             <Combobox
               id="fee-period"
               options={PERIOD_TYPE_OPTIONS}
               value={periodType}
-              onChange={setPeriodType}
+              onChange={(v) => {
+                setPeriodType(v);
+                clearError("periodType");
+              }}
               placeholder="Select period"
+              aria-invalid={Boolean(errors.periodType)}
               creatable
             />
+            <FieldError message={errors.periodType} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="fee-currency">Currency</Label>
+            <Label htmlFor="fee-currency">
+              Currency <span className="text-destructive">*</span>
+            </Label>
             <Combobox
               id="fee-currency"
               options={CURRENCY_OPTIONS}
               value={currency}
-              onChange={setCurrency}
+              onChange={(v) => {
+                setCurrency(v);
+                clearError("currency");
+              }}
               placeholder="Select currency"
+              aria-invalid={Boolean(errors.currency)}
               creatable
             />
+            <FieldError message={errors.currency} />
           </div>
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Installments</Label>
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+            Installments <span className="text-destructive">*</span>
+          </Label>
+          <FieldError message={errors.installments} />
 
           {installments.map((installment, index) => (
             <div key={index} className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -177,7 +259,7 @@ export function FeeForm({
                     onChange={(v) => patchLine(index, lineIndex, { fee_type: v })}
                     placeholder="Fee type"
                     searchPlaceholder="Search or type a fee type…"
-                    className="h-9 flex-1 text-xs"
+                    className="h-10 flex-1 text-xs"
                     creatable
                   />
                   <span className="shrink-0 text-xs text-muted-foreground">{currency}</span>
@@ -186,7 +268,7 @@ export function FeeForm({
                     onChange={(e) => patchLine(index, lineIndex, { amount: e.target.value })}
                     inputMode="decimal"
                     placeholder="0"
-                    className="h-9 w-28"
+                    className="h-10 w-28"
                   />
                   <Button
                     variant="ghost"
@@ -235,16 +317,16 @@ export function FeeForm({
           <Switch checked={saveForReuse} onCheckedChange={setSaveForReuse} />
         </div>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
-            Cancel
-          </Button>
-          <Button className="gap-1.5 cursor-pointer" onClick={submit} disabled={saving}>
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save Fee
-          </Button>
-        </div>
       </CardContent>
+      <CardFooter className="justify-end gap-2">
+        <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button className="gap-1.5 cursor-pointer" onClick={submit} disabled={saving}>
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Save Fee
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

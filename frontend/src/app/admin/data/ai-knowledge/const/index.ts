@@ -1,4 +1,7 @@
-import { ClipboardCheck, Globe, HelpCircle, Library, Shield, type LucideIcon } from "lucide-react";
+import {
+  BookOpenCheck, Building2, ClipboardCheck, Folder, Globe, GraduationCap, HelpCircle,
+  Landmark, Library, Shield, type LucideIcon,
+} from "lucide-react";
 import type { KnowledgeTab } from "../types";
 import type { CategoryKind, CrawlFrequency, TrustTier } from "../apis/types";
 
@@ -7,20 +10,23 @@ export const KNOWLEDGE_TABS: { value: KnowledgeTab; label: string; icon: LucideI
   { value: "visa", label: "Visa", icon: Shield },
   { value: "faqs", label: "FAQs", icon: HelpCircle },
   { value: "guides", label: "Guides", icon: Globe },
+  { value: "gov_update", label: "Gov updates", icon: Landmark },
+  { value: "institution_update", label: "Institution updates", icon: Building2 },
+  { value: "scholarship", label: "Scholarships", icon: GraduationCap },
+  { value: "test_provider", label: "Test providers", icon: BookOpenCheck },
+  { value: "other", label: "Other", icon: Folder },
   { value: "queue", label: "Queue", icon: ClipboardCheck },
 ];
 
-/** Label on the "add" button per tab — the queue is read-only, it only gets refreshed. */
-export const ADD_LABEL: Record<KnowledgeTab, string> = {
-  rack: "Add source",
-  visa: "Add visa entry",
-  faqs: "Add FAQ",
-  guides: "Add country guide",
-  queue: "Refresh queue",
-};
+/** Tabs that are the knowledge rack filtered to a single category kind. */
+export const RACK_KIND_TABS: readonly CategoryKind[] = [
+  "gov_update", "institution_update", "scholarship", "test_provider", "other",
+];
 
 export const CATEGORY_KIND_OPTIONS: { value: CategoryKind; label: string }[] = [
   { value: "visa", label: "Visa" },
+  { value: "country_guide", label: "Country guide" },
+  { value: "faq", label: "FAQ" },
   { value: "gov_update", label: "Government update" },
   { value: "institution_update", label: "Institution update" },
   { value: "scholarship", label: "Scholarship" },

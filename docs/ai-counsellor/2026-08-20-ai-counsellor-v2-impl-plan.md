@@ -60,7 +60,7 @@ MODIFY
 CONFIRM BEFORE CREATING (path tentative)
 - `frontend/src/app/admin/data/ai-knowledge/components/upload-source-dialog.tsx` — only if the existing source dialog can't absorb a file input
 
-### Phase 7 — Tool calling
+### Phase 7 — Tool calling — ✅ BUILT 2026-08-22
 
 CREATE
 - `backend/src/modules/ai-counsellor/lib/tools.ts` — Gemini function declarations + dispatcher mapping tool name → existing `knowledge.repository` functions
@@ -70,7 +70,31 @@ MODIFY
 - `backend/src/modules/ai-counsellor/services/chat.service.ts` — agent loop path; `rag.searchAll` kept as fallback (embed mode stays on searchAll — scoping rules already live there)
 - `backend/src/modules/ai-counsellor/services/prompt.service.ts` — tool-use guidance (search only when needed; asking a follow-up instead is valid)
 
-### Phase 8 — Counselling context
+#### As built (2026-08-22)
+
+Six tools, all wrapping existing `knowledge.repository` calls: `search_courses`, `get_course_details`,
+`search_knowledge` (chunks + curated visa/FAQ/guide rows in one call), `search_visas`,
+`search_institutions`, `search_service_providers` (education agents + MARA).
+
+| Decision | Choice |
+|---|---|
+| Tool results | **JSON**, not the pasted text format. Function responses are JSON natively, and `search_courses` returns a `card` object per course so the model copies card fields verbatim instead of parsing a `CARD_FIELDS` line. `courseCardFields()` in `lib/tools.ts` is now the single mapping both paths use. |
+| `update_student_context` | **Deferred to Phase 8** with the `counselling_context` column it writes to. |
+| Discovery turn | Course tools are **withheld from the declaration list** rather than forbidden in the prompt — the model cannot list courses it has no tool to fetch. |
+| Round cap | 4. On exhaustion the conversation continues in a **tool-free session** (`startChat` with the accumulated history) so the model must answer from what it retrieved. |
+| Embed mode | Stays on `searchAll`. Its `jobIds` scoping is what stops one business's widget surfacing a competitor's courses, and a tool the model calls with its own arguments would route around it. |
+| Fallback | Tool-loop failure falls back to `searchAll` **only if nothing has streamed yet**; a mid-stream failure surfaces as an error rather than stitching one reply out of two runs. |
+| Preamble text | Streamed as it arrives, even on a round that also calls a tool. Buffering to find out whether the round was a tool round would deliver the real answer in one lump. The prompt tells the model not to narrate its searching, so preambles are rare. |
+| Kill switch | None. Reverting is a one-line change in `chat.service` (`useTools = false`), and tool failures already fall back automatically. |
+
+Test: `npm run test:ai-tool-loop` — 25 assertions over a mocked SDK (dispatch, `functionResponse`
+round-trip, parallel calls in one round, cap + forced answer with tools disabled, usage
+accumulation, discovery-turn withholding).
+
+**Cost note:** a tool turn is 2–5 model calls where the old path was always 1, while credits still
+deduct 1 per message. Watch token spend per message before turning this loose on a large user base.
+
+### Phase 8 — Counselling context — ✅ BUILT 2026-08-22
 
 MODIFY
 - `backend/database/migrations/globalyapp/20260816_002_ai_counselor_sessions.ts` — add `counselling_context JSONB NOT NULL DEFAULT '{}'`
@@ -78,7 +102,27 @@ MODIFY
 - `backend/src/modules/ai-counsellor/repositories/sessions.repository.ts` — context read/merge-write
 - `backend/src/modules/ai-counsellor/services/prompt.service.ts` — inject counselling context; opt-in promotion instruction ("offer to remember, never auto-persist")
 
-### Phase 9 — Evals + freshness
+#### As built (2026-08-22)
+
+New migration `globalyapp/20260822_001_ai_counsellor_context.ts` — **not** an edit to `20260816_002`,
+which is already applied on staging (append-only rule).
+
+| Decision | Choice |
+|---|---|
+| Context shape | A **fixed key set**: `goals`, `interests`, `strengths`, `constraints`, `preferred_countries`, `notes` (lists) and `stage` (one of exploring / narrowing / applying / post_offer). An open-ended JSONB would drift into whatever the model felt like writing and nothing downstream could read it. |
+| Merge semantics | Lists union, case-insensitively deduped, capped at 8 per key (oldest age out — the context rides in every prompt). `stage` overwrites. Nothing is deleted by a merge. |
+| Promotion to the permanent profile | **Not built as a write.** The prompt makes the model *offer* and then point the student at their profile settings; it is explicitly told never to claim it saved anything there. An LLM mutating `platform_user_profiles` on its own read of a conversation deserves its own decision and probably a UI confirmation, not a tool call. |
+| Sensitive data | The prompt forbids recording health, financial hardship, immigration difficulty or family problems, even when volunteered (PRD §22). Enforced by instruction only — nothing scans the payload. |
+| Scope | **Session-scoped**, per the gap doc. A new session starts fresh; the durable facts live in the static profile. Carrying context across sessions is the same question as profile promotion, and lands with it. |
+| Stage | Injected as behavioural guidance, not just a label — exploring widens, narrowing compares, applying gets practical, post_offer covers visa and arrival. |
+| Discovery turn | Keeps `update_student_context` (the first message is exactly when a student says what they want) while still withholding the course tools. |
+| Fallback path | Context is injected into the `searchAll` fallback prompt too, so a failed tool loop doesn't read as the counsellor forgetting the conversation. |
+| Session list payload | `findByUser` now selects explicit columns, excluding the context — the sidebar renders titles and does not need a growing JSONB on every refresh. |
+
+Test: `npm run test:counselling-context` — 15 assertions (union without duplicates, blank rejection,
+cap and ageing, stage overwrite, no input mutation, discovery-turn tool availability).
+
+### Phase 9 — Evals + freshness — ✅ BUILT 2026-08-22
 
 CREATE
 - `backend/scripts/ai-evals/questions.json` — ~30 fixed questions (one per PRD §25 response type + PRD §1 examples)
@@ -90,6 +134,38 @@ MODIFY
 - `backend/src/modules/superadmin/ai-knowledge/routes/rack.routes.ts` + `rack.repository.ts` — staleness sort/filter on source list; verify action (stamps `last_verified_at`)
 - `frontend/src/app/admin/data/ai-knowledge/components/rack-tab.tsx` — staleness badge + verify button
 - `backend/package.json` — `job:ai-knowledge-recrawl` script entry (matches existing `job:ai-knowledge-crawl` pattern)
+
+#### As built (2026-08-22)
+
+New migration `superadmin/20260822_002_ai_knowledge_freshness.ts` — append-only, not an edit to `20260814_001`.
+
+**Evals.** `scripts/ai-evals/questions.json` — 30 questions, each tagged with the acceptance criteria
+it covers, 28 carrying structural expectations. `npm run ai:evals -- --token <jwt>` posts each at a
+running backend over the real SSE endpoint and writes a dated report to `docs/ai-counsellor/evals/`.
+
+| Decision | Choice |
+|---|---|
+| What is checked | **Structure only** — asked a question, cited a source, emitted a card, hedged, admitted a gap, did not diagnose, did not re-ask a known budget. Answer quality is a human read, and the report prints every reply in full for it. An LLM judge would be a second thing to trust. |
+| Multi-turn questions | `setup` / `setup2` send earlier turns in the same session first, because memory, stage and the counsel-before-recommend gate only exist on a second turn. |
+| Exit code | Non-zero on **transport** errors only. A failed structural check is a finding to read and diff between runs, not a broken build. |
+| Corpus-dependent checks | `cites` and `card` are expected on the knowledge and course questions and **will fail until the rack and course data are seeded**. That gap is the signal — run the same set before and after loading the 8 country docs. |
+| Auth | Takes `--token <jwt>`; each question burns a credit on that account. |
+
+**Freshness.** `last_verified_at` (a human confirmed it) and `effective_until` (a known expiry) on
+`ai_knowledge_sources`, both distinct from `last_crawled_at` (a machine fetched it).
+
+| Decision | Choice |
+|---|---|
+| Reaching the student | `match_ai_knowledge_chunks()` is recreated to return both, so retrieval carries them into the context and the tool payload. The prompt tells the model to say when a figure was last confirmed and to flag one past its validity date instead of asserting it (AC-10). |
+| Admin surface | `POST /sources/:id/verify` stamps the date; the rack list sorts by staleness (`NULLS FIRST` — never verified is the stalest state); the UI shows amber past six months or never-verified, red past `effective_until`. |
+| Re-crawl | `knowledge-recrawl-dispatch.worker.ts` polls hourly, publishes due `url` sources (weekly = 7 days, monthly = 30) to the existing crawl queue, marks them `queued` so a repeat pass is a no-op, caps 25 per run. Uploaded files are excluded — there is no page to re-fetch. Container + Makefile targets added. |
+| Not built | `rule_class` ("this is a provincial rule, not national law") from the ingestion plan. It needs region metadata that has no source of truth yet. |
+
+Test: `npm run test:ai-evals-checks` — 34 assertions over the SSE frame parser and every check
+(including that no documented check goes unused, which caught three dead entries).
+
+**Inert until there is a corpus:** with zero crawled sources the dispatcher has nothing to dispatch
+and the staleness badges have nothing to colour. Both start working the moment a URL source is added.
 
 ---
 

@@ -8,6 +8,7 @@ import { buildPaginatedResponse, paginationToOffset } from "../../../../../share
 import * as storage from "../../../../../shared/storage/storageService.js";
 import { config } from "../../../../../config.js";
 import * as repo from "../../../platform/platform.repository.js";
+import { findAdminByPlatformUserId } from "../../../admin-users/repositories/admin-users.repository.js";
 import { IdParamSchema, PostInputSchema, PostListQuery } from "../schemas/blog.schema.js";
 import * as service from "../services/posts.service.js";
 
@@ -39,7 +40,9 @@ export async function postRoutes(app: FastifyInstance) {
   app.post("/posts", async (req, reply) => {
     requireSuperAdmin(req.auth.role);
     const data = PostInputSchema.parse(req.body);
-    const post = await service.createPost(data, Number(req.auth.sub));
+    // blog_posts.creator_id references superadmin.admin_users.id, not the platform_users id in the JWT sub.
+    const admin = await findAdminByPlatformUserId(Number(req.auth.sub));
+    const post = await service.createPost(data, admin?.id ?? null);
     // admin_audit_logs.entity_id is a uuid column — blog_posts uses integer ids, so the
     // post id goes in `details` instead (same convention as feature-flags.routes.ts).
     await repo.logAdminAction(Number(req.auth.sub), "BLOG_POST_CREATED", "blog_post", undefined, { post_id: post.id, title: post.title });
@@ -63,7 +66,10 @@ export async function postRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  // POST /posts/cover-image (multipart) — uploads to GCS, returns a permanent public URL.
+  // POST /posts/cover-image (multipart) — uploads to GCS, returns a stable URL.
+  // The bucket enforces Public Access Prevention (org-wide), so the object can never be made
+  // public directly — the returned URL instead points at the public /blog/covers/* redirect,
+  // which re-signs a fresh view URL on every request.
   app.post("/posts/cover-image", async (req, reply) => {
     requireSuperAdmin(req.auth.role);
     const file = await req.file();
@@ -74,9 +80,10 @@ export async function postRoutes(app: FastifyInstance) {
       "image/jpeg", "image/png", "image/webp", "image/gif",
     ]));
 
-    const storagePath = storage.buildPath("blog-posts", "covers", file.filename);
+    const filename = storage.buildPath("blog-posts", "covers", file.filename).split("/").pop()!;
+    const storagePath = `blog-posts/covers/${filename}`;
     await storage.uploadFile(storagePath, buffer, file.mimetype);
-    const url = `https://storage.googleapis.com/${config.GCS_BUCKET_NAME}/${storagePath}`;
+    const url = `${config.API_URL}/api/v3/blog/covers/${filename}`;
 
     return reply.status(201).send({ url });
   });

@@ -1,4 +1,4 @@
-import { UserCheck, Handshake, Sparkles, ClipboardCheck, BadgePercent } from "lucide-react";
+import { UserCheck, Handshake, Sparkles, BadgePercent } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "../../components/reveal";
 
@@ -6,7 +6,7 @@ const BENEFITS = [
   {
     Icon: UserCheck,
     title: "List Your Profile & Build Your Reputation",
-    desc: "Create your verified agent profile, showcase your services, accreditations, and partnerships. Get discovered by students and providers actively searching for local representatives like you.",
+    desc: "Create your verified education counselor profile, showcase your services, accreditations, and partnerships. Get discovered by students and providers actively searching for local representatives like you.",
   },
   {
     Icon: Handshake,
@@ -16,13 +16,15 @@ const BENEFITS = [
   {
     Icon: Sparkles,
     title: "Get Highly Qualified, Verified Leads",
-    desc: "Receive student leads that are course-matched, eligibility-checked, and genuinely looking to apply. Only pay for the leads you unlock — no hidden fees, no surprises. More quality, less hassle. Real students, real opportunities.",
+    desc: "Receive student leads that are course-matched, verified, and genuinely looking to apply. Only pay for the leads you unlock — no hidden fees, no surprises. More quality, less hassle. Real students, real opportunities.",
   },
+  /* Parked with the eligibility checker — re-import ClipboardCheck when this returns.
   {
     Icon: ClipboardCheck,
     title: "Free Eligibility Testing for Your Students",
     desc: "Use our smart, free eligibility check to instantly assess if a student qualifies for a course based on academic scores, English requirements, and other key criteria. Save time. Manage student expectations early. Close more applications.",
   },
+  */
   {
     Icon: BadgePercent,
     title: "Transparent, Fair Pricing",
@@ -37,7 +39,7 @@ export function WhyAgentsJoinSection() {
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold mb-3">
-            Why Education Agents Join <span className="highlight-text active">Globaly.app?</span>
+            Why Education Counselors Join <span className="highlight-text active">Globaly.app?</span>
           </h2>
           <p className="text-muted-foreground">
             More Leads. Direct Connections. Smarter Tools. Open Opportunities.{" "}

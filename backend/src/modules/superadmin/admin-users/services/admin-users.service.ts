@@ -1,8 +1,6 @@
-// Admin-users service — CRUD and invitations.
-// Admins are platform_users with an admin role-link.
-
 import { randomBytes } from "node:crypto";
 import { config } from "../../../../config.js";
+import * as storage from "../../../../shared/storage/storageService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import {
   NotFoundError,
@@ -37,6 +35,51 @@ export async function listAdmins(pagination: PaginationInput, search?: string) {
   return buildPaginatedResponse(rows, total, pagination);
 }
 
+/** Every signed-up platform_user — students, business/institution owners, everyone — not just admins. */
+export async function listPlatformUsers(
+  pagination: PaginationInput,
+  search?: string,
+  type?: repo.PlatformUserType,
+  adminOnly?: boolean,
+) {
+  const { limit, offset } = paginationToOffset(pagination);
+  const [rows, total] = await Promise.all([
+    repo.listPlatformUsers(limit, offset, search, type, adminOnly),
+    repo.countPlatformUsers(search, type, adminOnly),
+  ]);
+  return buildPaginatedResponse(rows, total, pagination);
+}
+
+export async function updatePlatformUser(
+  id: number,
+  data: { account_status?: number; is_email_verified?: boolean },
+  callerPlatformUserId: number,
+) {
+  if (data.account_status === 0 && id === callerPlatformUserId) {
+    throw new ForbiddenError("You cannot suspend your own account");
+  }
+  const row = await repo.updatePlatformUserStatus(id, data);
+  if (!row) throw new NotFoundError("Platform user not found");
+  return row;
+}
+
+
+export async function setPlatformUserAdminRole(
+  id: number,
+  role: "super_admin" | "data_admin" | null,
+  callerPlatformUserId: number,
+) {
+  if (id === callerPlatformUserId) {
+    throw new ForbiddenError("You cannot change your own admin role");
+  }
+  const callerAdmin = await repo.findAdminByPlatformUserId(callerPlatformUserId);
+  if (!callerAdmin || callerAdmin.role !== "super_admin") {
+    throw new ForbiddenError("Only super_admin can grant admin roles");
+  }
+  if (role === null) return repo.deactivateAdminForPlatformUser(id);
+  return repo.upsertAdminForPlatformUser(id, role, callerAdmin.id);
+}
+
 export async function getAdmin(id: number) {
   const admin = await repo.findAdminById(id);
   if (!admin) throw new NotFoundError("Admin not found");
@@ -46,11 +89,19 @@ export async function getAdmin(id: number) {
 export async function getAdminByPlatformUserId(platformUserId: number) {
   const admin = await repo.findAdminByPlatformUserId(platformUserId);
   if (!admin) throw new NotFoundError("Admin not found");
-  // Enrich with platform_user details
-  return repo.findAdminById(admin.id);
+  const full = await repo.findAdminById(admin.id);
+  if (!full) throw new NotFoundError("Admin not found");
+  const [photo_url, cover_url] = await Promise.all([
+    storage.resolvePreviewUrl(full.photo_url ?? null),
+    storage.resolvePreviewUrl(full.cover_url ?? null),
+  ]);
+  return { ...full, photo_url, cover_url };
 }
 
-export async function updateAdmin(id: number, data: UpdateAdminInput) {
+export async function updateAdmin(id: number, data: UpdateAdminInput, callerRole: string) {
+  if (callerRole !== "super_admin") {
+    throw new ForbiddenError("Only super_admin can edit admin roles or status");
+  }
   const admin = await repo.findAdminById(id);
   if (!admin) throw new NotFoundError("Admin not found");
   return repo.updateAdmin(id, data);
@@ -113,6 +164,31 @@ export async function inviteAdmin(
   return invitation;
 }
 
+export async function resendInvitation(id: string, inviterRole: string) {
+  if (inviterRole !== "super_admin") {
+    throw new ForbiddenError("Only super_admin can resend invitations");
+  }
+
+  const invitation = await repo.findInvitationById(id);
+  if (!invitation) throw new NotFoundError("Invitation not found");
+  if (invitation.status !== "pending") throw new ConflictError("Only pending invitations can be resent");
+
+  const token = randomBytes(32).toString("hex");
+  const expiredAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+  await repo.resendInvitationToken(id, token, expiredAt);
+
+  const acceptUrl = `${config.CORS_ORIGINS}/auth/accept-invite?token=${token}`;
+  await queueInvitationEmail({
+    to: invitation.email,
+    name: invitation.first_name,
+    role: roleDisplayName(invitation.role),
+    acceptUrl,
+  });
+
+  logger.info("Admin invitation resent", { email: invitation.email });
+  return { message: "Invitation resent." };
+}
+
 export async function acceptInvitation(token: string) {
   const invitation = await repo.findInvitationByToken(token);
   if (!invitation) throw new NotFoundError("Invitation not found or already used");
@@ -123,14 +199,13 @@ export async function acceptInvitation(token: string) {
 
   // Create or find platform_user for this email
   let platformUser = await platformUserRepo.findByEmail(invitation.email);
-  if (!platformUser) {
-    platformUser = await platformUserRepo.insert({
-      first_name: invitation.first_name,
-      last_name: invitation.last_name,
-      email: invitation.email,
-      account_status: 1,
-    });
-  }
+  platformUser ??= await platformUserRepo.insert({
+    first_name: invitation.first_name,
+    last_name: invitation.last_name,
+    email: invitation.email,
+    account_status: 1,
+    is_personal_account: true,
+  });
 
   // Create admin role-link synchronously — one cheap insert, no queue needed
   const existingAdmin = await repo.findAdminByPlatformUserId(platformUser.id);

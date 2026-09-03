@@ -7,7 +7,7 @@ import { QualifiedLeadsSection } from "./components/qualified-leads-section";
 import { CoinsBannerSection } from "./components/coins-banner-section";
 import { PartnershipsSection } from "./components/partnerships-section";
 import { HowItWorksSection } from "./components/how-it-works-section";
-import { BlogSection } from "./components/blog-section";
+import { LatestBlogSection } from "../components/latest-blog-section";
 import { FaqSection } from "./components/faq-section";
 import { CtaSection } from "./components/cta-section";
 
@@ -30,7 +30,7 @@ export default function ForAgentsPage() {
       <CoinsBannerSection />
       <PartnershipsSection />
       <HowItWorksSection />
-      <BlogSection />
+      <LatestBlogSection subtitle="Expert insights on international education and agent success." />
       <FaqSection />
       <CtaSection />
     </>

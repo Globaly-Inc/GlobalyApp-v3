@@ -48,6 +48,12 @@ export async function deactivate(id: number, businessId: number): Promise<number
     .update({ is_active: false, updated_at: masterKnex.fn.now() });
 }
 
+export async function reactivate(id: number, businessId: number): Promise<number> {
+  return masterKnex(TABLE)
+    .where({ id, business_id: businessId })
+    .update({ is_active: true, updated_at: masterKnex.fn.now() });
+}
+
 export async function incrementMonthlyUsage(id: number): Promise<void> {
   await masterKnex(TABLE)
     .where({ id })

@@ -5,10 +5,10 @@ import Link from "next/link";
 import { Expand } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { sendMessage, addOptimisticUserMessage } from "@/app/personal/ai/store/ai-chat-slice";
-import { ChatMessages } from "@/app/personal/ai/components/chat-messages";
-import { ChatInput } from "@/app/personal/ai/components/chat-input";
-import { SuggestedStarters } from "@/app/personal/ai/components/suggested-starters";
+import { sendMessage, addOptimisticUserMessage } from "@/app/ai/store/ai-chat-slice";
+import { ChatMessages } from "@/app/ai/components/chat-messages";
+import { ChatInput } from "@/app/ai/components/chat-input";
+import { SuggestedStarters } from "@/app/ai/components/suggested-starters";
 
 type AiPopoverProps = {
   onClose: () => void;
@@ -48,7 +48,7 @@ export function AiPopover({ onClose }: AiPopoverProps) {
 
       {/* Messages */}
       {hasMessages || sendStatus === "loading" ? (
-        <ChatMessages onChipClick={handleSuggestion} />
+        <ChatMessages onChipClick={handleSuggestion} onSend={handleSend} />
       ) : (
         <div className="flex-1 overflow-y-auto">
           <SuggestedStarters onSelect={handleSuggestion} />

@@ -27,12 +27,9 @@ type FormState = {
   postcode: string;
   latitude: number | null;
   longitude: number | null;
-  linkedinUrl: string;
-  websiteUrl: string;
 };
 
 const REQUIRED = "This field is required";
-const urlField = z.string().refine((v) => v === "" || /^https?:\/\/\S+\.\S+/.test(v), "Enter a valid URL");
 
 function buildSchema(countries: Country[]): z.ZodType<FormState> {
   return z.object({
@@ -45,8 +42,6 @@ function buildSchema(countries: Country[]): z.ZodType<FormState> {
     postcode: z.string(),
     latitude: z.number().nullable(),
     longitude: z.number().nullable(),
-    linkedinUrl: urlField,
-    websiteUrl: urlField,
   }).superRefine((data, ctx) => {
     if (!data.phoneCountryId || !data.phoneNumber) return;
     const iso2 = countries.find((c) => String(c.id) === data.phoneCountryId)?.iso2;
@@ -68,8 +63,6 @@ function toForm(profile: StudentProfile, countries: Country[]): FormState {
     postcode: profile.personal_address_postcode ?? "",
     latitude: toNumberOrNull(profile.latitude),
     longitude: toNumberOrNull(profile.longitude),
-    linkedinUrl: profile.linkedin_url ?? "",
-    websiteUrl: profile.website_url ?? "",
   };
 }
 
@@ -121,6 +114,8 @@ export function ContactDialog({
     const phoneCode = countries.find((c) => String(c.id) === data.phoneCountryId)?.phoneCode ?? "";
     const ok = await onSave({
       phone: [phoneCode, data.phoneNumber].filter(Boolean).join(" "),
+      // Home address doubles as country of residence — no separate field, one less thing to fill in.
+      country_of_residence_id: Number(data.countryId),
       personal_address_country_id: Number(data.countryId),
       personal_address_state: data.state || null,
       personal_address_city: data.city || null,
@@ -128,8 +123,6 @@ export function ContactDialog({
       personal_address_postcode: data.postcode || null,
       latitude: data.latitude,
       longitude: data.longitude,
-      linkedin_url: data.linkedinUrl || null,
-      website_url: data.websiteUrl || null,
     });
     if (ok) onOpenChange(false);
   };
@@ -138,7 +131,7 @@ export function ContactDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ maxWidth: "48rem" }}>
         <DialogHeader>
-          <DialogTitle>Edit Contact Details</DialogTitle>
+          <DialogTitle>Edit contact details</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -161,9 +154,10 @@ export function ContactDialog({
               />
             </div>
             <FieldError message={errors.phoneNumber} />
-
           </div>
-          <div className="grid grid-cols-3 gap-3">
+
+          <p className="text-sm font-medium text-foreground">Personal Address</p>
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">
               <Label>Country *</Label>
               <Combobox
@@ -176,7 +170,7 @@ export function ContactDialog({
               />
               <FieldError message={errors.countryId} />
             </div>
-            <div className="col-span-2 flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               <Label>Address</Label>
               <AddressAutocomplete
                 value={form.address}
@@ -186,41 +180,19 @@ export function ContactDialog({
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>State</Label>
-              <Input className="h-10" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
-            </div>
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
               <Label>City</Label>
               <Input className="h-10" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Postcode</Label>
-            <Input className="h-10" value={form.postcode} onChange={(e) => setForm((f) => ({ ...f, postcode: e.target.value }))} />
-          </div>
-          <div className="space-y-2">
-            <Label>LinkedIn URL</Label>
-            <Input
-              className="h-10"
-              value={form.linkedinUrl}
-              onChange={(e) => setForm((f) => ({ ...f, linkedinUrl: e.target.value }))}
-              placeholder="https://linkedin.com/in/..."
-              aria-invalid={!!errors.linkedinUrl}
-            />
-            <FieldError message={errors.linkedinUrl} />
-          </div>
-          <div className="space-y-2">
-            <Label>Website URL</Label>
-            <Input
-              className="h-10"
-              value={form.websiteUrl}
-              onChange={(e) => setForm((f) => ({ ...f, websiteUrl: e.target.value }))}
-              placeholder="https://..."
-              aria-invalid={!!errors.websiteUrl}
-            />
-            <FieldError message={errors.websiteUrl} />
+            <div className="space-y-2">
+              <Label>State/Province</Label>
+              <Input className="h-10" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Postcode</Label>
+              <Input className="h-10" value={form.postcode} onChange={(e) => setForm((f) => ({ ...f, postcode: e.target.value }))} />
+            </div>
           </div>
         </div>
         <DialogFooter>

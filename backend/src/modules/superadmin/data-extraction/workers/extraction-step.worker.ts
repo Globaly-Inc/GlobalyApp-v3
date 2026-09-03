@@ -6,6 +6,7 @@
 
 import "dotenv/config";
 import { createHash } from "node:crypto";
+import dns from "node:dns";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
@@ -20,6 +21,7 @@ import {
   courseListPrompt, COURSE_LIST_SYSTEM,
   bulkFeePrompt, BULK_FEE_SYSTEM,
   courseDataPrompt, COURSE_DATA_SYSTEM,
+  visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
   writeInstitutionOverview,
@@ -29,8 +31,18 @@ import {
   insertQueueItem,
   writeJobEvent,
   normaliseCampusName,
+  upsertStudyUnit,
+  normaliseCourseCategory,
+  normaliseScoreType,
+  deriveScoreFromDescription,
+  coerceMoney,
+  writeVisaService,
+  updateVisaServiceById,
+  normaliseVisaServiceName,
+  atPageCap,
   type ExtractedCampus,
   type InstitutionOverview,
+  type ExtractedVisaService,
 } from "../lib/staging-writer.js";
 import { parseAddress } from "../lib/address-parser.js";
 import { normalizeAgentRow } from "../lib/agent-normalizers.js";
@@ -80,6 +92,47 @@ async function markStepProgress(jobId: string, step: string, status: string) {
 async function scrapeUrl(url: string): Promise<string | null> {
   const r = await scrapeMarkdown(url, { onlyMainContent: true });
   return r.markdown && r.markdown.length > 50 ? r.markdown : null;
+}
+
+async function scrapeInstitutionPage(url: string): Promise<{ markdown: string; links: string[] } | null> {
+  const r = await scrapeMarkdown(url, { onlyMainContent: false, withLinks: true });
+  return r.markdown && r.markdown.length > 50 ? { markdown: r.markdown, links: r.links } : null;
+}
+
+const PRIVATE_IPV4_RANGES = [/^127\./, /^10\./, /^192\.168\./, /^169\.254\./, /^0\.0\.0\.0$/, /^172\.(1[6-9]|2\d|3[01])\./];
+
+function isPrivateOrLocalHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return true;
+  if (h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")) return true;
+  return PRIVATE_IPV4_RANGES.some((re) => re.test(h));
+}
+
+async function resolvesToPrivateHost(hostname: string): Promise<boolean> {
+  try {
+    const records = await dns.promises.lookup(hostname, { all: true, verbatim: true });
+    return records.some((r) => isPrivateOrLocalHost(r.address));
+  } catch {
+    // Can't confirm where it points — fail closed rather than scrape an unresolvable host.
+    return true;
+  }
+}
+
+async function findContactLink(markdown: string, links: string[], origin: string): Promise<string | null> {
+  const anchor = markdown.match(/\[([^\]]*(?:contact|get in touch|enquir)[^\]]*)\]\((https?:\/\/[^)\s]+)\)/i);
+  const candidate = anchor?.[2] ?? links.find((l) => /\/(contact(-us)?|get-in-touch|enquir(y|ies))\/?$/i.test(l)) ?? null;
+  if (!candidate) return null;
+
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return null;
+  }
+  if (url.origin !== origin || isPrivateOrLocalHost(url.hostname)) return null;
+  if (await resolvesToPrivateHost(url.hostname)) return null;
+
+  return candidate;
 }
 
 function sha1(...parts: (string | null | undefined)[]): string {
@@ -187,15 +240,19 @@ async function handleInstitutionStep(jobId: string) {
   const guided = parseGuidedUrls(job);
   const contactUrls: string[] = (guided.contact_urls as string[]) || [];
 
-  // Build URL list: institution_url + contact_urls + /contact guess
   const baseUrl = job.institution_url;
-  const guessContact = (() => {
-    try { return new URL("/contact", new URL(baseUrl).origin).href; } catch { return null; }
+  const origin = (() => {
+    try { return new URL(baseUrl).origin; } catch { return null; }
   })();
+
+  const homepage = await scrapeInstitutionPage(baseUrl);
+  const discoveredContact = homepage && origin ? await findContactLink(homepage.markdown, homepage.links, origin) : null;
+  const guessContact = origin ? new URL("/contact", origin).href : null;
+
   const urlsToScrape = [...new Set([
     baseUrl,
     ...contactUrls,
-    ...(contactUrls.length === 0 && guessContact ? [guessContact] : []),
+    ...(contactUrls.length === 0 ? [discoveredContact, guessContact].filter((u): u is string => !!u) : []),
   ])];
 
   await writeJobEvent(jobId, "step_start", { phase: "institution", message: `Scraping ${urlsToScrape.length} URLs for institution data` });
@@ -206,8 +263,13 @@ async function handleInstitutionStep(jobId: string) {
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${INSTITUTION_EXTRACTION_SYSTEM}\n\n${addendum}` : INSTITUTION_EXTRACTION_SYSTEM;
 
-  // Scrape all in parallel
-  const scrapeResults = await Promise.all(urlsToScrape.map(u => scrapeUrl(u)));
+  // Scrape the rest in parallel — the homepage was already scraped above, reuse it instead
+  // of scraping it again.
+  const scrapeResults = await Promise.all(
+    urlsToScrape.map((u) =>
+      u === baseUrl ? Promise.resolve(homepage?.markdown ?? null) : scrapeInstitutionPage(u).then((r) => r?.markdown ?? null),
+    ),
+  );
   const scrapedPairs: { url: string; markdown: string }[] = [];
   for (let i = 0; i < urlsToScrape.length; i++) {
     if (scrapeResults[i]) scrapedPairs.push({ url: urlsToScrape[i], markdown: scrapeResults[i]! });
@@ -590,6 +652,13 @@ async function handleDiscoveryStep(jobId: string) {
 
   async function processListUrl(url: string, depth: number) {
     if (depth > maxDepth) return;
+    // Page cap: each list page costs a scrape + a Gemini call just to discover URLs that
+    // insertQueueItem would then refuse — stop crawling entirely once the job is full.
+    // The admin "Deep scrape" action raises the cap and re-runs discovery.
+    if (await atPageCap(jobId)) {
+      logger.info("Page cap reached, stopping discovery", { jobId, url });
+      return;
+    }
     await heartbeat(jobId);
 
     const markdown = await scrapeUrl(url);
@@ -604,6 +673,7 @@ async function handleDiscoveryStep(jobId: string) {
       system,
       prompt: courseListPrompt(url, pageText),
       maxTokens: 32768,
+      tier: "lite",
     });
 
     if (result.is_category_listing && result.category_urls?.length) {
@@ -614,11 +684,15 @@ async function handleDiscoveryStep(jobId: string) {
       return;
     }
 
-    // Real courses found — queue each for extraction
+    // Real courses found — queue each for extraction. Re-running this step re-scrapes
+    // every course_list_url (including ones a prior run already processed) so a newly
+    // added guided URL gets picked up — skip courses already queued for this job instead
+    // of re-queuing/re-extracting duplicates on every re-run.
     if (result.courses?.length) {
       for (const course of result.courses) {
         const courseUrl = course.url || url;
         const queueItemId = await insertQueueItem(jobId, courseUrl);
+        if (!queueItemId) continue; // already queued this job — dedupe now enforced by the DB unique constraint
         await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url: courseUrl });
         totalCoursePages++;
       }
@@ -648,7 +722,14 @@ async function handleDiscoveryStep(jobId: string) {
   });
 }
 
+// The Context tab's intakes_urls/eligibility_urls/units_urls/accreditations_urls guided
+// categories all dispatch to this one step.
+const COURSES_STEP_GUIDED_CATEGORIES = ["intakes_urls", "eligibility_urls", "units_urls", "accreditations_urls"] as const;
+
 async function handleCoursesStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+
   // Re-dispatch all pending/failed queue items to PAGES queue
   const items = await masterKnex(`${S}.extraction_queue`)
     .where({ job_id: jobId })
@@ -657,19 +738,76 @@ async function handleCoursesStep(jobId: string) {
 
   await writeJobEvent(jobId, "step_start", { phase: "courses", message: `Re-dispatching ${items.length} pending/failed pages` });
 
-  for (const item of items) {
-    await masterKnex(`${S}.extraction_queue`).where({ id: item.id }).update({
-      status: "pending", updated_at: masterKnex.fn.now(),
+  // Push queue: an item whose message never published is stranded — nothing polls these
+  // rows. If LavinMQ dies mid-loop, stop, record exactly how far dispatch got, and rethrow
+  // so the step shows failed. The stranded remainder stays pending/failed (and any guided
+  // URL inserted-but-unpublished stays pending), so the next Re-run picks all of it up.
+  let dispatched = 0;
+  let queuedNew = 0;
+  let dispatchErr: unknown = null;
+  try {
+    for (const item of items) {
+      // Claim-style guard: only re-flip items still retryable. An unconditional update
+      // here can yank an item that completed after the SELECT above (an in-flight backlog
+      // message, or an overlapping courses-step run) back to "pending", making it
+      // claimable again — a full duplicate scrape + Gemini extraction.
+      const flipped = await masterKnex(`${S}.extraction_queue`)
+        .where({ id: item.id })
+        .whereIn("status", ["pending", "failed"])
+        .update({ status: "pending", updated_at: masterKnex.fn.now() });
+      if (flipped === 0) continue;
+      await queueService.publish(EXTRACTION_QUEUES.PAGES, {
+        jobId, queueItemId: item.id, url: item.url,
+      });
+      dispatched++;
+    }
+
+    // Real bug: this step never looked at guided_urls at all, so adding a new URL under
+    // Intakes/Eligibility/Study Units/Accreditations in the Context tab and hitting
+    // "Re-run" did nothing — no queue item was ever created for it. Queue any guided URL
+    // from these four categories not already in this job's queue; the normal per-page
+    // pipeline (extraction-page.worker.ts) already extracts all of these entity types from
+    // any course page, so no separate extraction logic is needed here.
+    const guided = parseGuidedUrls(job);
+    const guidedUrls = [...new Set(COURSES_STEP_GUIDED_CATEGORIES.flatMap((k) => (guided[k] as string[]) || []))];
+    const existingUrls = guidedUrls.length
+      ? new Set((await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).whereIn("url", guidedUrls).select("url"))
+          .map((r: { url: string }) => r.url))
+      : new Set<string>();
+
+    for (const url of guidedUrls) {
+      if (existingUrls.has(url)) continue;
+      const queueItemId = await insertQueueItem(jobId, url);
+      if (!queueItemId) continue; // lost the insert race to an overlapping run — it dispatches this URL
+      await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
+      queuedNew++;
+    }
+  } catch (err) {
+    dispatchErr = err;
+  }
+
+  // Count what actually got queued even on the failure path — those rows exist and will
+  // be skipped as duplicates by later re-runs, so this is the only chance to count them.
+  if (queuedNew > 0) {
+    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+      total_pages_found: masterKnex.raw("COALESCE(total_pages_found, 0) + ?", [queuedNew]),
+      updated_at: masterKnex.fn.now(),
     });
-    await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-      jobId, queueItemId: item.id, url: item.url,
+  }
+
+  if (dispatchErr) {
+    await writeJobEvent(jobId, "step_error", {
+      level: "warn", phase: "courses",
+      message: `Dispatch interrupted after ${dispatched}/${items.length} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
+      data: { dispatched, total: items.length, new_guided_urls: queuedNew, error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr) },
     });
+    throw dispatchErr;
   }
 
   await writeJobEvent(jobId, "step_complete", {
     phase: "courses",
-    message: `${items.length} pages re-dispatched to extraction queue`,
-    data: { count: items.length },
+    message: `${dispatched} pages re-dispatched, ${queuedNew} new guided URLs queued for extraction`,
+    data: { count: dispatched, new_guided_urls: queuedNew },
   });
 }
 
@@ -689,8 +827,19 @@ async function handleEnrichmentStep(jobId: string) {
   const candidatePaths = ["/fees", "/tuition", "/tuition-fees", "/course-fees", "/costs", "/pricing"];
   let feePageText: string | null = null;
 
+  // Real bug: this step never looked at guided_urls.fees_urls at all — adding a Fees
+  // guided URL in the Context tab and hitting "Re-run" was silently ignored in favor of
+  // site-intelligence guessing and a hardcoded path list. An admin-provided URL is a
+  // stronger signal than either, so it wins outright when present.
+  const guided = parseGuidedUrls(job);
+  const feesUrls: string[] = (guided.fees_urls as string[]) || [];
+  if (feesUrls.length > 0) {
+    const pages = (await Promise.all(feesUrls.map((u) => scrapeUrl(u)))).filter((md): md is string => !!md);
+    if (pages.length > 0) feePageText = pages.join("\n\n");
+  }
+
   // Check site intelligence for high-value pages
-  if (siteIntel?.navigation_patterns) {
+  if (!feePageText && siteIntel?.navigation_patterns) {
     const nav = typeof siteIntel.navigation_patterns === "string"
       ? JSON.parse(siteIntel.navigation_patterns)
       : siteIntel.navigation_patterns;
@@ -805,9 +954,11 @@ async function handleEnrichmentStep(jobId: string) {
 }
 
 async function handleVerificationStep(jobId: string) {
-  // Delegate to existing verify worker via queue
+  // Delegate to existing verify worker via queue. force: an admin explicitly re-running
+  // this step wants every course re-checked against the live site — the automatic
+  // post-run dispatch (page worker) omits it and verifies only new/changed courses.
   await writeJobEvent(jobId, "step_start", { phase: "verification", message: "Dispatching verification" });
-  await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+  await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId, force: true });
   await writeJobEvent(jobId, "step_complete", {
     phase: "verification",
     message: "Verification dispatched to verify worker",
@@ -877,6 +1028,8 @@ async function handleCourseDataStep(
         const v = extracted[k];
         if (v && typeof v === "string" && v.trim()) updates[k] = v.trim();
       }
+      const category = normaliseCourseCategory(extracted.course_category);
+      if (category) updates.course_category = category;
       if (typeof extracted.duration_weeks === "number" && extracted.duration_weeks > 0) updates.duration_weeks = extracted.duration_weeks;
       if (Array.isArray(extracted.career_paths) && extracted.career_paths.length > 0) updates.career_paths = extracted.career_paths;
       if (Object.keys(updates).length > 0) {
@@ -953,21 +1106,20 @@ async function handleCourseDataStep(
     }
 
     case "units": {
-      // Delete existing unit assignments for this course
+      // Delete existing unit assignments for this course — the units themselves are
+      // shared per job (upsertStudyUnit dedups by name), so only the link is reset.
       await masterKnex(`${S}.extraction_course_study_unit_assignments`).where({ course_id: courseId }).delete();
       const units = (extracted.study_units as Array<Record<string, unknown>>) || [];
       for (const unit of units) {
-        if (!unit.unit_name) continue;
-        const [unitRow] = await masterKnex(`${S}.extraction_study_units`)
-          .insert({
-            job_id: jobId,
-            unit_code: unit.unit_code ?? null,
-            unit_name: unit.unit_name,
-            credit_points: unit.credit_points ?? null,
-          })
-          .returning("id");
+        if (!unit.unit_name || typeof unit.unit_name !== "string") continue;
+        const unitId = await upsertStudyUnit(jobId, {
+          unit_code: (unit.unit_code as string) ?? null,
+          unit_name: unit.unit_name,
+          credit_points: unit.credit_points as number ?? null,
+        });
         await masterKnex(`${S}.extraction_course_study_unit_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitRow.id });
+          .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitId })
+          .onConflict(["course_id", "study_unit_id"]).ignore();
         count++;
       }
       break;
@@ -978,13 +1130,25 @@ async function handleCourseDataStep(
       await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
       const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
       for (const req of reqs) {
+        const description = (req.description as string | null) ?? null;
+        let scoreType = normaliseScoreType(req.score_type);
+        let scoreValue = coerceMoney(req.min_score);
+        if (!scoreType && scoreValue == null && !req.min_score_percent) {
+          const derived = deriveScoreFromDescription(description);
+          if (derived) { scoreType = derived.score_type; scoreValue = derived.value; }
+        }
+        const isPercentage = scoreType === "percentage";
+
         const [reqRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
           .insert({
             job_id: jobId,
             name: req.name ?? null,
             applicable_to: req.applicable_to ?? "both",
-            description: req.description ?? null,
-            min_score_percent: req.min_score_percent ?? null,
+            description,
+            min_score_percent: isPercentage ? scoreValue : coerceMoney(req.min_score_percent),
+            min_degree_level: req.min_degree_level ?? null,
+            score_type: scoreType,
+            min_score: isPercentage ? null : scoreValue,
           })
           .returning("id");
         await masterKnex(`${S}.extraction_course_eligibility_assignments`)
@@ -1052,28 +1216,155 @@ async function handleCourseDataStep(
   });
 }
 
+/**
+ * Whole-job visa-service re-scan — admin-triggered, mirrors handleAgentsStep's shape
+ * (iterate guided URLs, extract, write) but reuses the exact prompt/writer the automatic
+ * page-worker pipeline already uses for source_type: "visa_service" jobs, since there's no
+ * agent-detection/table-parsing complexity here — just scrape, extract, upsert-by-name.
+ */
+async function handleVisaServicesStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+
+  const guided = parseGuidedUrls(job);
+  const servicesUrls: string[] = (guided.services_urls as string[]) || [];
+  if (servicesUrls.length === 0) throw new Error("No services_urls provided in guided_urls");
+
+  await writeJobEvent(jobId, "step_start", { phase: "visa_services", message: `Extracting visa services from ${servicesUrls.length} URLs` });
+
+  const domain = domainOf(job.institution_url);
+  const recalled = await recallMemory(domain, "visa_service_extraction");
+  const addendum = buildSystemAddendum(recalled);
+  const system = addendum ? `${VISA_SERVICE_EXTRACTION_SYSTEM}\n\n${addendum}` : VISA_SERVICE_EXTRACTION_SYSTEM;
+
+  const siteIntel = await masterKnex(`${S}.extraction_site_intelligence`)
+    .select("fee_structure", "extraction_hints").where({ job_id: jobId }).first();
+
+  let servicesWritten = 0;
+  for (const url of servicesUrls) {
+    const sc = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
+    if (sc?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
+    await heartbeat(jobId);
+
+    const markdown = await scrapeUrl(url);
+    if (!markdown) continue;
+
+    const extracted = await extractJson<{ visa_services: ExtractedVisaService[] }>({
+      system,
+      prompt: visaServiceExtractionPrompt(url, truncateMarkdown(markdown), job.guidance_notes, siteIntel),
+      maxTokens: 65536,
+    });
+
+    for (const service of extracted.visa_services || []) {
+      if (!service.name) continue;
+      await writeVisaService(jobId, { ...service, source_url: service.source_url ?? url });
+      servicesWritten++;
+    }
+  }
+
+  await rememberMemory({
+    job_id: jobId, domain, step: "visa_service_extraction",
+    entity_type: "visa_service",
+    ai_output: { total: servicesWritten, pages: servicesUrls.length },
+  });
+
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "visa_services",
+    message: `${servicesWritten} visa services extracted from ${servicesUrls.length} pages`,
+    data: { count: servicesWritten, pages: servicesUrls.length },
+  });
+}
+
+/**
+ * Re-extract ONE known visa service by re-scraping its own source_url — the visa-service
+ * analog of handleCourseDataStep, for the "re-run this one" action on a single card.
+ * Overwrites via updateVisaServiceById rather than the dedup-by-name writer, since we
+ * already know exactly which row to update.
+ */
+async function handleVisaServiceDataStep(jobId: string, visaServiceId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+
+  const visaService = await masterKnex(`${S}.extraction_visa_services`)
+    .where({ id: visaServiceId, job_id: jobId }).first();
+  if (!visaService) throw new Error(`Visa service ${visaServiceId} not found for job ${jobId}`);
+
+  const sourceUrl = visaService.source_url;
+  if (!sourceUrl) throw new Error(`Visa service ${visaServiceId} has no source_url to re-scrape`);
+
+  await writeJobEvent(jobId, "step_start", {
+    phase: "visa_service_data",
+    message: `Re-extracting "${visaService.name}"`,
+    data: { visa_service_id: visaServiceId },
+  });
+
+  const scVs = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
+  if (scVs?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
+
+  const markdown = await scrapeUrl(sourceUrl);
+  if (!markdown) throw new Error(`Failed to scrape visa service page: ${sourceUrl}`);
+
+  const domain = domainOf(job.institution_url);
+  const recalled = await recallMemory(domain, "visa_service_extraction");
+  const addendum = buildSystemAddendum(recalled);
+  const system = addendum ? `${VISA_SERVICE_EXTRACTION_SYSTEM}\n\n${addendum}` : VISA_SERVICE_EXTRACTION_SYSTEM;
+
+  const extracted = await extractJson<{ visa_services: ExtractedVisaService[] }>({
+    system,
+    prompt: visaServiceExtractionPrompt(sourceUrl, truncateMarkdown(markdown), job.guidance_notes),
+    maxTokens: 65536,
+  });
+
+  // The page may describe more than one service — prefer the one matching this row's
+  // existing name (re-scraping the same page shouldn't switch to a different service);
+  // fall back to the first result if the name no longer appears.
+  const existingNorm = normaliseVisaServiceName(visaService.name);
+  const match = (extracted.visa_services || []).find((s) => s.name && normaliseVisaServiceName(s.name) === existingNorm)
+    ?? extracted.visa_services?.[0];
+
+  if (!match) throw new Error(`No visa service found on re-scrape of ${sourceUrl}`);
+
+  await updateVisaServiceById(visaServiceId, match);
+
+  await rememberMemory({
+    job_id: jobId, domain, step: "visa_service_extraction",
+    entity_type: "visa_service", entity_ref: visaServiceId,
+    source_url: sourceUrl,
+    source_excerpt: markdown.slice(0, 500),
+    ai_output: match,
+  });
+
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "visa_service_data",
+    message: `Re-extracted "${visaService.name}"`,
+    data: { visa_service_id: visaServiceId },
+  });
+}
+
 // ── Main consumer ───────────────────────────────────────────────────────────
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
-  let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined;
+  let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined;
   try {
-    ({ jobId, step, courseId, dataType } = JSON.parse(msg!.content.toString()));
+    ({ jobId, step, courseId, dataType, visaServiceId } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
   }
-  logger.info("Received step", { jobId, step, courseId, dataType });
+  logger.info("Received step", { jobId, step, courseId, dataType, visaServiceId });
 
   try {
     switch (step as PipelineStep) {
-      case "institution":   await handleInstitutionStep(jobId); break;
-      case "branches":      await handleBranchesStep(jobId); break;
-      case "agents":        await handleAgentsStep(jobId); break;
-      case "discovery":     await handleDiscoveryStep(jobId); break;
-      case "courses":       await handleCoursesStep(jobId); break;
-      case "enrichment":    await handleEnrichmentStep(jobId); break;
-      case "verification":  await handleVerificationStep(jobId); break;
-      case "course_data":   await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
+      case "institution":       await handleInstitutionStep(jobId); break;
+      case "branches":          await handleBranchesStep(jobId); break;
+      case "agents":            await handleAgentsStep(jobId); break;
+      case "discovery":         await handleDiscoveryStep(jobId); break;
+      case "courses":           await handleCoursesStep(jobId); break;
+      case "enrichment":        await handleEnrichmentStep(jobId); break;
+      case "verification":      await handleVerificationStep(jobId); break;
+      case "course_data":       await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
+      case "visa_services":     await handleVisaServicesStep(jobId); break;
+      case "visa_service_data": await handleVisaServiceDataStep(jobId, visaServiceId!); break;
       default:
         logger.warn("Unknown step", { step });
     }
@@ -1086,7 +1377,7 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
     await writeJobEvent(jobId, "step_error", {
       level: "error", phase: step,
       message: `Step "${step}" failed: ${errMsg}`,
-      data: { step, courseId, dataType },
+      data: { step, courseId, dataType, visaServiceId },
     });
   }
 });

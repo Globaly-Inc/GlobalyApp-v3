@@ -25,27 +25,104 @@ export async function insertIgnoreDup(row: NewQueueRow) {
   return inserted as (NewQueueRow & { id: string; status: string; attempts: number }) | undefined;
 }
 
-/** Other still-pending rows for the same recipient (excluding the row itself) — decides immediate-vs-batched send. */
-export async function countOtherPendingForRecipient(opts: {
-  businessId: number | null;
-  recipientUserId: number | null;
-  excludeId: string;
-}): Promise<number> {
-  let q = masterKnex(T).where("status", "pending").andWhereNot("id", opts.excludeId);
-  if (opts.businessId != null) q = q.andWhere("business_id", opts.businessId);
-  else if (opts.recipientUserId != null) q = q.andWhere("recipient_user_id", opts.recipientUserId);
-  else return 0;
-  const [{ count }] = await q.count("id");
-  return Number(count);
-}
-
 export async function findByIdForUpdate(trx: Knex.Transaction, id: string) {
   return trx(T).where({ id }).forUpdate().first();
 }
 
-/** Batch sweep pick-up: oldest pending rows first, capped. */
-export async function claimPendingBatch(limit: number) {
-  return masterKnex(T).where("status", "pending").orderBy("created_at", "asc").limit(limit);
+export interface QueueRow extends NewQueueRow {
+  id: string;
+  status: string;
+  attempts: number;
+  created_at: Date;
+}
+
+/**
+ * Which (template, recipient_email) groups are due for a summary mail.
+ *
+ * The window is measured against the group's OLDEST pending row, not each row's own age:
+ * once a group is due, `claimGroup` takes everything currently pending for it, including
+ * rows queued seconds ago. That makes the window tumbling rather than sliding — a recipient
+ * gets at most one mail per template per window, and a continuous stream of enquiries never
+ * leaves a permanent un-sent tail behind the cutoff.
+ *
+ * No lock here: this is a worklist, and `claimGroup` is what actually decides ownership.
+ */
+export async function findReadyDigestGroups(
+  templates: string[],
+  windowMs: number,
+  limit: number,
+): Promise<{ recipient_email: string; template: string }[]> {
+  return masterKnex(T)
+    .where("status", "pending")
+    .whereIn("template", templates)
+    .groupBy("recipient_email", "template")
+    .havingRaw("MIN(created_at) <= now() - (? || ' milliseconds')::interval", [String(windowMs)])
+    .orderByRaw("MIN(created_at) ASC")
+    .limit(limit)
+    .select("recipient_email", "template");
+}
+
+/**
+ * Takes ownership of one group — the whole group, not just the rows it returns — for the life
+ * of the transaction. Returns [] when another sweep already owns it.
+ *
+ * The advisory lock is load-bearing, and row locks alone are NOT enough. `LIMIT n ... FOR
+ * UPDATE SKIP LOCKED` only skips rows that are already locked, so when a recipient has more
+ * than `limit` rows pending, a second overlapping sweep skips the first one's locked rows and
+ * happily claims the remainder — then sends a SECOND summary for the same window, and sends it
+ * concurrently, past the in-process rate limit that assumes serial sends. The lock is on the
+ * group key so the second sweep gets nothing and moves on, which is what the digest promises:
+ * one mail per recipient per window.
+ *
+ * `pg_try_advisory_xact_lock` (not the blocking variant) so a busy group is skipped rather
+ * than queued behind another worker's SMTP round-trip; it releases on commit or rollback, so a
+ * crashed sweep frees the group without a reaper. Same mechanism as
+ * `superadmin/data-extraction/repositories/jobs.repository.ts`.
+ */
+export async function claimGroup(
+  trx: Knex.Transaction,
+  template: string,
+  recipientEmail: string,
+  limit: number,
+): Promise<QueueRow[]> {
+  const { rows } = await trx.raw("SELECT pg_try_advisory_xact_lock(hashtext(?)::bigint) AS locked", [
+    `enquiry_digest:${template}:${recipientEmail.toLowerCase()}`,
+  ]);
+  if (!rows[0]?.locked) return [];
+
+  return trx(T)
+    .where({ status: "pending", template, recipient_email: recipientEmail })
+    .orderBy("created_at", "asc")
+    .limit(limit)
+    .forUpdate()
+    .skipLocked();
+}
+
+/** Pending rows for templates that are NOT batched — requeued retries of the immediate mails. */
+export async function findPendingSingles(excludeTemplates: string[], limit: number): Promise<QueueRow[]> {
+  return masterKnex(T)
+    .where("status", "pending")
+    .whereNotIn("template", excludeTemplates)
+    .orderBy("created_at", "asc")
+    .limit(limit);
+}
+
+/** Set-based `markSent` — one digest resolves its whole group in a single statement. */
+export async function markSentMany(trx: Knex.Transaction, ids: string[]) {
+  await trx(T)
+    .whereIn("id", ids)
+    .update({ status: "sent", sent_at: trx.fn.now(), updated_at: trx.fn.now(), attempts: trx.raw("attempts + 1") });
+}
+
+/** Set-based `markFailed` — same requeue-below-cap semantics, applied per row's own attempts. */
+export async function markFailedMany(trx: Knex.Transaction, ids: string[], maxAttempts: number) {
+  await trx(T)
+    .whereIn("id", ids)
+    .update({
+      status: trx.raw("CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending' END", [maxAttempts]),
+      attempts: trx.raw("attempts + 1"),
+      updated_at: trx.fn.now(),
+    });
 }
 
 export async function markSending(trx: Knex.Transaction, id: string) {

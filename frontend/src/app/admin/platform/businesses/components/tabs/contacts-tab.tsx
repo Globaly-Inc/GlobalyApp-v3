@@ -13,7 +13,10 @@ import { AddMemberDrawer } from "../members/add-member-drawer";
 
 const PAGE_SIZE = 10;
 
-export function ContactsTab({ businessId }: Readonly<{ businessId: number }>) {
+export function ContactsTab({
+  businessId,
+  readOnly = false,
+}: Readonly<{ businessId: number; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: contacts, status, total } = useAppSelector((state) => state.platformBusinesses.contacts);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -67,16 +70,18 @@ export function ContactsTab({ businessId }: Readonly<{ businessId: number }>) {
               </div>
               <p className="text-xs text-muted-foreground">{[c.user?.email, c.user?.phone].filter(Boolean).join(" • ") || "—"}</p>
             </div>
-            <div className="flex gap-1">
-              <Button size="icon-sm" variant="ghost" onClick={() => { setEditingMember(c); setDrawerOpen(true); }} aria-label="Edit contact">
-                <Pencil className="h-4 w-4" />
-              </Button>
-              {!c.is_owner && (
-                <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(c.id)} aria-label="Remove contact">
-                  <Trash2 className="h-4 w-4" />
+            {!readOnly && (
+              <div className="flex gap-1">
+                <Button size="icon-sm" variant="ghost" onClick={() => { setEditingMember(c); setDrawerOpen(true); }} aria-label="Edit contact">
+                  <Pencil className="h-4 w-4" />
                 </Button>
-              )}
-            </div>
+                {!c.is_owner && (
+                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(c.id)} aria-label="Remove contact">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>

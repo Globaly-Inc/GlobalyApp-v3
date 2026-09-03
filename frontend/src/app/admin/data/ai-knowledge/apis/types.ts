@@ -5,6 +5,8 @@ export type KnowledgeCounts = {
   faqs: number;
   guides: number;
   pending_reviews: number;
+  /** Sources per rack category kind — feeds the kind-tab stat cards. */
+  sources_by_kind: Partial<Record<CategoryKind, number>>;
 };
 
 export type VisaEntry = {
@@ -67,7 +69,8 @@ export type QueueItem = {
 // ── Knowledge Rack ──
 
 export type CategoryKind =
-  | "visa" | "gov_update" | "institution_update" | "scholarship" | "test_provider" | "other";
+  | "visa" | "faq" | "country_guide" | "gov_update"
+  | "institution_update" | "scholarship" | "test_provider" | "other";
 
 export type RackCategory = {
   id: string;
@@ -94,6 +97,8 @@ export type CrawlSummary = {
   updated: number;
   unchanged: number;
   failed: number;
+  /** Absent on runs recorded before chunking shipped. */
+  chunks?: number;
   embedded: number;
   max_pages: number;
   finished_at: string;
@@ -102,12 +107,18 @@ export type CrawlSummary = {
 export type RackSource = {
   id: string;
   category_id: string;
-  url: string;
+  source_type: "url" | "file";
+  url: string | null;
+  file_name: string | null;
   domain: string;
   title: string | null;
   trust_tier: TrustTier;
   crawl_frequency: CrawlFrequency;
   last_crawled_at: string | null;
+  /** When an admin last confirmed the content is still true (not the same as crawling). */
+  last_verified_at: string | null;
+  /** Known expiry for a temporary figure — past this, the counsellor flags it. */
+  effective_until: string | null;
   last_status: string | null;
   last_error: string | null;
   doc_count: number;
@@ -128,6 +139,7 @@ export type RackDocument = {
   title: string | null;
   content_hash: string;
   word_count: number;
+  chunk_count: number;
   crawled_at: string;
   active: boolean;
   is_embedded: boolean;
@@ -141,7 +153,9 @@ export type RackCounts = {
   categories: number;
   sources: number;
   documents: number;
+  /** Documents reachable by retrieval — chunked, or still on the legacy whole-page vector. */
   embedded_documents: number;
+  embedded_chunks: number;
 };
 
 // ── Create / patch payloads ──
@@ -168,4 +182,21 @@ export type SourceParams = {
   crawl_frequency?: CrawlFrequency;
   max_pages?: number | null;
   active?: boolean;
+  effective_until?: string | null;
+};
+
+export type UploadSourceOptions = {
+  title?: string;
+  trust_tier?: TrustTier;
+};
+
+export type UploadSourceResult = {
+  source: RackSource;
+  document_id: string;
+  /** True when this filename already existed in the category and was updated in place. */
+  replaced: boolean;
+  /** True when the re-uploaded content was byte-identical, so nothing was re-embedded. */
+  unchanged: boolean;
+  chunks: number;
+  embedded: number;
 };

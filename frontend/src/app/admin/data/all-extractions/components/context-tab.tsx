@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/combobox";
 import {
   Globe, FileText, Link2, Plus, Trash2, Loader2,
-  FolderOpen, Download, Inbox,
+  FolderOpen, Download, Inbox, RotateCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { uuid } from "@/lib/utils";
@@ -48,6 +48,20 @@ const DATA_TYPE_OPTIONS = [
 ];
 
 const CARD_HEADER = "-mt-4 rounded-t-xl border-b bg-primary/5 px-4 py-4";
+
+// Which pipeline step a guided-URL context feeds — the same steps the data tabs dispatch
+// (courses-tab → discovery, fees-tab → enrichment, intakes/eligibility/units → courses, …).
+const CONTEXT_STEP: Record<string, { step: string; label: string }> = {
+  course_list_urls: { step: "discovery", label: "Course Discovery" },
+  contact_urls: { step: "institution", label: "Institution" },
+  branches_urls: { step: "branches", label: "Branches" },
+  agents_urls: { step: "agents", label: "Agents" },
+  fees_urls: { step: "enrichment", label: "Fees" },
+  intakes_urls: { step: "courses", label: "Intakes" },
+  eligibility_urls: { step: "courses", label: "Eligibility" },
+  units_urls: { step: "courses", label: "Study Units" },
+  accreditations_urls: { step: "courses", label: "Accreditations" },
+};
 
 export function ContextTab({ job, onReload }: ContextTabProps) {
   const jobId = job.id;
@@ -112,6 +126,23 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
     await saveGuidedUrls({ ...urls, resources: resources.filter((r) => r.id !== resId) });
   }
 
+  const [runningContext, setRunningContext] = useState<string | null>(null);
+
+  async function handleRerunContext(key: string) {
+    const mapped = CONTEXT_STEP[key];
+    if (!mapped) return;
+    setRunningContext(key);
+    try {
+      await allExtractionsApi.runStep(jobId, mapped.step);
+      toast.success(`${mapped.label} extraction started`, { description: "Running in the background — you can switch tabs." });
+      onReload();
+    } catch (e: unknown) {
+      toast.error("Run failed", { description: (e as Error).message });
+    } finally {
+      setRunningContext(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <SourceInformationCard job={job} />
@@ -139,7 +170,22 @@ export function ContextTab({ job, onReload }: ContextTabProps) {
             if (items.length === 0) return null;
             return (
               <div key={key}>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{label}</p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</p>
+                  {CONTEXT_STEP[key] && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs cursor-pointer"
+                      disabled={runningContext !== null}
+                      title={`Re-run the ${CONTEXT_STEP[key].label} extraction step using these URLs`}
+                      onClick={() => handleRerunContext(key)}
+                    >
+                      {runningContext === key ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}
+                      Re-run
+                    </Button>
+                  )}
+                </div>
                 <div className="space-y-1">
                   {items.map((url, idx) => (
                     <div key={idx} className="flex items-center gap-2 group rounded-md px-2 py-1.5 -mx-2 hover:bg-muted/50 transition-colors">

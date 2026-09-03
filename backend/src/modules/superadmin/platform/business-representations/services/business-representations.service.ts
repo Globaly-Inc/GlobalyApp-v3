@@ -1,6 +1,3 @@
-// Business-representations service — subsidiary/franchise/partner relations between a
-// business's own entities (surfaced in the Branches tab).
-
 import { ConflictError, NotFoundError } from "../../../../../shared/errors.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as repo from "../repositories/business-representations.repository.js";
@@ -12,33 +9,47 @@ async function requireBusiness(id: number) {
   return biz;
 }
 
-export async function listRelations(businessId: number, limit: number, offset: number) {
+async function requireInstitution(id: number) {
+  const inst = await platformRepo.findInstitutionById(id);
+  if (!inst) throw new NotFoundError("Institution not found");
+  return inst;
+}
+
+export async function listRelations(businessId: number, limit: number, offset: number, search?: string) {
   await requireBusiness(businessId);
-  return repo.listRelations(businessId, limit, offset);
+  return repo.listRelations(businessId, limit, offset, search);
 }
 
 export async function createRelation(businessId: number, data: RelationInput) {
   const biz = await requireBusiness(businessId);
-  const partner = await requireBusiness(data.partner_business_id);
+  // Validated against the table the kind names, not always `businesses` — otherwise an
+  // institution id would be rejected as a missing business, or worse, accepted because some
+  // unrelated business happens to hold that number.
+  const partnerIsInstitution = data.partner_kind === "institution";
+  if (partnerIsInstitution) await requireInstitution(data.partner_business_id);
+  else await requireBusiness(data.partner_business_id);
 
-  let relation;
-  try {
-    relation = await repo.createRelation(businessId, data, partner.business_name, partner.logo_url);
-  } catch (e) {
-    if ((e as { code?: string }).code === "23505") throw new ConflictError("This business is already linked as a partner");
-    throw e;
+  // Nothing back means the link is already there and live. A removed one is revived by the
+  // upsert instead, so "unlink, then link again" works — it used to 409 forever, because the
+  // soft-deleted row kept holding the unique key.
+  const relation = await repo.createRelation(businessId, data);
+  if (!relation) {
+    throw new ConflictError(`This ${partnerIsInstitution ? "institution" : "business"} is already linked as a partner`);
   }
 
   if (data.apply_to_branches) {
     const branchBusinessIds = await repo.listLinkedBranchBusinessIds(businessId, biz.schema_name);
     for (const branchBusinessId of branchBusinessIds) {
-      if (branchBusinessId === data.partner_business_id) continue;
-      await repo.createRelation(branchBusinessId, data, partner.business_name, partner.logo_url, true);
+      // Only meaningful when the partner is itself a business — a branch business id and an
+      // institution id can be equal while referring to entirely different orgs, so comparing
+      // them across kinds would skip a branch that should have been linked.
+      if (!partnerIsInstitution && branchBusinessId === data.partner_business_id) continue;
+      // A branch that already has the link returns nothing; that is the intended no-op.
+      await repo.createRelation(branchBusinessId, data);
     }
   }
 
-
-  return { ...relation, business_type: partner.business_type };
+  return relation;
 }
 
 export async function updateRelation(businessId: number, relationId: string, data: RelationPatch) {
@@ -51,4 +62,35 @@ export async function updateRelation(businessId: number, relationId: string, dat
 export async function deleteRelation(businessId: number, relationId: string) {
   await requireBusiness(businessId);
   return repo.deleteRelation(businessId, relationId);
+}
+
+export const isActivePartner = repo.isActivePartner;
+
+// ─── Institution twins ──────────────────────────────────────────────────────
+// An institution's own Partners tab: same table, mirror-image direction (see repository).
+
+export async function listInstitutionRelations(institutionId: number, limit: number, offset: number, search?: string) {
+  await requireInstitution(institutionId);
+  return repo.listByPartnerInstitutionId(institutionId, limit, offset, search);
+}
+
+export async function createInstitutionRelation(institutionId: number, businessId: number, data: RelationPatch) {
+  await requireInstitution(institutionId);
+  await requireBusiness(businessId);
+
+  const relation = await repo.createRelationForInstitution(businessId, institutionId, data);
+  if (!relation) throw new ConflictError("This consultancy is already linked as a partner");
+  return relation;
+}
+
+export async function updateInstitutionRelation(institutionId: number, relationId: string, data: RelationPatch) {
+  await requireInstitution(institutionId);
+  const relation = await repo.updateRelationForInstitution(institutionId, relationId, data);
+  if (!relation) throw new NotFoundError("Relation not found");
+  return relation;
+}
+
+export async function deleteInstitutionRelation(institutionId: number, relationId: string) {
+  await requireInstitution(institutionId);
+  return repo.deleteRelationForInstitution(institutionId, relationId);
 }

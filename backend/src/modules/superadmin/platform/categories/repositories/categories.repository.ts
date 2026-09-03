@@ -51,17 +51,26 @@ export async function deleteSchemaField(id: number) {
 
 // ─── Business Categories ───────────────────────────────────────────────────
 
-export async function listBusinessCategories(limit: number, offset: number, search?: string) {
-  const q = masterKnex("business_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
-    .select("business_categories.*", schemaFieldsFor("business_categories"));
-  if (search) q.whereILike("name", `%${search}%`);
+/** active: dropdown/picker consumers only get active rows.
+ *  The admin catalog passes nothing, so inactive rows stay visible for re-activation. */
+export type CategoryFilters = { active?: boolean };
+
+function applyCategoryFilters(q: Knex.QueryBuilder, filters?: CategoryFilters) {
+  if (filters?.active) q.where({ is_active: true });
   return q;
 }
 
-export async function countBusinessCategories(search?: string) {
+export async function listBusinessCategories(limit: number, offset: number, search?: string, filters?: CategoryFilters) {
+  const q = masterKnex("business_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
+    .select("business_categories.*", schemaFieldsFor("business_categories"));
+  if (search) q.whereILike("name", `%${search}%`);
+  return applyCategoryFilters(q, filters);
+}
+
+export async function countBusinessCategories(search?: string, filters?: CategoryFilters) {
   const q = masterKnex("business_categories").whereNull("deleted_at").count("* as count");
   if (search) q.whereILike("name", `%${search}%`);
-  const [row] = await q;
+  const [row] = await applyCategoryFilters(q, filters);
   return Number(row.count);
 }
 
@@ -77,17 +86,17 @@ export async function updateBusinessCategory(id: number, data: Record<string, un
 
 // ─── Service Categories (business default-services taxonomy) ──────────────
 
-export async function listServiceCategories(limit: number, offset: number, search?: string) {
+export async function listServiceCategories(limit: number, offset: number, search?: string, filters?: CategoryFilters) {
   const q = masterKnex("service_categories").whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset)
     .select("service_categories.*", schemaFieldsFor("service_categories"));
   if (search) q.whereILike("name", `%${search}%`);
-  return q;
+  return applyCategoryFilters(q, filters);
 }
 
-export async function countServiceCategories(search?: string) {
+export async function countServiceCategories(search?: string, filters?: CategoryFilters) {
   const q = masterKnex("service_categories").whereNull("deleted_at").count("* as count");
   if (search) q.whereILike("name", `%${search}%`);
-  const [row] = await q;
+  const [row] = await applyCategoryFilters(q, filters);
   return Number(row.count);
 }
 
@@ -150,14 +159,18 @@ export async function updateOtherServiceCategory(id: number, data: Record<string
 // ─── Lookups (degree_levels, areas_of_study) ───────────────────────────────
 // Identical shape, so one implementation serves both.
 
-export type LookupTable = "degree_levels" | "areas_of_study";
+export type LookupTable = "degree_levels" | "areas_of_study" | "tests";
 
-export async function listLookup(table: LookupTable, limit: number, offset: number) {
-  return masterKnex(table).whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset);
+export async function listLookup(table: LookupTable, limit: number, offset: number, search?: string) {
+  const q = masterKnex(table).whereNull("deleted_at").orderBy("sort_order").orderBy("name").limit(limit).offset(offset);
+  if (search) q.whereILike("name", `%${search}%`);
+  return q;
 }
 
-export async function countLookup(table: LookupTable) {
-  const [row] = await masterKnex(table).whereNull("deleted_at").count("* as count");
+export async function countLookup(table: LookupTable, search?: string) {
+  const q = masterKnex(table).whereNull("deleted_at").count("* as count");
+  if (search) q.whereILike("name", `%${search}%`);
+  const [row] = await q;
   return Number(row.count);
 }
 

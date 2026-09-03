@@ -18,6 +18,10 @@ export async function updateQueueItem(id: string, data: Record<string, unknown>)
   return count > 0;
 }
 
+export async function findQueueItem(id: string) {
+  return masterKnex(T).where({ id }).select("id", "job_id", "url").first();
+}
+
 export async function deleteQueueItem(id: string) {
   const [row] = await masterKnex(T).where({ id }).delete().returning("id");
   return !!row;
@@ -44,6 +48,45 @@ export async function stopAll(jobId: string) {
     .where({ job_id: jobId, status: "processing" })
     .update({ status: "paused", updated_at: masterKnex.fn.now() });
   return true;
+}
+
+// Deep scrape: raise the job's page budget (see insertQueueItem's cap) so discovery can
+// find and queue another round of pages past the default cap. The exported guard lives
+// in this UPDATE, not in a prior SELECT — a concurrent promotion could flip the job to
+// exported between a check and the increment, mutating a job the worker will then ignore.
+// undefined = job is exported (or gone); the caller must refuse, not report success.
+export async function raisePageCap(jobId: string, by: number) {
+  const [row] = await masterKnex(T_JOBS)
+    .where({ id: jobId })
+    .whereNot("status", "exported")
+    .increment("page_cap", by)
+    .returning("page_cap");
+  return row?.page_cap as number | undefined;
+}
+
+// Rerun (resume path): pending/failed items are real, already-queued work worth retrying
+// without wiping the job — 0 means there's nothing to resume from.
+export async function countRetryableQueueItems(jobId: string) {
+  const row = await masterKnex(T)
+    .where({ job_id: jobId })
+    .whereIn("status", ["pending", "failed"])
+    .count("id as count")
+    .first();
+  return Number(row?.count ?? 0);
+}
+
+// The page/step workers refuse to touch a job whose status is paused/failed/declined —
+// clear that so a resumed rerun's re-dispatched queue items actually get processed
+// instead of silently skipped. Always stamps updated_at/heartbeat so a resumed rerun
+// shows as fresh activity on the job row regardless of its current status.
+export async function reactivateJob(jobId: string) {
+  return masterKnex(T_JOBS)
+    .where({ id: jobId })
+    .update({
+      status: masterKnex.raw("CASE WHEN status IN ('paused', 'failed', 'declined') THEN 'processing' ELSE status END"),
+      processing_heartbeat_at: masterKnex.fn.now(),
+      updated_at: masterKnex.fn.now(),
+    });
 }
 
 // C9: reset-pipeline

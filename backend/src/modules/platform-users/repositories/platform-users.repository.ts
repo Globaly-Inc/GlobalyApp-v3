@@ -5,7 +5,7 @@ import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 
 export interface AccountCategory {
-  type: "personal" | "business";
+  type: "personal" | "business" | "institution";
   role: string;
 }
 
@@ -22,6 +22,7 @@ export interface PlatformUserRow {
   is_email_verified: boolean;
   is_personal_account: boolean;
   is_business_account: boolean;
+  is_institution_account: boolean;
   account_categories: AccountCategory[];
   meta: Record<string, unknown> | null;
   created_at: Date;
@@ -31,7 +32,7 @@ export interface PlatformUserRow {
 const SAFE_COLUMNS = [
   "id", "uuid", "first_name", "last_name", "email", "phone",
   "account_status", "photo_url", "cover_url", "is_email_verified",
-  "is_personal_account", "is_business_account", "account_categories",
+  "is_personal_account", "is_business_account", "is_institution_account", "account_categories",
   "meta", "created_at", "updated_at",
 ] as const;
 
@@ -59,6 +60,7 @@ export async function insert(data: {
   email: string;
   account_status: number;
   phone?: string;
+  is_personal_account?: boolean;
   /** Arbitrary jsonb. Registration uses it to stash a validated `pending_referral` for the OTP step. */
   meta?: Record<string, unknown>;
 }, db: Knex = masterKnex) {
@@ -117,6 +119,14 @@ export async function listUserBusinesses(platformUserId: number) {
     );
 }
 
+/**
+ * Upsert a membership. Doubles as the role-change path, since the conflict target is the
+ * (user, business) pair.
+ *
+ * `deleted_at: null` is part of the merge: the unique constraint covers soft-deleted rows
+ * too, so re-adding someone who was previously removed would otherwise merge onto their
+ * tombstoned row and leave it invisible to listUserBusinesses.
+ */
 export async function insertUserBusinessIndex(data: {
   platform_user_id: number;
   business_id: number;
@@ -126,7 +136,15 @@ export async function insertUserBusinessIndex(data: {
   await masterKnex("user_business_index")
     .insert({ ...data, created_at: masterKnex.fn.now() })
     .onConflict(["platform_user_id", "business_id"])
-    .merge({ role: data.role, is_owner: data.is_owner });
+    .merge({ role: data.role, is_owner: data.is_owner, deleted_at: null });
+}
+
+/** Mirrors softDeleteAgent — a removed member must stop appearing in their business list. */
+export async function softDeleteUserBusinessIndex(platformUserId: number, businessId: number) {
+  await masterKnex("user_business_index")
+    .where({ platform_user_id: platformUserId, business_id: businessId })
+    .whereNull("deleted_at")
+    .update({ deleted_at: masterKnex.fn.now() });
 }
 
 export async function findBusinessByDbName(dbName: string) {
@@ -207,6 +225,31 @@ export async function deleteLanguageTest(id: string, userId: number) {
   return masterKnex("platform_user_language_tests").where({ id, user_id: userId }).update({ deleted_at: masterKnex.fn.now() });
 }
 
+// ── Academic Tests ──
+
+export async function listAcademicTests(userId: number) {
+  return masterKnex("platform_user_academic_tests").where({ user_id: userId }).whereNull("deleted_at").orderBy("sort_order");
+}
+
+export async function insertAcademicTest(userId: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("platform_user_academic_tests")
+    .insert({ user_id: userId, ...data })
+    .returning("*");
+  return row;
+}
+
+export async function updateAcademicTest(id: string, userId: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("platform_user_academic_tests")
+    .where({ id, user_id: userId })
+    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .returning("*");
+  return row;
+}
+
+export async function deleteAcademicTest(id: string, userId: number) {
+  return masterKnex("platform_user_academic_tests").where({ id, user_id: userId }).update({ deleted_at: masterKnex.fn.now() });
+}
+
 // ── Work Experiences ──
 
 export async function listWorkExperiences(userId: number) {
@@ -252,10 +295,142 @@ export async function deleteInstitution(id: number) {
   await masterKnex("institutions").where({ id }).delete();
 }
 
+// ── Institution claim (promoted listings) ──
+// Mirrors the businesses claim repo. Institutions only need this because promote can now
+// create one nobody owns yet.
+
+// ── Institution membership index (master DB) ──
+// The institution twin of user_business_index. `members` in the tenant schema stays
+// authoritative for role; this exists so login can find a user's institutions without
+// scanning every schema.
+
+/**
+ * Institutions this user can enter — the same gate listUserBusinesses applies:
+ * account_status 1, plus a schema to actually connect to.
+ */
+export async function listUserInstitutions(platformUserId: number) {
+  return masterKnex("user_institution_index")
+    .join("institutions", "user_institution_index.institution_id", "institutions.id")
+    .where("user_institution_index.platform_user_id", platformUserId)
+    .where("institutions.account_status", 1)
+    .whereNotNull("institutions.schema_provisioned_at")
+    .whereNull("user_institution_index.deleted_at")
+    .whereNull("institutions.deleted_at")
+    .select(
+      "institutions.id",
+      "institutions.schema_name as org_id",
+      "institutions.institution_name",
+      "institutions.subdomain",
+      "institutions.logo_url",
+      "user_institution_index.role",
+      "user_institution_index.is_owner",
+    );
+}
+
+/** See insertUserBusinessIndex for why the merge clears deleted_at. */
+export async function insertUserInstitutionIndex(data: {
+  platform_user_id: number;
+  institution_id: number;
+  role: string;
+  is_owner: boolean;
+}) {
+  await masterKnex("user_institution_index")
+    .insert({ ...data, created_at: masterKnex.fn.now() })
+    .onConflict(["platform_user_id", "institution_id"])
+    .merge({ role: data.role, is_owner: data.is_owner, deleted_at: null });
+}
+
+export async function softDeleteUserInstitutionIndex(platformUserId: number, institutionId: number) {
+  await masterKnex("user_institution_index")
+    .where({ platform_user_id: platformUserId, institution_id: institutionId })
+    .whereNull("deleted_at")
+    .update({ deleted_at: masterKnex.fn.now() });
+}
+
+/** Institution-context equivalent of findBusinessByDbName — used by switch-account. */
+export async function findInstitutionBySchemaName(schemaNameUuid: string) {
+  return masterKnex("institutions")
+    .where({ schema_name: schemaNameUuid, account_status: 1 })
+    .whereNotNull("schema_provisioned_at")
+    .whereNull("deleted_at")
+    .first();
+}
+
+export async function findInstitutionByClaimToken(token: string) {
+  return masterKnex("institutions").where({ claim_token: token }).whereNull("deleted_at").first();
+}
+
+/** The institution a platform_user owns but hasn't finished claiming (promoted, not self-service). */
+/** See findUnclaimedBusinessByContactEmail — matched on the institution's own contact email,
+ *  because a promoted listing has no owner to match on until it is claimed. */
+export async function findUnclaimedInstitutionByContactEmail(email: string) {
+  return masterKnex("institutions")
+    .whereRaw("lower(email) = lower(?)", [email])
+    .whereNot("claim_status", "claimed")
+    .whereNull("deleted_at")
+    .first();
+}
+
+export async function setInstitutionClaimPending(id: number, token: string, expiresAt: Date) {
+  await masterKnex("institutions").where({ id }).update({
+    claim_token: token,
+    claim_token_expires_at: expiresAt,
+    claim_status: "claim_pending",
+    updated_at: masterKnex.fn.now(),
+  });
+}
+
+export async function clearInstitutionClaim(id: number) {
+  await masterKnex("institutions").where({ id }).update({
+    claim_token: null,
+    claim_token_expires_at: null,
+    claim_status: "claimed",
+    updated_at: masterKnex.fn.now(),
+  });
+}
+
+export async function updateInstitution(id: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("institutions")
+    .where({ id })
+    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .returning("*");
+  return row;
+}
+
+export async function appendInstitutionMedia(
+  id: number,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("institutions")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_append(coalesce(??, ARRAY[]::text[]), ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
+export async function removeInstitutionMedia(
+  id: number,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("institutions")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_remove(??, ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
 // ── Countries / Cities ──
 
 export async function listCountries() {
-  return masterKnex("countries").select("id", "name", "iso2", "iso3", "phone_code", "region").where({ is_active: true }).whereNull("deleted_at").orderBy("name");
+  return masterKnex("countries")
+    .select("id", "name", "iso2", "iso3", "phone_code", "region", "currency", "currency_symbol")
+    .where({ is_active: true })
+    .whereNull("deleted_at")
+    .orderBy("name");
 }
 
 export async function findCountryById(id: number) {

@@ -1,6 +1,7 @@
 // Review service — agents, campuses, visas, verification results.
 
 import { NotFoundError } from "../../../../shared/errors.js";
+import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/review.repository.js";
 import type { PatchAgentInput, PatchCampusInput } from "../schemas/review.schema.js";
@@ -10,6 +11,20 @@ import type { PatchAgentInput, PatchCampusInput } from "../schemas/review.schema
 // repo returns { agents, agent_locations } — already the wire shape.
 export async function listAgents(jobId: string) {
   return repo.listAgentsByJob(jobId);
+}
+
+export async function listAgentsFiltered(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [agents, total] = await Promise.all([
+    repo.listAgentsByJobPaged(jobId, limit, offset, filters),
+    repo.countAgentsByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(agents, total, pagination);
 }
 
 export async function listMaraAgents(jobId: string) {
@@ -41,6 +56,20 @@ export async function rejectAgent(id: string, adminId: number) {
 
 export async function listCampuses(jobId: string) {
   return { campuses: await repo.listCampusesByJob(jobId) };
+}
+
+export async function listCampusesFiltered(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [campuses, total] = await Promise.all([
+    repo.listCampusesByJobPaged(jobId, limit, offset, filters),
+    repo.countCampusesByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(campuses, total, pagination);
 }
 
 export async function patchCampus(id: string, input: PatchCampusInput, adminId: number) {

@@ -1,5 +1,6 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { MODE_STATUS_FILTER, type DashboardMode } from "../const";
+import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import type { SortOrder } from "../const";
 import type {
   Accreditation,
   AgentFull,
@@ -12,7 +13,6 @@ import type {
   CourseFeeParams,
   CourseFull,
   CourseLinks,
-  CourseRow,
   CreateCampusParams,
   CreateCourseParams,
   CreateJobParams,
@@ -20,32 +20,61 @@ import type {
   EligibilityRequirement,
   EditableTable,
   ExtractionJob,
+  ExtractionStatus,
+  GetJobsParams,
+  GetJobsResult,
   Intake,
   IntakeParams,
   InstitutionOverview,
+  JobAccreditations,
   JobEvent,
   JobFull,
   JunctionSlug,
+  LibraryAccreditation,
+  LibraryAccreditationInput,
   Paginated,
   QueueItem,
   StudyOption,
   StudyOptionParams,
   StudyUnit,
   StudyUnitParams,
+  TabCounts,
   UpdateContextParams,
   UpdateCourseParams,
+  VisaService,
 } from "./types";
 
+function rawStatusesForLabel(label: string): ExtractionStatus[] {
+  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
+}
+
 export const allExtractionsRealApi = {
-  // jobs-filtered (not /jobs) for every mode — it's the only list endpoint that
-  // attaches campus_count/agent_count, which the row shows.
-  getJobs: async (mode: DashboardMode): Promise<ExtractionJob[]> => {
-    const params = new URLSearchParams({ limit: "500" });
-    const statuses = MODE_STATUS_FILTER[mode];
-    if (statuses) params.set("statuses", statuses.join(","));
-    if (mode === "ai-ongoing") params.set("exclude_source_type", "agentcis");
-    const { jobs } = await httpGet<{ jobs: ExtractionJob[] }>(`/admin/data-extraction/jobs-filtered?${params}`);
-    return jobs;
+  getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
+    const query: Record<string, string> = {
+      page: String(params.page),
+      limit: String(params.limit),
+      sort: params.sort,
+    };
+
+    const baseStatuses = MODE_STATUS_FILTER[params.mode];
+    const statuses =
+      params.statusLabel && params.statusLabel !== "all"
+        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        : baseStatuses;
+    if (statuses?.length) query.statuses = statuses.join(",");
+    if (!params.showDeclined) query.exclude_statuses = "declined";
+
+    if (params.mode === "ai-ongoing") {
+      query.exclude_source_type = "agentcis";
+    } else if (params.mode === "completed" && params.sourceFilter && params.sourceFilter !== "all") {
+      if (params.sourceFilter === "agentcis") query.source_type = "agentcis";
+      else query.exclude_source_type = "agentcis";
+    }
+
+    if (params.businessCategoryId) query.business_category_id = String(params.businessCategoryId);
+    if (params.q) query.q = params.q;
+
+    return httpGet<GetJobsResult>(`/admin/data-extraction/jobs-filtered?${new URLSearchParams(query)}`);
   },
 
   getJob: async (id: string): Promise<ExtractionJob> => {
@@ -94,24 +123,29 @@ export const allExtractionsRealApi = {
   rerunJob: (id: string): Promise<void> =>
     httpPost(`/admin/data-extraction/jobs/${id}/rerun`, {}),
 
+  deepScrapeJob: (id: string): Promise<void> =>
+    httpPost(`/admin/data-extraction/jobs/${id}/deep-scrape`, {}),
+
   // Combines the job-detail endpoint with the four tables the Overview tab's
   // "Extraction Details by Tab" cards summarize — one round trip per card group,
   // same shape V2's OverviewTab.loadSummary() fetched.
   getJobFull: async (id: string): Promise<JobFull> => {
-    const [detail, campusesRes, agentsRes, coursesRes, courseLinks] = await Promise.all([
+    const [detail, campusesRes, agentsRes, tabCounts, courseLinks, visaServices] = await Promise.all([
       httpGet<{ job: ExtractionJob; overview: InstitutionOverview | null }>(`/admin/data-extraction/jobs/${id}`),
       httpGet<{ campuses: CampusRow[] }>(`/admin/data-extraction/jobs/${id}/campuses`),
       httpGet<{ agents: AgentRow[] }>(`/admin/data-extraction/jobs/${id}/agents`),
-      httpGet<Paginated<CourseRow>>(`/admin/data-extraction/jobs/${id}/courses?limit=100`),
+      httpGet<TabCounts>(`/admin/data-extraction/jobs/${id}/tab-counts`),
       httpGet<CourseLinks>(`/admin/data-extraction/jobs/${id}/course-links`),
+      httpGet<{ visa_services: VisaService[] }>(`/admin/data-extraction/jobs/${id}/visa-services`).then((r) => r.visa_services),
     ]);
     return {
       job: detail.job,
       overview: detail.overview,
       campuses: campusesRes.campuses,
       agents: agentsRes.agents,
-      courses: coursesRes.data,
+      tabCounts,
       courseLinks,
+      visaServices,
     };
   },
 
@@ -122,13 +156,14 @@ export const allExtractionsRealApi = {
 
   getCourses: (
     jobId: string,
-    params: { page?: number; limit?: number; search?: string; status?: string } = {},
+    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } = {},
   ): Promise<Paginated<CourseFull>> => {
     const query = new URLSearchParams();
     if (params.page) query.set("page", String(params.page));
     if (params.limit) query.set("limit", String(params.limit));
     if (params.search) query.set("search", params.search);
     if (params.status) query.set("status", params.status);
+    if (params.sort) query.set("sort", params.sort);
     return httpGet<Paginated<CourseFull>>(`/admin/data-extraction/jobs/${jobId}/courses?${query}`);
   },
 
@@ -155,9 +190,30 @@ export const allExtractionsRealApi = {
     await httpPost(`/admin/data-extraction/courses/${id}/reject`, {});
   },
 
+  deleteCourse: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/courses/${id}`);
+  },
+
+  // Fire-and-forget — the backend queues the batch for a worker, so the UI removes
+  // the rows optimistically rather than waiting for the actual deletes to finish.
+  bulkDeleteCourses: (ids: string[]): Promise<{ queued: number }> =>
+    httpPost(`/admin/data-extraction/courses/bulk-delete`, { ids }),
+
   getCampuses: async (jobId: string): Promise<CampusFull[]> => {
     const { campuses } = await httpGet<{ campuses: CampusFull[] }>(`/admin/data-extraction/jobs/${jobId}/campuses`);
     return campuses;
+  },
+
+  // Paginated + searchable, unlike getCampuses' full dump (used elsewhere for campus-linking pickers).
+  getCampusesFiltered: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<CampusFull>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<CampusFull>>(`/admin/data-extraction/jobs/${jobId}/campuses-filtered?${query}`);
   },
 
   createCampus: async (params: CreateCampusParams): Promise<CampusFull> => {
@@ -176,6 +232,18 @@ export const allExtractionsRealApi = {
   getAgents: async (jobId: string): Promise<AgentFull[]> => {
     const { agents } = await httpGet<{ agents: AgentFull[] }>(`/admin/data-extraction/jobs/${jobId}/agents`);
     return agents;
+  },
+
+  // Paginated + searchable, unlike getAgents' full dump.
+  getAgentsFiltered: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<AgentFull>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<AgentFull>>(`/admin/data-extraction/jobs/${jobId}/agents-filtered?${query}`);
   },
 
   createAgent: async (params: CreateAgentParams): Promise<AgentFull> => {
@@ -227,15 +295,24 @@ export const allExtractionsRealApi = {
     await httpDelete(`/admin/data-extraction/queue/${id}`);
   },
 
+  // RunStepSchema on the backend expects course_id/data_type/visa_service_id at the top
+  // level of the body, not nested — this previously sent { step, params: {...} } and would
+  // have failed Zod validation the first time any caller actually passed extra params.
   runStep: async (jobId: string, step: string, params?: Record<string, unknown>): Promise<void> => {
-    await httpPost(`/admin/data-extraction/jobs/${jobId}/run-step`, { step, params });
+    await httpPost(`/admin/data-extraction/jobs/${jobId}/run-step`, { step, ...params });
   },
 
   // ── Course Fees ────────────────────────────────────────────────
 
-  getCourseFees: async (jobId: string): Promise<CourseFee[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/course-fees
-    return [] as CourseFee[];
+  getCourseFees: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<CourseFee>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<CourseFee>>(`/admin/data-extraction/jobs/${jobId}/course-fees?${query}`);
   },
 
   createCourseFee: async (params: { job_id: string } & CourseFeeParams): Promise<CourseFee> => {
@@ -258,9 +335,15 @@ export const allExtractionsRealApi = {
 
   // ── Intakes ────────────────────────────────────────────────────
 
-  getIntakes: async (jobId: string): Promise<Intake[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/intakes
-    return [] as Intake[];
+  getIntakes: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<Intake>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<Intake>>(`/admin/data-extraction/jobs/${jobId}/intakes?${query}`);
   },
 
   createIntake: async (params: { job_id: string } & IntakeParams): Promise<Intake> => {
@@ -279,9 +362,15 @@ export const allExtractionsRealApi = {
 
   // ── Eligibility Requirements ───────────────────────────────────
 
-  getEligibilityRequirements: async (jobId: string): Promise<EligibilityRequirement[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/eligibility-requirements
-    return [] as EligibilityRequirement[];
+  getEligibilityRequirements: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<EligibilityRequirement>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<EligibilityRequirement>>(`/admin/data-extraction/jobs/${jobId}/eligibility-requirements?${query}`);
   },
 
   createEligibilityRequirement: async (params: { job_id: string } & EligibilityParams): Promise<EligibilityRequirement> => {
@@ -305,9 +394,15 @@ export const allExtractionsRealApi = {
 
   // ── Study Units ──────────────────────────────────────────────────
 
-  getStudyUnits: async (jobId: string): Promise<StudyUnit[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/study-units
-    return [] as StudyUnit[];
+  getStudyUnits: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<StudyUnit>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<StudyUnit>>(`/admin/data-extraction/jobs/${jobId}/study-units?${query}`);
   },
 
   createStudyUnit: async (params: { job_id: string } & StudyUnitParams & { unit_name: string }): Promise<StudyUnit> => {
@@ -329,9 +424,15 @@ export const allExtractionsRealApi = {
 
   // ── Study Options ────────────────────────────────────────────────
 
-  getStudyOptions: async (jobId: string): Promise<StudyOption[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/study-options
-    return [] as StudyOption[];
+  getStudyOptions: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<StudyOption>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<StudyOption>>(`/admin/data-extraction/jobs/${jobId}/study-options?${query}`);
   },
 
   createStudyOption: async (params: { job_id: string; course_id?: string } & StudyOptionParams): Promise<StudyOption> => {
@@ -368,17 +469,61 @@ export const allExtractionsRealApi = {
 
   // ── Accreditations (staged/extraction) ───────────────────────────
 
-  getAccreditations: async (jobId: string): Promise<Accreditation[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/accreditations
-    return [] as Accreditation[];
+  getJobAccreditations: (jobId: string): Promise<JobAccreditations> =>
+    httpGet(`/admin/data-extraction/jobs/${jobId}/accreditations`),
+
+  // Bulk + single mapping: sets accreditation_id on every junction row of the given scraped ids.
+  updateAccreditationMappings: async (jobId: string, extractionAccreditationIds: string[], accreditationId: string | null): Promise<void> => {
+    await httpPatch("/admin/data-extraction/accreditation-mappings", {
+      job_id: jobId,
+      extraction_accreditation_ids: extractionAccreditationIds,
+      accreditation_id: accreditationId,
+    });
   },
 
-  createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string }): Promise<Accreditation> => {
+  getAccreditationLibrary: async (): Promise<LibraryAccreditation[]> => {
+    const { accreditations } = await httpGet<{ accreditations: LibraryAccreditation[] }>("/admin/data-extraction/accreditation-library");
+    return accreditations;
+  },
+
+  createLibraryAccreditation: (input: LibraryAccreditationInput): Promise<LibraryAccreditation> =>
+    httpPost("/admin/data-extraction/accreditation-library", input),
+
+  updateLibraryAccreditation: (id: string, input: Partial<LibraryAccreditationInput>): Promise<LibraryAccreditation> =>
+    httpPatch(`/admin/data-extraction/accreditation-library/${id}`, input),
+
+  deleteLibraryAccreditation: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/accreditation-library/${id}`);
+  },
+
+  createAccreditation: async (params: { job_id: string; name: string; issuing_organization?: string | null }): Promise<Accreditation> => {
     const res = await httpPost<{ id: string; created_at: string }>("/admin/data-extraction/staged-accreditations", params);
     return { id: res.id, name: params.name, issuing_organization: params.issuing_organization ?? null, website: null, description: null, created_at: res.created_at };
   },
 
   deleteAccreditation: async (id: string): Promise<void> => {
     await httpDelete(`/admin/data-extraction/staged-accreditations/${id}`);
+  },
+
+  // ── Visa services (source_type: "visa_service") ───────────────────
+
+  getVisaServices: async (jobId: string, status?: string): Promise<VisaService[]> => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const { visa_services } = await httpGet<{ visa_services: VisaService[] }>(
+      `/admin/data-extraction/jobs/${jobId}/visa-services${query}`,
+    );
+    return visa_services;
+  },
+
+  approveVisaService: async (id: string): Promise<void> => {
+    await httpPost(`/admin/data-extraction/visa-services/${id}/approve`, {});
+  },
+
+  discardVisaService: async (id: string): Promise<void> => {
+    await httpPost(`/admin/data-extraction/visa-services/${id}/discard`, {});
+  },
+
+  deleteVisaService: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/visa-services/${id}`);
   },
 };

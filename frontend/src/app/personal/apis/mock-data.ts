@@ -1,5 +1,11 @@
 import { uuid } from "@/lib/utils";
+import type { Lookup, Paginated, SearchListParams } from "@/app/admin/platform/categories/apis/types";
+import { SEEDED_TESTS } from "@/lib/tests-catalog";
+import type { PlatformTest } from "@/lib/tests-catalog";
+import { DEGREE_LEVELS, FIELDS_OF_STUDY } from "../static/onboarding-content";
 import type {
+  AcademicTest,
+  AcademicTestInput,
   FullProfile,
   LanguageTest,
   LanguageTestInput,
@@ -14,6 +20,15 @@ import type {
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const mockDegreeLevels: Lookup[] = DEGREE_LEVELS.map((d, i) => ({ id: i + 1, slug: d.value, name: d.label, sort_order: i, is_active: true }));
+const mockAreasOfStudy: Lookup[] = FIELDS_OF_STUDY.map((f, i) => ({ id: i + 1, slug: f, name: f, sort_order: i, is_active: true }));
+
+function filterLookup(rows: Lookup[], params: SearchListParams): Paginated<Lookup> {
+  const search = params.search?.toLowerCase();
+  const data = search ? rows.filter((r) => r.name.toLowerCase().includes(search)) : rows;
+  return { data, meta: { page: 1, limit: data.length, total: data.length, totalPages: 1 } };
 }
 
 let mockProfile: StudentProfile = {
@@ -48,8 +63,7 @@ let mockProfile: StudentProfile = {
   linkedin_url: null,
   website_url: null,
   onboarding_completed: false,
-  // Mirrors the server contract. The real figure is computed by the backend, which is also what
-  // decides referral qualification — the browser no longer computes it at all.
+  public_visibility: null,
   completion: {
     percentage: 25,
     items: [
@@ -67,6 +81,7 @@ let mockProfile: StudentProfile = {
 
 let mockQualifications: Qualification[] = [];
 let mockLanguageTests: LanguageTest[] = [];
+let mockAcademicTests: AcademicTest[] = [];
 let mockWorkExperiences: WorkExperience[] = [];
 
 export const personalMockApi = {
@@ -103,6 +118,7 @@ export const personalMockApi = {
       profile: mockProfile,
       qualifications: mockQualifications,
       languageTests: mockLanguageTests,
+      academicTests: mockAcademicTests,
       workExperiences: mockWorkExperiences,
     };
   },
@@ -141,6 +157,23 @@ export const personalMockApi = {
     mockLanguageTests = mockLanguageTests.filter((t) => t.id !== id);
   },
 
+  addAcademicTest: async (input: AcademicTestInput): Promise<AcademicTest> => {
+    await delay(200);
+    const item: AcademicTest = { ...input, id: uuid() };
+    mockAcademicTests = [...mockAcademicTests, item];
+    return item;
+  },
+  updateAcademicTest: async (id: string, patch: Partial<AcademicTestInput>): Promise<AcademicTest> => {
+    await delay(200);
+    const item = { ...mockAcademicTests.find((t) => t.id === id), ...patch, id } as AcademicTest;
+    mockAcademicTests = mockAcademicTests.map((t) => (t.id === id ? item : t));
+    return item;
+  },
+  removeAcademicTest: async (id: string): Promise<void> => {
+    await delay(200);
+    mockAcademicTests = mockAcademicTests.filter((t) => t.id !== id);
+  },
+
   addWorkExperience: async (input: WorkExperienceInput): Promise<WorkExperience> => {
     await delay(200);
     const item: WorkExperience = { ...input, id: uuid() };
@@ -156,5 +189,22 @@ export const personalMockApi = {
   removeWorkExperience: async (id: string): Promise<void> => {
     await delay(200);
     mockWorkExperiences = mockWorkExperiences.filter((w) => w.id !== id);
+  },
+
+  getDegreeLevels: async (params: SearchListParams = {}): Promise<Paginated<Lookup>> => {
+    console.log("[mock] GET /platform-users/degree-levels", params);
+    await delay(150);
+    return filterLookup(mockDegreeLevels, params);
+  },
+  getAreasOfStudy: async (params: SearchListParams = {}): Promise<Paginated<Lookup>> => {
+    console.log("[mock] GET /platform-users/areas-of-study", params);
+    await delay(150);
+    return filterLookup(mockAreasOfStudy, params);
+  },
+
+  getTests: async (): Promise<PlatformTest[]> => {
+    console.log("[mock] GET /search/tests");
+    await delay(150);
+    return SEEDED_TESTS;
   },
 };

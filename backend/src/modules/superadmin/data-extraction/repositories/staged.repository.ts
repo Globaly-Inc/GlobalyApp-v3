@@ -66,6 +66,46 @@ export const accreditations = {
   delete: (id: string) => deleteEntity("extraction_accreditations", id),
 };
 
+export async function countAccreditationsByJob(jobId: string) {
+  const [row] = await masterKnex(`${S}.extraction_course_accreditation_assignments`)
+    .where({ job_id: jobId })
+    .countDistinct("extraction_accreditation_id as count");
+  return Number(row.count);
+}
+
+/** Scraped accreditations that appear in this job's junction rows, plus the rows themselves. */
+export async function getJobAccreditations(jobId: string) {
+  const assignments = await masterKnex(`${S}.extraction_course_accreditation_assignments as a`)
+    .leftJoin(`${S}.extraction_courses as c`, "c.id", "a.course_id")
+    .where("a.job_id", jobId)
+    .select("a.extraction_accreditation_id", "a.accreditation_id", "a.course_id", "c.name as course_name");
+  const ids = [...new Set(assignments.map((r) => r.extraction_accreditation_id).filter(Boolean))];
+  const scraped = ids.length
+    ? await masterKnex(`${S}.extraction_accreditations`).whereIn("id", ids).orderBy("name")
+    : [];
+  return { scraped, assignments };
+}
+
+// ── Global accreditation library (superadmin.accreditations) ──
+
+const T_LIBRARY = `${S}.accreditations`;
+
+export const accreditationLibrary = {
+  list: () => masterKnex(T_LIBRARY).orderBy("name").limit(500),
+  insert: async (data: Record<string, unknown>) => {
+    const [row] = await masterKnex(T_LIBRARY).insert(data).returning("*");
+    return row;
+  },
+  update: async (id: string, patch: Record<string, unknown>) => {
+    const [row] = await masterKnex(T_LIBRARY)
+      .where({ id })
+      .update({ ...patch, updated_at: masterKnex.fn.now() })
+      .returning("*");
+    return row;
+  },
+  delete: (id: string) => masterKnex(T_LIBRARY).where({ id }).delete(),
+};
+
 // ── Agents ──
 
 export const agents = {

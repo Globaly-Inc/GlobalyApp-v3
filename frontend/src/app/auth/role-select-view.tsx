@@ -74,7 +74,7 @@ export function RoleSelectView() {
       toast.error("Failed to save your choice", { description: result.error.message ?? "Please try again." });
       return;
     }
-    router.push(selected === "personal" ? "/personal/profile" : "/business/profile");
+    router.push(selected === "personal" ? "/personal/profile" : "/business/onboarding");
   };
 
   return (

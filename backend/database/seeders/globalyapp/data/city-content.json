@@ -1,0 +1,1741 @@
+[
+  {
+    "country_iso2": "AU",
+    "slug": "sydney",
+    "state_name": "New South Wales",
+    "area_label": "12,368 km² (Greater Sydney)",
+    "weather_label": "Temperate oceanic, mild year-round (10-26°C)",
+    "about": "Sydney is Australia's largest city and its financial and cultural capital, built around one of the world's great natural harbours. It combines a global-city job market with beach lifestyle, drawing the largest share of the country's international students.",
+    "highlights": [
+      "Sydney Opera House",
+      "Sydney Harbour Bridge",
+      "Bondi Beach",
+      "Darling Harbour",
+      "Royal Botanic Garden"
+    ],
+    "meta_title": "Study in Sydney, Australia | Student Guide",
+    "meta_description": "Discover Sydney: Australia's largest student city, home to world-ranked universities, Bondi Beach, and Harbour Bridge views."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "melbourne",
+    "state_name": "Victoria",
+    "area_label": "9,993 km² (Greater Melbourne)",
+    "weather_label": "Temperate oceanic, famously changeable (\"four seasons in a day\")",
+    "about": "Melbourne is Victoria's capital and Australia's cultural and education hub, regularly ranked among the world's most liveable cities. It is known for its laneway cafe culture, live sport, and a dense cluster of top-ranked universities.",
+    "highlights": [
+      "Federation Square",
+      "Melbourne Cricket Ground (MCG)",
+      "Laneway street art",
+      "Royal Botanic Gardens Victoria",
+      "Great Ocean Road gateway"
+    ],
+    "meta_title": "Study in Melbourne, Australia | Student Guide",
+    "meta_description": "Discover Melbourne: Australia's cultural capital, a top student city known for its universities, laneways, and live sport."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "brisbane",
+    "state_name": "Queensland",
+    "area_label": "15,826 km² (Greater Brisbane)",
+    "weather_label": "Humid subtropical, warm and sunny most of the year",
+    "about": "Brisbane is Queensland's capital, set along the winding Brisbane River with a subtropical climate and lower cost of living than Sydney or Melbourne. It is a fast-growing student hub with easy access to the Gold and Sunshine Coasts.",
+    "highlights": [
+      "South Bank Parklands",
+      "Story Bridge",
+      "Mount Coot-tha lookout",
+      "Brisbane River",
+      "Gateway to Gold & Sunshine Coasts"
+    ],
+    "meta_title": "Study in Brisbane, Australia | Student Guide",
+    "meta_description": "Discover Brisbane: Queensland's subtropical capital, an affordable student city near the Gold and Sunshine Coasts."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "perth",
+    "state_name": "Western Australia",
+    "area_label": "6,418 km² (Greater Perth)",
+    "weather_label": "Mediterranean, hot dry summers, mild winters",
+    "about": "Perth is Australia's westernmost capital, isolated from the eastern states but close to Asia, with a relaxed lifestyle along the Swan River and Indian Ocean coastline. It has a strong resources-sector economy and growing university research base.",
+    "highlights": [
+      "Kings Park",
+      "Swan River",
+      "Cottesloe Beach",
+      "Fremantle",
+      "Rottnest Island gateway"
+    ],
+    "meta_title": "Study in Perth, Australia | Student Guide",
+    "meta_description": "Discover Perth: Western Australia's coastal capital, close to Asia, with beaches, parks, and a growing student community."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "adelaide",
+    "state_name": "South Australia",
+    "area_label": "3,260 km² (Greater Adelaide)",
+    "weather_label": "Mediterranean, hot dry summers, mild wet winters",
+    "about": "Adelaide is South Australia's capital, a compact, walkable city known for festivals, wine regions on its doorstep, and one of the country's lowest costs of living for international students.",
+    "highlights": [
+      "Adelaide Oval",
+      "North Terrace cultural precinct",
+      "Adelaide Hills",
+      "Barossa Valley gateway",
+      "Rundle Mall"
+    ],
+    "meta_title": "Study in Adelaide, Australia | Student Guide",
+    "meta_description": "Discover Adelaide: an affordable, festival-loving capital close to Australia's best wine regions."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "gold-coast",
+    "state_name": "Queensland",
+    "area_label": "1,358 km² (City of Gold Coast)",
+    "weather_label": "Humid subtropical, sunny most of the year",
+    "about": "The Gold Coast is Australia's sixth-largest city, famous for its patrolled surf beaches, theme parks, and hinterland rainforest. It's a growing base for tourism, hospitality, and sport-science study programs.",
+    "highlights": [
+      "Surfers Paradise",
+      "Theme parks (Dreamworld, Movie World)",
+      "Hinterland rainforest",
+      "Patrolled surf beaches",
+      "SkyPoint Burleigh views"
+    ],
+    "meta_title": "Study on the Gold Coast, Australia | Student Guide",
+    "meta_description": "Discover the Gold Coast: beaches, theme parks, and a growing student scene on Australia's tourism coast."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "newcastle",
+    "state_name": "New South Wales",
+    "area_label": "262 km² (City of Newcastle LGA)",
+    "weather_label": "Temperate, mild coastal climate year-round",
+    "about": "Newcastle is a former industrial port city two hours north of Sydney, now known for its beaches, revitalised harbourside precinct, and a research-strong university at a fraction of Sydney's living costs.",
+    "highlights": [
+      "Nobbys Beach & lighthouse",
+      "Newcastle Ocean Baths",
+      "Honeysuckle harbourside precinct",
+      "Fort Scratchley",
+      "Hunter Valley gateway"
+    ],
+    "meta_title": "Study in Newcastle, Australia | Student Guide",
+    "meta_description": "Discover Newcastle: an affordable coastal city near Sydney with beaches and a research-strong university."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "sunshine-coast",
+    "state_name": "Queensland",
+    "area_label": "2,291 km² (Sunshine Coast Region)",
+    "weather_label": "Subtropical, warm and sunny most of the year",
+    "about": "The Sunshine Coast is a beach-and-hinterland region north of Brisbane, popular for its laid-back lifestyle, surf towns, and a newer university campus footprint aimed at health and environmental sciences.",
+    "highlights": [
+      "Noosa Main Beach",
+      "Glasshouse Mountains",
+      "Australia Zoo",
+      "Mooloolaba Esplanade",
+      "Hinterland hiking trails"
+    ],
+    "meta_title": "Study on the Sunshine Coast, Australia | Student Guide",
+    "meta_description": "Discover the Sunshine Coast: beaches, hinterland, and a growing university footprint north of Brisbane."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "canberra",
+    "state_name": "Australian Capital Territory",
+    "area_label": "814 km² (Canberra urban area)",
+    "weather_label": "Temperate inland, cold winters, warm dry summers",
+    "about": "Canberra is Australia's purpose-built capital, home to national institutions, embassies, and a high concentration of research-intensive university places relative to its population.",
+    "highlights": [
+      "Australian War Memorial",
+      "Lake Burley Griffin",
+      "Parliament House",
+      "National Gallery of Australia",
+      "Namadgi National Park"
+    ],
+    "meta_title": "Study in Canberra, Australia | Student Guide",
+    "meta_description": "Discover Canberra: Australia's national capital, with museums, research institutions, and lake-side campuses."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "central-coast",
+    "state_name": "New South Wales",
+    "area_label": "1,681 km² (Central Coast Council LGA)",
+    "weather_label": "Temperate coastal, mild year-round",
+    "about": "The Central Coast sits between Sydney and Newcastle, a commuter-belt region of beaches, lakes, and national park bushland with a lower cost of living than either neighbouring city.",
+    "highlights": [
+      "Terrigal Beach",
+      "Brisbane Water National Park",
+      "The Entrance",
+      "Australian Reptile Park",
+      "Bouddi coastal walk"
+    ],
+    "meta_title": "Study on the Central Coast, Australia | Student Guide",
+    "meta_description": "Discover the Central Coast: beaches and bushland between Sydney and Newcastle, at a lower cost of living."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "logan-city",
+    "state_name": "Queensland",
+    "area_label": "957 km² (City of Logan LGA)",
+    "weather_label": "Humid subtropical, warm summers",
+    "about": "Logan City is a fast-growing outer-Brisbane region, one of the most multicultural local government areas in Australia, offering an affordable base within commuting distance of central Brisbane.",
+    "highlights": [
+      "Daisy Hill Koala Centre",
+      "Logan River parklands",
+      "Multicultural community precincts",
+      "Bunyip Aquatic Centre",
+      "Proximity to Brisbane CBD"
+    ],
+    "meta_title": "Study in Logan City, Australia | Student Guide",
+    "meta_description": "Discover Logan City: an affordable, multicultural outer-Brisbane region for students."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "geelong",
+    "state_name": "Victoria",
+    "area_label": "1,247 km² (City of Greater Geelong LGA)",
+    "weather_label": "Temperate oceanic, cooler and drier than Melbourne",
+    "about": "Geelong is Victoria's second city, an hour from Melbourne on Corio Bay, with a revitalised waterfront and a growing university presence in sport science, health, and design.",
+    "highlights": [
+      "Geelong Waterfront & carousel",
+      "Eastern Beach",
+      "Bellarine Peninsula wineries",
+      "Great Ocean Road gateway",
+      "Cats Football Club heritage"
+    ],
+    "meta_title": "Study in Geelong, Australia | Student Guide",
+    "meta_description": "Discover Geelong: Victoria's waterfront second city, an hour from Melbourne and the Great Ocean Road."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "wollongong",
+    "state_name": "New South Wales",
+    "area_label": "684 km² (Wollongong LGA)",
+    "weather_label": "Temperate coastal, mild year-round",
+    "about": "Wollongong sits between the Illawarra Escarpment and the Pacific Ocean, an hour south of Sydney, with a strong-ranking university and surf beaches within walking distance of campus.",
+    "highlights": [
+      "Sea Cliff Bridge",
+      "North Wollongong Beach",
+      "Illawarra Escarpment lookouts",
+      "Nan Tien Buddhist Temple",
+      "Wollongong Botanic Garden"
+    ],
+    "meta_title": "Study in Wollongong, Australia | Student Guide",
+    "meta_description": "Discover Wollongong: beaches and escarpment views an hour south of Sydney, home to a top-ranked university."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "hobart",
+    "state_name": "Tasmania",
+    "area_label": "1,695 km² (Greater Hobart)",
+    "weather_label": "Cool temperate, Australia's driest and coolest capital",
+    "about": "Hobart is Australia's second-oldest and southernmost capital city, set on the Derwent River beneath Mount Wellington, known for its arts scene, heritage waterfront, and low cost of living.",
+    "highlights": [
+      "MONA (Museum of Old and New Art)",
+      "Salamanca Market",
+      "Mount Wellington/kunanyi",
+      "Battery Point heritage precinct",
+      "Constitution Dock"
+    ],
+    "meta_title": "Study in Hobart, Australia | Student Guide",
+    "meta_description": "Discover Hobart: Tasmania's affordable, arts-rich capital beneath Mount Wellington."
+  },
+  {
+    "country_iso2": "AU",
+    "slug": "townsville",
+    "state_name": "Queensland",
+    "area_label": "3,734 km² (Townsville LGA)",
+    "weather_label": "Tropical savanna, hot wet summers, dry winters",
+    "about": "Townsville is North Queensland's largest city, a tropical hub for marine science and defence with direct access to the Great Barrier Reef and Magnetic Island.",
+    "highlights": [
+      "The Strand waterfront",
+      "Magnetic Island",
+      "Castle Hill lookout",
+      "Museum of Underwater Art",
+      "Great Barrier Reef access"
+    ],
+    "meta_title": "Study in Townsville, Australia | Student Guide",
+    "meta_description": "Discover Townsville: North Queensland's tropical hub for marine science, near the Great Barrier Reef."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "new-york-city",
+    "state_name": "New York",
+    "area_label": "783.8 km² (five boroughs)",
+    "weather_label": "Humid continental, four distinct seasons",
+    "about": "New York City is the country's largest city and a global hub for finance, media, and the arts, spanning five boroughs around one of the world's busiest harbours. It draws more international students than any other US city, with campuses woven directly into the urban fabric.",
+    "highlights": [
+      "Times Square",
+      "Central Park",
+      "Statue of Liberty",
+      "Empire State Building",
+      "Broadway theatre district"
+    ],
+    "meta_title": "Study in New York City, United States | Student Guide",
+    "meta_description": "Discover New York City: the country's largest student city, with world-ranked universities across five boroughs."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "los-angeles",
+    "state_name": "California",
+    "area_label": "1,302 km²",
+    "weather_label": "Mediterranean, mild and dry most of the year",
+    "about": "Los Angeles is the entertainment capital of the world and Southern California's largest city, with a sprawling, car-centric layout stretching from the mountains to the Pacific. Its film, tech, and design industries give students strong internship and networking access.",
+    "highlights": [
+      "Hollywood Sign",
+      "Santa Monica Pier",
+      "Griffith Observatory",
+      "Venice Beach",
+      "Getty Center"
+    ],
+    "meta_title": "Study in Los Angeles, United States | Student Guide",
+    "meta_description": "Discover Los Angeles: sunshine, beaches, and film/tech industry access for international students."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "brooklyn",
+    "state_name": "New York",
+    "area_label": "183 km² (NYC borough)",
+    "weather_label": "Humid continental, four distinct seasons",
+    "about": "Brooklyn is New York City's most populous borough, known for its independent arts scene, waterfront parks, and a mix of historic brownstone neighbourhoods and fast-growing tech and creative industries just across the river from Manhattan.",
+    "highlights": [
+      "Brooklyn Bridge",
+      "Prospect Park",
+      "Coney Island",
+      "Brooklyn Museum",
+      "DUMBO waterfront"
+    ],
+    "meta_title": "Study in Brooklyn, United States | Student Guide",
+    "meta_description": "Discover Brooklyn: NYC's most populous borough, known for its arts scene and waterfront campuses."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "chicago",
+    "state_name": "Illinois",
+    "area_label": "606 km²",
+    "weather_label": "Humid continental, windy with cold winters and warm summers",
+    "about": "Chicago is the Midwest's largest city, set on Lake Michigan and famous for its bold architecture, museums, and a lower cost of living than the coasts. It's a major hub for finance, manufacturing, and a growing tech sector.",
+    "highlights": [
+      "Millennium Park & Cloud Gate",
+      "Willis Tower Skydeck",
+      "Navy Pier",
+      "Art Institute of Chicago",
+      "Chicago Riverwalk"
+    ],
+    "meta_title": "Study in Chicago, United States | Student Guide",
+    "meta_description": "Discover Chicago: lakefront architecture, museums, and a lower cost of living than the coasts."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "queens",
+    "state_name": "New York",
+    "area_label": "283 km² (NYC borough)",
+    "weather_label": "Humid continental, four distinct seasons",
+    "about": "Queens is New York City's largest borough by area and one of the most ethnically diverse places in the world, home to major parks, two of the city's airports, and a growing number of university satellite campuses.",
+    "highlights": [
+      "Flushing Meadows-Corona Park",
+      "Citi Field",
+      "MoMA PS1",
+      "Rockaway Beach",
+      "Queens Botanical Garden"
+    ],
+    "meta_title": "Study in Queens, United States | Student Guide",
+    "meta_description": "Discover Queens: NYC's largest and most diverse borough, home to major parks and satellite campuses."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "houston",
+    "state_name": "Texas",
+    "area_label": "1,659 km²",
+    "weather_label": "Humid subtropical, hot and humid summers, mild winters",
+    "about": "Houston is the country's fourth-largest city and an energy, medical, and aerospace hub, anchored by the Texas Medical Center, the world's largest medical complex, and NASA's Johnson Space Center.",
+    "highlights": [
+      "Space Center Houston",
+      "Museum District",
+      "Houston Zoo",
+      "Buffalo Bayou Park",
+      "Downtown Aquarium"
+    ],
+    "meta_title": "Study in Houston, United States | Student Guide",
+    "meta_description": "Discover Houston: energy, medicine, and aerospace, home to the world's largest medical complex."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "phoenix",
+    "state_name": "Arizona",
+    "area_label": "1,340 km²",
+    "weather_label": "Desert, extremely hot summers, mild winters",
+    "about": "Phoenix is the largest city in the Southwest, a fast-growing desert metropolis known for year-round sunshine, a lower cost of living, and expanding tech and semiconductor industries.",
+    "highlights": [
+      "Camelback Mountain",
+      "Desert Botanical Garden",
+      "Papago Park",
+      "South Mountain Park",
+      "Old Town Scottsdale"
+    ],
+    "meta_title": "Study in Phoenix, United States | Student Guide",
+    "meta_description": "Discover Phoenix: year-round sunshine, an affordable cost of living, and a booming tech sector."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "philadelphia",
+    "state_name": "Pennsylvania",
+    "area_label": "347 km²",
+    "weather_label": "Humid continental, four distinct seasons",
+    "about": "Philadelphia is one of the country's oldest cities and the birthplace of American independence, with a dense concentration of universities, teaching hospitals, and a walkable historic core.",
+    "highlights": [
+      "Liberty Bell & Independence Hall",
+      "Philadelphia Museum of Art steps",
+      "Reading Terminal Market",
+      "Fairmount Park",
+      "Rittenhouse Square"
+    ],
+    "meta_title": "Study in Philadelphia, United States | Student Guide",
+    "meta_description": "Discover Philadelphia: historic, walkable, and dense with universities and teaching hospitals."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "san-antonio",
+    "state_name": "Texas",
+    "area_label": "1,194 km²",
+    "weather_label": "Humid subtropical, hot summers, mild winters",
+    "about": "San Antonio blends Texan and Mexican heritage along its famous River Walk, with a lower cost of living than most major US cities and growing bioscience and cybersecurity sectors.",
+    "highlights": [
+      "The Alamo",
+      "River Walk",
+      "San Antonio Missions",
+      "Pearl District",
+      "Tower of the Americas"
+    ],
+    "meta_title": "Study in San Antonio, United States | Student Guide",
+    "meta_description": "Discover San Antonio: River Walk culture and an affordable cost of living in South Texas."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "manhattan",
+    "state_name": "New York",
+    "area_label": "59 km² (NYC borough)",
+    "weather_label": "Humid continental, four distinct seasons",
+    "about": "Manhattan is New York City's dense commercial and cultural core, home to Wall Street, Broadway, and the largest concentration of university campuses in the city, all reachable on foot or by subway.",
+    "highlights": [
+      "Central Park",
+      "Times Square",
+      "Empire State Building",
+      "Metropolitan Museum of Art",
+      "Broadway"
+    ],
+    "meta_title": "Study in Manhattan, United States | Student Guide",
+    "meta_description": "Discover Manhattan: NYC's commercial and cultural core, packed with university campuses."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "san-diego",
+    "state_name": "California",
+    "area_label": "964 km²",
+    "weather_label": "Mediterranean, mild and dry year-round",
+    "about": "San Diego sits on the Pacific coast near the Mexican border, known for near-constant sunshine, a strong biotech and defence research base, and some of the country's top-ranked public universities.",
+    "highlights": [
+      "Balboa Park",
+      "San Diego Zoo",
+      "La Jolla Cove",
+      "USS Midway Museum",
+      "Gaslamp Quarter"
+    ],
+    "meta_title": "Study in San Diego, United States | Student Guide",
+    "meta_description": "Discover San Diego: near-constant sunshine and a strong biotech and research base."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "the-bronx",
+    "state_name": "New York",
+    "area_label": "109 km² (NYC borough)",
+    "weather_label": "Humid continental, four distinct seasons",
+    "about": "The Bronx is New York City's only mainland borough, home to Yankee Stadium and the New York Botanical Garden, with an increasingly diverse student population across its community and four-year colleges.",
+    "highlights": [
+      "Bronx Zoo",
+      "New York Botanical Garden",
+      "Yankee Stadium",
+      "Arthur Avenue \"Little Italy\"",
+      "Pelham Bay Park"
+    ],
+    "meta_title": "Study in The Bronx, United States | Student Guide",
+    "meta_description": "Discover The Bronx: NYC's mainland borough, home to Yankee Stadium and growing college campuses."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "dallas",
+    "state_name": "Texas",
+    "area_label": "887 km²",
+    "weather_label": "Humid subtropical, hot summers, mild winters",
+    "about": "Dallas is a major banking and business hub in North Texas, paired with neighbouring Fort Worth to form one of the country's largest metro areas, with a fast-growing skyline and no state income tax.",
+    "highlights": [
+      "Reunion Tower",
+      "Dallas Arts District",
+      "Klyde Warren Park",
+      "Deep Ellum",
+      "Sixth Floor Museum"
+    ],
+    "meta_title": "Study in Dallas, United States | Student Guide",
+    "meta_description": "Discover Dallas: a fast-growing banking hub in North Texas with no state income tax."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "jacksonville",
+    "state_name": "Florida",
+    "area_label": "1,935 km² (consolidated city-county)",
+    "weather_label": "Humid subtropical, hot humid summers, mild winters",
+    "about": "Jacksonville is the largest city by area in the contiguous United States, spread along the St. Johns River and Atlantic beaches, with a lower cost of living than most of Florida's coastal cities.",
+    "highlights": [
+      "Jacksonville Beach",
+      "Cummer Museum of Art & Gardens",
+      "Riverside Arts District",
+      "St. Johns Town Center",
+      "Kathryn Abbey Hanna Park"
+    ],
+    "meta_title": "Study in Jacksonville, United States | Student Guide",
+    "meta_description": "Discover Jacksonville: river and beach city living at a lower cost than most of coastal Florida."
+  },
+  {
+    "country_iso2": "US",
+    "slug": "fort-worth",
+    "state_name": "Texas",
+    "area_label": "941 km²",
+    "weather_label": "Humid subtropical, hot summers, mild winters",
+    "about": "Fort Worth pairs a preserved Old West stockyards district with a modern downtown arts scene, forming the western half of the Dallas-Fort Worth metroplex at a noticeably lower cost of living than Dallas.",
+    "highlights": [
+      "Fort Worth Stockyards",
+      "Kimbell Art Museum",
+      "Sundance Square",
+      "Fort Worth Botanic Garden",
+      "Modern Art Museum"
+    ],
+    "meta_title": "Study in Fort Worth, United States | Student Guide",
+    "meta_description": "Discover Fort Worth: Old West heritage and a modern arts scene, more affordable than Dallas."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "toronto",
+    "state_name": "Ontario",
+    "area_label": "630 km² (City of Toronto)",
+    "weather_label": "Humid continental — cold, snowy winters and warm, humid summers",
+    "about": "Canada's largest city and financial capital, Toronto is home to the University of Toronto, a huge international student population, and one of the most diverse populations of any city in the world.",
+    "highlights": [
+      "CN Tower",
+      "Toronto Islands",
+      "Distillery District",
+      "Royal Ontario Museum",
+      "Kensington Market"
+    ],
+    "meta_title": "Study in Toronto, Canada | Universities & Student Life",
+    "meta_description": "Canada's largest city and financial capital, Toronto is home to the University of Toronto, a huge international student population, and one..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "montreal",
+    "state_name": "Quebec",
+    "area_label": "365 km² (City of Montreal)",
+    "weather_label": "Humid continental — very cold winters and warm, humid summers",
+    "about": "A bilingual French-English city built around McGill and Université de Montréal, Montreal blends European charm with an affordable, lively student scene and a strong tech and AI research hub.",
+    "highlights": [
+      "Old Montreal",
+      "Mount Royal Park",
+      "Notre-Dame Basilica",
+      "Underground City",
+      "Jean-Talon Market"
+    ],
+    "meta_title": "Study in Montreal, Canada | Universities & Student Life",
+    "meta_description": "A bilingual French-English city built around McGill and Université de Montréal, Montreal blends European charm with an affordable, lively..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "calgary",
+    "state_name": "Alberta",
+    "area_label": "825 km² (City of Calgary)",
+    "weather_label": "Semi-arid continental — cold winters occasionally broken by warm chinook winds",
+    "about": "Gateway to the Canadian Rockies, Calgary pairs a booming energy and tech economy with the University of Calgary and easy weekend access to Banff and Lake Louise.",
+    "highlights": [
+      "Calgary Tower",
+      "Banff National Park (day trip)",
+      "Stampede Park",
+      "Prince's Island Park",
+      "Studio Bell"
+    ],
+    "meta_title": "Study in Calgary, Canada | Universities & Student Life",
+    "meta_description": "Gateway to the Canadian Rockies, Calgary pairs a booming energy and tech economy with the University of Calgary and easy weekend access to..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "ottawa",
+    "state_name": "Ontario",
+    "area_label": "2,790 km² (City of Ottawa)",
+    "weather_label": "Humid continental — cold snowy winters and warm humid summers",
+    "about": "Canada's capital, home to Carleton University and the University of Ottawa, Ottawa offers a quieter, government-and-tech-driven city with strong bilingual programs and a low cost of living relative to Toronto.",
+    "highlights": [
+      "Parliament Hill",
+      "Rideau Canal",
+      "ByWard Market",
+      "National Gallery of Canada",
+      "Gatineau Park"
+    ],
+    "meta_title": "Study in Ottawa, Canada | Universities & Student Life",
+    "meta_description": "Canada's capital, home to Carleton University and the University of Ottawa, Ottawa offers a quieter, government-and-tech-driven city with..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "edmonton",
+    "state_name": "Alberta",
+    "area_label": "765 km² (City of Edmonton)",
+    "weather_label": "Continental — long cold winters and warm, short summers",
+    "about": "Home to the University of Alberta, one of Canada's top research universities, Edmonton offers a lower cost of living than Calgary or Toronto along with North America's largest shopping and entertainment complex.",
+    "highlights": [
+      "West Edmonton Mall",
+      "River Valley Parks",
+      "Elk Island National Park",
+      "Fort Edmonton Park",
+      "Muttart Conservatory"
+    ],
+    "meta_title": "Study in Edmonton, Canada | Universities & Student Life",
+    "meta_description": "Home to the University of Alberta, one of Canada's top research universities, Edmonton offers a lower cost of living than Calgary or..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "winnipeg",
+    "state_name": "Manitoba",
+    "area_label": "465 km² (City of Winnipeg)",
+    "weather_label": "Continental — among Canada's coldest winters, with warm summers",
+    "about": "A historic prairie crossroads city, Winnipeg is home to the University of Manitoba and University of Winnipeg, and consistently ranks as one of Canada's most affordable places to study.",
+    "highlights": [
+      "The Forks",
+      "Canadian Museum for Human Rights",
+      "Assiniboine Park Zoo",
+      "Exchange District",
+      "Winnipeg Art Gallery"
+    ],
+    "meta_title": "Study in Winnipeg, Canada | Universities & Student Life",
+    "meta_description": "A historic prairie crossroads city, Winnipeg is home to the University of Manitoba and University of Winnipeg, and consistently ranks as..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "mississauga",
+    "state_name": "Ontario",
+    "area_label": "292 km² (City of Mississauga)",
+    "weather_label": "Humid continental, moderated by Lake Ontario",
+    "about": "Part of the Greater Toronto Area, Mississauga hosts a major University of Toronto campus (UTM) and Sheridan College, offering a suburban, family-friendly base with quick access to downtown Toronto.",
+    "highlights": [
+      "Absolute World (Marilyn Monroe Towers)",
+      "Port Credit waterfront",
+      "Celebration Square",
+      "Bradley Museum",
+      "Erindale Park"
+    ],
+    "meta_title": "Study in Mississauga, Canada | Universities & Student Life",
+    "meta_description": "Part of the Greater Toronto Area, Mississauga hosts a major University of Toronto campus (UTM) and Sheridan College, offering a suburban,..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "vancouver",
+    "state_name": "British Columbia",
+    "area_label": "115 km² (City of Vancouver)",
+    "weather_label": "Oceanic — mild, wet winters and dry, warm summers",
+    "about": "Set between mountains and the Pacific coast, Vancouver is home to the University of British Columbia and Simon Fraser University, and is consistently ranked among the world's most liveable cities.",
+    "highlights": [
+      "Stanley Park",
+      "Granville Island",
+      "Capilano Suspension Bridge",
+      "Gastown",
+      "Grouse Mountain"
+    ],
+    "meta_title": "Study in Vancouver, Canada | Universities & Student Life",
+    "meta_description": "Set between mountains and the Pacific coast, Vancouver is home to the University of British Columbia and Simon Fraser University, and is..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "brampton",
+    "state_name": "Ontario",
+    "area_label": "267 km² (City of Brampton)",
+    "weather_label": "Humid continental — cold winters and warm summers",
+    "about": "One of Canada's fastest-growing cities, Brampton is home to Algoma University's Brampton campus and Sheridan College, with a large South Asian community and lower living costs than nearby Toronto.",
+    "highlights": [
+      "Gage Park",
+      "Rose Theatre",
+      "Chinguacousy Park",
+      "Peel Art Gallery",
+      "Heart Lake Conservation Area"
+    ],
+    "meta_title": "Study in Brampton, Canada | Universities & Student Life",
+    "meta_description": "One of Canada's fastest-growing cities, Brampton is home to Algoma University's Brampton campus and Sheridan College, with a large South..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "hamilton",
+    "state_name": "Ontario",
+    "area_label": "1,117 km² (City of Hamilton)",
+    "weather_label": "Humid continental, moderated by Lake Ontario",
+    "about": "Known as Canada's 'Steel City', Hamilton is home to McMaster University, a leading research university, and offers waterfalls, escarpment trails, and lower rents than Toronto, an hour away.",
+    "highlights": [
+      "Dundurn Castle",
+      "Royal Botanical Gardens",
+      "Albion Falls",
+      "Hamilton Waterfront Trail",
+      "Bruce Trail"
+    ],
+    "meta_title": "Study in Hamilton, Canada | Universities & Student Life",
+    "meta_description": "Known as Canada's 'Steel City', Hamilton is home to McMaster University, a leading research university, and offers waterfalls, escarpment..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "surrey",
+    "state_name": "British Columbia",
+    "area_label": "317 km² (City of Surrey)",
+    "weather_label": "Oceanic — mild wet winters and dry warm summers",
+    "about": "A fast-growing city in Metro Vancouver, Surrey hosts campuses of Simon Fraser University and Kwantlen Polytechnic University, with more affordable housing than Vancouver proper.",
+    "highlights": [
+      "Bear Creek Park",
+      "Surrey Museum",
+      "Crescent Beach",
+      "Green Timbers Urban Forest",
+      "Peace Arch Park"
+    ],
+    "meta_title": "Study in Surrey, Canada | Universities & Student Life",
+    "meta_description": "A fast-growing city in Metro Vancouver, Surrey hosts campuses of Simon Fraser University and Kwantlen Polytechnic University, with more..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "quebec",
+    "state_name": "Quebec",
+    "area_label": "485 km² (City of Quebec City)",
+    "weather_label": "Humid continental — long, snowy winters and warm, humid summers",
+    "about": "Quebec City is a UNESCO World Heritage old town and home to Université Laval, offering an immersive French-language study experience in one of North America's oldest cities.",
+    "highlights": [
+      "Old Quebec (UNESCO site)",
+      "Château Frontenac",
+      "Montmorency Falls",
+      "Plains of Abraham",
+      "Petit-Champlain"
+    ],
+    "meta_title": "Study in Quebec City, Canada | Universities & Student Life",
+    "meta_description": "Quebec City is a UNESCO World Heritage old town and home to Université Laval, offering an immersive French-language study experience in one..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "halifax",
+    "state_name": "Nova Scotia",
+    "area_label": "5,490 km² (Halifax Regional Municipality)",
+    "weather_label": "Oceanic, foggy and moderated by the Atlantic",
+    "about": "A historic Atlantic port city, Halifax is home to Dalhousie University and Saint Mary's University, and is a hub for marine research, tech, and a compact, walkable downtown.",
+    "highlights": [
+      "Halifax Waterfront Boardwalk",
+      "Citadel Hill",
+      "Peggy's Cove (day trip)",
+      "Public Gardens",
+      "Pier 21"
+    ],
+    "meta_title": "Study in Halifax, Canada | Universities & Student Life",
+    "meta_description": "A historic Atlantic port city, Halifax is home to Dalhousie University and Saint Mary's University, and is a hub for marine research, tech,..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "laval",
+    "state_name": "Quebec",
+    "area_label": "247 km² (City of Laval)",
+    "weather_label": "Humid continental — cold winters and humid summers",
+    "about": "Just north of Montreal, Laval hosts a campus of Université de Montréal and offers a quieter, more affordable alternative to Montreal with quick access to the city's amenities.",
+    "highlights": [
+      "Centre de la Nature",
+      "Cosmodome",
+      "Îles de Laval",
+      "Place Bell",
+      "Bois Duvernay"
+    ],
+    "meta_title": "Study in Laval, Canada | Universities & Student Life",
+    "meta_description": "Just north of Montreal, Laval hosts a campus of Université de Montréal and offers a quieter, more affordable alternative to Montreal with..."
+  },
+  {
+    "country_iso2": "CA",
+    "slug": "london",
+    "state_name": "Ontario",
+    "area_label": "420 km² (City of London)",
+    "weather_label": "Humid continental with lake-effect snow, warm summers",
+    "about": "A mid-sized university city between Toronto and Detroit, London is home to Western University and Fanshawe College, both major draws for international students.",
+    "highlights": [
+      "Western University campus",
+      "Storybook Gardens",
+      "Museum London",
+      "Springbank Park",
+      "Covent Garden Market"
+    ],
+    "meta_title": "Study in London, Canada | Universities & Student Life",
+    "meta_description": "A mid-sized university city between Toronto and Detroit, London is home to Western University and Fanshawe College, both major draws for..."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "shanghai",
+    "state_name": "Shanghai",
+    "area_label": "6,340 km² (municipality)",
+    "weather_label": "Humid subtropical; hot summers, mild winters",
+    "about": "China's largest city and financial capital, Shanghai mixes colonial-era architecture along the Bund with the futuristic skyline of Pudong. It hosts some of the country's top universities and the largest concentration of multinational company offices.",
+    "highlights": [
+      "The Bund",
+      "Yu Garden",
+      "Shanghai Tower",
+      "Nanjing Road"
+    ],
+    "meta_title": "Study in Shanghai, China | Universities & Student Life",
+    "meta_description": "Shanghai for international students: top universities, cost of living, and city highlights in China's financial capital."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "beijing",
+    "state_name": "Beijing",
+    "area_label": "16,410 km² (municipality)",
+    "weather_label": "Continental; cold dry winters, hot summers",
+    "about": "China's capital and political center, Beijing is home to the country's most prestigious universities, including Peking and Tsinghua. Centuries of imperial history sit alongside a modern research and tech scene.",
+    "highlights": [
+      "Forbidden City",
+      "Great Wall (nearby)",
+      "Temple of Heaven",
+      "Summer Palace"
+    ],
+    "meta_title": "Study in Beijing, China | Universities & Student Life",
+    "meta_description": "Beijing for international students: leading universities, cost of living, and the capital's historic and academic landmarks."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "shenzhen",
+    "state_name": "Guangdong",
+    "area_label": "1,997 km² (city proper)",
+    "weather_label": "Subtropical; warm and humid year-round",
+    "about": "Once a fishing village, Shenzhen is now China's tech and innovation hub, bordering Hong Kong. Its universities and research parks are closely tied to the electronics and startup industries based here.",
+    "highlights": [
+      "Window of the World",
+      "OCT Loft",
+      "Shenzhen Bay",
+      "Ping An Finance Centre"
+    ],
+    "meta_title": "Study in Shenzhen, China | Universities & Student Life",
+    "meta_description": "Shenzhen for international students: tech-focused universities, cost of living, and city highlights near Hong Kong."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "guangzhou",
+    "state_name": "Guangdong",
+    "area_label": "7,434 km²",
+    "weather_label": "Subtropical; hot, humid summers, mild winters",
+    "about": "A major trading port for over a thousand years, Guangzhou anchors the Pearl River Delta manufacturing region and hosts a large, diverse international student population.",
+    "highlights": [
+      "Canton Tower",
+      "Chen Clan Academy",
+      "Shamian Island",
+      "Pearl River"
+    ],
+    "meta_title": "Study in Guangzhou, China | Universities & Student Life",
+    "meta_description": "Guangzhou for international students: university options, cost of living, and highlights of this Pearl River trading hub."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "chengdu",
+    "state_name": "Sichuan",
+    "area_label": "14,335 km²",
+    "weather_label": "Humid subtropical; mild, often overcast",
+    "about": "Sichuan's laid-back capital is known for giant pandas, spicy cuisine, and a growing tech and research sector, with several strong regional universities.",
+    "highlights": [
+      "Giant Panda Base",
+      "Jinli Ancient Street",
+      "Wide and Narrow Alleys",
+      "Sichuan cuisine"
+    ],
+    "meta_title": "Study in Chengdu, China | Universities & Student Life",
+    "meta_description": "Chengdu for international students: universities, cost of living, and the city's panda reserves and food culture."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "tianjin",
+    "state_name": "Tianjin",
+    "area_label": "11,966 km² (municipality)",
+    "weather_label": "Continental; cold winters, hot summers",
+    "about": "A port city close to Beijing, Tianjin blends European-style concession-era architecture with a modern financial district along the Hai River.",
+    "highlights": [
+      "Tianjin Eye Ferris Wheel",
+      "Italian Style Town",
+      "Haihe River",
+      "Ancient Culture Street"
+    ],
+    "meta_title": "Study in Tianjin, China | Universities & Student Life",
+    "meta_description": "Tianjin for international students: universities, cost of living, and this historic port city near Beijing."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "wuhan",
+    "state_name": "Hubei",
+    "area_label": "8,569 km²",
+    "weather_label": "Humid subtropical; one of China's hottest cities in summer",
+    "about": "Wuhan sits at the confluence of the Yangtze and Han rivers and hosts one of China's largest student populations across its many universities.",
+    "highlights": [
+      "Yellow Crane Tower",
+      "East Lake",
+      "Hubu Alley",
+      "Yangtze River Bridge"
+    ],
+    "meta_title": "Study in Wuhan, China | Universities & Student Life",
+    "meta_description": "Wuhan for international students: a major university city on the Yangtze River, its costs and highlights."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "dongguan",
+    "state_name": "Guangdong",
+    "area_label": "2,460 km²",
+    "weather_label": "Subtropical; hot, humid summers, mild winters",
+    "about": "A manufacturing powerhouse in the Pearl River Delta, Dongguan has a smaller higher-education footprint than its neighbours but is investing in new applied-technology campuses.",
+    "highlights": [
+      "Keyuan Garden",
+      "Guanyin Mountain",
+      "Songshan Lake",
+      "Manufacturing heritage"
+    ],
+    "meta_title": "Study in Dongguan, China | Student Life & Costs",
+    "meta_description": "Dongguan for international students: cost of living and highlights of this Pearl River Delta manufacturing city."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "xi-an",
+    "state_name": "Shaanxi",
+    "area_label": "10,752 km²",
+    "weather_label": "Continental; dry winters, hot summers",
+    "about": "Once the eastern end of the Silk Road and China's ancient capital, Xi'an now hosts a large student population across its many universities, alongside the famous Terracotta Army.",
+    "highlights": [
+      "Terracotta Army",
+      "Ancient City Wall",
+      "Muslim Quarter",
+      "Big Wild Goose Pagoda"
+    ],
+    "meta_title": "Study in Xi'an, China | Universities & Student Life",
+    "meta_description": "Xi'an for international students: universities, cost of living, and the historic sites of China's ancient capital."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "nanjing",
+    "state_name": "Jiangsu",
+    "area_label": "6,587 km²",
+    "weather_label": "Humid subtropical; hot summers, cool winters",
+    "about": "A former imperial capital, Nanjing is one of China's most established university cities, with a strong concentration of research institutes along the Yangtze.",
+    "highlights": [
+      "Ming Xiaoling Mausoleum",
+      "Confucius Temple",
+      "Purple Mountain",
+      "Nanjing City Wall"
+    ],
+    "meta_title": "Study in Nanjing, China | Universities & Student Life",
+    "meta_description": "Nanjing for international students: a historic capital city with strong universities, its costs and highlights."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "hangzhou",
+    "state_name": "Zhejiang",
+    "area_label": "16,850 km²",
+    "weather_label": "Humid subtropical; four distinct seasons",
+    "about": "Famous for West Lake and as the home of Alibaba, Hangzhou pairs classical Chinese scenery with a fast-growing e-commerce and tech economy.",
+    "highlights": [
+      "West Lake",
+      "Lingyin Temple",
+      "Alibaba headquarters",
+      "Grand Canal"
+    ],
+    "meta_title": "Study in Hangzhou, China | Universities & Student Life",
+    "meta_description": "Hangzhou for international students: tech-city universities, cost of living, and West Lake's scenery."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "foshan",
+    "state_name": "Guangdong",
+    "area_label": "3,798 km²",
+    "weather_label": "Subtropical; hot, humid summers, mild winters",
+    "about": "Adjacent to Guangzhou, Foshan is known for its ceramics industry and martial-arts heritage, with a smaller but growing higher-education sector.",
+    "highlights": [
+      "Ancestral Temple",
+      "Lingnan Tiandi",
+      "Wing Chun martial-arts heritage",
+      "Ceramics industry"
+    ],
+    "meta_title": "Study in Foshan, China | Student Life & Costs",
+    "meta_description": "Foshan for international students: cost of living and highlights of this Guangdong manufacturing and cultural city."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "chongqing",
+    "state_name": "Chongqing",
+    "area_label": "82,400 km² (municipality, largely mountainous)",
+    "weather_label": "Humid subtropical; hot, muggy summers, mild foggy winters",
+    "about": "One of China's four municipalities, Chongqing is a sprawling, hilly river city famous for its spicy hotpot and dramatic multi-level cityscape along the Yangtze.",
+    "highlights": [
+      "Hongya Cave",
+      "Yangtze River cruises",
+      "Hotpot cuisine",
+      "Ciqikou Ancient Town"
+    ],
+    "meta_title": "Study in Chongqing, China | Universities & Student Life",
+    "meta_description": "Chongqing for international students: universities, cost of living, and this dramatic river-city's highlights."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "wuzhong",
+    "state_name": "Ningxia Hui Autonomous Region",
+    "area_label": "21,400 km² (prefecture)",
+    "weather_label": "Semi-arid continental; cold winters, hot dry summers",
+    "about": "A smaller prefecture-level city on the edge of the Tengger Desert, Wuzhong is known for Yellow River irrigation farming and Ningxia's wine region rather than for higher education.",
+    "highlights": [
+      "Shapotou Desert Scenic Area",
+      "Yellow River scenery",
+      "Ningxia wine region",
+      "Tongxin Mosque (nearby)"
+    ],
+    "meta_title": "Study in Wuzhong, China | Student Life & Costs",
+    "meta_description": "Wuzhong for international students: cost of living and highlights of this Ningxia desert-and-river city."
+  },
+  {
+    "country_iso2": "CN",
+    "slug": "qingdao",
+    "state_name": "Shandong",
+    "area_label": "11,282 km²",
+    "weather_label": "Temperate monsoon; mild, coastal, cooler than inland cities",
+    "about": "A former German treaty port on the Yellow Sea, Qingdao is known for its beaches, colonial architecture, and the Tsingtao brewery, alongside a growing marine-sciences research scene.",
+    "highlights": [
+      "Zhanqiao Pier",
+      "Badaguan Scenic Area",
+      "Tsingtao Brewery Museum",
+      "May Fourth Square"
+    ],
+    "meta_title": "Study in Qingdao, China | Universities & Student Life",
+    "meta_description": "Qingdao for international students: coastal universities, cost of living, and this port city's German-era landmarks."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "mumbai",
+    "state_name": "Maharashtra",
+    "area_label": "603 km² (Greater Mumbai)",
+    "weather_label": "Tropical, hot and humid with heavy monsoon (Jun–Sep)",
+    "about": "Mumbai is India's financial capital and largest city, home to the Bombay Stock Exchange, Bollywood's film industry, and several top-ranked colleges.",
+    "highlights": [
+      "Gateway of India",
+      "Marine Drive",
+      "Bollywood film industry",
+      "Chhatrapati Shivaji Terminus",
+      "Elephanta Caves"
+    ],
+    "meta_title": "Study in Mumbai, India | Globaly",
+    "meta_description": "Mumbai: India's financial and entertainment capital, home to top colleges, the Bombay Stock Exchange, and Bollywood."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "delhi",
+    "state_name": "Delhi (NCT)",
+    "area_label": "1,484 km² (NCT of Delhi)",
+    "weather_label": "Extreme seasonal range: hot summers, cold and foggy winters",
+    "about": "India's capital and a major education hub, Delhi is home to leading institutions like the University of Delhi and IIT Delhi, alongside centuries of Mughal and colonial-era history.",
+    "highlights": [
+      "Red Fort",
+      "India Gate",
+      "Qutub Minar",
+      "University of Delhi",
+      "Humayun's Tomb"
+    ],
+    "meta_title": "Study in Delhi, India | Globaly",
+    "meta_description": "Delhi: India's capital, blending Mughal-era heritage with leading universities like Delhi University and IIT Delhi."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "bengaluru",
+    "state_name": "Karnataka",
+    "area_label": "709 km² (Bruhat Bengaluru Mahanagara Palike)",
+    "weather_label": "Mild year-round — India's most temperate major city",
+    "about": "Known as India's Silicon Valley, Bengaluru is the country's leading tech hub and home to the Indian Institute of Science, drawing students and professionals nationwide.",
+    "highlights": [
+      "Lalbagh Botanical Garden",
+      "IT and tech industry hub",
+      "Indian Institute of Science",
+      "Cubbon Park",
+      "Vidhana Soudha"
+    ],
+    "meta_title": "Study in Bengaluru, India | Globaly",
+    "meta_description": "Bengaluru: India's tech capital, home to the Indian Institute of Science and a booming IT industry."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "hyderabad",
+    "state_name": "Telangana",
+    "area_label": "650 km² (Greater Hyderabad Municipal Corporation)",
+    "weather_label": "Semi-arid, hot summers and mild winters",
+    "about": "A major IT and pharmaceutical hub blending centuries-old Deccan heritage with the fast-growing HITEC City tech corridor, and home to institutions like IIT Hyderabad and ISB.",
+    "highlights": [
+      "Charminar",
+      "Golconda Fort",
+      "HITEC City",
+      "Indian School of Business",
+      "Hussain Sagar Lake"
+    ],
+    "meta_title": "Study in Hyderabad, India | Globaly",
+    "meta_description": "Hyderabad: Deccan heritage meets a booming IT and pharma industry, home to IIT Hyderabad and ISB."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "ahmedabad",
+    "state_name": "Gujarat",
+    "area_label": "484 km² (Ahmedabad Municipal Corporation)",
+    "weather_label": "Hot semi-arid, very hot summers",
+    "about": "Gujarat's largest city and a UNESCO World Heritage city, Ahmedabad is a growing education and textile hub, home to IIM Ahmedabad, India's top-ranked business school.",
+    "highlights": [
+      "IIM Ahmedabad",
+      "Sabarmati Ashram",
+      "Sidi Saiyyed Mosque",
+      "Kankaria Lake",
+      "textile industry"
+    ],
+    "meta_title": "Study in Ahmedabad, India | Globaly",
+    "meta_description": "Ahmedabad: a UNESCO World Heritage city and home to IIM Ahmedabad, India's top-ranked business school."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "chennai",
+    "state_name": "Tamil Nadu",
+    "area_label": "426 km² (Chennai city)",
+    "weather_label": "Tropical, hot and humid with a northeast monsoon (Oct–Dec)",
+    "about": "A major South Indian hub for automotive manufacturing and healthcare, Chennai is home to IIT Madras — consistently ranked India's top engineering institute — and a deep classical arts tradition.",
+    "highlights": [
+      "IIT Madras",
+      "Marina Beach",
+      "Kapaleeshwarar Temple",
+      "automotive manufacturing hub",
+      "Carnatic music and Bharatanatyam"
+    ],
+    "meta_title": "Study in Chennai, India | Globaly",
+    "meta_description": "Chennai: home to IIT Madras, a major automotive and healthcare hub with deep classical arts roots."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "kolkata",
+    "state_name": "West Bengal",
+    "area_label": "206 km² (Kolkata Municipal Corporation)",
+    "weather_label": "Tropical wet-and-dry, humid summers and mild winters",
+    "about": "India's former colonial capital and a historic centre of literature, art, and politics, Kolkata is home to the University of Calcutta, one of Asia's oldest modern universities.",
+    "highlights": [
+      "Victoria Memorial",
+      "Howrah Bridge",
+      "University of Calcutta",
+      "Indian Museum",
+      "literary and arts heritage"
+    ],
+    "meta_title": "Study in Kolkata, India | Globaly",
+    "meta_description": "Kolkata: India's former colonial capital, home to the University of Calcutta and a rich literary tradition."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "surat",
+    "state_name": "Gujarat",
+    "area_label": "462 km² (Surat Municipal Corporation)",
+    "weather_label": "Hot and humid, monsoon Jun–Sep",
+    "about": "A booming textile and diamond-processing centre and one of India's fastest-growing cities, Surat is a rising base for engineering and commerce education.",
+    "highlights": [
+      "diamond cutting and polishing industry",
+      "textile trade hub",
+      "Dutch Garden",
+      "Sardar Patel Museum"
+    ],
+    "meta_title": "Study in Surat, India | Globaly",
+    "meta_description": "Surat: one of India's fastest-growing cities, powered by its textile and diamond-processing industries."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "pune",
+    "state_name": "Maharashtra",
+    "area_label": "331 km² (Pune Municipal Corporation)",
+    "weather_label": "Moderate climate — one of India's most pleasant year-round",
+    "about": "Known as the 'Oxford of the East' for its concentration of colleges, Pune is a major IT and automotive hub with a large domestic and international student population.",
+    "highlights": [
+      "Savitribai Phule Pune University",
+      "Aga Khan Palace",
+      "Shaniwar Wada",
+      "IT and automotive industry"
+    ],
+    "meta_title": "Study in Pune, India | Globaly",
+    "meta_description": "Pune: known as the 'Oxford of the East', a major college town with a thriving IT and automotive sector."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "jaipur",
+    "state_name": "Rajasthan",
+    "area_label": "467 km² (Jaipur Municipal Corporation)",
+    "weather_label": "Semi-arid, very hot summers and mild winters",
+    "about": "Rajasthan's capital, the 'Pink City' is known for Mughal-Rajput architecture and a growing base of engineering and management colleges, including the Malaviya National Institute of Technology.",
+    "highlights": [
+      "Hawa Mahal",
+      "Amber Fort",
+      "City Palace",
+      "Malaviya National Institute of Technology"
+    ],
+    "meta_title": "Study in Jaipur, India | Globaly",
+    "meta_description": "Jaipur: Rajasthan's 'Pink City', combining Mughal-Rajput heritage with growing engineering and management colleges."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "kanpur",
+    "state_name": "Uttar Pradesh",
+    "area_label": "605 km² (Kanpur Nagar Nigam)",
+    "weather_label": "Humid subtropical, hot summers and cool winters",
+    "about": "A historic industrial city on the Ganges, Kanpur is home to IIT Kanpur, one of India's oldest and most prestigious engineering institutes.",
+    "highlights": [
+      "IIT Kanpur",
+      "leather and textile industry",
+      "Ganges riverfront",
+      "JK Temple"
+    ],
+    "meta_title": "Study in Kanpur, India | Globaly",
+    "meta_description": "Kanpur: a historic Ganges-side industrial city and home to IIT Kanpur, one of India's oldest engineering institutes."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "navi-mumbai",
+    "state_name": "Maharashtra",
+    "area_label": "344 km² (Navi Mumbai Municipal Corporation)",
+    "weather_label": "Tropical, hot and humid, similar to Mumbai",
+    "about": "A planned satellite city across the harbour from Mumbai, Navi Mumbai has grown into a commercial and residential hub with expanding higher-education infrastructure.",
+    "highlights": [
+      "planned township design",
+      "Central Park, Kharghar",
+      "Vashi commercial hub",
+      "proximity to Mumbai"
+    ],
+    "meta_title": "Study in Navi Mumbai, India | Globaly",
+    "meta_description": "Navi Mumbai: a planned satellite city across the harbour from Mumbai, with growing commercial and education infrastructure."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "lucknow",
+    "state_name": "Uttar Pradesh",
+    "area_label": "350 km² (Lucknow Municipal Corporation)",
+    "weather_label": "Humid subtropical, hot summers and cool winters",
+    "about": "The capital of Uttar Pradesh, Lucknow blends Nawabi-era heritage with a growing base of medical, engineering, and law colleges.",
+    "highlights": [
+      "Bara Imambara",
+      "Rumi Darwaza",
+      "Nawabi cuisine and culture",
+      "King George's Medical University"
+    ],
+    "meta_title": "Study in Lucknow, India | Globaly",
+    "meta_description": "Lucknow: Uttar Pradesh's capital, blending Nawabi-era heritage with growing medical, engineering, and law colleges."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "nagpur",
+    "state_name": "Maharashtra",
+    "area_label": "228 km² (Nagpur Municipal Corporation)",
+    "weather_label": "Hot semi-arid, very hot summers",
+    "about": "Geographically at the centre of India, Nagpur is a logistics and orange-trade hub with a growing base of engineering, law, and medical institutions.",
+    "highlights": [
+      "Deekshabhoomi",
+      "orange trade hub",
+      "Zero Mile Stone",
+      "Visvesvaraya National Institute of Technology"
+    ],
+    "meta_title": "Study in Nagpur, India | Globaly",
+    "meta_description": "Nagpur: at the geographic centre of India, a logistics hub with growing engineering, law, and medical institutions."
+  },
+  {
+    "country_iso2": "IN",
+    "slug": "coimbatore",
+    "state_name": "Tamil Nadu",
+    "area_label": "257 km² (Coimbatore City Municipal Corporation)",
+    "weather_label": "Moderate tropical — cooler than most Tamil Nadu cities",
+    "about": "Known as the 'Manchester of South India' for its textile industry, Coimbatore is also a growing hub for engineering education, anchored by institutions like PSG College of Technology.",
+    "highlights": [
+      "textile and manufacturing hub",
+      "PSG College of Technology",
+      "Marudamalai Temple",
+      "gateway to the Nilgiris"
+    ],
+    "meta_title": "Study in Coimbatore, India | Globaly",
+    "meta_description": "Coimbatore: South India's textile hub, home to PSG College of Technology and gateway to the Nilgiri hills."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "kathmandu",
+    "state_name": "Bagmati Province",
+    "area_label": "50.7 km² (Kathmandu Metropolitan City)",
+    "weather_label": "Subtropical highland, mild year-round with a summer monsoon",
+    "about": "Nepal's capital and largest city, set in the Kathmandu Valley. Home to Tribhuvan University's main campuses and several UNESCO World Heritage sites, it is the country's political, cultural, and economic center.",
+    "highlights": [
+      "Kathmandu Durbar Square",
+      "Swayambhunath (Monkey Temple)",
+      "Boudhanath Stupa",
+      "Pashupatinath Temple",
+      "Gateway to the Himalayas"
+    ],
+    "meta_title": "Kathmandu, Nepal | Globaly",
+    "meta_description": "Kathmandu, Nepal's capital in Bagmati Province — home to Tribhuvan University and several UNESCO World Heritage sites."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "pokhara",
+    "state_name": "Gandaki Province",
+    "area_label": "464.3 km² (Pokhara Metropolitan City)",
+    "weather_label": "Subtropical highland, warm and humid with heavy monsoon rain",
+    "about": "Nepal's second-largest city and its tourism capital, set on the shores of Phewa Lake with views of the Annapurna range. A hub for trekking, paragliding, and Gandaki Province's growing private-college sector.",
+    "highlights": [
+      "Phewa Lake",
+      "Annapurna mountain views",
+      "Paragliding",
+      "World Peace Pagoda",
+      "Gateway to Annapurna treks"
+    ],
+    "meta_title": "Pokhara, Nepal | Globaly",
+    "meta_description": "Pokhara, Nepal's lakeside tourism capital in Gandaki Province — Phewa Lake, Annapurna views, and a growing college hub."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "bharatpur",
+    "state_name": "Bagmati Province",
+    "area_label": "433 km² (Bharatpur Metropolitan City)",
+    "weather_label": "Tropical Terai climate, hot with a strong monsoon",
+    "about": "A fast-growing metropolitan city in the Chitwan district, and the main gateway to Chitwan National Park, a UNESCO World Heritage site known for rhinos and Bengal tigers.",
+    "highlights": [
+      "Gateway to Chitwan National Park",
+      "Wildlife safaris",
+      "Narayani River",
+      "Commercial hub of Chitwan"
+    ],
+    "meta_title": "Bharatpur, Nepal | Globaly",
+    "meta_description": "Bharatpur, Nepal — gateway to Chitwan National Park and a fast-growing commercial hub in Bagmati Province."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "patan",
+    "state_name": "Bagmati Province",
+    "area_label": "15 km² (Lalitpur Metropolitan City core)",
+    "weather_label": "Subtropical highland, mild year-round with a summer monsoon",
+    "about": "One of the three ancient royal cities of the Kathmandu Valley, part of Lalitpur Metropolitan City. Famed for Newar craftsmanship, especially metalwork and traditional art.",
+    "highlights": [
+      "Patan Durbar Square",
+      "Newar art & metalwork",
+      "Patan Museum",
+      "Part of the Kathmandu Valley"
+    ],
+    "meta_title": "Patan (Lalitpur), Nepal | Globaly",
+    "meta_description": "Patan, an ancient royal city in the Kathmandu Valley known for Newar art, metalwork, and Patan Durbar Square."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "birganj",
+    "state_name": "Madhesh Province",
+    "area_label": "176.5 km² (Birgunj Metropolitan City)",
+    "weather_label": "Tropical Terai climate, hot summers and a heavy monsoon",
+    "about": "A major border town with India (opposite Raxaul) in Madhesh Province, and one of Nepal's busiest trade and transit hubs.",
+    "highlights": [
+      "Nepal-India border trade hub",
+      "Industrial center",
+      "Gateway to Kathmandu from India"
+    ],
+    "meta_title": "Birganj, Nepal | Globaly",
+    "meta_description": "Birganj, Nepal's major India-border trade hub in Madhesh Province."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "biratnagar",
+    "state_name": "Koshi Province",
+    "area_label": "77 km² (Biratnagar Metropolitan City)",
+    "weather_label": "Tropical Terai climate, hot and humid with a strong monsoon",
+    "about": "An industrial city in the eastern Terai and Koshi Province's commercial center, historically built on jute processing and now a broader trade hub near the Indian border.",
+    "highlights": [
+      "Industrial and jute-processing hub",
+      "Eastern Nepal's commercial center",
+      "Close to the Indian border"
+    ],
+    "meta_title": "Biratnagar, Nepal | Globaly",
+    "meta_description": "Biratnagar, an industrial and trade hub in Nepal's Koshi Province."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "dhangadhi",
+    "state_name": "Sudurpashchim Province",
+    "area_label": "262 km² (Dhangadhi Sub-Metropolitan City)",
+    "weather_label": "Tropical Terai climate, hot summers and a heavy monsoon",
+    "about": "The largest city in Nepal's far-western Sudurpashchim Province, and a growing trade and transit hub near the Indian border.",
+    "highlights": [
+      "Gateway to far-western Nepal",
+      "Trade and transit hub",
+      "Near the Indian border"
+    ],
+    "meta_title": "Dhangadhi, Nepal | Globaly",
+    "meta_description": "Dhangadhi, the largest city in Nepal's far-western Sudurpashchim Province."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "hetauda",
+    "state_name": "Bagmati Province",
+    "area_label": "261 km² (Hetauda Sub-Metropolitan City)",
+    "weather_label": "Subtropical, warm and humid at the edge of the Terai",
+    "about": "An industrial town in Bagmati Province sitting at the transition between the hills and the Terai plains, known for its green, planned layout.",
+    "highlights": [
+      "Industrial hub",
+      "Gateway between hills and Terai",
+      "Known for its green, planned layout"
+    ],
+    "meta_title": "Hetauda, Nepal | Globaly",
+    "meta_description": "Hetauda, an industrial town in Bagmati Province at the edge of the Terai."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "janakpur",
+    "state_name": "Madhesh Province",
+    "area_label": "106 km² (Janakpurdham Sub-Metropolitan City)",
+    "weather_label": "Tropical Terai climate, hot summers and a heavy monsoon",
+    "about": "Also known as Janakpurdham, a major Hindu pilgrimage city and the cultural heart of the Mithila region, traditionally regarded as the birthplace of Sita.",
+    "highlights": [
+      "Janaki Mandir",
+      "Mithila art and culture",
+      "Major Hindu pilgrimage site",
+      "Traditional birthplace of Sita"
+    ],
+    "meta_title": "Janakpur, Nepal | Globaly",
+    "meta_description": "Janakpur (Janakpurdham), Nepal's Mithila cultural center and a major Hindu pilgrimage site."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "butwal",
+    "state_name": "Lumbini Province",
+    "area_label": "101.6 km² (Butwal Sub-Metropolitan City)",
+    "weather_label": "Subtropical, hot summers with a strong monsoon",
+    "about": "A fast-growing commercial hub in Lumbini Province, along the East-West Highway and close to Lumbini, the birthplace of the Buddha.",
+    "highlights": [
+      "Gateway to Lumbini, birthplace of the Buddha",
+      "Growing commercial hub",
+      "Along the East-West Highway"
+    ],
+    "meta_title": "Butwal, Nepal | Globaly",
+    "meta_description": "Butwal, a growing commercial hub in Lumbini Province near Lumbini, the birthplace of the Buddha."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "dharan",
+    "state_name": "Koshi Province",
+    "area_label": "193.6 km² (Dharan Sub-Metropolitan City)",
+    "weather_label": "Subtropical, mild foothill climate with a summer monsoon",
+    "about": "A foothill town in Koshi Province at the base of the Mahabharat range, home to the B.P. Koirala Institute of Health Sciences, one of Nepal's leading medical schools.",
+    "highlights": [
+      "B.P. Koirala Institute of Health Sciences",
+      "Dantakali Temple",
+      "Rani Ban forest"
+    ],
+    "meta_title": "Dharan, Nepal | Globaly",
+    "meta_description": "Dharan, a foothill town in Koshi Province and home to a leading Nepali medical institute."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "nepalgunj",
+    "state_name": "Lumbini Province",
+    "area_label": "200 km² (Nepalgunj Sub-Metropolitan City)",
+    "weather_label": "Tropical Terai climate, very hot summers and a heavy monsoon",
+    "about": "A mid-western Terai commercial hub in Lumbini Province, bordering India, and the main gateway to Bardiya National Park.",
+    "highlights": [
+      "Gateway to Bardiya National Park",
+      "Border trade with India",
+      "Mid-western Terai commercial hub"
+    ],
+    "meta_title": "Nepalgunj, Nepal | Globaly",
+    "meta_description": "Nepalgunj, a mid-western Terai trade hub in Lumbini Province and gateway to Bardiya National Park."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "birendranagar",
+    "state_name": "Karnali Province",
+    "area_label": "205.5 km² (Birendranagar Municipality)",
+    "weather_label": "Subtropical mid-hill climate, mild with a summer monsoon",
+    "about": "The capital of Karnali Province, serving as the main administrative hub for Nepal's remote and mountainous Karnali region.",
+    "highlights": [
+      "Capital of Karnali Province",
+      "Administrative hub for western hills",
+      "Surkhet Valley"
+    ],
+    "meta_title": "Birendranagar, Nepal | Globaly",
+    "meta_description": "Birendranagar (Surkhet), the capital of Nepal's Karnali Province."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "madhyapur-thimi",
+    "state_name": "Bagmati Province",
+    "area_label": "11.5 km² (Madhyapur Thimi Municipality)",
+    "weather_label": "Subtropical highland, mild year-round with a summer monsoon",
+    "about": "A historic Newar town in the Kathmandu Valley between Kathmandu and Bhaktapur, known for its traditional pottery and vibrant local festivals.",
+    "highlights": [
+      "Traditional pottery (\"Ceramic City\")",
+      "Newar culture and festivals",
+      "Part of the Kathmandu Valley"
+    ],
+    "meta_title": "Madhyapur Thimi, Nepal | Globaly",
+    "meta_description": "Madhyapur Thimi, a historic Newar pottery town in the Kathmandu Valley."
+  },
+  {
+    "country_iso2": "NP",
+    "slug": "lahan",
+    "state_name": "Madhesh Province",
+    "area_label": "25 km² (Lahan Municipality)",
+    "weather_label": "Tropical Terai climate, hot summers and a heavy monsoon",
+    "about": "A regional trade town in the Siraha district of Madhesh Province, serving the surrounding Terai agricultural area.",
+    "highlights": [
+      "Regional trade town",
+      "Siraha district hub",
+      "Terai agricultural center"
+    ],
+    "meta_title": "Lahan, Nepal | Globaly",
+    "meta_description": "Lahan, a regional trade town in Nepal's Madhesh Province."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "dhaka",
+    "state_name": "Dhaka Division",
+    "area_label": "306 km² (Dhaka City Corporation)",
+    "weather_label": "Tropical monsoon, hot and humid with a wet summer",
+    "about": "Dhaka is Bangladesh's capital and largest city, and its political, economic, and cultural centre. Old Dhaka's Mughal-era architecture sits alongside a fast-growing modern metropolis of over 20 million people.",
+    "highlights": [
+      "Lalbagh Fort",
+      "Ahsan Manzil (Pink Palace)",
+      "National Parliament House",
+      "Old Dhaka & Sadarghat",
+      "Dhakeshwari Temple"
+    ],
+    "meta_title": "Dhaka, Bangladesh | City Guide",
+    "meta_description": "Explore Dhaka, Bangladesh's capital: Mughal-era forts, the National Parliament, and one of South Asia's largest urban centres."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "chattogram",
+    "state_name": "Chattogram Division",
+    "area_label": "168 km² (Chattogram City Corporation)",
+    "weather_label": "Tropical monsoon, humid with a hilly backdrop",
+    "about": "Chattogram (Chittagong) is Bangladesh's principal seaport and second-largest city, set between the Bay of Bengal and forested hills. It anchors the country's shipping, trade, and shipbuilding industries.",
+    "highlights": [
+      "Chattogram Port",
+      "Patenga Sea Beach",
+      "Foy's Lake",
+      "War Cemetery",
+      "Ethnological Museum"
+    ],
+    "meta_title": "Chattogram, Bangladesh | City Guide",
+    "meta_description": "Discover Chattogram: Bangladesh's main port city, with hillside scenery, Patenga Beach, and a major shipping industry."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "gazipur",
+    "state_name": "Dhaka Division",
+    "area_label": "329 km² (Gazipur City Corporation)",
+    "weather_label": "Tropical monsoon, hot and humid",
+    "about": "Gazipur sits just north of Dhaka and is one of Bangladesh's largest industrial hubs, dominated by garment factories, alongside forested tracts like Bhawal National Park.",
+    "highlights": [
+      "Bhawal National Park",
+      "Nuhash Polli",
+      "Vawal Rajbari",
+      "Garment industrial zone",
+      "Sal forest reserves"
+    ],
+    "meta_title": "Gazipur, Bangladesh | City Guide",
+    "meta_description": "Gazipur: a major industrial city near Dhaka, home to Bhawal National Park and Bangladesh's garment manufacturing sector."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "khulna",
+    "state_name": "Khulna Division",
+    "area_label": "45.65 km² (Khulna City Corporation)",
+    "weather_label": "Tropical monsoon, humid, coastal delta climate",
+    "about": "Khulna is Bangladesh's third-largest city and the main gateway to the Sundarbans, the world's largest mangrove forest. It is a key river port and industrial centre in the southwest.",
+    "highlights": [
+      "Sundarbans gateway",
+      "Khulna Shipyard",
+      "Rupsa River",
+      "Shat Gombuj Mosque (nearby)",
+      "Khulna Zoo"
+    ],
+    "meta_title": "Khulna, Bangladesh | City Guide",
+    "meta_description": "Khulna: Bangladesh's gateway to the Sundarbans mangrove forest, and a major river port and industrial city."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "rangpur",
+    "state_name": "Rangpur Division",
+    "area_label": "205.63 km² (Rangpur City Corporation)",
+    "weather_label": "Subtropical, hot summers and cool, foggy winters",
+    "about": "Rangpur is the principal city of northern Bangladesh, an agricultural trade hub for the region's tobacco and rice farming, with a growing university and administrative presence.",
+    "highlights": [
+      "Tajhat Rajbari",
+      "Begum Rokeya University",
+      "Carmichael College",
+      "Payra Chattar",
+      "Rangpur Zoo"
+    ],
+    "meta_title": "Rangpur, Bangladesh | City Guide",
+    "meta_description": "Rangpur: northern Bangladesh's regional hub, known for the Tajhat Rajbari palace and surrounding agricultural trade."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "rajshahi",
+    "state_name": "Rajshahi Division",
+    "area_label": "96.72 km² (Rajshahi City Corporation)",
+    "weather_label": "Subtropical, hot dry summers and mild winters",
+    "about": "Rajshahi, on the banks of the Padma River, is known as the 'Silk City' for its centuries-old silk industry and as a major education centre anchored by the University of Rajshahi.",
+    "highlights": [
+      "University of Rajshahi",
+      "Padma River Garden",
+      "Varendra Research Museum",
+      "Silk weaving industry",
+      "Mango orchards"
+    ],
+    "meta_title": "Rajshahi, Bangladesh | City Guide",
+    "meta_description": "Rajshahi: Bangladesh's 'Silk City' on the Padma River, home to the University of Rajshahi and a historic silk industry."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "comilla",
+    "state_name": "Chattogram Division",
+    "area_label": "153.63 km² (Cumilla City Corporation)",
+    "weather_label": "Tropical monsoon, humid with a wet summer",
+    "about": "Comilla (Cumilla) is a historic city in eastern Bangladesh known for the ancient Buddhist ruins at Mainamati and its long-standing role as a regional trade and education centre.",
+    "highlights": [
+      "Mainamati Buddhist ruins",
+      "Shalban Vihara",
+      "Comilla War Cemetery",
+      "Dharmasagar Lake",
+      "Comilla University"
+    ],
+    "meta_title": "Comilla, Bangladesh | City Guide",
+    "meta_description": "Comilla: home to the ancient Mainamati Buddhist ruins and a long-standing trade and education centre in eastern Bangladesh."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "pallabi",
+    "state_name": "Dhaka Division",
+    "area_label": "Dhaka North City Corporation thana",
+    "weather_label": "Tropical monsoon, hot and humid",
+    "about": "Pallabi is a densely populated thana in northern Dhaka, part of the wider Mirpur area, largely residential with a mix of older and newly developed housing.",
+    "highlights": [
+      "Mirpur DOHS",
+      "Bihari Camp area",
+      "Local markets",
+      "Proximity to Mirpur Zoo",
+      "Dense residential neighbourhoods"
+    ],
+    "meta_title": "Pallabi, Dhaka | Neighbourhood Guide",
+    "meta_description": "Pallabi: a densely populated residential thana in the Mirpur area of northern Dhaka, Bangladesh."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "mirpur-model-thana",
+    "state_name": "Dhaka Division",
+    "area_label": "Dhaka North City Corporation thana",
+    "weather_label": "Tropical monsoon, hot and humid",
+    "about": "Mirpur is one of Dhaka's largest and most densely populated residential and commercial areas, home to the National Zoo, the National Botanical Garden, and Sher-e-Bangla National Cricket Stadium nearby.",
+    "highlights": [
+      "Bangladesh National Zoo",
+      "National Botanical Garden",
+      "Mirpur Ceramics Market",
+      "Bijoy Sarani area",
+      "Mirpur Stadium (nearby)"
+    ],
+    "meta_title": "Mirpur, Dhaka | Neighbourhood Guide",
+    "meta_description": "Mirpur: one of Dhaka's largest districts, home to the National Zoo and National Botanical Garden."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "mohammadpur",
+    "state_name": "Dhaka Division",
+    "area_label": "Dhaka South City Corporation thana",
+    "weather_label": "Tropical monsoon, hot and humid",
+    "about": "Mohammadpur is an established residential thana in western Dhaka, known for its mix of older neighbourhoods, Dhaka University's Iqbal Hall area, and busy local markets.",
+    "highlights": [
+      "Dhaka Udyan",
+      "Mohammadpur Bus Stand area",
+      "Japan Garden City",
+      "Adabor markets",
+      "Ring Road"
+    ],
+    "meta_title": "Mohammadpur, Dhaka | Neighbourhood Guide",
+    "meta_description": "Mohammadpur: an established residential district in western Dhaka, Bangladesh."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "hathazari",
+    "state_name": "Chattogram Division",
+    "area_label": "354.28 km² (Hathazari Upazila)",
+    "weather_label": "Tropical monsoon, humid with hilly terrain nearby",
+    "about": "Hathazari is an upazila just north of Chattogram city, best known as the seat of Al-Jamiatul Ahlia Islamia Darul Ulum Moinul Islam, one of South Asia's largest Islamic madrasahs.",
+    "highlights": [
+      "Hathazari Madrasah",
+      "Chattogram University (nearby)",
+      "Halda River",
+      "Rural tea and betel-leaf farms",
+      "Fatikchhari foothills"
+    ],
+    "meta_title": "Hathazari, Bangladesh | City Guide",
+    "meta_description": "Hathazari: an upazila near Chattogram known for South Asia's largest Islamic madrasah and the Halda River."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "bandarban",
+    "state_name": "Chattogram Division",
+    "area_label": "4,479 km² (Bandarban District)",
+    "weather_label": "Subtropical highland, cooler and wetter than the plains",
+    "about": "Bandarban is a hill district in the Chittagong Hill Tracts, Bangladesh's most mountainous region, home to several indigenous communities and the country's highest peaks.",
+    "highlights": [
+      "Nilgiri Hills",
+      "Boga Lake",
+      "Chimbuk Hill",
+      "Golden Temple (Buddha Dhatu Jadi)",
+      "Sangu River"
+    ],
+    "meta_title": "Bandarban, Bangladesh | City Guide",
+    "meta_description": "Bandarban: a hill district in the Chittagong Hill Tracts, home to Bangladesh's highest peaks and indigenous communities."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "shibganj",
+    "state_name": "Rajshahi Division",
+    "area_label": "Shibganj Upazila, Chapainawabganj District",
+    "weather_label": "Subtropical, hot dry summers and mild winters",
+    "about": "Shibganj is an upazila in Chapainawabganj District near the India border, known for its mango orchards and proximity to the ruins of Gaur, the ancient capital of Bengal.",
+    "highlights": [
+      "Gaur archaeological ruins",
+      "Chhota Sona Mosque",
+      "Mango orchards",
+      "Mahananda River",
+      "Border trade routes"
+    ],
+    "meta_title": "Shibganj, Bangladesh | City Guide",
+    "meta_description": "Shibganj: an upazila near the ancient ruins of Gaur, known for mango orchards and historic mosques."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "natore",
+    "state_name": "Rajshahi Division",
+    "area_label": "24.63 km² (Natore town)",
+    "weather_label": "Subtropical, hot dry summers and mild winters",
+    "about": "Natore is a historic town in northern Bangladesh best known for the 18th-century Natore Rajbari palace complex and its role as a regional agricultural trade centre.",
+    "highlights": [
+      "Natore Rajbari (Rani Bhabani Palace)",
+      "Uttara Gono Bhaban",
+      "Chalan Beel wetlands",
+      "Halti Beel",
+      "Local sweets (Kanchagolla)"
+    ],
+    "meta_title": "Natore, Bangladesh | City Guide",
+    "meta_description": "Natore: home to the historic Rajbari palace complex and a regional agricultural trade centre in northern Bangladesh."
+  },
+  {
+    "country_iso2": "BD",
+    "slug": "kafrul",
+    "state_name": "Dhaka Division",
+    "area_label": "Dhaka North City Corporation thana",
+    "weather_label": "Tropical monsoon, hot and humid",
+    "about": "Kafrul is a thana in northern Dhaka adjoining the Dhaka Cantonment, a mixed residential and military-administrative area near the airport corridor.",
+    "highlights": [
+      "Dhaka Cantonment (adjacent)",
+      "Bijoy Sarani",
+      "Kurmitola area",
+      "Airport road corridor",
+      "Sher-e-Bangla Nagar (nearby)"
+    ],
+    "meta_title": "Kafrul, Dhaka | Neighbourhood Guide",
+    "meta_description": "Kafrul: a residential thana in northern Dhaka adjoining the Dhaka Cantonment area."
+  }
+]

@@ -8,7 +8,7 @@ export function CityCta({ cityName, country }: Readonly<{ cityName: string; coun
       <MapPin className="mx-auto mb-4 h-12 w-12 opacity-80" />
       <h2 className="text-2xl font-bold">Study in {cityName}?</h2>
       <p className="mx-auto mt-2 max-w-xl text-primary-foreground/80">
-        Connect with verified institutions and agents specializing in {cityName}, {country.name}.
+        Connect with verified institutions and education counselors specializing in {cityName}, {country.name}.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Button className="h-10" variant="secondary" render={<Link href="/auth/sign-up" />}>

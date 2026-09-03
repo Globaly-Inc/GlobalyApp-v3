@@ -1,0 +1,570 @@
+// Gemini function declarations for the counsellor, plus the dispatcher that runs them.
+//
+// Phase 7. Before this, rag.service fired all nine searches on every turn and pasted
+// the lot into the prompt. Now the model asks for what it needs — and, more usefully,
+// can decide NOT to search and ask the student a question instead. That decision *is*
+// the intent detection and stage management the PRD asks for; no classifier needed.
+//
+// Every implementation here is an existing knowledge.repository call. This is
+// re-plumbing, not new retrieval.
+
+import { SchemaType, type FunctionDeclaration, type Tool } from "@google/generative-ai";
+import { createChildLogger } from "../../../shared/logger.js";
+import { courseSlug } from "../../search/utils/slug.js";
+import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
+import * as knowledge from "../repositories/knowledge.repository.js";
+import * as sessionsRepo from "../repositories/sessions.repository.js";
+import type { CounsellingContext } from "../repositories/sessions.repository.js";
+
+const logger = createChildLogger("ai-tools");
+
+export interface ToolSource {
+  type: string;
+  id: string;
+  title: string;
+}
+
+/** What a tool needs to know about the turn it is running in. */
+export interface ToolContext {
+  sessionId: number;
+}
+
+export interface ToolRun {
+  /** JSON handed back to the model as the functionResponse payload. */
+  result: unknown;
+  /** Sources to surface to the client and persist on the message. */
+  sources: ToolSource[];
+  /** One line for the trace/thinking stream. */
+  trace: string;
+}
+
+/** Hydrating a course is 8 queries — keep the fan-out small. */
+const MAX_COURSES = 6;
+
+// ── Rack chunk budget ──
+
+/** At most this many chunks from one document, so a long page can't fill every slot. */
+export const MAX_CHUNKS_PER_DOCUMENT = 2;
+
+/**
+ * Keep the best MAX_CHUNKS_PER_DOCUMENT chunks per document, order preserved.
+ *
+ * Skipped entirely when the hits all come from ONE document: the cap exists to stop a
+ * long page crowding out other sources, and with a single source there is nothing to
+ * crowd out — capping there just throttles the only knowledge available. A rack holding
+ * one big reference doc was silently limited to 2 chunks per turn, so a question whose
+ * answer sat outside the top 2 got answered from whichever sections did make it.
+ *
+ * Lives here rather than in rag.service because rag.service already imports from this
+ * module (courseCardFields); the reverse direction would be a cycle.
+ */
+export function capPerDocument<T extends { document_id: string }>(chunks: T[]): T[] {
+  const distinctDocuments = new Set(chunks.map((c) => c.document_id)).size;
+  if (distinctDocuments <= 1) return chunks;
+
+  const perDocument = new Map<string, number>();
+  return chunks.filter((c) => {
+    const used = perDocument.get(c.document_id) ?? 0;
+    if (used >= MAX_CHUNKS_PER_DOCUMENT) return false;
+    perDocument.set(c.document_id, used + 1);
+    return true;
+  });
+}
+
+// ── Card fields ──
+
+/**
+ * "CHC52021- Diploma of Community Services ( CRICOS Course Code: 114977F)" →
+ * "Diploma of Community Services". Extraction keeps the page's raw title; the
+ * training-package prefix and CRICOS code are lookup keys, not a display name.
+ * Slugs keep the RAW name — they must match the search module's slug building.
+ */
+export function cleanCourseName(raw: string): string {
+  const cleaned = raw
+    .replace(/^[A-Z]{2,6}\d{4,6}\s*[-–—:]?\s*/, "")
+    .replace(/\(\s*CRICOS[^)]*\)/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || raw.trim();
+}
+
+/**
+ * Extraction misclassifies term breaks ("Holiday (17 Mar - 6 Apr 2025)") as intakes,
+ * and old years linger after re-crawls stop. Keep undated intakes ("Fall intake");
+ * drop holidays and entries whose latest named year has already passed.
+ */
+export function cleanIntakes(names: string[], now = new Date()): string[] {
+  const year = now.getFullYear();
+  return names.filter((name) => {
+    if (/holiday|term break|vacation/i.test(name)) return false;
+    const years = name.match(/\b20\d{2}\b/g);
+    return !years || Math.max(...years.map(Number)) >= year;
+  });
+}
+
+/**
+ * The exact object the model copies into a ```course-card``` block. Shared with
+ * rag.service's CARD_FIELDS line so the two retrieval paths can never drift into
+ * emitting different card shapes.
+ */
+export function courseCardFields(c: knowledge.CourseDetailResult) {
+  const fee = c.fees.find((f) => f.student_type === "international") ?? c.fees[0];
+  return {
+    id: c.id,
+    slug: courseSlug(c.name, c.id),
+    name: cleanCourseName(c.name),
+    institution: c.institution_name,
+    degree_level: c.degree_level,
+    duration: c.duration_weeks ? `${c.duration_weeks} weeks` : null,
+    fees: fee?.total_amount ?? null,
+    currency: fee?.currency ?? null,
+    country: c.institution_country ?? c.country_code,
+    city: c.campuses[0]?.campus_name ?? null,
+    intakes: cleanIntakes(c.intakes.map((i) => i.intake_name).filter((n): n is string => !!n)),
+    study_modes: c.study_options.map((o) => o.study_mode).filter(Boolean),
+    source_url: c.source_url,
+  };
+}
+
+/** A course as the model sees it: readable facts plus the verbatim card object. */
+function courseForModel(c: knowledge.CourseDetailResult) {
+  return {
+    name: cleanCourseName(c.name),
+    institution: c.institution_name,
+    degree_level: c.degree_level,
+    subject_area: c.subject_area,
+    duration_weeks: c.duration_weeks,
+    country: c.institution_country ?? c.country_code,
+    fees: c.fees.map((f) => ({ student_type: f.student_type, currency: f.currency, total: f.total_amount })),
+    intakes: cleanIntakes(c.intakes.map((i) => i.intake_name).filter((n): n is string => !!n)),
+    study_modes: c.study_options.map((o) => o.study_mode).filter(Boolean),
+    english_requirements: c.english_requirements.map((r) => ({
+      test: r.test_type_name, overall: r.overall_score,
+    })),
+    eligibility: c.eligibility.map((e) => e.description ?? e.name).filter(Boolean),
+    career_paths: c.career_paths,
+    card: courseCardFields(c),
+  };
+}
+
+async function hydrate(ids: string[]): Promise<knowledge.CourseDetailResult[]> {
+  const details = await Promise.all(
+    ids.slice(0, MAX_COURSES).map((id) =>
+      knowledge.getCourseDetails(id).catch((err) => {
+        logger.warn("Course detail fetch failed", { id, err: String(err) });
+        return undefined;
+      }),
+    ),
+  );
+  return details.filter((d): d is knowledge.CourseDetailResult => d != null);
+}
+
+// ── Declarations ──
+
+const DECLARATIONS: FunctionDeclaration[] = [
+  {
+    name: "search_courses",
+    description:
+      "Search verified courses in the Globaly database. Use once you understand what the student " +
+      "wants to study and at least one constraint (destination, budget, level) — or immediately, with " +
+      "whatever you know, when the student explicitly asks to see courses or a list of options; an " +
+      "explicit request overrides ask-first. Returns fees, intakes, entry requirements and a `card` " +
+      "object per course.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        query: {
+          type: SchemaType.STRING,
+          description:
+            "Subject keywords, e.g. 'data science'. Omit to browse everything matching the " +
+            "country/degree_level filters — use that when the student wants a general list.",
+        },
+        country: { type: SchemaType.STRING, description: "Destination country name, e.g. 'Canada'" },
+        degree_level: { type: SchemaType.STRING, description: "e.g. 'Bachelor', 'Master', 'Diploma'" },
+      },
+    },
+  },
+  {
+    name: "get_course_details",
+    description:
+      "Full detail for one course by id — units, campuses, accreditations, every fee and requirement. " +
+      "Use when the student asks about a specific course already surfaced by search_courses.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: { course_id: { type: SchemaType.STRING, description: "Course id from a previous result" } },
+      required: ["course_id"],
+    },
+  },
+  {
+    name: "search_knowledge",
+    description:
+      "Search the curated knowledge base: visa rules, country education systems, FAQs, counselling " +
+      "guidelines, and passages from crawled official sources. Use for any question about visas, " +
+      "education systems, costs of living, post-study work, or 'how does X work in country Y' — and " +
+      "to check for guidance that applies to the student's situation even when they did not ask.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        query: {
+          type: SchemaType.STRING,
+          description: "The student's question or situation — include destination, level and goals when known",
+        },
+        country_code: { type: SchemaType.STRING, description: "Two-letter ISO code to scope results, e.g. 'AU'" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "search_visas",
+    description:
+      "Search structured visa records (subclass, stream, fees, processing times, work rights). Use for " +
+      "specific visa products; use search_knowledge for how visa rules work in practice.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: { query: { type: SchemaType.STRING, description: "Visa name, subclass or keywords" } },
+      required: ["query"],
+    },
+  },
+  {
+    name: "search_institutions",
+    description: "Search institutions in the database by name, city or country.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: { query: { type: SchemaType.STRING, description: "Institution name or location" } },
+      required: ["query"],
+    },
+  },
+  {
+    name: "update_student_context",
+    description:
+      "Record what you have learned about this student in this conversation — goals, interests, " +
+      "strengths, constraints, preferred countries, and which stage of the journey they are in. " +
+      "Call this whenever the student tells you something durable about themselves, so you do not " +
+      "have to ask again later in the conversation. Send only the fields that changed.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        goals: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "What they want out of studying — career or study outcomes, in their words",
+        },
+        interests: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "Subjects and fields they are drawn to",
+        },
+        strengths: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "What they are good at, as they described it",
+        },
+        constraints: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "Budget, family, timing, location or other limits on their options",
+        },
+        preferred_countries: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "Destinations they have expressed interest in",
+        },
+        stage: {
+          type: SchemaType.STRING, format: "enum",
+          enum: ["exploring", "narrowing", "applying", "post_offer"],
+          description: "Where they are in the journey",
+        },
+        notes: {
+          type: SchemaType.ARRAY, items: { type: SchemaType.STRING },
+          description: "Anything else worth remembering that has no field above",
+        },
+      },
+    },
+  },
+  {
+    name: "search_service_providers",
+    description:
+      "Find education agents and registered migration agents (MARA) who can help the student in person. " +
+      "Use when the student asks who can help them apply, or for a migration agent.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: { query: { type: SchemaType.STRING, description: "Location or provider name" } },
+      required: ["query"],
+    },
+  },
+];
+
+/** Withheld on a discovery turn — see toolsFor(). */
+const COURSE_TOOLS = new Set(["search_courses", "get_course_details"]);
+
+/**
+ * The tool set for a turn.
+ *
+ * Discovery turn (first message of a platform session) withholds the course tools
+ * entirely rather than asking the model not to use them. The prompt-only version of
+ * this rule did not hold: with matching courses available the model recommended
+ * anyway. Structurally it cannot list courses it never retrieved.
+ */
+export function toolsFor(opts: { discoveryTurn?: boolean } = {}): Tool[] {
+  const declarations = opts.discoveryTurn
+    ? DECLARATIONS.filter((d) => !COURSE_TOOLS.has(d.name))
+    : DECLARATIONS;
+  return [{ functionDeclarations: declarations }];
+}
+
+/** User-facing labels for the thinking stream — the raw tool name is system internals. */
+const TOOL_LABELS: Record<string, string> = {
+  search_courses: "Searching courses",
+  get_course_details: "Reading course details",
+  search_knowledge: "Searching knowledge base",
+  search_visas: "Searching visa records",
+  search_institutions: "Searching institutions",
+  search_service_providers: "Searching agents",
+};
+
+export const toolLabel = (name: string): string => TOOL_LABELS[name] ?? "Searching";
+
+// ── Dispatcher ──
+
+const str = (args: Record<string, unknown>, key: string): string | undefined => {
+  const value = args[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+};
+
+/**
+ * Run one tool call. Never throws: a failed tool returns an error payload so the
+ * model can apologise or try something else, rather than killing the turn.
+ */
+export async function runTool(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolRun> {
+  try {
+    return await dispatch(name, args, ctx);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn("Tool failed", { name, err: message });
+    return {
+      result: { error: `${name} failed`, detail: message.slice(0, 200) },
+      sources: [],
+      trace: `${name} failed`,
+    };
+  }
+}
+
+/** Strings from a tool argument list, trimmed and emptied of junk. */
+function strList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  return items.length ? items : undefined;
+}
+
+const STAGES = new Set(["exploring", "narrowing", "applying", "post_offer"]);
+
+async function dispatch(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolRun> {
+  switch (name) {
+    case "update_student_context": {
+      const stage = str(args, "stage");
+      const patch: CounsellingContext = {
+        goals: strList(args.goals),
+        interests: strList(args.interests),
+        strengths: strList(args.strengths),
+        constraints: strList(args.constraints),
+        preferred_countries: strList(args.preferred_countries),
+        notes: strList(args.notes),
+        ...(stage && STAGES.has(stage) ? { stage: stage as CounsellingContext["stage"] } : {}),
+      };
+      const written = Object.entries(patch).filter(([, v]) => v != null).map(([k]) => k);
+      if (!written.length) {
+        return { result: { error: "Nothing to record" }, sources: [], trace: "No context to record" };
+      }
+      const context = await sessionsRepo.mergeContext(ctx.sessionId, patch);
+      return {
+        // Echo the merged context back: the model sees what is now on file, including
+        // items it recorded earlier in the conversation.
+        result: { recorded: written, context },
+        sources: [],
+        trace: `Noted: ${written.join(", ")}`,
+      };
+    }
+
+    case "search_courses": {
+      const query = str(args, "query") ?? "";
+      const country = str(args, "country");
+      const degreeLevel = str(args, "degree_level");
+      let found = await knowledge.searchCourses({ query, country, degreeLevel, limit: MAX_COURSES });
+
+      // A filter carried over from an earlier turn (country from the last result set,
+      // a level the student has moved past) silently hides matches elsewhere — the
+      // model then reports an empty database. Widen once instead.
+      let widened = false;
+      if (!found.length && (country || degreeLevel)) {
+        found = await knowledge.searchCourses({ query, limit: MAX_COURSES });
+        widened = found.length > 0;
+      }
+      const courses = await hydrate(found.map((c) => c.id));
+      return {
+        result: {
+          courses: courses.map(courseForModel),
+          count: courses.length,
+          ...(widened && {
+            note:
+              "Nothing matched with the country/degree_level filters, so these matches ignore " +
+              "them — tell the student nothing fit their filters exactly and say where these are.",
+          }),
+          // Zero results usually means a phrase query ("all the courses") or the wrong
+          // synonym, not an empty database — steer the model to retry instead of telling
+          // the student we have nothing. Matching is keyword-based, not semantic.
+          ...(courses.length === 0 && {
+            hint:
+              "No matches for this query — that does not mean the database has none. " +
+              "Matching is by keyword: retry once with a short subject keyword or a synonym " +
+              "(e.g. 'theatre' → 'drama' → 'performing arts'), never a phrase like 'all the " +
+              "courses', before telling the student nothing exists.",
+          }),
+        },
+        sources: courses.map((c) => ({ type: "course", id: c.id, title: c.name })),
+        trace:
+          `Searched courses: ${query || "(browse)"}${country ? ` in ${country}` : ""}` +
+          ` — ${courses.length} found${widened ? " (filters widened)" : ""}`,
+      };
+    }
+
+    case "get_course_details": {
+      const id = str(args, "course_id");
+      const course = id ? await knowledge.getCourseDetails(id) : undefined;
+      if (!course) {
+        // Ids from earlier turns are not replayed into history, so the model often
+        // guesses one for a course it only remembers by name — and was translating
+        // this miss into "we don't have that course" for the student.
+        return {
+          result: {
+            error:
+              "No course with that id. Course ids from earlier turns are not retained — " +
+              "call search_courses again and use an id from THIS turn's results. The course " +
+              "itself is likely still in the database.",
+          },
+          sources: [],
+          trace: "Course detail not found",
+        };
+      }
+      return {
+        result: {
+          course: {
+            ...courseForModel(course),
+            description: course.description,
+            campuses: course.campuses.map((c) => c.campus_name).filter(Boolean),
+            study_units: course.study_units.map((u) => u.unit_name).filter(Boolean).slice(0, 30),
+            accreditations: course.accreditations.map((a) => a.issuing_organization ?? a.name).filter(Boolean),
+          },
+        },
+        sources: [{ type: "course", id: course.id, title: course.name }],
+        trace: `Read course detail: ${course.name}`,
+      };
+    }
+
+    case "search_knowledge": {
+      const query = str(args, "query") ?? "";
+      const countryCode = str(args, "country_code")?.toUpperCase() ?? null;
+      const [visaRules, faqs, guides, passages] = await Promise.all([
+        knowledge.searchKnowledgeVisas({ query, limit: 3 }),
+        knowledge.searchKnowledgeFaqs({ query, limit: 5 }),
+        knowledge.searchCountryGuides({ query, limit: 2 }),
+        embeddingConfigured()
+          ? embed(query).then((v) => knowledge.matchKnowledgeChunks(v, 8, countryCode))
+          : Promise.resolve([]),
+      ]);
+
+      const chunks = capPerDocument(passages);
+
+      const sources: ToolSource[] = [
+        ...visaRules.map((v) => ({
+          type: "knowledge_visa", id: v.id, title: `${v.destination_country} ${v.visa_type}`,
+        })),
+        ...faqs.map((f) => ({ type: "faq", id: f.id, title: f.question })),
+        ...guides.map((g) => ({ type: "country_guide", id: g.id, title: `${g.country} guide` })),
+      ];
+      const cited = new Set<string>();
+      for (const c of chunks) {
+        if (cited.has(c.document_id)) continue;
+        cited.add(c.document_id);
+        sources.push({
+          type: "document",
+          id: c.document_id,
+          title: [c.title, c.heading_path].filter(Boolean).join(" › ") || c.source_domain,
+        });
+      }
+
+      return {
+        result: {
+          // Authority is stated per item so the model can prefer official sources
+          // and tell the student when sources disagree.
+          passages: chunks.map((c) => ({
+            heading: [c.title, c.heading_path].filter(Boolean).join(" › "),
+            content: c.content,
+            authority: c.trust_tier,
+            source: c.source_type === "file" ? c.file_name : c.url,
+            page: c.page_number,
+            // Freshness travels with the passage so a stale figure can be qualified
+            // rather than asserted.
+            last_verified: c.last_verified_at ? String(c.last_verified_at).slice(0, 10) : null,
+            valid_until: c.effective_until ? String(c.effective_until).slice(0, 10) : null,
+          })),
+          visa_rules: visaRules,
+          faqs: faqs.map((f) => ({ question: f.question, answer: f.answer })),
+          country_guides: guides,
+        },
+        sources,
+        trace: `Searched knowledge: ${query}${countryCode ? ` (${countryCode})` : ""} — ${chunks.length} passages, ${visaRules.length + faqs.length + guides.length} curated`,
+      };
+    }
+
+    case "search_visas": {
+      const query = str(args, "query") ?? "";
+      const visas = await knowledge.searchVisas({ query, limit: 5 });
+      return {
+        result: { visas },
+        sources: visas.map((v) => ({
+          type: "visa", id: v.id, title: v.name ?? v.subclass_code ?? "Visa",
+        })),
+        trace: `Searched visas: ${query} — ${visas.length} found`,
+      };
+    }
+
+    case "search_institutions": {
+      const query = str(args, "query") ?? "";
+      const institutions = await knowledge.searchInstitutions({ query, limit: 5 });
+      return {
+        result: { institutions },
+        sources: institutions.map((i) => ({
+          type: "institution", id: i.id, title: i.name ?? "Institution",
+        })),
+        trace: `Searched institutions: ${query} — ${institutions.length} found`,
+      };
+    }
+
+    case "search_service_providers": {
+      const query = str(args, "query") ?? "";
+      const [agents, maraAgents] = await Promise.all([
+        knowledge.searchAgents({ query, limit: 5 }),
+        knowledge.searchMaraAgents({ query, limit: 5 }),
+      ]);
+      return {
+        result: { education_agents: agents, migration_agents: maraAgents },
+        sources: [
+          ...agents.map((a) => ({ type: "agent", id: a.id, title: a.name ?? "Agent" })),
+          ...maraAgents.map((m) => ({
+            type: "mara_agent", id: m.id, title: m.agent_name ?? m.business_name ?? m.marn,
+          })),
+        ],
+        trace: `Searched service providers: ${query} — ${agents.length + maraAgents.length} found`,
+      };
+    }
+
+    default:
+      return { result: { error: `Unknown tool "${name}"` }, sources: [], trace: `Unknown tool ${name}` };
+  }
+}

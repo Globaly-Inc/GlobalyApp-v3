@@ -10,9 +10,12 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown, discoverUrlsForCrawl } from "../lib/scraper.js";
-import { looksLikeCourseUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls } from "../lib/html-utils.js";
+import { looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls } from "../lib/html-utils.js";
 import { extractJson, isConfigured } from "../lib/llm-client.js";
-import { siteAnalysisPrompt, urlDiscoveryPrompt, SITE_ANALYSIS_SYSTEM } from "../lib/extraction-prompts.js";
+import {
+  siteAnalysisPrompt, urlDiscoveryPrompt, SITE_ANALYSIS_SYSTEM,
+  visaServiceSiteAnalysisPrompt, visaServiceUrlDiscoveryPrompt,
+} from "../lib/extraction-prompts.js";
 import {
   writeInstitutionOverview,
   writeSiteIntelligence,
@@ -63,6 +66,11 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     return;
   }
 
+  // Same job/page worker shape as institution jobs, just swapped prompts + URL heuristic +
+  // writer target (extraction_visa_services instead of extraction_courses) — see
+  // extraction-prompts.ts's "Visa service extraction" section.
+  const isVisaService = job.source_type === "visa_service";
+
   // Mark as processing
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
     status: "processing",
@@ -74,7 +82,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
 
   try {
     // ── Phase 1: Scrape homepage → LLM analysis ──
-    const homepage = await scrapeMarkdown(job.institution_url, { withLinks: true, onlyMainContent: true });
+    const homepage = await scrapeMarkdown(job.institution_url, { withLinks: true, onlyMainContent: false });
 
     if (!homepage.markdown && homepage.error) {
       throw new Error(`Failed to scrape homepage: ${homepage.error}`);
@@ -93,7 +101,9 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     const pageText = truncateMarkdown(homepage.markdown);
     const analysis = await extractJson<SiteAnalysisResult>({
       system: SITE_ANALYSIS_SYSTEM,
-      prompt: siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes),
+      prompt: isVisaService
+        ? visaServiceSiteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes)
+        : siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes),
     });
 
     // Write institution overview + site intelligence
@@ -143,8 +153,8 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       data: { method: discovery.method, count: allUrls.length },
     });
 
-    // Heuristic filter: keep only URLs that look like course pages
-    let courseUrls = allUrls.filter(looksLikeCourseUrl);
+    // Heuristic filter: keep only URLs that look like course (or visa service) pages
+    let courseUrls = allUrls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl);
 
     // Add guided URLs from admin
     const guidedUrls = collectGuidedUrls(
@@ -162,6 +172,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     // If we have too many URLs, let LLM pick the best ones
     // ponytail: bump maxTokens — response is a URL list that easily exceeds 16K default
     const patterns = analysis.course_page_patterns ?? [];
+    const buildUrlDiscoveryPrompt = isVisaService ? visaServiceUrlDiscoveryPrompt : urlDiscoveryPrompt;
 
     if (courseUrls.length > 500) {
       // ponytail: chunk URLs into batches of 800 for LLM filtering so we don't lose pages
@@ -171,8 +182,9 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
         const batch = courseUrls.slice(i, i + LLM_BATCH);
         const urlResult = await extractJson<UrlDiscoveryResult>({
           system: SITE_ANALYSIS_SYSTEM,
-          prompt: urlDiscoveryPrompt(batch, patterns),
+          prompt: buildUrlDiscoveryPrompt(batch, patterns),
           maxTokens: 65536,
+          tier: "lite",
         });
         if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
         // Heartbeat between batches
@@ -189,8 +201,9 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
         const batch = allUrls.slice(i, i + LLM_BATCH);
         const urlResult = await extractJson<UrlDiscoveryResult>({
           system: SITE_ANALYSIS_SYSTEM,
-          prompt: urlDiscoveryPrompt(batch, patterns),
+          prompt: buildUrlDiscoveryPrompt(batch, patterns),
           maxTokens: 65536,
+          tier: "lite",
         });
         if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
       }
@@ -209,6 +222,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     // ── Phase 3: Queue each page for extraction ──
     for (const url of courseUrls) {
       const queueItemId = await insertQueueItem(jobId, url);
+      if (!queueItemId) continue; // already queued (e.g. duplicate JOBS message) — its owner dispatches it
       await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
     }
 

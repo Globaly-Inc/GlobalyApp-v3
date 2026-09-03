@@ -11,7 +11,7 @@ export function CityAgents({ cityName, agents }: Readonly<{ cityName: string; ag
   return (
     <Reveal>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Agents in {cityName}</h2>
+        <h2 className="text-2xl font-bold">Education Counselors in {cityName}</h2>
         <Button
           variant="outline"
           className="h-10"

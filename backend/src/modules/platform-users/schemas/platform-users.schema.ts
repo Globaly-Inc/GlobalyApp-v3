@@ -3,12 +3,15 @@
 import { z } from "zod";
 import { PERSONAL_SUB_CATEGORIES, GENDERS } from "../consts.js";
 import { BUSINESS_TYPES } from "../../businesses/consts.js";
+import { PaginationSchema } from "../../../shared/pagination.js";
 
 // ── Profile (full patch — used by PATCH /me) ──
 
 const REQUIRED = "This field is required";
 
 export const ProfilePatchSchema = z.object({
+  first_name: z.string().min(1, REQUIRED).max(200),
+  last_name: z.string().min(1, REQUIRED).max(200),
   phone: z.string().min(1, REQUIRED).max(50).nullable(),
   // Profile-level fields (platform_user_profiles table)
   individual_category: z.enum(PERSONAL_SUB_CATEGORIES).nullable(),
@@ -43,6 +46,7 @@ export const ProfilePatchSchema = z.object({
   linkedin_url: z.string().url().nullable(),
   website_url: z.string().url().nullable(),
   onboarding_completed: z.boolean(),
+  public_visibility: z.record(z.string(), z.boolean()).nullable(),
 }).partial().strict();
 
 // ── Onboarding profile — fields set right after registration ──
@@ -74,9 +78,8 @@ export const OnboardingBusinessSchema = z.object({
   postcode: z.string().max(20).optional(),
 });
 
-// Institution accounts — no tenant DB
+// Institution accounts — subdomain is auto-generated from institution_name (same as registerBusiness)
 export const OnboardingInstitutionSchema = z.object({
-  subdomain: z.string().min(3).max(20).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Lowercase alphanumeric with hyphens"),
   institution_name: z.string().min(1).max(200),
   institution_type: z.string().optional(),
   phone: z.string().max(50).optional(),
@@ -112,6 +115,15 @@ export const LanguageTestSchema = z.object({
   sort_order: z.number().int().optional(),
 });
 
+export const AcademicTestSchema = z.object({
+  test_status: z.string().nullish(),
+  test_type: z.string().nullish(),
+  overall_score: z.string().nullish(),
+  test_date: z.string().nullish(),
+  sub_scores: z.record(z.unknown()).nullish(),
+  sort_order: z.number().int().optional(),
+});
+
 export const WorkExperienceSchema = z.object({
   job_title: z.string().min(1),
   organization_name: z.string().nullish(),
@@ -123,6 +135,12 @@ export const WorkExperienceSchema = z.object({
 
 export const UpdateCategorySchema = z.object({ user_category: z.enum(["personal", "business"]) });
 
+// ── Lookups (degree levels, areas of study) ──
+
+export const LookupQuerySchema = PaginationSchema.extend({
+  search: z.string().trim().min(1).optional(),
+});
+
 export const IdParamSchema = z.object({ id: z.string().uuid() });
 export const CountryIdParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -132,4 +150,5 @@ export type OnboardingBusinessInput = z.infer<typeof OnboardingBusinessSchema>;
 export type OnboardingInstitutionInput = z.infer<typeof OnboardingInstitutionSchema>;
 export type QualificationInput = z.infer<typeof QualificationSchema>;
 export type LanguageTestInput = z.infer<typeof LanguageTestSchema>;
+export type AcademicTestInput = z.infer<typeof AcademicTestSchema>;
 export type WorkExperienceInput = z.infer<typeof WorkExperienceSchema>;

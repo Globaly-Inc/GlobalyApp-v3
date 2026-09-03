@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { blogApi } from "../apis";
-import type { BlogKeyword, BlogKeywordInput, BlogPost } from "../apis/types";
+import type { BlogKeyword, BlogKeywordInput, BlogPost, GenerationInput, GenerationJob } from "../apis/types";
 
 // ponytail: single unpaginated fetch + client-side filtering, same technique V2 uses at this
 // volume (its own code notes this is fine until the table grows — move to server-side
@@ -42,11 +42,22 @@ export const removeKeyword = createAsyncThunk(
   },
 );
 
+export const startGeneration = createAsyncThunk(
+  "marketingBlog/startGeneration",
+  (input: GenerationInput) => blogApi.createGeneration(input),
+);
+
+export const pollGenerationStatus = createAsyncThunk(
+  "marketingBlog/pollGenerationStatus",
+  (ids: number[]) => blogApi.getGenerationStatus(ids),
+);
+
 type BlogState = {
   posts: BlogPost[];
   keywords: BlogKeyword[];
   status: "idle" | "loading" | "failed";
   error: string | null;
+  generationJobs: GenerationJob[];
 };
 
 const initialState: BlogState = {
@@ -54,12 +65,17 @@ const initialState: BlogState = {
   keywords: [],
   status: "idle",
   error: null,
+  generationJobs: [],
 };
 
 const blogSlice = createSlice({
   name: "marketingBlog",
   initialState,
-  reducers: {},
+  reducers: {
+    clearGenerationJobs(state) {
+      state.generationJobs = [];
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(fetchPosts.pending, (state) => {
@@ -76,8 +92,15 @@ const blogSlice = createSlice({
       })
       .addCase(fetchKeywords.fulfilled, (state, action) => {
         state.keywords = action.payload;
+      })
+      .addCase(startGeneration.fulfilled, (state, action) => {
+        state.generationJobs = action.payload.jobIds.map((id) => ({ id, status: "pending" as const, error: null, blog_post_id: null }));
+      })
+      .addCase(pollGenerationStatus.fulfilled, (state, action) => {
+        state.generationJobs = action.payload;
       });
   },
 });
 
+export const { clearGenerationJobs } = blogSlice.actions;
 export const blogReducer = blogSlice.reducer;

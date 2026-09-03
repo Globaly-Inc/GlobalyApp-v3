@@ -1,16 +1,11 @@
-import type { AdminUser, AdminRole } from "../../../apis/types";
+import type { AdminRole } from "../../../apis/types";
 
-export type { AdminUser, AdminRole };
+export type { AdminRole };
 
 export type ListParams = {
   page?: number;
   limit?: number;
   search?: string;
-};
-
-export type PaginatedAdminUsers = {
-  data: AdminUser[];
-  meta: { page: number; limit: number; total: number; totalPages: number };
 };
 
 export type AdminInvitation = {

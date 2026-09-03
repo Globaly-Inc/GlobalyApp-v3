@@ -38,7 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ACTIVE_STATUSES, PAUSABLE_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
+import { ACTIVE_STATUSES, FINISHED_STATUSES, PAUSABLE_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { ExtractionStatusBadge, NeedsAttentionBadge } from "./status-badge";
 import { useRerunJob } from "./rerun-extraction-button";
 import { PipelineProgressPanel } from "./pipeline-progress-panel";
@@ -57,19 +57,26 @@ function StatPill({ icon: Icon, children }: Readonly<{ icon: React.ElementType; 
 // done/total ratio (or half-credit with no counts yet) so the bar isn't stuck between steps.
 function overallProgressPct(job: ExtractionJob, progress: PipelineProgress | null) {
   if (job.status === "failed" || job.status === "declined") return 0;
+  // A finished/published job is 100% done regardless of how many discovered pages
+  // actually got scraped — not every discovered URL needs scraping to complete.
+  if (FINISHED_STATUSES.includes(job.status) || job.status === "review") return 100;
   if (progress) {
     const known = PIPELINE_STAGES.map((s) => progress[s.key]).filter(Boolean);
     if (known.length > 0) {
       const sum = known.reduce((acc, stage) => {
         if (stage!.status === "done") return acc + 1;
-        if (stage!.status === "processing") return acc + (stage!.total ? (stage!.done || 0) / stage!.total : 0.5);
+        // Clamp to 1 — a stage's own done/total can exceed 1 mid-run (e.g. discovery
+        // finds more pages than the initial estimate), but it's still just "in progress".
+        if (stage!.status === "processing") return acc + Math.min(1, stage!.total ? (stage!.done || 0) / stage!.total : 0.5);
         return acc;
       }, 0);
-      return Math.round((sum / PIPELINE_STAGES.length) * 100);
+      return Math.min(100, Math.round((sum / PIPELINE_STAGES.length) * 100));
     }
   }
-  if (job.total_pages_found) return Math.round((job.pages_scraped / job.total_pages_found) * 100);
-  if (job.verification_total) return Math.round((job.verification_score / job.verification_total) * 100);
+  // total_pages_found is an early site-mapping estimate; pages_scraped can legitimately
+  // grow past it as pagination discovers more pages during the actual crawl.
+  if (job.total_pages_found) return Math.min(100, Math.round((job.pages_scraped / job.total_pages_found) * 100));
+  if (job.verification_total) return Math.min(100, Math.round((job.verification_score / job.verification_total) * 100));
   return 0;
 }
 
@@ -197,7 +204,7 @@ export function ExtractionJobRow({
             {isPublishable && onPublish && (
               <Button className="gap-1.5 px-3 cursor-pointer" disabled={publishing} onClick={onPublish}>
                 {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                Publish
+                {job.status === "exported" ? "Re-publish / Repair" : "Publish to Business"}
               </Button>
             )}
 
@@ -209,11 +216,9 @@ export function ExtractionJobRow({
                 <DropdownMenuItem onClick={() => router.push(`/admin/data/all-extractions/${job.id}`)}>
                   <Eye className="h-3.5 w-3.5" /> View Details
                 </DropdownMenuItem>
-                {job.status === "failed" && (
-                  <DropdownMenuItem onClick={rerun} disabled={rerunning} className="text-purple-600">
-                    <RotateCw className="h-3.5 w-3.5" /> Re-run Job
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem onClick={rerun} disabled={rerunning} className="text-purple-600">
+                  <RotateCw className="h-3.5 w-3.5" /> Re-run Job
+                </DropdownMenuItem>
                 {isPausable && (
                   <DropdownMenuItem onClick={onPause} className="text-orange-600">
                     <Pause className="h-3.5 w-3.5" /> Pause
@@ -224,7 +229,7 @@ export function ExtractionJobRow({
                     <Play className="h-3.5 w-3.5" /> {job.status === "stalled" ? "Recover" : "Resume"}
                   </DropdownMenuItem>
                 )}
-                {isPublishable && (
+                {isPublishable && job.status !== "exported" && (
                   <DropdownMenuItem onClick={onDecline} className="text-destructive">
                     <XCircle className="h-3.5 w-3.5" /> Decline
                   </DropdownMenuItem>

@@ -1,28 +1,51 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Clock, Link2, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  BookOpen, Clock, Layers, Link2, Loader2, Pencil, Plus, Search, Trash2, Type, Users, X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox } from "@/components/combobox";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
+import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { saveFormAndLearn } from "./editable-field";
+import { CourseLinkPicker } from "./course-link-picker";
+import { EditableField, saveFormAndLearn, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { StudyOptionForm } from "./study-option-form";
-import type { CourseFull, CourseLinks, ExtractionJob, StudyOption } from "../apis/types";
+import type { CourseLinks, ExtractionJob, StudyOption } from "../apis/types";
+
+type LinkedCourse = { id: string; name: string | null };
 
 const CHIP_LIMIT = 6;
+const DEFAULT_PAGE_SIZE = 10;
 const humanize = (v: string | null) => (v ? v.replaceAll("_", " ") : "");
 
+// EditableField keeps its own click-to-edit affordance — this just gives each
+// field a visual anchor (icon tile), matching the Institution/Branches tabs' treatment.
+function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
+  return (
+    <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <EditableField {...field} className="flex-1" />
+    </div>
+  );
+}
+
 function StudyOptionCard({
+  jobId,
   option,
-  courses,
-  linkedCourseIds,
+  linked,
   selected,
   onToggleSelect,
   busy,
@@ -30,10 +53,11 @@ function StudyOptionCard({
   onDelete,
   onLinkCourse,
   onUnlinkCourse,
+  onSaveField,
 }: Readonly<{
+  jobId: string;
   option: StudyOption;
-  courses: CourseFull[];
-  linkedCourseIds: string[];
+  linked: LinkedCourse[];
   selected: boolean;
   onToggleSelect: () => void;
   busy: boolean;
@@ -41,88 +65,95 @@ function StudyOptionCard({
   onDelete: () => void;
   onLinkCourse: (courseId: string) => void;
   onUnlinkCourse: (courseId: string) => void;
+  onSaveField: (column: string, next: string | null) => Promise<unknown>;
 }>) {
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const linked = courses.filter((c) => linkedCourseIds.includes(c.id));
-  const unlinked = courses.filter((c) => !linkedCourseIds.includes(c.id));
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
+  const title = option.name || humanize(option.study_mode) || "Study option";
 
   return (
-    <div className="flex items-start justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-        <Checkbox checked={selected} onCheckedChange={onToggleSelect} className="mt-2 shrink-0" />
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <Clock className="h-4 w-4 text-primary" />
-        </span>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {option.study_mode && <Badge className="text-[10px] capitalize">{humanize(option.study_mode)}</Badge>}
-            {option.study_load && <span className="text-xs capitalize">{humanize(option.study_load)}</span>}
-            {option.applicable_to && (
-              <Badge variant="outline" className="text-[10px] capitalize">{humanize(option.applicable_to)}</Badge>
-            )}
+    <Card className="group overflow-hidden">
+      <div className="-mt-4 flex items-center justify-between gap-2 rounded-t-xl border-b bg-primary/5 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Clock className="h-4 w-4" />
           </div>
-          {option.duration_value != null && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {option.duration_value} {option.duration_unit}
-            </p>
-          )}
-
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-            {visible.map((course) => (
-              <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
-                {course.name}
-                {editingLinks && (
-                  <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </Badge>
-            ))}
-            {linked.length === 0 && <span className="text-xs text-muted-foreground">Not linked to any course</span>}
-            {linked.length > CHIP_LIMIT && (
-              <Button variant="outline" size="sm" className="h-6 px-2 text-xs cursor-pointer" onClick={() => setShowAll((v) => !v)}>
-                {showAll ? "Show less" : `+${linked.length - CHIP_LIMIT} more`}
-              </Button>
-            )}
-            <Button
-              variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs cursor-pointer"
-              onClick={() => setEditingLinks((v) => !v)}
-            >
-              <Pencil className="h-3 w-3" />
-              {editingLinks ? "Done" : "Edit"}
-            </Button>
-          </div>
-
-          {editingLinks && (
-            <Combobox
-              options={unlinked.map((c) => ({ value: c.id, label: c.name }))}
-              value=""
-              onChange={onLinkCourse}
-              placeholder={unlinked.length ? "Link a course…" : "All courses linked"}
-              disabled={unlinked.length === 0}
-              className="mt-2 h-8 text-xs"
-            />
-          )}
+          <span className="text-sm font-semibold capitalize text-foreground">{title}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost" size="icon-sm"
+            className="cursor-pointer opacity-0 transition-opacity group-hover:opacity-100"
+            title="Edit study option" disabled={busy} onClick={onEdit}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive"
+            title="Delete study option" disabled={busy} onClick={onDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
-        <Button variant="ghost" size="icon-sm" className="cursor-pointer" title="Edit" disabled={busy} onClick={onEdit}>
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive"
-          title="Delete" disabled={busy} onClick={onDelete}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
+      <CardContent className="p-4">
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+          <Field icon={Type} label="Name" value={option.name} onSave={(v) => onSaveField("name", v)} className="col-span-2" />
+          <Field icon={BookOpen} label="Study mode" value={option.study_mode} onSave={(v) => onSaveField("study_mode", v)} />
+          <Field icon={Layers} label="Study load" value={option.study_load} onSave={(v) => onSaveField("study_load", v)} />
+          <Field
+            icon={Clock} label="Duration"
+            value={option.duration_value != null ? String(option.duration_value) : null}
+            onSave={(v) => onSaveField("duration_value", v)}
+          />
+          <Field icon={Clock} label="Duration unit" value={option.duration_unit} onSave={(v) => onSaveField("duration_unit", v)} />
+          <Field
+            icon={Users} label="Applicable to" value={option.applicable_to}
+            onSave={(v) => onSaveField("applicable_to", v)} className="col-span-2 md:col-span-2"
+          />
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+          {visible.map((course) => (
+            <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
+              {course.name ?? "Unnamed course"}
+              {editingLinks && (
+                <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </Badge>
+          ))}
+          {linked.length === 0 && <span className="text-xs text-muted-foreground">Not linked to any course</span>}
+          {linked.length > CHIP_LIMIT && (
+            <Button variant="outline" size="sm" className="h-6 px-2 text-xs cursor-pointer" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? "Show less" : `+${linked.length - CHIP_LIMIT} more`}
+            </Button>
+          )}
+          <Button
+            variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs cursor-pointer"
+            onClick={() => setEditingLinks((v) => !v)}
+          >
+            <Pencil className="h-3 w-3" />
+            {editingLinks ? "Done" : "Edit"}
+          </Button>
+        </div>
+
+        {editingLinks && (
+          <CourseLinkPicker
+            jobId={jobId}
+            excludeIds={linked.map((c) => c.id)}
+            onSelect={onLinkCourse}
+            className="mt-2 h-8 text-xs"
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -138,7 +169,11 @@ export function StudyOptionsTab({
   onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
-  const [courses, setCourses] = useState<CourseFull[]>([]);
+  const [options, setOptions] = useState<StudyOption[]>([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -146,29 +181,47 @@ export function StudyOptionsTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  // Accepts overrides for the same reason study-units-tab.tsx does — setState is async, so a
+  // caller that also resets page/search right before reloading needs the new values applied
+  // to THIS fetch immediately, not next render's stale closure.
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string }) => {
     try {
-      const [courseLinks, courseRows] = await Promise.all([
+      const [optionsRes, courseLinks] = await Promise.all([
+        allExtractionsApi.getStudyOptions(jobId, {
+          page: overrides?.page ?? page,
+          limit: overrides?.limit ?? limit,
+          search: (overrides?.search ?? search).trim() || undefined,
+        }),
         allExtractionsApi.getCourseLinks(jobId),
-        allExtractionsApi.getCourses(jobId, { limit: 100 }).then((r) => r.data),
       ]);
+      setOptions(optionsRes.data);
+      setTotal(optionsRes.meta?.total ?? 0);
       setLinks(courseLinks);
-      setCourses(courseRows);
     } catch (e) {
       toast.error("Failed to load study options", { description: (e as Error).message });
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, page, limit, search]);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    load();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      load();
+      return;
+    }
+    // Debounce so typing in the search box doesn't fire a request per keystroke.
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
   }, [load]);
 
+  // A search change invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
-  const options = links?.study_options ?? [];
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setSaving(true);
@@ -183,8 +236,10 @@ export function StudyOptionsTab({
     }
   };
 
-  const coursesForOption = (id: string) =>
-    (links?.study_option_assignments ?? []).filter((a) => a.study_option_id === id).map((a) => a.course_id);
+  const coursesForOption = (id: string): LinkedCourse[] =>
+    (links?.study_option_assignments ?? [])
+      .filter((a) => a.study_option_id === id)
+      .map((a) => ({ id: a.course_id, name: a.course_name }));
 
   return (
     <div>
@@ -196,13 +251,25 @@ export function StudyOptionsTab({
         runLabel="Run Study Options Extraction"
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(options)}
-        hasData={options.length > 0}
+        hasData={total > 0}
         guidedUrls={job.guided_urls}
         contextKey="extract_fields"
         contextLabel="extract fields"
         onChanged={onReload}
         onAddContext={onJumpToContext}
       />
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="relative w-full max-w-xs">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search study options…"
+            className="h-8 pl-7 text-sm"
+          />
+        </div>
+      </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
@@ -212,14 +279,17 @@ export function StudyOptionsTab({
               onCheckedChange={() => setSelectedIds(selectedIds.length === options.length ? [] : options.map((o) => o.id))}
               disabled={options.length === 0}
             />
-            Select all ({options.length})
+            {total} option{total === 1 ? "" : "s"}
+            {search.trim() && ` · ${options.length} on this page`}
           </label>
           {selectedIds.length > 0 && (
             <Button
               variant="destructive" size="sm" className="h-8 gap-1.5 cursor-pointer"
               disabled={saving}
               onClick={async () => {
-                if (!(await confirm(`Delete ${selectedIds.length} study options?`))) return;
+                if (!(await confirm(`Delete ${selectedIds.length} study options?`))) {
+                  return;
+                }
                 await run(async () => {
                   await Promise.all(selectedIds.map((id) => allExtractionsApi.deleteStudyOption(id)));
                   setSelectedIds([]);
@@ -239,18 +309,20 @@ export function StudyOptionsTab({
       </div>
 
       <div className="space-y-3">
-        {adding && (
-          <StudyOptionForm
-            saving={saving}
-            onCancel={() => setAdding(false)}
-            onSave={(values) =>
-              run(async () => {
-                await allExtractionsApi.createStudyOption({ job_id: jobId, ...values });
-                setAdding(false);
-              }, "Study option created")
-            }
-          />
-        )}
+        <Dialog open={adding} onOpenChange={setAdding}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl p-0 border-0 bg-transparent shadow-none">
+            <StudyOptionForm
+              saving={saving}
+              onCancel={() => setAdding(false)}
+              onSave={(values) =>
+                run(async () => {
+                  await allExtractionsApi.createStudyOption({ job_id: jobId, ...values });
+                  setAdding(false);
+                }, "Study option created")
+              }
+            />
+          </DialogContent>
+        </Dialog>
 
         {loading && (
           <div className="flex justify-center py-12">
@@ -262,8 +334,10 @@ export function StudyOptionsTab({
           <Card className="border-dashed">
             <CardContent className="py-12 text-center text-muted-foreground">
               <Clock className="mx-auto mb-3 h-8 w-8 opacity-40" />
-              <p className="text-sm">No study options yet</p>
-              <p className="mt-1 text-xs">Add one manually, or extract them from a course in the Courses tab.</p>
+              <p className="text-sm">{search.trim() ? "No study options match your search" : "No study options yet"}</p>
+              {!search.trim() && (
+                <p className="mt-1 text-xs">Add one manually, or extract them from a course in the Courses tab.</p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -285,9 +359,9 @@ export function StudyOptionsTab({
           ) : (
             <StudyOptionCard
               key={option.id}
+              jobId={jobId}
               option={option}
-              courses={courses}
-              linkedCourseIds={coursesForOption(option.id)}
+              linked={coursesForOption(option.id)}
               busy={saving}
               selected={selectedIds.includes(option.id)}
               onToggleSelect={() =>
@@ -295,7 +369,9 @@ export function StudyOptionsTab({
               }
               onEdit={() => { setEditingId(option.id); setAdding(false); }}
               onDelete={async () => {
-                if (!(await confirm("Delete study option?"))) return;
+                if (!(await confirm("Delete study option?"))) {
+                  return;
+                }
                 await run(() => allExtractionsApi.deleteStudyOption(option.id), "Study option deleted");
               }}
               onLinkCourse={(courseId) =>
@@ -304,10 +380,22 @@ export function StudyOptionsTab({
               onUnlinkCourse={(courseId) =>
                 run(() => allExtractionsApi.unassignJunction("study-options", { job_id: jobId, course_id: courseId, entity_id: option.id }), "Unlinked")
               }
+              onSaveField={(column, next) => saveField("extraction_study_options", option.id, column, next)}
             />
           ),
         )}
       </div>
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          total={total}
+          limit={limit}
+          onPageChange={setPage}
+          align="end"
+          onPageSizeChange={(next) => { setLimit(next); setPage(1); }}
+        />
+      )}
     </div>
   );
 }

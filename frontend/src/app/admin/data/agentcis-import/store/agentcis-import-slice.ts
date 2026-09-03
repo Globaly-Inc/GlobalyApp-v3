@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { agentcisImportApi } from "../apis";
-import type { AgentCISResult, AgentcisJob, ImportResult } from "../apis/types";
+import type { AgentCISResult, AgentcisJob, BulkCrawlResult, ImportResult } from "../apis/types";
 
 export const searchAgentCIS = createAsyncThunk("dataAgentcisImport/search", (query: string) =>
   agentcisImportApi.search(query),
@@ -8,6 +8,12 @@ export const searchAgentCIS = createAsyncThunk("dataAgentcisImport/search", (que
 
 export const importAgentCIS = createAsyncThunk("dataAgentcisImport/import", (ids: string[]) =>
   agentcisImportApi.importInstitutions(ids),
+);
+
+export const bulkCrawlAgentCIS = createAsyncThunk(
+  "dataAgentcisImport/bulkCrawl",
+  ({ startPage, maxPages }: { startPage: number; maxPages: number }) =>
+    agentcisImportApi.bulkCrawl(startPage, maxPages),
 );
 
 export const fetchAgentcisJobs = createAsyncThunk("dataAgentcisImport/fetchJobs", () =>
@@ -25,6 +31,8 @@ type AgentcisImportState = {
   searchStatus: "idle" | "loading" | "failed";
   importStatus: "idle" | "loading" | "failed";
   importResult: ImportResult | null;
+  bulkCrawlStatus: "idle" | "loading" | "failed";
+  bulkCrawlResult: BulkCrawlResult | null;
   error: string | null;
   jobs: AgentcisJob[];
   jobsStatus: "idle" | "loading" | "failed";
@@ -36,6 +44,8 @@ const initialState: AgentcisImportState = {
   searchStatus: "idle",
   importStatus: "idle",
   importResult: null,
+  bulkCrawlStatus: "idle",
+  bulkCrawlResult: null,
   error: null,
   jobs: [],
   jobsStatus: "idle",
@@ -55,6 +65,9 @@ const agentcisImportSlice = createSlice({
     },
     clearImportResult: (state) => {
       state.importResult = null;
+    },
+    clearBulkCrawlResult: (state) => {
+      state.bulkCrawlResult = null;
     },
   },
   extraReducers: (builder) => {
@@ -84,6 +97,18 @@ const agentcisImportSlice = createSlice({
         state.importStatus = "failed";
         state.error = action.error.message ?? "Import failed.";
       })
+      .addCase(bulkCrawlAgentCIS.pending, (state) => {
+        state.bulkCrawlStatus = "loading";
+        state.error = null;
+      })
+      .addCase(bulkCrawlAgentCIS.fulfilled, (state, action) => {
+        state.bulkCrawlStatus = "idle";
+        state.bulkCrawlResult = action.payload;
+      })
+      .addCase(bulkCrawlAgentCIS.rejected, (state, action) => {
+        state.bulkCrawlStatus = "failed";
+        state.error = action.error.message ?? "Bulk crawl failed.";
+      })
       .addCase(fetchAgentcisJobs.pending, (state) => {
         if (state.jobs.length === 0) state.jobsStatus = "loading";
       })
@@ -100,5 +125,5 @@ const agentcisImportSlice = createSlice({
   },
 });
 
-export const { toggleSelection, clearSelection, clearImportResult } = agentcisImportSlice.actions;
+export const { toggleSelection, clearSelection, clearImportResult, clearBulkCrawlResult } = agentcisImportSlice.actions;
 export const agentcisImportReducer = agentcisImportSlice.reducer;

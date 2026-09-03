@@ -1,9 +1,75 @@
-import { Building2, Users, FileCheck, GraduationCap } from "lucide-react";
-import type { StatCardConfig } from "../types";
+import {
+  Activity,
+  BookOpen,
+  Briefcase,
+  Building2,
+  ClipboardList,
+  Coins,
+  FileCheck,
+  FileText,
+  Globe,
+  GraduationCap,
+  Handshake,
+  Heart,
+  Inbox,
+  MessageSquare,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import type { DashboardPreset } from "../apis/types";
 
-export const STAT_CARDS: StatCardConfig[] = [
-  { key: "businesses", label: "Businesses", icon: Building2 },
-  { key: "platform_users", label: "Platform Users", icon: Users },
-  { key: "active_extractions", label: "Active Extractions", icon: FileCheck },
-  { key: "scholarships_listed", label: "Scholarships Listed", icon: GraduationCap },
+export const PRESETS: { value: DashboardPreset; label: string; days: number }[] = [
+  { value: "last7", label: "7 days", days: 7 },
+  { value: "last30", label: "30 days", days: 30 },
+  { value: "last90", label: "90 days", days: 90 },
 ];
+
+export const FEATURE_MODULES = ["students", "community", "content", "ai", "platform", "extraction"] as const;
+export type FeatureModule = (typeof FEATURE_MODULES)[number];
+
+export const MODULE_LABELS: Record<FeatureModule, string> = {
+  students: "Students & Services",
+  community: "Community",
+  content: "Content & Marketing",
+  ai: "AI Counsellor",
+  platform: "Platform",
+  extraction: "Data Extraction",
+};
+
+// Maps backend feature_usage keys → icon + module. Unknown keys fall back to "platform".
+export const FEATURE_META: Record<string, { icon: LucideIcon; module: FeatureModule }> = {
+  profiles: { icon: Users, module: "students" },
+  qualifications: { icon: GraduationCap, module: "students" },
+  language_tests: { icon: Globe, module: "students" },
+  work_experiences: { icon: Briefcase, module: "students" },
+  files: { icon: FileText, module: "students" },
+  enquiries: { icon: Inbox, module: "students" },
+  feed_posts: { icon: Heart, module: "community" },
+  jobs: { icon: Briefcase, module: "community" },
+  referrals: { icon: Handshake, module: "community" },
+  countries: { icon: Globe, module: "content" },
+  blog_posts: { icon: BookOpen, module: "content" },
+  scholarships: { icon: GraduationCap, module: "content" },
+  chat_sessions: { icon: MessageSquare, module: "ai" },
+  credit_transactions: { icon: Coins, module: "platform" },
+  waitlist: { icon: ClipboardList, module: "platform" },
+  businesses: { icon: Building2, module: "platform" },
+  extraction_jobs: { icon: FileCheck, module: "extraction" },
+  extracted_courses: { icon: BookOpen, module: "extraction" },
+};
+
+export const FALLBACK_FEATURE_META = { icon: Activity, module: "platform" as FeatureModule };
+
+export const EXTRACTION_STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  processing: "Processing",
+  done: "Completed",
+  failed: "Failed",
+};
+
+export const USER_CATEGORY_LABELS: Record<string, string> = {
+  personal: "Personal",
+  business: "Business",
+  uncategorized: "Uncategorized",
+};
+

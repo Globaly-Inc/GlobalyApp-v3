@@ -1,3 +1,5 @@
+import type { DashboardMode, SortOrder } from "../const";
+
 export type ExtractionStatus =
   | "pending"
   | "mapping"
@@ -68,6 +70,14 @@ export type CreateJobParams = {
   sample_course_url?: string;
 };
 
+export type ExistingJobConflict = {
+  id: string;
+  institutionName: string | null;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
 export type InstitutionOverview = {
   id: string;
   name: string | null;
@@ -95,6 +105,22 @@ export type Paginated<T> = {
   statusCounts?: { status: string; count: number }[];
 };
 
+export type JobsPageMeta = { page: number; limit: number; total: number; totalPages: number };
+
+export type GetJobsParams = {
+  mode: DashboardMode;
+  page: number;
+  limit: number;
+  sort: SortOrder;
+  statusLabel?: string;
+  sourceFilter?: string;
+  businessCategoryId?: number;
+  showDeclined: boolean;
+  q?: string;
+};
+
+export type GetJobsResult = { jobs: ExtractionJob[]; meta: JobsPageMeta };
+
 // Shared shape for the row types we only need to count and find the most
 // recent timestamp of, on the Overview tab's "Extraction Details by Tab" cards.
 export type TimestampedRow = { updated_at?: string | null; created_at?: string | null };
@@ -103,8 +129,7 @@ export type CampusRow = TimestampedRow & { id: string };
 export type AgentRow = TimestampedRow & { id: string };
 export type CourseRow = TimestampedRow & { id: string; name: string; verification_status?: string | null };
 
-/** A row in one of the extraction_course_* junction tables. */
-export type CourseAssignment = { id: string; course_id: string } & Record<string, string | null>;
+export type CourseAssignment = { id: string; course_id: string; course_name: string | null } & Record<string, string | null>;
 
 /** Junction slugs the backend's /junctions/:junction/assign endpoint accepts. */
 export type JunctionSlug =
@@ -132,13 +157,28 @@ export type CourseLinks = {
   course_campuses: CourseAssignment[];
 };
 
+export type TabCounts = {
+  branches: number;
+  agents: number;
+  courses: number;
+  fees: number;
+  intakes: number;
+  eligibility: number;
+  units: number;
+  study_options: number;
+  accreditations: number;
+  visa_services: number;
+};
+
 export type JobFull = {
   job: ExtractionJob;
   overview: InstitutionOverview | null;
   campuses: CampusRow[];
   agents: AgentRow[];
-  courses: CourseRow[];
+  tabCounts: TabCounts;
   courseLinks: CourseLinks;
+  /** Only populated for source_type: "visa_service" jobs — empty array otherwise. */
+  visaServices: VisaService[];
 };
 
 // ── Full entity types for tab views ──────────────────────────────
@@ -250,7 +290,15 @@ export type CreateCampusParams = { job_id: string } & Partial<
 >;
 
 export type UpdateCourseParams = Partial<Omit<CourseFull, "id" | "created_at" | "updated_at" | "verification_status">>;
-export type CreateCourseParams = { name: string; source_url?: string; degree_level?: string; subject_area?: string; duration_weeks?: number; study_mode?: string; description?: string };
+export type CreateCourseParams = {
+  name: string;
+  source_url?: string | null;
+  degree_level?: string | null;
+  subject_area?: string | null;
+  duration_weeks?: number | null;
+  study_mode?: string | null;
+  description?: string | null;
+};
 /** Tables the backend's save-and-learn endpoint accepts a patch for. */
 export type EditableTable =
   | "extraction_courses"
@@ -262,7 +310,8 @@ export type EditableTable =
   | "extraction_eligibility_requirements"
   | "extraction_study_units"
   | "extraction_accreditations"
-  | "extraction_study_options";
+  | "extraction_study_options"
+  | "extraction_visa_services";
 
 // guided_urls values are URL arrays and resource objects, not strings — matches the
 // backend's `z.record(z.unknown())`.
@@ -370,6 +419,55 @@ export type StudyUnitParams = {
 };
 export type StudyOption = { id: string; name: string | null; study_mode: string | null; study_load: string | null; duration_value: number | null; duration_unit: string | null; applicable_to: string | null; save_for_reuse?: boolean; created_at: string; updated_at?: string };
 
+// ── Visa services (source_type: "visa_service") ──────────────────
+
+export type VisaServiceStatus = "pending" | "approved" | "discarded";
+
+/** One row of extraction_visa_services — flat table, no child/junction entities. */
+export type VisaService = {
+  id: string;
+  job_id: string;
+  status: VisaServiceStatus | string;
+  name: string;
+  provider_name: string | null;
+  type: string | null;
+  description: string | null;
+  registration_number: string | null;
+  registration_body: string | null;
+  registration_status: string | null;
+  registration_level: string | null;
+  visa_types_handled: string[] | null;
+  services_offered: string[] | null;
+  specializations: string[] | null;
+  fee_amount: number | null;
+  fee_currency: string | null;
+  fee_type: string | null;
+  consultation_fee: number | null;
+  consultation_free: boolean | null;
+  success_rate: number | null;
+  cases_handled: number | null;
+  years_experience: number | null;
+  team_size: number | null;
+  qualified_agents_count: number | null;
+  countries_serviced: string[] | null;
+  nationalities_serviced: string[] | null;
+  languages_spoken: string[] | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  website: string | null;
+  booking_url: string | null;
+  average_rating: number | null;
+  review_count: number | null;
+  source_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type StudyOptionParams = {
   name?: string | null;
   study_mode?: string | null;
@@ -380,3 +478,36 @@ export type StudyOptionParams = {
   save_for_reuse?: boolean;
 };
 export type Accreditation = { id: string; name: string; issuing_organization: string | null; website: string | null; description: string | null; created_at: string; updated_at?: string };
+
+/** One junction row: which scraped accreditation is on which course, and its library mapping. */
+export type AccreditationAssignment = {
+  extraction_accreditation_id: string | null;
+  accreditation_id: string | null;
+  course_id: string | null;
+  course_name: string | null;
+};
+
+export type JobAccreditations = {
+  scraped: Accreditation[];
+  assignments: AccreditationAssignment[];
+};
+
+/** superadmin.accreditations — the global library scraped rows get mapped to. */
+export type LibraryAccreditation = {
+  id: string;
+  name: string;
+  issuing_organization: string | null;
+  website: string | null;
+  description: string | null;
+  country: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LibraryAccreditationInput = {
+  name: string;
+  issuing_organization?: string | null;
+  website?: string | null;
+  description?: string | null;
+};

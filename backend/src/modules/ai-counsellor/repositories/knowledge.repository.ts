@@ -271,9 +271,18 @@ export async function searchCourses(opts: {
   if (opts.jobIds?.length === 0) return [];
   const limit = opts.limit ?? DEFAULT_LIMIT;
 
+  // Stop-words poison OR-matching: in "Bachelor of Arts in Drama", "of"/"in" ILIKE-hit
+  // half the catalogue, and "bachelor" alone matches every bachelor's course — the
+  // subject words are what discriminate, so only they participate.
+  const STOP_WORDS = new Set(["of", "in", "a", "an", "the", "for", "and", "to", "with"]);
+  const words = opts.query
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((w) => !STOP_WORDS.has(w.toLowerCase()));
+  const cleanQuery = words.join(" ");
+
   // Rank by how many keywords hit the strong columns (name/subject), so a match
   // on every word beats a single stray word matched in a long description.
-  const words = opts.query.split(/\s+/).filter(Boolean);
   const rankSql = words
     .map(() => "(CASE WHEN c.name ILIKE ? OR c.subject_area ILIKE ? OR i.country ILIKE ? THEN 1 ELSE 0 END)")
     .join(" + ");
@@ -287,14 +296,16 @@ export async function searchCourses(opts: {
       "c.country_code", "c.source_url",
       "i.name as institution_name", "i.country as institution_country",
     )
-    .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], opts.query))
+    .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], cleanQuery))
     // Any course status is fine — the gate is the institution being published
     // (job exported, same definition as the search module).
     .whereRaw(
       `exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`,
     )
-    .orderByRaw(`${rankSql} DESC`, rankBindings)
     .modify((q) => {
+      // Empty query = browse mode (filters only): rankSql would be empty SQL.
+      if (words.length) q.orderByRaw(`${rankSql} DESC`, rankBindings);
+      else q.orderBy("c.name", "asc");
       if (opts.country) q.whereILike("i.country", `%${opts.country}%`);
       if (opts.degreeLevel) q.whereILike("c.degree_level", `%${opts.degreeLevel}%`);
       if (opts.jobIds) q.whereIn("c.job_id", opts.jobIds);
@@ -324,6 +335,32 @@ export async function searchCourses(opts: {
     fees: (feesByCourse[c.id as string] ?? []).map(stripCourseId),
     study_options: (optsByCourse[c.id as string] ?? []).map(stripCourseId),
   })) as CourseResult[];
+}
+
+export interface CourseInstitutionMedia {
+  course_id: string;
+  institution_name: string | null;
+  logo_url: string | null;
+  cover_url: string | null;
+  city: string | null;
+  website: string | null;
+}
+
+/** Course ids come out of model output, where a hallucinated non-uuid would make
+ * Postgres throw `invalid input syntax for type uuid` on the whole query. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Institution branding for the course ids the model cited. The prompt forbids it
+ * from emitting image URLs (it invents them), so cards get their logo from here. */
+export async function institutionMediaByCourseIds(courseIds: string[]): Promise<CourseInstitutionMedia[]> {
+  const ids = courseIds.filter((id) => UUID_RE.test(id));
+  if (ids.length === 0) return [];
+
+  return masterKnex(`${SA}.extraction_courses as c`)
+    .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
+    .leftJoin("institutions as inst", "inst.source_job_id", "c.job_id")
+    .whereIn("c.id", ids)
+    .select("c.id as course_id", "i.name as institution_name", "i.logo_url", "inst.cover_url", "i.city", "i.website");
 }
 
 export async function searchInstitutions(opts: {
@@ -425,15 +462,24 @@ export interface CountryGuideResult {
   climate: string | null;
 }
 
-export interface KnowledgeDocumentResult {
+export interface KnowledgeChunkResult {
   id: string;
-  url: string;
-  title: string | null;
-  markdown: string;
+  document_id: string;
+  content: string;
+  heading_path: string | null;
+  page_number: number | null;
   similarity: number;
+  title: string | null;
+  url: string | null;
+  file_name: string | null;
+  source_type: "url" | "file";
   category_label: string;
   source_domain: string;
   trust_tier: "gov" | "verified_institution" | "other";
+  /** When a human last confirmed this source, as opposed to when it was crawled. */
+  last_verified_at: string | null;
+  /** Known expiry for a temporary figure (fee schedule, cap, concession). */
+  effective_until: string | null;
 }
 
 export async function searchKnowledgeVisas(opts: { query: string; limit?: number }): Promise<KnowledgeVisaResult[]> {
@@ -469,16 +515,21 @@ export async function searchCountryGuides(opts: { query: string; limit?: number 
 
 /** Semantic search over the Knowledge Rack via the migration's match function.
  * countryCode (ISO2) narrows to that country's categories; global categories always match. */
-export async function matchKnowledgeDocuments(
+/**
+ * Chunk-level retrieval — the primary path since Phase 6. A section-sized chunk
+ * matches the question far better than a whole-page vector, and the full chunk
+ * fits in the prompt where a whole page had to be truncated.
+ */
+export async function matchKnowledgeChunks(
   embedding: number[],
-  count = 4,
+  count = 8,
   countryCode?: string | null,
-): Promise<KnowledgeDocumentResult[]> {
+): Promise<KnowledgeChunkResult[]> {
   const { rows } = await masterKnex.raw(
-    `SELECT * FROM ${SA}.match_ai_knowledge_documents(?::vector, ?, NULL, ?)`,
+    `SELECT * FROM ${SA}.match_ai_knowledge_chunks(?::vector, ?, NULL, ?)`,
     [`[${embedding.join(",")}]`, count, countryCode ?? null],
   );
-  return rows as KnowledgeDocumentResult[];
+  return rows as KnowledgeChunkResult[];
 }
 
 /** Country names + ISO2 codes, for detecting a country mention in the user's query. */

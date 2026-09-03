@@ -5,7 +5,11 @@ import type { CompareCourseItem } from "./types";
 
 const MAX_COMPARE_ITEMS = 5;
 
+// In-memory only — resets on refresh, by design. Always starts empty on both server and
+// client so there's no hydration mismatch.
 let items: CompareCourseItem[] = [];
+// Stable reference for the server snapshot — a new [] on every call triggers an infinite loop.
+const EMPTY_SNAPSHOT: CompareCourseItem[] = [];
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
@@ -32,11 +36,12 @@ const subscribe = (cb: () => void) => {
   return () => listeners.delete(cb);
 };
 
-// Search-page course compare tray — module-level singleton (in-memory only,
-// resets on full page reload) so the floating tray, course cards, and the
-// /compare page all share the same selection without prop drilling.
+// Search-page course compare tray — module-level singleton so the floating tray, course
+// cards, and the /compare page all share the same selection without prop drilling.
 export function useCompareTray() {
-  const snapshot = useSyncExternalStore(subscribe, store.getItems, store.getItems);
+  // Server snapshot () => [] matches the initial client state — no hydration mismatch.
+  const snapshot = useSyncExternalStore(subscribe, store.getItems, () => EMPTY_SNAPSHOT);
+
   return {
     items: snapshot,
     max: MAX_COMPARE_ITEMS,

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Building2, Handshake, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Building2, Eye, Handshake, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
@@ -10,15 +10,16 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { BusinessRelation } from "../../apis/types";
 import { deleteRelation, fetchRelations } from "../../store/business-profile-detail-slice";
 import { LinkConsultancyDialog } from "../partners/link-consultancy-dialog";
+import { ViewInstitutionDrawer } from "../partners/view-institution-drawer";
 
 const PAGE_SIZE = 10;
 
 export function PartnersTab({ businessId, businessName }: Readonly<{ businessId: number; businessName?: string }>) {
   const dispatch = useAppDispatch();
-  const { items: relations, status, total: relationsTotal } = useAppSelector((state) => state.businessProfileDetail.relations);
-  const partners = relations.filter((r) => r.relation_type === "partner");
+  const { items: partners, status, total: relationsTotal } = useAppSelector((state) => state.businessProfileDetail.relations);
   const [addOpen, setAddOpen] = useState(false);
   const [editingRelation, setEditingRelation] = useState<BusinessRelation | null>(null);
+  const [viewingInstitutionId, setViewingInstitutionId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
 
   const fetchedIdRef = useRef<number | null>(null);
@@ -64,18 +65,23 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
           <div key={p.id} className="flex items-center justify-between rounded-lg border p-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-                {p.logo_url ? (
+                {p.partner_logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.logo_url} alt="" className="h-full w-full rounded-lg object-contain p-1" />
+                  <img src={p.partner_logo_url} alt="" className="h-full w-full rounded-lg object-contain p-1" />
                 ) : (
                   <Building2 className="h-4 w-4 text-muted-foreground" />
                 )}
               </div>
               <div>
-                <p className="text-sm font-medium">{p.business_name}</p>
+                <p className="text-sm font-medium">{p.partner_name}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {p.partner_kind === "institution" && (
+                <Button size="icon-sm" variant="ghost" onClick={() => setViewingInstitutionId(p.partner_id)} aria-label="View institution">
+                  <Eye className="h-4 w-4" />
+                </Button>
+              )}
               <Button size="icon-sm" variant="ghost" onClick={() => setEditingRelation(p)} aria-label="Edit partner">
                 <Pencil className="h-4 w-4" />
               </Button>
@@ -116,6 +122,11 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
         businessId={businessId}
         businessName={businessName}
         editRelation={editingRelation}
+      />
+      <ViewInstitutionDrawer
+        open={viewingInstitutionId != null}
+        onOpenChange={(open) => { if (!open) setViewingInstitutionId(null); }}
+        institutionId={viewingInstitutionId}
       />
     </div>
   );

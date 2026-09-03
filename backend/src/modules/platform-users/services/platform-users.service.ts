@@ -1,19 +1,30 @@
 // Platform user service — profile management and sub-resources (registration + OTP auth handled by auth module).
 
 import { NotFoundError, ConflictError, BadRequestError } from "../../../shared/errors.js";
+import { config } from "../../../config.js";
+import { generateSubdomain } from "../../../shared/subdomain.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import { computeCompletion, syncCompletion } from "./completion.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as bizRepo from "../../businesses/repositories/businesses.repository.js";
 import { registerBusiness } from "../../businesses/services/businesses.service.js";
+import { issueScopedAccessToken } from "../../auth/auth.service.js";
+import * as institutionMembers from "./institution-members.service.js";
 import { provisionInstitutionSchema } from "../../../core/business/provisioner.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
+import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
+import { createSystemPost } from "../../feed/services/feed.service.js";
+import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
+import { createChildLogger } from "../../../shared/logger.js";
 import type {
   ProfilePatchInput,
   OnboardingPersonalInput, OnboardingBusinessInput, OnboardingInstitutionInput,
-  QualificationInput, LanguageTestInput, WorkExperienceInput,
+  QualificationInput, LanguageTestInput, AcademicTestInput, WorkExperienceInput,
 } from "../schemas/platform-users.schema.js";
+
+const logger = createChildLogger("platform-users-service");
+const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
 
 // ── Profile ──
 
@@ -23,14 +34,16 @@ export async function getProfile(userId: number) {
 
   const profile = await repo.findProfileByUserId(userId);
 
-  const [qualifications, language_tests, work_experiences] = await Promise.all([
+  const [qualifications, language_tests, academic_tests, work_experiences] = await Promise.all([
     repo.listQualifications(userId),
     repo.listLanguageTests(userId),
+    repo.listAcademicTests(userId),
     repo.listWorkExperiences(userId),
   ]);
 
-  let user_category: "business" | "personal" | null = null;
+  let user_category: "business" | "institution" | "personal" | null = null;
   if (user.is_business_account) user_category = "business";
+  else if (user.is_institution_account) user_category = "institution";
   else if (user.is_personal_account) user_category = "personal";
 
   const [photo_url, cover_url] = await Promise.all([
@@ -40,7 +53,7 @@ export async function getProfile(userId: number) {
 
   const completion = computeCompletion(user, profile ?? null, qualifications.length, language_tests.length);
 
-  return { ...user, photo_url, cover_url, user_category, profile: profile ?? null, qualifications, language_tests, work_experiences, completion };
+  return { ...user, photo_url, cover_url, user_category, profile: profile ?? null, qualifications, language_tests, academic_tests, work_experiences, completion };
 }
 
 
@@ -93,7 +106,6 @@ export async function onboardPersonal(userId: number, data: OnboardingPersonalIn
 /** Business onboarding — delegates to businesses service (provisions tenant DB). */
 export async function onboardBusiness(userId: number, data: OnboardingBusinessInput) {
   return registerBusiness(userId, {
-    subdomain: data.subdomain,
     business_name: data.business_name,
     business_type: data.business_type,
     phone: data.phone,
@@ -107,15 +119,17 @@ export async function onboardBusiness(userId: number, data: OnboardingBusinessIn
 
 /** Institution onboarding — inserts into institutions table, provisions tenant schema (members, member_invitations). */
 export async function onboardInstitution(userId: number, data: OnboardingInstitutionInput) {
-  // Subdomain must be unique across both businesses and institutions
-  const [existingInst, existingBiz] = await Promise.all([
-    repo.findInstitutionBySubdomain(data.subdomain),
-    bizRepo.findBusinessBySubdomain(data.subdomain),
-  ]);
-  if (existingInst || existingBiz) throw new ConflictError("Subdomain already taken");
-
   const user = await repo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
+
+  // Auto-generate subdomain from institution name, unique across businesses + institutions.
+  const subdomain = await generateSubdomain(data.institution_name, async (candidate) => {
+    const [inst, biz] = await Promise.all([
+      repo.findInstitutionBySubdomain(candidate),
+      bizRepo.findBusinessBySubdomain(candidate),
+    ]);
+    return Boolean(inst || biz);
+  });
 
   const institution = await repo.insertInstitution({
     platform_user_id: userId,
@@ -123,7 +137,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     last_name: user.last_name,
     email: data.email ?? user.email,
     phone: data.phone,
-    subdomain: data.subdomain,
+    subdomain,
     institution_name: data.institution_name,
     institution_type: data.institution_type,
     country_id: data.country_id,
@@ -131,6 +145,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     city: data.city,
     address: data.address,
     postcode: data.postcode,
+    claim_status: "claimed",
   });
 
   try {
@@ -140,29 +155,60 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     throw err;
   }
 
-  // Create owner member in the institution schema.
-  // Pool key is the schema UUID — institution ids would collide with business ids in the shared pool map.
+  // Create the owner member. addMember writes BOTH the tenant `members` row and
+  // user_institution_index — see institution-members.service.ts for why they must move
+  // together. Pool key is the schema UUID: institution ids would collide with business ids.
   const db = await getKnex(institution.schema_name, schemaName(institution.schema_name));
-  await db("members").insert({
+  await institutionMembers.addMember(db, Number(institution.id), {
     platform_user_id: userId,
     role: "owner",
     is_owner: true,
-    account_status: 1,
     first_name: user.first_name,
     last_name: user.last_name,
     email: data.email ?? user.email,
     phone: data.phone,
   });
 
+  await repo.updateUser(userId, { is_institution_account: true });
+  await repo.addAccountCategory(userId, { type: "institution", role: institution.institution_type ?? "institution" });
+
+  // Last, as registerBusiness does with its own account_status: 1 is what makes the
+  // institution resolvable by findInstitutionBySchemaName and listUserInstitutions, so it must
+  // not flip until the schema and the owner member exist. Without it the scoped token below
+  // would be handed out for an institution the tenant plugin then refuses to resolve.
+  await repo.updateInstitution(institution.id, { account_status: 1 });
+
+  createSystemPost({
+    authorId: userId,
+    institutionId: Number(institution.id),
+    content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    media: [
+      {
+        storage_path: institution.logo_url ?? WELCOME_POST_IMAGE,
+        type: "image",
+        mime_type: institution.logo_url ? guessImageMimeType(institution.logo_url) : "image/png",
+      },
+    ],
+  }).catch((err) => logger.warn("Welcome post creation error", { institutionId: institution.id, err: err.message }));
+
+  // Scoped token, as registerBusiness does — otherwise the user has just created an
+  // institution and still has to log out and back in to enter it.
+  const access_token = issueScopedAccessToken({ id: userId, email: user.email }, institution.schema_name, "owner", "institution");
+
   return {
     institution: { id: institution.id, org_id: institution.schema_name, subdomain: institution.subdomain, institution_name: institution.institution_name },
+    access_token,
     message: "Institution registered.",
   };
 }
 
 export async function updateProfile(userId: number, data: ProfilePatchInput) {
-  const { phone, ...profileFields } = data;
-  if (phone !== undefined) await repo.updateUser(userId, { phone });
+  const { first_name, last_name, phone, ...profileFields } = data;
+  const userFields: Record<string, unknown> = {};
+  if (first_name !== undefined) userFields.first_name = first_name;
+  if (last_name !== undefined) userFields.last_name = last_name;
+  if (phone !== undefined) userFields.phone = phone;
+  if (Object.keys(userFields).length > 0) await repo.updateUser(userId, userFields);
 
   // Update or auto-create profile
   const hasProfileData = Object.keys(profileFields).length > 0;
@@ -175,6 +221,9 @@ export async function updateProfile(userId: number, data: ProfilePatchInput) {
   }
   if (profileFields.fields_of_study !== undefined) {
     serialized.fields_of_study = JSON.stringify(profileFields.fields_of_study);
+  }
+  if (profileFields.public_visibility !== undefined) {
+    serialized.public_visibility = JSON.stringify(profileFields.public_visibility);
   }
 
   const existing = await repo.findProfileByUserId(userId);
@@ -199,6 +248,26 @@ export async function getCitiesByCountry(countryId: number) {
   if (!country) throw new NotFoundError("Country not found");
   const cities = await repo.listCitiesByCountry(countryId);
   return { country_id: countryId, country_name: country.name, cities };
+}
+
+// ── Lookups (degree levels, areas of study) ──
+// Personal-account counterpart to the business module's /businesses/degree-levels and
+// /areas-of-study — same underlying tables, but reachable without a business context.
+
+export async function listDegreeLevels(limit: number, offset: number, search?: string) {
+  const [rows, total] = await Promise.all([
+    categoriesService.listLookup("degree_levels", limit, offset, search),
+    categoriesService.countLookup("degree_levels", search),
+  ]);
+  return { rows, total };
+}
+
+export async function listAreasOfStudy(limit: number, offset: number, search?: string) {
+  const [rows, total] = await Promise.all([
+    categoriesService.listLookup("areas_of_study", limit, offset, search),
+    categoriesService.countLookup("areas_of_study", search),
+  ]);
+  return { rows, total };
 }
 
 // ── Qualifications ──
@@ -245,6 +314,24 @@ export async function removeLanguageTest(id: string, userId: number) {
   const deleted = await repo.deleteLanguageTest(id, userId);
   if (!deleted) throw new NotFoundError("Language test not found");
   await syncCompletion(userId);
+}
+
+// ── Academic Tests ──
+// Not a completion criterion (same as work experience), so no syncCompletion here.
+
+export async function addAcademicTest(userId: number, data: AcademicTestInput) {
+  return repo.insertAcademicTest(userId, data);
+}
+
+export async function editAcademicTest(id: string, userId: number, data: Partial<AcademicTestInput>) {
+  const row = await repo.updateAcademicTest(id, userId, data);
+  if (!row) throw new NotFoundError("Academic test not found");
+  return row;
+}
+
+export async function removeAcademicTest(id: string, userId: number) {
+  const deleted = await repo.deleteAcademicTest(id, userId);
+  if (!deleted) throw new NotFoundError("Academic test not found");
 }
 
 // ── Work Experiences ──

@@ -1,91 +1,39 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/combobox";
-import { cn } from "@/lib/utils";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import { useAppDispatch } from "@/lib/hooks";
 import { categoriesApi, type Category } from "@/app/admin/platform/categories/apis";
 import { createJob } from "../store/all-extractions-slice";
-import { GUIDED_URL_CATEGORIES, SOURCE_TYPE_OPTIONS } from "../const";
+import type { ExistingJobConflict } from "../apis/types";
+import {
+  GUIDED_URL_CATEGORIES,
+  SOURCE_TYPE_OPTIONS,
+  VISA_SERVICE_GUIDED_URL_CATEGORIES,
+  VISA_SERVICE_SOURCE_TYPE_OPTIONS,
+} from "../const";
+import { ExtractionStepIndicator } from "./extraction-step-indicator";
+import { ExtractionSourceStep } from "./extraction-source-step";
+import { ExtractionReviewStep } from "./extraction-review-step";
 
 const STEPS = ["Categories", "Source", "Review"];
 
 const cleanUrls = (urls: string[] | undefined) => (urls ?? []).map((u) => u.trim()).filter(Boolean);
 
-/** A growable list of URL inputs for one guided-URL bucket. */
-function UrlList({
-  id,
-  values,
-  onChange,
-}: Readonly<{ id: string; values: string[]; onChange: (next: string[]) => void }>) {
-  // Always render at least one input so an empty bucket still has somewhere to type.
-  const rows = values.length > 0 ? values : [""];
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      {rows.map((url, index) => (
-        // Index key on purpose: rows are positional and two blank rows are indistinguishable.
-        <div key={index} className="flex items-center gap-1.5">
-          <Input
-            id={index === 0 ? id : undefined}
-            type="url"
-            placeholder="https://university.edu/…"
-            value={url}
-            onChange={(e) => onChange(rows.map((r, i) => (i === index ? e.target.value : r)))}
-          />
-          {rows.length > 1 && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="shrink-0 cursor-pointer"
-              title="Remove URL"
-              onClick={() => onChange(rows.filter((_, i) => i !== index))}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </div>
-      ))}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 w-fit gap-1 px-1.5 text-xs cursor-pointer"
-        onClick={() => onChange([...rows, ""])}
-      >
-        <Plus className="h-3 w-3" />
-        Add URL
-      </Button>
-    </div>
-  );
-}
-
-/** One line of the review step. Blank optional values show as "Not set" rather than vanishing. */
-function SummaryRow({ label, value }: Readonly<{ label: string; value: string | string[] }>) {
-  const list = Array.isArray(value) ? value : [value].filter(Boolean);
-  return (
-    <div className="flex flex-col gap-0.5 border-b border-border pb-2 last:border-0">
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-      {list.length === 0 ? (
-        <span className="text-muted-foreground/70">Not set</span>
-      ) : (
-        list.map((item, i) => (
-          <span key={`${item}-${i}`} className="break-all">{item}</span>
-        ))
-      )}
-    </div>
-  );
-}
 const SEARCH_DEBOUNCE_MS = 300;
 
 const toOptions = (categories: Category[]) =>
-  categories.map((c) => ({ value: String(c.id), label: c.name }));
+  categories.map((c) => ({
+    value: String(c.id),
+    label: c.name,
+    icon: <DynamicIcon name={c.icon} fallback="Building2" className="h-4 w-4" />,
+  }));
 
 export function NewExtractionDialog({
   open,
@@ -93,6 +41,7 @@ export function NewExtractionDialog({
 }: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void }>) {
   const dispatch = useAppDispatch();
   const [step, setStep] = useState(0);
+  const [conflict, setConflict] = useState<ExistingJobConflict | null>(null);
   const [businessCategory, setBusinessCategory] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
   // Kept alongside the ids so the review step still has a name after a search
@@ -119,8 +68,23 @@ export function NewExtractionDialog({
     }
     if (fetchedForOpenRef.current) return;
     fetchedForOpenRef.current = true;
+
+    setStep(0);
+    setBusinessCategory("");
+    setServiceCategory("");
+    setBusinessLabel("");
+    setServiceLabel("");
+    setSourceType("institution");
+    setInstitutionUrl("");
+    setSampleCourseUrl("");
+    setGuidedUrls({});
+    setGuidanceNotes("");
+
     setLoadingCategories(true);
-    Promise.all([categoriesApi.getBusinessCategories({ limit: 10 }), categoriesApi.getServiceCategories({ limit: 10 })])
+    Promise.all([
+      categoriesApi.getBusinessCategories({ limit: 10, active: true }),
+      categoriesApi.getServiceCategories({ limit: 10, active: true }),
+    ])
       .then(([business, service]) => {
         setBusinessOptions(business.data);
         setServiceOptions(service.data);
@@ -132,7 +96,7 @@ export function NewExtractionDialog({
   const handleBusinessSearch = (query: string) => {
     if (businessSearchRef.current) clearTimeout(businessSearchRef.current);
     businessSearchRef.current = setTimeout(async () => {
-      const { data } = await categoriesApi.getBusinessCategories({ search: query.trim() || undefined, limit: 10 });
+      const { data } = await categoriesApi.getBusinessCategories({ search: query.trim() || undefined, limit: 10, active: true });
       setBusinessOptions(data);
     }, SEARCH_DEBOUNCE_MS);
   };
@@ -140,32 +104,37 @@ export function NewExtractionDialog({
   const handleServiceSearch = (query: string) => {
     if (serviceSearchRef.current) clearTimeout(serviceSearchRef.current);
     serviceSearchRef.current = setTimeout(async () => {
-      const { data } = await categoriesApi.getServiceCategories({ search: query.trim() || undefined, limit: 10 });
+      const { data } = await categoriesApi.getServiceCategories({ search: query.trim() || undefined, limit: 10, active: true });
       setServiceOptions(data);
     }, SEARCH_DEBOUNCE_MS);
-  };
-
-  const handleOpenChange = (next: boolean) => {
-    if (next) {
-      setStep(0);
-      setBusinessCategory("");
-      setServiceCategory("");
-      setBusinessLabel("");
-      setServiceLabel("");
-      setSourceType("institution");
-      setInstitutionUrl("");
-      setSampleCourseUrl("");
-      setGuidedUrls({});
-      setGuidanceNotes("");
-    }
-    onOpenChange(next);
   };
 
   // A stray backdrop click or Escape would wipe a half-filled three-step form, so the only
   // ways out are Cancel and the corner ×. Outside presses are blocked by disablePointerDismissal.
   const handleOpenChangeWithReason = (next: boolean, details: { reason?: string }) => {
     if (!next && details.reason === "escape-key") return;
-    handleOpenChange(next);
+    onOpenChange(next);
+  };
+
+  // "Visa Services" is both a business category and a service category — when an admin
+  // picks that combination, the only sensible source is a visa/migration consultancy's own
+  // website, not a university. Matched by name rather than id so this doesn't break if the
+  // categories get reseeded with different ids.
+  const isVisaServiceCategory =
+    businessLabel.trim().toLowerCase() === "visa services" && serviceLabel.trim().toLowerCase() === "visa services";
+  const sourceTypeOptions = isVisaServiceCategory ? VISA_SERVICE_SOURCE_TYPE_OPTIONS : SOURCE_TYPE_OPTIONS;
+  const isVisaServiceSource = sourceType === "visa_service";
+  const guidedUrlCategories = isVisaServiceSource ? VISA_SERVICE_GUIDED_URL_CATEGORIES : GUIDED_URL_CATEGORIES;
+
+  // Keep sourceType valid for whichever option list applies to the category combination
+  // being chosen. Applied directly in the category onChange handlers below (not an effect
+  // reacting to already-committed state) — the category pick is the actual event that can
+  // invalidate the current sourceType, so this is where React wants that reset to happen.
+  const resetSourceTypeFor = (nextBusinessLabel: string, nextServiceLabel: string) => {
+    const isVisa = nextBusinessLabel.trim().toLowerCase() === "visa services" && nextServiceLabel.trim().toLowerCase() === "visa services";
+    const options = isVisa ? VISA_SERVICE_SOURCE_TYPE_OPTIONS : SOURCE_TYPE_OPTIONS;
+    const fallback = isVisa ? "visa_service" : "institution";
+    setSourceType((prev) => (options.some((o) => o.value === prev) ? prev : fallback));
   };
 
   const stepOneValid = Boolean(businessCategory && serviceCategory && sourceType);
@@ -174,7 +143,7 @@ export function NewExtractionDialog({
     if (!institutionUrl.trim()) return;
 
     const guided_urls: Record<string, string[]> = {};
-    for (const { key } of GUIDED_URL_CATEGORIES) {
+    for (const { key } of guidedUrlCategories) {
       const urls = cleanUrls(guidedUrls[key]);
       if (urls.length) guided_urls[key] = urls;
     }
@@ -193,7 +162,11 @@ export function NewExtractionDialog({
     );
     setCreating(false);
     if (createJob.rejected.match(result)) {
-      toast.error("Couldn't start extraction", { description: result.error.message ?? "Please try again." });
+      if (result.payload?.existingJob) {
+        setConflict(result.payload.existingJob);
+        return;
+      }
+      toast.error("Couldn't start extraction", { description: result.payload?.message ?? result.error.message ?? "Please try again." });
       return;
     }
     toast.success("Extraction started");
@@ -201,30 +174,14 @@ export function NewExtractionDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChangeWithReason} disablePointerDismissal>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>New Extraction</DialogTitle>
         </DialogHeader>
 
-        <div className="flex items-center gap-2">
-          {STEPS.map((label, index) => (
-            <div key={label} className="flex flex-1 items-center gap-2">
-              <span
-                className={cn(
-                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs",
-                  index <= step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                )}
-              >
-                {index + 1}
-              </span>
-              <span className={cn("text-xs", index === step ? "text-foreground" : "text-muted-foreground")}>
-                {label}
-              </span>
-              {index < STEPS.length - 1 && <div className="h-px flex-1 bg-border" />}
-            </div>
-          ))}
-        </div>
+        <ExtractionStepIndicator steps={STEPS} current={step} />
 
         {step === 0 ? (
           <div className="flex flex-col gap-4">
@@ -235,8 +192,10 @@ export function NewExtractionDialog({
                 options={toOptions(businessOptions)}
                 value={businessCategory}
                 onChange={(v) => {
+                  const label = businessOptions.find((c) => String(c.id) === v)?.name ?? "";
                   setBusinessCategory(v);
-                  setBusinessLabel(businessOptions.find((c) => String(c.id) === v)?.name ?? "");
+                  setBusinessLabel(label);
+                  resetSourceTypeFor(label, serviceLabel);
                 }}
                 onQueryChange={handleBusinessSearch}
                 loading={loadingCategories}
@@ -251,8 +210,10 @@ export function NewExtractionDialog({
                 options={toOptions(serviceOptions)}
                 value={serviceCategory}
                 onChange={(v) => {
+                  const label = serviceOptions.find((c) => String(c.id) === v)?.name ?? "";
                   setServiceCategory(v);
-                  setServiceLabel(serviceOptions.find((c) => String(c.id) === v)?.name ?? "");
+                  setServiceLabel(label);
+                  resetSourceTypeFor(businessLabel, label);
                 }}
                 onQueryChange={handleServiceSearch}
                 loading={loadingCategories}
@@ -264,83 +225,43 @@ export function NewExtractionDialog({
               <Label htmlFor="source-type">Source type</Label>
               <Combobox
                 id="source-type"
-                options={SOURCE_TYPE_OPTIONS}
+                options={sourceTypeOptions}
                 value={sourceType}
                 onChange={setSourceType}
                 placeholder="Select source type"
               />
+              {isVisaServiceCategory && (
+                <p className="text-xs text-muted-foreground">
+                  Visa Services category selected — pointing this at a visa/migration consultancy&apos;s own website.
+                </p>
+              )}
             </div>
           </div>
         ) : step === 1 ? (
-          <div className="flex max-h-[65vh] flex-col gap-4 overflow-y-auto pr-1">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="institution-url">Institution website URL</Label>
-              <Input
-                id="institution-url"
-                type="url"
-                placeholder="https://university.edu"
-                value={institutionUrl}
-                onChange={(e) => setInstitutionUrl(e.target.value)}
-              />
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Everything below is optional — leave it blank and the AI discovers pages itself. Pointing it at
-              the right pages gives markedly better results. Add as many URLs per section as you need.
-            </p>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="sample-course-url">Sample course page URL</Label>
-              <Input
-                id="sample-course-url"
-                type="url"
-                placeholder="https://university.edu/courses/bachelor-of-science"
-                value={sampleCourseUrl}
-                onChange={(e) => setSampleCourseUrl(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">One individual course page, so the AI learns the URL pattern.</p>
-            </div>
-
-            {GUIDED_URL_CATEGORIES.map(({ key, label, ...rest }) => (
-              <div key={key} className="flex flex-col gap-2">
-                <Label htmlFor={key}>{label} page URLs</Label>
-                <UrlList
-                  id={key}
-                  values={guidedUrls[key] ?? []}
-                  onChange={(next) => setGuidedUrls((prev) => ({ ...prev, [key]: next }))}
-                />
-                {"hint" in rest && <p className="text-xs text-muted-foreground">{rest.hint}</p>}
-              </div>
-            ))}
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="guidance-notes">Additional guidance for the AI</Label>
-              <Textarea
-                id="guidance-notes"
-                rows={3}
-                placeholder="e.g. Fees are shown per semester — multiply by 2 for annual. CRICOS codes appear in the sidebar."
-                value={guidanceNotes}
-                onChange={(e) => setGuidanceNotes(e.target.value)}
-              />
-            </div>
-          </div>
+          <ExtractionSourceStep
+            isVisaServiceSource={isVisaServiceSource}
+            guidedUrlCategories={guidedUrlCategories}
+            institutionUrl={institutionUrl}
+            onInstitutionUrlChange={setInstitutionUrl}
+            sampleCourseUrl={sampleCourseUrl}
+            onSampleCourseUrlChange={setSampleCourseUrl}
+            guidedUrls={guidedUrls}
+            onGuidedUrlsChange={setGuidedUrls}
+            guidanceNotes={guidanceNotes}
+            onGuidanceNotesChange={setGuidanceNotes}
+          />
         ) : (
-          <div className="flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1 text-sm">
-            <SummaryRow label="Business category" value={businessLabel} />
-            <SummaryRow label="Service category" value={serviceLabel} />
-            <SummaryRow
-              label="Source type"
-              value={SOURCE_TYPE_OPTIONS.find((o) => o.value === sourceType)?.label ?? sourceType}
-            />
-            <SummaryRow label="Institution website URL" value={institutionUrl.trim()} />
-            <SummaryRow label="Sample course page URL" value={sampleCourseUrl.trim()} />
-
-            {GUIDED_URL_CATEGORIES.map(({ key, label }) => (
-              <SummaryRow key={key} label={`${label} page URLs`} value={cleanUrls(guidedUrls[key])} />
-            ))}
-
-            <SummaryRow label="Guidance for the AI" value={guidanceNotes.trim()} />
-          </div>
+          <ExtractionReviewStep
+            businessLabel={businessLabel}
+            serviceLabel={serviceLabel}
+            sourceTypeLabel={sourceTypeOptions.find((o) => o.value === sourceType)?.label ?? sourceType}
+            isVisaServiceSource={isVisaServiceSource}
+            institutionUrl={institutionUrl}
+            sampleCourseUrl={sampleCourseUrl}
+            guidedUrlCategories={guidedUrlCategories}
+            guidedUrls={guidedUrls}
+            guidanceNotes={guidanceNotes}
+          />
         )}
 
         <DialogFooter className="sm:flex-row">
@@ -375,5 +296,35 @@ export function NewExtractionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={!!conflict} onOpenChange={(open) => !open && setConflict(null)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Institution already exists</DialogTitle>
+          <DialogDescription>
+            {conflict?.institutionName || "An institution"} with a matching website is already being tracked
+            {conflict?.email || conflict?.phone ? " — " : "."}
+            {conflict?.email && ` ${conflict.email}`}
+            {conflict?.phone && ` · ${conflict.phone}`}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" className="cursor-pointer" onClick={() => setConflict(null)}>
+            Close
+          </Button>
+          <Button
+            className="gap-1.5 cursor-pointer"
+            onClick={() => {
+              if (conflict) window.open(`/admin/data/all-extractions/${conflict.id}`, "_blank", "noopener,noreferrer");
+              setConflict(null);
+            }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            View existing job
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

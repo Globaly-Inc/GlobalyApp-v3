@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Sparkles, ChevronDown, User as UserIcon, ShieldCheck, LogOut } from "lucide-react";
+import { Menu, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -16,24 +16,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { ensureBusinessContext } from "@/lib/api/http";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
 import { NAV_LINKS } from "../const/index";
 
-/**
- * Where a signed-in user's own profile lives.
- *
- * `user_category` is NOT a usable signal: getMe() and verifyOtp() both hardcode it to null (see
- * auth/apis/real-api.ts), so every branch keyed on it is dead and this function used to fall through to "/"
- * for every platform user — sending them back to the marketing page they just clicked away from. `type` is
- * the field that actually carries a value.
- */
+/** Where a signed-in user's own profile lives. */
 function profileHref(user: AuthUser | null): string {
   if (!user) return "/";
-  if (user.type === "admin") return "/admin/overview";
-  if (user.user_category === "business") return "/business/profile";
+  if (user.type === "admin") return "/personal/profile";
+  if (user.user_category === "business" || user.user_category === "institution") return "/business/profile";
   return "/personal/profile";
 }
 
@@ -63,7 +57,7 @@ export function Navbar() {
   const initial = (profile?.first_name?.[0] ?? user?.email?.[0] ?? "U").toUpperCase();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md print:hidden">
       <div className="container mx-auto flex h-16 items-center px-3 sm:px-4 gap-1">
         <Link href="/" className="flex items-center flex-shrink-0">
           <Image src="/globaly-logo.png" alt="Globaly.ai" width={753} height={157} className="h-8 w-auto" priority />
@@ -87,20 +81,8 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-          <Link
-            href="/ai"
-            className="hidden md:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 h-8 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
-            aria-label="Open AI Counsellor"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>AI Counsellor</span>
-          </Link>
-
           {!initializing && (
             user ? (
-              // The same profile badge as the portal shell, so signing in doesn't change what the account
-              // control looks like between the marketing site and the app. No credits pill here — there is no
-              // credits balance in V3 to put in it.
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
@@ -117,26 +99,46 @@ export function Navbar() {
                   </Avatar>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(profileHref(user))}>
-                    <UserIcon /> My Profile
+                <DropdownMenuContent align="end" className="w-56 p-1.5">
+                  <DropdownMenuItem
+                    className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
+                    onClick={() => router.push(profileHref(user))}
+                  >
+                    <Avatar className="size-8 shrink-0">
+                      {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+                      <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {[user.first_name, user.last_name].filter(Boolean).join(" ") || "User"}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                    </div>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  {/* Keyed on `type`, the only field getMe actually populates. Every platform user can enter
-                      the Personal Portal — its shell gates on authentication, not on a category. */}
-                  {user.type === "platform_user" && (
-                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/personal/portal")}>
-                      <UserIcon /> Personal Portal
-                    </DropdownMenuItem>
-                  )}
-                  {user.type === "admin" && (
-                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin/overview")}>
-                      <ShieldCheck /> Super Admin
-                    </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                    Personal Portal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer px-1.5 py-1.5"
+                    onClick={async () => {
+                      if (await ensureBusinessContext()) router.push("/business/portal");
+                      else router.push("/business/onboarding");
+                    }}
+                  >
+                    Business Portal
+                  </DropdownMenuItem>
+                  {user.is_admin && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
+                        Super Admin
+                      </DropdownMenuItem>
+                    </>
                   )}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer" variant="destructive" onClick={handleSignOut}>
-                    <LogOut /> Sign Out
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
+                    Sign Out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -199,18 +201,49 @@ export function Navbar() {
                       // The drawer replaces the dropdown below lg, so it offers the same destinations rather
                       // than a single "Dashboard" whose target was never well defined.
                       <>
+                        {/* One button per destination the user actually has, not an either/or. This was
+                            `admin ? "Super Admin" : "Personal Portal"`, which gave an admin no way to reach
+                            their own Personal Portal and offered nobody the Business Portal. */}
                         <Button
                           className="btn-gold h-10"
                           nativeButton={false}
                           render={
                             <Link
-                              href={user.type === "admin" ? "/admin/overview" : "/personal/portal"}
+                              href={"/personal/portal"}
                               onClick={() => setMobileOpen(false)}
                             />
                           }
                         >
-                          {user.type === "admin" ? "Super Admin" : "Personal Portal"}
+                          Personal Portal
                         </Button>
+                        {(user.businesses?.length ?? 0) > 0 && (
+                          <Button
+                            variant="outline"
+                            className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                            onClick={async () => {
+                              // Same org-scoped-token requirement as the dropdown: switch first, then navigate.
+                              if (await ensureBusinessContext()) {
+                                setMobileOpen(false);
+                                router.push("/business/portal");
+                              } else {
+                                setMobileOpen(false);
+                                router.push("/business/onboarding");
+                              }
+                            }}
+                          >
+                            Business Portal
+                          </Button>
+                        )}
+                        {user.type === "admin" && (
+                          <Button
+                            variant="outline"
+                            className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"
+                            nativeButton={false}
+                            render={<Link href="/admin/overview" onClick={() => setMobileOpen(false)} />}
+                          >
+                            Super Admin
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           className="h-10 bg-transparent border-white/40 text-white hover:bg-white/10 hover:text-white"

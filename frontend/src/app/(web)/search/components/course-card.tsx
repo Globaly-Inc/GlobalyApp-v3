@@ -1,40 +1,59 @@
 import Link from "next/link";
-import { GraduationCap, Clock, Calendar, BookOpen, MapPin } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Calendar, Clock, FileText, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { flagFromIso2 } from "@/lib/utils";
 import { CourseCompareButton } from "./course-compare-button";
-import { MONTH_NAMES, type SearchCourse } from "../types";
+import { FavouriteButton } from "./favourite-button";
+import { coursePrice, formatDuration, formatNextIntake } from "../course-card-utils";
+import type { FeePeriod, SearchCourse } from "../types";
 
-function formatFee(amount: string | null, currency: string | null) {
-  if (!amount) return null;
-  const n = Number(amount);
-  if (Number.isNaN(n)) return null;
-  return `${currency ?? ""} ${n.toLocaleString()}`.trim();
+function CourseStat({
+  icon: Icon, label, value,
+}: Readonly<{ icon: typeof Clock; label: string; value: string }>) {
+  return (
+    // Padding pairs with the parent's sm:divide-x so the partition lines sit evenly between
+    // stats; the first cell drops its left padding to stay flush with the card edge.
+    <div className="flex min-w-0 items-center gap-2 sm:px-4 sm:first:pl-0">
+      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground leading-tight">{label}</p>
+        <p className="truncate text-sm font-medium text-slate-700 leading-relaxed">{value}</p>
+      </div>
+    </div>
+  );
 }
 
-export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
-  const durationLabel = course.duration_weeks ? `${course.duration_weeks} week${course.duration_weeks > 1 ? "s" : ""}` : null;
-  const nextIntakeLabel = course.next_intake_year
-    ? `${course.next_intake_month ? MONTH_NAMES[course.next_intake_month - 1] : ""} ${course.next_intake_year}`.trim()
-    : "Intake TBC";
+export function CourseCard({
+  course, feePeriod,
+}: Readonly<{ course: SearchCourse; feePeriod?: FeePeriod }>) {
+  const durationLabel = formatDuration(course.duration_weeks, course.study_mode);
+  const nextIntakeLabel = formatNextIntake(course.next_intake_year, course.next_intake_month);
+  const price = coursePrice(course, feePeriod);
+  const flag = flagFromIso2(course.country_code ?? "");
+
   const feeCurrency = course.domestic_currency ?? course.international_currency ?? undefined;
   const annualTuition = course.domestic_fee_total != null
     ? Number(course.domestic_fee_total)
     : course.international_fee_total != null ? Number(course.international_fee_total) : null;
-  const fee = formatFee(course.domestic_fee_total, course.domestic_currency) ?? formatFee(course.international_fee_total, course.international_currency);
 
   return (
-    <div className="group relative bg-card border border-border rounded-xl hover:shadow-md hover:border-primary/40 transition-all overflow-hidden">
+    <div className="group relative overflow-hidden rounded-xl border border-border bg-card transition-all hover:border-primary/40 hover:shadow-md">
+      {/* Whole-card link sits underneath; every control below opts back into pointer events. */}
       <Link href={`/course/${course.slug}`} className="absolute inset-0 z-0" aria-label={course.name} />
-      <div className="flex flex-col sm:flex-row pointer-events-none">
-        <div className="flex-1 min-w-0 p-4">
-          <div className="flex gap-3">
-            <div className="w-14 h-14 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-              {course.image_url ? (
+
+      <div className="pointer-events-none flex flex-col sm:flex-row">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-4 p-4 sm:flex-row">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-card">
+              {course.institution_logo_url ?? course.image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={course.image_url} alt={course.name} className="w-full h-full object-contain p-1" />
+                <img
+                  src={course.institution_logo_url ?? course.image_url ?? ""}
+                  alt={course.awarding_institution ?? course.name}
+                  className="h-full w-full object-contain p-1"
+                />
               ) : (
-                <GraduationCap className="h-6 w-6 text-muted-foreground" />
+                <GraduationCap className="h-8 w-8 text-muted-foreground" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -42,74 +61,69 @@ export function CourseCard({ course }: Readonly<{ course: SearchCourse }>) {
                 <h3 className="flex-1 min-w-0 font-semibold text-foreground group-hover:text-primary transition-colors leading-snug text-[15px] line-clamp-2">
                   {course.name}
                 </h3>
-                <div className="pointer-events-auto relative z-10">
-                  <CourseCompareButton
-                    course={{
-                      id: course.id, slug: course.slug, name: course.name,
-                      institutionName: course.awarding_institution ?? undefined,
-                      countryName: course.country_name ?? undefined,
-                      durationLabel, subjectArea: course.subject_area,
-                      nextIntakeLabel, annualTuition, feeCurrency,
-                    }}
-                  />
-                </div>
               </div>
               {course.awarding_institution && (
-                <p className="text-xs text-muted-foreground mt-0.5">{course.awarding_institution}</p>
+                <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <GraduationCap className="h-4 w-4 shrink-0" />
+                  <span className="truncate">
+                    {course.awarding_institution}{course.country_name ? `, ${course.country_name}` : ""}
+                  </span>
+                  {flag && <span aria-hidden="true">{flag}</span>}
+                </p>
               )}
-              {course.country_name && (
-                <div className="flex items-center gap-1 mt-1.5">
-                  <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <Badge variant="secondary" className="text-xs px-2 py-0 font-normal rounded-full">{course.country_name}</Badge>
-                </div>
-              )}
+            </div>
+
+            <div className="pointer-events-auto relative z-10 flex shrink-0 items-center gap-3 self-start">
+              <CourseCompareButton
+                course={{
+                  id: course.id, slug: course.slug, name: course.name,
+                  institutionName: course.awarding_institution ?? undefined,
+                  institutionLogoUrl: course.image_url,
+                  countryName: course.country_name ?? undefined,
+                  durationLabel, subjectArea: course.subject_area,
+                  nextIntakeLabel, annualTuition, feeCurrency,
+                  branches: course.campus_locations, level: course.degree_level,
+                }}
+              />
+              <FavouriteButton itemType="course" itemId={course.id} />
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-border grid grid-cols-3 divide-x divide-border items-center">
-            <div className="flex items-center gap-2 pr-4">
-              <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Duration</p>
-                <p className="text-xs font-medium text-foreground truncate">{durationLabel ?? "—"}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 px-4">
-              <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Next Intake</p>
-                <p className="text-xs font-medium text-foreground truncate">{nextIntakeLabel}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pl-4">
-              <BookOpen className="h-3.5 w-3.5 text-primary shrink-0" />
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Subject Area</p>
-                <p className="text-xs font-medium text-foreground truncate">{course.subject_area ?? "—"}</p>
-              </div>
-            </div>
+          {/* Stacked on mobile, so the dividers only appear once the three sit side by side. */}
+          <div className="grid min-w-0 grid-cols-1 gap-3 border-t border-border px-4 py-3 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-border">
+            <CourseStat icon={Clock} label="Course Duration" value={durationLabel ?? "—"} />
+            <CourseStat icon={Calendar} label="Next Intake" value={nextIntakeLabel} />
+            <CourseStat icon={FileText} label="Subject Area" value={course.subject_area ?? "—"} />
           </div>
-
-          {course.description && (
-            <p className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground truncate">{course.description}</p>
-          )}
         </div>
 
-        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 p-5 flex flex-col justify-center gap-4">
-          <div className="text-left">
-            {fee ? (
-              <div>
-                <p className="text-[10px] text-muted-foreground mb-0.5">Annual tuition</p>
-                <p className="text-lg font-bold text-primary leading-tight whitespace-nowrap">{fee}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">per year</p>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground italic">Fees on enquiry</p>
-            )}
+        {/* pointer-events-auto + z-10, same as the controls above: the card-wide overlay Link sits
+            at inset-0, so anything meant to stay clickable has to opt back in. */}
+        <div className="pointer-events-auto relative z-10 flex w-full flex-col justify-between gap-6 border-t border-border p-5 sm:w-48 sm:shrink-0 sm:border-l sm:border-t-0">
+          {price ? (
+            <div>
+              <p className="text-xs text-muted-foreground">{price.label}</p>
+              <p className="text-xl font-bold leading-tight text-foreground">{price.amount}</p>
+            </div>
+          ) : (
+            <p className="text-xs italic text-muted-foreground">Fees on enquiry</p>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {/* ponytail: hidden for now on request — restore when eligibility scoring ships
+            <Link href={`/course/${course.slug}#eligibility`}>
+              <Button size="sm" variant="outline" className="h-9 w-full gap-1.5 text-xs font-normal text-muted-foreground">
+                Eligibility<CircleCheck className="h-3.5 w-3.5" />
+              </Button>
+            </Link> */}
+            {/* Carries the course into the enquiry dialog, which opens prefilled from
+                ?course_id= (see personal/enquiries/components/enquiries-view.tsx).
+                Anonymous visitors are bounced to sign-in by PersonalShell, which
+                preserves this URL so they land back on the prefilled dialog. */}
+            <Link href={`/personal/enquiries?course_id=${course.id}`}>
+              <Button size="sm" className="h-9 w-full text-xs">Enquiry</Button>
+            </Link>
           </div>
-          <Link href="/auth/sign-up?redirect=/search" className="pointer-events-auto relative z-10">
-            <Button size="sm" className="w-full text-xs h-9">Enquire</Button>
-          </Link>
         </div>
       </div>
     </div>

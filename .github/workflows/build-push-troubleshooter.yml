@@ -135,6 +135,8 @@ jobs:
            GITOPS_REPO: https://x-access-token:${{ secrets.WRITE_TOKEN_GITHUB }}@${{ vars.GITOPS_REPO }}
            GITOPS_BRANCH: ${{ vars.GITOPS_BRANCH }}   # or 'staging' if your GitOps repo uses an env branch
            VALUES_FILE_PATH: ${{ vars.VALUES_FILE_PATH }}/apps
+           GIT_AUTHOR_NAME: ${{ github.event.head_commit.author.name || github.actor }}
+           GIT_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email || format('{0}@users.noreply.github.com', github.actor) }}
         run: |
            echo "🛠️ Cloning GitOps repo..."
            git clone --single-branch --branch "${GITOPS_BRANCH}" "${GITOPS_REPO}" repo
@@ -143,9 +145,10 @@ jobs:
            echo "Updating image tag in $VALUES_FILE_PATH..."
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/troubleshooter-globalyapp.yml"
 
-           echo "updating globalyos-images..."
-           git config user.name "devops-github-actions"
-           git config user.email "devops-github-actions@github.com"
+           echo "updating globalyapp-images..."
+           echo "Committing as: ${GIT_AUTHOR_NAME} <${GIT_AUTHOR_EMAIL}>"
+           git config user.name "${GIT_AUTHOR_NAME}"
+           git config user.email "${GIT_AUTHOR_EMAIL}"
            git add "${VALUES_FILE_PATH}"
-           git commit -m "globalyos troubleshooter releases with ${IMAGE_TAG}"
+           git commit -m "globalyapp troubleshooter releases with ${IMAGE_TAG}"
            git push origin "${GITOPS_BRANCH}"

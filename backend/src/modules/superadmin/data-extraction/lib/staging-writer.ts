@@ -12,14 +12,13 @@ export interface ExtractedCourse {
   name: string;
   short_name?: string | null;
   degree_level?: string | null;
+  /** LLM-classified per course, not inherited from the job's service_category_id — a job
+   * scoped to "Academic Courses" still surfaces short courses on the same pages. */
+  course_category?: string | null;
   subject_area?: string | null;
   duration_weeks?: number | null;
   study_mode?: string | null;
   description?: string | null;
-  domestic_fee_total?: number | null;
-  domestic_currency?: string | null;
-  international_fee_total?: number | null;
-  international_currency?: string | null;
   awarding_institution?: string | null;
   source_url?: string | null;
   career_paths?: string[] | null;
@@ -29,14 +28,27 @@ export interface ExtractedCourse {
   eligibility?: ExtractedEligibility[];
   english_requirements?: ExtractedEnglishReq[];
   campus_names?: string[];
+  study_units?: ExtractedStudyUnit[];
+  /** LLM-flagged link to this course's own curriculum page — routing only, not persisted. */
+  curriculum_page_url?: string | null;
+  /** LLM-flagged link to this course's own fees/tuition page — routing only, not persisted. */
+  fees_page_url?: string | null;
+}
+
+export interface ExtractedStudyUnit {
+  unit_code?: string | null;
+  unit_name: string;
+  credit_points?: number | null;
 }
 
 export interface ExtractedFee {
   name?: string | null;
   student_type?: string;
   period_type?: string;
-  currency?: string;
-  total_amount?: number;
+  currency?: string | null;
+  /** LLM output isn't schema-enforced (responseMimeType: json only) — often a plain number, but a
+   * range ("$25,000-$30,000") or unparseable text ("Contact us") arrives as a string. */
+  total_amount?: number | string | null;
 }
 
 export interface ExtractedIntake {
@@ -66,11 +78,11 @@ function coerceMonth(v: unknown): number | null {
 
 // ponytail: LLM emits "February 15" / "Feb 2026" for date columns — ISO or null, nothing else.
 // A string with no year ("February 15") is not a date; the month still survives via intake_month.
-function coerceDate(v: unknown): string | null {
+export function coerceDate(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
-  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (iso) return iso[1];
+  const iso = s.match(/^(\d{4})-\d{2}-\d{2}/);
+  if (iso) return iso[1] === "0000" ? null : iso[0];
   if (!/\d{4}/.test(s)) return null;
   const d = new Date(s);
   if (isNaN(d.getTime())) return null;
@@ -83,6 +95,56 @@ function coerceInt(v: unknown): number | null {
   if (v == null) return null;
   const n = Number(v);
   return isNaN(n) ? null : Math.floor(n);
+}
+
+// ponytail: takes the lower bound of a range/currency-symbol string ("$25,000-$30,000" -> 25000);
+// the full original text still survives in the fee's own name. Doesn't handle "25k"-style shorthand
+// — add that if a real page needs it. Never falls back to 0: an unparseable fee must stay null, not
+// look like a real $0 tuition figure.
+/** LLM output isn't schema-enforced — clamp free-text drift ("Academic", "Short Course") to
+ * the two values the pipeline actually stores/filters on; anything unrecognised is left null
+ * rather than guessed. */
+export function normaliseCourseCategory(v: unknown): "academic" | "short_course" | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (s === "academic") return "academic";
+  if (s === "short_course" || s === "short_courses") return "short_course";
+  return null;
+}
+
+export function coerceMoney(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return isNaN(v) ? null : v;
+  const match = String(v).replace(/,/g, "").match(/\d+(\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+const SCORE_TYPES = ["percentage", "gpa_4", "gpa_10", "cgpa"] as const;
+type ScoreType = (typeof SCORE_TYPES)[number];
+
+export function normaliseScoreType(v: unknown): ScoreType | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim().toLowerCase();
+  return (SCORE_TYPES as readonly string[]).includes(s) ? (s as ScoreType) : null;
+}
+
+// ponytail: same LLM-drift guard as coerceMoney — a score stated plainly in the
+// description ("GPA of 3.0") but missing from score_type/min_score. Bare "GPA of X"
+// defaults to a 4.0 scale (the common convention) unless the text names a different one.
+export function deriveScoreFromDescription(description: string | null | undefined): { score_type: ScoreType; value: number } | null {
+  if (!description) return null;
+  const patterns: { type: ScoreType; re: RegExp }[] = [
+    { type: "percentage", re: /(\d+(?:\.\d+)?)\s*(?:%|percent)/i },
+    { type: "cgpa", re: /cgpa[^\d]{0,10}(\d+(?:\.\d+)?)/i },
+    { type: "gpa_10", re: /gpa[^\d]{0,10}(\d+(?:\.\d+)?)\s*(?:\/|out of)\s*10(?:\.0)?\b/i },
+    { type: "gpa_4", re: /gpa[^\d]{0,10}(\d+(?:\.\d+)?)\s*(?:\/|out of)\s*4(?:\.0)?\b/i },
+    { type: "gpa_4", re: /gpa[^\d]{0,10}(\d+(?:\.\d+)?)/i },
+  ];
+  for (const { type, re } of patterns) {
+    const m = description.match(re);
+    if (m) return { score_type: type, value: Number(m[1]) };
+  }
+  return null;
 }
 
 export interface ExtractedStudyOption {
@@ -99,6 +161,8 @@ export interface ExtractedEligibility {
   description?: string | null;
   min_score_percent?: number | null;
   min_degree_level?: string | null;
+  score_type?: string | null;
+  min_score?: number | string | null;
 }
 
 export interface ExtractedEnglishReq {
@@ -151,12 +215,25 @@ export interface SiteIntelligence {
 }
 
 // ── Writers ──
+const OVERVIEW_MERGE_COLUMNS = [
+  "name", "website", "phone", "email", "address", "city", "state", "country",
+  "description", "logo_url", "source_url", "zip_code",
+  "facebook_url", "instagram_url", "twitter_url", "linkedin_url", "youtube_url",
+] as const;
 
 export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview) {
+  const mergeSet: Record<string, unknown> = { updated_at: masterKnex.fn.now() };
+  for (const col of OVERVIEW_MERGE_COLUMNS) {
+    mergeSet[col] = masterKnex.raw(
+      `COALESCE(NULLIF(EXCLUDED.${col}, ''), ${S}.extraction_institution_overview.${col})`,
+    );
+  }
   const [row] = await masterKnex(`${S}.extraction_institution_overview`)
     .insert({ job_id: jobId, ...data })
+    .onConflict("job_id")
+    .merge(mergeSet)
     .returning("id");
-  logger.info("Wrote institution overview", { jobId, id: row.id });
+  logger.info("Upserted institution overview", { jobId, id: row.id });
   return row;
 }
 
@@ -204,6 +281,36 @@ export async function upsertCampus(jobId: string, campus: ExtractedCampus): Prom
   return row.id;
 }
 
+// ponytail: same shape as normaliseCampusName — LLM re-extracts the same unit with
+// slightly different casing/whitespace across course pages and job re-runs
+export function normaliseUnitName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Upsert a study unit for a job — deduplicates by normalised unit_name within the same
+ * job, mirroring upsertCampus. Without this, every course extraction (including re-runs)
+ * inserted a fresh extraction_study_units row for the same unit shared across courses.
+ */
+export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): Promise<string> {
+  const norm = normaliseUnitName(unit.unit_name);
+  const existing = await masterKnex(`${S}.extraction_study_units`)
+    .where({ job_id: jobId })
+    .whereRaw("LOWER(TRIM(unit_name)) = ?", [norm])
+    .first();
+  if (existing) return existing.id;
+
+  const [row] = await masterKnex(`${S}.extraction_study_units`)
+    .insert({
+      job_id: jobId,
+      unit_code: unit.unit_code ?? null,
+      unit_name: unit.unit_name,
+      credit_points: coerceInt(unit.credit_points),
+    })
+    .returning("id");
+  return row.id;
+}
+
 /**
  * Normalise a course name for dedup: lowercase, collapse whitespace, strip degree
  * prefixes that the LLM sometimes includes inconsistently.
@@ -237,13 +344,14 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     // Merge: fill nulls on the existing row with data from this extraction
     const updates: Record<string, unknown> = {};
     const mergeFields: Array<keyof ExtractedCourse> = [
-      "short_name", "degree_level", "subject_area", "duration_weeks",
-      "study_mode", "description", "domestic_fee_total", "domestic_currency",
-      "international_fee_total", "international_currency", "awarding_institution",
+      "short_name", "degree_level", "course_category", "subject_area", "duration_weeks",
+      "study_mode", "description", "awarding_institution",
       "source_url",
     ];
     for (const field of mergeFields) {
-      const newVal = field === "duration_weeks" ? coerceInt(course[field]) : (course[field] ?? null);
+      const newVal = field === "duration_weeks" ? coerceInt(course[field])
+        : field === "course_category" ? normaliseCourseCategory(course[field])
+        : (course[field] ?? null);
       if (newVal != null && newVal !== "" && (existing[field] == null || existing[field] === "")) {
         updates[field] = newVal;
       }
@@ -265,14 +373,11 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
       name: course.name,
       short_name: course.short_name ?? null,
       degree_level: course.degree_level ?? null,
+      course_category: normaliseCourseCategory(course.course_category),
       subject_area: course.subject_area ?? null,
       duration_weeks: coerceInt(course.duration_weeks),
       study_mode: course.study_mode ?? null,
       description: course.description ?? null,
-      domestic_fee_total: course.domestic_fee_total ?? null,
-      domestic_currency: course.domestic_currency ?? null,
-      international_fee_total: course.international_fee_total ?? null,
-      international_currency: course.international_currency ?? null,
       awarding_institution: course.awarding_institution ?? null,
       source_url: course.source_url ?? null,
       verification_status: "unverified",
@@ -292,8 +397,8 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
           name: fee.name ?? null,
           student_type: fee.student_type ?? "both",
           period_type: fee.period_type ?? "Per Year",
-          currency: fee.currency ?? "AUD",
-          total_amount: coerceInt(fee.total_amount) ?? 0,
+          currency: fee.currency ?? null,
+          total_amount: coerceMoney(fee.total_amount),
         })
         .returning("id");
       await masterKnex(`${S}.extraction_course_fee_assignments`)
@@ -345,14 +450,24 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Eligibility requirements + assignments ──
   if (course.eligibility?.length) {
     for (const elig of course.eligibility) {
+      let scoreType = normaliseScoreType(elig.score_type);
+      let scoreValue = coerceMoney(elig.min_score);
+      if (!scoreType && scoreValue == null && !elig.min_score_percent) {
+        const derived = deriveScoreFromDescription(elig.description);
+        if (derived) { scoreType = derived.score_type; scoreValue = derived.value; }
+      }
+      const isPercentage = scoreType === "percentage";
+
       const [eligRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
         .insert({
           job_id: jobId,
           name: elig.name ?? null,
           applicable_to: elig.applicable_to ?? "both",
           description: elig.description ?? null,
-          min_score_percent: coerceInt(elig.min_score_percent),
+          min_score_percent: isPercentage ? scoreValue : coerceInt(elig.min_score_percent),
           min_degree_level: elig.min_degree_level ?? null,
+          score_type: scoreType,
+          min_score: isPercentage ? null : scoreValue,
         })
         .returning("id");
       await masterKnex(`${S}.extraction_course_eligibility_assignments`)
@@ -374,6 +489,17 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
         writing_score: eng.writing_score ?? null,
         speaking_score: eng.speaking_score ?? null,
       });
+    }
+  }
+
+  // ── Study units + assignments ──
+  if (course.study_units?.length) {
+    for (const unit of course.study_units) {
+      if (!unit.unit_name) continue;
+      const unitId = await upsertStudyUnit(jobId, unit);
+      await masterKnex(`${S}.extraction_course_study_unit_assignments`)
+        .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitId })
+        .onConflict(["course_id", "study_unit_id"]).ignore();
     }
   }
 
@@ -510,12 +636,238 @@ export async function writeAgentLocations(
   await masterKnex(`${S}.extraction_agent_locations`).insert(rows);
 }
 
-/** Insert a queue item for a discovered URL */
-export async function insertQueueItem(jobId: string, url: string) {
-  const [row] = await masterKnex(`${S}.extraction_queue`)
-    .insert({ job_id: jobId, url, status: "pending" })
-    .returning("id");
+// ── Visa services (source_type: "visa_service") ──
+
+export interface ExtractedVisaService {
+  name: string;
+  provider_name?: string | null;
+  type?: string | null;
+  description?: string | null;
+  registration_number?: string | null;
+  registration_body?: string | null;
+  registration_status?: string | null;
+  registration_level?: string | null;
+  visa_types_handled?: string[] | null;
+  services_offered?: string[] | null;
+  specializations?: string[] | null;
+  fee_amount?: number | null;
+  fee_currency?: string | null;
+  fee_type?: string | null;
+  fee_from?: number | null;
+  fee_to?: number | null;
+  consultation_fee?: number | null;
+  consultation_free?: boolean | null;
+  success_rate?: number | null;
+  cases_handled?: number | null;
+  years_experience?: number | null;
+  team_size?: number | null;
+  qualified_agents_count?: number | null;
+  countries_serviced?: string[] | null;
+  nationalities_serviced?: string[] | null;
+  languages_spoken?: string[] | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  website?: string | null;
+  booking_url?: string | null;
+  average_rating?: number | null;
+  review_count?: number | null;
+  source_url?: string | null;
+}
+
+// ponytail: same shape as normaliseCourseName/normaliseUnitName — dedup key for re-runs
+// and services mentioned on more than one page of the same site.
+export function normaliseVisaServiceName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// text[] columns — knex/pg serialize a plain JS array correctly on its own.
+const VISA_SERVICE_ARRAY_FIELDS: Array<keyof ExtractedVisaService> = [
+  "visa_types_handled", "specializations",
+  "countries_serviced", "nationalities_serviced", "languages_spoken",
+];
+
+// services_offered is jsonb, not text[] (see 20260812_004_extraction_visa_services.ts) — a
+// plain JS array needs JSON.stringify first, same as writeSiteIntelligence's fee_structure.
+// Passing it through the text[] path threw "invalid input syntax for type json".
+const VISA_SERVICE_JSON_ARRAY_FIELDS: Array<keyof ExtractedVisaService> = ["services_offered"];
+
+// Plain text/boolean columns — pass through as-is.
+const VISA_SERVICE_SCALAR_FIELDS: Array<keyof ExtractedVisaService> = [
+  "provider_name", "type", "description", "registration_number", "registration_body",
+  "registration_status", "registration_level", "fee_currency", "fee_type", "consultation_free",
+  "address", "city", "state", "country", "contact_name", "contact_email", "contact_phone",
+  "website", "booking_url",
+];
+
+// decimal/integer columns — Gemini routinely writes these as human-formatted strings
+// ("97%", "$3,500", "4.8/5 stars", "10 years"), which Postgres rejects outright
+// ("invalid input syntax for type numeric"). Every numeric visa-service field gets the
+// same defensive coercion, not just the one that happened to be reported — same failure
+// mode, same fix, everywhere it can occur. Scoped to visa-service fields only; the
+// course pipeline's own coerceInt/coerceDate above are untouched.
+const VISA_SERVICE_NUMERIC_FIELDS: Array<keyof ExtractedVisaService> = [
+  "fee_amount", "fee_from", "fee_to", "consultation_fee", "success_rate",
+  "cases_handled", "years_experience", "team_size", "qualified_agents_count",
+  "average_rating", "review_count",
+];
+
+function coerceVisaNumber(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return isNaN(v) ? null : v;
+  const match = String(v).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * Write a visa service, deduped by normalised name within the job — mirrors writeCourse's
+ * dedup-and-merge (fills nulls on the existing row, never overwrites a value already found).
+ * No child/junction tables: extraction_visa_services is flat, one row per distinct service.
+ */
+export async function writeVisaService(jobId: string, service: ExtractedVisaService): Promise<string> {
+  const normName = normaliseVisaServiceName(service.name);
+  const existing = await masterKnex(`${S}.extraction_visa_services`)
+    .where({ job_id: jobId })
+    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
+    .first();
+
+  if (existing) {
+    const updates: Record<string, unknown> = {};
+    for (const field of VISA_SERVICE_SCALAR_FIELDS) {
+      const newVal = service[field];
+      if (newVal != null && newVal !== "" && (existing[field] == null || existing[field] === "")) {
+        updates[field] = newVal;
+      }
+    }
+    for (const field of VISA_SERVICE_NUMERIC_FIELDS) {
+      const newVal = coerceVisaNumber(service[field]);
+      if (newVal != null && existing[field] == null) {
+        updates[field] = newVal;
+      }
+    }
+    for (const field of VISA_SERVICE_ARRAY_FIELDS) {
+      const newVal = service[field] as string[] | undefined;
+      if (newVal?.length && (!existing[field] || existing[field].length === 0)) {
+        updates[field] = newVal;
+      }
+    }
+    for (const field of VISA_SERVICE_JSON_ARRAY_FIELDS) {
+      const newVal = service[field] as string[] | undefined;
+      if (newVal?.length && (!existing[field] || existing[field].length === 0)) {
+        updates[field] = JSON.stringify(newVal);
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = masterKnex.fn.now();
+      await masterKnex(`${S}.extraction_visa_services`).where({ id: existing.id }).update(updates);
+      logger.info("Merged duplicate visa service", { jobId, id: existing.id, name: service.name });
+    }
+    return existing.id;
+  }
+
+  const insert: Record<string, unknown> = {
+    job_id: jobId,
+    name: service.name,
+    status: "pending",
+  };
+  for (const field of VISA_SERVICE_SCALAR_FIELDS) {
+    const val = service[field];
+    if (val != null && val !== "") insert[field] = val;
+  }
+  for (const field of VISA_SERVICE_NUMERIC_FIELDS) {
+    const val = coerceVisaNumber(service[field]);
+    if (val != null) insert[field] = val;
+  }
+  for (const field of VISA_SERVICE_ARRAY_FIELDS) {
+    const val = service[field] as string[] | undefined;
+    if (val?.length) insert[field] = val;
+  }
+  for (const field of VISA_SERVICE_JSON_ARRAY_FIELDS) {
+    const val = service[field] as string[] | undefined;
+    if (val?.length) insert[field] = JSON.stringify(val);
+  }
+  if (service.source_url) insert.source_url = service.source_url;
+
+  const [row] = await masterKnex(`${S}.extraction_visa_services`).insert(insert).returning("id");
+  logger.info("Wrote visa service", { jobId, id: row.id, name: service.name });
   return row.id;
+}
+
+/**
+ * Overwrite a specific, already-known visa service row with fresh extraction results —
+ * for the admin-triggered "re-extract this one" action, not the automatic per-page pipeline.
+ * Unlike writeVisaService's merge branch (fills nulls only, for incidental multi-page
+ * aggregation), this overwrites unconditionally: a deliberate manual re-run should trust the
+ * new extraction, matching handleCourseDataStep's per-course re-extraction semantics.
+ */
+export async function updateVisaServiceById(id: string, service: Partial<ExtractedVisaService>): Promise<void> {
+  const updates: Record<string, unknown> = {};
+  if (service.name) updates.name = service.name;
+  for (const field of VISA_SERVICE_SCALAR_FIELDS) {
+    const val = service[field];
+    if (val != null && val !== "") updates[field] = val;
+  }
+  for (const field of VISA_SERVICE_NUMERIC_FIELDS) {
+    const val = coerceVisaNumber(service[field]);
+    if (val != null) updates[field] = val;
+  }
+  for (const field of VISA_SERVICE_ARRAY_FIELDS) {
+    const val = service[field] as string[] | undefined;
+    if (val?.length) updates[field] = val;
+  }
+  for (const field of VISA_SERVICE_JSON_ARRAY_FIELDS) {
+    const val = service[field] as string[] | undefined;
+    if (val?.length) updates[field] = JSON.stringify(val);
+  }
+  if (Object.keys(updates).length === 0) return;
+  updates.updated_at = masterKnex.fn.now();
+  await masterKnex(`${S}.extraction_visa_services`).where({ id }).update(updates);
+  logger.info("Re-extracted visa service", { id, name: service.name });
+}
+
+/**
+ * Insert a queue item, or return null when the row shouldn't be queued:
+ * - a row for this (job_id, url) already exists — the DB unique constraint is the real
+ *   dedupe (check-then-insert races between concurrent producers, e.g. overlapping
+ *   re-runs). The producer that won the insert already dispatched (or will dispatch) it.
+ * - the job is at its page_cap — every queued page costs a scrape + a Gemini extraction,
+ *   so the cap is the job's spending budget; the admin "Deep scrape" action raises it.
+ * On null, the caller must NOT publish.
+ * ponytail: the cap check isn't serialized against concurrent inserts — racing workers
+ * can overshoot by a few rows, fine for a billing guardrail.
+ */
+export async function insertQueueItem(jobId: string, url: string): Promise<string | null> {
+  const { rows } = await masterKnex.raw(
+    `INSERT INTO ${S}.extraction_queue (job_id, url, status)
+     SELECT :jobId, :url, 'pending'
+     WHERE (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId)
+         < (SELECT page_cap FROM ${S}.extraction_jobs WHERE id = :jobId)
+     ON CONFLICT (job_id, url) DO NOTHING
+     RETURNING id`,
+    { jobId, url },
+  );
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * True once a job's queue has reached its page cap. Callers whose discovery work is
+ * expensive per iteration (a scrape + a Gemini call per listing page) should check this
+ * and stop early — insertQueueItem already refuses at the cap, but by then the listing
+ * page that found those URLs has been paid for.
+ */
+export async function atPageCap(jobId: string): Promise<boolean> {
+  const { rows } = await masterKnex.raw(
+    `SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) >= page_cap AS capped
+     FROM ${S}.extraction_jobs WHERE id = :jobId`,
+    { jobId },
+  );
+  return rows[0]?.capped ?? true;
 }
 
 /** Write a job event to the timeline */

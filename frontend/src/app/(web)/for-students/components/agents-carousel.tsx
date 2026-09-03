@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "../../components/reveal";
+import { AutoScrollRow } from "../../components/auto-scroll-row";
 import type { SearchBusiness } from "../../search/types";
 
-// V2 links each card to /agent/:slug; v3 has no agent detail route yet, so cards point at the
+// V2 links each card to /agent/:slug; v3 has no education counselor detail route yet, so cards point at the
 // education-agencies tab of /search instead (the real tab key — not "agents", see search/types.ts).
 export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBusiness[]; loading: boolean }>) {
   return (
-    <section className="py-16 bg-muted/30">
+    <section className="py-16 bg-primary/5">
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-3">
@@ -21,7 +22,7 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
           </p>
         </Reveal>
 
-        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+        <AutoScrollRow className="flex gap-4 pb-4">
           {loading
             ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="flex-shrink-0 w-64 h-48 rounded-xl" />)
             : agents.map((agent, idx) => {
@@ -53,7 +54,20 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
                         </div>
                       )}
                       <div className="mt-auto flex items-center justify-between pt-3 border-t border-border/50">
-                        <span className="text-[10px] text-muted-foreground">300+ students helped</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex -space-x-1.5">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="w-4 h-4 rounded-full border-2 border-background bg-muted overflow-hidden"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={`https://i.pravatar.cc/100?img=${idx * 3 + i}`} alt="" />
+                              </div>
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">300+ students helped</span>
+                        </div>
                         <span className="h-7 w-7 rounded-full flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                           <ArrowRight className="h-3.5 w-3.5" />
                         </span>
@@ -62,11 +76,11 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
                   </Reveal>
                 );
               })}
-        </div>
+        </AutoScrollRow>
 
         <Reveal className="text-center mt-10">
           <Button variant="outline" className="rounded-full px-8" render={<Link href="/search?tab=education-agencies" />}>
-            Explore all Agents
+            Explore all Education Counselors
           </Button>
         </Reveal>
       </div>

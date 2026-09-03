@@ -1,14 +1,14 @@
 import { FileText } from "lucide-react";
-import { SectionCard } from "./section-card";
+import { ProfileSection } from "../../../components/profile/profile-section";
 
 export function CourseDescription({ description }: Readonly<{ description: string | null }>) {
   return (
-    <SectionCard icon={FileText} title="Description">
+    <ProfileSection icon={FileText} title="Course Description">
       {description ? (
-        <p className="text-sm text-muted-foreground whitespace-pre-line">{description}</p>
+        <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{description}</p>
       ) : (
-        <p className="text-sm text-muted-foreground italic">No description available.</p>
+        <p className="text-sm italic text-muted-foreground">No description available.</p>
       )}
-    </SectionCard>
+    </ProfileSection>
   );
 }

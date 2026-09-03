@@ -6,9 +6,27 @@ import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
   BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
-  ServiceSearchParams, ServiceSearchResult,
+  PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, Role, RoleCreateInput, RolePatch,
+  SchemaFieldValue, Scholarship, ScholarshipInput,
+  ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
+  ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
+  ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
+  ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch, ServiceStudyUnit, ServiceStudyUnitInput,
+  ServiceStudyUnitPatch,
 } from "./types";
+
+/** Generic list/create/update/delete client for one service child resource — same shape for
+ * fees/intakes/eligibility/study-options/study-units, just a different path segment. */
+function childResourceApi<TRow, TInput, TPatch>(path: string) {
+  return {
+    list: (serviceId: string): Promise<TRow[]> => httpGet(`${BASE}/services/${serviceId}/${path}`),
+    create: (serviceId: string, input: TInput): Promise<TRow> => httpPost(`${BASE}/services/${serviceId}/${path}`, input),
+    update: (serviceId: string, id: number, patch: TPatch): Promise<TRow> =>
+      httpPatch(`${BASE}/services/${serviceId}/${path}/${id}`, patch),
+    remove: (serviceId: string, id: number): Promise<void> => httpDelete(`${BASE}/services/${serviceId}/${path}/${id}`),
+  };
+}
 
 const BASE = "/businesses";
 
@@ -30,6 +48,15 @@ function toRelationQuery(params: RelationListParams): string {
   return qs ? `?${qs}` : "";
 }
 
+function toCourseQuery(params: PartnerInstitutionCourseListParams): string {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.search) q.set("search", params.search);
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
 function toServiceSearchQuery(params: ServiceSearchParams): string {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
@@ -43,6 +70,7 @@ function toMemberQuery(params: MemberListParams): string {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
+  if (params.search) q.set("search", params.search);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -59,6 +87,18 @@ function toBusinessSearchQuery(params: BusinessSearchParams): string {
   const q = new URLSearchParams();
   if (params.search) q.set("search", params.search);
   if (params.limit) q.set("limit", String(params.limit));
+  // Only sent when on: the branch picker must keep getting businesses only, since it stores a
+  // bare id with no kind alongside it.
+  if (params.include_institutions) q.set("include_institutions", "true");
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function toScholarshipQuery(params: ScholarshipListParams): string {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.search) q.set("search", params.search);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -114,20 +154,61 @@ export const businessProfileDetailRealApi = {
     return { data, total: meta.total };
   },
   cancelInvitation: (invitationId: string): Promise<void> => httpDelete(`${BASE}/members/invitations/${invitationId}`),
+  resendInvitation: (invitationId: string): Promise<void> => httpPost(`${BASE}/members/invitations/${invitationId}/resend`, {}),
 
-  getRelations: async (params: RelationListParams = {}): Promise<RelationListResult> => {
-    const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/partners${toRelationQuery(params)}`);
+  getRoles: (orgBase = BASE): Promise<Role[]> => httpGet(`${orgBase}/roles`),
+  getPermissions: (orgBase = BASE): Promise<Permission[]> => httpGet(`${orgBase}/roles/permissions`),
+  createRole: (input: RoleCreateInput, orgBase = BASE): Promise<Role> => httpPost(`${orgBase}/roles`, input),
+  updateRole: (roleId: number, patch: RolePatch, orgBase = BASE): Promise<Role> => httpPatch(`${orgBase}/roles/${roleId}`, patch),
+  deleteRole: (roleId: number, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/roles/${roleId}`),
+
+  getRelations: async (params: RelationListParams = {}, orgBase = BASE): Promise<RelationListResult> => {
+    const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${orgBase}/partners${toRelationQuery(params)}`);
     return { data, total: meta.total };
   },
-  createRelation: (input: RelationInput): Promise<BusinessRelation> => httpPost(`${BASE}/partners`, input),
-  updateRelation: (relationId: string, patch: RelationPatch): Promise<BusinessRelation> =>
-    httpPatch(`${BASE}/partners/${relationId}`, patch),
-  deleteRelation: (relationId: string): Promise<void> => httpDelete(`${BASE}/partners/${relationId}`),
+  createRelation: (input: RelationInput, orgBase = BASE): Promise<BusinessRelation> => httpPost(`${orgBase}/partners`, input),
+  updateRelation: (relationId: string, patch: RelationPatch, orgBase = BASE): Promise<BusinessRelation> =>
+    httpPatch(`${orgBase}/partners/${relationId}`, patch),
+  deleteRelation: (relationId: string, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/partners/${relationId}`),
+
+  getPartnerInstitutionDetail: (institutionId: number): Promise<PartnerInstitutionDetail> =>
+    httpGet(`${BASE}/partners/institutions/${institutionId}`),
+  getPartnerInstitutionCourses: async (
+    institutionId: number,
+    params: PartnerInstitutionCourseListParams = {},
+  ): Promise<PartnerInstitutionCourseListResult> => {
+    const { data, meta } = await httpGet<{ data: PartnerInstitutionCourse[]; meta: { total: number } }>(
+      `${BASE}/partners/institutions/${institutionId}/courses${toCourseQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
 
   getActivity: async (params: ActivityListParams = {}): Promise<ActivityListResult> => {
     const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${BASE}/activity${toActivityQuery(params)}`);
     return { data, total: meta.total };
   },
+
+  getScholarships: async (params: ScholarshipListParams = {}): Promise<ScholarshipListResult> => {
+    const { data, meta } = await httpGet<{ data: Scholarship[]; meta: { total: number } }>(`${BASE}/scholarships${toScholarshipQuery(params)}`);
+    return { data, total: meta.total };
+  },
+  createScholarship: (input: ScholarshipInput): Promise<Scholarship> => httpPost(`${BASE}/scholarships`, input),
+  updateScholarship: (scholarshipId: number, patch: ScholarshipPatch): Promise<Scholarship> =>
+    httpPatch(`${BASE}/scholarships/${scholarshipId}`, patch),
+  deleteScholarship: (scholarshipId: number): Promise<void> => httpDelete(`${BASE}/scholarships/${scholarshipId}`),
+
+  serviceFees: childResourceApi<ServiceFee, ServiceFeeInput, ServiceFeePatch>("fees"),
+  serviceIntakes: childResourceApi<ServiceIntake, ServiceIntakeInput, ServiceIntakePatch>("intakes"),
+  serviceEligibility: childResourceApi<ServiceEligibility, ServiceEligibilityInput, ServiceEligibilityPatch>("eligibility"),
+  serviceStudyOptions: childResourceApi<ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch>("study-options"),
+  serviceStudyUnits: childResourceApi<ServiceStudyUnit, ServiceStudyUnitInput, ServiceStudyUnitPatch>("study-units"),
+
+  getServiceAccreditations: (serviceId: string): Promise<ServiceAccreditationLink[]> =>
+    httpGet(`${BASE}/services/${serviceId}/accreditations`),
+  linkServiceAccreditation: (serviceId: string, accreditation_id: number): Promise<ServiceAccreditationLink> =>
+    httpPost(`${BASE}/services/${serviceId}/accreditations`, { accreditation_id }),
+  unlinkServiceAccreditation: (serviceId: string, id: number): Promise<void> =>
+    httpDelete(`${BASE}/services/${serviceId}/accreditations/${id}`),
 
   getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toSearchListQuery({ limit: 10, ...params })}`),

@@ -41,13 +41,20 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.get("/jobs-filtered", async (req, reply) => {
     const query = FilteredJobsQuerySchema.parse(req.query);
     const statuses = query.statuses?.split(",").filter(Boolean);
+    const excludeStatuses = query.exclude_statuses?.split(",").filter(Boolean);
     return reply.send(
-      await service.listJobsFiltered({
-        statuses,
-        sourceType: query.source_type,
-        excludeSourceType: query.exclude_source_type,
-        limit: query.limit,
-      }),
+      await service.listJobsFiltered(
+        {
+          statuses,
+          excludeStatuses,
+          sourceType: query.source_type,
+          excludeSourceType: query.exclude_source_type,
+          businessCategoryId: query.business_category_id,
+          q: query.q,
+          sort: query.sort,
+        },
+        { page: query.page, limit: query.limit },
+      ),
     );
   });
 
@@ -55,6 +62,12 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.get("/jobs/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     return reply.send(await service.getJob(id));
+  });
+
+  // GET /jobs/:id/tab-counts — count(*) per entity type, for the tab-bar count tags.
+  app.get("/jobs/:id/tab-counts", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.getTabCounts(id));
   });
 
   // RJ3: GET /jobs/:id/events

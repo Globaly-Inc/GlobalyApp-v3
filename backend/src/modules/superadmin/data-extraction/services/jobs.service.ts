@@ -1,11 +1,17 @@
 // Extraction jobs service — CRUD, status transitions, pipeline control.
 
-import { NotFoundError, BadRequestError } from "../../../../shared/errors.js";
+import { NotFoundError, ConflictError } from "../../../../shared/errors.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { masterKnex } from "../../../../core/db/master-pool.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
+import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import * as repo from "../repositories/jobs.repository.js";
+import * as coursesRepo from "../repositories/courses.repository.js";
+import * as reviewRepo from "../repositories/review.repository.js";
+import * as stagedRepo from "../repositories/staged.repository.js";
+import * as visaRepo from "../repositories/visa-services.repository.js";
 import type { CreateJobInput, FailJobInput, PatchJobContextInput } from "../schemas/jobs.schema.js";
 
 const logger = createChildLogger("extraction-jobs-service");
@@ -32,13 +38,37 @@ export async function listJobs(opts: { status?: string; q?: string; limit: numbe
   return { jobs: await withResolvedNames(rows), counts };
 }
 
-export async function listJobsFiltered(opts: {
-  statuses?: string[];
-  sourceType?: string;
-  excludeSourceType?: string;
-  limit: number;
-}) {
-  return { jobs: await withResolvedNames(await repo.listJobsFiltered(opts)) };
+export async function listJobsFiltered(
+  opts: {
+    statuses?: string[];
+    excludeStatuses?: string[];
+    sourceType?: string;
+    excludeSourceType?: string;
+    businessCategoryId?: number;
+    q?: string;
+    sort?: repo.JobSort;
+  },
+  pagination: PaginationInput,
+) {
+  const filter = {
+    statuses: opts.statuses,
+    excludeStatuses: opts.excludeStatuses,
+    sourceType: opts.sourceType,
+    excludeSourceType: opts.excludeSourceType,
+    businessCategoryId: opts.businessCategoryId,
+    q: opts.q,
+  };
+  const [rows, total] = await Promise.all([
+    repo.listJobsFiltered({
+      ...filter,
+      sort: opts.sort,
+      limit: pagination.limit,
+      offset: (pagination.page - 1) * pagination.limit,
+    }),
+    repo.countJobsFiltered(filter),
+  ]);
+  const { data, meta } = buildPaginatedResponse(await withResolvedNames(rows), total, pagination);
+  return { jobs: data, meta };
 }
 
 export async function getJob(id: string) {
@@ -46,6 +76,26 @@ export async function getJob(id: string) {
   if (!job) throw new NotFoundError("Extraction job not found");
   // Same title fallback the list uses — the overview row is already loaded here.
   return { job: { ...job, institution_name: job.institution_name ?? overview?.name ?? null }, overview };
+}
+
+export async function getTabCounts(jobId: string) {
+  const [branches, agents, courses, fees, intakes, eligibility, units, studyOptions, accreditations, visaServices] =
+    await Promise.all([
+      reviewRepo.countCampusesByJob(jobId),
+      reviewRepo.countAgentsByJob(jobId),
+      coursesRepo.countCoursesByJob(jobId),
+      coursesRepo.countCourseFeesByJob(jobId),
+      coursesRepo.countIntakesByJob(jobId),
+      coursesRepo.countEligibilityByJob(jobId),
+      coursesRepo.countStudyUnitsByJob(jobId),
+      coursesRepo.countStudyOptionsByJob(jobId),
+      stagedRepo.countAccreditationsByJob(jobId),
+      visaRepo.countVisaServicesByJob(jobId),
+    ]);
+  return {
+    branches, agents, courses, fees, intakes, eligibility, units,
+    study_options: studyOptions, accreditations, visa_services: visaServices,
+  };
 }
 
 export async function getJobEvents(jobId: string, limit: number) {
@@ -58,8 +108,33 @@ export async function getAgentRuns(jobId: string) {
 
 // ── Creates ──
 
+function conflictFor(existing: {
+  id: string;
+  institution_name: string | null;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+}) {
+  return new ConflictError("An institution with a matching website already exists", {
+    existing_job_id: existing.id,
+    institution_name: existing.institution_name,
+    website: existing.website,
+    email: existing.email,
+    phone: existing.phone,
+  });
+}
+
 export async function createJob(input: CreateJobInput, adminId: number) {
-  const row = await repo.insertJob(input);
+  const host = repo.normaliseHost(input.institution_url);
+
+  const row = await masterKnex.transaction(async (trx) => {
+    if (host) await repo.lockInstitutionHost(host, trx);
+
+    const existing = await repo.findJobByInstitutionHost(input.institution_url, trx);
+    if (existing) throw conflictFor(existing);
+
+    return repo.insertJob(input, trx);
+  });
   await logAudit(adminId, "EXTRACTION_JOB_CREATE", {
     entityType: "extraction_jobs",
     entityId: row.id,

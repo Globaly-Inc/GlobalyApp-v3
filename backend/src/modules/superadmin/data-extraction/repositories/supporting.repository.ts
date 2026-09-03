@@ -63,9 +63,16 @@ export async function findEntityRow(table: string, id: string) {
 }
 
 export async function patchEntityRow(table: string, id: string, patch: Record<string, unknown>) {
+  const serialized = Object.fromEntries(
+    Object.entries(patch).map(([key, value]) => [
+      key,
+      Array.isArray(value) || (value !== null && typeof value === "object") ? JSON.stringify(value) : value,
+    ])
+  );
+
   // Tables with updated_at get it stamped; some don't have it
   const hasUpdatedAt = !["extraction_accreditations"].includes(table);
-  const data = hasUpdatedAt ? { ...patch, updated_at: masterKnex.fn.now() } : patch;
+  const data = hasUpdatedAt ? { ...serialized, updated_at: masterKnex.fn.now() } : serialized;
   await masterKnex(`${S}.${table}`).where({ id }).update(data);
 }
 

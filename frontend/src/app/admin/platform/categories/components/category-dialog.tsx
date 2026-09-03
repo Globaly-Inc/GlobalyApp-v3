@@ -181,6 +181,7 @@ export function CategoryDialog({
               onCheckedChange={(checked) => setForm((f) => ({ ...f, isActive: checked }))}
             />
           </div>
+
         </div>
 
         <DialogFooter>

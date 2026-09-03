@@ -1,7 +1,7 @@
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CityOption, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams,
+  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams, Test, TestInput,
 } from "./types";
 
 function delay(ms: number) {
@@ -71,6 +71,12 @@ const areasOfStudy: Lookup[] = [
   { id: 2, name: "Information Technology", slug: "information_technology", sort_order: 1, is_active: true },
 ];
 
+const tests: Test[] = [
+  { id: 1, name: "IELTS", slug: "ielts", category: "language", image_url: null, sort_order: 1, is_active: true },
+  { id: 2, name: "TOEFL", slug: "toefl", category: "language", image_url: null, sort_order: 2, is_active: true },
+  { id: 3, name: "GRE", slug: "gre", category: "academic", image_url: null, sort_order: 3, is_active: true },
+];
+
 const feeTypes: FeeType[] = [
   { id: 1, name: "Tuition Fee", slug: "tuition_fee", business_id: null, status: "approved", is_global: true, sort_order: 0 },
   { id: 2, name: "Application Fee", slug: "application_fee", business_id: null, status: "approved", is_global: true, sort_order: 1 },
@@ -108,20 +114,24 @@ const schemaFieldsByCategory: Record<string, SchemaField[]> = {};
 
 type CategoryEndpoint = "business" | "service" | "other-service";
 
+// Mirrors the backend's applyCategoryFilters.
+type CategoryListParams = SearchListParams & { active?: boolean };
+const applyFlags = (rows: Category[], f: { active?: boolean }) => (f.active ? rows.filter((c) => c.is_active) : rows);
+
 const lookupTable = (kind: LookupKind) => (kind === "degree-levels" ? degreeLevels : areasOfStudy);
 const categoryTable = (kind: CategoryEndpoint) => kind === "business" ? businessCategories : kind === "other-service" ? otherServiceCategories : serviceCategories;
 const schemaFieldsKey = (kind: CategoryEndpoint, categoryId: number) => `${kind}:${categoryId}`;
 
 export const categoriesMockApi = {
-  getBusinessCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
-    console.log("[mock] getBusinessCategories", search, params);
+  getBusinessCategories: async ({ search, active, ...params }: CategoryListParams = {}): Promise<Paginated<Category>> => {
+    console.log("[mock] getBusinessCategories", search, { active }, params);
     await delay(300);
-    return paginate(searchByName(businessCategories, search), { limit: 10, ...params });
+    return paginate(applyFlags(searchByName(businessCategories, search), { active }), { limit: 10, ...params });
   },
-  getServiceCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
-    console.log("[mock] getServiceCategories", search, params);
+  getServiceCategories: async ({ search, active, ...params }: CategoryListParams = {}): Promise<Paginated<Category>> => {
+    console.log("[mock] getServiceCategories", search, { active }, params);
     await delay(300);
-    return paginate(searchByName(serviceCategories, search), { limit: 10, ...params });
+    return paginate(applyFlags(searchByName(serviceCategories, search), { active }), { limit: 10, ...params });
   },
   getOtherServiceCategories: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Category>> => {
     console.log("[mock] getOtherServiceCategories", search, params);
@@ -203,6 +213,29 @@ export const categoriesMockApi = {
     console.log("[mock] updateLookup", kind, id, input);
     await delay(300);
     return patchRow(lookupTable(kind), id, input);
+  },
+
+  getTests: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<Test>> => {
+    console.log("[mock] getTests", search, params);
+    await delay(300);
+    return paginate(searchByName(tests, search), params);
+  },
+  createTest: async (input: TestInput): Promise<Test> => {
+    console.log("[mock] createTest", input);
+    await delay(300);
+    const row = { ...input, id: newId() };
+    tests.push(row);
+    return row;
+  },
+  updateTest: async (id: number, input: Partial<TestInput>): Promise<Test> => {
+    console.log("[mock] updateTest", id, input);
+    await delay(300);
+    return patchRow(tests, id, input);
+  },
+  uploadTestImage: async (file: File): Promise<{ image_url: string }> => {
+    console.log("[mock] uploadTestImage", file.name);
+    await delay(300);
+    return { image_url: URL.createObjectURL(file) };
   },
 
   getFeeTypes: async (params: ListParams = {}): Promise<Paginated<FeeType>> => {

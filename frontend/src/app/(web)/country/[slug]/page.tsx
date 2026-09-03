@@ -42,11 +42,15 @@ export default async function CountryPage({ params }: Readonly<{ params: Promise
     .filter((p) => p.tags.some((t) => t.toLowerCase() === nameLower) || p.title.toLowerCase().includes(nameLower))
     .slice(0, 3);
 
-  const [institutions, agents, courses] = await Promise.all([
-    getInstitutions({ country: country.name }).then((r) => r.data.slice(0, 6)).catch(() => []),
-    getEducationAgencies({ country: country.name }).then((r) => r.data.slice(0, 6)).catch(() => []),
-    getCourses({ country: country.name }).then((r) => r.data.slice(0, 6)).catch(() => []),
+  const emptyPage = { data: [], meta: { page: 1, limit: 6, total: 0, totalPages: 0 } };
+  const [institutionsRes, agentsRes, coursesRes] = await Promise.all([
+    getInstitutions({ country: country.name }).catch(() => emptyPage),
+    getEducationAgencies({ country: country.name }).catch(() => emptyPage),
+    getCourses({ country: country.name }).catch(() => emptyPage),
   ]);
+  const institutions = institutionsRes.data.slice(0, 6);
+  const agents = agentsRes.data.slice(0, 6);
+  const courses = coursesRes.data.slice(0, 6);
 
   return (
     <div>
@@ -64,9 +68,9 @@ export default async function CountryPage({ params }: Readonly<{ params: Promise
 
       <CountryPlatformStats
         country={country}
-        institutionsCount={institutions.length}
-        coursesCount={courses.length}
-        agentsCount={agents.length}
+        institutionsCount={institutionsRes.meta.total}
+        coursesCount={coursesRes.meta.total}
+        agentsCount={agentsRes.meta.total}
       />
 
       <div className="container mx-auto space-y-12 px-4 py-10 md:space-y-20 md:py-16">

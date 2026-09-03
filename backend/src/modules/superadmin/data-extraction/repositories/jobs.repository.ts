@@ -1,5 +1,6 @@
 // Extraction jobs repository — all queries against superadmin.extraction_jobs + related reads.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 
 const T = "superadmin.extraction_jobs";
@@ -7,11 +8,9 @@ const T_OVERVIEW = "superadmin.extraction_institution_overview";
 const T_EVENTS = "superadmin.extraction_job_events";
 const T_CAMPUSES = "superadmin.extraction_campuses";
 const T_AGENTS = "superadmin.extraction_agents";
+const T_COURSES = "superadmin.extraction_courses";
 
-// extraction_jobs.institution_name stays null until the pipeline names the job, but the
-// extractor writes the name to the overview row well before that — so the list has a
-// title to show. Subquery, not a join: job_id has no unique index on the overview table.
-const OVERVIEW_NAME = `(select o.name from ${T_OVERVIEW} o where o.job_id = ${T}.id limit 1)`;
+const OVERVIEW_NAME = `(select o.name from ${T_OVERVIEW} o where o.job_id = ${T}.id order by o.created_at desc limit 1)`;
 
 export async function listJobs(opts: { status?: string; q?: string; limit: number }) {
   const query = masterKnex(T)
@@ -83,20 +82,56 @@ export async function countJobsByStatus() {
   return Object.fromEntries(rows.map((r) => [r.status, Number(r.count)]));
 }
 
-export async function listJobsFiltered(opts: {
+export type JobSort = "newest" | "oldest" | "name_asc" | "name_desc";
+
+export type JobFilterOpts = {
   statuses?: string[];
+  excludeStatuses?: string[];
   sourceType?: string;
   excludeSourceType?: string;
-  limit: number;
-}) {
-  const query = masterKnex(T)
-    .select(`${T}.*`)
-    .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
-    .orderBy("created_at", "desc")
-    .limit(opts.limit);
+  businessCategoryId?: number;
+  q?: string;
+};
+
+const RESOLVED_NAME = `coalesce(${T}.institution_name, ${OVERVIEW_NAME})`;
+
+function filteredJobsQuery(opts: JobFilterOpts) {
+  const query = masterKnex(T);
   if (opts.statuses?.length) query.whereIn("status", opts.statuses);
+  if (opts.excludeStatuses?.length) query.whereNotIn("status", opts.excludeStatuses);
   if (opts.sourceType) query.where("source_type", opts.sourceType);
   if (opts.excludeSourceType) query.whereNot("source_type", opts.excludeSourceType);
+  if (opts.businessCategoryId) query.where("business_category_id", opts.businessCategoryId);
+  if (opts.q) query.whereRaw(`(${RESOLVED_NAME} ilike ? or ${T}.institution_url ilike ?)`, [`%${opts.q}%`, `%${opts.q}%`]);
+  return query;
+}
+
+export async function countJobsFiltered(opts: JobFilterOpts) {
+  const [row] = await filteredJobsQuery(opts).count("id as count");
+  return Number(row.count);
+}
+
+export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; offset: number; sort?: JobSort }) {
+  const query = filteredJobsQuery(opts)
+    .select(`${T}.*`)
+    .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
+    .limit(opts.limit)
+    .offset(opts.offset);
+
+  switch (opts.sort) {
+    case "oldest":
+      query.orderBy("created_at", "asc");
+      break;
+    case "name_asc":
+      query.orderByRaw(`${RESOLVED_NAME} asc nulls last`);
+      break;
+    case "name_desc":
+      query.orderByRaw(`${RESOLVED_NAME} desc nulls last`);
+      break;
+    case "newest":
+    default:
+      query.orderBy("created_at", "desc");
+  }
 
   const jobs = await query;
 
@@ -104,7 +139,7 @@ export async function listJobsFiltered(opts: {
   if (jobs.length) {
     const jobIds = jobs.map((j: { id: string }) => j.id);
 
-    const [campusCounts, agentCounts] = await Promise.all([
+    const [campusCounts, agentCounts, courseCounts] = await Promise.all([
       masterKnex(T_CAMPUSES)
         .select("job_id")
         .count("id as count")
@@ -115,14 +150,20 @@ export async function listJobsFiltered(opts: {
         .count("id as count")
         .whereIn("job_id", jobIds)
         .groupBy("job_id"),
+      masterKnex(T_COURSES)
+        .select("job_id")
+        .count("id as count")
+        .whereIn("job_id", jobIds)
+        .groupBy("job_id"),
     ]);
 
     const campusMap = Object.fromEntries(campusCounts.map((r: any) => [r.job_id, Number(r.count)]));
     const agentMap = Object.fromEntries(agentCounts.map((r: any) => [r.job_id, Number(r.count)]));
-
+    const courseMap = Object.fromEntries(courseCounts.map((r: any) => [r.job_id, Number(r.count)]));
     for (const job of jobs as any[]) {
       job.campus_count = campusMap[job.id] ?? 0;
       job.agent_count = agentMap[job.id] ?? 0;
+      job.courses_extracted = courseMap[job.id] ?? 0;
     }
   }
 
@@ -143,13 +184,38 @@ export async function findJobWithOverview(id: string) {
       .leftJoin("public.service_categories as sc", "sc.id", `${T}.service_category_id`)
       .where(`${T}.id`, id)
       .first(),
-    masterKnex(T_OVERVIEW).where({ job_id: id }).first(),
+    masterKnex(T_OVERVIEW).where({ job_id: id }).orderBy("created_at", "desc").first(),
   ]);
   return { job, overview: overview ?? null };
 }
 
-export async function insertJob(data: Record<string, unknown>) {
-  const [row] = await masterKnex(T).insert(data).returning("id");
+export function normaliseHost(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+export async function findJobByInstitutionHost(institutionUrl: string, db: Knex = masterKnex) {
+  const host = normaliseHost(institutionUrl);
+  if (!host) return null;
+
+  const rows = await db(`${T} as j`)
+    .leftJoin(`${T_OVERVIEW} as o`, "o.job_id", "j.id")
+    .select("j.id", "j.institution_url", "o.website", "o.email", "o.phone")
+    .select(db.raw("coalesce(j.institution_name, o.name) as institution_name"))
+    .whereNot("j.status", "declined");
+
+  return rows.find((r) => normaliseHost(r.institution_url) === host || (r.website && normaliseHost(r.website) === host)) ?? null;
+}
+
+export async function lockInstitutionHost(host: string, trx: Knex.Transaction) {
+  await trx.raw("select pg_advisory_xact_lock(hashtext(?)::bigint)", [host]);
+}
+
+export async function insertJob(data: Record<string, unknown>, db: Knex = masterKnex) {
+  const [row] = await db(T).insert(data).returning("id");
   return row;
 }
 

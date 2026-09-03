@@ -8,4 +8,4 @@ export const REGISTRANT_TYPES = [
 export type RegistrantType = (typeof REGISTRANT_TYPES)[number]["value"];
 
 // Fixed launch instant (AEST). Absolute moment → correct for every viewer's clock.
-export const LAUNCH_MS = new Date("2026-09-01T00:00:00+10:00").getTime();
+export const LAUNCH_MS = new Date("2026-09-10T00:00:00+10:00").getTime();

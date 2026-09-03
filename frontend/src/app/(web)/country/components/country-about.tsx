@@ -7,7 +7,7 @@ export function CountryAbout({ country }: Readonly<{ country: CountryDetail }>) 
   if (!country.about) return null;
 
   return (
-    <Reveal className="max-w-3xl">
+    <Reveal>
       <h2 className="mb-4 text-2xl font-bold">Why Study in {country.name}?</h2>
       <p className="text-lg leading-relaxed text-muted-foreground">{country.about}</p>
       {country.visa_type && (
@@ -30,3 +30,4 @@ export function CountryAbout({ country }: Readonly<{ country: CountryDetail }>) 
     </Reveal>
   );
 }
+

@@ -1,11 +1,19 @@
 // Plain fetch throughout — the widget runs on partner sites with no auth
 // session, so it must never import the token/refresh HTTP client.
 
-import type { CourseCard } from "@/app/personal/ai/apis/types";
+import type { CourseCard } from "@/app/ai/apis/types";
 import type { EmbedChatEvent, EmbedPublicConfig, GuestMessageRequest, WireCourseCard } from "./types";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3/ai-chat`;
+
+/** Postgres NUMERIC arrives as a string, and String#toLocaleString is a no-op — the
+ * card then shows "AUD 16041" with no thousands separator. Coerce to a real number.
+ * Mirror of ai/apis/real-api.ts (this file must stay import-free of it). */
+function toFee(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 /** Backend streams cards in prompt format; the shared renderer wants CourseCard. */
 function toCourseCard(w: WireCourseCard): CourseCard {
@@ -14,11 +22,14 @@ function toCourseCard(w: WireCourseCard): CourseCard {
     slug: w.slug ?? null,
     course_name: w.name ?? "",
     institution_name: w.institution ?? "",
+    institution_logo_url: w.institution_logo_url ?? null,
+    institution_cover_url: w.institution_cover_url ?? null,
     degree_level: w.degree_level ?? "",
     duration: w.duration ?? "",
-    annual_tuition_fee: w.fees,
+    annual_tuition_fee: toFee(w.fees),
     currency: w.currency ?? "",
     country: w.country ?? "",
+    city: w.city ?? null,
     intakes: w.intakes ?? [],
     study_modes: w.study_modes ?? [],
     source_url: w.source_url,

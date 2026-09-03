@@ -3,10 +3,9 @@
 
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
-  const lower = url.toLowerCase();
   const signals = [
     "/course", "/program", "/degree", "/bachelor", "/master",
-    "/diploma", "/certificate", "/study", "/undergraduate",
+    "/diploma", "/certificate", "/undergraduate",
     "/postgraduate", "/phd", "/mba", "/faculty", "/school-of",
     "/departments", "/subjects", "/units",
     // Universities publish their catalogue under these just as often, and without
@@ -21,11 +20,55 @@ export function looksLikeCourseUrl(url: string): boolean {
   // A catalogue host counts on its own — explorecourses.stanford.edu/search is a
   // course search, but its path carries no signal.
   // School/faculty subdomains (som.ku.edu.np, soe.ku.edu.np) are programme hosts too
-  const catalogueHost = /^(explorecourses|bulletin|catalog|catalogue|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
+  // "catalog(ue)" needs the plural too — seen live on catalogs.uky.edu, which the
+  // singular-only form silently excluded even though it's exactly the kind of catalogue
+  // host this exists for.
+  const catalogueHost = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
+
+  let path: string;
   try {
-    if (catalogueHost.test(new URL(url).hostname)) return true;
-  } catch { /* fall through to path signals */ }
-  return signals.some((s) => lower.includes(s));
+    const u = new URL(url);
+    if (catalogueHost.test(u.hostname)) return true;
+    // Path only, never the full href: matching the whole URL string let a signal
+    // like "/admission" match by pure string coincidence against a HOSTNAME
+    // ("https://admission.example.edu/..." contains "/admission" right after
+    // "://"), turning an institution's entire admissions subdomain into "course
+    // pages" regardless of what was actually on them (seen live on
+    // admission.universityofcalifornia.edu — every page matched, none were courses).
+    path = u.pathname.toLowerCase();
+  } catch {
+    path = url.toLowerCase();
+  }
+
+  // "/study" alone is too common an English word to substring-match anywhere in a
+  // URL — it also matches unrelated slugs like "/news/study-finds-x-causes-y" (a
+  // research-study headline, not a program of study). Require it to end a path
+  // segment ("/study/", "/study.html", or end of path), not just start one.
+  if (/\/study(?:[/?.]|$)/.test(path)) return true;
+
+  return signals.some((s) => path.includes(s));
+}
+
+/**
+ * Heuristic: does this URL look like a page describing a visa/migration consultancy's own
+ * service, fees, team, or registration? Path-only from the start (never the full href) —
+ * looksLikeCourseUrl above learned that lesson live (a signal matching the HOSTNAME by pure
+ * string coincidence turned an institution's whole admissions subdomain into "course pages").
+ */
+export function looksLikeVisaServiceUrl(url: string): boolean {
+  const signals = [
+    "/service", "/visa", "/migration", "/immigration", "/registration",
+    "/accreditation", "/team", "/agent", "/fee", "/pricing", "/cost",
+    "/eligibility", "/appeal", "/sponsorship", "/citizenship", "/skills-assessment",
+    "/testimonial", "/review", "/about", "/contact",
+  ];
+  let path: string;
+  try {
+    path = new URL(url).pathname.toLowerCase();
+  } catch {
+    path = url.toLowerCase();
+  }
+  return signals.some((s) => path.includes(s));
 }
 
 /** Global asset extensions to exclude from URL discovery */
@@ -101,8 +144,13 @@ export function filterUrls(urls: string[], base: string): string[] {
       // Skip common non-course paths. `search` is deliberately absent: course
       // catalogues are routinely served from /search (explorecourses.stanford.edu),
       // and the course heuristic is what narrows the list afterwards.
+      // news/press-room/blog/media are excluded outright, not left to the heuristic:
+      // a headline like "UC graduate programs and schools among nation's best" trips
+      // the "-programs" course signal, and the LLM then fabricates a distinct "course"
+      // per program merely named in passing (seen live: one ranking article produced
+      // 17 invented "Graduate X Programs" courses across job b290bd10-...-3bcccb).
       const path = u.pathname.toLowerCase();
-      if (/\/(login|signin|register|cart|checkout|privacy|cookie|terms|sitemap|feed|api)\b/.test(path)) continue;
+      if (/\/(login|signin|register|cart|checkout|privacy|cookie|terms|sitemap|feed|api|news|press-room|media|blog)\b/.test(path)) continue;
 
       u.hash = "";
       const normalized = u.href.replace(/\/+$/, "");
@@ -132,12 +180,40 @@ export function collectGuidedUrls(guided: unknown): string[] {
   return out;
 }
 
+/**
+ * Strip provably information-free junk before sending markdown to the LLM: base64
+ * payloads, HTML comments, runs of identical lines, and blank-line runs. Deliberately
+ * conservative — extraction quality depends on real URLs (curriculum/fees links, logos),
+ * link text (course names live in links), and table rows surviving VERBATIM, so nothing
+ * that carries information is rewritten or shortened. Every stripped byte is a billed
+ * input token the model could never use.
+ */
+function stripMarkdownJunk(md: string): string {
+  let out = md
+    // base64 data URIs: thousands of chars of pure noise (inline images, favicons)
+    .replace(/data:[a-zA-Z0-9/+.-]+;base64,[A-Za-z0-9+/=]{64,}/g, "data:omitted")
+    .replace(/<!--[\s\S]*?-->/g, "");
+
+  const lines = out.split("\n");
+  const deduped: string[] = [];
+  for (const line of lines) {
+    if (line.trim() !== "" && deduped[deduped.length - 1] === line) continue;
+    deduped.push(line);
+  }
+  out = deduped.join("\n");
+
+  return out.replace(/\n{3,}/g, "\n\n");
+}
+
 /** Truncate markdown to a max character length, breaking at line boundaries */
 // ponytail: 120K chars — Gemini 2.5 Flash handles ~1M tokens, 60K was leaving data on the table
 export function truncateMarkdown(md: string, maxLength = 120_000): string {
-  if (md.length <= maxLength) return md;
-  const cut = md.lastIndexOf("\n", maxLength);
-  return md.slice(0, cut > 0 ? cut : maxLength);
+  // Junk removal runs before the cut, so stripped noise buys back budget for real content
+  // instead of the tail of the page being lost to it.
+  const cleaned = stripMarkdownJunk(md);
+  if (cleaned.length <= maxLength) return cleaned;
+  const cut = cleaned.lastIndexOf("\n", maxLength);
+  return cleaned.slice(0, cut > 0 ? cut : maxLength);
 }
 
 /** Extract domain from URL */

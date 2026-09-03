@@ -1,8 +1,13 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from "@/lib/api/http";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
-  BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation,
-  BusinessService, BusinessStatus, EnquirySettingsPatch, LinkExistingBranchInput, LinkExistingBranchResult, Member,
+  BranchPatch, Business, BusinessCreateInput, ListingRef, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
+  BusinessService, BusinessStatus, EnquirySettingsPatch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  ListingKind,
+  InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput,
+  InstitutionPartnerInput, InstitutionPartnerListParams, InstitutionPartnerListResult, InstitutionPartnerPatch, InstitutionPartnerRow, InstitutionPatch,
+  InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
+  LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult,
@@ -10,11 +15,18 @@ import type {
 
 const BASE = "/admin/platform/businesses";
 
+// The id spaces are separate — institution 3 and business 3 are different rows, so every
+// row mutation routes by kind.
+const listingBase = ({ kind, id }: ListingRef) =>
+  kind === "institution" ? `/admin/platform/institutions/${id}` : `${BASE}/${id}`;
+
 function toQuery(params: BusinessListParams): string {
-  const q = new URLSearchParams({ limit: "10" });
+  const q = new URLSearchParams({ page: String(params.page ?? 1), limit: String(params.limit ?? 10) });
   if (params.search) q.set("search", params.search);
   if (params.status) q.set("status", params.status);
   if (params.category) q.set("category", String(params.category));
+  if (params.kind) q.set("kind", params.kind);
+  if (params.sort) q.set("sort", params.sort);
   return `?${q.toString()}`;
 }
 
@@ -56,9 +68,9 @@ function toMemberQuery(params: MemberListParams): string {
 }
 
 export const businessesRealApi = {
-  getBusinesses: async (params: BusinessListParams = {}): Promise<Business[]> => {
-    const { data } = await httpGet<{ data: Business[] }>(`${BASE}${toQuery(params)}`);
-    return data;
+  getBusinesses: async (params: BusinessListParams = {}): Promise<BusinessListResult> => {
+    const { data, meta } = await httpGet<{ data: Business[]; meta: { total: number } }>(`${BASE}${toQuery(params)}`);
+    return { data, total: meta.total };
   },
   createBusiness: (input: BusinessCreateInput): Promise<BusinessDetail> => httpPost(BASE, input),
   uploadImage: (file: File): Promise<{ path: string }> => {
@@ -67,14 +79,74 @@ export const businessesRealApi = {
     return httpPostForm(`${BASE}/image`, form);
   },
   getBusinessDetail: (id: number): Promise<BusinessDetail> => httpGet(`${BASE}/${id}`),
+  getInstitutionDetail: (id: number): Promise<InstitutionDetail> => httpGet(`/admin/platform/institutions/${id}`),
+  getListingKind: (id: number): Promise<{ kind: ListingKind }> => httpGet(`/admin/platform/listings/${id}/kind`),
+  updateInstitution: (id: number, patch: InstitutionPatch): Promise<InstitutionDetail> =>
+    httpPatch(`/admin/platform/institutions/${id}`, patch),
+  getInstitutionMembers: async (id: number, params: MemberListParams = {}): Promise<MemberListResult> => {
+    const { data, meta } = await httpGet<{ data: Member[]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/members${toMemberQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  getInstitutionCourses: async (id: number, params: InstitutionCourseListParams = {}): Promise<InstitutionCourseListResult> => {
+    const { data, meta } = await httpGet<{ data: InstitutionCourseListResult["data"]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/courses${toMemberQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  getInstitutionBranches: async (id: number, params: InstitutionBranchListParams = {}): Promise<InstitutionBranchListResult> => {
+    const { data, meta } = await httpGet<{ data: InstitutionBranchListResult["data"]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/branches${toMemberQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  getInstitutionPartners: async (id: number, params: InstitutionPartnerListParams = {}): Promise<InstitutionPartnerListResult> => {
+    const { data, meta } = await httpGet<{ data: InstitutionPartnerRow[]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/partners${toMemberQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  createInstitutionPartner: (id: number, input: InstitutionPartnerInput): Promise<BusinessRelation> =>
+    httpPost(`/admin/platform/institutions/${id}/partners`, input),
+  updateInstitutionPartner: (id: number, partnerId: string, patch: InstitutionPartnerPatch): Promise<BusinessRelation> =>
+    httpPatch(`/admin/platform/institutions/${id}/partners/${partnerId}`, patch),
+  deleteInstitutionPartner: (id: number, partnerId: string): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/partners/${partnerId}`),
+  inviteInstitutionMember: (id: number, input: InstitutionInviteInput): Promise<{ id: string; email: string; status: string }> =>
+    httpPost(`/admin/platform/institutions/${id}/invite`, input),
+  getInstitutionInvitations: async (id: number, params: InstitutionInvitationListParams = {}): Promise<InstitutionInvitationListResult> => {
+    const { data, meta } = await httpGet<{ data: InstitutionInvitation[]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/invitations${toPageLimitQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  cancelInstitutionInvitation: (id: number, invitationId: string): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/invitations/${invitationId}`),
+  resendInstitutionInvitation: (id: number, invitationId: string): Promise<void> =>
+    httpPost(`/admin/platform/institutions/${id}/invitations/${invitationId}/resend`, {}),
+  setInstitutionMemberStatus: (id: number, platformUserId: number, accountStatus: number): Promise<void> =>
+    httpPatch(`/admin/platform/institutions/${id}/members/${platformUserId}/status`, { account_status: accountStatus }),
+
+  getInstitutionRoles: (id: number): Promise<InstitutionRole[]> =>
+    httpGet(`/admin/platform/institutions/${id}/roles`),
+  getInstitutionPermissions: (id: number): Promise<InstitutionPermission[]> =>
+    httpGet(`/admin/platform/institutions/${id}/roles/permissions`),
+  createInstitutionRole: (id: number, input: InstitutionRoleCreateInput): Promise<InstitutionRole> =>
+    httpPost(`/admin/platform/institutions/${id}/roles`, input),
+  updateInstitutionRole: (id: number, roleId: number, patch: InstitutionRolePatch): Promise<InstitutionRole> =>
+    httpPatch(`/admin/platform/institutions/${id}/roles/${roleId}`, patch),
+  deleteInstitutionRole: (id: number, roleId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/roles/${roleId}`),
   updateBusiness: (id: number, patch: BusinessPatch): Promise<BusinessDetail> => httpPatch(`${BASE}/${id}`, patch),
-  updateStatus: (id: number, status: BusinessStatus): Promise<{ status: string }> =>
-    httpPatch(`${BASE}/${id}/status`, { status }),
-  sendClaimRequest: (id: number): Promise<{ claim_status: string }> => httpPost(`${BASE}/${id}/claim-request`, {}),
+  updateStatus: (ref: ListingRef, status: BusinessStatus): Promise<{ status: string }> =>
+    httpPatch(`${listingBase(ref)}/status`, { status }),
+  sendClaimRequest: (ref: ListingRef): Promise<{ claim_status: string }> =>
+    httpPost(`${listingBase(ref)}/claim-request`, {}),
   sendBulkClaimRequests: (ids: number[]): Promise<{ queued: number }> => httpPost(`${BASE}/claim-requests/bulk`, { ids }),
-  updatePublished: (id: number, is_published: boolean): Promise<{ is_published: boolean }> =>
-    httpPatch(`${BASE}/${id}/published`, { is_published }),
-  deleteBusiness: (id: number): Promise<void> => httpDelete(`${BASE}/${id}`),
+  updatePublished: (ref: ListingRef, is_published: boolean): Promise<{ is_published: boolean }> =>
+    httpPatch(`${listingBase(ref)}/published`, { is_published }),
+  deleteBusiness: (ref: ListingRef): Promise<void> => httpDelete(listingBase(ref)),
   updateEnquirySettings: (id: number, patch: EnquirySettingsPatch): Promise<BusinessDetail> =>
     httpPatch(`${BASE}/${id}/enquiry-settings`, patch),
 
@@ -116,7 +188,7 @@ export const businessesRealApi = {
   removeMember: (id: number, memberId: number): Promise<void> => httpDelete(`${BASE}/${id}/members/${memberId}`),
 
   getRelations: async (id: number, params: RelationListParams = {}): Promise<RelationListResult> => {
-    const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/${id}/relations${toPageLimitQuery(params)}`);
+    const { data, meta } = await httpGet<{ data: BusinessRelation[]; meta: { total: number } }>(`${BASE}/${id}/relations${toMemberQuery(params)}`);
     return { data, total: meta.total };
   },
   createRelation: (id: number, input: RelationInput): Promise<BusinessRelation> => httpPost(`${BASE}/${id}/relations`, input),

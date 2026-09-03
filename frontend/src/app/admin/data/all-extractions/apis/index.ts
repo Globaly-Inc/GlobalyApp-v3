@@ -28,4 +28,6 @@ export type {
   StudyOption,
   Accreditation,
   Paginated,
+  VisaService,
+  VisaServiceStatus,
 } from "./types";

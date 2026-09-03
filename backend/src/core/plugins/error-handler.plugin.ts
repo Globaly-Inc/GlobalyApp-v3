@@ -16,6 +16,7 @@ export const errorHandlerPlugin = fp(async (app) => {
       return reply.status(error.statusCode).send({
         error: error.message,
         code: error.code,
+        ...(error.details !== undefined ? { details: error.details } : {}),
       });
     }
 
@@ -51,6 +52,16 @@ export const errorHandlerPlugin = fp(async (app) => {
       return reply.status(409).send({
         error: `${field} already exists`,
         code: "CONFLICT",
+      });
+    }
+
+    // Errors that already carry an HTTP status (@fastify/rate-limit's 429, a plugin's 4xx). Falling
+    // through to the 500 branch below hid these completely — a rate-limited client was told
+    // "Internal server error" and had no way to know it should back off instead of retrying.
+    if (typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode < 500) {
+      return reply.status(err.statusCode).send({
+        error: error instanceof Error ? error.message : "Request failed",
+        code: typeof err.code === "string" ? err.code : undefined,
       });
     }
 

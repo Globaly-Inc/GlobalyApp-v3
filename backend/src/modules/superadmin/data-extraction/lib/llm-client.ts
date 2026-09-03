@@ -3,6 +3,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { isORConfigured, orExtractJson, orGenerateText, orEmbed } from "../../../../shared/ai/openrouter.js";
 
 const logger = createChildLogger("llm-client");
 
@@ -55,10 +56,28 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
+      if (isTransient(err)) {
+        throw new Error(`AI_TRANSIENT: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      }
       throw err;
     }
   }
   throw new Error("unreachable");
+}
+
+/**
+ * One structured log line per billed call — greppable cost attribution per model
+ * ("llm usage"). The invoice only shows monthly per-SKU totals; this is what lets us
+ * see which phase/model owns the tokens on any given day.
+ */
+function logUsage(model: string, usage?: { promptTokenCount?: number; candidatesTokenCount?: number; cachedContentTokenCount?: number }) {
+  if (!usage) return;
+  logger.info("llm usage", {
+    model,
+    promptTokens: usage.promptTokenCount ?? 0,
+    outputTokens: usage.candidatesTokenCount ?? 0,
+    cachedTokens: usage.cachedContentTokenCount ?? 0,
+  });
 }
 
 /**
@@ -69,20 +88,40 @@ export async function extractJson<T>(opts: {
   prompt: string;
   model?: string;
   maxTokens?: number;
+  /**
+   * "lite" routes the call to GEMINI_MODEL_LITE when that env var is set — for simple
+   * structured tasks (URL classification, secondary units/fees fetches, field
+   * verification) that don't need the full model. Falls back to GEMINI_MODEL when unset,
+   * so the downgrade is an env-var opt-in with an instant rollback, never a code change.
+   */
+  tier?: "lite";
 }): Promise<T> {
-  const ai = getClient();
-  const model = ai.getGenerativeModel({
-    model: opts.model ?? config.GEMINI_MODEL,
-    systemInstruction: opts.system,
-    generationConfig: {
-      maxOutputTokens: opts.maxTokens ?? 16384,
-      responseMimeType: "application/json",
-    },
-  });
-
-  const result = await withRetry(() => model.generateContent(opts.prompt));
-  const text = result.response.text();
-  const truncated = result.response.candidates?.[0]?.finishReason === "MAX_TOKENS";
+  let modelId: string;
+  let text: string;
+  let truncated = false;
+  try {
+    const ai = getClient();
+    modelId = opts.model
+      ?? (opts.tier === "lite" && config.GEMINI_MODEL_LITE ? config.GEMINI_MODEL_LITE : config.GEMINI_MODEL);
+    const model = ai.getGenerativeModel({
+      model: modelId,
+      systemInstruction: opts.system,
+      generationConfig: {
+        maxOutputTokens: opts.maxTokens ?? 16384,
+        responseMimeType: "application/json",
+      },
+    });
+    const result = await withRetry(() => model.generateContent(opts.prompt));
+    logUsage(modelId, result.response.usageMetadata);
+    text = result.response.text();
+    truncated = result.response.candidates?.[0]?.finishReason === "MAX_TOKENS";
+  } catch (geminiErr) {
+    if (isORConfigured()) {
+      logger.warn("Gemini extractJson failed — falling back to OpenRouter");
+      return orExtractJson<T>({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens });
+    }
+    throw geminiErr;
+  }
 
   try {
     return JSON.parse(text) as T;
@@ -204,17 +243,26 @@ export async function complete(opts: {
   model?: string;
   maxTokens?: number;
 }): Promise<string> {
-  const ai = getClient();
-  const model = ai.getGenerativeModel({
-    model: opts.model ?? config.GEMINI_MODEL,
-    systemInstruction: opts.system,
-    generationConfig: {
-      maxOutputTokens: opts.maxTokens ?? 2048,
-    },
-  });
-
-  const result = await withRetry(() => model.generateContent(opts.prompt));
-  return result.response.text();
+  try {
+    const ai = getClient();
+    const modelId = opts.model ?? config.GEMINI_MODEL;
+    const model = ai.getGenerativeModel({
+      model: modelId,
+      systemInstruction: opts.system,
+      generationConfig: {
+        maxOutputTokens: opts.maxTokens ?? 2048,
+      },
+    });
+    const result = await withRetry(() => model.generateContent(opts.prompt));
+    logUsage(modelId, result.response.usageMetadata);
+    return result.response.text();
+  } catch (geminiErr) {
+    if (isORConfigured()) {
+      logger.warn("Gemini complete() failed — falling back to OpenRouter");
+      return orGenerateText({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens });
+    }
+    throw geminiErr;
+  }
 }
 
 /** Width of every `embedding vector(...)` column in the superadmin schema. */
@@ -247,7 +295,12 @@ export async function embed(text: string): Promise<number[]> {
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`Embedding failed (${res.status}): ${detail.slice(0, 200)}`);
+    const errMsg = `Embedding failed (${res.status}): ${detail.slice(0, 200)}`;
+    if (isORConfigured()) {
+      logger.warn(`Gemini embed failed — falling back to OpenRouter: ${errMsg}`);
+      return orEmbed(text, EMBEDDING_DIMS);
+    }
+    throw new Error(errMsg);
   }
 
   const values: number[] = (await res.json())?.embedding?.values ?? [];

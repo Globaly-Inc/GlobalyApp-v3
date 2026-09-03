@@ -1,13 +1,16 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Clock,
+  EyeOff,
   Globe,
   ListOrdered,
   Loader2,
   AlertCircle,
   CheckCircle2,
+  PauseCircle,
   ShieldCheck,
   Sparkles,
+  Square,
   XCircle,
   Pause,
 } from "lucide-react";
@@ -38,7 +41,10 @@ export const STATUS_CONFIG: Record<ExtractionStatus, StatusConfig> = {
 };
 
 export const ACTIVE_STATUSES: ExtractionStatus[] = ["mapping", "scraping", "extracting", "processing", "verifying"];
-export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "done", "approved"];
+// 'exported' is included so an already-published job can be re-published: promoteJob keys
+// every write on source_job_id, so a second run repairs the existing listing from the latest
+// extraction data instead of duplicating it. Declining is excluded for 'exported' separately.
+export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "done", "approved", "exported"];
 export const PAUSABLE_STATUSES: ExtractionStatus[] = ["scraping", "extracting"];
 export const FINISHED_STATUSES: ExtractionStatus[] = ["done", "completed", "approved", "verified", "exported", "pushed"];
 
@@ -57,6 +63,17 @@ export const GUIDED_URL_CATEGORIES = [
   { key: "accreditations_urls", label: "Accreditations" },
 ] as const;
 
+// Same `*_urls` suffix contract as GUIDED_URL_CATEGORIES, just pointed at a visa/migration
+// consultancy site's own page structure instead of a university's.
+export const VISA_SERVICE_GUIDED_URL_CATEGORIES = [
+  { key: "services_urls", label: "Services & Visa Types Offered", hint: "Where the AI can find the full list of services this provider offers" },
+  { key: "fees_urls", label: "Fees / Pricing" },
+  { key: "registration_urls", label: "Registration / Accreditation", hint: "MARA, OISC, ICCRC or equivalent registration/licensing page" },
+  { key: "team_urls", label: "Team / Registered Agents" },
+  { key: "contact_urls", label: "Contact / Office Locations" },
+  { key: "testimonials_urls", label: "Reviews / Testimonials" },
+] as const;
+
 // Per-course verification_status → list dot colour. "verified"/"mismatch" come from the
 // verify worker, "confirmed"/"flagged" from a human, "manual" from a hand-added course.
 export const VERIFICATION_DOT: Record<string, string> = {
@@ -70,6 +87,16 @@ export const VERIFICATION_DOT: Record<string, string> = {
 export const SOURCE_TYPE_OPTIONS = [
   { value: "institution", label: "Institution Website" },
 ];
+
+// Offered instead of SOURCE_TYPE_OPTIONS when the chosen business + service category are
+// both "Visa Services" — see isVisaServiceCategory in new-extraction-dialog.tsx.
+export const VISA_SERVICE_SOURCE_TYPE_OPTIONS = [
+  { value: "visa_service", label: "Visa Service Website" },
+];
+
+export type GuidedUrlCategory =
+  | (typeof GUIDED_URL_CATEGORIES)[number]
+  | (typeof VISA_SERVICE_GUIDED_URL_CATEGORIES)[number];
 
 /** One list component, three pages — the mode picks the data and the wording. Ported from V2's ExtractionDashboard. */
 export type DashboardMode = "all" | "completed" | "ai-ongoing";
@@ -105,14 +132,14 @@ export const PIPELINE_STAGES: { key: string; label: string; icon: LucideIcon }[]
 
 // Queue item statuses, in the order the counter row shows them. "completed" is what
 // the V3 page worker writes — V2 called the same state "done".
-export const QUEUE_STATS: { status: string; label: string; color: string }[] = [
-  { status: "pending", label: "Pending", color: "text-muted-foreground" },
-  { status: "processing", label: "Processing", color: "text-primary" },
-  { status: "paused", label: "Paused", color: "text-amber-600" },
-  { status: "stopped", label: "Stopped", color: "text-destructive" },
-  { status: "completed", label: "Done", color: "text-emerald-600" },
-  { status: "failed", label: "Failed", color: "text-destructive" },
-  { status: "ignored", label: "Ignored", color: "text-muted-foreground" },
+export const QUEUE_STATS: { status: string; label: string; color: string; tint: string; icon: LucideIcon }[] = [
+  { status: "pending", label: "Pending", color: "text-muted-foreground", tint: "bg-muted", icon: Clock },
+  { status: "processing", label: "Processing", color: "text-primary", tint: "bg-primary/10", icon: Loader2 },
+  { status: "paused", label: "Paused", color: "text-amber-600", tint: "bg-amber-100", icon: PauseCircle },
+  { status: "stopped", label: "Stopped", color: "text-destructive", tint: "bg-red-100", icon: Square },
+  { status: "completed", label: "Done", color: "text-emerald-600", tint: "bg-emerald-100", icon: CheckCircle2 },
+  { status: "failed", label: "Failed", color: "text-destructive", tint: "bg-red-100", icon: XCircle },
+  { status: "ignored", label: "Ignored", color: "text-muted-foreground", tint: "bg-muted", icon: EyeOff },
 ];
 
 export const QUEUE_FILTERS: { value: string; label: string }[] = [
@@ -138,10 +165,13 @@ export const ENGLISH_SUBSCORES = [
   { key: "speaking_score", label: "Speaking" },
 ] as const;
 
+// Values must match the DB CHECK constraint on extraction_eligibility_requirements.score_type
+// (superadmin/20260805_004_extraction_staged_entities.ts) — anything else fails on save.
 export const SCORE_TYPE_OPTIONS = [
   { value: "percentage", label: "Percentage (%)" },
-  { value: "gpa", label: "GPA" },
-  { value: "grade", label: "Grade" },
+  { value: "gpa_4", label: "GPA (out of 4.0)" },
+  { value: "gpa_10", label: "GPA (out of 10.0)" },
+  { value: "cgpa", label: "CGPA" },
 ];
 
 export const STUDENT_TYPE_OPTIONS = [

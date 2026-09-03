@@ -3,4 +3,14 @@ import { enquiriesMockApi } from "./mock-data";
 import { enquiriesRealApi } from "./real-api";
 
 export const enquiriesApi = createApi({ mock: enquiriesMockApi, real: enquiriesRealApi });
-export type { CreateEnquiryInput, Enquiry, EnquiryListItem, EnquiryStatus } from "./types";
+export type {
+  Course,
+  CreateEnquiryInput,
+  CriterionStatus,
+  EligibilityCriterion,
+  EligibilityVerdict,
+  Enquiry,
+  EnquiryListItem,
+  EnquiryStatus,
+  UnlockedBusiness,
+} from "./types";

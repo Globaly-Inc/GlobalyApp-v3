@@ -16,7 +16,10 @@ import { DeleteServiceDialog } from "../services/delete-service-dialog";
 
 const PAGE_SIZE = 10;
 
-export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
+export function ServicesTab({
+  businessId,
+  readOnly = false,
+}: Readonly<{ businessId: number; readOnly?: boolean }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { items: services, status, total } = useAppSelector((state) => state.platformBusinesses.services);
@@ -118,18 +121,22 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
               >
                 {s.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/${s.id}/edit`)}
-                aria-label="Edit service"
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <PriceEditPopover price={s.price} onSave={(next) => handlePriceSave(s.id, next)} />
-              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingService(s)} aria-label="Delete service">
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {!readOnly && (
+                <>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/${s.id}/edit`)}
+                    aria-label="Edit service"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <PriceEditPopover price={s.price} onSave={(next) => handlePriceSave(s.id, next)} />
+                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingService(s)} aria-label="Delete service">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         ))}
@@ -145,9 +152,11 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
           <span className="text-sm font-semibold">Services</span>
           <Badge variant="secondary">{total}</Badge>
         </div>
-        <Button className="h-10" onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/add`)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Service
-        </Button>
+        {!readOnly && (
+          <Button className="h-10" onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/add`)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Service
+          </Button>
+        )}
       </div>
 
       <div className="relative mb-3 w-1/3">

@@ -22,7 +22,7 @@ export function OwnDataSection() {
               Everywhere.
             </h2>
             <p className="text-muted-foreground mb-8 leading-relaxed">
-              With Globaly.app, your institution controls its course data, agent connections, and
+              With Globaly.app, your institution controls its course data, education counselor connections, and
               partnerships — managing listings in real time on a global open marketplace with
               transparent, predictable pricing.
             </p>

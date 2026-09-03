@@ -20,6 +20,8 @@ export interface AgentRow {
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  position: string | null;
+  is_public: boolean;
   meta: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
@@ -60,6 +62,8 @@ const AGENT_COLUMNS = [
   "agents.last_name",
   "agents.email",
   "agents.phone",
+  "agents.position",
+  "agents.is_public",
   "agents.meta",
   "agents.created_at",
   "agents.updated_at",
@@ -77,6 +81,108 @@ export async function findRoleByName(db: Knex, name: string) {
 
 export async function listRoles(db: Knex) {
   return db<RoleRow>("roles").whereNull("deleted_at").orderBy("sort_order", "asc");
+}
+
+export async function findRoleById(db: Knex, id: number) {
+  return db<RoleRow>("roles").where({ id }).whereNull("deleted_at").first();
+}
+
+export interface PermissionRow {
+  id: number;
+  module: string;
+  action: string;
+  display_name: string;
+  description: string | null;
+}
+
+export async function listPermissions(db: Knex) {
+  return db<PermissionRow>("permissions")
+    .whereNull("deleted_at")
+    .select("id", "module", "action", "display_name", "description")
+    .orderBy(["module", "id"]);
+}
+
+/** All role→permission links, for building permission_ids arrays per role in one query. */
+export async function listRolePermissionLinks(db: Knex): Promise<{ role_id: number; permission_id: number }[]> {
+  return db("role_permissions").select("role_id", "permission_id");
+}
+
+/** Which tenant schema the roles tables live in: business (agents/role_id) or institution (members/role name). */
+export type TenantKind = "business" | "institution";
+
+/** Members per role_id (soft-deleted agents excluded), for "in use" counts. */
+export async function countAgentsPerRole(db: Knex): Promise<{ role_id: number; count: string }[]> {
+  return db("agents").whereNull("deleted_at").groupBy("role_id").select("role_id").count("id as count");
+}
+
+/** Institution counterpart — members reference roles by NAME (members.role text), not role_id. */
+export async function countMembersPerRoleName(db: Knex): Promise<{ role: string; count: string }[]> {
+  return db("members").whereNull("deleted_at").groupBy("role").select("role").count("id as count");
+}
+
+export async function countAgentsWithRole(db: Knex, roleId: number): Promise<number> {
+  const [{ count }] = await db("agents").where({ role_id: roleId }).whereNull("deleted_at").count("id as count");
+  return Number(count);
+}
+
+export async function countMembersWithRoleName(db: Knex, roleName: string): Promise<number> {
+  const [{ count }] = await db("members").where({ role: roleName }).whereNull("deleted_at").count("id as count");
+  return Number(count);
+}
+
+/** Pending invitations that would resolve to this role name on accept. */
+export async function countPendingInvitationsWithRole(db: Knex, kind: TenantKind, roleName: string): Promise<number> {
+  const table = kind === "institution" ? "member_invitations" : "agent_invitations";
+  const [{ count }] = await db(table)
+    .where({ status: "pending" })
+    .whereNull("deleted_at")
+    .whereRaw("user_details->>'role' = ?", [roleName])
+    .count("id as count");
+  return Number(count);
+}
+
+export async function insertRole(db: Knex, data: {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  is_system: boolean;
+  sort_order: number;
+}) {
+  const [row] = await db<RoleRow>("roles")
+    .insert({ ...data, created_at: db.fn.now(), updated_at: db.fn.now() } as any)
+    .returning("*");
+  return row;
+}
+
+export async function updateRoleRow(db: Knex, id: number, data: {
+  display_name?: string;
+  description?: string | null;
+}) {
+  const [row] = await db<RoleRow>("roles")
+    .where({ id })
+    .whereNull("deleted_at")
+    .update({ ...data, updated_at: db.fn.now() } as any)
+    .returning("*");
+  return row;
+}
+
+export async function softDeleteRole(db: Knex, id: number) {
+  await db("roles").where({ id }).update({ deleted_at: db.fn.now() });
+}
+
+/** Replace-all semantics: the payload's permission_ids is the full desired set. */
+export async function setRolePermissions(db: Knex, roleId: number, permissionIds: number[]) {
+  await db.transaction(async (trx) => {
+    await trx("role_permissions").where({ role_id: roleId }).delete();
+    if (permissionIds.length > 0) {
+      await trx("role_permissions").insert(permissionIds.map((permission_id) => ({ role_id: roleId, permission_id })));
+    }
+  });
+}
+
+export async function maxRoleSortOrder(db: Knex): Promise<number> {
+  const row = await db("roles").whereNull("deleted_at").max("sort_order as max").first();
+  return Number(row?.max ?? 0);
 }
 
 // ── Business lookup (globalyapp) ──
@@ -131,6 +237,7 @@ export async function insertAgent(db: Knex, data: {
   last_name?: string | null;
   email?: string | null;
   phone?: string | null;
+  position?: string | null;
 }) {
   const [row] = await db("agents")
     .insert({ ...data, created_at: db.fn.now(), updated_at: db.fn.now() })
@@ -144,6 +251,8 @@ export async function updateAgent(db: Knex, id: number, data: {
   admin_point_of_contact?: boolean;
   account_status?: number;
   is_owner?: boolean;
+  position?: string | null;
+  is_public?: boolean;
 }) {
   const [row] = await db("agents")
     .where({ id })
@@ -159,17 +268,28 @@ export async function softDeleteAgent(db: Knex, id: number) {
   await db("agents").where({ id }).update({ deleted_at: db.fn.now() });
 }
 
-export async function listAgents(db: Knex, limit: number, offset: number) {
-  return withRole(db<AgentRow>("agents"))
+function applyAgentSearch(query: Knex.QueryBuilder, search?: string): Knex.QueryBuilder {
+  if (!search) return query;
+  return query.where((qb) => {
+    qb.whereILike("agents.first_name", `%${search}%`)
+      .orWhereILike("agents.last_name", `%${search}%`)
+      .orWhereILike("agents.email", `%${search}%`);
+  });
+}
+
+export async function listAgents(db: Knex, limit: number, offset: number, search?: string) {
+  return applyAgentSearch(
+    withRole(db<AgentRow>("agents")).whereNull("agents.deleted_at"),
+    search,
+  )
     .select(AGENT_COLUMNS as unknown as string[])
-    .whereNull("agents.deleted_at")
     .orderBy("agents.id", "asc")
     .limit(limit)
     .offset(offset);
 }
 
-export async function countAgents(db: Knex): Promise<number> {
-  const [{ count }] = await db("agents").whereNull("deleted_at").count("id as count");
+export async function countAgents(db: Knex, search?: string): Promise<number> {
+  const [{ count }] = await applyAgentSearch(db("agents").whereNull("deleted_at"), search).count("id as count");
   return Number(count);
 }
 
@@ -232,6 +352,19 @@ export async function findPendingInvitationById(db: Knex, id: string) {
     .where("expired_at", ">", db.fn.now())
     .whereNull("deleted_at")
     .first();
+}
+
+/** Unlike findPendingInvitationById, doesn't require the invite to still be unexpired —
+ * resending is exactly what you'd do to fix an invite that's about to or already did expire. */
+export async function findInvitationById(db: Knex, id: string) {
+  return db<InvitationRow>("agent_invitations")
+    .where({ id, status: "pending" })
+    .whereNull("deleted_at")
+    .first();
+}
+
+export async function refreshInvitationToken(db: Knex, id: string, token: string, expiredAt: Date) {
+  await db("agent_invitations").where({ id }).update({ invite_token: token, expired_at: expiredAt });
 }
 
 export async function cancelInvitation(db: Knex, id: string) {
