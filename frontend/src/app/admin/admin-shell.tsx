@@ -126,7 +126,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
               render={
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-full border border-border px-1.5 py-1 text-foreground hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
+                  className="flex items-center gap-2 rounded-md border border-border px-1.5 py-1 text-foreground hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
                 />
               }
             >
@@ -144,7 +144,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
               </div>
               <ChevronDown className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 p-1.5">
+            <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
               <DropdownMenuItem
                 className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
                 onClick={() => router.push("/admin/profile")}

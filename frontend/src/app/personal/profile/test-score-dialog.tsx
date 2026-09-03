@@ -12,6 +12,7 @@ import type { LanguageTest, LanguageTestInput } from "../apis/types";
 import { useValidatedForm, sanitizeDecimalInput } from "./validation";
 import { FieldError } from "./field-error";
 import { useTests } from "./use-tests";
+import { overallScoreRange, subScoreRange, rangeHint, rangePlaceholder } from "./test-score-ranges";
 
 /**
  * Which sub-scores a test breaks down into. Keyed by the catalogue's test name; a test an admin adds
@@ -127,11 +128,17 @@ export function TestScoreDialog({
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Overall Score *</Label>
+                  <Label>
+                    Overall Score
+                    {overallScoreRange(form.test_type ?? "") && (
+                      <span className="font-normal text-muted-foreground">{rangeHint(overallScoreRange(form.test_type ?? ""))}</span>
+                    )}
+                  </Label>
                   <Input
                     type="number"
                     step="any"
                     inputMode="decimal"
+                    placeholder={rangePlaceholder(overallScoreRange(form.test_type ?? "")) || "Score"}
                     value={form.overall_score ?? ""}
                     onChange={(e) => setForm((f) => ({ ...f, overall_score: sanitizeDecimalInput(e.target.value) }))}
                     aria-invalid={!!errors.overall_score}
@@ -139,7 +146,7 @@ export function TestScoreDialog({
                   <FieldError message={errors.overall_score} />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label>Test Date *</Label>
+                  <Label>Test Date</Label>
                   <DatePicker
                     value={form.test_date ?? ""}
                     onChange={(v) => setForm((f) => ({ ...f, test_date: v }))}
@@ -152,24 +159,32 @@ export function TestScoreDialog({
                 </div>
               </div>
               {subFields.length > 0 && (
-                <div className="grid grid-cols-2 gap-3">
-                  {subFields.map((label) => {
-                    const key = label.toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
-                    return (
-                      <div className="space-y-2" key={key}>
-                        <Label>{label}</Label>
-                        <Input
-                          type="number"
-                          step="any"
-                          inputMode="decimal"
-                          value={form.sub_scores?.[key] ?? ""}
-                          onChange={(e) =>
-                            setForm((f) => ({ ...f, sub_scores: { ...f.sub_scores, [key]: sanitizeDecimalInput(e.target.value) } }))
-                          }
-                        />
-                      </div>
-                    );
-                  })}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sub-scores</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {subFields.map((label) => {
+                      const key = label.toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
+                      const range = subScoreRange(form.test_type ?? "", label);
+                      return (
+                        <div className="space-y-2" key={key}>
+                          <Label>
+                            {label}
+                            {range && <span className="font-normal text-muted-foreground">{rangeHint(range)}</span>}
+                          </Label>
+                          <Input
+                            type="number"
+                            step="any"
+                            inputMode="decimal"
+                            placeholder={rangePlaceholder(range) || "Score"}
+                            value={form.sub_scores?.[key] ?? ""}
+                            onChange={(e) =>
+                              setForm((f) => ({ ...f, sub_scores: { ...f.sub_scores, [key]: sanitizeDecimalInput(e.target.value) } }))
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </>

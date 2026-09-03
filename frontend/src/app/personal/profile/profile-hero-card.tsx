@@ -17,14 +17,18 @@ export function ProfileHeroCard({
   imageUploading,
   onImageFile,
   countries,
+  readOnly = false,
 }: Readonly<{
   profile: StudentProfile;
   initial: string;
   imageUploading: "profile" | "cover" | null;
   onImageFile: (category: "profile" | "cover", file: File) => void;
   countries: Country[];
+  /** Preview mode: no cover/photo edit affordances. */
+  readOnly?: boolean;
 }>) {
-  const country = countries.find((c) => c.id === profile.personal_address_country_id) ?? null;
+  const nationality = countries.find((c) => c.id === profile.nationality_id) ?? null;
+  const addressCountry = countries.find((c) => c.id === profile.personal_address_country_id) ?? null;
   const photoPickerRef = useRef<CroppedFileInputHandle>(null);
   const photoUploading = imageUploading === "profile";
 
@@ -33,7 +37,7 @@ export function ProfileHeroCard({
       <CoverLogoEditor
         className="h-40 sm:h-48"
         coverUrl={profile.cover_url}
-        onCoverFile={(file) => onImageFile("cover", file)}
+        onCoverFile={readOnly ? undefined : (file) => onImageFile("cover", file)}
         coverUploading={imageUploading === "cover"}
         logoUrl={profile.photo_url}
         logoFallback={initial}
@@ -43,43 +47,59 @@ export function ProfileHeroCard({
       <CardContent>
         <div className="flex items-start gap-4 -mt-14">
           <div className="relative h-28 w-28 shrink-0 left-10">
-            <button
-              type="button"
-              className="group size-28 cursor-pointer"
-              onClick={() => photoPickerRef.current?.pick()}
-              aria-label="Edit photo"
-            >
-              <Avatar className="size-28 rounded-xl border-4 border-background shadow-lg">
+            {readOnly ? (
+              <Avatar className="size-28 rounded-full border-4 border-background shadow-lg">
                 {profile.photo_url && (
-                  <AvatarImage src={profile.photo_url} alt="" className="rounded-lg object-cover" />
+                  <AvatarImage src={profile.photo_url} alt="" className="rounded-full object-cover" />
                 )}
-                <AvatarFallback className="rounded-lg text-2xl">{initial}</AvatarFallback>
+                <AvatarFallback className="rounded-full text-2xl">{initial}</AvatarFallback>
               </Avatar>
-              <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
-                {photoUploading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-white" />
-                ) : (
-                  <Camera className="h-5 w-5 text-white" />
-                )}
-              </span>
-            </button>
-            <CroppedFileInput
-              ref={photoPickerRef}
-              cropShape="square"
-              onCropped={(file) => onImageFile("profile", file)}
-              isSaving={photoUploading}
-            />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="group size-28 cursor-pointer"
+                  onClick={() => photoPickerRef.current?.pick()}
+                  aria-label="Edit photo"
+                >
+                  <Avatar className="size-28 rounded-full border-4 border-background shadow-lg">
+                    {profile.photo_url && (
+                      <AvatarImage src={profile.photo_url} alt="" className="rounded-full object-cover" />
+                    )}
+                    <AvatarFallback className="rounded-full text-2xl">{initial}</AvatarFallback>
+                  </Avatar>
+                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
+                    {photoUploading ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    ) : (
+                      <Camera className="h-5 w-5 text-white" />
+                    )}
+                  </span>
+                </button>
+                <CroppedFileInput
+                  ref={photoPickerRef}
+                  cropShape="square"
+                  onCropped={(file) => onImageFile("profile", file)}
+                  isSaving={photoUploading}
+                />
+              </>
+            )}
           </div>
           <div className="pt-4 sm:pt-14 ml-10 m-4">
             <h1 className="text-xl font-bold text-foreground">
               {profile.first_name} {profile.last_name}
             </h1>
-            <p className="text-sm text-muted-foreground">{profile.email}</p>
-            {country && (
-              <p className="text-sm text-muted-foreground">
-                {flagEmoji(country.iso2)} From {country.name}
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground">{nationality ? `From ${nationality.name}` : " "}</p>
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+              {profile.personal_address_city || addressCountry ? (
+                <>
+                  {addressCountry && <span>{flagEmoji(addressCountry.iso2)}</span>}
+                  {[profile.personal_address_city, addressCountry?.name].filter(Boolean).join(", ")}
+                </>
+              ) : (
+                " "
+              )}
+            </p>
           </div>
         </div>
       </CardContent>

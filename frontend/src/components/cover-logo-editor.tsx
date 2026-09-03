@@ -1,9 +1,15 @@
 "use client";
 
 import { useRef } from "react";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Move } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CroppedFileInput, type CroppedFileInputHandle } from "@/components/cropped-file-input";
 import { cn } from "@/lib/utils";
 
@@ -41,24 +47,56 @@ export function CoverLogoEditor({
   const logoPickerRef = useRef<CroppedFileInputHandle>(null);
 
   return (
-    <div className={cn("relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48", className)}>
-      {coverUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+    <div
+      className={cn(
+        "relative h-40 overflow-hidden sm:h-48",
+        coverUrl ? "bg-muted" : "bg-gradient-to-br from-primary to-primary/70",
+        className,
       )}
+    >
+      {coverUrl && (
+        // object-cover: the crop dialog's 5:1 output is wider than the banner at every real
+        // breakpoint, so this only ever crops the sides — no upscale, no letterbox gap.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full select-none object-cover" draggable={false} />
+      )}
+      {coverUrl && <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />}
       {onCoverFile && (
         <>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="absolute right-4 top-4 gap-1.5"
-            disabled={coverUploading}
-            onClick={() => coverPickerRef.current?.pick()}
-          >
-            {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-            Edit cover
-          </Button>
-          <CroppedFileInput ref={coverPickerRef} cropShape="square" onCropped={onCoverFile} isSaving={coverUploading} />
+          {coverUrl ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="secondary" size="sm" className="absolute right-4 top-4 gap-1.5" disabled={coverUploading} />
+                }
+              >
+                {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                Edit cover
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => coverPickerRef.current?.adjust(coverUrl)}>
+                  <Move className="h-4 w-4" />
+                  Adjust image
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => coverPickerRef.current?.pick()}>
+                  <ImagePlus className="h-4 w-4" />
+                  Change image
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute right-4 top-4 gap-1.5"
+              disabled={coverUploading}
+              onClick={() => coverPickerRef.current?.pick()}
+            >
+              {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+              Edit cover
+            </Button>
+          )}
+          <CroppedFileInput ref={coverPickerRef} cropShape="cover" onCropped={onCoverFile} isSaving={coverUploading} />
         </>
       )}
 

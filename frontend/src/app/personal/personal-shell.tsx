@@ -128,7 +128,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
               <DropdownMenuTrigger
                 render={
                   <button
-                    className="flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                    className="flex items-center gap-1.5 rounded-md border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
                     type="button"
                     aria-label="Account menu"
                   />
@@ -140,7 +140,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                 </Avatar>
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 p-1.5">
+              <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
                 <DropdownMenuItem
                   className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
                   onClick={() => router.push("/personal/profile")}

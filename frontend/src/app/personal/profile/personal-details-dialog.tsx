@@ -17,8 +17,6 @@ type FormState = {
   firstName: string;
   lastName: string;
   nationalityId: string;
-  countryOfResidenceId: string;
-  cityOfResidence: string;
   dateOfBirth: string;
   gender: string;
 };
@@ -27,8 +25,6 @@ const schema: z.ZodType<FormState> = z.object({
   firstName: z.string().min(1, "Required"),
   lastName: z.string().min(1, "Required"),
   nationalityId: z.string().min(1, "Required"),
-  countryOfResidenceId: z.string().min(1, "Required"),
-  cityOfResidence: z.string(),
   dateOfBirth: z.string().min(1, "Required"),
   gender: z.string().min(1, "Required"),
 });
@@ -38,8 +34,6 @@ function toForm(profile: StudentProfile): FormState {
     firstName: profile.first_name ?? "",
     lastName: profile.last_name ?? "",
     nationalityId: profile.nationality_id ? String(profile.nationality_id) : "",
-    countryOfResidenceId: profile.country_of_residence_id ? String(profile.country_of_residence_id) : "",
-    cityOfResidence: profile.city_of_residence ?? "",
     dateOfBirth: profile.date_of_birth?.split("T")[0] ?? "",
     gender: profile.gender ?? "",
   };
@@ -75,8 +69,6 @@ export function PersonalDetailsDialog({
       first_name: data.firstName,
       last_name: data.lastName,
       nationality_id: data.nationalityId ? Number(data.nationalityId) : null,
-      country_of_residence_id: data.countryOfResidenceId ? Number(data.countryOfResidenceId) : null,
-      city_of_residence: data.cityOfResidence || null,
       date_of_birth: data.dateOfBirth || null,
       gender: data.gender || null,
     });
@@ -145,24 +137,6 @@ export function PersonalDetailsDialog({
                 aria-invalid={!!errors.gender}
               />
               <FieldError message={errors.gender} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>Country of Residence *</Label>
-              <Combobox
-                value={form.countryOfResidenceId}
-                onChange={(v) => setForm((f) => ({ ...f, countryOfResidenceId: v }))}
-                placeholder="Select country"
-                searchPlaceholder="Search countries..."
-                options={countryOptions}
-                aria-invalid={!!errors.countryOfResidenceId}
-              />
-              <FieldError message={errors.countryOfResidenceId} />
-            </div>
-            <div className="space-y-2">
-              <Label>City of Residence</Label>
-              <Input value={form.cityOfResidence} onChange={(e) => setForm((f) => ({ ...f, cityOfResidence: e.target.value }))} />
             </div>
           </div>
         </div>
