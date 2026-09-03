@@ -246,8 +246,10 @@ export async function listCourseFilterOptions() {
       .whereNotNull("degree_level")
       .orderBy("degree_level"),
     // Only institutions with a publicly visible course, so the filter can't offer a name that
-    // returns nothing.
+    // returns nothing. Same inner join as baseQuery: an unpublished institution's job can still be
+    // exported, so the join (not just PUBLICLY_VISIBLE) is what actually excludes it.
     masterKnex(`${S}.extraction_courses as ec`)
+      .join("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
       .distinct("ec.awarding_institution")
       .whereNotNull("ec.awarding_institution")
       .whereRaw(PUBLICLY_VISIBLE)
