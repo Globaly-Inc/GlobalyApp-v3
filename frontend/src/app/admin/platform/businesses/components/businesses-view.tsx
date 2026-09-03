@@ -42,7 +42,7 @@ export function BusinessesView() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [ownershipFilter, setOwnershipFilter] = useState("all");
-  const [sort, setSort] = useState("name_asc");
+  const [sort, setSort] = useState("created_desc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
 

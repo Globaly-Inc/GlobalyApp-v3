@@ -22,7 +22,6 @@ import { createChildLogger } from "../../../shared/logger.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as institutionMembers from "./institution-members.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
-import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
 import { reconcileTenantMirror } from "../../enquiries/services/tenant-sync.service.js";
 
 const logger = createChildLogger("institution-claim-service");
@@ -175,11 +174,13 @@ export async function acceptInstitutionClaim(
       authorId: owner.id,
       institutionId: Number(institution.id),
       content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+      // Always the landscape banner, never the institution's own logo: a square logo forced into
+      // the feed's wide image box gets center-cropped into an unrecognisable zoom.
       media: [
         {
-          storage_path: institution.logo_url ?? WELCOME_POST_IMAGE,
+          storage_path: WELCOME_POST_IMAGE,
           type: "image",
-          mime_type: institution.logo_url ? guessImageMimeType(institution.logo_url) : "image/png",
+          mime_type: "image/png",
         },
       ],
     }).catch((err) => logger.warn("Welcome post creation error", { institutionId: institution.id, err: err.message }));

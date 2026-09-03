@@ -81,6 +81,9 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   const canVerify = !(detail.status === "unverified" && detail.is_unclaimed);
   // The owner has claimed this listing — superadmin can view its details but not edit them.
   const readOnly = !detail.is_unclaimed;
+  // Pre-seeded businesses have no tenant schema yet, so their branches/services tabs read
+  // the source extraction job's campuses/courses instead — those rows aren't editable here.
+  const isPreSeeded = kind === "business" && business?.account_status === 0 && !!business.source_job_id;
 
   const handleSave = async (patch: BusinessPatch | InstitutionPatch) => {
     setSaving(true);
@@ -195,7 +198,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
               : null
           }
         />
-        <DetailTabs kind={kind} id={id} businessName={business?.business_name} readOnly={readOnly} />
+        <DetailTabs kind={kind} id={id} businessName={business?.business_name} readOnly={readOnly} isPreSeeded={isPreSeeded} />
       </div>
 
       {kind === "business" ? (

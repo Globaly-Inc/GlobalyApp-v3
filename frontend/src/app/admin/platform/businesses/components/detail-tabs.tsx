@@ -40,7 +40,8 @@ export function DetailTabs({
   id,
   businessName,
   readOnly = false,
-}: Readonly<{ kind: "business" | "institution"; id: number; businessName?: string; readOnly?: boolean }>) {
+  isPreSeeded = false,
+}: Readonly<{ kind: "business" | "institution"; id: number; businessName?: string; readOnly?: boolean; isPreSeeded?: boolean }>) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -57,7 +58,7 @@ export function DetailTabs({
       <Card>
         <CardContent>
           {tab === "branches" && (kind === "business" ? (
-            <BranchesTab businessId={id} readOnly={readOnly} />
+            <BranchesTab businessId={id} readOnly={readOnly || isPreSeeded} />
           ) : (
             <InstitutionBranchesTab institutionId={id} />
           ))}
@@ -76,7 +77,7 @@ export function DetailTabs({
           ) : (
             <EmptyTabPlaceholder icon={Contact} title="No contacts yet" subtitle={NOT_AVAILABLE} />
           ))}
-          {tab === "services" && (kind === "business" ? <ServicesTab businessId={id} readOnly={readOnly} /> : <InstitutionCoursesTab institutionId={id} />)}
+          {tab === "services" && (kind === "business" ? <ServicesTab businessId={id} readOnly={readOnly || isPreSeeded} /> : <InstitutionCoursesTab institutionId={id} />)}
           {tab === "activity" && (kind === "business" ? (
             <ActivityTab businessId={id} />
           ) : (

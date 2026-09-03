@@ -106,13 +106,17 @@ export function ComparePageView({
     el.scrollTo({ left: (currentIndex + dir * columnsPerPage) * step, behavior: "smooth" });
   };
 
+  // Only the portal's own compare route (/personal/explore/compare) requires a signed-in user —
+  // the public /compare route is a guest-facing feature, same as the search page it's reached from.
+  const requiresAuth = basePath.startsWith("/personal");
+
   useEffect(() => {
-    if (!initializing && !user) {
+    if (requiresAuth && !initializing && !user) {
       router.replace(`/auth/sign-in?redirect=${basePath}`);
     }
-  }, [initializing, user, router, basePath]);
+  }, [requiresAuth, initializing, user, router, basePath]);
 
-  if (!initializing && !user) return null;
+  if (requiresAuth && !initializing && !user) return null;
 
   if (items.length === 0) {
     return (
