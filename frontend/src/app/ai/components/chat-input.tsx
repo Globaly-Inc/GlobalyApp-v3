@@ -129,7 +129,16 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments,
         {/* Two rows inside one control: the prompt gets the full width, the actions sit on
             their own toolbar underneath. The ring lives on the wrapper so both rows read as
             one box; the textarea's own border/ring is suppressed to avoid a double outline. */}
-        <div className="rounded-3xl border bg-card p-2 shadow-lg transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+        <div
+          className={cn(
+            "rounded-3xl bg-card p-2 shadow-lg",
+            // The animated ring is the empty-state hero's only; once a conversation is running it
+            // would pull the eye away from the thread.
+            bare
+              ? "ai-ring"
+              : "border transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
+          )}
+        >
           <Textarea
             ref={textareaRef}
             value={value}

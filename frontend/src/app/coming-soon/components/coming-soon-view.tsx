@@ -18,7 +18,7 @@ export function ComingSoonView() {
         <div className={styles["cs-split"]}>
           <div className={styles["cs-left"]}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/globaly-logo-white.png" alt="Globaly" className={styles["cs-logo"]} />
+            <img src="/globalyapp-logo-white.png" alt="Globaly" className={styles["cs-logo"]} />
             <p className={styles["cs-tag"]}><span className={styles["cs-tag-dot"]} aria-hidden="true" />AI Education Discovery</p>
             <h1 className={styles["cs-title"]}>
               The way education is being discovered &amp; connected is going to change forever.
