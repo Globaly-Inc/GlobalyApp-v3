@@ -55,7 +55,7 @@ const LIST_COLUMNS = [
   "c.name as country_name",
   // Card fields: the flag comes from the ISO2 the country join already matches on, and the
   // crest from the promoted institution that shares this course's extraction job.
-  "ec.country_code", INSTITUTION_CREST,
+  "c.iso2 as country_code", INSTITUTION_CREST,
 ];
 
 /**
@@ -85,9 +85,12 @@ function baseQuery({
   institution, duration, jobId, courseIds,
 }: CourseSearchFilters) {
   const q = masterKnex(`${S}.extraction_courses as ec`)
-    .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
     // At most one institution per job (institutions_source_job_uniq), so this can't fan rows out.
     .leftJoin("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
+    // ec.country_code is never populated by the extraction pipeline; the institution that owns
+    // its job carries country_id (same source the institutions tab filters on), so the country
+    // match rides on that instead.
+    .leftJoin("countries as c", "c.id", "inst.country_id")
     .whereRaw(PUBLICLY_VISIBLE);
 
   if (jobId) q.where("ec.job_id", jobId);
@@ -298,8 +301,8 @@ export async function findPublicCourseBySlug(slug: string) {
   if (!fragment) return null;
 
   const course = await masterKnex(`${S}.extraction_courses as ec`)
-    .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
     .leftJoin("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
+    .leftJoin("countries as c", "c.id", "inst.country_id")
     .whereRaw(PUBLICLY_VISIBLE)
     .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
     .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS)
