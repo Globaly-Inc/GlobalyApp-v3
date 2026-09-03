@@ -43,6 +43,7 @@ import { aiChatReducer } from "@/app/ai/store/ai-chat-slice"
 import { aiWidgetReducer } from "@/app/business/ai-widget/store/ai-widget-slice"
 import { enquiriesReducer as monitoringEnquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 import { creditsLedgerReducer } from "@/app/admin/revenue/subscriptions/credits/store/credits-ledger-slice"
+import { comingSoonReducer } from "@/app/coming-soon/store/coming-soon-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
@@ -89,6 +90,7 @@ const appReducer = combineReducers({
     aiWidget: aiWidgetReducer,
     monitoringEnquiries: monitoringEnquiriesReducer,
     creditsLedger: creditsLedgerReducer,
+    comingSoon: comingSoonReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity
