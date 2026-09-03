@@ -25,15 +25,18 @@ export type SenderRole = "student" | "business";
  * The opening message posted on the business's behalf the moment it unlocks a lead, so
  * the student sees the conversation has started rather than an empty box.
  *
- * Deliberately generic: the thread header already names the business and the course, and
- * personalising it would mean joining the student and course rows inside the unlock
- * transaction for text nobody reads twice.
+ * Addressed by first name, not the full name: this is the first line of a chat, where
+ * "Hi Rojan!" is what a person would type and "Hi Rojan Byanjankar!" is what a mail merge
+ * would. Falls back to a bare "Hi!" when the student has no first name on record, so a
+ * missing value can never render as "Hi undefined!" or "Hi !".
  *
  * ponytail: one fixed greeting for everyone — swap for a per-business template column if
  * businesses ask to customise it.
  */
-export const UNLOCK_GREETING =
-  "Hi! Thanks for your enquiry — we've unlocked it and we're happy to help. Ask us anything here and we'll get back to you shortly.";
+export function unlockGreeting(studentFirstName?: string | null): string {
+  const name = studentFirstName?.trim();
+  return `Hi${name ? ` ${name}` : ""}! Thanks for your enquiry. We've unlocked it and we're happy to help. Feel free to ask us anything here, and we'll get back to you shortly.`;
+}
 
 export interface EnquiryMessageDto {
   id: number;
@@ -324,19 +327,24 @@ async function readThread(ctx: ThreadContext, viewerUserId: number): Promise<Enq
 }
 
 /**
- * Seeds the thread with UNLOCK_GREETING, on the unlock's own transaction so an unlocked
- * lead can never exist without its opener. Sent as the agent who unlocked, which is who
- * would have typed it — no synthetic system sender to special-case at render time.
+ * Seeds the thread with the greeting, on the unlock's own transaction so an unlocked lead can
+ * never exist without its opener. Sent as the agent who unlocked, which is who would have
+ * typed it — no synthetic system sender to special-case at render time.
+ *
+ * `studentId` comes from the caller because the unlock transaction has already locked and read
+ * the enquiry row; re-joining to it here would be a second read of something the caller holds.
  */
 export async function seedOnUnlock(
   trx: Knex.Transaction,
   distributionId: string,
   senderUserId: number,
+  studentId: number,
 ): Promise<void> {
+  const student = await trx("platform_users").where({ id: studentId }).first("first_name");
   await messagesRepo.insertInTrx(trx, {
     distribution_id: distributionId,
     sender_id: senderUserId,
-    body: UNLOCK_GREETING,
+    body: unlockGreeting(student?.first_name),
   });
 }
 

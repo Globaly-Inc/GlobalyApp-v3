@@ -132,30 +132,6 @@ export function emailLayout({ heading, body, cta, footnote, size = "default", al
 </html>`;
 }
 
-/**
- * A label/value block for mails that carry facts rather than prose. Left-aligned inside the
- * card, whose body cell is centred — a two-word value centred under a centred label reads as
- * a poster, not a record.
- *
- * Rows with no value are dropped rather than rendered empty: "Intake: —" is noise.
- */
-function detailBlock(rows: { label: string; value: string | null | undefined }[]): string {
-  const cells = rows
-    .filter((r) => r.value)
-    .map(
-      (r, i) => `<tr><td style="padding:${i === 0 ? "14px" : "12px"} 18px 12px;${
-        i === 0 ? "" : `border-top:1px solid ${BRAND.line};`
-      }text-align:left">
-        <p style="margin:0;color:${BRAND.muted};font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">${r.label}</p>
-        <p style="margin:3px 0 0;color:${BRAND.ink};font-size:15px;line-height:22px;font-weight:600">${esc(r.value as string)}</p>
-      </td></tr>`,
-    )
-    .join("");
-
-  if (!cells) return "";
-  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid ${BRAND.line};border-radius:14px;background-color:#fafafa">${cells}</table>`;
-}
-
 export interface DigestItem {
   /** Pre-unlock only. The surname, email and phone are what the unlock is charged for. */
   studentFirstName?: string | null;
@@ -212,51 +188,71 @@ function redactionWidth(seed: string | null | undefined, base: number, salt = 0)
  * the student's real provider: it conveys the shape of an address without implying anything
  * about the student.
  */
-function enquiryCard(item: DigestItem): string {
-  const first = item.studentFirstName?.trim();
-  const initial = first ? esc(first[0].toUpperCase()) : "&#8226;";
-  // Institution and intake share one muted line: two facts, one row, rather than two thin
-  // lines that make every card taller than the thing it describes.
-  const meta = [item.institutionName, item.intake && `Intake ${item.intake}`].filter(Boolean) as string[];
-
-  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border:1px solid #e8eaed;border-radius:12px;background-color:#fcfcfd">
+/**
+ * The one card shape every enquiry mail uses: an avatar tile, a two-line identity, then what
+ * the enquiry is about. Shared so the summary, the single notice and the unlock notice cannot
+ * drift into three dialects of the same object.
+ *
+ * Everything sits in the column beside the avatar. An earlier version put the course in a
+ * full-width block under a hairline separator, which cost a rule plus two margins — about a
+ * third of the card's height — to say something the type sizes already say.
+ */
+function infoCard(opts: {
+  initial: string;
+  /** Trusted markup: callers escape their own text, and the enquiry card passes redaction bars. */
+  titleHtml: string;
+  subtitleHtml?: string | null;
+  title: string;
+  metaParts?: (string | null | undefined)[];
+}): string {
+  const meta = (opts.metaParts ?? []).filter(Boolean) as string[];
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border:1px solid #e8eaed;border-radius:10px;background-color:#fcfcfd">
     <tr>
-      <td style="padding:18px 20px">
+      <td style="padding:12px 14px">
         <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
           <tr>
-            <td width="52" valign="top" style="width:52px;padding-right:14px">
-              <table cellpadding="0" cellspacing="0" role="presentation" style="border-radius:10px;background-color:#f4eaea">
-                <tr><td align="center" valign="middle" style="width:38px;height:38px;color:${BRAND.primary};font-family:${FONT};font-size:15px;font-weight:700">${initial}</td></tr>
+            <td width="46" valign="top" style="width:46px;padding-right:12px">
+              <table cellpadding="0" cellspacing="0" role="presentation" style="border-radius:9px;background-color:#f4eaea">
+                <tr><td align="center" valign="middle" style="width:34px;height:34px;color:${BRAND.primary};font-family:${FONT};font-size:14px;font-weight:700">${opts.initial}</td></tr>
               </table>
             </td>
             <td valign="top">
-              <p style="margin:0;color:${BRAND.ink};font-size:15px;line-height:21px;font-weight:600">${
-                first ? `${esc(first)} ` : ""
-              }${redacted(redactionWidth(first, 62))}</p>
-              <p style="margin:5px 0 0;color:${BRAND.faint};font-size:13px;line-height:18px">${redacted(
-                redactionWidth(first, 94, 37),
-              )}@gmail.com</p>
+              <p style="margin:0;color:${BRAND.ink};font-size:14px;line-height:19px;font-weight:600">${opts.titleHtml}</p>
+              ${
+                opts.subtitleHtml
+                  ? `<p style="margin:2px 0 0;color:${BRAND.faint};font-size:12px;line-height:16px">${opts.subtitleHtml}</p>`
+                  : ""
+              }
+              <p style="margin:8px 0 0;color:${BRAND.ink};font-size:15px;line-height:20px;font-weight:600">${esc(
+                opts.title,
+              )}</p>
+              ${
+                meta.length
+                  ? `<p style="margin:2px 0 0;color:${BRAND.muted};font-size:12px;line-height:17px">${meta
+                      .map((m) => esc(m))
+                      .join(" &nbsp;&middot;&nbsp; ")}</p>`
+                  : ""
+              }
             </td>
           </tr>
         </table>
-        <!-- Separator inside the card: the identity above it is "who", everything below is
-             "what they asked about". Without it the two blocks read as one list of five lines. -->
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-          <tr><td style="height:1px;background-color:#eceef1;line-height:1px;font-size:0;padding:0">&nbsp;</td></tr>
-        </table>
-        <p style="margin:14px 0 0;color:${BRAND.ink};font-size:16px;line-height:23px;font-weight:600">${esc(
-          item.courseName ?? "Course enquiry",
-        )}</p>
-        ${
-          meta.length
-            ? `<p style="margin:5px 0 0;color:${BRAND.muted};font-size:13px;line-height:19px">${meta
-                .map((m) => esc(m))
-                .join(" &nbsp;&middot;&nbsp; ")}</p>`
-            : ""
-        }
       </td>
     </tr>
   </table>`;
+}
+
+/** One enquiry, as the recipient business sees it before paying to unlock. */
+function enquiryCard(item: DigestItem): string {
+  const first = item.studentFirstName?.trim();
+  return infoCard({
+    initial: first ? esc(first[0].toUpperCase()) : "&#8226;",
+    titleHtml: `${first ? `${esc(first)} ` : ""}${redacted(redactionWidth(first, 62))}`,
+    subtitleHtml: `${redacted(redactionWidth(first, 94, 37))}@gmail.com`,
+    title: item.courseName ?? "Course enquiry",
+    // Institution and intake share one muted line: two facts, one row, rather than two thin
+    // lines that make every card taller than the thing it describes.
+    metaParts: [item.institutionName, item.intake && `Intake ${item.intake}`],
+  });
 }
 
 /**
@@ -277,7 +273,7 @@ function listBlock(items: DigestItem[]): string {
   const rows = items
     .map(
       (item, i) =>
-        `<tr><td style="padding-top:${i === 0 ? 0 : 12}px">${enquiryCard(item)}</td></tr>`,
+        `<tr><td style="padding-top:${i === 0 ? 0 : 8}px">${enquiryCard(item)}</td></tr>`,
     )
     .join("");
   return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%">${rows}</table>`;
@@ -415,13 +411,24 @@ export function enquiryUnlockedEmail(options: {
     subject: courseName ? `${who} replied about ${courseName}` : `${who} unlocked your enquiry`,
     text: textLines.join("\n"),
     html: emailLayout({
+      // Same shell and same card as the notices that go the other way. This mail is the
+      // student's side of the identical event, and it read like a different product.
+      size: "wide",
+      align: "left",
       heading: "Your enquiry was unlocked",
-      body: `<p style="margin:0 0 18px"><strong>${esc(who)}</strong> unlocked your enquiry and has sent you a message.</p>
-             ${detailBlock([
-               { label: "Course", value: courseName },
-               { label: "Institution", value: institutionName },
-             ])}
-             <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">
+      body: `<p style="margin:0 0 20px;color:${BRAND.muted};font-size:15px;line-height:23px"><strong style="color:${
+        BRAND.ink
+      }">${esc(who)}</strong> unlocked your enquiry and has sent you a message.</p>
+             ${infoCard({
+               // The business is the identity here, and nothing is redacted: the student knows
+               // their own details, and who the business is was never the paid-for part.
+               initial: businessName ? esc(businessName.trim()[0].toUpperCase()) : "&#8226;",
+               titleHtml: esc(who),
+               subtitleHtml: "Unlocked your enquiry",
+               title: courseName ?? "Your enquiry",
+               metaParts: [institutionName],
+             })}
+             <p style="margin:16px 0 0;color:${BRAND.muted};font-size:13px;line-height:20px">
                ${esc(contactLine)}
              </p>`,
       cta: { label: "Read their message", href },
@@ -502,10 +509,11 @@ export function enquiryInstitutionFallbackEmail(options: {
   institutionName?: string | null;
   courseName?: string | null;
   intake?: string | null;
+  studentFirstName?: string | null;
   isClaimed: boolean;
   claimUrl?: string | null;
 }): { subject: string; html: string; text: string } {
-  const { institutionName, courseName, intake, isClaimed, claimUrl } = options;
+  const { institutionName, courseName, intake, studentFirstName, isClaimed, claimUrl } = options;
   const portalUrl = web("/business/enquiries");
   const cta = isClaimed
     ? { label: "View enquiry", href: portalUrl }
@@ -533,14 +541,14 @@ export function enquiryInstitutionFallbackEmail(options: {
       .filter((l) => l !== null)
       .join("\n"),
     html: emailLayout({
+      // Matches the business notice and the summary: this is the same enquiry, arriving at an
+      // institution instead of an agent, and its two-or-more form already renders these cards.
+      size: "wide",
+      align: "left",
       heading: "A student is asking about your course",
-      body: `<p style="margin:0 0 18px">This enquiry came to you directly — no agent representing this course was available to take it.</p>
-             ${detailBlock([
-               { label: "Course", value: courseName },
-               { label: "Institution", value: institutionName },
-               { label: "Preferred intake", value: intake },
-             ])}
-             <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${ask}</p>`,
+      body: `<p style="margin:0 0 20px;color:${BRAND.muted};font-size:15px;line-height:23px">This enquiry came to you directly — no agent representing this course was available to take it.</p>
+             ${listBlock([{ studentFirstName, courseName, institutionName, intake }])}
+             <p style="margin:20px 0 0;color:${BRAND.faint};font-size:13px;line-height:20px">${ask}</p>`,
       cta,
       footnote: isClaimed
         ? "You're receiving this because the enquiry is about a course listed under your institution."
