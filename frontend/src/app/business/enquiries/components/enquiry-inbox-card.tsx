@@ -79,12 +79,12 @@ export function EnquiryInboxCard({
               ) : (
                 // Shape only: the whole local part is a blurred block, with a placeholder domain
                 // after it. Nothing here derives from the real address — the server does not send
-                // it before someone pays. The domain reads `@email.com` rather than a real
+                // it before someone pays. The domain reads `@gmail.com` rather than a real
                 // provider so the card cannot imply something about the student that is untrue.
                 <p className="mt-0.5 flex items-center gap-1 text-sm text-muted-foreground">
                   <Mail className="mr-0.5 size-3.5 shrink-0" aria-hidden />
                   <Redacted className="w-28" />
-                  <span>@email.com</span>
+                  <span>@gmail.com</span>
                 </p>
               )}
 
