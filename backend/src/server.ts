@@ -178,6 +178,10 @@ export async function buildServer() {
 // --- Start server ---
 const app = await buildServer();
 
+if (config.GEMINI_API_KEY && !config.OPENROUTER_API_KEY) {
+  app.log.warn("OPENROUTER_API_KEY is not set — Gemini has no fallback LLM. Set OPENROUTER_API_KEY to enable OpenRouter fallback.");
+}
+
 // Graceful shutdown
 const shutdown = async () => {
   logger.info("Shutting down...");
