@@ -322,7 +322,7 @@ function OnboardingForm({
     <div className="min-h-screen flex flex-col bg-muted/30">
       <header className="h-16 border-b border-border bg-background flex items-center justify-between px-6">
         <Link href="/" className="flex items-center">
-          <Image src="/globaly-logo.png" alt="Globaly.io" width={753} height={157} className="h-7 w-auto" />
+          <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-7 w-auto" />
         </Link>
         <div className="flex items-center gap-1.5">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((s, i, arr) => (

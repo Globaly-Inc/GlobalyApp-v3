@@ -11,7 +11,7 @@ export function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-12">
           <div className="col-span-2 md:col-span-3 lg:col-span-1">
             <Link href="/" className="flex items-center mb-4">
-              <Image src="/globaly-logo-white.png" alt="Globaly" width={776} height={188} className="h-8 w-auto" />
+              <Image src="/globalyapp-logo-white.png" alt="Globalyapp" width={727} height={157} className="h-8 w-auto" />
             </Link>
             <p className="text-sm text-white/60 mb-4 max-w-xs">
               Connecting Students with Domestic and International Education Providers,

@@ -14,7 +14,7 @@ export function AiPublicHeader() {
         <Link href="/" className="flex shrink-0 items-center">
           <Image
             src="/globaly-red-icon.png"
-            alt="Globaly"
+            alt="Globalyapp"
             width={283}
             height={283}
             className="size-9 rounded-[10px]"

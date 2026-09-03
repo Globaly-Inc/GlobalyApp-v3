@@ -43,7 +43,8 @@ export function DestinationsCarousel({ countries, loading }: Readonly<{ countrie
             : countries.map((country, idx) => {
                 const fb = COUNTRY_FALLBACKS[country.name];
                 const countryCode = country.code ?? fb?.code ?? "";
-                const institutionCount = country.institutionsLabel ?? fb?.institutions ?? "";
+                // A count with nothing behind it is 0, not unknown — unlike the two cost rows below.
+                const institutionCount = country.institutionsLabel ?? fb?.institutions ?? "0";
                 const tuition = <TuitionLabel country={country} fallback={fb?.tuition} />;
                 const livingStr = country.livingCostLabel ?? fb?.living ?? "";
                 return (
@@ -85,9 +86,9 @@ export function DestinationsCarousel({ countries, loading }: Readonly<{ countrie
                         </div>
                       </div>
                       <div className="p-3 space-y-1 flex-1">
-                        {/* Every card carries all three rows, with a dash where the country row has no
-                            value yet — otherwise cards come out different heights and a country that is
-                            simply missing data looks like a broken card. */}
+                        {/* Every card carries all three rows so cards keep a uniform height. The two
+                            cost rows keep a dash when empty: "0" there would read as "free", which is
+                            a claim, whereas an institution count of 0 is simply the truth. */}
                         {[
                           { label: "Institutions", value: institutionCount },
                           { label: "Avg. Tuition", value: tuition },

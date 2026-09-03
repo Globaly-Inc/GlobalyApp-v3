@@ -11,7 +11,7 @@ const BENEFITS = [
   {
     Icon: Handshake,
     title: "Connect Directly with Institutions",
-    desc: "Globaly.app lets you build direct partnerships with universities, colleges, and providers around the world — no gatekeepers, no middlemen. Represent institutions independently. Grow your portfolio.",
+    desc: "Globalyapp lets you build direct partnerships with universities, colleges, and providers around the world — no gatekeepers, no middlemen. Represent institutions independently. Grow your portfolio.",
   },
   {
     Icon: Sparkles,
@@ -39,7 +39,7 @@ export function WhyAgentsJoinSection() {
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold mb-3">
-            Why Education Counselors Join <span className="highlight-text active">Globaly.app?</span>
+            Why Education Counselors Join <span className="highlight-text active">Globalyapp?</span>
           </h2>
           <p className="text-muted-foreground">
             More Leads. Direct Connections. Smarter Tools. Open Opportunities.{" "}

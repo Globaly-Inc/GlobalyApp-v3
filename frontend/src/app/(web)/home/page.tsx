@@ -14,6 +14,8 @@ import { UnifiedSearchBar } from "../components/unified-search-bar";
 import { useTypingEffect } from "../hooks/use-typing-effect";
 import { useParallax } from "../hooks/use-scroll-animation";
 import { useIsMobile } from "../hooks/use-is-mobile";
+import { usePlatformStats } from "../hooks/use-platform-stats";
+import { formatStatValue } from "../types";
 import type { Destination } from "../data/destinations";
 import { getFeaturedCountries } from "../data/countries-api";
 import { orderDestinationsForVisitor } from "../data/destination-order";
@@ -37,6 +39,8 @@ export default function HomePage() {
   const [destinationsLoading, setDestinationsLoading] = useState(true);
   const [posts, setPosts] = useState<PublicBlogPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
+
+  const { stats, loading: statsLoading } = usePlatformStats();
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -336,7 +340,7 @@ export default function HomePage() {
               One Platform. <span className="highlight-text active">Global Reach.</span>
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Whether you&apos;re a student, an institution, or an education counselor — Globaly.app connects you
+              Whether you&apos;re a student, an institution, or an education counselor — Globalyapp connects you
               with the right people, at the right time.
             </p>
           </Reveal>
@@ -348,7 +352,11 @@ export default function HomePage() {
                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                       <s.icon className="h-6 w-6 text-primary" />
                     </div>
-                    <p className="text-2xl font-bold mb-1">{s.value}</p>
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-16 mx-auto mb-1" />
+                    ) : (
+                      <p className="text-2xl font-bold mb-1">{formatStatValue(stats?.[s.key])}</p>
+                    )}
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">{s.label}</p>
                   </CardContent>
                 </Card>
@@ -420,7 +428,7 @@ export default function HomePage() {
           <Reveal className="text-center max-w-2xl mx-auto">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to start your education journey?</h2>
             <p className="text-white/70 mb-10 text-lg">
-              Join thousands of students, institutions, and education counselors already using Globaly.app to
+              Join thousands of students, institutions, and education counselors already using Globalyapp to
               connect and grow.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

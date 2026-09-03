@@ -24,14 +24,14 @@ export const metadata: Metadata = {
     title: TITLE,
     description: OG_DESCRIPTION,
     url: "https://www.globalyapp.com/",
-    images: ["/globaly-logo.png"],
+    images: ["/globalyapp-logo.png"],
   },
   twitter: {
     card: "summary_large_image",
     site: "@GlobalyAI",
     title: TITLE,
     description: OG_DESCRIPTION,
-    images: ["/globaly-logo.png"],
+    images: ["/globalyapp-logo.png"],
   },
 };
 
@@ -39,9 +39,9 @@ const ORGANIZATION_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "Globaly",
-  alternateName: "Globaly.app",
+  alternateName: "Globalyapp",
   url: "https://www.globalyapp.com",
-  logo: "https://www.globalyapp.com/globaly-logo.png",
+  logo: "https://www.globalyapp.com/globalyapp-logo.png",
   description: OG_DESCRIPTION,
   sameAs: [
     "https://www.linkedin.com/company/globaly-app",

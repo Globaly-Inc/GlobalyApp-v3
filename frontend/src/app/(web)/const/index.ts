@@ -2,17 +2,6 @@ import type { SocialName } from "../components/social-icon";
 
 export const MOBILE_BREAKPOINT = 768;
 
-export const PLATFORM_STATS = {
-  students: "2000+",
-  institutions: "3.6k+",
-  agents: "3,600+",
-  courses: "205k+",
-  countries: "100+",
-  cities: "60+",
-  trainingPrograms: "500+",
-  services: "50+",
-};
-
 export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
   "Get Started": [
     { label: "For Students", href: "/for-students" },
@@ -46,7 +35,7 @@ export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
     { label: "Student Services", href: "/services" },
   ],
   Contact: [
-    { label: "support@globaly.app", href: "mailto:support@globaly.app" },
+    { label: "support@globalyapp.com", href: "mailto:support@globalyapp.com" },
     // Addresses, not destinations: href "" makes the footer render them as plain text rather than
     // a link that goes nowhere.
     { label: "🇦🇺 Sydney, Australia", href: "" },

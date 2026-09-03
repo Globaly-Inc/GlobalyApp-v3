@@ -8,7 +8,7 @@ export function WhyJoinSection() {
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold mb-3">
-            Why Institutions Join <span className="highlight-text active">Globaly.app?</span>
+            Why Institutions Join <span className="highlight-text active">Globalyapp?</span>
           </h2>
           <p className="text-muted-foreground">
             Take charge of your students, education counselor network, and course data in one smart platform.
