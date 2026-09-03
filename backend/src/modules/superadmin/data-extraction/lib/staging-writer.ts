@@ -29,6 +29,7 @@ export interface ExtractedCourse {
   english_requirements?: ExtractedEnglishReq[];
   campus_names?: string[];
   study_units?: ExtractedStudyUnit[];
+  accreditations?: ExtractedAccreditation[];
   /** LLM-flagged link to this course's own curriculum page — routing only, not persisted. */
   curriculum_page_url?: string | null;
   /** LLM-flagged link to this course's own fees/tuition page — routing only, not persisted. */
@@ -39,6 +40,11 @@ export interface ExtractedStudyUnit {
   unit_code?: string | null;
   unit_name: string;
   credit_points?: number | null;
+}
+
+export interface ExtractedAccreditation {
+  name: string;
+  issuing_organization?: string | null;
 }
 
 export interface ExtractedFee {
@@ -294,9 +300,11 @@ export function normaliseUnitName(name: string): string {
  */
 export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): Promise<string> {
   const norm = normaliseUnitName(unit.unit_name);
+  // Same normalisation on both sides as normaliseUnitName() — the JS side collapses internal
+  // whitespace; a bare LOWER(TRIM()) doesn't, so a unit name with a double space never matched.
   const existing = await masterKnex(`${S}.extraction_study_units`)
     .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(unit_name)) = ?", [norm])
+    .whereRaw("regexp_replace(lower(trim(unit_name)), '\\s+', ' ', 'g') = ?", [norm])
     .first();
   if (existing) return existing.id;
 
@@ -323,198 +331,390 @@ export function normaliseCourseName(name: string): string {
     .replace(/[^a-z0-9]+$/g, "");
 }
 
+interface WriteCourseOpts {
+  /**
+   * Merge into this exact course row instead of matching by name. Used when a page was
+   * queued as the detail page OF a known (bare, listing-sourced) course: the detail page
+   * commonly titles the program differently from the index entry ("Bachelor of Science in
+   * Aerospace Engineering" vs "Aerospace Engineering (BSAsE)"), and name-matching would
+   * create a second course instead of enriching the first.
+   */
+  mergeIntoCourseId?: string;
+}
+
+/** Fill nulls on an existing course row with data from this extraction. */
+async function mergeIntoExistingCourse(
+  jobId: string, course: ExtractedCourse, existing: Record<string, unknown>, opts?: WriteCourseOpts,
+): Promise<void> {
+  const courseId = existing.id as string;
+  const updates: Record<string, unknown> = {};
+  const mergeFields: Array<keyof ExtractedCourse> = [
+    "short_name", "degree_level", "course_category", "subject_area", "duration_weeks",
+    "study_mode", "description", "awarding_institution",
+    "source_url",
+  ];
+  for (const field of mergeFields) {
+    const newVal = field === "duration_weeks" ? coerceInt(course[field])
+      : field === "course_category" ? normaliseCourseCategory(course[field])
+      : (course[field] ?? null);
+    if (newVal != null && newVal !== "" && (existing[field] == null || existing[field] === "")) {
+      updates[field] = newVal;
+    }
+  }
+  const existingCareers = existing.career_paths as string[] | null | undefined;
+  if (course.career_paths?.length && !existingCareers?.length) {
+    updates.career_paths = course.career_paths;
+  }
+  // The detail page is the authoritative source for a listing-sourced row — always point
+  // source_url at it, even though the bare row already had one (the listing/index URL).
+  if (opts?.mergeIntoCourseId && course.source_url && course.source_url !== existing.source_url) {
+    updates.source_url = course.source_url;
+  }
+  if (Object.keys(updates).length === 0) {
+    logger.info("Skipped duplicate course (no new data)", { jobId, courseId, name: course.name });
+    return;
+  }
+  updates.updated_at = masterKnex.fn.now();
+  await masterKnex(`${S}.extraction_courses`).where({ id: courseId }).update(updates);
+  logger.info("Merged duplicate course", { jobId, courseId, name: course.name, fieldsUpdated: Object.keys(updates).length - 1 });
+}
+
+async function insertCourse(jobId: string, course: ExtractedCourse): Promise<string> {
+  const courseInsert: Record<string, unknown> = {
+    job_id: jobId,
+    name: course.name,
+    short_name: course.short_name ?? null,
+    degree_level: course.degree_level ?? null,
+    course_category: normaliseCourseCategory(course.course_category),
+    subject_area: course.subject_area ?? null,
+    duration_weeks: coerceInt(course.duration_weeks),
+    study_mode: course.study_mode ?? null,
+    description: course.description ?? null,
+    awarding_institution: course.awarding_institution ?? null,
+    source_url: course.source_url ?? null,
+    verification_status: "unverified",
+  };
+  if (course.career_paths?.length) courseInsert.career_paths = course.career_paths;
+
+  const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
+  return courseRow.id;
+}
+
+/** The known target row when given, else the same-job row with this normalised name. */
+async function findOrCreateCourse(jobId: string, course: ExtractedCourse, opts?: WriteCourseOpts): Promise<string> {
+  const byId = opts?.mergeIntoCourseId
+    ? await masterKnex(`${S}.extraction_courses`).where({ id: opts.mergeIntoCourseId, job_id: jobId }).first()
+    : null;
+  // Both sides MUST apply the exact same normalisation as normaliseCourseName(). The SQL side
+  // used to be a bare LOWER(TRIM(name)), which keeps a trailing ")" that the JS side strips —
+  // so "Physics (BA)" compared "physics (ba)" to "physics (ba" and never matched. Seen live:
+  // 534 of 551 UT Austin course names end in ")"; only 17 could ever dedup, and every rerun
+  // inserted a full duplicate course row instead of merging.
+  const existing = byId ?? await masterKnex(`${S}.extraction_courses`)
+    .where({ job_id: jobId })
+    .whereRaw(
+      "regexp_replace(regexp_replace(lower(trim(name)), '\\s+', ' ', 'g'), '[^a-z0-9]+$', '') = ?",
+      [normaliseCourseName(course.name)],
+    )
+    .first();
+  if (!existing) return insertCourse(jobId, course);
+  await mergeIntoExistingCourse(jobId, course, existing, opts);
+  return existing.id;
+}
+
+// Unlike courses/campuses/study-units, this had NO dedup: a course revisited via a second URL
+// (listing page + its own detail page, both citing the same fee), or re-extracted on a job
+// rerun (resetPipeline wipes the queue but never extraction_course_fees), inserted a brand-new
+// fee row + junction EVERY time — the onConflict below only catches a literal
+// course_id+course_fee_id repeat, which can't happen since a fresh fee row is created on every
+// call. Real fix: skip a fee whose (student_type, period_type, currency, amount) already exists
+// for this course — the substantive identity of a fee; `name` is just a free-text label that
+// legitimately varies ("Tuition Fee" vs "Annual Tuition") between pages citing the same figure.
+async function writeFees(jobId: string, courseId: string, fees?: ExtractedFee[]): Promise<void> {
+  if (!fees?.length) return;
+  const existingFees = await masterKnex(`${S}.extraction_course_fees as cf`)
+    .join(`${S}.extraction_course_fee_assignments as a`, "a.course_fee_id", "cf.id")
+    .where("a.course_id", courseId)
+    .select("cf.student_type", "cf.period_type", "cf.currency", "cf.total_amount");
+  // total_amount is a `decimal` column — node-postgres returns those as strings (e.g. "30000.00"),
+  // never as a JS number, so it must be re-coerced before comparing against coerceMoney()'s number.
+  const feeKey = (studentType: string, periodType: string, currency: string | null, amount: number | string | null) =>
+    `${studentType}|${periodType}|${(currency ?? "").toUpperCase()}|${amount == null ? "null" : Number(amount)}`;
+  const seenFees = new Set(existingFees.map((f) => feeKey(f.student_type, f.period_type, f.currency, f.total_amount)));
+
+  for (const fee of fees) {
+    const studentType = fee.student_type ?? "both";
+    const periodType = fee.period_type ?? "Per Year";
+    const currency = fee.currency ?? null;
+    const amount = coerceMoney(fee.total_amount);
+    const key = feeKey(studentType, periodType, currency, amount);
+    if (seenFees.has(key)) continue; // same figure already recorded for this course
+    seenFees.add(key);
+
+    const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
+      .insert({
+        job_id: jobId,
+        name: fee.name ?? null,
+        student_type: studentType,
+        period_type: periodType,
+        currency,
+        total_amount: amount,
+      })
+      .returning("id");
+    await masterKnex(`${S}.extraction_course_fee_assignments`)
+      .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id })
+      .onConflict(["course_id", "course_fee_id"]).ignore();
+  }
+}
+
+/**
+ * Content key for "is this child row already attached to the course?" checks. Every child
+ * writer below used to insert unconditionally, so a course revisited via a second URL, or
+ * re-extracted on a rerun, accumulated an identical intake/option/requirement each time —
+ * the same bug writeFees fixed. Numbers are re-coerced because decimal columns come back
+ * from node-postgres as strings; dates are selected as YYYY-MM-DD text for the same reason.
+ */
+const contentKey = (...parts: unknown[]) => parts.map((p) => (p == null ? "null" : String(p))).join("|");
+const num = (v: unknown) => (v == null ? null : Number(v));
+
+async function writeIntakes(jobId: string, courseId: string, intakes?: ExtractedIntake[]): Promise<void> {
+  if (!intakes?.length) return;
+  const existing = await masterKnex(`${S}.extraction_intakes as i`)
+    .join(`${S}.extraction_course_intake_assignments as a`, "a.intake_id", "i.id")
+    .where("a.course_id", courseId)
+    .select("i.intake_name", "i.intake_month", "i.intake_year",
+      masterKnex.raw("to_char(i.start_date, 'YYYY-MM-DD') AS start_date"),
+      masterKnex.raw("to_char(i.end_date, 'YYYY-MM-DD') AS end_date"),
+      masterKnex.raw("to_char(i.admission_deadline, 'YYYY-MM-DD') AS admission_deadline"));
+  const seen = new Set(existing.map((r) => contentKey(
+    (r.intake_name ?? "").toLowerCase(), r.start_date, r.end_date, num(r.intake_month), num(r.intake_year), r.admission_deadline,
+  )));
+
+  for (const intake of intakes) {
+    const row = {
+      intake_name: intake.intake_name ?? null,
+      start_date: coerceDate(intake.start_date),
+      end_date: coerceDate(intake.end_date),
+      intake_month: coerceMonth(intake.intake_month),
+      intake_year: coerceInt(intake.intake_year),
+      admission_deadline: coerceDate(intake.admission_deadline),
+    };
+    const key = contentKey((row.intake_name ?? "").toLowerCase(), row.start_date, row.end_date, row.intake_month, row.intake_year, row.admission_deadline);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const [intakeRow] = await masterKnex(`${S}.extraction_intakes`)
+      .insert({ job_id: jobId, course_id: courseId, ...row })
+      .returning("id");
+    await masterKnex(`${S}.extraction_course_intake_assignments`)
+      .insert({ job_id: jobId, course_id: courseId, intake_id: intakeRow.id })
+      .onConflict(["course_id", "intake_id"]).ignore();
+  }
+}
+
+async function writeStudyOptions(jobId: string, courseId: string, options?: ExtractedStudyOption[]): Promise<void> {
+  if (!options?.length) return;
+  const existing = await masterKnex(`${S}.extraction_study_options as o`)
+    .join(`${S}.extraction_course_study_option_assignments as a`, "a.study_option_id", "o.id")
+    .where("a.course_id", courseId)
+    .select("o.study_mode", "o.study_load", "o.duration_value", "o.duration_unit");
+  const seen = new Set(existing.map((r) => contentKey(r.study_mode, r.study_load, num(r.duration_value), r.duration_unit)));
+
+  for (const opt of options) {
+    const row = {
+      name: opt.name ?? null,
+      study_mode: opt.study_mode ?? "on_campus",
+      study_load: opt.study_load ?? "full_time",
+      duration_value: coerceInt(opt.duration_value),
+      duration_unit: opt.duration_unit ?? "months",
+    };
+    // `name` is a free-text label; mode + load + duration is what makes an option distinct.
+    const key = contentKey(row.study_mode, row.study_load, row.duration_value, row.duration_unit);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const [optRow] = await masterKnex(`${S}.extraction_study_options`)
+      .insert({ job_id: jobId, ...row })
+      .returning("id");
+    await masterKnex(`${S}.extraction_course_study_option_assignments`)
+      .insert({ job_id: jobId, course_id: courseId, study_option_id: optRow.id })
+      .onConflict(["course_id", "study_option_id"]).ignore();
+  }
+}
+
+async function writeEligibility(jobId: string, courseId: string, eligibility?: ExtractedEligibility[]): Promise<void> {
+  if (!eligibility?.length) return;
+  const existing = await masterKnex(`${S}.extraction_eligibility_requirements as e`)
+    .join(`${S}.extraction_course_eligibility_assignments as a`, "a.eligibility_requirement_id", "e.id")
+    .where("a.course_id", courseId)
+    .select("e.name", "e.applicable_to", "e.description", "e.min_score_percent", "e.min_degree_level", "e.score_type", "e.min_score");
+  const eligKey = (r: Record<string, unknown>) => contentKey(
+    String(r.name ?? "").trim().toLowerCase(), r.applicable_to, String(r.description ?? "").trim().toLowerCase(),
+    num(r.min_score_percent), r.min_degree_level, r.score_type, num(r.min_score),
+  );
+  const seen = new Set(existing.map(eligKey));
+
+  for (const elig of eligibility) {
+    let scoreType = normaliseScoreType(elig.score_type);
+    let scoreValue = coerceMoney(elig.min_score);
+    if (!scoreType && scoreValue == null && !elig.min_score_percent) {
+      const derived = deriveScoreFromDescription(elig.description);
+      if (derived) { scoreType = derived.score_type; scoreValue = derived.value; }
+    }
+    const isPercentage = scoreType === "percentage";
+    const row = {
+      name: elig.name ?? null,
+      applicable_to: elig.applicable_to ?? "both",
+      description: elig.description ?? null,
+      min_score_percent: isPercentage ? scoreValue : coerceInt(elig.min_score_percent),
+      min_degree_level: elig.min_degree_level ?? null,
+      score_type: scoreType,
+      min_score: isPercentage ? null : scoreValue,
+    };
+    const key = eligKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const [eligRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
+      .insert({ job_id: jobId, ...row })
+      .returning("id");
+    await masterKnex(`${S}.extraction_course_eligibility_assignments`)
+      .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: eligRow.id })
+      .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
+  }
+}
+
+/** Name of the eligibility row that carries a course's language tests for the admin panel. */
+const ENGLISH_REQ_NAME = "English Language Requirements";
+
+/**
+ * Two destinations on purpose. `extraction_english_requirements` is what public search, the
+ * AI counsellor and enquiries read (keep). But the admin course panel has no section for that
+ * table — it shows language tests from an eligibility row's `language_tests` jsonb (see
+ * eligibility-form.tsx) — so without the mirror below, extracted IELTS/TOEFL scores never
+ * appeared anywhere in the extraction UI.
+ */
+async function writeEnglishRequirements(jobId: string, courseId: string, reqs?: ExtractedEnglishReq[]): Promise<void> {
+  const tests = (reqs ?? []).filter((r) => r?.test_type_name);
+  if (!tests.length) return;
+
+  const existing = await masterKnex(`${S}.extraction_english_requirements`)
+    .where({ course_id: courseId }).select("test_type_name", "overall_score");
+  const seen = new Set(existing.map((r) => contentKey(String(r.test_type_name ?? "").toLowerCase(), num(r.overall_score))));
+  for (const eng of tests) {
+    const key = contentKey(String(eng.test_type_name).toLowerCase(), num(eng.overall_score));
+    if (seen.has(key)) continue;
+    seen.add(key);
+    await masterKnex(`${S}.extraction_english_requirements`).insert({
+      job_id: jobId,
+      course_id: courseId,
+      test_type_name: eng.test_type_name ?? null,
+      overall_score: eng.overall_score ?? null,
+      listening_score: eng.listening_score ?? null,
+      reading_score: eng.reading_score ?? null,
+      writing_score: eng.writing_score ?? null,
+      speaking_score: eng.speaking_score ?? null,
+    });
+  }
+
+  // Mirror into the panel's shape (frontend LanguageTest: string scores, optional sub-scores).
+  const str = (v: unknown) => (v == null ? undefined : String(v));
+  const languageTests = tests.map((t) => ({
+    test_type_name: String(t.test_type_name),
+    overall_score: str(t.overall_score) ?? "",
+    listening_score: str(t.listening_score),
+    reading_score: str(t.reading_score),
+    writing_score: str(t.writing_score),
+    speaking_score: str(t.speaking_score),
+  }));
+  const linked = await masterKnex(`${S}.extraction_eligibility_requirements as e`)
+    .join(`${S}.extraction_course_eligibility_assignments as a`, "a.eligibility_requirement_id", "e.id")
+    .where("a.course_id", courseId).where("e.name", ENGLISH_REQ_NAME)
+    .select("e.id").first();
+  if (linked) {
+    await masterKnex(`${S}.extraction_eligibility_requirements`)
+      .where({ id: linked.id })
+      .update({ language_tests: JSON.stringify(languageTests), updated_at: masterKnex.fn.now() });
+    return;
+  }
+  const [row] = await masterKnex(`${S}.extraction_eligibility_requirements`)
+    .insert({ job_id: jobId, name: ENGLISH_REQ_NAME, applicable_to: "both", language_tests: JSON.stringify(languageTests) })
+    .returning("id");
+  await masterKnex(`${S}.extraction_course_eligibility_assignments`)
+    .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: row.id })
+    .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
+}
+
+async function writeStudyUnits(jobId: string, courseId: string, units?: ExtractedStudyUnit[]): Promise<void> {
+  if (!units?.length) return;
+  for (const unit of units) {
+    if (!unit.unit_name) continue;
+    const unitId = await upsertStudyUnit(jobId, unit);
+    await masterKnex(`${S}.extraction_course_study_unit_assignments`)
+      .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitId })
+      .onConflict(["course_id", "study_unit_id"]).ignore();
+  }
+}
+
+async function writeCampusLinks(
+  jobId: string, courseId: string, campusNames: string[] | undefined, campusIdMap: Map<string, string>,
+): Promise<void> {
+  if (!campusNames?.length) return;
+  // extraction_course_campuses has NO unique constraint, so the old `.onConflict().ignore()`
+  // here never fired — ON CONFLICT DO NOTHING only acts on an actual constraint violation.
+  // Every revisit of a course inserted the same branch link again (self-check: 3 writes → 3
+  // identical rows). Dedup explicitly on (course_id, campus_id) instead.
+  const linked = new Set(
+    (await masterKnex(`${S}.extraction_course_campuses`).where({ course_id: courseId }).pluck("campus_id")).map(String),
+  );
+  for (const campusName of campusNames) {
+    const campusId = campusIdMap.get(normaliseCampusName(campusName));
+    if (!campusId || linked.has(campusId)) continue;
+    linked.add(campusId);
+    await masterKnex(`${S}.extraction_course_campuses`)
+      .insert({ job_id: jobId, course_id: courseId, campus_id: campusId, campus_name: campusName });
+  }
+}
+
+// extraction_accreditations is a global library (no job_id) — find-or-create by name, same as
+// the admin "re-run accreditations" step in extraction-step.worker.ts, so the two paths share
+// rows instead of each minting its own "ABET".
+async function writeAccreditations(jobId: string, courseId: string, accs?: ExtractedAccreditation[]): Promise<void> {
+  if (!accs?.length) return;
+  for (const acc of accs) {
+    const accName = acc?.name?.trim();
+    if (!accName) continue;
+    const existingAcc = await masterKnex(`${S}.extraction_accreditations`)
+      .whereRaw("LOWER(name) = LOWER(?)", [accName]).first();
+    const accId: string = existingAcc?.id ?? (
+      await masterKnex(`${S}.extraction_accreditations`)
+        .insert({ name: accName, issuing_organization: acc.issuing_organization ?? null })
+        .returning("id")
+    )[0].id;
+    await masterKnex(`${S}.extraction_course_accreditation_assignments`)
+      .insert({ job_id: jobId, course_id: courseId, extraction_accreditation_id: accId })
+      .onConflict(["course_id", "extraction_accreditation_id"]).ignore();
+  }
+}
+
 /**
  * Write a full course with all its child entities and junction assignments.
- * Deduplicates by normalised name within the same job — if a course already exists,
- * merges richer data into the existing row and attaches new child entities.
- * Returns the course ID.
+ * Deduplicates by normalised name within the same job (or into `opts.mergeIntoCourseId`) —
+ * if a course already exists, merges richer data into the existing row and attaches new
+ * child entities. Returns the course ID.
  */
-export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string> {
-  // ── Dedup: check if this course name already exists for this job ──
-  const normName = normaliseCourseName(course.name);
-  const existing = await masterKnex(`${S}.extraction_courses`)
-    .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
-    .first();
-
-  let courseId: string;
-
-  if (existing) {
-    courseId = existing.id;
-    // Merge: fill nulls on the existing row with data from this extraction
-    const updates: Record<string, unknown> = {};
-    const mergeFields: Array<keyof ExtractedCourse> = [
-      "short_name", "degree_level", "course_category", "subject_area", "duration_weeks",
-      "study_mode", "description", "awarding_institution",
-      "source_url",
-    ];
-    for (const field of mergeFields) {
-      const newVal = field === "duration_weeks" ? coerceInt(course[field])
-        : field === "course_category" ? normaliseCourseCategory(course[field])
-        : (course[field] ?? null);
-      if (newVal != null && newVal !== "" && (existing[field] == null || existing[field] === "")) {
-        updates[field] = newVal;
-      }
-    }
-    if (course.career_paths?.length && (!existing.career_paths || existing.career_paths.length === 0)) {
-      updates.career_paths = course.career_paths;
-    }
-    if (Object.keys(updates).length > 0) {
-      updates.updated_at = masterKnex.fn.now();
-      await masterKnex(`${S}.extraction_courses`).where({ id: courseId }).update(updates);
-      logger.info("Merged duplicate course", { jobId, courseId, name: course.name, fieldsUpdated: Object.keys(updates).length - 1 });
-    } else {
-      logger.info("Skipped duplicate course (no new data)", { jobId, courseId, name: course.name });
-    }
-  } else {
-    // ── Insert new course ──
-    const courseInsert: Record<string, unknown> = {
-      job_id: jobId,
-      name: course.name,
-      short_name: course.short_name ?? null,
-      degree_level: course.degree_level ?? null,
-      course_category: normaliseCourseCategory(course.course_category),
-      subject_area: course.subject_area ?? null,
-      duration_weeks: coerceInt(course.duration_weeks),
-      study_mode: course.study_mode ?? null,
-      description: course.description ?? null,
-      awarding_institution: course.awarding_institution ?? null,
-      source_url: course.source_url ?? null,
-      verification_status: "unverified",
-    };
-    if (course.career_paths?.length) courseInsert.career_paths = course.career_paths;
-
-    const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
-    courseId = courseRow.id;
-  }
-
-  // ── Fees + assignments ──
-  if (course.fees?.length) {
-    for (const fee of course.fees) {
-      const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-        .insert({
-          job_id: jobId,
-          name: fee.name ?? null,
-          student_type: fee.student_type ?? "both",
-          period_type: fee.period_type ?? "Per Year",
-          currency: fee.currency ?? null,
-          total_amount: coerceMoney(fee.total_amount),
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_fee_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id })
-        .onConflict(["course_id", "course_fee_id"]).ignore();
-    }
-  }
-
-  // ── Intakes + assignments ──
-  if (course.intakes?.length) {
-    for (const intake of course.intakes) {
-      const [intakeRow] = await masterKnex(`${S}.extraction_intakes`)
-        .insert({
-          job_id: jobId,
-          course_id: courseId,
-          intake_name: intake.intake_name ?? null,
-          start_date: coerceDate(intake.start_date),
-          end_date: coerceDate(intake.end_date),
-          intake_month: coerceMonth(intake.intake_month),
-          intake_year: coerceInt(intake.intake_year),
-          admission_deadline: coerceDate(intake.admission_deadline),
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_intake_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, intake_id: intakeRow.id })
-        .onConflict(["course_id", "intake_id"]).ignore();
-    }
-  }
-
-  // ── Study options + assignments ──
-  if (course.study_options?.length) {
-    for (const opt of course.study_options) {
-      const [optRow] = await masterKnex(`${S}.extraction_study_options`)
-        .insert({
-          job_id: jobId,
-          name: opt.name ?? null,
-          study_mode: opt.study_mode ?? "on_campus",
-          study_load: opt.study_load ?? "full_time",
-          duration_value: coerceInt(opt.duration_value),
-          duration_unit: opt.duration_unit ?? "months",
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_study_option_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, study_option_id: optRow.id })
-        .onConflict(["course_id", "study_option_id"]).ignore();
-    }
-  }
-
-  // ── Eligibility requirements + assignments ──
-  if (course.eligibility?.length) {
-    for (const elig of course.eligibility) {
-      let scoreType = normaliseScoreType(elig.score_type);
-      let scoreValue = coerceMoney(elig.min_score);
-      if (!scoreType && scoreValue == null && !elig.min_score_percent) {
-        const derived = deriveScoreFromDescription(elig.description);
-        if (derived) { scoreType = derived.score_type; scoreValue = derived.value; }
-      }
-      const isPercentage = scoreType === "percentage";
-
-      const [eligRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
-        .insert({
-          job_id: jobId,
-          name: elig.name ?? null,
-          applicable_to: elig.applicable_to ?? "both",
-          description: elig.description ?? null,
-          min_score_percent: isPercentage ? scoreValue : coerceInt(elig.min_score_percent),
-          min_degree_level: elig.min_degree_level ?? null,
-          score_type: scoreType,
-          min_score: isPercentage ? null : scoreValue,
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_eligibility_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: eligRow.id })
-        .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
-    }
-  }
-
-  // ── English requirements ──
-  if (course.english_requirements?.length) {
-    for (const eng of course.english_requirements) {
-      await masterKnex(`${S}.extraction_english_requirements`).insert({
-        job_id: jobId,
-        course_id: courseId,
-        test_type_name: eng.test_type_name ?? null,
-        overall_score: eng.overall_score ?? null,
-        listening_score: eng.listening_score ?? null,
-        reading_score: eng.reading_score ?? null,
-        writing_score: eng.writing_score ?? null,
-        speaking_score: eng.speaking_score ?? null,
-      });
-    }
-  }
-
-  // ── Study units + assignments ──
-  if (course.study_units?.length) {
-    for (const unit of course.study_units) {
-      if (!unit.unit_name) continue;
-      const unitId = await upsertStudyUnit(jobId, unit);
-      await masterKnex(`${S}.extraction_course_study_unit_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitId })
-        .onConflict(["course_id", "study_unit_id"]).ignore();
-    }
-  }
-
-  // ── Campus links ──
-  if (course.campus_names?.length) {
-    for (const campusName of course.campus_names) {
-      const campusId = campusIdMap.get(normaliseCampusName(campusName));
-      if (campusId) {
-        await masterKnex(`${S}.extraction_course_campuses`)
-          .insert({ job_id: jobId, course_id: courseId, campus_id: campusId, campus_name: campusName })
-          .onConflict().ignore(); // no unique constraint here, but safe
-      }
-    }
-  }
-
+export async function writeCourse(
+  jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>, opts?: WriteCourseOpts,
+): Promise<string> {
+  const courseId = await findOrCreateCourse(jobId, course, opts);
+  await writeFees(jobId, courseId, course.fees);
+  await writeIntakes(jobId, courseId, course.intakes);
+  await writeStudyOptions(jobId, courseId, course.study_options);
+  await writeEligibility(jobId, courseId, course.eligibility);
+  await writeEnglishRequirements(jobId, courseId, course.english_requirements);
+  await writeStudyUnits(jobId, courseId, course.study_units);
+  await writeCampusLinks(jobId, courseId, course.campus_names, campusIdMap);
+  await writeAccreditations(jobId, courseId, course.accreditations);
   logger.info("Wrote course", { jobId, courseId, name: course.name });
   return courseId;
 }
@@ -842,15 +1042,24 @@ export async function updateVisaServiceById(id: string, service: Partial<Extract
  * ponytail: the cap check isn't serialized against concurrent inserts — racing workers
  * can overshoot by a few rows, fine for a billing guardrail.
  */
-export async function insertQueueItem(jobId: string, url: string): Promise<string | null> {
+export async function insertQueueItem(
+  jobId: string, url: string,
+  /**
+   * Persisted into processing_meta. The page worker reads `source_course_id` from here (not
+   * only from the queue message) so a detail page queued for a specific course still merges
+   * into that course after any re-dispatch — retries and the courses-step re-run publish a
+   * bare {jobId, queueItemId, url} message and would otherwise lose the link.
+   */
+  meta?: Record<string, unknown>,
+): Promise<string | null> {
   const { rows } = await masterKnex.raw(
-    `INSERT INTO ${S}.extraction_queue (job_id, url, status)
-     SELECT :jobId, :url, 'pending'
+    `INSERT INTO ${S}.extraction_queue (job_id, url, status, processing_meta)
+     SELECT :jobId, :url, 'pending', :meta::jsonb
      WHERE (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId)
          < (SELECT page_cap FROM ${S}.extraction_jobs WHERE id = :jobId)
      ON CONFLICT (job_id, url) DO NOTHING
      RETURNING id`,
-    { jobId, url },
+    { jobId, url, meta: JSON.stringify(meta ?? {}) },
   );
   return rows[0]?.id ?? null;
 }

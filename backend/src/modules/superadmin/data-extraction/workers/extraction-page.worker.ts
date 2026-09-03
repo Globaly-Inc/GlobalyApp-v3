@@ -12,7 +12,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown } from "../lib/scraper.js";
-import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, filterUrls } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
   courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
@@ -20,7 +20,7 @@ import {
   visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
-  writeCourse, upsertCampus, normaliseCampusName, writeVisaService, insertQueueItem, writeJobEvent,
+  writeCourse, upsertCampus, normaliseCampusName, normaliseCourseName, writeVisaService, insertQueueItem, writeJobEvent,
   type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
@@ -200,9 +200,12 @@ async function checkAllPagesDone(jobId: string) {
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
-    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined;
+    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined,
+    // Set when this page was queued as the detail page OF a specific (bare, listing-sourced)
+    // course row — the extraction merges into that row instead of name-matching.
+    sourceCourseId: string | undefined;
   try {
-    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed, sourceCourseId } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -255,11 +258,15 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   const claimed = await masterKnex(`${S}.extraction_queue`)
     .where({ id: queueItemId })
     .whereIn("status", ["pending", "failed"])
-    .update({ status: "processing", updated_at: masterKnex.fn.now() });
-  if (claimed === 0) {
+    .update({ status: "processing", updated_at: masterKnex.fn.now() }, ["processing_meta"]);
+  if (claimed.length === 0) {
     logger.info("Queue item already claimed or in a terminal state, skipping duplicate message", { jobId, queueItemId, url });
     return;
   }
+  // Retries and the courses-step re-run publish a bare message — the source-course link
+  // survives on the row (insertQueueItem persisted it) so a re-dispatched detail page still
+  // merges into its course instead of name-matching into a duplicate.
+  sourceCourseId ??= claimed[0]?.processing_meta?.source_course_id ?? undefined;
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
     processing_heartbeat_at: masterKnex.fn.now(),
   });
@@ -434,9 +441,42 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // usually points at the very page curriculum discovery just scraped.
       const secondaryPageCache = new Map<string, string | null>();
 
-      if (extracted.courses?.length) {
-        for (const course of extracted.courses) {
+      // ── Listing → detail-page follow-up ──
+      // A catalog/index page yields hundreds of course NAMES and nothing else — fees, intakes,
+      // units, eligibility, description all live on each course's own page, which the pipeline
+      // never visited (seen live: 290 UT Austin courses, 0 descriptions, 2 with fees). The prompt
+      // now returns each listed course's linked href as source_url; every same-site one that
+      // isn't this page gets queued (bounded by page_cap + URL dedup in insertQueueItem) and its
+      // extraction merges back into the bare row via sourceCourseId.
+      const [thisPageUrl] = filterUrls([url], url);
+      const sourceCourse = sourceCourseId
+        ? await masterKnex(`${S}.extraction_courses`).select("id", "name").where({ id: sourceCourseId, job_id: jobId }).first()
+        : null;
+      const courseList = extracted.courses ?? [];
+      // A detail page returning exactly one course IS that course, however it's titled. With
+      // several, only a name match may claim the source row — the "detail" link may really have
+      // been another listing (index → department → programs); merging an arbitrary first entry
+      // into the source row would corrupt it, so the rest go through the normal path.
+      const sourceNorm = sourceCourse ? normaliseCourseName(sourceCourse.name) : null;
+      const primaryIdx = !sourceCourse ? -1
+        : courseList.length === 1 ? 0
+        : courseList.findIndex((c) => c.name && normaliseCourseName(c.name) === sourceNorm);
+      let detailPagesQueued = 0;
+
+      if (courseList.length) {
+        for (const [idx, course] of courseList.entries()) {
           if (!course.name) continue;
+          const isPrimary = idx === primaryIdx;
+
+          // filterUrls applies the discovery-phase rules (same site, no assets, no news/login…)
+          // AND the same normalisation, so dedup against already-queued URLs actually matches.
+          let detailUrl: string | null = null;
+          if (!isPrimary && course.source_url) {
+            try {
+              const [ok] = filterUrls([new URL(course.source_url, url).toString()], url);
+              if (ok && ok !== (thisPageUrl ?? url)) detailUrl = ok;
+            } catch { /* unusable href — treat as no detail page */ }
+          }
 
           // Upsert campuses mentioned in this course
           if (course.campus_names?.length) {
@@ -482,6 +522,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             if (cached.length) course.study_units = [...(course.study_units ?? []), ...cached];
             currUrl = null;
           }
+
+          // This course's own detail page is being queued — it runs its own curriculum/fees
+          // follow-ups with the course's full context. Doing them here too, from a bare listing
+          // entry, would bill the same secondary pages twice (up to SECONDARY_FETCH_CAP per listing).
+          if (detailUrl) { currUrl = null; feesUrl = null; }
 
           if (currUrl || feesUrl) {
             if (secondaryFetches >= SECONDARY_FETCH_CAP) {
@@ -531,11 +576,41 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             }
           }
 
-          await writeCourse(jobId, { ...course, source_url: course.source_url ?? url }, campusIdMap);
+          const courseId = await writeCourse(
+            jobId,
+            // A real detail page (same-site, not this page) is the course's source; the primary
+            // course of a detail page is sourced here; anything else falls back to this page.
+            { ...course, source_url: detailUrl ?? (isPrimary ? url : (thisPageUrl ?? url)) },
+            campusIdMap,
+            isPrimary && sourceCourse ? { mergeIntoCourseId: sourceCourse.id } : undefined,
+          );
           entitiesWritten++;
+
+          if (detailUrl) {
+            const newId = await insertQueueItem(jobId, detailUrl, { source_course_id: courseId });
+            // null = already queued (another listing/variant links the same page) or the job is
+            // at its page cap — either way the URL is accounted for, nothing to dispatch.
+            if (newId) {
+              await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: newId, url: detailUrl, sourceCourseId: courseId });
+              detailPagesQueued++;
+            }
+          }
         }
       }
       campusCount = campusIdMap.size;
+
+      if (detailPagesQueued > 0) {
+        await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+          total_pages_found: masterKnex.raw("total_pages_found + ?", [detailPagesQueued]),
+          pages_total: masterKnex.raw("pages_total + ?", [detailPagesQueued]),
+        });
+        await writeJobEvent(jobId, "detail_pages_queued", {
+          phase: "data_extraction",
+          message: `Queued ${detailPagesQueued} course detail pages from ${url}`,
+          data: { url, queued: detailPagesQueued },
+        });
+        logger.info("Queued course detail pages", { jobId, url, queued: detailPagesQueued });
+      }
     }
 
     // ── Mark complete + update counters ──

@@ -24,6 +24,12 @@ function normalize(name: string): string {
   return s;
 }
 
+/** The degree-level prefix a name explicitly states, if any (e.g. "bachelor of"). */
+function degreeLevelOf(name: string): string | null {
+  const s = name.toLowerCase().trim();
+  return STRIP_PREFIXES.find((p) => s.startsWith(p)) ?? null;
+}
+
 function tokenize(s: string): string[] {
   return s.match(/[a-z0-9]+/g) || [];
 }
@@ -75,6 +81,15 @@ export function fuzzyMatchCourseToFee(
   courseName: string,
   feeCourseName: string,
 ): number {
+  // Both names explicitly state a degree level and they differ (e.g. "Bachelor of Nursing"
+  // vs "Master of Nursing") — normalize() strips both prefixes before comparing, so without
+  // this guard two different-level courses on the same subject score as a near-exact match
+  // and a fee can get linked to the wrong one. Only disqualifies when BOTH sides state a
+  // level — a fee row like "Nursing" (no prefix) still matches "Bachelor of Nursing" fine.
+  const courseLevel = degreeLevelOf(courseName);
+  const feeLevel = degreeLevelOf(feeCourseName);
+  if (courseLevel && feeLevel && courseLevel !== feeLevel) return 0;
+
   const normCourse = normalize(courseName);
   const normFee = normalize(feeCourseName);
   const tokCourse = tokenize(normCourse);
@@ -105,12 +120,16 @@ interface MatchResult {
 /**
  * Match each fee to the highest-scoring course above threshold.
  * A course can receive multiple fees (e.g. domestic + international).
+ * Fees that don't clear the threshold are returned as `unmatched` rather than dropped —
+ * the caller should still persist them (unlinked) so an admin can review and manually link
+ * them from the Fees tab, instead of the extracted figure just vanishing with no trace.
  */
 export function matchFeesToCourses(
   fees: FeeEntry[],
   courses: CourseEntry[],
-): MatchResult[] {
-  const results: MatchResult[] = [];
+): { matched: MatchResult[]; unmatched: FeeEntry[] } {
+  const matched: MatchResult[] = [];
+  const unmatched: FeeEntry[] = [];
 
   for (const fee of fees) {
     let bestId: string | null = null;
@@ -125,11 +144,13 @@ export function matchFeesToCourses(
     }
 
     if (bestId && bestScore >= MATCH_THRESHOLD) {
-      results.push({ courseId: bestId, fee });
+      matched.push({ courseId: bestId, fee });
+    } else {
+      unmatched.push(fee);
     }
   }
 
-  return results;
+  return { matched, unmatched };
 }
 
 // --- self-check ---
@@ -159,14 +180,21 @@ function selfCheck(): void {
   const exact = fuzzyMatchCourseToFee("Computer Science", "Computer Science");
   console.assert(exact > 0.95, `exact match score should be ~1, got ${exact}`);
 
-  // prefix-stripped match → high score
-  const stripped = fuzzyMatchCourseToFee(
-    "Bachelor of Nursing",
-    "Master of Nursing",
-  );
+  // prefix-stripped match → high score, when only ONE side states a degree level
+  // (fee tables commonly omit it, e.g. a row just labeled "Nursing")
+  const stripped = fuzzyMatchCourseToFee("Bachelor of Nursing", "Nursing");
   console.assert(
     stripped > 0.7,
-    `prefix-stripped match should be high, got ${stripped}`,
+    `level-less fee should still match its course, got ${stripped}`,
+  );
+
+  // same subject, explicit DIFFERENT degree levels → must NOT match. This was the actual
+  // bug: normalize() stripped both prefixes before comparing, so "Bachelor of Nursing" and
+  // "Master of Nursing" scored as a near-exact match and a fee could link to the wrong level.
+  const crossLevel = fuzzyMatchCourseToFee("Bachelor of Nursing", "Master of Nursing");
+  console.assert(
+    crossLevel === 0,
+    `different degree levels must not match, got ${crossLevel}`,
   );
 
   // unrelated → low score
@@ -184,6 +212,7 @@ function selfCheck(): void {
     { id: "c1", name: "Bachelor of Computer Science" },
     { id: "c2", name: "Master of Nursing" },
     { id: "c3", name: "Diploma of Business" },
+    { id: "c4", name: "Bachelor of Nursing" },
   ];
   const fees: FeeEntry[] = [
     {
@@ -201,7 +230,8 @@ function selfCheck(): void {
       period: "Per Year",
     },
     {
-      course_name: "Nursing",
+      // No degree prefix — should match c2, never c4, purely on subject overlap
+      course_name: "Master of Nursing",
       student_type: "domestic",
       amount: 8000,
       currency: "AUD",
@@ -215,27 +245,30 @@ function selfCheck(): void {
       period: "Per Year",
     },
   ];
-  const matches = matchFeesToCourses(fees, courses);
+  const { matched, unmatched } = matchFeesToCourses(fees, courses);
 
   // Both CS fees should match c1
-  const csMatches = matches.filter((m) => m.courseId === "c1");
+  const csMatches = matched.filter((m) => m.courseId === "c1");
   console.assert(
     csMatches.length === 2,
     `CS should get 2 fees, got ${csMatches.length}`,
   );
 
-  // Nursing should match c2
-  const nurseMatches = matches.filter((m) => m.courseId === "c2");
+  // "Master of Nursing" fee should match c2 (Master's), never c4 (Bachelor's)
+  const nurseMatches = matched.filter((m) => m.fee.course_name === "Master of Nursing");
   console.assert(
-    nurseMatches.length === 1,
-    `Nursing should get 1 fee, got ${nurseMatches.length}`,
+    nurseMatches.length === 1 && nurseMatches[0].courseId === "c2",
+    `Master of Nursing fee should match c2 only, got ${JSON.stringify(nurseMatches)}`,
   );
 
-  // Underwater Basket Weaving should not match anything
-  const uwbw = matches.filter(
-    (m) => m.fee.course_name === "Underwater Basket Weaving",
+  // Underwater Basket Weaving should not match anything, but should surface as unmatched
+  // (not silently dropped) so an admin can review/link it manually
+  const uwbwMatched = matched.filter((m) => m.fee.course_name === "Underwater Basket Weaving");
+  console.assert(uwbwMatched.length === 0, "unrelated fee should not match");
+  console.assert(
+    unmatched.some((f) => f.course_name === "Underwater Basket Weaving"),
+    "unrelated fee should be returned as unmatched, not dropped",
   );
-  console.assert(uwbw.length === 0, "unrelated fee should not match");
 
   console.log("fee-matcher: all self-checks passed");
 }

@@ -64,12 +64,32 @@ export async function raisePageCap(jobId: string, by: number) {
   return row?.page_cap as number | undefined;
 }
 
+// A "processing" item is claimed by exactly one worker; if that worker dies mid-task (crash,
+// OOM, a deploy restart) nothing ever flips it back to pending/failed or marks it complete —
+// no reaper exists for it anywhere in this pipeline. Past this many minutes with no update,
+// treat it as abandoned rather than leaving it invisible to both this count and
+// handleCoursesStep's re-dispatch, which otherwise stalls the job forever: checkAllPagesDone
+// counts "processing" as not-done, and rerun's resume path never saw the item to retry it.
+export const STALE_PROCESSING_MINUTES = 15;
+
+// Exported so handleCoursesStep (extraction-step.worker.ts) applies the EXACT same
+// definition when it does the actual re-dispatch — a threshold duplicated in two places
+// risks drifting apart, which would recreate this same stall in a new form (count says
+// "retryable", re-dispatch's own filter disagrees and finds nothing).
+export function retryableStatusFilter(qb: import("knex").Knex.QueryBuilder) {
+  qb.whereIn("status", ["pending", "failed"])
+    .orWhere((qb2) =>
+      qb2.where("status", "processing")
+        .andWhere("updated_at", "<", masterKnex.raw(`now() - interval '${STALE_PROCESSING_MINUTES} minutes'`)));
+}
+
 // Rerun (resume path): pending/failed items are real, already-queued work worth retrying
-// without wiping the job — 0 means there's nothing to resume from.
+// without wiping the job — 0 means there's nothing to resume from. Also counts a
+// "processing" item stuck past STALE_PROCESSING_MINUTES (see above).
 export async function countRetryableQueueItems(jobId: string) {
   const row = await masterKnex(T)
     .where({ job_id: jobId })
-    .whereIn("status", ["pending", "failed"])
+    .where(retryableStatusFilter)
     .count("id as count")
     .first();
   return Number(row?.count ?? 0);

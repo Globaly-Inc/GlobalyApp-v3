@@ -190,6 +190,34 @@ The centralized error handler maps these to HTTP responses.
    an August Gemini cost spike. `resetPipeline` (full wipe) is still used
    when a job has nothing queued yet to resume from — no V2 equivalent to
    port, this is a cost fix.
+   Exception: listing → detail-page follow-up (2026-09-03) — `courseExtractionPrompt`
+   now returns each listed course's own linked href as `source_url` (it was hardcoded
+   to the page URL), and the page worker queues every same-site detail URL that isn't
+   the current page (`insertQueueItem` with `processing_meta.source_course_id`; bounded
+   by `page_cap` + URL dedup). The detail page's extraction merges into that exact row
+   (`writeCourse({ mergeIntoCourseId })`) rather than name-matching, since detail pages
+   title programs differently from index entries. Secondary curriculum/fees fetches are
+   skipped for a listing entry whose detail page is queued (it runs its own). Also
+   wires up `urlDiscoveryPrompt`'s `listing_urls`, which the LLM returned but nothing
+   read, and adds per-course `accreditations` to the page-worker path (previously only
+   the manual course_data step wrote them). Fixes a real gap seen live: a catalog index
+   page yielded 290 UT Austin "courses" that were names only — 0 descriptions, 0
+   intakes, 2 fees — because the pipeline extracted the table of contents and never
+   visited a program page. Same family as the curriculum/fees-page exceptions above.
+   Also (2026-09-03): `writeCourse` dedups fees by (student_type, period_type, currency,
+   amount) per course — a course revisited via a second URL or a rerun previously
+   inserted a fresh duplicate fee row + link every time; and rerun's resume path now
+   also recovers `processing` queue items stale past 15 min (`retryableStatusFilter`),
+   which a crashed worker left invisible to both the retry count and re-dispatch.
+   Also (2026-09-03, bug fixes found via a live writeCourse self-check): course-name dedup
+   compared a JS-normalised key (trailing ")" stripped) against a bare SQL `LOWER(TRIM(name))`
+   (")" kept), so ~97% of names never matched and every rerun inserted duplicate course rows —
+   the SQL side now applies the identical normalisation (same fix for study units). Intakes,
+   study options, eligibility and branch links now dedup by content on revisit (branches had an
+   `.onConflict().ignore()` on a table with no unique constraint — a no-op). Extracted English
+   test scores are additionally mirrored into an "English Language Requirements" eligibility
+   row's `language_tests` jsonb, the only shape the admin course panel renders — the
+   `extraction_english_requirements` table stays, since search/counsellor/enquiries read it.
 
 ## External FK columns
 

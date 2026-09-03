@@ -1,9 +1,10 @@
 // Gemini LLM client for structured extraction.
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
-import { isORConfigured, orExtractJson, orGenerateText, orEmbed } from "../../../../shared/ai/openrouter.js";
+import { isORConfigured, orGenerateText, orEmbed } from "../../../../shared/ai/openrouter.js";
 
 const logger = createChildLogger("llm-client");
 
@@ -17,6 +18,34 @@ function getClient(): GoogleGenerativeAI {
     genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY);
   }
   return genAI;
+}
+
+/**
+ * OpenRouter fallback for extractJson, kept LOCAL on purpose. shared/ai/openrouter.ts's
+ * orExtractJson does a bare JSON.parse and failed live on 5 pages in one job ("Unexpected
+ * non-whitespace character after JSON at position 44" — the model appended a sentence after a
+ * tiny `{"courses":[]}`). We need the model's RAW text so it runs through the same fence-strip /
+ * balanced-brace / truncation-salvage pipeline extractJson() applies to Gemini output — and the
+ * team's rule is not to touch shared/ai/ short of an emergency, so the request lives here.
+ * Same endpoint + OPENROUTER_MODEL as openrouter.ts; keep the two in step if that config moves.
+ */
+let orClient: OpenAI | null = null;
+async function openRouterRawJson(opts: { system: string; prompt: string; maxTokens?: number }): Promise<{ text: string; truncated: boolean }> {
+  orClient ??= new OpenAI({ apiKey: config.OPENROUTER_API_KEY!, baseURL: "https://openrouter.ai/api/v1" });
+  logger.info("OpenRouter fallback: extractJson");
+  const res = await orClient.chat.completions.create({
+    model: config.OPENROUTER_MODEL,
+    messages: [
+      { role: "system", content: opts.system + "\n\nRespond with valid JSON only — no markdown fences." },
+      { role: "user", content: opts.prompt },
+    ],
+    max_tokens: opts.maxTokens ?? 16384,
+    temperature: 0,
+  });
+  return {
+    text: res.choices[0]?.message.content ?? "",
+    truncated: res.choices[0]?.finish_reason === "length",
+  };
 }
 
 const MAX_RETRIES = 3;
@@ -116,11 +145,12 @@ export async function extractJson<T>(opts: {
     text = result.response.text();
     truncated = result.response.candidates?.[0]?.finishReason === "MAX_TOKENS";
   } catch (geminiErr) {
-    if (isORConfigured()) {
-      logger.warn("Gemini extractJson failed — falling back to OpenRouter");
-      return orExtractJson<T>({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens });
-    }
-    throw geminiErr;
+    if (!isORConfigured()) throw geminiErr;
+    logger.warn("Gemini extractJson failed — falling back to OpenRouter");
+    // Take the raw text and fall through to the SAME parse/repair pipeline below. The old
+    // fallback parsed with a bare JSON.parse and failed 5 pages in one job on trailing prose
+    // after a complete object — the exact case findBalancedEnd() below already handles.
+    ({ text, truncated } = await openRouterRawJson({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens }));
   }
 
   try {
@@ -312,6 +342,7 @@ export async function embed(text: string): Promise<number[]> {
   return norm > 0 ? values.map((v) => v / norm) : values;
 }
 
+/** True if the pipeline can call an LLM at all — Gemini or its OpenRouter fallback. */
 export function isConfigured(): boolean {
-  return !!config.GEMINI_API_KEY;
+  return !!config.GEMINI_API_KEY || isORConfigured();
 }

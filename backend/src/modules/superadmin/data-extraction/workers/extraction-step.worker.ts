@@ -11,6 +11,7 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
+import { retryableStatusFilter } from "../repositories/queue.repository.js";
 import { scrapeMarkdown, scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
 import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
@@ -730,13 +731,16 @@ async function handleCoursesStep(jobId: string) {
   const job = await loadJob(jobId);
   if (!job) return;
 
-  // Re-dispatch all pending/failed queue items to PAGES queue
+  // Re-dispatch all pending/failed queue items to PAGES queue — plus any "processing" item
+  // stuck past STALE_PROCESSING_MINUTES (its worker crashed/restarted mid-task; nothing else
+  // ever resets it — see queue.repository.ts's retryableStatusFilter, which countRetryableQueueItems
+  // uses to decide whether this step runs at all, so both must agree on what's retryable).
   const items = await masterKnex(`${S}.extraction_queue`)
     .where({ job_id: jobId })
-    .whereIn("status", ["pending", "failed"])
+    .where(retryableStatusFilter)
     .select("id", "url");
 
-  await writeJobEvent(jobId, "step_start", { phase: "courses", message: `Re-dispatching ${items.length} pending/failed pages` });
+  await writeJobEvent(jobId, "step_start", { phase: "courses", message: `Re-dispatching ${items.length} pending/failed/stale pages` });
 
   // Push queue: an item whose message never published is stranded — nothing polls these
   // rows. If LavinMQ dies mid-loop, stop, record exactly how far dispatch got, and rethrow
@@ -753,7 +757,7 @@ async function handleCoursesStep(jobId: string) {
       // claimable again — a full duplicate scrape + Gemini extraction.
       const flipped = await masterKnex(`${S}.extraction_queue`)
         .where({ id: item.id })
-        .whereIn("status", ["pending", "failed"])
+        .where(retryableStatusFilter)
         .update({ status: "pending", updated_at: masterKnex.fn.now() });
       if (flipped === 0) continue;
       await queueService.publish(EXTRACTION_QUEUES.PAGES, {
@@ -919,12 +923,12 @@ async function handleEnrichmentStep(jobId: string) {
 
   // Fuzzy match fees to courses (token overlap + Levenshtein, threshold 0.5)
   const courseEntries = courses.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }));
-  const matches = matchFeesToCourses(feeEntries, courseEntries);
-  logger.info("Fee fuzzy matching", { feeEntries: feeEntries.length, matches: matches.length, courses: courses.length });
+  const { matched, unmatched } = matchFeesToCourses(feeEntries, courseEntries);
+  logger.info("Fee fuzzy matching", { feeEntries: feeEntries.length, matched: matched.length, unmatched: unmatched.length, courses: courses.length });
 
   // Insert matched fees with installment breakdown
   let linked = 0;
-  for (const { courseId, fee } of matches) {
+  for (const { courseId, fee } of matched) {
     const course = courses.find((c: { id: string; duration_weeks?: number }) => c.id === courseId);
     const installments = parseInstallments({
       totalAmount: fee.amount,
@@ -946,10 +950,21 @@ async function handleEnrichmentStep(jobId: string) {
     linked++;
   }
 
+  // Persist unmatched fees too (no course_fee_assignments row) instead of dropping them —
+  // they still show up job-wide on the Fees tab (listCourseFeesByJob queries by job_id, not
+  // through the assignment join), `name` carries the fee schedule's original course_name text
+  // so an admin has enough context to link it manually via the tab's course picker.
+  for (const fee of unmatched) {
+    await masterKnex(`${S}.extraction_course_fees`).insert({
+      job_id: jobId, name: fee.course_name, student_type: fee.student_type,
+      total_amount: fee.amount, currency: fee.currency, period_type: fee.period,
+    });
+  }
+
   await writeJobEvent(jobId, "step_complete", {
     phase: "enrichment",
-    message: `Bulk fees: ${linked} course-fee links created (fuzzy matched from ${feeEntries.length} fee entries)`,
-    data: { linked, fee_entries: feeEntries.length, unmatched: feeEntries.length - matches.length },
+    message: `Bulk fees: ${linked} course-fee links created, ${unmatched.length} unmatched (fuzzy matched from ${feeEntries.length} fee entries)`,
+    data: { linked, fee_entries: feeEntries.length, unmatched: unmatched.length },
   });
 }
 

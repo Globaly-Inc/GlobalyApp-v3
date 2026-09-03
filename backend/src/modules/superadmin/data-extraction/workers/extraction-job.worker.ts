@@ -61,7 +61,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
 
   if (!isConfigured()) {
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
-      status: "failed", error_message: "GEMINI_API_KEY not configured", updated_at: masterKnex.fn.now(),
+      status: "failed", error_message: "No LLM provider configured (set GEMINI_API_KEY or OPENROUTER_API_KEY)", updated_at: masterKnex.fn.now(),
     });
     return;
   }
@@ -187,6 +187,10 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
           tier: "lite",
         });
         if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
+        // listing_urls ("catalog/listing pages to crawl further") was returned by the LLM but
+        // never read — so deeper catalog sections were never crawled. Queue them: the page
+        // worker now follows each course on a listing page to its own detail page.
+        if (urlResult.listing_urls?.length) classified.push(...urlResult.listing_urls);
         // Heartbeat between batches
         await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
       }
@@ -206,6 +210,10 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
           tier: "lite",
         });
         if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
+        // listing_urls ("catalog/listing pages to crawl further") was returned by the LLM but
+        // never read — so deeper catalog sections were never crawled. Queue them: the page
+        // worker now follows each course on a listing page to its own detail page.
+        if (urlResult.listing_urls?.length) classified.push(...urlResult.listing_urls);
       }
       courseUrls = [...new Set(classified)];
     }

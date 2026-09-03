@@ -106,8 +106,14 @@ Extract this JSON:
       "study_mode": "on-campus|online|hybrid|null",
       "description": "course description or null",
       "awarding_institution": null,
-      "source_url": "${url}",
+      "source_url": "this course's OWN detail-page URL — the absolute href its name/title links to on this page. If THIS page is already the course's own detail page, use ${url}. Never a generic listing/catalog/index URL for a course that merely appears in a list here.",
       "career_paths": [],
+      "accreditations": [
+        {
+          "name": "professional/industry accreditation body or scheme this course holds — e.g. 'ABET', 'AACSB', 'Engineers Australia', 'CILEX'",
+          "issuing_organization": "the organisation that grants it, or null if same as name"
+        }
+      ],
       "fees": [
         {
           "name": "fee description — include the original text verbatim if it's a range or unclear figure, e.g. 'Tuition (range: $25,000-$30,000)' or 'Tuition — contact institution'",
@@ -182,8 +188,9 @@ Extract this JSON:
 
 Rules:
 - Extract ALL courses visible on this page
-- If the page is a single course detail page, return exactly 1 course
-- If it's a listing page with multiple courses, extract all of them
+- If the page is a single course detail page, return exactly 1 course — the ONE program this page is about. Programs that merely appear in a navigation menu, sidebar, footer, A–Z index, breadcrumb, or "related/other programs" list on a detail page are NOT courses on this page: do not extract them, they have their own pages. Their presence must never turn a detail page into a listing.
+- If it's a listing page with multiple courses, extract all of them. On a listing page it is EXPECTED that most fields are null — set each course's source_url to its own linked detail page (see source_url above) so the pipeline can visit it for the full data; do not guess fees/duration/intakes from a bare listing entry.
+- A "Courses A–Z" / subject index — entries that are a SUBJECT or DEPARTMENT followed by a short uppercase prefix code, e.g. "Physics (PHY)", "Psychology (PSY)", "Portuguese (POR)", "Landscape Architecture (LAR)" — lists the codes used to number individual classes, NOT degree programs. Never extract those as courses. A real program carries a qualification: "Physics (BA)", "Physics, Biophysics (BSPhy)", "Master of Laws (LLM)". When the same page has both lists, extract only the qualification-bearing programs.
 - Do NOT extract a page as a course if it describes a single SUBJECT/UNIT/MODULE that sits inside a larger qualification — e.g. a page titled "Introduction to Databases" or "COMP101 — Introduction to Databases", with a short code (2-4 letters + 2-3 digits) and content describing one subject rather than an entire degree/diploma/certificate. These belong in study_units under their parent course, never as a standalone course. If this page IS such a unit/subject page, return an empty courses array.
 - Classify EVERY course's course_category yourself from what the page shows about it — never copy one value onto every course just because the page is generally about "programs" or "courses". A page mixing both (e.g. a Bachelor's degree next to a 6-week professional certificate with no admission/degree structure) must return each with its own correct course_category.
 - If a page presents ONE subject area offered as MULTIPLE qualification variants — e.g. "Aerospace Engineering" offered as BEng(Hons), MEng, and BSc — extract ONE COURSE OBJECT PER VARIANT, never a single course for the subject as a whole. Each variant's "name" is its full specific title as shown (e.g. "Aerospace Engineering BEng(Hons)"), its "subject_area" is the shared subject name without the qualification (e.g. "Aerospace Engineering"), and its "degree_level" is derived from that variant's own qualification (BEng/BSc/BA/BBA → Bachelor; MEng/MSc/MA/MBA → Master; PhD/DPhil → PhD; Grad Cert → Graduate Certificate; Grad Dip → Graduate Diploma). Never emit a course for the bare subject heading with no qualification attached.
