@@ -87,7 +87,7 @@ export function Navbar() {
                 <DropdownMenuTrigger
                   render={
                     <button
-                      className="flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                      className="flex items-center gap-1.5 rounded-md border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
                       type="button"
                       aria-label="Account menu"
                     />
