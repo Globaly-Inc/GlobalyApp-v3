@@ -31,7 +31,7 @@ export const CroppedFileInput = forwardRef<
   useImperativeHandle(ref, () => ({
     pick: () => inputRef.current?.click(),
     adjust: (url: string) => {
-      setRawSrc(`/api/image-proxy?url=${encodeURIComponent(url)}`);
+      setRawSrc(url.startsWith("blob:") ? url : `/api/image-proxy?url=${encodeURIComponent(url)}`);
       setOpen(true);
     },
   }));

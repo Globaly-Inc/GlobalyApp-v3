@@ -325,6 +325,20 @@ export async function findBusinessDetail(id: number) {
     )
     .first();
   if (!row) return row;
+
+  // Same fallback as listBusinesses: a pre-seeded business (account_status 0, never provisioned)
+  // has no business_branches/business_services rows of its own — its real counts are the source
+  // extraction job's scraped campuses/courses instead of a permanent, meaningless zero.
+  if (row.account_status === 0 && row.source_job_id) {
+    const [job, [{ count: campusCount }]] = await Promise.all([
+      masterKnex(`${S}.extraction_jobs`).where({ id: row.source_job_id }).first("courses_extracted"),
+      masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
+    ]);
+    row.branch_count = Number(campusCount) || 0;
+    row.service_count = Number(job?.courses_extracted) || 0;
+    return row;
+  }
+
   try {
     const tenantDb = await getKnex(row.id, row.schema_name);
     const [[{ count: branchCount }], [{ count: serviceCount }]] = await Promise.all([

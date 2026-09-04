@@ -35,6 +35,7 @@ export type Business = {
   owner_email: string | null;
   is_unclaimed: boolean;
   profile_views: number;
+  source_job_id: string | null;
   branch_count: number;
   service_count: number;
 };

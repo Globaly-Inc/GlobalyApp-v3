@@ -87,7 +87,7 @@ function baseQuery({
   const q = masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
     // At most one institution per job (institutions_source_job_uniq), so this can't fan rows out.
-    .leftJoin("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
+    .join("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
     .whereRaw(PUBLICLY_VISIBLE);
 
   if (jobId) q.where("ec.job_id", jobId);
@@ -246,8 +246,10 @@ export async function listCourseFilterOptions() {
       .whereNotNull("degree_level")
       .orderBy("degree_level"),
     // Only institutions with a publicly visible course, so the filter can't offer a name that
-    // returns nothing.
+    // returns nothing. Same inner join as baseQuery: an unpublished institution's job can still be
+    // exported, so the join (not just PUBLICLY_VISIBLE) is what actually excludes it.
     masterKnex(`${S}.extraction_courses as ec`)
+      .join("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
       .distinct("ec.awarding_institution")
       .whereNotNull("ec.awarding_institution")
       .whereRaw(PUBLICLY_VISIBLE)
@@ -299,7 +301,9 @@ export async function findPublicCourseBySlug(slug: string) {
 
   const course = await masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
-    .leftJoin("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
+    // Inner join — see baseQuery above: a left join here would let an unpublished institution's
+    // course detail page stay reachable by direct link even though it's excluded from search.
+    .join("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
     .whereRaw(PUBLICLY_VISIBLE)
     .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
     .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS)

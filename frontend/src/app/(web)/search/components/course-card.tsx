@@ -78,7 +78,7 @@ export function CourseCard({
                 course={{
                   id: course.id, slug: course.slug, name: course.name,
                   institutionName: course.awarding_institution ?? undefined,
-                  institutionLogoUrl: course.image_url,
+                  institutionLogoUrl: course.institution_logo_url ?? course.image_url,
                   countryName: course.country_name ?? undefined,
                   durationLabel, subjectArea: course.subject_area,
                   nextIntakeLabel, annualTuition, feeCurrency,

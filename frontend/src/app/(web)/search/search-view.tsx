@@ -157,8 +157,9 @@ export async function SearchView({
     : DEFAULT_FEE_PERIOD;
 
   // `base` is only what survives a tab switch — a degree level or job type means nothing on another
-  // tab, so the tab rail deliberately drops them.
-  const base = { country: filters.country, city: filters.city, search: filters.search };
+  // tab, so the tab rail deliberately drops them. `search` is dropped too: a term matching a course
+  // name (or any other tab's naming) reads as "no results" on a tab it was never meant for.
+  const base = { country: filters.country, city: filters.city };
   // Paging must carry the whole active filter set forward instead, or page 2 quietly returns rows the
   // reader's own filters exclude. Everything except `page` itself rides along.
   const query: Record<string, string> = Object.fromEntries(

@@ -15,7 +15,6 @@ import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
-import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import type {
   ProfilePatchInput,
@@ -182,11 +181,13 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     authorId: userId,
     institutionId: Number(institution.id),
     content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    // Always the landscape banner, never the institution's own logo: a square logo forced into
+    // the feed's wide image box gets center-cropped into an unrecognisable zoom.
     media: [
       {
-        storage_path: institution.logo_url ?? WELCOME_POST_IMAGE,
+        storage_path: WELCOME_POST_IMAGE,
         type: "image",
-        mime_type: institution.logo_url ? guessImageMimeType(institution.logo_url) : "image/png",
+        mime_type: "image/png",
       },
     ],
   }).catch((err) => logger.warn("Welcome post creation error", { institutionId: institution.id, err: err.message }));
