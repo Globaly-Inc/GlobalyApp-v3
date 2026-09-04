@@ -35,7 +35,7 @@ export function QualifiedLeadsSection() {
               Get <span className="highlight-text active">Qualified & Verified</span> Student Leads Instantly
             </h2>
             <p className="text-muted-foreground mb-8">
-              Stop wasting time on unfiltered inquiries. With Globaly.app, you&apos;ll receive highly qualified,
+              Stop wasting time on unfiltered inquiries. With Globalyapp, you&apos;ll receive highly qualified,
               verified student leads actively looking to apply. Focus on closing real students, not
               chasing dead ends.
             </p>

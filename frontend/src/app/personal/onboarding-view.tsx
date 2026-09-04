@@ -191,7 +191,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
     <div className="min-h-screen flex flex-col bg-background">
       <header className="flex items-center justify-between px-6 py-4 border-b border-border">
         <Link href="/">
-          <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-8 w-auto" />
+          <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-8 w-auto" />
         </Link>
         <Button variant="ghost" size="sm" onClick={handleSkip} className="text-muted-foreground">
           Skip

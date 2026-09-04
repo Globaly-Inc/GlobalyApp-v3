@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Country Education Guides — Globaly",
     description: "Free guides to studying, living, and working abroad.",
-    images: ["/globaly-logo.png"],
+    images: ["/globalyapp-logo.png"],
   },
 };
 

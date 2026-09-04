@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { CurrencyProvider } from "./components/currency-context";
 import { Navbar } from "./components/navbar";
 import { Footer } from "./components/footer";
 import { CookieConsent } from "./components/cookie-consent";
@@ -23,14 +24,14 @@ export const metadata: Metadata = {
     title: TITLE,
     description: OG_DESCRIPTION,
     url: "https://www.globalyapp.com/",
-    images: ["/globaly-logo.png"],
+    images: ["/globalyapp-logo.png"],
   },
   twitter: {
     card: "summary_large_image",
     site: "@GlobalyAI",
     title: TITLE,
     description: OG_DESCRIPTION,
-    images: ["/globaly-logo.png"],
+    images: ["/globalyapp-logo.png"],
   },
 };
 
@@ -38,9 +39,9 @@ const ORGANIZATION_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "Globaly",
-  alternateName: "Globaly.app",
+  alternateName: "Globalyapp",
   url: "https://www.globalyapp.com",
-  logo: "https://www.globalyapp.com/globaly-logo.png",
+  logo: "https://www.globalyapp.com/globalyapp-logo.png",
   description: OG_DESCRIPTION,
   sameAs: [
     "https://www.linkedin.com/company/globaly-app",
@@ -64,6 +65,7 @@ const WEBSITE_JSON_LD = {
 
 export default function WebLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
+    <CurrencyProvider>
     <div className="flex min-h-screen flex-col">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ORGANIZATION_JSON_LD) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }} />
@@ -74,5 +76,6 @@ export default function WebLayout({ children }: Readonly<{ children: ReactNode }
       <BackToTop />
       <CompareTray />
     </div>
+    </CurrencyProvider>
   );
 }

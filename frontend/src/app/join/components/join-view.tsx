@@ -89,7 +89,7 @@ export function JoinView() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex justify-center">
           <Link href="/">
-            <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-10 w-auto" />
+            <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-10 w-auto" />
           </Link>
         </div>
 

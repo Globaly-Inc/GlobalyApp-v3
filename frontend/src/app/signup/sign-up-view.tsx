@@ -192,7 +192,7 @@ export function SignUpView() {
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-8">
           <Link href="/">
-            <Image src="/globaly-logo.png" alt="Globaly.io" width={753} height={157} className="h-10 w-auto" />
+            <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-10 w-auto" />
           </Link>
         </div>
         <Card className="[--card-spacing:--spacing(6)]">

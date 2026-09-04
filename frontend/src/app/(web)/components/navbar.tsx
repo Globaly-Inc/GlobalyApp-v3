@@ -22,6 +22,7 @@ import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
 import { NAV_LINKS } from "../const/index";
+import { CurrencySelect } from "./currency-select";
 
 /** Where a signed-in user's own profile lives. */
 function profileHref(user: AuthUser | null): string {
@@ -60,7 +61,7 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md print:hidden">
       <div className="container mx-auto flex h-16 items-center px-3 sm:px-4 gap-1">
         <Link href="/" className="flex items-center flex-shrink-0">
-          <Image src="/globaly-logo.png" alt="Globaly.ai" width={753} height={157} className="h-8 w-auto" priority />
+          <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-8 w-auto" priority />
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex flex-1 justify-start ml-8">
@@ -81,6 +82,7 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+          <CurrencySelect className="hidden sm:flex" />
           {!initializing && (
             user ? (
               <DropdownMenu>
@@ -173,7 +175,7 @@ export function Navbar() {
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <div className="flex items-center justify-between mb-6">
                 <Link href="/" onClick={() => setMobileOpen(false)}>
-                  <Image src="/globaly-logo-white.png" alt="Globaly.ai" width={776} height={188} className="h-7 w-auto" />
+                  <Image src="/globalyapp-logo-white.png" alt="Globalyapp" width={727} height={157} className="h-7 w-auto" />
                 </Link>
                 <Button
                   variant="ghost"
@@ -196,6 +198,7 @@ export function Navbar() {
                   </Link>
                 ))}
                 <div className="mt-4 flex flex-col gap-2">
+                  <CurrencySelect className="w-full justify-between border-white/40 bg-transparent text-white hover:bg-white/10 hover:text-white sm:hidden" />
                   {!initializing && (
                     user ? (
                       // The drawer replaces the dropdown below lg, so it offers the same destinations rather

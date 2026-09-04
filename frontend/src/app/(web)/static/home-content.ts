@@ -1,4 +1,5 @@
-import { Building2, BookOpen, Users, Globe, Map } from "lucide-react";
+import { Building2, BookOpen, Users, Globe, Map, type LucideIcon } from "lucide-react";
+import type { PlatformStatKey } from "../types";
 
 export const TYPING_PHRASES = [
   "Accessible & Possible",
@@ -16,7 +17,8 @@ export const STUDENT_FEATURES = [
   // Parked with the eligibility checker (course-hero's Check Eligibility link is commented out too):
   // "Check your eligibility for desired programs",
   "Send enquiries to verified education counselors and institutions",
-  "Find scholarships for your desired degree",
+  // Parked until scholarships ship:
+  // "Find scholarships for your desired degree",
   "Get AI-powered education counselling",
   // Parked until the LMS ships (business/lms and personal/learning are ComingSoon pages):
   // "Earn certifications and badges through training programs",
@@ -48,10 +50,11 @@ export const AGENT_FEATURES = [
   // "Access training programs from partner institutions",
 ];
 
-export const STATS = [
-  { icon: Building2, label: "Institutions", value: "3.6K+" },
-  { icon: BookOpen, label: "Courses", value: "205K+" },
-  { icon: Users, label: "Education Counselors", value: "2.4K+" },
-  { icon: Globe, label: "Countries", value: "35+" },
-  { icon: Map, label: "Cities", value: "180K+" },
+/** Values come from GET /api/v3/platform-stats — `key` selects the count for each row. */
+export const STATS: { key: PlatformStatKey; icon: LucideIcon; label: string }[] = [
+  { key: "institutions", icon: Building2, label: "Institutions" },
+  { key: "courses", icon: BookOpen, label: "Courses" },
+  { key: "educationCounselors", icon: Users, label: "Education Counselors" },
+  { key: "countries", icon: Globe, label: "Countries" },
+  { key: "cities", icon: Map, label: "Cities" },
 ];
