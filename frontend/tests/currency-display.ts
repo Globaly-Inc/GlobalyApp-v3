@@ -1,36 +1,29 @@
 /**
- * Pure checks for the money formatting behind <Money> and the navbar currency picker.
+ * Pure checks for the money formatting behind <Money>. Every figure is shown in the currency the
+ * row stored — there is no conversion, so these pin the formatting and the "amount as stored" rule.
  * Run: node tests/currency-display.ts   (Node strips the types; no test framework needed)
  */
 
 import assert from "node:assert/strict";
-import { convert, displayMoney, normalizeCurrency, toAmount } from "../src/app/(web)/data/currency-rates.ts";
+import { displayMoney, normalizeCurrency, toAmount } from "../src/app/(web)/data/currency-rates.ts";
 
-const text = (low: number | null, high: number | null, from: string, to: string) =>
-  displayMoney(low, high, from, to)?.text.replace(/ /g, " ") ?? null;
+const text = (low: number | null, high: number | null, from: string) =>
+  displayMoney(low, high, from)?.text.replace(/ /g, " ") ?? null;
 
-// Same currency: shown exactly as quoted.
-assert.equal(text(24500, null, "USD", "USD"), "USD 24,500");
-
-// Cross-currency: converted, with the original offered as the tooltip.
-assert.equal(text(38000, null, "AUD", "USD"), "USD 25,000");
-assert.match(displayMoney(38000, null, "AUD", "USD")!.title!, /AUD.38,000 converted at an indicative rate/);
+// Shown exactly as quoted, whichever currency that is.
+assert.equal(text(24500, null, "USD"), "USD 24,500");
+assert.equal(text(38000, null, "AUD"), "AUD 38,000");
+assert.equal(text(5000, null, "THB"), "THB 5,000");
 
 // A range states the code once, on the low end.
-assert.equal(text(300, 700, "USD", "USD"), "USD 300 – 700");
-assert.equal(text(1520, 3040, "AUD", "USD"), "USD 1,000 – 2,000");
+assert.equal(text(300, 700, "USD"), "USD 300 – 700");
+assert.equal(text(1520, 3040, "AUD"), "AUD 1,520 – 3,040");
 
-// Round trip through USD is lossless enough to land back on the same figure.
-assert.equal(Math.round(convert(convert(1000, "AUD", "JPY")!, "JPY", "AUD")!), 1000);
-
-// A currency with no rate in the table can't be converted — the amount stays as quoted.
-assert.equal(text(5000, null, "THB", "USD"), "THB 5,000");
-
-// No currency on the row at all: a bare number, never stamped with the reader's code.
-assert.equal(text(500, null, "", "USD"), "500");
+// No currency on the row at all: a bare number, never stamped with a code.
+assert.equal(text(500, null, ""), "500");
 
 // Nothing to show.
-assert.equal(displayMoney(null, null, "USD", "USD"), null);
+assert.equal(displayMoney(null, null, "USD"), null);
 
 // Column values arrive as strings, and empty is not zero.
 assert.equal(toAmount("1234.5"), 1234.5);

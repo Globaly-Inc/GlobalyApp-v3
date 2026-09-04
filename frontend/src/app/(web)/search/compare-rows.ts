@@ -1,14 +1,13 @@
-import { DEFAULT_CURRENCY, displayMoney, normalizeCurrency, toAmount } from "../data/currency-rates";
+import { displayMoney, normalizeCurrency, toAmount } from "../data/currency-rates";
 import { DEGREE_LABEL, type CompareCourseItem, type CourseDetail } from "./types";
 
-/** `currency` is the code the reader picked in the navbar — every row that shows money takes it. */
 type CompareRow = {
   label: string;
-  get: (i: CompareCourseItem, detail?: CourseDetail, currency?: string) => string;
+  get: (i: CompareCourseItem, detail?: CourseDetail) => string;
 };
 
-const formatTuition = (i: CompareCourseItem, _detail?: CourseDetail, currency = DEFAULT_CURRENCY) =>
-  displayMoney(toAmount(i.annualTuition), null, normalizeCurrency(i.feeCurrency ?? "AUD"), currency)?.text
+const formatTuition = (i: CompareCourseItem) =>
+  displayMoney(toAmount(i.annualTuition), null, normalizeCurrency(i.feeCurrency ?? "AUD"))?.text
     ?? "Fees on enquiry";
 
 const eligibilityFor = (detail: CourseDetail | undefined, applicableTo: string) =>

@@ -29,14 +29,11 @@ import { ReviewForm } from "@/app/personal/earn/services/components/review-form"
 import { CategoryCover } from "@/app/personal/earn/services/components/category-cover";
 import { BookingDialog } from "@/app/personal/earn/services/components/booking-dialog";
 import type { BookingAnswerValue } from "@/app/personal/earn/services/apis";
-import { useCurrency } from "../../../components/currency-context";
-import { Money } from "../../../components/money";
 import { PageViews } from "../../../components/page-views";
 
 export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>) {
   const router = useRouter();
   const { user } = useAuthState();
-  const { currency } = useCurrency();
 
   const [service, setService] = useState<PublicService | null>(null);
   const [reviews, setReviews] = useState<PublicReview[]>([]);
@@ -276,13 +273,6 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
                     {formatMoney(service.price_minor, service.currency)}
                   </p>
                   <p className="text-xs text-muted-foreground">One-off payment in {service.currency}</p>
-                  {/* The charge itself is quoted in the seller's currency — the picked currency only
-                      buys the reader an indicative equivalent, never the amount they are billed. */}
-                  {currency !== service.currency && (
-                    <p className="text-xs text-muted-foreground">
-                      <Money amount={service.price_minor / 100} currency={service.currency} />
-                    </p>
-                  )}
                 </div>
 
                 <Button className="h-11 w-full text-base" onClick={handleBuy} disabled={buying}>

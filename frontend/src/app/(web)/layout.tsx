@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { CurrencyProvider } from "./components/currency-context";
 import { Navbar } from "./components/navbar";
 import { Footer } from "./components/footer";
 import { CookieConsent } from "./components/cookie-consent";
@@ -65,7 +64,6 @@ const WEBSITE_JSON_LD = {
 
 export default function WebLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <CurrencyProvider>
     <div className="flex min-h-screen flex-col">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ORGANIZATION_JSON_LD) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }} />
@@ -76,6 +74,5 @@ export default function WebLayout({ children }: Readonly<{ children: ReactNode }
       <BackToTop />
       <CompareTray />
     </div>
-    </CurrencyProvider>
   );
 }
