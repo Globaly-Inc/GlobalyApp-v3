@@ -26,11 +26,17 @@ export function FeeLinkPicker({
   const [loadingMore, setLoadingMore] = useState(false);
   const loadedQueryRef = useRef("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Load-more (append) staleness: a newer load-more, or a search that has since changed the
+  // displayed query, both invalidate it. Search (replace) staleness: only a newer search does —
+  // a load-more must never be able to discard a pending search's result, or the search response
+  // gets silently dropped while the picker is left stuck in its loading state.
   const requestIdRef = useRef(0);
+  const searchIdRef = useRef(0);
 
   const fetchPage = useCallback(
     async (query: string, pageNum: number, append: boolean) => {
       const requestId = ++requestIdRef.current;
+      const searchId = append ? null : ++searchIdRef.current;
       (append ? setLoadingMore : setLoading)(true);
       try {
         const res = await allExtractionsApi.getCourseFees(jobId, {
@@ -38,14 +44,18 @@ export function FeeLinkPicker({
           page: pageNum,
           limit: PAGE_SIZE,
         });
-        if (requestId !== requestIdRef.current) return;
-        const mapped = res.data.map((f) => ({ value: f.id, label: f.name ? `${f.name} — ${feeAmount(f)}` : feeAmount(f) }));
-        setOptions((prev) => (append ? [...prev, ...mapped] : mapped));
-        setTotalPages(res.meta.totalPages);
-        setPage(pageNum);
-        loadedQueryRef.current = query;
+        const stale = append
+          ? requestId !== requestIdRef.current || query !== loadedQueryRef.current
+          : searchId !== searchIdRef.current;
+        if (!stale) {
+          const mapped = res.data.map((f) => ({ value: f.id, label: f.name ? `${f.name} — ${feeAmount(f)}` : feeAmount(f) }));
+          setOptions((prev) => (append ? [...prev, ...mapped] : mapped));
+          setTotalPages(res.meta.totalPages);
+          setPage(pageNum);
+          loadedQueryRef.current = query;
+        }
       } finally {
-        if (requestId === requestIdRef.current) (append ? setLoadingMore : setLoading)(false);
+        (append ? setLoadingMore : setLoading)(false);
       }
     },
     [jobId],
