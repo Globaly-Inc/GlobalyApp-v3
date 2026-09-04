@@ -3,9 +3,9 @@ import { ArrowRight, GraduationCap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Money } from "../../components/money";
 import { Reveal } from "../../components/reveal";
 import type { SearchCourse } from "../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 export function CountryServices({
   countryName,
@@ -36,11 +36,9 @@ export function CountryServices({
                     <Badge variant="outline" className="text-xs">{course.subject_area}</Badge>
                   )}
                   {course.international_fee_total && (
-                    <Money
-                      amount={course.international_fee_total}
-                      currency={course.international_currency}
-                      className="text-xs text-muted-foreground"
-                    />
+                    <span className="text-xs text-muted-foreground">
+                      {amountLabel(course.international_fee_total, course.international_currency)}
+                    </span>
                   )}
                 </div>
               </CardContent>

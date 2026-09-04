@@ -1,4 +1,4 @@
-import { displayMoney, normalizeCurrency, toAmount } from "../data/currency-rates";
+import { amountLabel } from "@/lib/utils";
 import { DEGREE_LABEL, type CompareCourseItem, type CourseDetail } from "./types";
 
 type CompareRow = {
@@ -7,8 +7,7 @@ type CompareRow = {
 };
 
 const formatTuition = (i: CompareCourseItem) =>
-  displayMoney(toAmount(i.annualTuition), null, normalizeCurrency(i.feeCurrency ?? "AUD"))?.text
-    ?? "Fees on enquiry";
+  amountLabel(i.annualTuition, i.feeCurrency ?? "AUD") ?? "Fees on enquiry";
 
 const eligibilityFor = (detail: CourseDetail | undefined, applicableTo: string) =>
   detail?.eligibility.find((e) => e.applicable_to === applicableTo || e.applicable_to === "both")?.description ?? "—";

@@ -1,20 +1,16 @@
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Money } from "../../components/money";
 import { Reveal } from "../../components/reveal";
 import { AutoScrollRow } from "../../components/auto-scroll-row";
 import type { Destination } from "../../data/destinations";
 import { COUNTRY_FALLBACKS, FLAG_URL } from "../static-content";
+import { amountLabel } from "@/lib/utils";
 
-/**
- * Live tuition range when the country row has one, otherwise the static per-country fallback.
- * The live range goes through <Money> so it follows the navbar currency; the fallback is a
- * pre-formatted string with no amount to convert.
- */
+/** Live tuition range when the country row has one, otherwise the static per-country fallback. */
 function TuitionLabel({ country, fallback }: Readonly<{ country: Destination; fallback?: string }>) {
   const { tuitionMin, tuitionMax } = country;
   if (tuitionMin && tuitionMax) {
-    return <Money amount={tuitionMin} to={tuitionMax} currency={country.tuitionCurrency ?? "USD"} />;
+    return amountLabel(tuitionMin, country.tuitionCurrency ?? "USD", tuitionMax);
   }
   return fallback ?? "";
 }

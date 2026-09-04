@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Calendar, Clock, FileText, Wallet } from "lucide-react";
-import { Money } from "../../../components/money";
 import { coursePrice, formatDuration, formatNextIntake } from "../../../search/course-card-utils";
 import type { CourseDetail } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 /** The headline facts strip under the hero — the same four the search card leads with. */
 export function CourseStats({ course }: Readonly<{ course: CourseDetail }>) {
@@ -17,7 +17,7 @@ export function CourseStats({ course }: Readonly<{ course: CourseDetail }>) {
     {
       icon: Wallet,
       label: "Course Fee",
-      value: price ? <><Money amount={price.amount} currency={price.currency} /> · {price.label}</> : "On enquiry",
+      value: price ? `${amountLabel(price.amount, price.currency)} · ${price.label}` : "On enquiry",
     },
     {
       icon: Calendar,

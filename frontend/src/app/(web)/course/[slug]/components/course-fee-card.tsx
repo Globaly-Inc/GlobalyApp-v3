@@ -1,7 +1,7 @@
 import { Wallet } from "lucide-react";
-import { Money } from "../../../components/money";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import type { CourseDetail, FeeInstallment } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 function FeeTile({
   label, total, currency, installments,
@@ -19,7 +19,7 @@ function FeeTile({
 
   return (
     <div className="rounded-xl border border-border bg-muted/30 p-4">
-      <Money amount={amount} currency={currency} className="block text-2xl font-bold text-foreground" />
+      <p className="block text-2xl font-bold text-foreground">{amountLabel(amount, currency)}</p>
       <p className="mt-1 text-xs text-muted-foreground">{label}</p>
 
       {schedule.length > 1 && (
@@ -32,7 +32,7 @@ function FeeTile({
             {schedule.map((item, i) => (
               <li key={`${item.label ?? item.name ?? i}`} className="flex justify-between gap-3 text-xs">
                 <span className="text-muted-foreground">{item.label || item.name || `Instalment ${i + 1}`}</span>
-                <Money amount={item.amount} currency={currency} className="font-medium text-foreground" />
+                <span className="font-medium text-foreground">{amountLabel(item.amount, currency)}</span>
               </li>
             ))}
           </ul>

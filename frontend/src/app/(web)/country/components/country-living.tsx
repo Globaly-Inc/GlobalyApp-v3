@@ -1,8 +1,8 @@
 import { GraduationCap, DollarSign, Briefcase } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Money } from "../../components/money";
 import { Reveal } from "../../components/reveal";
 import type { CountryDetail } from "../types";
+import { amountLabel } from "@/lib/utils";
 
 export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>) {
   const hasTuition = country.avg_tuition_min != null || country.avg_tuition_max != null;
@@ -17,11 +17,11 @@ export function CountryLiving({ country }: Readonly<{ country: CountryDetail }>)
             <CardContent className="pt-6">
               <GraduationCap className="mb-3 h-8 w-8 text-primary" />
               <p className="text-lg font-semibold mt-1">
-                <Money
-                  amount={country.avg_tuition_min ?? country.avg_tuition_max}
-                  to={country.avg_tuition_min != null ? country.avg_tuition_max : null}
-                  currency={country.avg_tuition_currency}
-                />
+                {amountLabel(
+                  country.avg_tuition_min ?? country.avg_tuition_max,
+                  country.avg_tuition_currency,
+                  country.avg_tuition_min != null ? country.avg_tuition_max : null,
+                )}
                 /yr
               </p>
               <p className="text-sm text-muted-foreground">Average Tuition</p>

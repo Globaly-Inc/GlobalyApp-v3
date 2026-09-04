@@ -1,18 +1,16 @@
 import { FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Money } from "../../../components/money";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import type { VisaServiceItem } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 /** "AUD 1,200", "From AUD 800", "AUD 800 – 1,500" — whichever of the fee columns is filled in. */
-function FeeLabel({ service }: Readonly<{ service: VisaServiceItem }>) {
-  const money = (amount: string, to?: string | null) => (
-    <Money amount={amount} to={to} currency={service.fee_currency} />
-  );
+function feeLabel(service: VisaServiceItem): string | null {
+  const money = (amount: string, to?: string | null) => amountLabel(amount, service.fee_currency, to);
 
   if (service.fee_amount) return money(service.fee_amount);
   if (service.fee_from && service.fee_to) return money(service.fee_from, service.fee_to);
-  if (service.fee_from) return <>From {money(service.fee_from)}</>;
+  if (service.fee_from) return `From ${money(service.fee_from)}`;
   return null;
 }
 
@@ -32,9 +30,7 @@ export function VisaServicesSection({ services }: Readonly<{ services: VisaServi
                   {service.type && <p className="mt-0.5 text-xs capitalize text-muted-foreground">{service.type.replace(/_/g, " ")}</p>}
                 </div>
                 {(service.fee_amount || service.fee_from) && (
-                  <p className="shrink-0 text-sm font-semibold text-primary">
-                    <FeeLabel service={service} />
-                  </p>
+                  <p className="shrink-0 text-sm font-semibold text-primary">{feeLabel(service)}</p>
                 )}
               </div>
 

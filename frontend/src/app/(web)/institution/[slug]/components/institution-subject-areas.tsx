@@ -6,9 +6,9 @@ import {
   Leaf, Music, Palette, PenTool, Plane, Scale, Stethoscope, Wrench, type LucideIcon,
 } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
-import { Money } from "../../../components/money";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import { DEGREE_LABEL, type SubjectAreaSummary } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 const PAGE_SIZE = 6;
 
@@ -76,11 +76,7 @@ export function InstitutionSubjectAreas({
 
               {area.cost_min != null && area.cost_max != null && (
                 <p className="text-base font-semibold text-muted-foreground">
-                  <Money
-                    amount={area.cost_min}
-                    to={area.cost_min === area.cost_max ? null : area.cost_max}
-                    currency={area.currency}
-                  />
+                  {amountLabel(area.cost_min, area.currency, area.cost_min === area.cost_max ? null : area.cost_max)}
                 </p>
               )}
             </div>

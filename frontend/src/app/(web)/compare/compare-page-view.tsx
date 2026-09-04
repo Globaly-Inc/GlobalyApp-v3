@@ -8,12 +8,12 @@ import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InstitutionLogo } from "@/components/institution-logo";
 import { useAuthState } from "@/app/auth/store/auth-slice";
-import { Money } from "../components/money";
 import { useCompareTray } from "../search/use-compare-tray";
 import { COMPARE_GROUPS } from "../search/compare-rows";
 import { getCourseBySlug } from "../search/api";
 import type { CourseDetail } from "../search/types";
 import { LOGO } from "@/lib/public-assets";
+import { amountLabel } from "@/lib/utils";
 
 export function ComparePageView({
   basePath = "/compare",
@@ -220,11 +220,9 @@ export function ComparePageView({
                     <p className="mt-1 truncate text-center text-xs text-muted-foreground print:truncate-none">{item.institutionName}</p>
                   )}
                   <p className="mt-1 text-center text-sm font-semibold text-foreground">
-                    {item.annualTuition != null ? (
-                      <Money amount={item.annualTuition} currency={item.feeCurrency ?? "AUD"} />
-                    ) : (
-                      "Fees on enquiry"
-                    )}
+                    {item.annualTuition != null
+                      ? amountLabel(item.annualTuition, item.feeCurrency ?? "AUD")
+                      : "Fees on enquiry"}
                   </p>
                 </th>
               ))}

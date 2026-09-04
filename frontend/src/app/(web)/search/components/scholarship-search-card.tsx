@@ -2,13 +2,13 @@ import Link from "next/link";
 import { Award, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Money } from "../../components/money";
 import { BASIS_LABEL, type SearchScholarship } from "../types";
+import { amountLabel } from "@/lib/utils";
 
 export function ScholarshipSearchCard({ scholarship: s }: Readonly<{ scholarship: SearchScholarship }>) {
   const location = [s.city, s.country].filter(Boolean).join(", ");
   const award = s.coverage_amount != null
-    ? <Money amount={s.coverage_amount} currency={s.coverage_currency} />
+    ? amountLabel(s.coverage_amount, s.coverage_currency)
     : s.coverage_type.replace(/_/g, " ");
 
   return (

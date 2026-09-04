@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Calendar, Clock, Wallet } from "lucide-react";
-import { Money } from "../../../components/money";
 import { FavouriteButton } from "../../../search/components/favourite-button";
 import { coursePrice, formatDuration, formatNextIntake } from "../../../search/course-card-utils";
 import { DEGREE_LABEL, type SearchCourse } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 function TileStat({ icon: Icon, value }: Readonly<{ icon: typeof Clock; value: ReactNode }>) {
   return (
@@ -46,7 +46,7 @@ export function InstitutionCourseTile({ course }: Readonly<{ course: SearchCours
 
       <div className="pointer-events-none mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
         {price && (
-          <TileStat icon={Wallet} value={<><Money amount={price.amount} currency={price.currency} /> · {price.label}</>} />
+          <TileStat icon={Wallet} value={`${amountLabel(price.amount, price.currency)} · ${price.label}`} />
         )}
         {duration && <TileStat icon={Clock} value={duration} />}
         <TileStat icon={Calendar} value={formatNextIntake(course.next_intake_year, course.next_intake_month)} />

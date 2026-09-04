@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Money } from "../../components/money";
 import { JOB_TYPE_LABEL, type SearchJob } from "../types";
+import { amountLabel } from "@/lib/utils";
 
 export function JobCard({ job }: Readonly<{ job: SearchJob }>) {
   const company = job.company_name_from_business ?? job.company_name;
@@ -10,8 +10,8 @@ export function JobCard({ job }: Readonly<{ job: SearchJob }>) {
   const jobTypeLabel = job.job_type ? (JOB_TYPE_LABEL[job.job_type] ?? job.job_type) : null;
   // A range when both ends are quoted; a single figure keeps the "+" that says it is a floor.
   const pay = job.pay_min || job.pay_max
-    ? <><Money amount={job.pay_min ?? job.pay_max} currency={job.pay_currency} to={job.pay_min ? job.pay_max : null} />
-        {!job.pay_max && "+"} / {job.pay_unit ?? "year"}</>
+    ? `${amountLabel(job.pay_min ?? job.pay_max, job.pay_currency, job.pay_min ? job.pay_max : null)}`
+      + `${job.pay_max ? "" : "+"} / ${job.pay_unit ?? "year"}`
     : null;
 
   return (
