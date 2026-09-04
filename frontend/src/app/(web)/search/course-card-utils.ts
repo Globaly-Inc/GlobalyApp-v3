@@ -17,7 +17,7 @@ export function formatNextIntake(year: number | null, month: number | null): str
   return month ? `${MONTH_NAMES[month - 1]} ${year}` : String(year);
 }
 
-/** Numbers, not a formatted string — <Money> renders them in the currency the reader picked. */
+/** Numbers, not a formatted string — the caller runs them through amountLabel. */
 export type CoursePrice = { label: string; amount: number; currency: string };
 
 /**

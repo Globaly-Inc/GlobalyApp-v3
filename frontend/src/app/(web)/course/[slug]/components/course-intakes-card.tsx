@@ -71,10 +71,11 @@ export function CourseIntakesCard({ intakes }: Readonly<{ intakes: Intake[] }>) 
             <Detail icon={CalendarCheck} label="Application deadline" value={formatDate(active.admission_deadline)} />
             <Detail
               icon={CalendarClock}
-              label="Intake"
-              value={active.intake_month && active.intake_year
-                ? `${MONTH_NAMES[active.intake_month - 1]} ${active.intake_year}`
-                : active.intake_year ? String(active.intake_year) : null}
+              label="Intake ends"
+              value={formatDate(active.end_date)
+                ?? (active.intake_month && active.intake_year
+                  ? `${MONTH_NAMES[active.intake_month - 1]} ${active.intake_year}`
+                  : active.intake_year ? String(active.intake_year) : null)}
             />
           </div>
         </div>

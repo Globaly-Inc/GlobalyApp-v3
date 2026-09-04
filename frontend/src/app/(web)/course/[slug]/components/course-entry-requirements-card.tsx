@@ -1,7 +1,23 @@
 import { GraduationCap, Info, ShieldCheck, Trophy } from "lucide-react";
 import { testImage, type PlatformTest } from "@/lib/tests-catalog";
 import { ProfileSection } from "../../../components/profile/profile-section";
-import { DEGREE_LABEL, type CourseDetail } from "../../../search/types";
+import { DEGREE_LABEL, SCORE_TYPE_LABEL, type CourseDetail } from "../../../search/types";
+
+/** The requirement's minimum, whichever of the three ways extraction stored it. */
+function minimumScore(requirement: CourseDetail["eligibility"][number]): string | null {
+  if (requirement.min_score_percent) return `${requirement.min_score_percent}%`;
+  if (requirement.min_score) {
+    const scale = requirement.score_type ? SCORE_TYPE_LABEL[requirement.score_type] ?? requirement.score_type : null;
+    return scale ? `${requirement.min_score} ${scale}` : String(requirement.min_score);
+  }
+  return requirement.min_score_grade;
+}
+
+const AUDIENCE_LABEL: Record<string, string> = {
+  domestic: "Domestic students",
+  international: "International students",
+  both: "All students",
+};
 
 function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{children}</p>;
@@ -72,12 +88,19 @@ function LanguageRequirement({
 function AcademicRequirement({
   requirement, tests,
 }: Readonly<{ requirement: CourseDetail["eligibility"][number]; tests: PlatformTest[] }>) {
-  const minScore = requirement.min_score_percent ? `${requirement.min_score_percent}%` : requirement.min_score_grade;
+  const minScore = minimumScore(requirement);
   const scores = (requirement.academic_tests ?? []).filter((t) => t.test_name);
   if (!requirement.min_degree_level && !minScore && scores.length === 0 && !requirement.description) return null;
+  const audience = requirement.applicable_to ? AUDIENCE_LABEL[requirement.applicable_to] : null;
 
   return (
     <div className="space-y-3">
+      {(requirement.name || audience) && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-xs font-semibold text-foreground">{requirement.name}</p>
+          {audience && <span className="shrink-0 text-[10px] text-muted-foreground">{audience}</span>}
+        </div>
+      )}
       {(requirement.min_degree_level || minScore) && (
         <div className="space-y-2">
           <SectionLabel>Academic Requirement</SectionLabel>

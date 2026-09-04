@@ -33,6 +33,9 @@ export type SearchCourse = {
   /** First installment amount, present only when the fee actually splits into several payments. */
   domestic_fee_installment: string | null;
   international_fee_installment: string | null;
+  /** What the fee covers ("Per Year", "Total"…) — the linked fee row's own period. */
+  domestic_fee_period?: string | null;
+  international_fee_period?: string | null;
 };
 
 /** Facets for the institutions filter panel — only values the catalog actually contains. */
@@ -104,6 +107,7 @@ export type CourseIntake = {
   id: string;
   intake_name: string | null;
   start_date: string | null;
+  end_date: string | null;
   admission_deadline: string | null;
   intake_month: number | null;
   intake_year: number | null;
@@ -115,10 +119,14 @@ export type EligibilityLanguageTest = { test_type_name: string; overall_score?: 
 
 export type CourseEligibility = {
   id: string;
+  name: string | null;
   applicable_to: string;
   min_degree_level: string | null;
   min_score_percent: string | null;
   min_score_grade: string | null;
+  /** A non-percentage minimum: `min_score` on the `score_type` scale (GPA, CGPA…). */
+  min_score: string | null;
+  score_type: string | null;
   description: string | null;
   academic_tests: EligibilityAcademicTest[] | null;
   language_tests: EligibilityLanguageTest[] | null;
@@ -132,6 +140,27 @@ export type CourseEnglishRequirement = {
   reading_score: string | null;
   writing_score: string | null;
   speaking_score: string | null;
+};
+
+/** A unit of the course's curriculum — `extraction_study_units`, linked per course. */
+export type CourseStudyUnit = {
+  id: string;
+  unit_code: string | null;
+  unit_name: string;
+  credit_points: number | null;
+  unit_type: string | null;
+  description: string | null;
+};
+
+/** One way to take the course: mode + load + how long it runs that way. */
+export type CourseStudyOption = {
+  id: string;
+  name: string | null;
+  study_mode: string | null;
+  study_load: string | null;
+  duration_value: number | null;
+  duration_unit: string | null;
+  applicable_to: string | null;
 };
 
 /** The awarding institution, enough of it to render the course hero and link to its profile. */
@@ -166,6 +195,8 @@ export type CourseDetail = SearchCourse & {
   intakes: CourseIntake[];
   eligibility: CourseEligibility[];
   englishRequirements: CourseEnglishRequirement[];
+  study_units: CourseStudyUnit[];
+  study_options: CourseStudyOption[];
   institution: CourseInstitution | null;
   campuses: InstitutionCampus[];
   weather: CourseWeather | null;
@@ -268,6 +299,11 @@ export type VisaServiceProviderDetail = {
   business_name: string;
   logo_url: string | null;
   description: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
+  youtube_url: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
@@ -284,6 +320,8 @@ export type VisaServiceItem = {
   name: string;
   type: string | null;
   description: string | null;
+  /** What the provider says the service covers — `services_offered` jsonb. */
+  services_offered: string[] | null;
   registration_number: string | null;
   registration_body: string | null;
   registration_status: string | null;
@@ -298,8 +336,14 @@ export type VisaServiceItem = {
   fee_to: string | null;
   consultation_fee: string | null;
   consultation_free: boolean | null;
+  /** Track record, the same figures the admin's service card shows. */
   years_experience: number | null;
+  team_size: number | null;
+  success_rate: string | null;
+  average_rating: string | null;
+  review_count: number | null;
   countries_serviced: string[] | null;
+  nationalities_serviced: string[] | null;
 };
 
 export type BusinessBranch = {
@@ -421,6 +465,14 @@ export type SearchTabKey =
   | "scholarships"
   | "services";
 
+/** How an eligibility requirement's `min_score` is scaled (see the admin's SCORE_TYPE_OPTIONS). */
+export const SCORE_TYPE_LABEL: Record<string, string> = {
+  percentage: "Percentage",
+  gpa_4: "GPA (out of 4.0)",
+  gpa_10: "GPA (out of 10.0)",
+  cgpa: "CGPA",
+};
+
 export const DEGREE_LABEL: Record<string, string> = {
   certificate: "Certificate",
   diploma: "Diploma",
@@ -457,12 +509,19 @@ export const BASIS_LABEL: Record<string, string> = {
   government: "Government", research: "Research", other: "Other",
 };
 
+// The three modes superadmin offers (STUDY_MODE_OPTIONS in the extractions const). full_time and
+// part_time are study *loads* — they used to sit here and rendered as modes whenever a scrape put
+// one in the mode column; STUDY_LOAD_LABEL is where they belong.
 export const STUDY_MODE_LABEL: Record<string, string> = {
+  on_campus: "On Campus",
+  online: "Online",
+  hybrid: "Hybrid",
+  blended: "Hybrid", // legacy rows from before the importer normalised blended -> hybrid
+};
+
+export const STUDY_LOAD_LABEL: Record<string, string> = {
   full_time: "Full-Time",
   part_time: "Part-Time",
-  online: "Online",
-  on_campus: "On Campus",
-  blended: "Blended",
 };
 
 export const JOB_TYPE_LABEL: Record<string, string> = {

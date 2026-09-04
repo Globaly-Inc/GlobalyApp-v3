@@ -1,6 +1,7 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
+import { COURSE_INTAKES, NOT_REJECTED } from "./courses.repository.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 
 // The public catalog row shape the institution detail page expects — `job_id` (from
@@ -97,9 +98,31 @@ export type InstitutionFilters = Omit<BusinessSearchFilters, "businessType"> & {
  * Subject area, degree level and study mode are course properties — an institution has them only
  * through what it teaches — so each is an EXISTS over its extraction job rather than a column here.
  */
+/**
+ * The three modes superadmin offers in the Study Options tab (STUDY_MODE_OPTIONS on the frontend).
+ * Anything else is junk from a `creatable` combobox or an old scrape, and never reaches a card.
+ */
+const STUDY_MODES = ["on_campus", "online", "hybrid"] as const;
+
+/**
+ * An institution's study modes come from its courses' study OPTIONS — the rows an admin curates
+ * per course — not from `extraction_courses.study_mode`, which is raw model output and regularly
+ * holds a study *load* ("full_time") in the mode column. Same fragment behind the card, the
+ * filter facets and the filter itself, so all three agree on what a mode is.
+ */
+const courseStudyModes = (courseScope: string) => `
+  select distinct so.study_mode
+    from ${S}.extraction_courses ec
+    join ${S}.extraction_course_study_option_assignments a on a.course_id = ec.id
+    join ${S}.extraction_study_options so on so.id = a.study_option_id
+   where ${courseScope}
+     and ${NOT_REJECTED}
+     and so.study_mode in (${STUDY_MODES.map((m) => `'${m}'`).join(", ")})`;
+
 function catalogMatch(condition: string, bindings: unknown[]) {
   return {
-    sql: `exists (select 1 from ${S}.extraction_courses ec where ec.job_id = i.source_job_id and ${condition})`,
+    sql: `exists (select 1 from ${S}.extraction_courses ec
+                  where ec.job_id = i.source_job_id and ${NOT_REJECTED} and ${condition})`,
     bindings,
   };
 }
@@ -129,9 +152,10 @@ function institutionsQuery({
     const [year, month] = intakeFrom.split("-").map(Number);
     q.whereRaw(
       `exists (
-        select 1 from ${S}.extraction_courses ec
-          join ${S}.extraction_intakes ei on ei.course_id = ec.id
+        select 1 from ${COURSE_INTAKES}
+          join ${S}.extraction_courses ec on ec.id = ia.course_id
          where ec.job_id = i.source_job_id
+           and ${NOT_REJECTED}
            and ei.intake_year is not null
            and (ei.intake_year > ? or (ei.intake_year = ? and coalesce(ei.intake_month, 1) >= ?))
       )`,
@@ -141,7 +165,10 @@ function institutionsQuery({
   for (const match of [
     subjectArea && catalogMatch("ec.subject_area ilike ?", [`%${subjectArea}%`]),
     degreeLevel && catalogMatch("ec.degree_level = ?", [degreeLevel]),
-    studyMode && catalogMatch("ec.study_mode = ?", [studyMode]),
+    studyMode && {
+      sql: `exists (${courseStudyModes("ec.job_id = i.source_job_id")} and so.study_mode = ?)`,
+      bindings: [studyMode],
+    },
   ]) {
     if (match) q.whereRaw(match.sql, match.bindings as never);
   }
@@ -179,18 +206,22 @@ export async function listInstitutionTypes() {
  * modes actually taught by a published institution, so no option can return an empty result.
  */
 export async function listInstitutionCatalogFacets() {
-  const { rows } = await masterKnex.raw(
-    `select distinct ec.subject_area, ec.degree_level, ec.study_mode
-       from ${S}.extraction_courses ec
-      where exists (select 1 from institutions i
-                     where i.source_job_id = ec.job_id and i.is_published = true and i.deleted_at is null)`,
-  );
-  const column = (key: "subject_area" | "degree_level" | "study_mode") =>
+  const published = `exists (select 1 from institutions i
+                              where i.source_job_id = ec.job_id and i.is_published = true and i.deleted_at is null)`;
+  const [{ rows }, modeRows] = await Promise.all([
+    masterKnex.raw(
+      `select distinct ec.subject_area, ec.degree_level
+         from ${S}.extraction_courses ec
+        where ${published} and ${NOT_REJECTED}`,
+    ),
+    masterKnex.raw(`${courseStudyModes(published)} order by so.study_mode`),
+  ]);
+  const column = (key: "subject_area" | "degree_level") =>
     [...new Set((rows as Record<string, string | null>[]).map((r) => r[key]).filter(Boolean))].sort() as string[];
   return {
     subject_areas: column("subject_area"),
     degree_levels: column("degree_level"),
-    study_modes: column("study_mode"),
+    study_modes: (modeRows.rows as { study_mode: string }[]).map((r) => r.study_mode),
   };
 }
 
@@ -198,9 +229,10 @@ export async function listInstitutionCatalogFacets() {
 export async function listInstitutionIntakeMonths() {
   const rows = await masterKnex.raw(
     `select distinct ei.intake_year, coalesce(ei.intake_month, 1) as intake_month
-       from ${S}.extraction_intakes ei
-       join ${S}.extraction_courses ec on ec.id = ei.course_id
+       from ${COURSE_INTAKES}
+       join ${S}.extraction_courses ec on ec.id = ia.course_id
       where ei.intake_year is not null
+        and ${NOT_REJECTED}
         and exists (select 1 from institutions i
                      where i.source_job_id = ec.job_id and i.is_published = true and i.deleted_at is null)
       order by 1, 2`,
@@ -210,11 +242,15 @@ export async function listInstitutionIntakeMonths() {
   );
 }
 
-/** Confirmed scraped courses for a promoted institution, via its source job. */
+/**
+ * Courses of a promoted institution, via its source job — the same set the profile's course tab
+ * lists (countPublicCourses). Not gated on `verification_status`: the public catalog isn't
+ * either, so counting only 'confirmed' rows put a 0 on the card beside a profile full of courses.
+ */
 function institutionCourseCount() {
   return masterKnex.raw(
     `(select count(*) from ${S}.extraction_courses ec
-      where ec.job_id = i.source_job_id and ec.verification_status = 'confirmed') as course_count`,
+      where ec.job_id = i.source_job_id and ${NOT_REJECTED}) as course_count`,
   );
 }
 
@@ -223,11 +259,12 @@ function institutionCourseCount() {
 const INSTITUTION_CARD_COLUMNS = [
   masterKnex.raw(
     `(select count(distinct ec.subject_area) from ${S}.extraction_courses ec
-       where ec.job_id = i.source_job_id and ec.subject_area is not null) as subject_area_count`,
+       where ec.job_id = i.source_job_id and ec.subject_area is not null
+         and ${NOT_REJECTED}) as subject_area_count`,
   ),
   masterKnex.raw(
-    `(select array_agg(distinct ec.study_mode order by ec.study_mode) from ${S}.extraction_courses ec
-       where ec.job_id = i.source_job_id and ec.study_mode is not null) as study_modes`,
+    `(select array_agg(study_mode order by study_mode)
+        from (${courseStudyModes("ec.job_id = i.source_job_id")}) modes) as study_modes`,
   ),
   masterKnex.raw(
     `(select array_agg(distinct coalesce(cam.city, cam.state) order by coalesce(cam.city, cam.state))
@@ -252,12 +289,20 @@ export type VisaServiceFilters = Omit<BusinessSearchFilters, "businessType"> & {
   serviceType?: string;
 };
 
+/**
+ * A service superadmin discarded is a rejected row (visa-services.service.ts), so it must not be
+ * listed, counted or filtered on publicly. 'pending' and 'approved' both stay visible — the
+ * catalog would otherwise be empty, since a scraped service starts 'pending'.
+ */
+const VISIBLE_VISA_SERVICE = "coalesce(evs.status, 'pending') <> 'discarded'";
+
 function visaServiceProvidersQuery({ licensedOnly, serviceType, ...rest }: VisaServiceFilters) {
   const q = overviewQuery(rest, "ej.source_type = 'visa_service'");
   // Both filters are properties of a service the provider offers, so each is an EXISTS over its job.
   const offers = (condition: string, bindings: unknown[] = []) =>
     q.whereRaw(
-      `exists (select 1 from ${S}.extraction_visa_services evs where evs.job_id = ei.job_id and ${condition})`,
+      `exists (select 1 from ${S}.extraction_visa_services evs
+                where evs.job_id = ei.job_id and ${VISIBLE_VISA_SERVICE} and ${condition})`,
       bindings as never,
     );
   if (licensedOnly) offers("evs.registration_status = 'active'");
@@ -273,6 +318,7 @@ export async function listVisaServiceFacets() {
   const rows = await masterKnex(`${S}.extraction_visa_services as evs`)
     .distinct("evs.type")
     .whereNotNull("evs.type")
+    .whereRaw(VISIBLE_VISA_SERVICE)
     .whereRaw(
       `exists (select 1 from ${S}.extraction_jobs ej
                 where ej.id = evs.job_id and ej.status = 'exported' and ej.source_type = 'visa_service')`,
@@ -400,7 +446,8 @@ export async function listPublicVisaServiceProviders(filters: VisaServiceFilters
       "ei.id", "ei.name as business_name", "ei.logo_url", "ei.description", "ei.city", "ei.country as country_name",
       "ei.website", "ei.email",
       masterKnex.raw(
-        `(select count(*) from ${S}.extraction_visa_services evs where evs.job_id = ei.job_id) as service_count`,
+        `(select count(*) from ${S}.extraction_visa_services evs
+           where evs.job_id = ei.job_id and ${VISIBLE_VISA_SERVICE}) as service_count`,
       ),
     )
     .orderBy("ei.name")
@@ -450,6 +497,7 @@ export async function findPublicVisaServiceProviderBySlug(slug: string) {
       "ei.id", "ei.job_id", "ei.name as business_name", "ei.logo_url", "ei.description",
       "ei.address", "ei.city", "ei.state", "ei.country as country_name",
       "ei.website", "ei.email", "ei.phone", "ei.source_url",
+      "ei.facebook_url", "ei.instagram_url", "ei.twitter_url", "ei.linkedin_url", "ei.youtube_url",
     )
     .first();
   if (!provider) return null;
@@ -458,15 +506,22 @@ export async function findPublicVisaServiceProviderBySlug(slug: string) {
 
 /** The scraped visa services filed under a provider's extraction job. */
 export async function listPublicVisaServicesForJob(jobId: string) {
-  return masterKnex(`${S}.extraction_visa_services`)
-    .where("job_id", jobId)
+  return masterKnex(`${S}.extraction_visa_services as evs`)
+    .where("evs.job_id", jobId)
+    .whereRaw(VISIBLE_VISA_SERVICE)
     .select(
-      "id", "name", "type", "description", "registration_number", "registration_body",
-      "registration_status", "registration_expiry", "visa_types_handled", "specializations",
-      "languages_spoken", "fee_amount", "fee_currency", "fee_type", "fee_from", "fee_to",
-      "consultation_fee", "consultation_free", "years_experience", "countries_serviced",
+      "evs.id", "evs.name", "evs.type", "evs.description",
+      "evs.registration_number", "evs.registration_body",
+      "evs.registration_status", "evs.registration_expiry",
+      "evs.visa_types_handled", "evs.specializations", "evs.services_offered",
+      "evs.languages_spoken", "evs.fee_amount", "evs.fee_currency", "evs.fee_type",
+      "evs.fee_from", "evs.fee_to", "evs.consultation_fee", "evs.consultation_free",
+      // Track record — the same figures the admin's service card shows.
+      "evs.years_experience", "evs.team_size", "evs.success_rate",
+      "evs.average_rating", "evs.review_count",
+      "evs.countries_serviced", "evs.nationalities_serviced",
     )
-    .orderBy("name");
+    .orderBy("evs.name");
 }
 
 export type BusinessSearchFilters = {
@@ -490,6 +545,8 @@ const BUSINESS_COLUMNS = [
   // Header/sidebar fields the shared entity profile renders: the Verified badge, the Locations
   // map and the Registration & Licenses card (see EntityProfile on the frontend).
   "b.status", "b.latitude", "b.longitude", "b.business_registration_number", "b.registration_licenses",
+  // Provenance: which scraped agent this listing was promoted from, for the branches fallback.
+  "b.source_agent_id",
 ];
 
 function baseQuery({ businessType, country, city, search, verifiedOnly }: BusinessSearchFilters) {
@@ -571,6 +628,31 @@ export async function listPublicBranches(businessId: number, schemaName: string)
     .select("uuid as id", "name", "country", "state", "city", "address", "phone", "email", "is_primary", "branch_type")
     .orderBy("is_primary", "desc")
     .orderBy("name");
+}
+
+/**
+ * The offices of a promoted-but-unclaimed listing. Promote deliberately copies no catalog — it is
+ * "read through source_job_id" — so until the owner claims the listing (and gets a tenant schema
+ * with `business_branches`), its branches are the scraped agent locations superadmin already
+ * shows on the job's Agents tab. Without this the profile showed only a head office.
+ */
+export async function listScrapedBranches(sourceAgentId: string) {
+  return masterKnex(`${S}.extraction_agent_locations as l`)
+    .where("l.agent_id", sourceAgentId)
+    .select(
+      "l.id",
+      masterKnex.raw(
+        `case when l.is_head_office then 'Head Office'
+              else coalesce(nullif(l.city, ''), nullif(l.state, ''), 'Office') end as name`,
+      ),
+      "l.country", "l.state", "l.city",
+      // Scraped rows carry either a formatted address or the street lines it was built from.
+      masterKnex.raw("coalesce(nullif(l.address, ''), nullif(concat_ws(', ', l.street1, l.street2), '')) as address"),
+      "l.phone", "l.email",
+      "l.is_head_office as is_primary",
+      masterKnex.raw("null::text as branch_type"),
+    )
+    .orderBy([{ column: "l.is_head_office", order: "desc" }, { column: "l.city" }]);
 }
 
 export async function listPublicMembers(businessId: number, schemaName: string) {
