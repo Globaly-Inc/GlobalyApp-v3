@@ -10,22 +10,25 @@
  * The dimensions are the files' own, and next/image needs them for a remote src: they only fix
  * the aspect ratio, since every call site sizes the mark with `h-* w-auto`.
  */
-const BUCKET = "https://storage.googleapis.com/globalyapp-public-images/photos";
+const BUCKET = "https://storage.googleapis.com/globalyapp-public-images";
 
-export const LOGO = { src: `${BUCKET}/globaly-logo.png`, width: 753, height: 157 } as const;
-export const LOGO_WHITE = { src: `${BUCKET}/globaly-logo-white.png`, width: 776, height: 188 } as const;
+/** The brand marks sit under `logos/`; everything else under `photos/`. */
+export const LOGO = { src: `${BUCKET}/logos/globaly-logo.png`, width: 753, height: 157 } as const;
+export const LOGO_WHITE = { src: `${BUCKET}/logos/globaly-logo-white.png`, width: 776, height: 188 } as const;
+
+const PHOTOS = `${BUCKET}/photos`;
 
 /** Institution crests (250×250) used by the public marketing mockups. */
 export const INSTITUTION_LOGOS = {
-  asu: `${BUCKET}/asu.png`,
-  manchester: `${BUCKET}/manchester.png`,
-  melbourne: `${BUCKET}/melbourne.png`,
-  nus: `${BUCKET}/nus.png`,
-  toronto: `${BUCKET}/toronto.png`,
+  asu: `${PHOTOS}/asu.png`,
+  manchester: `${PHOTOS}/manchester.png`,
+  melbourne: `${PHOTOS}/melbourne.png`,
+  nus: `${PHOTOS}/nus.png`,
+  toronto: `${PHOTOS}/toronto.png`,
 } as const;
 
 /** Counselor portraits for the same mockups. */
 export const PEOPLE_PHOTOS = {
-  danielOkoye: `${BUCKET}/daniel-okoye.jpg`,
-  priyaSharma: `${BUCKET}/priya-sharma.jpg`,
+  danielOkoye: `${PHOTOS}/daniel-okoye.jpg`,
+  priyaSharma: `${PHOTOS}/priya-sharma.jpg`,
 } as const;
