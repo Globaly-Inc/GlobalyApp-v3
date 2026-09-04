@@ -312,6 +312,41 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
 }
 
 /**
+ * Upsert a fee for a job — deduplicates by (student_type, period_type, currency, total_amount)
+ * within the same job so a shared rate (e.g. "$325/credit for all programs") creates ONE row
+ * linked to multiple courses via extraction_course_fee_assignments, not one identical row per
+ * course. Name is excluded from the key because LLM wording varies across pages.
+ */
+export async function upsertFee(jobId: string, fee: {
+  name?: string | null;
+  student_type: string;
+  period_type: string;
+  currency?: string | null;
+  total_amount?: number | null;
+  installments?: string | null;
+}): Promise<string> {
+  const q = masterKnex(`${S}.extraction_course_fees`)
+    .where({ job_id: jobId, student_type: fee.student_type, period_type: fee.period_type });
+  if (fee.currency != null) q.where({ currency: fee.currency }); else q.whereNull("currency");
+  if (fee.total_amount != null) q.where({ total_amount: fee.total_amount }); else q.whereNull("total_amount");
+  const existing = await q.first();
+  if (existing) return existing.id as string;
+
+  const [row] = await masterKnex(`${S}.extraction_course_fees`)
+    .insert({
+      job_id: jobId,
+      name: fee.name ?? null,
+      student_type: fee.student_type,
+      period_type: fee.period_type,
+      currency: fee.currency ?? null,
+      total_amount: fee.total_amount ?? null,
+      ...(fee.installments ? { installments: fee.installments } : {}),
+    })
+    .returning("id");
+  return row.id as string;
+}
+
+/**
  * Normalise a course name for dedup: lowercase, collapse whitespace, strip degree
  * prefixes that the LLM sometimes includes inconsistently.
  */
@@ -391,18 +426,15 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Fees + assignments ──
   if (course.fees?.length) {
     for (const fee of course.fees) {
-      const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-        .insert({
-          job_id: jobId,
-          name: fee.name ?? null,
-          student_type: fee.student_type ?? "both",
-          period_type: fee.period_type ?? "Per Year",
-          currency: fee.currency ?? null,
-          total_amount: coerceMoney(fee.total_amount),
-        })
-        .returning("id");
+      const feeId = await upsertFee(jobId, {
+        name: fee.name ?? null,
+        student_type: fee.student_type ?? "both",
+        period_type: fee.period_type ?? "Per Year",
+        currency: fee.currency ?? null,
+        total_amount: coerceMoney(fee.total_amount),
+      });
       await masterKnex(`${S}.extraction_course_fee_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id })
+        .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
         .onConflict(["course_id", "course_fee_id"]).ignore();
     }
   }
