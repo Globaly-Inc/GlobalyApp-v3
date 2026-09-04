@@ -32,6 +32,7 @@ import {
   writeJobEvent,
   normaliseCampusName,
   upsertStudyUnit,
+  upsertFee,
   normaliseCourseCategory,
   normaliseScoreType,
   deriveScoreFromDescription,
@@ -92,6 +93,17 @@ async function markStepProgress(jobId: string, step: string, status: string) {
 async function scrapeUrl(url: string): Promise<string | null> {
   const r = await scrapeMarkdown(url, { onlyMainContent: true });
   return r.markdown && r.markdown.length > 50 ? r.markdown : null;
+}
+
+/** Like scrapeUrl but falls back to Gemini vision for PDF URLs. */
+async function scrapeUrlOrPdf(url: string): Promise<string | null> {
+  if (/\.pdf(\?|#|$)/i.test(url)) {
+    const docExtractor = createDocumentExtractor();
+    const fileName = url.split("/").pop()?.split("?")[0] || "fees.pdf";
+    const result = await docExtractor.extract({ file_url: url, file_name: fileName });
+    return result.text && result.text.length >= 50 ? result.text : null;
+  }
+  return scrapeUrl(url);
 }
 
 async function scrapeInstitutionPage(url: string): Promise<{ markdown: string; links: string[] } | null> {
@@ -834,7 +846,7 @@ async function handleEnrichmentStep(jobId: string) {
   const guided = parseGuidedUrls(job);
   const feesUrls: string[] = (guided.fees_urls as string[]) || [];
   if (feesUrls.length > 0) {
-    const pages = (await Promise.all(feesUrls.map((u) => scrapeUrl(u)))).filter((md): md is string => !!md);
+    const pages = (await Promise.all(feesUrls.map((u) => scrapeUrlOrPdf(u)))).filter((md): md is string => !!md);
     if (pages.length > 0) feePageText = pages.join("\n\n");
   }
 
@@ -857,7 +869,7 @@ async function handleEnrichmentStep(jobId: string) {
   if (!feePageText) {
     for (const p of candidatePaths) {
       const url = `${origin}${p}`;
-      const md = await scrapeUrl(url);
+      const md = await scrapeUrlOrPdf(url);
       if (md && md.length > 500) { feePageText = md; break; }
     }
   }
@@ -932,16 +944,15 @@ async function handleEnrichmentStep(jobId: string) {
       durationWeeks: course?.duration_weeks ?? null,
     });
 
-    const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-      .insert({
-        job_id: jobId, student_type: fee.student_type,
-        total_amount: fee.amount, currency: fee.currency,
-        period_type: fee.period,
-        installments: installments.length > 0 ? JSON.stringify(installments) : null,
-      })
-      .returning("id");
+    const feeId = await upsertFee(jobId, {
+      student_type: fee.student_type,
+      total_amount: fee.amount,
+      currency: fee.currency,
+      period_type: fee.period,
+      installments: installments.length > 0 ? JSON.stringify(installments) : null,
+    });
     await masterKnex(`${S}.extraction_course_fee_assignments`)
-      .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id })
+      .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
       .onConflict(["course_id", "course_fee_id"]).ignore();
     linked++;
   }
@@ -1001,13 +1012,14 @@ async function handleCourseDataStep(
 
   // Admin-supplied pages for this data type (fees_urls, intakes_urls, …) get appended to
   // the course page — a shared fee table often lives off the course page entirely.
+  // PDF URLs (fee schedules, prospectuses) are handled via Gemini vision.
   // ponytail: first 3 only, to bound scrape cost; raise if sites split data wider than that.
   let combined = markdown;
   const guidedForType = parseGuidedUrls(job)[`${dataType}_urls`];
   if (Array.isArray(guidedForType)) {
     for (const extra of guidedForType.slice(0, 3)) {
       if (typeof extra !== "string") continue;
-      const extraMd = await scrapeUrl(extra);
+      const extraMd = await scrapeUrlOrPdf(extra);
       if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
     }
   }
@@ -1051,19 +1063,17 @@ async function handleCourseDataStep(
           periodType: (fee.period_type as string) ?? "Per Year",
           durationWeeks: course.duration_weeks ?? null,
         });
-        const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-          .insert({
-            job_id: jobId,
-            name: fee.name ?? null,
-            student_type: fee.student_type ?? "both",
-            period_type: fee.period_type ?? "Per Year",
-            currency: fee.currency ?? "AUD",
-            total_amount: fee.total_amount,
-            installments: installments.length > 0 ? JSON.stringify(installments) : null,
-          })
-          .returning("id");
+        const feeId = await upsertFee(jobId, {
+          name: (fee.name as string) ?? null,
+          student_type: (fee.student_type as string) ?? "both",
+          period_type: (fee.period_type as string) ?? "Per Year",
+          currency: (fee.currency as string) ?? null,
+          total_amount: fee.total_amount as number,
+          installments: installments.length > 0 ? JSON.stringify(installments) : null,
+        });
         await masterKnex(`${S}.extraction_course_fee_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id });
+          .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
+          .onConflict(["course_id", "course_fee_id"]).ignore();
         count++;
       }
       // Update course-level fee totals

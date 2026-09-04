@@ -1,9 +1,12 @@
 // Document text extractor for the extraction pipeline.
-// Handles PDFs (via Gemini vision), text formats, and skips unsupported binaries.
+// Handles PDFs (via Gemini vision with pdf-parse text fallback), text formats,
+// and skips unsupported binaries.
 // Ported from V2 document-extractor.ts — V3 uses GCS + direct Gemini SDK.
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Storage } from "@google-cloud/storage";
+import { createRequire } from "node:module";
+const pdfParse = createRequire(import.meta.url)("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 
@@ -138,6 +141,25 @@ async function extractPdfWithGemini(
   }
 }
 
+// ─── PDF text extraction fallback (no API key needed) ─────────────────────
+// Used when Gemini Vision is unavailable. Works for text-based PDFs (the vast
+// majority of fee schedules). Silently returns null for scanned/image-only PDFs.
+
+async function extractPdfText(
+  pdfBuffer: Buffer,
+  maxChars: number = MAX_RETURN_CHARS,
+): Promise<string | null> {
+  try {
+    const data = await pdfParse(pdfBuffer);
+    const text = data.text?.trim();
+    if (!text || text.length < 20) return null;
+    return truncate(text, maxChars);
+  } catch (err) {
+    logger.warn(`pdf-parse text extraction failed: ${err}`);
+    return null;
+  }
+}
+
 // ─── Factory ──────────────────────────────────────────────────────────────
 
 export function createDocumentExtractor() {
@@ -172,16 +194,29 @@ export function createDocumentExtractor() {
     let error: string | undefined;
 
     if (ext === "pdf") {
-      if (!config.GEMINI_API_KEY) {
-        error = "no_api_key";
-      } else if (buf.length > MAX_PDF_BYTES) {
+      if (buf.length > MAX_PDF_BYTES) {
         error = "too_large";
-      } else {
+      } else if (config.GEMINI_API_KEY) {
         const extracted = await extractPdfWithGemini(buf, doc.file_name, maxChars);
         if (extracted) {
           text = extracted;
         } else {
-          error = "ai_failed";
+          // Gemini Vision failed — fall back to pdf-parse text extraction
+          const fallback = await extractPdfText(buf, maxChars);
+          if (fallback) {
+            text = fallback;
+            logger.info(`PDF text fallback used for ${doc.file_name}`);
+          } else {
+            error = "ai_failed";
+          }
+        }
+      } else {
+        // No Gemini key — go straight to pdf-parse
+        const fallback = await extractPdfText(buf, maxChars);
+        if (fallback) {
+          text = fallback;
+        } else {
+          error = "no_api_key";
         }
       }
     } else if (TEXT_EXTENSIONS.has(ext)) {

@@ -25,6 +25,7 @@ import {
 } from "../lib/staging-writer.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { classifyFailure, type FailureClass } from "../lib/classify-failure.js";
+import { createDocumentExtractor } from "../lib/document-extractor.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -104,11 +105,24 @@ async function scrapeSecondaryPage(resolvedUrl: string, cache: Map<string, strin
   if (cache.has(resolvedUrl)) return cache.get(resolvedUrl)!;
   let markdown: string | null = null;
   try {
-    const page = await scrapeMarkdown(resolvedUrl, { onlyMainContent: true });
-    if (!page.blocked && page.markdown.length >= 50) {
-      markdown = truncateMarkdown(page.markdown);
+    const isPdf = /\.pdf(\?|#|$)/i.test(resolvedUrl);
+    if (isPdf) {
+      // scrapeMarkdown can't render PDFs — use Gemini vision extraction instead
+      const docExtractor = createDocumentExtractor();
+      const fileName = resolvedUrl.split("/").pop()?.split("?")[0] || "fees.pdf";
+      const result = await docExtractor.extract({ file_url: resolvedUrl, file_name: fileName });
+      if (result.text && result.text.length >= 50) {
+        markdown = truncateMarkdown(result.text);
+      } else {
+        logger.warn("PDF secondary page empty or failed", { jobId, url: resolvedUrl, error: result.error });
+      }
     } else {
-      logger.warn("Secondary page blocked or empty, skipping fetch", { jobId, url: resolvedUrl });
+      const page = await scrapeMarkdown(resolvedUrl, { onlyMainContent: true });
+      if (!page.blocked && page.markdown.length >= 50) {
+        markdown = truncateMarkdown(page.markdown);
+      } else {
+        logger.warn("Secondary page blocked or empty, skipping fetch", { jobId, url: resolvedUrl });
+      }
     }
   } catch (err) {
     logger.warn("Secondary page scrape failed, skipping fetch", {

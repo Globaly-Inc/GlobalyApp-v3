@@ -195,6 +195,8 @@ Rules:
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If this page states no real fee figures but links to a dedicated fees/tuition/cost page (a schedule page, a catalog entry, an external PDF), leave fees empty and set fees_page_url to that link instead — never fabricate a fee entry with no amount just to record the URL
 - If a fee is shown as a range (e.g. "$25,000-$30,000"), set total_amount to the lower bound and keep the full range in the fee's name — never average or invent a single figure. If a page shows both a per-year figure AND a total-program figure, extract BOTH as separate fees array entries distinguished by period_type — never collapse them into one guess.
+- TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: one entry with period_type "Per Unit" and total_amount = the rate (325), AND one entry with period_type "Total" and total_amount = the computed or explicitly stated total (3900). Never capture ONLY the per-unit rate when a total is derivable or explicitly stated — the total is what matters most for display.
+- STUDENT TYPE: Use student_type "both" whenever the page shows ONE fee figure with no domestic/international distinction. Only emit separate "domestic" and "international" entries when the page explicitly states TWO DIFFERENT amounts — one labelled for domestic students and one for international. Never duplicate the same amount into two separate entries.
 - Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")
 - study_units are the individual subjects/units taught within THIS course's curriculum (e.g. a listed core/elective unit with its own code or name) — only include units explicitly listed as part of this course's structure, not unrelated courses mentioned elsewhere on the page. A differently-titled qualification or award-level variant of the same subject (anything containing a degree word/abbreviation — BEng, MEng, BSc, MSc, BA, MA, PhD, "(Hons)", Diploma, Certificate, Bachelor, Master, Doctorate) is ALWAYS its own course per the rule above, NEVER a study_unit, regardless of what list or section it appears under.
 - Set curriculum_page_url whenever a link on this page plausibly leads to THIS course's own detailed curriculum/program-structure page (e.g. "View Degree Program Website", "Course Structure", "Programs of Study", or a "Curriculum" link within a program-specific site) — not a generic institution-wide "Programs" or "Courses" catalog link. Set it EVEN IF you already found some study_units on this page: an admissions or overview page often names only a few example courses, while the dedicated curriculum page lists the full set — more complete data always wins.
@@ -234,6 +236,8 @@ Return JSON:
 Rules:
 - If a fee is shown as a range, set total_amount to the lower bound and keep the full range in name
 - If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
+- TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: period_type "Per Unit" with total_amount = rate, AND period_type "Total" with total_amount = the stated or computed total. Never capture only the per-unit rate when a total is derivable or stated.
+- STUDENT TYPE: Use student_type "both" when the page shows one fee with no domestic/international distinction. Only split into separate "domestic" and "international" entries when the page explicitly states two DIFFERENT amounts. Never duplicate the same amount into two entries.
 - If no fee figures for this course are stated on this page, return an empty fees array`;
 }
 
@@ -278,6 +282,8 @@ Return JSON:
 Rules:
 - If a fee is shown as a range, set total_amount to the lower bound and keep the full range in name
 - If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
+- TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: period_type "Per Unit" with total_amount = rate, AND period_type "Total" with total_amount = the stated or computed total. Never capture only the per-unit rate when a total is derivable or stated.
+- STUDENT TYPE: Use student_type "both" when the page shows one fee with no domestic/international distinction. Only split into separate "domestic" and "international" entries when the page explicitly states two DIFFERENT amounts. Never duplicate the same amount into two entries.
 - If no fee figures for this course are stated on this page, return an empty fees array
 - If no study units are listed on this page, return an empty study_units array`;
 }
@@ -654,7 +660,8 @@ Your task: Extract the fee for EACH course in the list. Match course names again
 
 Rules:
 - If a fee applies to a category (e.g. "all Bachelor programs"), map it to each matching course
-- Extract both domestic and international fees where available
+- Only split domestic_total and international_total when the page explicitly shows TWO DIFFERENT amounts. If there is one undifferentiated fee, set it on whichever field matches the label, or use domestic_total as the default and leave international_total as 0
+- TOTAL vs PER-UNIT: When the page shows a per-credit rate AND credit requirements (e.g. "$325/credit × 12 credits"), use the computed or stated total (3900) as the fee amount, not the per-unit rate (325)
 - If a fee is per semester/term, calculate the annual total
 - If you cannot find a fee for a specific course, set its totals to 0
 - Currency: default to ${currency}${countryNote}. Only use a different code if explicitly stated
