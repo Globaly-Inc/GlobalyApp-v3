@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,14 +28,18 @@ export function ScrollRow({
     });
   }, []);
 
-  useEffect(sync, [sync, Children.count(children)]);
-
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const ro = new ResizeObserver(sync);
     ro.observe(el);
-    return () => ro.disconnect();
+    const mo = new MutationObserver(sync);
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    sync();
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
   }, [sync]);
 
   const nudge = (dir: -1 | 1) => {

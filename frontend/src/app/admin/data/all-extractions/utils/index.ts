@@ -60,14 +60,15 @@ export function latestTimestamp(rows: TimestampedRow[] | null | undefined): stri
 export type PendingCourseLink = { junction: JunctionSlug; course_id: string; entity_id: string };
 
 export function pendingCourseLinks(
-  selections: { junction: JunctionSlug; entityId?: string; assignments?: CourseAssignment[]; entityCol: string }[],
+  selections: { junction: JunctionSlug; entityIds?: string[]; assignments?: CourseAssignment[]; entityCol: string }[],
   courseIds: string[],
 ): PendingCourseLink[] {
-  return selections.flatMap(({ junction, entityId, assignments, entityCol }) => {
-    if (!entityId) return [];
-    const alreadyLinked = new Set((assignments ?? []).filter((a) => a[entityCol] === entityId).map((a) => a.course_id));
-    return courseIds.filter((id) => !alreadyLinked.has(id)).map((course_id) => ({ junction, course_id, entity_id: entityId }));
-  });
+  return selections.flatMap(({ junction, entityIds, assignments, entityCol }) =>
+    (entityIds ?? []).flatMap((entityId) => {
+      const alreadyLinked = new Set((assignments ?? []).filter((a) => a[entityCol] === entityId).map((a) => a.course_id));
+      return courseIds.filter((id) => !alreadyLinked.has(id)).map((course_id) => ({ junction, course_id, entity_id: entityId }));
+    }),
+  );
 }
 
 /**

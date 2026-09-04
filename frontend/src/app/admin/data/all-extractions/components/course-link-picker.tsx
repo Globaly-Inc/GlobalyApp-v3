@@ -24,14 +24,16 @@ export function CourseLinkPicker({
 }>) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const queryRef = useRef("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
   const fetchPage = useCallback(
     async (query: string, pageNum: number, append: boolean) => {
+      const requestId = ++requestIdRef.current;
       (append ? setLoadingMore : setLoading)(true);
       try {
         const res = await allExtractionsApi.getCourses(jobId, {
@@ -39,11 +41,12 @@ export function CourseLinkPicker({
           page: pageNum,
           limit: PAGE_SIZE,
         });
+        if (requestId !== requestIdRef.current) return;
         setCourses((prev) => (append ? [...prev, ...res.data] : res.data));
-        setTotal(res.meta.total);
+        setTotalPages(res.meta.totalPages);
         setPage(pageNum);
       } finally {
-        (append ? setLoadingMore : setLoading)(false);
+        if (requestId === requestIdRef.current) (append ? setLoadingMore : setLoading)(false);
       }
     },
     [jobId],
@@ -79,7 +82,7 @@ export function CourseLinkPicker({
       }}
       onQueryChange={search}
       onLoadMore={() => fetchPage(queryRef.current, page + 1, true)}
-      hasMore={courses.length < total}
+      hasMore={page < totalPages}
       loadingMore={loadingMore}
       multiple
       placeholder={disabled ? "All courses linked" : "Link a course…"}

@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { allExtractionsApi } from "../apis";
-import { feeAmount } from "../utils";
 
 const PAGE_SIZE = 10;
 const DEBOUNCE_MS = 300;
 
-export function FeeLinkPicker({
+function studyOptionLabel(o: { name: string | null; study_mode: string | null }): string {
+  return o.name || (o.study_mode ? o.study_mode.replaceAll("_", " ") : "") || "Study option";
+}
+
+export function StudyOptionLinkPicker({
   jobId,
   excludeIds,
   onSelect,
@@ -33,13 +36,13 @@ export function FeeLinkPicker({
       const requestId = ++requestIdRef.current;
       (append ? setLoadingMore : setLoading)(true);
       try {
-        const res = await allExtractionsApi.getCourseFees(jobId, {
+        const res = await allExtractionsApi.getStudyOptions(jobId, {
           search: query.trim() || undefined,
           page: pageNum,
           limit: PAGE_SIZE,
         });
         if (requestId !== requestIdRef.current) return;
-        const mapped = res.data.map((f) => ({ value: f.id, label: f.name ? `${f.name} — ${feeAmount(f)}` : feeAmount(f) }));
+        const mapped = res.data.map((o) => ({ value: o.id, label: studyOptionLabel(o) }));
         setOptions((prev) => (append ? [...prev, ...mapped] : mapped));
         setTotalPages(res.meta.totalPages);
         setPage(pageNum);
@@ -79,9 +82,9 @@ export function FeeLinkPicker({
       hasMore={page < totalPages}
       loadingMore={loadingMore}
       multiple
-      placeholder="Select a fee to link"
-      searchPlaceholder="Type to search fees…"
-      emptyText="No fees found"
+      placeholder="Select a study option to link"
+      searchPlaceholder="Type to search study options…"
+      emptyText="No study options found"
       loading={loading}
       className={className}
     />
