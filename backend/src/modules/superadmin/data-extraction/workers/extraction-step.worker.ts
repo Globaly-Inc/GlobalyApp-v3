@@ -1155,7 +1155,8 @@ async function handleCourseDataStep(
           .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: reqRow.id });
         count++;
       }
-      // English requirements
+      // English requirements — cleared first, or a re-run stacks a second copy of every test.
+      await masterKnex(`${S}.extraction_english_requirements`).where({ course_id: courseId }).delete();
       const engReqs = (extracted.english_requirements as Array<Record<string, unknown>>) || [];
       for (const eng of engReqs) {
         await masterKnex(`${S}.extraction_english_requirements`).insert({

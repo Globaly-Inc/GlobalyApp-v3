@@ -30,13 +30,13 @@ export interface CourseListRow {
 // never offer what neither list shows: the job was promoted (search/courses:
 // PUBLICLY_VISIBLE) AND its institution row is published (search/institutions).
 //
-// ponytail: no verification_status filter — search/courses doesn't gate on it either
-// (every extracted course is 'unverified' today, so it would return an empty list).
+// Only 'flagged' — an admin's rejection — is excluded, exactly as search/courses does;
+// requiring 'confirmed' would empty the list, since extracted courses start 'unverified'.
 export const PUBLICLY_VISIBLE = `exists (
   select 1 from superadmin.extraction_jobs ej
   join institutions i on i.source_job_id = ej.id and i.is_published and i.deleted_at is null
   where ej.id = c.job_id and ej.status = 'exported'
-)`;
+) and coalesce(c.verification_status, 'unverified') <> 'flagged'`;
 
 export async function listCourses(opts: { limit: number; offset: number }): Promise<CourseListRow[]> {
   return masterKnex(`${T} as c`)

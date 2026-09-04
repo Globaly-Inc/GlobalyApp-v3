@@ -4,12 +4,13 @@ import { ProfileSection } from "../../../components/profile/profile-section";
 import type { CourseDetail, FeeInstallment } from "../../../search/types";
 
 function FeeTile({
-  label, total, currency, installments,
+  label, total, currency, installments, period,
 }: Readonly<{
   label: string;
   total: string | null;
   currency: string | null;
   installments: FeeInstallment[] | null;
+  period?: string | null;
 }>) {
   const amount = total == null ? null : Number(total);
   if (amount == null || Number.isNaN(amount)) return null;
@@ -20,7 +21,9 @@ function FeeTile({
   return (
     <div className="rounded-xl border border-border bg-muted/30 p-4">
       <Money amount={amount} currency={currency} className="block text-2xl font-bold text-foreground" />
-      <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+      {/* The period comes off the fee row itself — calling a per-year figure the course total
+          would overstate a three-year degree by three. */}
+      <p className="mt-1 text-xs text-muted-foreground">{label}{period ? ` · ${period}` : ""}</p>
 
       {schedule.length > 1 && (
         // ponytail: <details> is the whole disclosure — no state, no client component.
@@ -50,11 +53,11 @@ export function CourseFeeCard({ course }: Readonly<{ course: CourseDetail }>) {
       {hasFees ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <FeeTile
-            label="Domestic — total course fee" total={course.domestic_fee_total}
+            label="Domestic" total={course.domestic_fee_total} period={course.domestic_fee_period}
             currency={course.domestic_currency} installments={course.domestic_fee_installments}
           />
           <FeeTile
-            label="International — total course fee" total={course.international_fee_total}
+            label="International" total={course.international_fee_total} period={course.international_fee_period}
             currency={course.international_currency} installments={course.international_fee_installments}
           />
         </div>

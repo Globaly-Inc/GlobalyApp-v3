@@ -16,6 +16,35 @@ function FeeLabel({ service }: Readonly<{ service: VisaServiceItem }>) {
   return null;
 }
 
+/**
+ * The track record and reach superadmin holds on the service row — the same figures the admin's
+ * service card shows. Rendered only where extraction actually captured them.
+ */
+function serviceFacts(service: VisaServiceItem): { label: string; value: string }[] {
+  const facts: { label: string; value: string }[] = [];
+  if (service.consultation_free) facts.push({ label: "Consultation", value: "Free" });
+  else if (service.consultation_fee) {
+    facts.push({ label: "Consultation", value: `${service.fee_currency ?? ""} ${service.consultation_fee}`.trim() });
+  }
+  if (service.years_experience) facts.push({ label: "Experience", value: `${service.years_experience} years` });
+  if (service.team_size) facts.push({ label: "Team size", value: String(service.team_size) });
+  if (service.success_rate) facts.push({ label: "Success rate", value: `${service.success_rate}%` });
+  if (service.average_rating) {
+    facts.push({
+      label: "Rating",
+      value: service.review_count
+        ? `${service.average_rating} (${service.review_count})`
+        : String(service.average_rating),
+    });
+  }
+  const list = (values: string[] | null) => (values?.length ? values.join(", ") : null);
+  const languages = list(service.languages_spoken);
+  if (languages) facts.push({ label: "Languages", value: languages });
+  const countries = list(service.countries_serviced);
+  if (countries) facts.push({ label: "Serves", value: countries });
+  return facts;
+}
+
 export function VisaServicesSection({ services }: Readonly<{ services: VisaServiceItem[] }>) {
   if (services.length === 0) return null;
 
@@ -23,7 +52,12 @@ export function VisaServicesSection({ services }: Readonly<{ services: VisaServi
     <ProfileSection icon={FileText} title="Visa Services" count={services.length}>
       <div className="space-y-3">
         {services.map((service) => {
-          const tags = [...(service.visa_types_handled ?? []), ...(service.specializations ?? [])];
+          const tags = [
+            ...(service.visa_types_handled ?? []),
+            ...(service.specializations ?? []),
+            ...(service.services_offered ?? []),
+          ];
+          const facts = serviceFacts(service);
           return (
             <div key={service.id} className="rounded-lg border border-border bg-muted/30 p-4">
               <div className="flex items-start justify-between gap-3">
@@ -40,6 +74,17 @@ export function VisaServicesSection({ services }: Readonly<{ services: VisaServi
 
               {service.description && (
                 <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-muted-foreground">{service.description}</p>
+              )}
+
+              {facts.length > 0 && (
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+                  {facts.map((fact) => (
+                    <div key={fact.label} className="min-w-0">
+                      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{fact.label}</dt>
+                      <dd className="truncate text-xs font-medium text-foreground">{fact.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               )}
 
               {tags.length > 0 && (

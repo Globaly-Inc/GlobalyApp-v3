@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeCheck, Building2, FileText, GraduationCap, Landmark } from "lucide-react";
+import { BadgeCheck, BookOpen, Building2, FileText, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { flagFromIso2 } from "@/lib/utils";
 import { CampusChips } from "./campus-chips";
@@ -8,7 +8,7 @@ import { STUDY_MODE_LABEL, type SearchBusiness } from "../types";
 
 function InstitutionStat({
   icon: Icon, label, children,
-}: Readonly<{ icon: typeof Landmark; label: string; children: React.ReactNode }>) {
+}: Readonly<{ icon: typeof BookOpen; label: string; children: React.ReactNode }>) {
   return (
     // Padding pairs with the parent's sm:divide-x so the partition lines sit evenly between stats.
     <div className="flex min-w-0 items-center gap-2 sm:px-4 sm:first:pl-0">
@@ -66,16 +66,9 @@ export function InstitutionCard({ institution }: Readonly<{ institution: SearchB
               <CampusChips locations={institution.campus_locations ?? []} />
             </div>
 
-            <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-              <div className="pointer-events-auto relative z-10">
-                <FavouriteButton itemType="institution" itemId={String(institution.id)} />
-              </div>
-              <div className="sm:text-right">
-                <p className="text-xl font-bold leading-tight text-foreground">
-                  {(institution.course_count ?? 0).toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">Available Courses</p>
-              </div>
+            {/* The course count moved down into the stats row, so this corner is the heart alone. */}
+            <div className="pointer-events-auto relative z-10 shrink-0">
+              <FavouriteButton itemType="institution" itemId={String(institution.id)} />
             </div>
           </div>
 
@@ -93,7 +86,9 @@ export function InstitutionCard({ institution }: Readonly<{ institution: SearchB
               ) : "—"}
             </InstitutionStat>
             <InstitutionStat icon={FileText} label="Subject Area">{subjectAreaCount || "—"}</InstitutionStat>
-            <InstitutionStat icon={Landmark} label="Institution Type">{institution.institution_type ?? "—"}</InstitutionStat>
+            <InstitutionStat icon={BookOpen} label="Available Courses">
+              {(institution.course_count ?? 0).toLocaleString()}
+            </InstitutionStat>
           </div>
         </div>
 
