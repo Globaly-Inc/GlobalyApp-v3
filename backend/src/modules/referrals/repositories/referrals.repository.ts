@@ -78,7 +78,7 @@ export async function findOwnersMissingCode(
       this.select(masterKnex.raw("1"))
         .from("referral_codes")
         .whereRaw("referral_codes.owner_type = ?", [ownerType])
-        .whereRaw(`referral_codes.owner_id = ${table}.id`);
+        .whereRaw(`referral_codes.owner_id = ??.id`, [table]);
     })
     .orderBy("id")
     .limit(limit)

@@ -279,9 +279,7 @@ export async function sendOtp(email: string) {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
 
-  queueEmail({ to: user.email, ...otpEmail(otp) }).catch((err) =>
-    logger.warn("OTP email failed", { email, err: err.message }),
-  );
+  await queueEmail({ to: user.email, ...otpEmail(otp) });
 
   logger.info("OTP sent", { userId: user.id, otp: otp });
   return { message: "OTP sent" };

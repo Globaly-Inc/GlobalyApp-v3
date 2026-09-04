@@ -83,12 +83,12 @@ export async function entityExists(entityType: PageViewType, entityId: string): 
  */
 export async function bumpViews(entityType: PageViewType, entityId: string): Promise<number> {
   const { rows } = await masterKnex.raw(
-    `insert into ${T} (entity_type, entity_id, views)
+    `insert into ?? (entity_type, entity_id, views)
      values (?, ?, ?)
      on conflict on constraint page_views_entity_uniq do update
-        set views = ${T}.views + 1, updated_at = now()
+        set views = ??.views + 1, updated_at = now()
      returning views`,
-    [entityType, entityId, STARTING_VIEWS],
+    [T, entityType, entityId, STARTING_VIEWS, T],
   );
   return (rows as { views: number }[])[0]!.views;
 }
