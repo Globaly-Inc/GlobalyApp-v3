@@ -1,27 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { cached } from "../../../core/cache/dragonfly.js";
 import { NotFoundError } from "../../../shared/errors.js";
 import * as repo from "../../superadmin/platform/platform.repository.js";
 import { withCityImagePreviews, withImagePreviews } from "../../superadmin/platform/routes/countries.routes.js";
 
 const SlugParam = z.object({ slug: z.string().min(1) });
 
-/** The city catalogue is admin-edited and rarely moves; a whole day off the hot path is fine. */
-const TIMEZONE_MAP_TTL_SECONDS = 86_400;
-
 export async function publicGeoRoutes(app: FastifyInstance) {
-  /**
-   * IANA timezone → ISO-2, for ordering the homepage destination cards around the visitor.
-   * A flat object keyed by zone so the client can look up its own zone without scanning.
-   */
-  app.get("/countries/timezones", async (_req, reply) => {
-    const timezones = await cached("public:timezone-country-map", TIMEZONE_MAP_TTL_SECONDS, async () =>
-      Object.fromEntries((await repo.listTimezoneCountryPairs()).map((r) => [r.timezone, r.iso2])),
-    );
-    return reply.send({ timezones });
-  });
-
   app.get("/countries/featured", async (_req, reply) => {
     const rows = await repo.listFeaturedCountries();
     const countries = await Promise.all(rows.map(withImagePreviews));

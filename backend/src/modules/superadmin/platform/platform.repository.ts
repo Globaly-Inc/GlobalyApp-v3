@@ -228,29 +228,3 @@ export async function logAdminAction(platformUserId: number, action: string, ent
   });
 }
 
-
-/**
- * IANA timezone → ISO-2 country, derived from the city catalogue. Replaces a hand-kept map in the
- * frontend: the cities table already carries a timezone per row, so the mapping is real data
- * rather than a list someone has to remember to extend.
- *
- * A handful of zones span two countries in the data because a city is filed under the wrong one
- * (Asia/Bangkok has five Vietnamese cities). Majority wins, ties broken on iso2 so the result is
- * deterministic; `iso2` second in the ORDER BY is what makes it stable, not decorative.
- */
-export async function listTimezoneCountryPairs(): Promise<{ timezone: string; iso2: string }[]> {
-  const { rows } = await masterKnex.raw<{ rows: { timezone: string; iso2: string }[] }>(`
-    select distinct on (timezone) timezone, iso2
-    from (
-      select ci.timezone, c.iso2, count(*) as n
-      from cities ci
-      join countries c on c.id = ci.country_id
-      where nullif(trim(ci.timezone), '') is not null
-        and nullif(trim(c.iso2), '') is not null
-        and ci.deleted_at is null
-      group by ci.timezone, c.iso2
-    ) ranked
-    order by timezone, n desc, iso2
-  `);
-  return rows;
-}
