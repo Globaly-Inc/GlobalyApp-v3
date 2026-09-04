@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Handshake } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { INSTITUTION_LOGOS } from "@/lib/public-assets";
+import { INSTITUTION_LOGOS, PARTNER_LOGOS } from "@/lib/public-assets";
 import { MockupCard, MockupFrame } from "./mockup-frame";
 
 // A counselor partners with many institutions, so the institution side is what rotates — one
@@ -19,13 +19,13 @@ const INSTITUTIONS = [
   { name: "National University of Singapore", location: "Singapore", logo: INSTITUTION_LOGOS.nus },
 ];
 
-// Apex is a stand-in agency with no logo of its own — drop a real counselor's mark in
-// /public/partners (see the README there) and it appears; until then the monogram shows.
+// Apex is a stand-in agency. Swapping in a real counselor means a new mark in the bucket and a
+// new name here; the monogram is the fallback for as long as a logo fails to load.
 const COUNSELOR = {
   name: "Apex Education Partners",
   location: "Dubai, UAE",
   students: 156,
-  logo: "/partners/apex-education-partners.png",
+  logo: PARTNER_LOGOS.apex,
   initials: "AE",
 };
 

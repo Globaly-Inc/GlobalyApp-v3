@@ -18,13 +18,21 @@ export const LOGO_WHITE = { src: `${BUCKET}/logos/globaly-logo-white.png`, width
 
 const PHOTOS = `${BUCKET}/photos`;
 
-/** Institution crests (250×250) used by the public marketing mockups. */
+/**
+ * Crests and partner marks for the mockups' cards. Square, transparent PNG, 256×256 or larger —
+ * the tiles render them `object-contain`, so a wide wordmark shrinks to unreadable.
+ */
 export const INSTITUTION_LOGOS = {
   asu: `${PHOTOS}/asu.png`,
   manchester: `${PHOTOS}/manchester.png`,
   melbourne: `${PHOTOS}/melbourne.png`,
   nus: `${PHOTOS}/nus.png`,
   toronto: `${PHOTOS}/toronto.png`,
+} as const;
+
+/** The agency shown on the partnerships mockup. Apex is a stand-in name, not a real partner. */
+export const PARTNER_LOGOS = {
+  apex: `${PHOTOS}/apex.png`,
 } as const;
 
 /** Counselor portraits for the same mockups. */
