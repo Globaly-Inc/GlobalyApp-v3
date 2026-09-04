@@ -4,18 +4,19 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Handshake } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { INSTITUTION_LOGOS } from "@/lib/public-assets";
 import { MockupCard, MockupFrame } from "./mockup-frame";
 
 // A counselor partners with many institutions, so the institution side is what rotates — one
 // counselor on the right, a stream of universities connecting to it on the left.
-// Logos are self-hosted in /public/institutions (sourced from Wikipedia/Wikimedia) rather than
+// Logos come from our own public GCS bucket (sourced from Wikipedia/Wikimedia) rather than being
 // hotlinked, so the mockup never depends on a third party staying up.
 const INSTITUTIONS = [
-  { name: "University of Toronto", location: "Toronto, Canada", logo: "/institutions/toronto.png" },
-  { name: "University of Melbourne", location: "Melbourne, Australia", logo: "/institutions/melbourne.png" },
-  { name: "University of Manchester", location: "Manchester, UK", logo: "/institutions/manchester.png" },
-  { name: "Arizona State University", location: "Phoenix, USA", logo: "/institutions/asu.png" },
-  { name: "National University of Singapore", location: "Singapore", logo: "/institutions/nus.png" },
+  { name: "University of Toronto", location: "Toronto, Canada", logo: INSTITUTION_LOGOS.toronto },
+  { name: "University of Melbourne", location: "Melbourne, Australia", logo: INSTITUTION_LOGOS.melbourne },
+  { name: "University of Manchester", location: "Manchester, UK", logo: INSTITUTION_LOGOS.manchester },
+  { name: "Arizona State University", location: "Phoenix, USA", logo: INSTITUTION_LOGOS.asu },
+  { name: "National University of Singapore", location: "Singapore", logo: INSTITUTION_LOGOS.nus },
 ];
 
 // Apex is a stand-in agency with no logo of its own — drop a real counselor's mark in

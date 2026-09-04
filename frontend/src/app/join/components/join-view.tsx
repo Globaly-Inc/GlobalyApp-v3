@@ -21,6 +21,7 @@ import { buildReferralLink, captureRefTokenIfAbsent } from "@/lib/referral-token
 import { cn } from "@/lib/utils";
 import { referralsApi } from "@/app/personal/earn/referrals/apis";
 import { resolveInvite } from "../store/join-slice";
+import { LOGO } from "@/lib/public-assets";
 
 export function JoinView() {
   const router = useRouter();
@@ -89,7 +90,7 @@ export function JoinView() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex justify-center">
           <Link href="/">
-            <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-10 w-auto" />
+            <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
           </Link>
         </div>
 

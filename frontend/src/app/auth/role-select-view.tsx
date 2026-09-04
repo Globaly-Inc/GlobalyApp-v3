@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { updateRole, setSelectedCategory, type PortalCategory } from "./store/auth-slice";
+import { LOGO } from "@/lib/public-assets";
 
 const OPTIONS: { type: PortalCategory; icon: typeof GraduationCap; title: string; description: string }[] = [
   {
@@ -82,7 +83,7 @@ export function RoleSelectView() {
       <div className="w-full max-w-2xl">
         <div className="flex justify-center mb-8">
           <Link href="/">
-            <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-10 w-auto" />
+            <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
           </Link>
         </div>
         <div className="text-center mb-10">

@@ -21,6 +21,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
+import { LOGO, LOGO_WHITE } from "@/lib/public-assets";
 import { NAV_LINKS } from "../const/index";
 
 /** Where a signed-in user's own profile lives. */
@@ -60,7 +61,7 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md print:hidden">
       <div className="container mx-auto flex h-16 items-center px-3 sm:px-4 gap-1">
         <Link href="/" className="flex items-center flex-shrink-0">
-          <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-8 w-auto" priority />
+          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" priority />
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex flex-1 justify-start ml-8">
@@ -173,7 +174,7 @@ export function Navbar() {
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <div className="flex items-center justify-between mb-6">
                 <Link href="/" onClick={() => setMobileOpen(false)}>
-                  <Image src="/globalyapp-logo-white.png" alt="Globalyapp" width={727} height={157} className="h-7 w-auto" />
+                  <Image src={LOGO_WHITE.src} alt="Globalyapp" width={LOGO_WHITE.width} height={LOGO_WHITE.height} className="h-7 w-auto" />
                 </Link>
                 <Button
                   variant="ghost"

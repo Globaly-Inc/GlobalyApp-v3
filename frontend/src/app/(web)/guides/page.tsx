@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import type { Metadata } from "next";
+import { LOGO } from "@/lib/public-assets";
 import { getPublishedGuides } from "./api";
 
 export const metadata: Metadata = {
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Country Education Guides — Globaly",
     description: "Free guides to studying, living, and working abroad.",
-    images: ["/globalyapp-logo.png"],
+    images: [LOGO.src],
   },
 };
 

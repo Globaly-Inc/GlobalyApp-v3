@@ -13,6 +13,7 @@ import { useCompareTray } from "../search/use-compare-tray";
 import { COMPARE_GROUPS } from "../search/compare-rows";
 import { getCourseBySlug } from "../search/api";
 import type { CourseDetail } from "../search/types";
+import { LOGO } from "@/lib/public-assets";
 
 export function ComparePageView({
   basePath = "/compare",
@@ -141,7 +142,7 @@ export function ComparePageView({
       <style>{"@media print { @page { size: landscape; margin: 0; } }"}</style>
       <div className="mb-6 hidden print:block">
         <div className="flex items-center justify-between">
-          <Image src="/globalyapp-logo.png" alt="Globalyapp" width={727} height={157} className="h-8 w-auto" />
+          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" />
           <span className="text-xs text-muted-foreground">
             {new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
           </span>
