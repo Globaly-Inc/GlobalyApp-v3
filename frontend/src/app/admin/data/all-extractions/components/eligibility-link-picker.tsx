@@ -23,7 +23,7 @@ export function EligibilityLinkPicker({
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const queryRef = useRef("");
+  const loadedQueryRef = useRef("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
@@ -42,6 +42,7 @@ export function EligibilityLinkPicker({
         setOptions((prev) => (append ? [...prev, ...mapped] : mapped));
         setTotalPages(res.meta.totalPages);
         setPage(pageNum);
+        loadedQueryRef.current = query;
       } finally {
         if (requestId === requestIdRef.current) (append ? setLoadingMore : setLoading)(false);
       }
@@ -52,7 +53,6 @@ export function EligibilityLinkPicker({
   // Debounced — used for onQueryChange as the admin types.
   const search = useCallback(
     (query: string) => {
-      queryRef.current = query;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => fetchPage(query, 1, false), DEBOUNCE_MS);
     },
@@ -75,7 +75,7 @@ export function EligibilityLinkPicker({
         if (option) onSelect({ id: option.value, label: option.label });
       }}
       onQueryChange={search}
-      onLoadMore={() => fetchPage(queryRef.current, page + 1, true)}
+      onLoadMore={() => fetchPage(loadedQueryRef.current, page + 1, true)}
       hasMore={page < totalPages}
       loadingMore={loadingMore}
       multiple
