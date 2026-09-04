@@ -24,14 +24,22 @@ export function CourseLinkPicker({
 }>) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const queryRef = useRef("");
+  const loadedQueryRef = useRef("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Load-more (append) staleness: a newer load-more, or a search that has since changed the
+  // displayed query, both invalidate it. Search (replace) staleness: only a newer search does —
+  // a load-more must never be able to discard a pending search's result, or the search response
+  // gets silently dropped while the picker is left stuck in its loading state.
+  const requestIdRef = useRef(0);
+  const searchIdRef = useRef(0);
 
   const fetchPage = useCallback(
     async (query: string, pageNum: number, append: boolean) => {
+      const requestId = ++requestIdRef.current;
+      const searchId = append ? null : ++searchIdRef.current;
       (append ? setLoadingMore : setLoading)(true);
       try {
         const res = await allExtractionsApi.getCourses(jobId, {
@@ -39,9 +47,15 @@ export function CourseLinkPicker({
           page: pageNum,
           limit: PAGE_SIZE,
         });
-        setCourses((prev) => (append ? [...prev, ...res.data] : res.data));
-        setTotal(res.meta.total);
-        setPage(pageNum);
+        const stale = append
+          ? requestId !== requestIdRef.current || query !== loadedQueryRef.current
+          : searchId !== searchIdRef.current;
+        if (!stale) {
+          setCourses((prev) => (append ? [...prev, ...res.data] : res.data));
+          setTotalPages(res.meta.totalPages);
+          setPage(pageNum);
+          loadedQueryRef.current = query;
+        }
       } finally {
         (append ? setLoadingMore : setLoading)(false);
       }
@@ -51,7 +65,6 @@ export function CourseLinkPicker({
 
   const search = useCallback(
     (query: string) => {
-      queryRef.current = query;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => fetchPage(query, 1, false), DEBOUNCE_MS);
     },
@@ -78,8 +91,8 @@ export function CourseLinkPicker({
         onSelect(courseId);
       }}
       onQueryChange={search}
-      onLoadMore={() => fetchPage(queryRef.current, page + 1, true)}
-      hasMore={courses.length < total}
+      onLoadMore={() => fetchPage(loadedQueryRef.current, page + 1, true)}
+      hasMore={page < totalPages}
       loadingMore={loadingMore}
       multiple
       placeholder={disabled ? "All courses linked" : "Link a course…"}

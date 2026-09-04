@@ -7,7 +7,11 @@ import { allExtractionsApi } from "../apis";
 const PAGE_SIZE = 10;
 const DEBOUNCE_MS = 300;
 
-export function EligibilityLinkPicker({
+function studyOptionLabel(o: { name: string | null; study_mode: string | null }): string {
+  return o.name || (o.study_mode ? o.study_mode.replaceAll("_", " ") : "") || "Study option";
+}
+
+export function StudyOptionLinkPicker({
   jobId,
   excludeIds,
   onSelect,
@@ -38,7 +42,7 @@ export function EligibilityLinkPicker({
       const searchId = append ? null : ++searchIdRef.current;
       (append ? setLoadingMore : setLoading)(true);
       try {
-        const res = await allExtractionsApi.getEligibilityRequirements(jobId, {
+        const res = await allExtractionsApi.getStudyOptions(jobId, {
           search: query.trim() || undefined,
           page: pageNum,
           limit: PAGE_SIZE,
@@ -47,7 +51,7 @@ export function EligibilityLinkPicker({
           ? requestId !== requestIdRef.current || query !== loadedQueryRef.current
           : searchId !== searchIdRef.current;
         if (!stale) {
-          const mapped = res.data.map((e) => ({ value: e.id, label: e.name || "Unnamed requirement" }));
+          const mapped = res.data.map((o) => ({ value: o.id, label: studyOptionLabel(o) }));
           setOptions((prev) => (append ? [...prev, ...mapped] : mapped));
           setTotalPages(res.meta.totalPages);
           setPage(pageNum);
@@ -60,7 +64,6 @@ export function EligibilityLinkPicker({
     [jobId],
   );
 
-  // Debounced — used for onQueryChange as the admin types.
   const search = useCallback(
     (query: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -89,9 +92,9 @@ export function EligibilityLinkPicker({
       hasMore={page < totalPages}
       loadingMore={loadingMore}
       multiple
-      placeholder="Select a requirement to link"
-      searchPlaceholder="Type to search eligibility requirements…"
-      emptyText="No eligibility requirements found"
+      placeholder="Select a study option to link"
+      searchPlaceholder="Type to search study options…"
+      emptyText="No study options found"
       loading={loading}
       className={className}
     />

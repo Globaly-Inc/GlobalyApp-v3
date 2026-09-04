@@ -182,9 +182,10 @@ export function CoursesTab({
 
       const linkTasks = pendingCourseLinks(
         [
-          { junction: "course-fees", entityId: linkSelection.feeId, assignments: links?.fee_assignments, entityCol: "course_fee_id" },
-          { junction: "intakes", entityId: linkSelection.intakeId, assignments: links?.intake_assignments, entityCol: "intake_id" },
-          { junction: "eligibility-requirements", entityId: linkSelection.eligibilityId, assignments: links?.eligibility_assignments, entityCol: "eligibility_requirement_id" },
+          { junction: "course-fees", entityIds: linkSelection.feeIds, assignments: links?.fee_assignments, entityCol: "course_fee_id" },
+          { junction: "intakes", entityIds: linkSelection.intakeIds, assignments: links?.intake_assignments, entityCol: "intake_id" },
+          { junction: "eligibility-requirements", entityIds: linkSelection.eligibilityIds, assignments: links?.eligibility_assignments, entityCol: "eligibility_requirement_id" },
+          { junction: "study-options", entityIds: linkSelection.studyOptionIds, assignments: links?.study_option_assignments, entityCol: "study_option_id" },
         ],
         selectedIds,
       ).map((l) => () => allExtractionsApi.assignJunction(l.junction, { job_id: jobId, course_id: l.course_id, entity_id: l.entity_id }));
