@@ -1,11 +1,13 @@
+import { amountLabel } from "@/lib/utils";
 import { DEGREE_LABEL, type CompareCourseItem, type CourseDetail } from "./types";
 
-type CompareRow = { label: string; get: (i: CompareCourseItem, detail?: CourseDetail) => string };
+type CompareRow = {
+  label: string;
+  get: (i: CompareCourseItem, detail?: CourseDetail) => string;
+};
 
 const formatTuition = (i: CompareCourseItem) =>
-  i.annualTuition != null
-    ? `${i.feeCurrency ?? "AUD"} ${i.annualTuition.toLocaleString()}`
-    : "Fees on enquiry";
+  amountLabel(i.annualTuition, i.feeCurrency ?? "AUD") ?? "Fees on enquiry";
 
 const eligibilityFor = (detail: CourseDetail | undefined, applicableTo: string) =>
   detail?.eligibility.find((e) => e.applicable_to === applicableTo || e.applicable_to === "both")?.description ?? "—";

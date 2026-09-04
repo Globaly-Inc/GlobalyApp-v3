@@ -8,13 +8,14 @@ export function WhyJoinSection() {
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold mb-3">
-            Why Institutions Join <span className="highlight-text active">Globaly.app?</span>
+            Why Institutions Join <span className="highlight-text active">Globalyapp?</span>
           </h2>
           <p className="text-muted-foreground">
             Take charge of your students, education counselor network, and course data in one smart platform.
           </p>
         </Reveal>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Two per row: four cards in a 3-column grid leave a lone card orphaned on the second. */}
+        <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
           {WHY_JOIN.map((item, i) => (
             <Reveal key={item.title} delay={i * 0.1}>
               <Card className="p-6 border border-border hover:border-primary/30 hover:shadow-md transition-all h-full">

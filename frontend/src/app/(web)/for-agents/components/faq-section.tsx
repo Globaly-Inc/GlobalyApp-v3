@@ -7,19 +7,19 @@ const FAQS = [
   },
   {
     q: "Is Globaly free to use for education counselors?",
-    a: "Yes, Globaly is free to join and use. We operate as a zero-commission platform, meaning you keep 100% of what you earn. While core features are free, certain advanced tools—like accessing premium enquiries—require Globaly Coins.",
+    a: "Yes, Globaly is free to join and use. We operate as a zero-commission platform, meaning you keep 100% of what you earn. While core features are free, certain advanced tools—like accessing premium enquiries—require credits.",
   },
   {
     q: "How can I start receiving student enquiries on Globaly?",
-    a: "Simply complete your consultancy profile, connect with institutions, and use Globaly Coins to unlock and respond to quality student enquiries tailored to your offerings.",
+    a: "Simply complete your consultancy profile, connect with institutions, and use credits to unlock and respond to quality student enquiries tailored to your offerings.",
   },
   {
     q: "How do I connect with institutions and manage partnerships?",
     a: "You can explore available institutions on Globaly, request partnerships, and represent their services from your education counselor portal with ease and transparency.",
   },
   {
-    q: "What is Globaly Coin and how does the credit system work?",
-    a: "Globaly Coin is a credit-based system used to unlock student enquiries. You can top up credits and use them as needed to engage with potential verified students.",
+    q: "How does the credit system work?",
+    a: "Credits are what you spend to unlock a student enquiry. You can top up credits and use them as needed to engage with potential verified students.",
   },
   {
     q: "How does Globaly ensure the quality of institutions and courses?",

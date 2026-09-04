@@ -8,6 +8,7 @@ import {
 import { Pagination } from "@/components/ui/pagination";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import { DEGREE_LABEL, type SubjectAreaSummary } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 const PAGE_SIZE = 6;
 
@@ -35,16 +36,6 @@ function areaIcon(areaName: string): LucideIcon {
     if (key.includes(word)) return icon;
   }
   return BookOpen;
-}
-
-/** Intl rejects anything that isn't a 3-letter code, and scraped rows carry things like "AUD$". */
-function formatCost(value: number, currency: string | null) {
-  const code = (/[A-Za-z]{3}/.exec(currency ?? "")?.[0] ?? "USD").toUpperCase();
-  try {
-    return new Intl.NumberFormat("en", { style: "currency", currency: code, maximumFractionDigits: 0 }).format(value);
-  } catch {
-    return `${code} ${Math.round(value).toLocaleString()}`;
-  }
 }
 
 /**
@@ -85,9 +76,7 @@ export function InstitutionSubjectAreas({
 
               {area.cost_min != null && area.cost_max != null && (
                 <p className="text-base font-semibold text-muted-foreground">
-                  {area.cost_min === area.cost_max
-                    ? formatCost(area.cost_min, area.currency)
-                    : `${formatCost(area.cost_min, area.currency)} – ${formatCost(area.cost_max, area.currency)}`}
+                  {amountLabel(area.cost_min, area.currency, area.cost_min === area.cost_max ? null : area.cost_max)}
                 </p>
               )}
             </div>

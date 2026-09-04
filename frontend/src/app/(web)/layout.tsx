@@ -4,6 +4,7 @@ import { Navbar } from "./components/navbar";
 import { Footer } from "./components/footer";
 import { CookieConsent } from "./components/cookie-consent";
 import { BackToTop } from "./components/back-to-top";
+import { LOGO } from "@/lib/public-assets";
 import { CompareTray } from "./search/components/compare-tray";
 
 const TITLE = "Globaly — World #1 AI Integrated Education Ecosystem";
@@ -23,14 +24,14 @@ export const metadata: Metadata = {
     title: TITLE,
     description: OG_DESCRIPTION,
     url: "https://www.globalyapp.com/",
-    images: ["/globaly-logo.png"],
+    images: [LOGO.src],
   },
   twitter: {
     card: "summary_large_image",
     site: "@GlobalyAI",
     title: TITLE,
     description: OG_DESCRIPTION,
-    images: ["/globaly-logo.png"],
+    images: [LOGO.src],
   },
 };
 
@@ -38,9 +39,9 @@ const ORGANIZATION_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "Globaly",
-  alternateName: "Globaly.app",
+  alternateName: "Globalyapp",
   url: "https://www.globalyapp.com",
-  logo: "https://www.globalyapp.com/globaly-logo.png",
+  logo: LOGO.src,
   description: OG_DESCRIPTION,
   sameAs: [
     "https://www.linkedin.com/company/globaly-app",

@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
 import { Calendar, Clock, FileText, Wallet } from "lucide-react";
 import { coursePrice, formatDuration, formatNextIntake } from "../../../search/course-card-utils";
 import type { CourseDetail } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 /** The headline facts strip under the hero — the same four the search card leads with. */
 export function CourseStats({ course }: Readonly<{ course: CourseDetail }>) {
@@ -10,9 +12,13 @@ export function CourseStats({ course }: Readonly<{ course: CourseDetail }>) {
   // card below it stating the same date by construction.
   const next = course.intakes[0];
 
-  const stats = [
+  const stats: { icon: typeof Clock; label: string; value: ReactNode }[] = [
     { icon: Clock, label: "Course Duration", value: formatDuration(course.duration_weeks, course.study_mode) ?? "—" },
-    { icon: Wallet, label: "Course Fee", value: price ? `${price.amount} · ${price.label}` : "On enquiry" },
+    {
+      icon: Wallet,
+      label: "Course Fee",
+      value: price ? `${amountLabel(price.amount, price.currency)} · ${price.label}` : "On enquiry",
+    },
     {
       icon: Calendar,
       label: "Next Intake",

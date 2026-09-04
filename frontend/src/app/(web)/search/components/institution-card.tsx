@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BadgeCheck, Building2, FileText, GraduationCap, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { flagFromIso2 } from "@/lib/utils";
+import { CampusChips } from "./campus-chips";
 import { FavouriteButton } from "./favourite-button";
 import { STUDY_MODE_LABEL, type SearchBusiness } from "../types";
 
@@ -61,6 +62,8 @@ export function InstitutionCard({ institution }: Readonly<{ institution: SearchB
                   {flag && <span aria-hidden="true">{flag}</span>}
                 </p>
               )}
+
+              <CampusChips locations={institution.campus_locations ?? []} />
             </div>
 
             <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">

@@ -3,9 +3,9 @@ import { ArrowRight, GraduationCap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatNumber } from "@/lib/utils";
 import { Reveal } from "../../components/reveal";
 import type { SearchCourse } from "../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 export function CountryServices({
   countryName,
@@ -37,7 +37,7 @@ export function CountryServices({
                   )}
                   {course.international_fee_total && (
                     <span className="text-xs text-muted-foreground">
-                      {course.international_currency} {formatNumber(Number(course.international_fee_total))}
+                      {amountLabel(course.international_fee_total, course.international_currency)}
                     </span>
                   )}
                 </div>

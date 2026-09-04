@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "../../components/reveal";
 
-export function CoinsBannerSection() {
+export function CreditsBannerSection() {
   return (
     <section className="relative py-16 border-y border-[hsl(var(--gold))]/20 overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -20,12 +20,12 @@ export function CoinsBannerSection() {
             🎉 Limited-Time Offer for Education Counselors
           </p>
           <p className="text-white text-lg md:text-xl font-medium mb-6 max-w-3xl mx-auto leading-relaxed">
-            Join Globaly.app today and get 100 FREE Globaly Coins — enough to unlock 10+ verified, course-matched
+            Join Globalyapp today and get 100 FREE credits — enough to unlock 10+ verified, course-matched
             student leads right away. No fees, no risk — just real opportunities.
             {/* Parked until the LMS ships: " Plus, access free training programs to boost your certifications." */}
           </p>
           <Button className="btn-gold rounded-full px-8" render={<Link href="/auth/sign-up" />}>
-            Claim Free Coins
+            Claim Free Credits
           </Button>
         </Reveal>
       </div>

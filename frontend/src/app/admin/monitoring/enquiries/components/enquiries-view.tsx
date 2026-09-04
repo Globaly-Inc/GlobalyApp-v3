@@ -119,7 +119,7 @@ export function EnquiriesView() {
           <span key="r" className="tabular-nums">
             {e.unlocked_count}/{e.max_accepts} unlocked
             <span className="block text-xs text-muted-foreground">
-              {e.recipients} sent{e.coins_spent > 0 && ` · ${e.coins_spent} coins`}
+              {e.recipients} sent{e.coins_spent > 0 && ` · ${e.coins_spent} credits`}
             </span>
           </span>,
           [e.preferred_intake, e.preferred_year].filter(Boolean).join(" ") || "—",

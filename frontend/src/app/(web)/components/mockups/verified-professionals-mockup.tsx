@@ -1,16 +1,19 @@
 import { BadgeCheck, Star, MessageCircle } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PEOPLE_PHOTOS } from "@/lib/public-assets";
 import { MockupCard, MockupFrame } from "./mockup-frame";
 
+// `photo` points at /public/people (see the README there). AvatarImage falls back to the
+// initials on its own while a file is missing, so an unfilled slot degrades instead of breaking.
 const pros = [
-  { name: "Priya Sharma", role: "Senior Education Counselor", city: "Sydney, AU", rating: 4.9, trust: 96, initials: "PS" },
-  { name: "Daniel Okoye", role: "Visa & Admissions Expert", city: "Toronto, CA", rating: 4.8, trust: 93, initials: "DO" },
-  { name: "Mei Tanaka", role: "STEM Programs Advisor", city: "London, UK", rating: 4.9, trust: 95, initials: "MT" },
+  { name: "Priya Sharma", role: "Senior Education Counselor", city: "Sydney, AU", rating: 4.9, trust: 96, initials: "PS", photo: PEOPLE_PHOTOS.priyaSharma },
+  { name: "Daniel Okoye", role: "Visa & Admissions Expert", city: "Toronto, CA", rating: 4.8, trust: 93, initials: "DO", photo: PEOPLE_PHOTOS.danielOkoye },
+  { name: "Mei Tanaka", role: "STEM Programs Advisor", city: "London, UK", rating: 4.9, trust: 95, initials: "MT", photo: "/people/mei-tanaka.jpg" },
 ];
 
 export function VerifiedProfessionalsMockup() {
   return (
-    <MockupFrame label="globaly.app / professionals">
+    <MockupFrame label="globalyapp.com / professionals">
       <div className="space-y-2">
         {pros.map((p, i) => (
           <MockupCard
@@ -19,6 +22,7 @@ export function VerifiedProfessionalsMockup() {
             style={{ animationDelay: `${i * 130}ms`, animationFillMode: "both" }}
           >
             <Avatar className="h-10 w-10 flex-shrink-0">
+              <AvatarImage src={p.photo} alt={p.name} />
               <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">{p.initials}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">

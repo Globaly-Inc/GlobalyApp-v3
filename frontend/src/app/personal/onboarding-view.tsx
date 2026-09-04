@@ -22,6 +22,7 @@ import { CATEGORIES, GENDER_OPTIONS, DEGREE_LEVELS, FIELDS_OF_STUDY } from "./st
 import { validateStep2, validateStep2Field } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
 import type { StudentProfile, StudentProfilePatch } from "./apis/types";
+import { LOGO } from "@/lib/public-assets";
 
 const TOTAL_STEPS = 3;
 const SELECT_TRIGGER_CLASS = "w-full data-[size=default]:h-10";
@@ -191,7 +192,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
     <div className="min-h-screen flex flex-col bg-background">
       <header className="flex items-center justify-between px-6 py-4 border-b border-border">
         <Link href="/">
-          <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-8 w-auto" />
+          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" />
         </Link>
         <Button variant="ghost" size="sm" onClick={handleSkip} className="text-muted-foreground">
           Skip
