@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Children, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,9 +28,7 @@ export function ScrollRow({
     });
   }, []);
 
-  // ponytail: no dep array — re-measures after every render, which covers children being added or
-  // filtered. ResizeObserver on the rail covers viewport/container resizes.
-  useEffect(sync);
+  useEffect(sync, [sync, Children.count(children)]);
 
   useEffect(() => {
     const el = ref.current;
