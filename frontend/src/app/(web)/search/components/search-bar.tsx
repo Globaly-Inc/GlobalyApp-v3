@@ -46,7 +46,8 @@ export function SearchBar({
           type="text"
           name="search"
           defaultValue={search}
-          placeholder={`Search ${activeTab.replace("-", " ")}...`}
+          // Courses match on institution name too, which nobody would guess from "Search courses…".
+          placeholder={activeTab === "courses" ? "Search courses or institutions..." : `Search ${activeTab.replace("-", " ")}...`}
           className="h-11 w-full rounded-md border border-input bg-background pl-10 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>

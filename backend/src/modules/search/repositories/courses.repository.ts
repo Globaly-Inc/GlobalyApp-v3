@@ -198,8 +198,17 @@ function baseQuery({
   }
   if (degreeLevel) q.where("ec.degree_level", degreeLevel);
   if (subjectArea) q.whereILike("ec.subject_area", `%${subjectArea}%`);
+  // Course name or institution name. `inst.institution_name` as well as the scraped
+  // `ec.awarding_institution`: the card shows the promoted institution's name, so a course whose
+  // scraped awarding field is blank or spelled differently would otherwise be unfindable by the
+  // only name the reader can see.
   if (search) {
-    q.where((b) => b.whereILike("ec.name", `%${search}%`).orWhereILike("ec.awarding_institution", `%${search}%`));
+    q.where((b) =>
+      b
+        .whereILike("ec.name", `%${search}%`)
+        .orWhereILike("ec.awarding_institution", `%${search}%`)
+        .orWhereILike("inst.institution_name", `%${search}%`),
+    );
   }
   // Budget filter reads whichever fee is populated — domestic first, falling back to international.
   if (feeMin != null) q.whereRaw(`${EFFECTIVE_FEE} >= ?`, [feeMin]);
