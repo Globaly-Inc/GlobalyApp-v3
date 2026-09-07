@@ -26,15 +26,34 @@ const emptyInstallment = (index: number): Installment => ({
   lines: [{ fee_type: "", amount: "" }],
 });
 
-const toInstallments = (fee?: CourseFee): Installment[] =>
-  fee?.installments?.length
-    ? fee.installments.map((i) => ({
-        label: i.label,
-        lines: i.lines?.length
-          ? i.lines.map((l) => ({ fee_type: l.fee_type, amount: String(l.amount) }))
-          : [{ fee_type: "", amount: String(i.amount ?? "") }],
-      }))
-    : [emptyInstallment(0)];
+// An extracted fee is stored as a total, sometimes with a {label, amount} split and no fee-type
+// lines. Seeding those from the fee itself is what keeps the form from opening on an empty
+// installment worth 0 — which, once saved, overwrites the real amount with zero.
+const PERIOD_INSTALLMENT_LABEL: Record<string, string> = {
+  "Per Year": "Year 1",
+  "Per Semester": "Semester 1",
+  "Per Trimester": "Trimester 1",
+  "Per Unit": "Per Credit",
+  Total: "Full Payment",
+};
+
+const toInstallments = (fee?: CourseFee): Installment[] => {
+  if (fee?.installments?.length) {
+    return fee.installments.map((i) => ({
+      label: i.label,
+      lines: i.lines?.length
+        ? i.lines.map((l) => ({ fee_type: l.fee_type, amount: String(l.amount) }))
+        : [{ fee_type: fee.name ?? "", amount: String(i.amount ?? "") }],
+    }));
+  }
+  if (fee?.total_amount != null) {
+    return [{
+      label: PERIOD_INSTALLMENT_LABEL[fee.period_type ?? ""] ?? "Installment 1",
+      lines: [{ fee_type: fee.name ?? "", amount: String(fee.total_amount) }],
+    }];
+  }
+  return [emptyInstallment(0)];
+};
 
 const sumLines = (lines: Line[]) => lines.reduce((total, l) => total + (Number(l.amount) || 0), 0);
 
