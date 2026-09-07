@@ -316,7 +316,7 @@ export function buildSystemPrompt(opts: {
     `When you find matching courses in ${srcShort}, emit them in this format:\n` +
     "```course-card\n" +
     '{"id":"<id>","slug":"<slug>","name":"<name>","institution":"<institution>","degree_level":"<level>",' +
-    '"duration":"<duration>","fees":<amount>,"currency":"<currency>",' +
+    '"duration":"<duration>","fees":<amount>,"currency":"<currency>","fee_period":"<fee_period>",' +
     '"country":"<country>","city":"<city>","intakes":["<intake>"],' +
     '"study_modes":["<mode>"],"source_url":"<url>"}\n' +
     "```\n" +
@@ -324,6 +324,8 @@ export function buildSystemPrompt(opts: {
     (opts.toolMode
       ? "Copy the fields VERBATIM from the `card` object of a search result — never invent. "
       : "Copy fields VERBATIM from the CARD_FIELDS line in CONTEXT — never invent. ") +
+    "fees/currency/fee_period travel together — never quote a figure without the period it is charged " +
+    "for, and if currency is null say the amount is unconfirmed rather than assuming a currency. " +
     "Cards mark a considered recommendation, not search results: emit them only after the counselling " +
     "conversation has established the student's goals (see COUNSELLING APPROACH), max 3 per reply, " +
     "each with one sentence on why it fits this student.",

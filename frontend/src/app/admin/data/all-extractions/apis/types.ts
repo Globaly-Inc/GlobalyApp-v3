@@ -329,6 +329,8 @@ export type FeeInstallment = {
 export type CourseFee = {
   id: string;
   name: string | null;
+  /** The source page's own fee wording — the label stays short, the detail lives here. */
+  description: string | null;
   student_type: string | null;
   period_type: string | null;
   currency: string | null;
@@ -341,6 +343,7 @@ export type CourseFee = {
 
 export type CourseFeeParams = {
   name?: string | null;
+  description?: string | null;
   student_type?: string;
   period_type?: string;
   currency?: string;

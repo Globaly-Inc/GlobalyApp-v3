@@ -13,6 +13,7 @@
     "import:v2": "node --import tsx scripts/import-v2.ts",
     "embed:backfill": "node --import tsx scripts/embed-backfill.ts",
     "chunk:backfill": "node --import tsx scripts/chunk-backfill.ts",
+    "fees:normalise": "node --import tsx scripts/normalise-course-fees.ts",
     "ai:evals": "node --import tsx scripts/ai-evals/run-evals.ts",
     "gcs:cors": "node --import tsx scripts/set-gcs-cors.ts",
     "seed:globalyapp": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp",

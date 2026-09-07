@@ -21,6 +21,7 @@ export type WireCourseCard = {
   duration: string | null;
   fees: number | null;
   currency: string | null;
+  fee_period?: string | null;
   country: string | null;
   city: string | null;
   intakes: string[] | null;

@@ -110,10 +110,11 @@ Extract this JSON:
       "career_paths": [],
       "fees": [
         {
-          "name": "fee description — include the original text verbatim if it's a range or unclear figure, e.g. 'Tuition (range: $25,000-$30,000)' or 'Tuition — contact institution'",
+          "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+          "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
+          "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
           "student_type": "domestic|international|both",
-          "period_type": "Per Year|Per Semester|Total|Per Unit",
-          "currency": "the currency actually shown on the page (AUD, USD, GBP, ...) — null if not stated, never assume AUD",
+          "period_type": "Per Year|Per Semester|Per Trimester|Total|Per Unit",
           "total_amount": "numeric amount — the lower bound if the page shows a range, null if no real figure is stated (e.g. \"Contact us\")"
         }
       ],
@@ -194,7 +195,8 @@ Rules:
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If this page states no real fee figures but links to a dedicated fees/tuition/cost page (a schedule page, a catalog entry, an external PDF), leave fees empty and set fees_page_url to that link instead — never fabricate a fee entry with no amount just to record the URL
-- If a fee is shown as a range (e.g. "$25,000-$30,000"), set total_amount to the lower bound and keep the full range in the fee's name — never average or invent a single figure. If a page shows both a per-year figure AND a total-program figure, extract BOTH as separate fees array entries distinguished by period_type — never collapse them into one guess.
+- NAME vs DESCRIPTION: name is only the label a student reads in a fee table ("Tuition Fee", "Semester Fee", "Application Fee"). Every figure, credit count, range, and caveat goes in description — never in name.
+- If a fee is shown as a range (e.g. "$25,000-$30,000"), set total_amount to the lower bound and keep the full range in the fee's description — never average or invent a single figure. If a page shows both a per-year figure AND a total-program figure, extract BOTH as separate fees array entries distinguished by period_type — never collapse them into one guess.
 - TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: one entry with period_type "Per Unit" and total_amount = the rate (325), AND one entry with period_type "Total" and total_amount = the computed or explicitly stated total (3900). Never capture ONLY the per-unit rate when a total is derivable or explicitly stated — the total is what matters most for display.
 - STUDENT TYPE: Use student_type "both" whenever the page shows ONE fee figure with no domestic/international distinction. Only emit separate "domestic" and "international" entries when the page explicitly states TWO DIFFERENT amounts — one labelled for domestic students and one for international. Never duplicate the same amount into two separate entries.
 - Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")
@@ -224,17 +226,19 @@ Return JSON:
 {
   "fees": [
     {
-      "name": "fee description — include the original text verbatim if it's a range or unclear figure",
+      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+      "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
+      "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
       "student_type": "domestic|international|both",
-      "period_type": "Per Year|Per Semester|Total|Per Unit",
-      "currency": "the currency actually shown on the page — null if not stated, never assume",
+      "period_type": "Per Year|Per Semester|Per Trimester|Total|Per Unit",
       "total_amount": "numeric amount — the lower bound if the page shows a range, null if no real figure is stated"
     }
   ]
 }
 
 Rules:
-- If a fee is shown as a range, set total_amount to the lower bound and keep the full range in name
+- NAME vs DESCRIPTION: name is only the label a student reads in a fee table ("Tuition Fee", "Semester Fee", "Application Fee"). Every figure, credit count, range, and caveat goes in description — never in name.
+- If a fee is shown as a range, set total_amount to the lower bound and keep the full range in description
 - If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
 - TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: period_type "Per Unit" with total_amount = rate, AND period_type "Total" with total_amount = the stated or computed total. Never capture only the per-unit rate when a total is derivable or stated.
 - STUDENT TYPE: Use student_type "both" when the page shows one fee with no domestic/international distinction. Only split into separate "domestic" and "international" entries when the page explicitly states two DIFFERENT amounts. Never duplicate the same amount into two entries.
@@ -270,17 +274,19 @@ Return JSON:
   ],
   "fees": [
     {
-      "name": "fee description — include the original text verbatim if it's a range or unclear figure",
+      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+      "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
+      "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
       "student_type": "domestic|international|both",
-      "period_type": "Per Year|Per Semester|Total|Per Unit",
-      "currency": "the currency actually shown on the page — null if not stated, never assume",
+      "period_type": "Per Year|Per Semester|Per Trimester|Total|Per Unit",
       "total_amount": "numeric amount — the lower bound if the page shows a range, null if no real figure is stated"
     }
   ]
 }
 
 Rules:
-- If a fee is shown as a range, set total_amount to the lower bound and keep the full range in name
+- NAME vs DESCRIPTION: name is only the label a student reads in a fee table ("Tuition Fee", "Semester Fee", "Application Fee"). Every figure, credit count, range, and caveat goes in description — never in name.
+- If a fee is shown as a range, set total_amount to the lower bound and keep the full range in description
 - If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
 - TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: period_type "Per Unit" with total_amount = rate, AND period_type "Total" with total_amount = the stated or computed total. Never capture only the per-unit rate when a total is derivable or stated.
 - STUDENT TYPE: Use student_type "both" when the page shows one fee with no domestic/international distinction. Only split into separate "domestic" and "international" entries when the page explicitly states two DIFFERENT amounts. Never duplicate the same amount into two entries.
@@ -664,7 +670,7 @@ Rules:
 - TOTAL vs PER-UNIT: When the page shows a per-credit rate AND credit requirements (e.g. "$325/credit × 12 credits"), use the computed or stated total (3900) as the fee amount, not the per-unit rate (325)
 - If a fee is per semester/term, calculate the annual total
 - If you cannot find a fee for a specific course, set its totals to 0
-- Currency: default to ${currency}${countryNote}. Only use a different code if explicitly stated
+- Currency: an ISO 4217 code only (never a symbol like "$"), defaulting to ${currency}${countryNote}. Only use a different code if explicitly stated
 - Only extract fees explicitly stated — do NOT guess
 
 === FEES PAGE ===
@@ -706,8 +712,14 @@ export function courseDataPrompt(
     fees: `{
   "domestic_fee_total": null,
   "international_fee_total": null,
-  "currency": "AUD",
-  "fees": [{ "name": "fee description", "student_type": "domestic|international|both", "period_type": "Per Year|Per Semester|Total", "total_amount": 0 }]
+  "fees": [{
+    "name": "SHORT generic label for the KIND of fee — 'Tuition Fee', 'Semester Fee', 'Application Fee' — max 40 characters, never an amount or the course name",
+    "description": "the page's own wording for this fee, verbatim (the per-credit breakdown, the range, what it covers) — null if the page states nothing beyond the amount",
+    "currency": "ISO 4217 code (AUD, USD, GBP, ...) — never a symbol like '$'. If the page shows only a symbol, use the code for the institution's own country. null if unstated",
+    "student_type": "domestic|international|both",
+    "period_type": "Per Year|Per Semester|Per Trimester|Total|Per Unit",
+    "total_amount": 0
+  }]
 }`,
     intakes: `{
   "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD or null", "intake_month": null, "intake_year": null, "admission_deadline": "YYYY-MM-DD or null" }]

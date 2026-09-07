@@ -5,6 +5,8 @@
 export interface Installment {
   label: string;
   amount: number;
+  /** Filled by staging-writer's feeBreakdown() — the fee form edits fees line by line. */
+  lines?: { fee_type: string; amount: number }[];
 }
 
 /**

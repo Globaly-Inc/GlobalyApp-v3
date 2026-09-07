@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
+import { geoApi } from "@/app/geo/apis";
+import { Textarea } from "@/components/ui/textarea";
 import { CURRENCY_OPTIONS, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "../const";
 import type { CourseFee, CourseFeeParams, FeeInstallment } from "../apis/types";
 
@@ -24,15 +26,34 @@ const emptyInstallment = (index: number): Installment => ({
   lines: [{ fee_type: "", amount: "" }],
 });
 
-const toInstallments = (fee?: CourseFee): Installment[] =>
-  fee?.installments?.length
-    ? fee.installments.map((i) => ({
-        label: i.label,
-        lines: i.lines?.length
-          ? i.lines.map((l) => ({ fee_type: l.fee_type, amount: String(l.amount) }))
-          : [{ fee_type: "", amount: String(i.amount ?? "") }],
-      }))
-    : [emptyInstallment(0)];
+// An extracted fee is stored as a total, sometimes with a {label, amount} split and no fee-type
+// lines. Seeding those from the fee itself is what keeps the form from opening on an empty
+// installment worth 0 — which, once saved, overwrites the real amount with zero.
+const PERIOD_INSTALLMENT_LABEL: Record<string, string> = {
+  "Per Year": "Year 1",
+  "Per Semester": "Semester 1",
+  "Per Trimester": "Trimester 1",
+  "Per Unit": "Per Credit",
+  Total: "Full Payment",
+};
+
+const toInstallments = (fee?: CourseFee): Installment[] => {
+  if (fee?.installments?.length) {
+    return fee.installments.map((i) => ({
+      label: i.label,
+      lines: i.lines?.length
+        ? i.lines.map((l) => ({ fee_type: l.fee_type, amount: String(l.amount) }))
+        : [{ fee_type: fee.name ?? "", amount: String(i.amount ?? "") }],
+    }));
+  }
+  if (fee?.total_amount != null) {
+    return [{
+      label: PERIOD_INSTALLMENT_LABEL[fee.period_type ?? ""] ?? "Installment 1",
+      lines: [{ fee_type: fee.name ?? "", amount: String(fee.total_amount) }],
+    }];
+  }
+  return [emptyInstallment(0)];
+};
 
 const sumLines = (lines: Line[]) => lines.reduce((total, l) => total + (Number(l.amount) || 0), 0);
 
@@ -41,6 +62,7 @@ const feeSchema = z.object({
   periodType: z.string().trim().min(1, "Period type is required"),
   currency: z.string().trim().min(1, "Currency is required"),
   name: z.string().trim().transform((v) => v || null),
+  description: z.string().trim().transform((v) => v || null),
   installments: z.array(
     z.object({
       label: z.string(),
@@ -88,15 +110,34 @@ export function FeeForm({
   const [periodType, setPeriodType] = useState(fee?.period_type ?? "Per Year");
   const [currency, setCurrency] = useState(fee?.currency ?? "AUD");
   const [name, setName] = useState(fee?.name ?? "");
+  const [description, setDescription] = useState(fee?.description ?? "");
   const [installments, setInstallments] = useState<Installment[]>(() => toInstallments(fee));
   const [saveForReuse, setSaveForReuse] = useState(fee?.save_for_reuse ?? false);
   const [feeTypes, setFeeTypes] = useState<{ value: string; label: string }[]>([]);
+  const [currencyOptions, setCurrencyOptions] = useState(CURRENCY_OPTIONS);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     categoriesApi.getFeeTypes({ limit: 100 })
       .then((res) => setFeeTypes(res.data.map((f) => ({ value: f.name, label: f.name }))))
       .catch(() => setFeeTypes([]));
+  }, []);
+
+  // Currencies come from the countries table — CURRENCY_OPTIONS is only the offline fallback.
+  useEffect(() => {
+    geoApi.getCountries()
+      .then((countries) => {
+        const byCode = new Map(
+          countries
+            .filter((c) => c.currency)
+            .map((c) => [c.currency!, `${c.currency}${c.currencySymbol ? ` (${c.currencySymbol})` : ""}`]),
+        );
+        if (byCode.size === 0) return;
+        setCurrencyOptions(
+          [...byCode].sort(([a], [b]) => a.localeCompare(b)).map(([value, label]) => ({ value, label })),
+        );
+      })
+      .catch(() => setCurrencyOptions(CURRENCY_OPTIONS));
   }, []);
 
   const total = installments.reduce((sum, i) => sum + sumLines(i.lines), 0);
@@ -118,7 +159,7 @@ export function FeeForm({
   };
 
   const submit = () => {
-    const result = feeSchema.safeParse({ studentType, periodType, currency, name, installments });
+    const result = feeSchema.safeParse({ studentType, periodType, currency, name, description, installments });
     if (!result.success) {
       const errs: Record<string, string> = {};
       for (const issue of result.error.issues) {
@@ -143,6 +184,7 @@ export function FeeForm({
 
     onSave({
       name: d.name,
+      description: d.description,
       student_type: d.studentType,
       period_type: d.periodType,
       currency: d.currency,
@@ -182,6 +224,27 @@ export function FeeForm({
           <FieldError message={errors.studentType} />
         </div>
 
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="fee-name">Fee Name</Label>
+          <Input
+            id="fee-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Semester Fee, Tuition Fee, Application Fee"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="fee-description">Description</Label>
+          <Textarea
+            id="fee-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            placeholder="What the page says about this fee — per-credit breakdown, range, what it covers"
+          />
+        </div>
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fee-period">
@@ -207,7 +270,7 @@ export function FeeForm({
             </Label>
             <Combobox
               id="fee-currency"
-              options={CURRENCY_OPTIONS}
+              options={currencyOptions}
               value={currency}
               onChange={(v) => {
                 setCurrency(v);

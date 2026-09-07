@@ -5,7 +5,7 @@ import type { CounsellingContext } from "../repositories/sessions.repository.js"
 // One card mapping and one chunk-budget rule for both retrieval paths — a divergence
 // here would mean the legacy path and the tool path emitting different course-card
 // shapes, or handing the model different amounts of rack context for the same question.
-import { capPerDocument, courseCardFields } from "../lib/tools.js";
+import { capPerDocument, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
 import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
@@ -56,6 +56,10 @@ async function detectCountryCode(query: string): Promise<string | null> {
 }
 
 // Higher-trust sources lead the context so the model anchors on them (AC-09).
+// ponytail: a course rarely has more than a handful of fees; the cap only stops a fee table
+// that was scraped row-by-row from crowding the context out.
+const MAX_FEE_LINES = 4;
+
 const TIER_RANK: Record<string, number> = { gov: 0, verified_institution: 1, other: 2 };
 const TIER_LABEL: Record<string, string> = {
   gov: "official government source",
@@ -182,14 +186,18 @@ export async function searchAll(opts: {
   if (hydratedCourses.length) {
     const lines = ["--- COURSES ---"];
     for (const c of hydratedCourses) {
-      const fee = c.fees.find(f => f.student_type === "international") ?? c.fees[0];
       const intakeNames = c.intakes.map(i => i.intake_name).filter(Boolean);
       const modes = c.study_options.map(o => o.study_mode).filter(Boolean);
       lines.push(
         `Course: ${c.name} at ${c.institution_name ?? "Unknown"}`,
         `  Level: ${c.degree_level ?? "N/A"}`,
         `  Duration: ${c.duration_weeks ?? "N/A"} weeks`,
-        fee ? `  Fees: ${fee.currency} ${fee.total_amount} (${fee.student_type})` : "  Fees: N/A",
+        // Every fee, each with its own period, currency and the page's wording — one summed
+        // number can't answer "is that per year?", which is most of what students ask about cost.
+        // Ranked before the cap so the rows that survive it are the same ones the card headlines.
+        c.fees.length
+          ? rankFees(c.fees).slice(0, MAX_FEE_LINES).map(f => `  Fees: ${feeLine(f)}`).join("\n")
+          : "  Fees: N/A",
         `  Country: ${c.institution_country ?? c.country_code ?? "N/A"}`,
         intakeNames.length ? `  Intakes: ${intakeNames.join(", ")}` : "",
         modes.length ? `  Study Modes: ${modes.join(", ")}` : "",

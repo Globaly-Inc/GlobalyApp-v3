@@ -28,6 +28,7 @@ function toCourseCard(w: WireCourseCard): CourseCard {
     duration: w.duration ?? "",
     annual_tuition_fee: toFee(w.fees),
     currency: w.currency ?? "",
+    fee_period: w.fee_period ?? null,
     country: w.country ?? "",
     city: w.city ?? null,
     intakes: w.intakes ?? [],

@@ -7,6 +7,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { coerceLabel, mapDegreeLevel } from "./agentcis-mappers.js";
 import { extractIntakes, extractStudyOptions, extractEligibility } from "./agentcis-product-mappers.js";
+import { normaliseCurrency, normalisePeriodType } from "./staging-writer.js";
 
 export interface StagingCounters {
   branches_extracted: number;
@@ -90,8 +91,8 @@ export async function stageProduct(
         job_id: jobId,
         name: coerceLabel(feeObj.name || feeObj.fee_type || feeObj.type) || "Tuition Fee",
         student_type: String(feeObj.student_type ?? feeObj.applicable_to ?? "international").toLowerCase(),
-        period_type: coerceLabel(feeObj.period_type || feeObj.period) || "total",
-        currency: String(feeObj.currency ?? (p.currency as string) ?? "AUD").toUpperCase(),
+        period_type: normalisePeriodType(coerceLabel(feeObj.period_type || feeObj.period) || "Total"),
+        currency: (await normaliseCurrency(String(feeObj.currency ?? p.currency ?? ""), jobId)) ?? "AUD",
         total_amount: Math.round(amount),
       })
       .returning("id");
