@@ -50,6 +50,16 @@ const DOMESTIC_FEE = "coalesce(dfee.total_amount, ec.domestic_fee_total)";
 const INTERNATIONAL_FEE = "coalesce(ifee.total_amount, ec.international_fee_total)";
 const EFFECTIVE_FEE = `coalesce(${DOMESTIC_FEE}, ${INTERNATIONAL_FEE})`;
 
+/** The linked fee's currency wins for the same reason its amount does: an extraction path that
+ *  fills the fee row can leave the course's own currency columns null or stale. */
+const DOMESTIC_CURRENCY = "coalesce(dfee.currency, ec.domestic_currency)";
+const INTERNATIONAL_CURRENCY = "coalesce(ifee.currency, ec.international_currency)";
+
+/** The currency that labels EFFECTIVE_FEE: same domestic-then-international precedence, so an
+ *  amount can't be quoted in the other audience's currency — or in none at all. */
+const EFFECTIVE_CURRENCY =
+  `case when ${DOMESTIC_FEE} is not null then ${DOMESTIC_CURRENCY} else ${INTERNATIONAL_CURRENCY} end`;
+
 /** That fee's payment schedule, falling back to the one on the course row. */
 const feeSchedule = (scope: "domestic" | "international") =>
   `coalesce(${scope === "domestic" ? "dfee" : "ifee"}.installments, ec.${scope}_fee_installments)`;
@@ -99,9 +109,9 @@ const LIST_COLUMNS = [
   "ec.id", "ec.name", "ec.short_name", "ec.degree_level", "ec.subject_area",
   "ec.duration_weeks", "ec.study_mode", "ec.description",
   masterKnex.raw(`${DOMESTIC_FEE} as domestic_fee_total`),
-  masterKnex.raw("coalesce(dfee.currency, ec.domestic_currency) as domestic_currency"),
+  masterKnex.raw(`${DOMESTIC_CURRENCY} as domestic_currency`),
   masterKnex.raw(`${INTERNATIONAL_FEE} as international_fee_total`),
-  masterKnex.raw("coalesce(ifee.currency, ec.international_currency) as international_currency"),
+  masterKnex.raw(`${INTERNATIONAL_CURRENCY} as international_currency`),
   // What the amount actually covers — a linked fee can be quoted per year, not per course.
   masterKnex.raw("dfee.period_type as domestic_fee_period"),
   masterKnex.raw("ifee.period_type as international_fee_period"),
@@ -177,10 +187,7 @@ function baseQuery({
   if (feeMax != null) q.whereRaw(`${EFFECTIVE_FEE} <= ?`, [feeMax]);
   // "Fees in X" filters to courses actually quoted in that currency — no FX conversion pipeline exists in V3 yet.
   if (currency) {
-    q.whereRaw(
-      "? in (coalesce(dfee.currency, ec.domestic_currency), coalesce(ifee.currency, ec.international_currency))",
-      [currency],
-    );
+    q.whereRaw(`? in (${DOMESTIC_CURRENCY}, ${INTERNATIONAL_CURRENCY})`, [currency]);
   }
   if (intakeYear != null) {
     q.whereRaw(
@@ -275,7 +282,11 @@ export async function listCourseFacets(jobId: string) {
       // A zero fee means "not captured", not "free" — nullif keeps it out of the range.
       .select(masterKnex.raw(`min(nullif(${EFFECTIVE_FEE}, 0)) as fee_min`))
       .select(masterKnex.raw(`max(nullif(${EFFECTIVE_FEE}, 0)) as fee_max`))
-      .select(masterKnex.raw("min(coalesce(ec.domestic_currency, ec.international_currency)) as currency"))
+      // Currency off the same fee the range came from, and only from the courses that reached it —
+      // otherwise a linked amount gets labelled with a stale course-row currency, or with none.
+      .select(masterKnex.raw(
+        `min(case when nullif(${EFFECTIVE_FEE}, 0) is not null then ${EFFECTIVE_CURRENCY} end) as currency`,
+      ))
       .groupBy("ec.subject_area", "ec.degree_level"),
     baseQuery({ jobId }).whereNotNull("ec.degree_level")
       .select("ec.degree_level as name").count("ec.id as count")
@@ -305,27 +316,32 @@ export async function listCourseFacets(jobId: string) {
   return { subject_areas, degree_levels: toFacets(degreeLevels) };
 }
 
+/**
+ * The filter dropdowns. Every option comes through `baseQuery` (and, for years, the curated
+ * intake links), so the list can only offer a value that returns results: read off the raw
+ * tables, a superseded intake year — or the degree level, currency or institution of a rejected
+ * or unpublished course — stays selectable and picking it empties the page.
+ */
 export async function listCourseFilterOptions() {
+  const visibleCourses = () => baseQuery({}).select("ec.id");
   const [years, currencies, degreeLevels, institutions] = await Promise.all([
-    masterKnex(`${S}.extraction_intakes`)
-      .distinct("intake_year")
-      .whereNotNull("intake_year")
-      .orderBy("intake_year"),
-    masterKnex(`${S}.extraction_courses`)
-      .select(masterKnex.raw("unnest(array[domestic_currency, international_currency]) as currency"))
-      .whereRaw("domestic_currency is not null or international_currency is not null"),
-    masterKnex(`${S}.extraction_courses`)
-      .distinct("degree_level")
-      .whereNotNull("degree_level")
-      .orderBy("degree_level"),
-    // Only institutions with a publicly visible course, so the filter can't offer a name that
-    // returns nothing. Same inner join as baseQuery: an unpublished institution's job can still be
-    // exported, so the join (not just PUBLICLY_VISIBLE) is what actually excludes it.
-    masterKnex(`${S}.extraction_courses as ec`)
-      .join("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
+    masterKnex
+      .fromRaw(COURSE_INTAKES)
+      .whereIn("ia.course_id", visibleCourses())
+      .distinct("ei.intake_year")
+      .whereNotNull("ei.intake_year")
+      .orderBy("ei.intake_year"),
+    // The currencies courses are actually quoted in — the same expressions the filter matches on.
+    baseQuery({}).select(
+      masterKnex.raw(`unnest(array[${DOMESTIC_CURRENCY}, ${INTERNATIONAL_CURRENCY}]) as currency`),
+    ),
+    baseQuery({})
+      .distinct("ec.degree_level")
+      .whereNotNull("ec.degree_level")
+      .orderBy("ec.degree_level"),
+    baseQuery({})
       .distinct("ec.awarding_institution")
       .whereNotNull("ec.awarding_institution")
-      .whereRaw(PUBLICLY_VISIBLE)
       .orderBy("ec.awarding_institution"),
   ]);
   return {

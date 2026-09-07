@@ -4,7 +4,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
-import { normaliseStudyMode } from "./agentcis-product-mappers.js";
+import { normaliseStudyMode, normaliseStudyModes } from "./agentcis-product-mappers.js";
 
 const logger = createChildLogger("staging-writer");
 
@@ -674,19 +674,28 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Study options + assignments ──
   if (course.study_options?.length) {
     for (const opt of course.study_options) {
-      const [optRow] = await masterKnex(`${S}.extraction_study_options`)
-        .insert({
-          job_id: jobId,
-          name: opt.name ?? null,
-          study_mode: normaliseStudyMode(opt.study_mode) ?? "on_campus",
-          study_load: opt.study_load ?? "full_time",
-          duration_value: coerceInt(opt.duration_value),
-          duration_unit: opt.duration_unit ?? "months",
-        })
-        .returning("id");
-      await masterKnex(`${S}.extraction_course_study_option_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, study_option_id: optRow.id })
-        .onConflict(["course_id", "study_option_id"]).ignore();
+      // study_mode is NOT NULL, so a mode we cannot recognise has no honest value to store:
+      // skip the option rather than publish a made-up on-campus chip the source never claimed.
+      const modes = normaliseStudyModes(opt.study_mode);
+      if (!modes.length) {
+        logger.warn("Skipped study option with unrecognised study_mode", { jobId, courseId, studyMode: opt.study_mode });
+        continue;
+      }
+      for (const mode of modes) {
+        const [optRow] = await masterKnex(`${S}.extraction_study_options`)
+          .insert({
+            job_id: jobId,
+            name: opt.name ?? null,
+            study_mode: mode,
+            study_load: opt.study_load ?? "full_time",
+            duration_value: coerceInt(opt.duration_value),
+            duration_unit: opt.duration_unit ?? "months",
+          })
+          .returning("id");
+        await masterKnex(`${S}.extraction_course_study_option_assignments`)
+          .insert({ job_id: jobId, course_id: courseId, study_option_id: optRow.id })
+          .onConflict(["course_id", "study_option_id"]).ignore();
+      }
     }
   }
 

@@ -156,10 +156,17 @@ export function normaliseStudyMode(raw: unknown): string | null {
   return MODE_MAP[raw.trim().toLowerCase()] ?? null;
 }
 
+/**
+ * Every mode a raw value names, deduped, empty when it names none. Compound values
+ * ("on-campus, online") are split so both modes survive instead of only the first.
+ */
+export function normaliseStudyModes(raw: unknown): string[] {
+  const modes = tokenize(raw).map((t) => MODE_MAP[t.toLowerCase()]).filter(Boolean);
+  return [...new Set(modes)];
+}
+
 export function extractStudyOptions(p: Record<string, unknown>): MappedStudyOption[] {
-  const modeRaw = p.study_mode ?? p.delivery_mode ?? p.mode;
-  const modeTokens = tokenize(modeRaw);
-  const modes = modeTokens.map((t) => MODE_MAP[t.toLowerCase()] || null).filter(Boolean) as string[];
+  const modes = normaliseStudyModes(p.study_mode ?? p.delivery_mode ?? p.mode);
 
   const loadRaw = p.study_load ?? p.load ?? p.attendance_type;
   const loadTokens = tokenize(loadRaw);

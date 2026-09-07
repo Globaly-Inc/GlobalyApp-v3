@@ -18,6 +18,7 @@ import {
   findPublicCourseBySlug,
   listPublicCourses,
   listCourseCampuses,
+  listCourseFilterOptions,
 } from "../src/modules/search/repositories/courses.repository.js";
 
 async function seed() {
@@ -69,7 +70,7 @@ async function seed() {
     .insert([
       { job_id: jobId, course_id: courseId, intake_name: "Linked 2026", start_date: "2026-03-02", intake_month: 3, intake_year: 2026 },
       { job_id: jobId, course_id: courseId, intake_name: "Linked 2027", start_date: "2027-02-05", intake_month: 2, intake_year: 2027 },
-      { job_id: jobId, course_id: courseId, intake_name: "Superseded", start_date: null, intake_month: null, intake_year: null },
+      { job_id: jobId, course_id: courseId, intake_name: "Superseded", start_date: null, intake_month: null, intake_year: 2099 },
     ])
     .returning(["id", "intake_name"]);
   for (const intake of intakeRows.filter((i: { intake_name: string }) => i.intake_name !== "Superseded")) {
@@ -106,6 +107,17 @@ async function seed() {
     await masterKnex(`${S}.extraction_course_campuses`)
       .insert({ job_id: jobId, course_id: courseId, campus_id: campus.id, campus_name: `${campus.city} Campus` });
   }
+
+  // A rejected course in the same (exported, published) job: invisible everywhere the public
+  // reads, so nothing it alone carries may reach a filter dropdown.
+  await masterKnex(`${S}.extraction_courses`).insert({
+    job_id: jobId,
+    name: `Test Rejected Course ${Date.now()}`,
+    degree_level: "test_rejected_level",
+    awarding_institution: "Test Rejected Institution",
+    domestic_currency: "XTS",
+    verification_status: "flagged",
+  });
 
   return {
     jobId, courseId, taughtAt,
@@ -161,7 +173,22 @@ async function main() {
     const inBudget = await listPublicCourses({ jobId, feeMin: 40000, feeMax: 50000 }, undefined, 10, 0);
     assert.equal(inBudget.length, 1, "a course whose fee lives only in the fee table must still be filterable");
 
-    console.log(`ok — course ${courseId}: fees, intakes, units, options and campuses all read from its links`);
+    // The filter dropdowns may only offer values that return results: linked intakes of visible
+    // courses, and nothing that exists solely on a rejected one.
+    const options = await listCourseFilterOptions();
+    assert.ok(options.years.includes(2026), "a linked intake's year must be filterable");
+    assert.ok(!options.years.includes(2099), "a superseded intake's year must not be selectable");
+    assert.ok(
+      !options.degree_levels.includes("test_rejected_level"),
+      "a degree level only a rejected course carries must not be selectable",
+    );
+    assert.ok(!options.currencies.includes("XTS"), "a rejected course's currency must not be selectable");
+    assert.ok(
+      !options.institutions.includes("Test Rejected Institution"),
+      "an institution only a rejected course names must not be selectable",
+    );
+
+    console.log(`ok — course ${courseId}: fees, intakes, units, options, campuses and filter options all read from its links`);
   } finally {
     await masterKnex("institutions").where({ id: institutionId }).delete();
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).delete();

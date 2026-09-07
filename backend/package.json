@@ -62,7 +62,8 @@
     "test:guides": "node --import tsx tests/guides.ts",
     "test:public-search-sync": "node --import tsx tests/public-search-sync.ts",
     "test:public-course-links": "node --import tsx tests/public-course-links.ts",
-    "test:integration-settings": "node --import tsx tests/integration-settings.ts"
+    "test:integration-settings": "node --import tsx tests/integration-settings.ts",
+    "test:study-mode-normalisation": "node --import tsx tests/study-mode-normalisation.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
