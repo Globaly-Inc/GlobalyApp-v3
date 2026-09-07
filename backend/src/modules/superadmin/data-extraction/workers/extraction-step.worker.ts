@@ -1139,50 +1139,58 @@ async function handleCourseDataStep(
     }
 
     case "eligibility": {
-      // Delete existing eligibility assignments for this course
-      await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
-      const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
-      for (const req of reqs) {
-        const description = (req.description as string | null) ?? null;
-        let scoreType = normaliseScoreType(req.score_type);
-        let scoreValue = coerceMoney(req.min_score);
-        if (!scoreType && scoreValue == null && !req.min_score_percent) {
-          const derived = deriveScoreFromDescription(description);
-          if (derived) { scoreType = derived.score_type; scoreValue = derived.value; }
-        }
-        const isPercentage = scoreType === "percentage";
+      // One transaction for the whole refresh: both halves clear the course's rows before
+      // re-inserting, so a failure part-way through used to leave the course with the old
+      // requirements deleted and only some of the new ones written, while the step was marked
+      // failed. Rolling back keeps the previous data until a run succeeds end to end.
+      count = await masterKnex.transaction(async (trx) => {
+        let written = 0;
+        // Delete existing eligibility assignments for this course
+        await trx(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
+        const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
+        for (const req of reqs) {
+          const description = (req.description as string | null) ?? null;
+          let scoreType = normaliseScoreType(req.score_type);
+          let scoreValue = coerceMoney(req.min_score);
+          if (!scoreType && scoreValue == null && !req.min_score_percent) {
+            const derived = deriveScoreFromDescription(description);
+            if (derived) { scoreType = derived.score_type; scoreValue = derived.value; }
+          }
+          const isPercentage = scoreType === "percentage";
 
-        const [reqRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
-          .insert({
-            job_id: jobId,
-            name: req.name ?? null,
-            applicable_to: req.applicable_to ?? "both",
-            description,
-            min_score_percent: isPercentage ? scoreValue : coerceMoney(req.min_score_percent),
-            min_degree_level: req.min_degree_level ?? null,
-            score_type: scoreType,
-            min_score: isPercentage ? null : scoreValue,
-          })
-          .returning("id");
-        await masterKnex(`${S}.extraction_course_eligibility_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: reqRow.id });
-        count++;
-      }
-      // English requirements — cleared first, or a re-run stacks a second copy of every test.
-      await masterKnex(`${S}.extraction_english_requirements`).where({ course_id: courseId }).delete();
-      const engReqs = (extracted.english_requirements as Array<Record<string, unknown>>) || [];
-      for (const eng of engReqs) {
-        await masterKnex(`${S}.extraction_english_requirements`).insert({
-          job_id: jobId, course_id: courseId,
-          test_type_name: eng.test_type_name ?? null,
-          overall_score: eng.overall_score ?? null,
-          listening_score: eng.listening_score ?? null,
-          reading_score: eng.reading_score ?? null,
-          writing_score: eng.writing_score ?? null,
-          speaking_score: eng.speaking_score ?? null,
-        });
-        count++;
-      }
+          const [reqRow] = await trx(`${S}.extraction_eligibility_requirements`)
+            .insert({
+              job_id: jobId,
+              name: req.name ?? null,
+              applicable_to: req.applicable_to ?? "both",
+              description,
+              min_score_percent: isPercentage ? scoreValue : coerceMoney(req.min_score_percent),
+              min_degree_level: req.min_degree_level ?? null,
+              score_type: scoreType,
+              min_score: isPercentage ? null : scoreValue,
+            })
+            .returning("id");
+          await trx(`${S}.extraction_course_eligibility_assignments`)
+            .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: reqRow.id });
+          written++;
+        }
+        // English requirements — cleared first, or a re-run stacks a second copy of every test.
+        await trx(`${S}.extraction_english_requirements`).where({ course_id: courseId }).delete();
+        const engReqs = (extracted.english_requirements as Array<Record<string, unknown>>) || [];
+        for (const eng of engReqs) {
+          await trx(`${S}.extraction_english_requirements`).insert({
+            job_id: jobId, course_id: courseId,
+            test_type_name: eng.test_type_name ?? null,
+            overall_score: eng.overall_score ?? null,
+            listening_score: eng.listening_score ?? null,
+            reading_score: eng.reading_score ?? null,
+            writing_score: eng.writing_score ?? null,
+            speaking_score: eng.speaking_score ?? null,
+          });
+          written++;
+        }
+        return written;
+      });
       break;
     }
 

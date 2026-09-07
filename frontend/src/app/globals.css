@@ -340,6 +340,15 @@
     .animate-marquee-x {
       animation: none;
     }
+    /* A stopped track inside an overflow-hidden viewport would clip every item past the fold
+       with no way to reach it, so the viewport becomes a real scroller — and the duplicate
+       copy, which only exists to make the loop seamless, is dropped from it. */
+    .marquee-viewport {
+      overflow-x: auto;
+    }
+    .animate-marquee-x > [aria-hidden="true"] {
+      display: none;
+    }
   }
 
   /* Animated ring for the home hero's search box — the one place the AI counsellor is the

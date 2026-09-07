@@ -49,7 +49,10 @@ export function CountryCities({ country }: Readonly<{ country: CountryDetail }>)
         <Badge variant="secondary">{cities.length} cities</Badge>
       </div>
 
-      <div className="-mx-4 overflow-hidden px-4 pb-3">
+      {/* marquee-viewport: under prefers-reduced-motion the animation stops, and globals.css
+          turns this back into a real horizontal scroller so the cities past the fold stay
+          reachable instead of being clipped by overflow-hidden. */}
+      <div className="marquee-viewport -mx-4 overflow-hidden px-4 pb-3">
         <div
           className="animate-marquee-x flex w-max"
           style={{ "--marquee-duration": `${cities.length * SECONDS_PER_CITY}s` } as CSSProperties}

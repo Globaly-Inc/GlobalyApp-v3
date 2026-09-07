@@ -69,14 +69,10 @@ export function CourseIntakesCard({ intakes }: Readonly<{ intakes: Intake[] }>) 
           <div className="grid gap-4 rounded-lg border border-border bg-muted/30 p-4 sm:grid-cols-3">
             <Detail icon={CalendarDays} label="Intake starts" value={formatDate(active.start_date)} />
             <Detail icon={CalendarCheck} label="Application deadline" value={formatDate(active.admission_deadline)} />
-            <Detail
-              icon={CalendarClock}
-              label="Intake ends"
-              value={formatDate(active.end_date)
-                ?? (active.intake_month && active.intake_year
-                  ? `${MONTH_NAMES[active.intake_month - 1]} ${active.intake_year}`
-                  : active.intake_year ? String(active.intake_year) : null)}
-            />
+            {/* No fallback to intake_month/intake_year: those describe when the intake *starts*
+                (the extractor writes them next to start_date), so using them here reported a
+                start date as the end date, contradicting "Intake starts" beside it. */}
+            <Detail icon={CalendarClock} label="Intake ends" value={formatDate(active.end_date)} />
           </div>
         </div>
       )}
