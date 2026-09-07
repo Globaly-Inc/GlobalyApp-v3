@@ -281,7 +281,11 @@ export async function sendOtp(email: string) {
 
   await queueEmail({ to: user.email, ...otpEmail(otp) });
 
-  logger.info("OTP sent", { userId: user.id, otp: otp });
+  // The plaintext OTP is a bearer credential — never let it reach production logs.
+  logger.info("OTP sent", {
+    userId: user.id,
+    ...(config.NODE_ENV === "production" ? {} : { otp }),
+  });
   return { message: "OTP sent" };
 }
 

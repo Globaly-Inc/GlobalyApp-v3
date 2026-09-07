@@ -321,6 +321,27 @@
     animation: float 5s ease-in-out infinite;
   }
 
+  /* Continuous horizontal drift for a duplicated track (see the country page's city row).
+     -50% lands exactly on the start of the second copy, so the loop is seamless *only* if the
+     track is perfectly periodic: space the items with a trailing margin, never `gap`, which
+     omits the seam between the two copies and leaves a half-gap jump each cycle. */
+  @keyframes marquee-x {
+    to { transform: translateX(-50%); }
+  }
+  .animate-marquee-x {
+    animation: marquee-x var(--marquee-duration, 60s) linear infinite;
+    will-change: transform;
+  }
+  .animate-marquee-x:hover,
+  .animate-marquee-x:focus-within {
+    animation-play-state: paused;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-marquee-x {
+      animation: none;
+    }
+  }
+
   /* Animated ring for the home hero's search box — the one place the AI counsellor is the
      headline feature, so it gets a border that looks like it is thinking.
 

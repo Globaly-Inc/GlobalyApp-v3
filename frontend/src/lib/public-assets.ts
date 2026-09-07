@@ -40,3 +40,6 @@ export const PEOPLE_PHOTOS = {
   danielOkoye: `${PHOTOS}/daniel-okoye.jpg`,
   priyaSharma: `${PHOTOS}/priya-sharma.jpg`,
 } as const;
+
+/** Ask Aly's animated orb, used as the assistant's nav icon and avatar. Square, 240×240. */
+export const ALY_ORB = `${BUCKET}/ai/avatar/globaly-orb-rose-crimson-240.gif`;

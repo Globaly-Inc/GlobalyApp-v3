@@ -77,12 +77,12 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
 
   app.get("/search/courses", async (req, reply) => {
     const {
-      country, degree_level, subject_area, search, fee_min, fee_max, currency, intake_year, sort,
+      country, city, degree_level, subject_area, search, fee_min, fee_max, currency, intake_year, sort,
       institution, duration, ...pagination
     } = CourseListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const filters = {
-      country, degreeLevel: degree_level, subjectArea: subject_area, search,
+      country, city, degreeLevel: degree_level, subjectArea: subject_area, search,
       feeMin: fee_min, feeMax: fee_max, currency, intakeYear: intake_year,
       institution, duration,
     };

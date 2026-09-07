@@ -8,6 +8,8 @@ import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 
 export type CourseSearchFilters = {
   country?: string;
+  /** Campus city — a course is "in" a city if any campus it is taught at is, or its institution is. */
+  city?: string;
   degreeLevel?: string;
   subjectArea?: string;
   search?: string;
@@ -165,7 +167,7 @@ function courseQuery() {
 }
 
 function baseQuery({
-  country, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear,
+  country, city, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear,
   institution, duration, jobId, courseIds,
 }: CourseSearchFilters) {
   const q = courseQuery();
@@ -175,6 +177,23 @@ function baseQuery({
   if (country) {
     q.where((b) =>
       b.whereRaw("lower(c.name) = lower(?)", [country]).orWhereRaw("lower(c.slug) = lower(?)", [country]),
+    );
+  }
+  // Campuses first, institution city as the fallback: the same rule the card's "Location:" chips
+  // use (CAMPUS_LOCATIONS), so a course listed for a city is one whose chips name that city.
+  // Until this existed the city param was parsed and dropped, and /search?city=X — plus the city
+  // page's own Services strip — returned the whole catalog.
+  if (city) {
+    q.where((b) =>
+      b
+        .whereRaw(
+          `exists (select 1 from ${S}.extraction_campuses cam
+                    where cam.job_id = ec.job_id
+                      and (cam.city ilike ? or cam.state ilike ?)
+                      and ${campusFilter("ec.id")})`,
+          [`%${city}%`, `%${city}%`],
+        )
+        .orWhereILike("inst.city", `%${city}%`),
     );
   }
   if (degreeLevel) q.where("ec.degree_level", degreeLevel);
