@@ -42,7 +42,9 @@ export interface ExtractedStudyUnit {
 }
 
 export interface ExtractedFee {
+  /** Short label only ("Tuition Fee", "Semester Fee") — the page's own wording goes in description. */
   name?: string | null;
+  description?: string | null;
   student_type?: string;
   period_type?: string;
   currency?: string | null;
@@ -311,6 +313,102 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
   return row.id;
 }
 
+// ── Fee normalisation ──
+// The LLM writes whatever the page showed: "$", "", "null", "per_term", "Per Credit". Both
+// normalisers run inside upsertFee so every write path (course extraction, the bulk fee
+// matcher, per-course re-extraction, AgentCIS import) gets the same canonical values — and so
+// the dedupe key below stops splitting on spelling.
+
+const PERIOD_TYPES: Record<string, string> = {
+  "per year": "Per Year", year: "Per Year", yearly: "Per Year", annual: "Per Year",
+  annually: "Per Year", "per annum": "Per Year",
+  "per semester": "Per Semester", semester: "Per Semester", "per term": "Per Semester",
+  term: "Per Semester", termly: "Per Semester",
+  "per trimester": "Per Trimester", trimester: "Per Trimester",
+  "per unit": "Per Unit", unit: "Per Unit", "per credit": "Per Unit", credit: "Per Unit",
+  "per credit hour": "Per Unit", "credit hour": "Per Unit", "per subject": "Per Unit",
+  "per module": "Per Unit", "per course": "Per Unit",
+  total: "Total", "total cost": "Total", "total fee": "Total", "whole course": "Total",
+  "full course": "Total", program: "Total", programme: "Total", "one off": "Total",
+};
+
+/** Canonical period_type (the frontend's PERIOD_TYPE_OPTIONS). Unrecognised text is kept as-is
+ * rather than guessed — an operator can still see and fix it in the fees tab. */
+export function normalisePeriodType(v: unknown): string {
+  const s = String(v ?? "").trim();
+  if (!s) return "Per Year";
+  return PERIOD_TYPES[s.toLowerCase().replace(/_/g, " ")] ?? s;
+}
+
+const CURRENCY_UNKNOWN = new Set(["", "null", "n/a", "na", "none", "unknown", "-"]);
+
+// ponytail: public.countries is ~200 static rows — read once per process, not per fee.
+let currencyRefCache: { codes: Set<string>; bySymbol: Map<string, string> } | null = null;
+
+async function currencyRef() {
+  if (currencyRefCache) return currencyRefCache;
+  const rows: Array<{ currency: string | null; currency_symbol: string | null }> =
+    await masterKnex("public.countries").select("currency", "currency_symbol");
+  const codes = new Set<string>();
+  const symbolCurrencies = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const code = r.currency?.trim().toUpperCase();
+    if (!code) continue;
+    codes.add(code);
+    const symbol = r.currency_symbol?.trim();
+    if (!symbol) continue;
+    if (!symbolCurrencies.has(symbol)) symbolCurrencies.set(symbol, new Set());
+    symbolCurrencies.get(symbol)!.add(code);
+  }
+  // "$" is 20+ currencies — only a symbol that means exactly one currency can resolve on its own.
+  const bySymbol = new Map<string, string>();
+  for (const [symbol, set] of symbolCurrencies) {
+    if (set.size === 1) bySymbol.set(symbol, [...set][0]!);
+  }
+  currencyRefCache = { codes, bySymbol };
+  return currencyRefCache;
+}
+
+const jobCurrencyCache = new Map<string, string | null>();
+
+/** The currency of the institution's own country — what "$" means on this job's pages. */
+async function jobCurrency(jobId: string): Promise<string | null> {
+  const cached = jobCurrencyCache.get(jobId);
+  if (cached !== undefined) return cached;
+  const intel = await masterKnex(`${S}.extraction_site_intelligence`)
+    .select("currency", "country")
+    .where({ job_id: jobId })
+    .orderBy("created_at", "desc")
+    .first();
+  const { codes } = await currencyRef();
+  let resolved: string | null = null;
+  const stated = intel?.currency?.trim().toUpperCase();
+  if (stated && codes.has(stated)) {
+    resolved = stated;
+  } else if (intel?.country?.trim()) {
+    const row = await masterKnex("public.countries")
+      .select("currency")
+      .whereRaw("lower(btrim(name)) = ?", [intel.country.trim().toLowerCase()])
+      .first();
+    resolved = row?.currency ?? null;
+  }
+  jobCurrencyCache.set(jobId, resolved);
+  return resolved;
+}
+
+/** ISO 4217 code from whatever the page showed — a code, a code buried in text ("AUD $"), or a
+ * symbol resolved against the job's country. Null when it stays genuinely unknown. */
+export async function normaliseCurrency(raw: string | null | undefined, jobId: string): Promise<string | null> {
+  const s = String(raw ?? "").trim();
+  const { codes, bySymbol } = await currencyRef();
+  const upper = s.toUpperCase();
+  if (codes.has(upper)) return upper;
+  if (CURRENCY_UNKNOWN.has(upper.toLowerCase())) return jobCurrency(jobId);
+  const embedded = upper.match(/[A-Z]{3}/)?.[0];
+  if (embedded && codes.has(embedded)) return embedded;
+  return bySymbol.get(s) ?? (await jobCurrency(jobId));
+}
+
 /**
  * Upsert a fee for a job — deduplicates by (student_type, period_type, currency, total_amount)
  * within the same job so a shared rate (e.g. "$325/credit for all programs") creates ONE row
@@ -319,15 +417,24 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
  */
 export async function upsertFee(jobId: string, fee: {
   name?: string | null;
+  description?: string | null;
   student_type: string;
   period_type: string;
   currency?: string | null;
   total_amount?: number | null;
   installments?: string | null;
 }): Promise<string> {
+  const currency = await normaliseCurrency(fee.currency, jobId);
+  const periodType = normalisePeriodType(fee.period_type);
+  const name = feeLabel(fee.name, periodType);
+  // The page's own wording, kept out of the label — an explicit description wins, else a name
+  // that was really a blob of page text ("$1,090 per credit 33 total credits …").
+  const description = fee.description?.trim()
+    || (fee.name && fee.name.trim() !== name ? fee.name.trim() : null);
+
   const q = masterKnex(`${S}.extraction_course_fees`)
-    .where({ job_id: jobId, student_type: fee.student_type, period_type: fee.period_type });
-  if (fee.currency != null) q.where({ currency: fee.currency }); else q.whereNull("currency");
+    .where({ job_id: jobId, student_type: fee.student_type, period_type: periodType });
+  if (currency != null) q.where({ currency }); else q.whereNull("currency");
   if (fee.total_amount != null) q.where({ total_amount: fee.total_amount }); else q.whereNull("total_amount");
   const existing = await q.first();
   if (existing) return existing.id as string;
@@ -335,15 +442,39 @@ export async function upsertFee(jobId: string, fee: {
   const [row] = await masterKnex(`${S}.extraction_course_fees`)
     .insert({
       job_id: jobId,
-      name: fee.name ?? null,
+      name,
+      description,
       student_type: fee.student_type,
-      period_type: fee.period_type,
-      currency: fee.currency ?? null,
+      period_type: periodType,
+      currency,
       total_amount: fee.total_amount ?? null,
       ...(fee.installments ? { installments: fee.installments } : {}),
     })
     .returning("id");
   return row.id as string;
+}
+
+const GENERIC_FEE_LABEL: Record<string, string> = {
+  "Per Year": "Annual Tuition Fee",
+  "Per Semester": "Semester Fee",
+  "Per Trimester": "Trimester Fee",
+  "Per Unit": "Per Credit Fee",
+  "Total": "Total Program Fee",
+};
+
+/** A fee label a human would read in a fee table. The LLM is asked for one, but still sends the
+ * whole page line often enough ("$1,090 per credit 33 total credits $35,970 total cost") — any
+ * name carrying figures falls back to its own leading heading, then to the period's generic name. */
+export function feeLabel(raw: string | null | undefined, periodType: string): string {
+  const generic = GENERIC_FEE_LABEL[periodType] ?? "Tuition Fee";
+  const s = (raw ?? "").trim();
+  if (!s) return generic;
+  if (!/\d/.test(s) && s.length <= 60) return s;
+  // A heading is only a label if it stands on its own — no figures, and no bracket left open
+  // by the split ("Tuition (range: $25,000-$30,000)").
+  const heading = s.split(":")[0]!.trim();
+  if (heading !== s && !/[\d([]/.test(heading) && heading.length >= 3 && heading.length <= 60) return heading;
+  return generic;
 }
 
 /**
@@ -428,6 +559,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     for (const fee of course.fees) {
       const feeId = await upsertFee(jobId, {
         name: fee.name ?? null,
+        description: fee.description ?? null,
         student_type: fee.student_type ?? "both",
         period_type: fee.period_type ?? "Per Year",
         currency: fee.currency ?? null,

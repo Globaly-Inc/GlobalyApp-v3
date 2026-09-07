@@ -945,6 +945,8 @@ async function handleEnrichmentStep(jobId: string) {
     });
 
     const feeId = await upsertFee(jobId, {
+      // The bulk fee schedule is the institution's tuition table — upsertFee turns the period
+      // into the label ("Annual Tuition Fee", "Semester Fee") rather than leaving it unnamed.
       student_type: fee.student_type,
       total_amount: fee.amount,
       currency: fee.currency,
@@ -1065,6 +1067,7 @@ async function handleCourseDataStep(
         });
         const feeId = await upsertFee(jobId, {
           name: (fee.name as string) ?? null,
+          description: (fee.description as string) ?? null,
           student_type: (fee.student_type as string) ?? "both",
           period_type: (fee.period_type as string) ?? "Per Year",
           currency: (fee.currency as string) ?? null,

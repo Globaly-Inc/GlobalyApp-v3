@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Clock, DollarSign, Link2, Loader2, Pencil, Plus, Trash2, Type, X } from "lucide-react";
+import { Clock, DollarSign, FileText, Link2, Loader2, Pencil, Plus, Trash2, Type, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -98,9 +98,13 @@ function FeeCard({
 
       <CardContent className="flex flex-col gap-3 p-4">
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-          <Field icon={Type} label="Fee Name" value={fee.name} onSave={(v) => onSaveField("name", v)} multiline />
+          <Field icon={Type} label="Fee Name" value={fee.name} onSave={(v) => onSaveField("name", v)} />
           <Field icon={DollarSign} label="Currency" value={fee.currency} onSave={(v) => onSaveField("currency", v)} />
           <Field icon={Clock} label="Period Type" value={fee.period_type} onSave={(v) => onSaveField("period_type", v)} />
+          <Field
+            icon={FileText} label="Description" value={fee.description} multiline
+            className="md:col-span-2" onSave={(v) => onSaveField("description", v)}
+          />
         </div>
 
         {fee.installments && fee.installments.length > 0 && (

@@ -518,8 +518,8 @@ export const allExtractionsMockApi = {
     await delay(250);
     const now = new Date().toISOString();
     const all: CourseFee[] = [
-      { id: "fee-1", name: "Standard Tuition", student_type: "domestic", period_type: "Per Year", currency: "CAD", total_amount: 12500, created_at: now },
-      { id: "fee-2", name: "International Tuition", student_type: "international", period_type: "Per Year", currency: "CAD", total_amount: 28000, created_at: now },
+      { id: "fee-1", name: "Standard Tuition", description: "Domestic tuition, 30 credits at CAD 416.67 per credit", student_type: "domestic", period_type: "Per Year", currency: "CAD", total_amount: 12500, created_at: now },
+      { id: "fee-2", name: "International Tuition", description: null, student_type: "international", period_type: "Per Year", currency: "CAD", total_amount: 28000, created_at: now },
     ];
     const filtered = params.search
       ? all.filter((f) => (f.name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
@@ -536,7 +536,8 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST course-fee", params);
     await delay(300);
     return {
-      id: uuid(), name: params.name ?? null, student_type: params.student_type ?? null,
+      id: uuid(), name: params.name ?? null, description: params.description ?? null,
+      student_type: params.student_type ?? null,
       period_type: params.period_type ?? null, currency: params.currency ?? null,
       total_amount: params.total_amount ?? null, installments: params.installments ?? [],
       save_for_reuse: params.save_for_reuse ?? false, created_at: new Date().toISOString(),

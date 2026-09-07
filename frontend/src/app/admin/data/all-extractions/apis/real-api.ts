@@ -318,7 +318,8 @@ export const allExtractionsRealApi = {
   createCourseFee: async (params: { job_id: string } & CourseFeeParams): Promise<CourseFee> => {
     const res = await httpPost<{ id: string; created_at: string }>("/admin/data-extraction/course-fees", params);
     return {
-      id: res.id, name: params.name ?? null, student_type: params.student_type ?? null,
+      id: res.id, name: params.name ?? null, description: params.description ?? null,
+      student_type: params.student_type ?? null,
       period_type: params.period_type ?? null, currency: params.currency ?? null,
       total_amount: params.total_amount ?? null, installments: params.installments ?? [],
       save_for_reuse: params.save_for_reuse ?? false, created_at: res.created_at,

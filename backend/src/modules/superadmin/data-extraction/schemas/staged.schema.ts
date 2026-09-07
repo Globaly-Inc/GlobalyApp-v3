@@ -34,6 +34,8 @@ export const CreateCourseFeeSchema = z.object({
   job_id: z.string().uuid(),
   // nullable so an edit can clear the name, not just omit it
   name: z.string().nullable().optional(),
+  // The page's own fee wording — the label stays short, the detail lives here.
+  description: z.string().nullable().optional(),
   student_type: z.string().optional(),
   period_type: z.string().optional(),
   currency: z.string().optional(),

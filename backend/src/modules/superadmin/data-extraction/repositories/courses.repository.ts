@@ -9,7 +9,7 @@ export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc";
 
 function filteredCoursesQuery(jobId: string, { search, status }: CourseListFilters) {
   const q = masterKnex(T).where({ job_id: jobId });
-  if (search) q.whereILike("name", `%${search}%`);
+  if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   if (status) q.where("verification_status", status);
   return q;
 }
@@ -38,7 +38,7 @@ export type CourseFeeListFilters = { search?: string };
 
 function filteredCourseFeesQuery(jobId: string, { search }: CourseFeeListFilters) {
   const q = masterKnex(`${S}.extraction_course_fees`).where({ job_id: jobId });
-  if (search) q.whereILike("name", `%${search}%`);
+  if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   return q;
 }
 
@@ -101,7 +101,7 @@ export type EligibilityListFilters = { search?: string };
 
 function filteredEligibilityQuery(jobId: string, { search }: EligibilityListFilters) {
   const q = masterKnex(`${S}.extraction_eligibility_requirements`).where({ job_id: jobId });
-  if (search) q.whereILike("name", `%${search}%`);
+  if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   return q;
 }
 
