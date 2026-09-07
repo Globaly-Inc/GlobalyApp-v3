@@ -68,7 +68,13 @@ const feeSchedule = (scope: "domestic" | "international") =>
 
 /** Only the intakes linked to the course — `extraction_intakes.course_id` also holds the rows a
  *  re-extraction superseded, which is why the page showed an intake the admin no longer lists.
- *  Exported so the institutions tab's intake filter and facets can't drift from this rule. */
+ *  Exported so the institutions tab's intake filter and facets can't drift from this rule.
+ *
+ *  DEPLOY ORDER: because this reads through the junction only, an intake written before the
+ *  writers started creating assignment rows is reachable solely via the legacy `course_id` and is
+ *  invisible to every read below. `npm run eligibility:backfill -- --apply` (step 1) links those
+ *  rows in, and is a required pre-deploy step, not a cleanup — until it runs, affected courses
+ *  render with no intakes at all. */
 export const COURSE_INTAKES = `${S}.extraction_intakes ei
   join ${S}.extraction_course_intake_assignments ia on ia.intake_id = ei.id`;
 

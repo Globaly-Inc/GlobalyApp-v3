@@ -11,6 +11,11 @@
  * extraction tables directly — there is no separate courses catalogue), so it must be run
  * deliberately and read before it is applied, not fire silently on `npm run migrate:superadmin`.
  *
+ * That is a deliberate choice, and it puts pass 5's rescue step on an operator rather than on the
+ * deploy. RUN THIS BEFORE OR WITH THE DEPLOY, NEVER AFTER: the public intake reads are already on
+ * the junction, so between deploying and applying this, every legacy intake is invisible and
+ * courses render with no intakes at all. Nothing else repairs that.
+ *
  * Why it exists at all: the pipeline persists no scraped markdown, so fixing a prompt only helps
  * pages crawled after the fix. Everything already stored can only be repaired from what is in
  * the database — which is enough for these, because the information was captured, just written
@@ -246,6 +251,12 @@ function clusterCompatible<T extends Record<string, unknown>>(
   return clusters;
 }
 
+// Deliberately stricter than the writer's `eligibilityRowsAgree`, which governs the same
+// name-is-not-an-identity rule at write time. This pass DELETES rows, so it demands whole-value
+// equality (including min_score_grade and language_tests, which no writer populates) and reports
+// anything it can't prove identical instead of merging it. The writer allows enrichment — a page
+// naming a test the stored row doesn't is additive, not a conflict — because it only ever links
+// and fills blanks. Two rules, two blast radii; keep them that way.
 const IDENTITY_FIELDS = [
   "min_degree_level", "score_type", "min_score", "min_score_percent", "min_score_grade",
   "academic_tests", "language_tests",
@@ -286,7 +297,7 @@ async function mergeDuplicateRequirements() {
   // Group by what upsertEligibility now dedupes on, so this pass and the writer agree.
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const r of rows) {
-    const key = `${r.job_id} ${String(r.name).trim().toLowerCase()} ${r.applicable_to ?? "both"}`;
+    const key = `${r.job_id}\u0000${String(r.name).trim().toLowerCase()}\u0000${r.applicable_to ?? "both"}`;
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
   }
 
@@ -396,7 +407,7 @@ async function shareIntakesAcrossCourses() {
 
   console.log(`\n[5/5] Intakes reachable only by the legacy course_id column: ${orphans.length}`);
   if (orphans.length > 0) {
-    console.log("      these would vanish from course pages without an assignment row — rescuing them");
+    console.log("      these are INVISIBLE on public course pages until this runs with --apply — rescuing them");
     if (apply) {
       for (const o of orphans) {
         await masterKnex(ASSIGNMENTS)

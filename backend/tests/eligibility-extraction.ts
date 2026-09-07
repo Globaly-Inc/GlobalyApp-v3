@@ -14,8 +14,9 @@ import {
   deriveScoreFromDescription,
   deriveIntakeMonthYear,
   normaliseAcademicTests,
+  eligibilityRowsAgree,
 } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
-import { findTests } from "../src/modules/superadmin/data-extraction/lib/requirement-text.js";
+import { findTests, testPattern } from "../src/modules/superadmin/data-extraction/lib/requirement-text.js";
 
 let passed = 0;
 let failed = 0;
@@ -162,6 +163,66 @@ assert("'not a strict requirement' reads as optional", () =>
   eq(mine("Testing", "Neither GRE nor GMAT are strict requirements.")[0].is_optional, true));
 assert("an English test is not an academic test", () =>
   eq(mine("Language", "IELTS 6.5 overall required."), []));
+
+// public.tests is admin-managed, so a name is data. Unescaped, "C++" is a nested quantifier that
+// throws and aborts an --apply run mid-way through, after pass 1 has already committed.
+console.log("\ntestPattern — catalogue names are data, not regex literals");
+const ODD = ["TOEFL (iBT)", "C++", "A-Level", "Test.Plus"];
+assert("a name with regex syntax doesn't throw", () =>
+  ODD.forEach((n) => testPattern(n, "gi")));
+assert("a parenthesised name matches itself, not its inner group", () => {
+  eq(testPattern("TOEFL (iBT)", "i").test("Requires TOEFL (iBT) of 90."), true);
+  eq(testPattern("TOEFL (iBT)", "i").test("Requires TOEFL iBT of 90."), false);
+});
+assert("a name ending in a non-word char still matches", () =>
+  eq(findTests("Entry. TOEFL (iBT) of 90 required.", ["TOEFL (iBT)"]),
+    [{ test_name: "TOEFL (iBT)", score: "90", typical_score: null, is_optional: false }]));
+assert("a '+' in a name is literal, not a quantifier", () =>
+  eq(testPattern("C++", "i").test("C++ exam"), true));
+assert("a '.' in a name is literal", () =>
+  eq(testPattern("Test.Plus", "i").test("TestXPlus"), false));
+
+// Name + audience is not an identity: institutions reuse "Admission test" across courses that
+// demand different things, and merging them judged one course against the other's threshold.
+console.log("\neligibilityRowsAgree — a shared name is not a shared requirement");
+assert("differing minimums are different requirements", () =>
+  eq(eligibilityRowsAgree({ min_score: "300.00" }, { min_score: 320 }), false));
+assert("the same minimum through pg's decimal-as-string shares a row", () =>
+  eq(eligibilityRowsAgree({ min_score: "300.00" }, { min_score: 300 }), true));
+assert("a blank on either side is unknown, not a disagreement", () => {
+  eq(eligibilityRowsAgree({ min_score: null }, { min_score: 320 }), true);
+  eq(eligibilityRowsAgree({ min_score: "320" }, { min_score: null }), true);
+});
+assert("differing degree levels are different requirements", () =>
+  eq(eligibilityRowsAgree({ min_degree_level: "Bachelor" }, { min_degree_level: "Master" }), false));
+assert("degree level compares case-insensitively", () =>
+  eq(eligibilityRowsAgree({ min_degree_level: "Bachelor" }, { min_degree_level: "bachelor" }), true));
+assert("differing score types are different requirements", () =>
+  eq(eligibilityRowsAgree({ score_type: "gpa_4" }, { score_type: "percentage" }), false));
+assert("the same test scored differently forks a row", () =>
+  eq(eligibilityRowsAgree(
+    { academic_tests: [{ test_name: "GRE", score: "300" }] },
+    { academic_tests: JSON.stringify([{ test_name: "GRE", score: "320" }]) }), false));
+assert("a test named on one side only is enrichment", () =>
+  eq(eligibilityRowsAgree(
+    { academic_tests: [{ test_name: "GRE", score: "320" }] },
+    { academic_tests: JSON.stringify([{ test_name: "GMAT", score: "650" }]) }), true));
+assert("differing typical scores still share a row — an average gates nothing", () =>
+  eq(eligibilityRowsAgree(
+    { academic_tests: [{ test_name: "GRE", typical_score: "167" }] },
+    { academic_tests: JSON.stringify([{ test_name: "GRE", typical_score: "160" }]) }), true));
+assert("the column default '[]' never blocks a match", () =>
+  eq(eligibilityRowsAgree({ academic_tests: [] }, { academic_tests: "[]" }), true));
+assert("unparseable stored json is not a disagreement", () =>
+  eq(eligibilityRowsAgree({ academic_tests: "not json" }, { academic_tests: "[]" }), true));
+
+// The caller in saveAndLearn relies on this: a null seed means "re-derive from the name", which is
+// what makes an admin's "Fall 2026" -> "Fall 2027" correction actually take effect.
+console.log("\nderiveIntakeMonthYear — seed semantics the admin-correction path depends on");
+assert("a null seed lets a corrected name win", () =>
+  eq(deriveIntakeMonthYear("Fall 2027", null, null, null).intake_year, 2027));
+assert("a provided seed still wins", () =>
+  eq(deriveIntakeMonthYear("Fall 2027", null, null, 2026).intake_year, 2026));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

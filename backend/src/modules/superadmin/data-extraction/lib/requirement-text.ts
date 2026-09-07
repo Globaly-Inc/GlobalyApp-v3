@@ -65,6 +65,25 @@ const OPTIONAL = /optional|recommended|\bneither\b|not\s+(?:a\s+)?(?:strict\s+)?
  * A test found with no score is still recorded: "this course wants a GMAT, no minimum stated" is
  * both true and useful, and the admin can add the number. Better an honest blank than a guess.
  */
+/**
+ * A catalogue name as a regex.
+ *
+ * Test names come from the admin-managed `public.tests` table, so they are DATA, not literals.
+ * Interpolated raw, "TOEFL (iBT)" becomes a capture group that matches "TOEFL iBT" and misses the
+ * real text, and "C++" is `\bC++\b` — a nested quantifier, which throws SyntaxError. The passes of
+ * the backfill do not share a transaction, so a throw here aborts an `--apply` run that has
+ * already committed pass 1's score clearing.
+ *
+ * `\b` is applied only at an end that is actually a word character: `\b` after the ")" of
+ * "TOEFL (iBT)" demands a letter immediately following the paren, so it could never match.
+ */
+export function testPattern(name: string, flags: string): RegExp {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const lead = /^\w/.test(name) ? "\\b" : "";
+  const tail = /\w$/.test(name) ? "\\b" : "";
+  return new RegExp(`${lead}${escaped}${tail}`, flags);
+}
+
 export function findTests(
   text: string,
   catalogue: string[],
@@ -72,7 +91,7 @@ export function findTests(
   const found: FoundTest[] = [];
 
   for (const name of catalogue) {
-    const word = new RegExp(`\\b${name}\\b`, "gi");
+    const word = testPattern(name, "gi");
     if (!word.test(text)) continue;
     // Longest-first catalogue: don't add "GRE" when "GRE Subject" already matched here.
     if (found.some((f) => f.test_name.toLowerCase().includes(name.toLowerCase()))) continue;
@@ -86,7 +105,7 @@ export function findTests(
       const { start: clauseStart, end: clauseEnd } = clauseAround(text, m.index);
       const after = m.index + name.length;
       const nextTest = catalogue
-        .map((other) => new RegExp(`\\b${other}\\b`, "i").exec(text.slice(after)))
+        .map((other) => testPattern(other, "i").exec(text.slice(after)))
         .filter((hit): hit is RegExpExecArray => hit != null)
         .map((hit) => after + hit.index);
       const window = text.slice(after, Math.min(clauseEnd, ...nextTest, after + 60));

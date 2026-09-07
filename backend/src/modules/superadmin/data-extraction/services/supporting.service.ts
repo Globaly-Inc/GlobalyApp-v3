@@ -98,12 +98,21 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
       const start = row.start_date
         ? new Date(row.start_date as string).toISOString().slice(0, 10)
         : null;
-      const derived = deriveIntakeMonthYear(
-        row.intake_name,
-        start,
-        row.intake_month as number | null,
-        row.intake_year as number | null,
-      );
+      // Re-derived from the corrected name/date, NOT from the stored month/year. The helper only
+      // fills blanks, so feeding the old values back in made a correction a no-op: renaming
+      // "Fall 2026" to "Fall 2027" left intake_year at 2026, and the intake went on being
+      // filtered, grouped and advertised under the year the admin had just fixed.
+      //
+      // An admin who edits intake_month/intake_year in the same patch still wins — their value is
+      // passed through as the seed. And a rename that yields nothing derivable ("Fall" -> "Autumn")
+      // keeps what was already there rather than nulling a good value.
+      const seed = (field: "intake_month" | "intake_year") =>
+        field in patch ? (row[field] as number | null) : null;
+      const fresh = deriveIntakeMonthYear(row.intake_name, start, seed("intake_month"), seed("intake_year"));
+      const derived = {
+        intake_month: fresh.intake_month ?? (row.intake_month as number | null),
+        intake_year: fresh.intake_year ?? (row.intake_year as number | null),
+      };
       if (derived.intake_month !== row.intake_month || derived.intake_year !== row.intake_year) {
         await repo.patchEntityRow(table, id, derived, adminId);
       }

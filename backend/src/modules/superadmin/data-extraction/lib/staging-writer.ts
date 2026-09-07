@@ -782,9 +782,73 @@ export async function upsertIntake(
   return row.id;
 }
 
+/** The fields the eligibility verdict engine actually gates a student on. */
+const ELIG_GATE_FIELDS = ["min_score", "min_score_percent", "min_degree_level", "score_type"] as const;
+
 /**
- * Upsert an eligibility requirement for a job — deduplicates by normalised name + audience,
- * mirroring upsertIntake above and for the same reason (see its comment).
+ * A stored value against an incoming one, treating null/"" as "unknown" — never a disagreement.
+ * Compared numerically when both sides are numbers, because `min_score` and `min_score_percent`
+ * are `decimal` columns and pg hands those back as strings ("300.00" must equal 300).
+ */
+function eligValuesAgree(stored: unknown, incoming: unknown): boolean {
+  if (stored == null || stored === "" || incoming == null || incoming === "") return true;
+  const a = Number(stored);
+  const b = Number(incoming);
+  if (!Number.isNaN(a) && !Number.isNaN(b)) return a === b;
+  return String(stored).trim().toLowerCase() === String(incoming).trim().toLowerCase();
+}
+
+/** test_name -> stated minimum, for entries that state one. `typical_score` is deliberately
+ * ignored: a cohort average gates nothing, so two rows quoting different averages are still the
+ * same requirement. */
+function scoredTests(v: unknown): Map<string, string> {
+  let arr: unknown = v;
+  if (typeof v === "string") {
+    try { arr = JSON.parse(v); } catch { return new Map(); }
+  }
+  const out = new Map<string, string>();
+  if (!Array.isArray(arr)) return out;
+  for (const t of arr) {
+    const test = t as ExtractedAcademicTest | null;
+    const key = String(test?.test_name ?? "").trim().toLowerCase();
+    const score = test?.score == null ? "" : String(test.score).trim();
+    if (key && score) out.set(key, score);
+  }
+  return out;
+}
+
+/**
+ * Whether a stored row and an incoming requirement can be the SAME shared row.
+ *
+ * Name + audience is not an identity. Institutions reuse generic labels — "Admission test",
+ * "Academic requirement", "English requirement" — across courses that demand different things.
+ * Keyed on the name alone, the second course was linked to the first course's row and its own
+ * threshold silently dropped (the update below only fills blanks), so the verdict engine judged
+ * every later course against the first one's numbers. That is the same class of defect as a
+ * fabricated minimum: wrong data gating a real student's eligibility.
+ *
+ * So a populated value that CONTRADICTS forks a separate row, while a blank on either side stays
+ * shareable — the same non-contradiction rule upsertIntake applies to its four dates.
+ */
+export function eligibilityRowsAgree(
+  existing: Record<string, unknown>,
+  fields: Record<string, unknown>,
+): boolean {
+  if (!ELIG_GATE_FIELDS.every((f) => eligValuesAgree(existing[f], fields[f]))) return false;
+  // A test named on only one side is enrichment. A test both sides score DIFFERENTLY is not.
+  const incoming = scoredTests(fields.academic_tests);
+  const stored = scoredTests(existing.academic_tests);
+  for (const [test, score] of incoming) {
+    const other = stored.get(test);
+    if (other != null && other !== score) return false;
+  }
+  return true;
+}
+
+/**
+ * Upsert an eligibility requirement for a job — deduplicates by normalised name + audience, with
+ * the gating values required not to contradict (see eligibilityRowsAgree), mirroring upsertIntake
+ * above and for the same reason (see its comment).
  *
  * Job-scoped rather than course-scoped because that is how the table is already shared: a
  * requirement row is attached to courses through extraction_course_eligibility_assignments, and
@@ -800,10 +864,16 @@ export async function upsertEligibility(
 ): Promise<string> {
   const name = (elig.name ?? "").trim();
   if (name) {
-    const existing = await masterKnex(`${S}.extraction_eligibility_requirements`)
+    // Every same-name candidate, oldest first — not .first(). A job can legitimately hold several
+    // rows under one generic name, and the right one to join is the one whose stated thresholds
+    // this course agrees with, not whichever was scraped earliest.
+    const candidates = await masterKnex(`${S}.extraction_eligibility_requirements`)
       .where({ job_id: jobId, applicable_to: elig.applicable_to ?? "both" })
       .whereRaw("LOWER(TRIM(name)) = ?", [name.toLowerCase()])
-      .first();
+      .orderBy("created_at", "asc");
+    const existing = candidates.find((row: Record<string, unknown>) =>
+      eligibilityRowsAgree(row, fields),
+    );
     if (existing) {
       // academic_tests is compared unparsed: '[]' is the column default, so "existing is empty"
       // is the one case worth overwriting — an earlier page that found no tests must not keep a

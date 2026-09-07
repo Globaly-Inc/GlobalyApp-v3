@@ -164,11 +164,11 @@ function institutionsQuery({
     // counts as January so a year-only row still lands in the right year.
     const [year, month] = intakeFrom.split("-").map(Number);
     q.whereRaw(
-      // Straight off ei.job_id. This used to reach the job by joining through
-      // extraction_courses on ei.course_id — a column that is now NULL, because an intake is
-      // shared by every course that offers it (see upsertIntake) and so can't name one. The
-      // join was only ever a detour: extraction_intakes carries job_id itself, and "does this
-      // institution have an upcoming intake" is a job-level question.
+      // Through COURSE_INTAKES, never off ei.course_id: an intake is shared by every course that
+      // offers it (see upsertIntake), so that scalar column no longer names one. Going through the
+      // junction is also what keeps a phantom out of this filter — an intake unlinked from its
+      // last course, or created before being linked, offered by nobody — since the join itself
+      // requires an assignment to exist.
       `exists (
         select 1 from ${COURSE_INTAKES}
           join ${S}.extraction_courses ec on ec.id = ia.course_id
@@ -246,8 +246,9 @@ export async function listInstitutionCatalogFacets() {
 /** Intake months across every published institution's catalog, earliest first — "YYYY-MM". */
 export async function listInstitutionIntakeMonths() {
   const rows = await masterKnex.raw(
-    // Same as above: ei.job_id directly, no detour through extraction_courses on the now-NULL
-    // ei.course_id.
+    // Same as above, and for the same reasons: through the junction rather than ei.course_id, so
+    // an intake no course offers can't put a month into this public facet that then returns
+    // nothing when a visitor picks it.
     `select distinct ei.intake_year, coalesce(ei.intake_month, 1) as intake_month
        from ${COURSE_INTAKES}
        join ${S}.extraction_courses ec on ec.id = ia.course_id
