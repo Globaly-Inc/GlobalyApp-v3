@@ -712,8 +712,14 @@ export function courseDataPrompt(
     fees: `{
   "domestic_fee_total": null,
   "international_fee_total": null,
-  "currency": "AUD",
-  "fees": [{ "name": "fee description", "student_type": "domestic|international|both", "period_type": "Per Year|Per Semester|Total", "total_amount": 0 }]
+  "fees": [{
+    "name": "SHORT generic label for the KIND of fee — 'Tuition Fee', 'Semester Fee', 'Application Fee' — max 40 characters, never an amount or the course name",
+    "description": "the page's own wording for this fee, verbatim (the per-credit breakdown, the range, what it covers) — null if the page states nothing beyond the amount",
+    "currency": "ISO 4217 code (AUD, USD, GBP, ...) — never a symbol like '$'. If the page shows only a symbol, use the code for the institution's own country. null if unstated",
+    "student_type": "domestic|international|both",
+    "period_type": "Per Year|Per Semester|Per Trimester|Total|Per Unit",
+    "total_amount": 0
+  }]
 }`,
     intakes: `{
   "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD or null", "intake_month": null, "intake_year": null, "admission_deadline": "YYYY-MM-DD or null" }]

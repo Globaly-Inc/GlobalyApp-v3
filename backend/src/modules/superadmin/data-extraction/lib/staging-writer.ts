@@ -344,7 +344,12 @@ export function normalisePeriodType(v: unknown): string {
 const CURRENCY_UNKNOWN = new Set(["", "null", "n/a", "na", "none", "unknown", "-"]);
 
 // ponytail: public.countries is ~200 static rows — read once per process, not per fee.
-let currencyRefCache: { codes: Set<string>; bySymbol: Map<string, string> } | null = null;
+let currencyRefCache: {
+  codes: Set<string>;
+  bySymbol: Map<string, string>;
+  symbolsFor: Map<string, Set<string>>;
+  allSymbols: Set<string>;
+} | null = null;
 
 async function currencyRef() {
   if (currencyRefCache) return currencyRefCache;
@@ -352,6 +357,7 @@ async function currencyRef() {
     await masterKnex("public.countries").select("currency", "currency_symbol");
   const codes = new Set<string>();
   const symbolCurrencies = new Map<string, Set<string>>();
+  const symbolsFor = new Map<string, Set<string>>();
   for (const r of rows) {
     const code = r.currency?.trim().toUpperCase();
     if (!code) continue;
@@ -360,13 +366,15 @@ async function currencyRef() {
     if (!symbol) continue;
     if (!symbolCurrencies.has(symbol)) symbolCurrencies.set(symbol, new Set());
     symbolCurrencies.get(symbol)!.add(code);
+    if (!symbolsFor.has(code)) symbolsFor.set(code, new Set());
+    symbolsFor.get(code)!.add(symbol);
   }
   // "$" is 20+ currencies — only a symbol that means exactly one currency can resolve on its own.
   const bySymbol = new Map<string, string>();
   for (const [symbol, set] of symbolCurrencies) {
     if (set.size === 1) bySymbol.set(symbol, [...set][0]!);
   }
-  currencyRefCache = { codes, bySymbol };
+  currencyRefCache = { codes, bySymbol, symbolsFor, allSymbols: new Set(symbolCurrencies.keys()) };
   return currencyRefCache;
 }
 
@@ -387,9 +395,12 @@ async function jobCurrency(jobId: string): Promise<string | null> {
   if (stated && codes.has(stated)) {
     resolved = stated;
   } else if (intel?.country?.trim()) {
+    // Site intelligence writes whatever the page said — in practice an ISO code ("US"), but a
+    // full name reads just as naturally, so match against all three columns.
+    const country = intel.country.trim().toLowerCase();
     const row = await masterKnex("public.countries")
       .select("currency")
-      .whereRaw("lower(btrim(name)) = ?", [intel.country.trim().toLowerCase()])
+      .whereRaw("lower(btrim(name)) = ? OR lower(iso2) = ? OR lower(iso3) = ?", [country, country, country])
       .first();
     resolved = row?.currency ?? null;
   }
@@ -401,13 +412,20 @@ async function jobCurrency(jobId: string): Promise<string | null> {
  * symbol resolved against the job's country. Null when it stays genuinely unknown. */
 export async function normaliseCurrency(raw: string | null | undefined, jobId: string): Promise<string | null> {
   const s = String(raw ?? "").trim();
-  const { codes, bySymbol } = await currencyRef();
+  const { codes, bySymbol, symbolsFor, allSymbols } = await currencyRef();
   const upper = s.toUpperCase();
   if (codes.has(upper)) return upper;
   if (CURRENCY_UNKNOWN.has(upper.toLowerCase())) return jobCurrency(jobId);
   const embedded = upper.match(/[A-Z]{3}/)?.[0];
   if (embedded && codes.has(embedded)) return embedded;
-  return bySymbol.get(s) ?? (await jobCurrency(jobId));
+
+  const unambiguous = bySymbol.get(s);
+  if (unambiguous) return unambiguous;
+  const job = await jobCurrency(jobId);
+  // "$" on a US institution's page is USD. "£" on that same page is not — an ambiguous symbol
+  // that the job's own currency doesn't use stays unknown rather than being quietly relabelled.
+  if (job && symbolsFor.get(job)?.has(s)) return job;
+  return allSymbols.has(s) ? null : job;
 }
 
 /**
@@ -439,7 +457,19 @@ export async function upsertFee(jobId: string, fee: {
   if (currency != null) q.where({ currency }); else q.whereNull("currency");
   if (fee.total_amount != null) q.where({ total_amount: fee.total_amount }); else q.whereNull("total_amount");
   const existing = await q.first();
-  if (existing) return existing.id as string;
+  if (existing) {
+    // Whichever page was scraped first wins the row, but not the metadata: a later page that
+    // carries the fee's wording (or any name at all) fills what the first one left blank.
+    const fill: Record<string, unknown> = {};
+    if (description && !existing.description) fill.description = description;
+    if (name && !existing.name) fill.name = name;
+    if (Object.keys(fill).length > 0) {
+      await masterKnex(`${S}.extraction_course_fees`)
+        .where({ id: existing.id })
+        .update({ ...fill, updated_at: masterKnex.fn.now() });
+    }
+    return existing.id as string;
+  }
 
   const [row] = await masterKnex(`${S}.extraction_course_fees`)
     .insert({
