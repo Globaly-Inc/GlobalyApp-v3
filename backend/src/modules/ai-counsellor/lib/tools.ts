@@ -121,15 +121,29 @@ export function feePeriod(fee: knowledge.FeeResult | undefined): string | null {
   return FEE_PERIODS[fee.period_type] ?? fee.period_type.toLowerCase();
 }
 
-/** The fee a card should headline: a real figure over an unknown one, a whole-period price over a
- * per-credit rate, and an international figure over a domestic one — a card reading
- * "USD 1,090 per year" when 1,090 is the per-credit rate is worse than no fee at all. */
-export function headlineFee(fees: knowledge.FeeResult[]): knowledge.FeeResult | undefined {
+/**
+ * Fees most-useful-first: a real figure over an unknown one, a whole-period price over a
+ * per-credit rate, an international figure over a domestic one. A card reading "USD 1,090 per
+ * year" when 1,090 is the per-credit rate is worse than no fee at all.
+ *
+ * The context builder truncates a long fee list, so the order has to be this one and it has to be
+ * stable — the rows arrive in whatever order Postgres returns them, and a slice off the top must
+ * not silently drop the international or whole-program figure the student asked about.
+ */
+export function rankFees(fees: knowledge.FeeResult[]): knowledge.FeeResult[] {
   const score = (f: knowledge.FeeResult) =>
     (f.total_amount != null ? 8 : 0)
     + (f.period_type === "Per Unit" ? 0 : 4)
     + (f.student_type === "international" ? 2 : f.student_type === "both" ? 1 : 0);
-  return [...fees].sort((a, b) => score(b) - score(a))[0];
+  return [...fees].sort((a, b) =>
+    score(b) - score(a)
+    || Number(b.total_amount ?? 0) - Number(a.total_amount ?? 0)
+    || a.id.localeCompare(b.id));
+}
+
+/** The one fee a card headlines. */
+export function headlineFee(fees: knowledge.FeeResult[]): knowledge.FeeResult | undefined {
+  return rankFees(fees)[0];
 }
 
 /** One fee as a line of context, never asserting more than the row states. */

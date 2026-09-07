@@ -5,7 +5,7 @@ import type { CounsellingContext } from "../repositories/sessions.repository.js"
 // One card mapping and one chunk-budget rule for both retrieval paths — a divergence
 // here would mean the legacy path and the tool path emitting different course-card
 // shapes, or handing the model different amounts of rack context for the same question.
-import { capPerDocument, courseCardFields, feeLine } from "../lib/tools.js";
+import { capPerDocument, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
 import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
@@ -194,8 +194,9 @@ export async function searchAll(opts: {
         `  Duration: ${c.duration_weeks ?? "N/A"} weeks`,
         // Every fee, each with its own period, currency and the page's wording — one summed
         // number can't answer "is that per year?", which is most of what students ask about cost.
+        // Ranked before the cap so the rows that survive it are the same ones the card headlines.
         c.fees.length
-          ? c.fees.slice(0, MAX_FEE_LINES).map(f => `  Fees: ${feeLine(f)}`).join("\n")
+          ? rankFees(c.fees).slice(0, MAX_FEE_LINES).map(f => `  Fees: ${feeLine(f)}`).join("\n")
           : "  Fees: N/A",
         `  Country: ${c.institution_country ?? c.country_code ?? "N/A"}`,
         intakeNames.length ? `  Intakes: ${intakeNames.join(", ")}` : "",
