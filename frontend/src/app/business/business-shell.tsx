@@ -246,7 +246,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
                 onClick={() => router.push("/business/profile")}
               >
                 <Avatar className="size-8 shrink-0">
-                  {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
+                  {user?.photo_url && <AvatarImage src={user.photo_url} alt={user?.first_name ?? "User"} />}
                   <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
