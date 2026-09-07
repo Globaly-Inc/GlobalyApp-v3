@@ -364,8 +364,10 @@ export function enquiryDigestEmail(options: {
                }
              </p>`,
       cta,
-      footnote: businessName
-        ? `Sent to ${esc(businessName)} because it matches these enquiries.`
+      // Trimmed, like `who` in the unlock mail: an all-whitespace name is not a name, and
+      // "Sent to    because it matches" is worse than the generic sentence.
+      footnote: businessName?.trim()
+        ? `Sent to ${esc(businessName.trim())} because it matches these enquiries.`
         : "You're receiving this because these enquiries match courses you represent.",
     }),
   };
@@ -388,7 +390,12 @@ export function enquiryUnlockedEmail(options: {
   sharedContact?: boolean;
 }): { subject: string; html: string; text: string } {
   const { businessName, courseName, institutionName, enquiryId, sharedContact } = options;
-  const who = businessName ?? "A business";
+  // Trim before the fallback, not after. `?? "A business"` only catches null/undefined, so a
+  // whitespace-only name survived it — which rendered a nameless subject and title, and then
+  // threw on `""[0].toUpperCase()` when building the avatar initial. A throw here is not
+  // cosmetic: it fails the queue row, and after the attempt cap the student is never told
+  // their details changed hands. `who` is non-empty from this point on.
+  const who = businessName?.trim() || "A business";
   // Straight to the enquiry when we know which one, so the reply is one tap away.
   const href = enquiryId ? web(`/personal/enquiries/${enquiryId}`) : web("/personal/enquiries");
 
@@ -422,7 +429,7 @@ export function enquiryUnlockedEmail(options: {
              ${infoCard({
                // The business is the identity here, and nothing is redacted: the student knows
                // their own details, and who the business is was never the paid-for part.
-               initial: businessName ? esc(businessName.trim()[0].toUpperCase()) : "&#8226;",
+               initial: esc(who[0].toUpperCase()),
                titleHtml: esc(who),
                subtitleHtml: "Unlocked your enquiry",
                title: courseName ?? "Your enquiry",
@@ -488,8 +495,8 @@ export function enquiryDistributedEmail(options: {
                Unlock the enquiry to see the student's details and start the conversation.
              </p>`,
       cta: { label: "View enquiry", href },
-      footnote: businessName
-        ? `Sent to ${esc(businessName)} because it matches this enquiry.`
+      footnote: businessName?.trim()
+        ? `Sent to ${esc(businessName.trim())} because it matches this enquiry.`
         : "You're receiving this because your business matches this enquiry.",
     }),
   };
