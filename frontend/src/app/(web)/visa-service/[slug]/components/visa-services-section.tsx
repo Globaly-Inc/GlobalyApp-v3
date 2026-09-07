@@ -2,15 +2,15 @@ import { FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import type { VisaServiceItem } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
 
 /** "AUD 1,200", "From AUD 800", "AUD 800 – 1,500" — whichever of the fee columns is filled in. */
 function feeLabel(service: VisaServiceItem): string | null {
-  const currency = service.fee_currency ?? "";
-  const amount = (value: string) => `${currency} ${Number(value).toLocaleString()}`.trim();
+  const money = (amount: string, to?: string | null) => amountLabel(amount, service.fee_currency, to);
 
-  if (service.fee_amount) return amount(service.fee_amount);
-  if (service.fee_from && service.fee_to) return `${amount(service.fee_from)} – ${Number(service.fee_to).toLocaleString()}`;
-  if (service.fee_from) return `From ${amount(service.fee_from)}`;
+  if (service.fee_amount) return money(service.fee_amount);
+  if (service.fee_from && service.fee_to) return money(service.fee_from, service.fee_to);
+  if (service.fee_from) return `From ${money(service.fee_from)}`;
   return null;
 }
 
@@ -21,7 +21,6 @@ export function VisaServicesSection({ services }: Readonly<{ services: VisaServi
     <ProfileSection icon={FileText} title="Visa Services" count={services.length}>
       <div className="space-y-3">
         {services.map((service) => {
-          const fee = feeLabel(service);
           const tags = [...(service.visa_types_handled ?? []), ...(service.specializations ?? [])];
           return (
             <div key={service.id} className="rounded-lg border border-border bg-muted/30 p-4">
@@ -30,7 +29,9 @@ export function VisaServicesSection({ services }: Readonly<{ services: VisaServi
                   <h3 className="text-sm font-semibold leading-snug text-foreground">{service.name}</h3>
                   {service.type && <p className="mt-0.5 text-xs capitalize text-muted-foreground">{service.type.replace(/_/g, " ")}</p>}
                 </div>
-                {fee && <p className="shrink-0 text-sm font-semibold text-primary">{fee}</p>}
+                {(service.fee_amount || service.fee_from) && (
+                  <p className="shrink-0 text-sm font-semibold text-primary">{feeLabel(service)}</p>
+                )}
               </div>
 
               {service.description && (

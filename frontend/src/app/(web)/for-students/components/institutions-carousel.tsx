@@ -29,7 +29,7 @@ export function InstitutionsCarousel({ institutions, loading }: Readonly<{ insti
                   <Reveal key={inst.id} delay={idx * 0.07} className="flex-shrink-0">
                     <Link
                       href={`/institution/${inst.slug}`}
-                      className="group block w-44 md:w-48 bg-background border border-border rounded-xl p-4 hover:shadow-md transition-shadow"
+                      className="group flex flex-col h-full w-44 md:w-48 bg-background border border-border rounded-xl p-4 hover:shadow-md transition-shadow"
                     >
                       <div className="aspect-square rounded-lg overflow-hidden bg-muted mb-3 flex items-center justify-center p-2">
                         {inst.logo_url ? (

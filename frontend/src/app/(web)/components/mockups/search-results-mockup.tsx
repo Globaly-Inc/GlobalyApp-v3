@@ -1,17 +1,21 @@
 import { Search, MapPin, GraduationCap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { INSTITUTION_LOGOS } from "@/lib/public-assets";
 import { MockupCard, MockupFrame } from "./mockup-frame";
 
+// Illustrative rows — each names an institution whose crest is in the public bucket, so the cards
+// carry a real mark instead of a placeholder icon. Fees are indicative, as everywhere in these
+// mockups. The cap icon stays as the fallback for a logo that fails to load.
 const results = [
-  { name: "University of Toronto", city: "Toronto, Canada", tag: "MSc Computer Science", fee: "USD 28,400 / yr" },
-  { name: "TU Munich", city: "Munich, Germany", tag: "MSc Data Engineering", fee: "USD 1,200 / yr" },
-  { name: "Monash University", city: "Melbourne, Australia", tag: "MSc AI & ML", fee: "USD 32,100 / yr" },
+  { name: "University of Toronto", city: "Toronto, Canada", tag: "MSc Computer Science", fee: "USD 28,400 / yr", logo: INSTITUTION_LOGOS.toronto },
+  { name: "University of Manchester", city: "Manchester, UK", tag: "MSc Data Engineering", fee: "USD 26,700 / yr", logo: INSTITUTION_LOGOS.manchester },
+  { name: "University of Melbourne", city: "Melbourne, Australia", tag: "MSc AI & ML", fee: "USD 32,100 / yr", logo: INSTITUTION_LOGOS.melbourne },
 ];
 
 export function SearchResultsMockup() {
   return (
-    <MockupFrame label="globaly.app / search">
+    <MockupFrame label="globalyapp.com / search">
       <div className="space-y-4">
         <div className="relative animate-fade-in" style={{ animationDelay: "0ms", animationFillMode: "both" }}>
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -25,8 +29,13 @@ export function SearchResultsMockup() {
               className="p-3 flex items-center gap-3 hover:shadow-md transition-shadow animate-fade-in"
               style={{ animationDelay: `${150 + i * 120}ms`, animationFillMode: "both" }}
             >
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <GraduationCap className="h-5 w-5 text-primary" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {r.logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.logo} alt="" className="h-full w-full object-contain p-1" />
+                ) : (
+                  <GraduationCap className="h-5 w-5 text-primary" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-foreground truncate">{r.name}</div>

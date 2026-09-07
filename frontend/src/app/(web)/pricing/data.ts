@@ -1,18 +1,28 @@
 // Static content ported verbatim from V2's PricingPage.tsx — no live pricing-plans
 // backend endpoint exists in v3, so the plan cards below are the permanent data
 // source (not a loading fallback, as they were in V2).
+//
+// The trust-stat tiles are the exception: those are live counts from
+// GET /api/v3/platform-stats, not static copy.
+import type { PlatformStatKey } from "../types";
+
 export type Audience = "students" | "business";
 
-export const trustStats = [
-  { value: "50K+", label: "Students registered" },
-  { value: "2,400+", label: "Verified businesses" },
-  { value: "35+", label: "Countries covered" },
-  { value: "180K+", label: "Services listed" },
+/** Index into `studentFeatures` whose copy is rebuilt from live counts. */
+export const SEARCHABLE_FEATURE_INDEX = 1;
+
+/** Values come from GET /api/v3/platform-stats — `key` selects the count for each tile. */
+export const trustStats: { key: PlatformStatKey; label: string }[] = [
+  { key: "students", label: "Students registered" },
+  { key: "verifiedBusinesses", label: "Verified businesses" },
+  { key: "countries", label: "Countries covered" },
+  { key: "serviceListings", label: "Services listed" },
 ];
 
 export const studentFeatures = [
   { text: "Full student profile with documents", sub: "Qualifications, language tests, work experience" },
-  { text: "Search & compare 180K+ services", sub: "Courses, institutions, education counselors across 35+ countries" },
+  // `text`/`sub` are filled from live counts in PricingStudentSection — see SEARCHABLE_FEATURE_INDEX.
+  { text: "Search & compare every listing", sub: "Courses, institutions, education counselors worldwide" },
   { text: "Send up to 3 enquiries per day", sub: "Direct contact with verified education counselors and institutions" },
   { text: "AI eligibility checking", sub: "Know your chances before applying" },
   { text: "Real student ambassador connections", sub: "Chat with students already on the course" },

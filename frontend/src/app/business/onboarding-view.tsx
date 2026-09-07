@@ -21,6 +21,7 @@ import { BusinessDetailsStep } from "./components/business-details-step";
 import type { BusinessCategoryOption, BusinessProfile } from "./apis/types";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import type { PlaceDetails } from "@/lib/api/places";
+import { LOGO } from "@/lib/public-assets";
 // The one category whose flow differs (name field instead of subdomain) — keyed on the
 // seeded slug, see backend/database/seeders/globalyapp/business_categories_seeder.ts.
 const INSTITUTION_SLUG = "institutions";
@@ -322,7 +323,7 @@ function OnboardingForm({
     <div className="min-h-screen flex flex-col bg-muted/30">
       <header className="h-16 border-b border-border bg-background flex items-center justify-between px-6">
         <Link href="/" className="flex items-center">
-          <Image src="/globaly-logo.png" alt="Globaly.io" width={753} height={157} className="h-7 w-auto" />
+          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-7 w-auto" />
         </Link>
         <div className="flex items-center gap-1.5">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((s, i, arr) => (

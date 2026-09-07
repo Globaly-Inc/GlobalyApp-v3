@@ -57,7 +57,8 @@ export function SearchSortControls({ feeControls = false }: Readonly<{ feeContro
             />
           </Control>
 
-          {/* Filters to courses actually quoted in this currency — V3 has no FX conversion. */}
+          {/* Filters to courses actually quoted in this currency. Display currency is separate —
+              the navbar picker converts what is shown; this narrows what comes back. */}
           <Control label="Currency:">
             <Combobox
               className={TRIGGER}

@@ -1,16 +1,23 @@
-import { BookOpen, Building2, Globe, Handshake, MapPin } from "lucide-react";
-import { Reveal } from "../../components/reveal";
-import { PLATFORM_STATS } from "../../const/index";
+"use client";
 
-const STATS = [
-  { value: PLATFORM_STATS.institutions, label: "Institutions", Icon: Building2 },
-  { value: PLATFORM_STATS.courses, label: "Courses", Icon: BookOpen },
-  { value: PLATFORM_STATS.agents, label: "Education Counselors", Icon: Handshake },
-  { value: PLATFORM_STATS.countries, label: "Countries", Icon: Globe },
-  { value: PLATFORM_STATS.cities, label: "Cities", Icon: MapPin },
+import { BookOpen, Building2, Globe, Handshake, MapPin, type LucideIcon } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Reveal } from "../../components/reveal";
+import { usePlatformStats } from "../../hooks/use-platform-stats";
+import { formatStatValue, type PlatformStatKey } from "../../types";
+
+/** Values come from GET /api/v3/platform-stats — `key` selects the count for each row. */
+const STATS: { key: PlatformStatKey; label: string; Icon: LucideIcon }[] = [
+  { key: "institutions", label: "Institutions", Icon: Building2 },
+  { key: "courses", label: "Courses", Icon: BookOpen },
+  { key: "educationCounselors", label: "Education Counselors", Icon: Handshake },
+  { key: "countries", label: "Countries", Icon: Globe },
+  { key: "cities", label: "Cities", Icon: MapPin },
 ];
 
 export function StatsBar() {
+  const { stats, loading } = usePlatformStats();
+
   return (
     <section className="py-8 bg-background border-b border-border">
       <div className="container mx-auto px-4">
@@ -22,7 +29,13 @@ export function StatsBar() {
                   <s.Icon className="h-5 w-5 text-primary" />
                 </div>
                 <div className="text-left">
-                  <p className="text-xl font-bold text-foreground">{s.value}</p>
+                  {loading ? (
+                    <Skeleton className="h-7 w-12" />
+                  ) : (
+                    <p className="text-xl font-bold text-foreground">
+                      {formatStatValue(stats?.[s.key])}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">{s.label}</p>
                 </div>
               </div>

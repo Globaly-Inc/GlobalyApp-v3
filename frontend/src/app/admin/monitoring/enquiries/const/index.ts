@@ -8,7 +8,7 @@ export { ENQUIRY_STATUS_LABEL, INBOX_FILTERS, type InboxFilterKey } from "@/app/
 
 export const ENQUIRY_TABLE_HEAD = ["Student", "Course", "Status", "Recipients", "Intake", "Created"];
 
-export const DISTRIBUTION_TABLE_HEAD = ["Business", "Tier", "Status", "Coins", "Unlocked"];
+export const DISTRIBUTION_TABLE_HEAD = ["Business", "Tier", "Status", "Credits", "Unlocked"];
 
 /**
  * Why a business was picked, from `rankCandidates` in

@@ -8,7 +8,7 @@ export function BlogCta() {
       <div className="container max-w-2xl mx-auto px-4 text-center">
         <h2 className="text-xl font-bold mb-2">Ready to start your journey?</h2>
         <p className="text-sm text-white/70 mb-6">
-          Explore courses, find education agents, and apply to top universities — all on Globaly.app.
+          Explore courses, find education agents, and apply to top universities — all on Globalyapp.
         </p>
         <div className="flex items-center justify-center gap-3">
           <Button className="gap-1.5 btn-gold" nativeButton={false} render={<Link href="/search?tab=courses" />}>

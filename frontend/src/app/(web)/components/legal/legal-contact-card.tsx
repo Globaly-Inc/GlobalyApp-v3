@@ -17,7 +17,7 @@ export function LegalContactCard({ description }: Readonly<LegalContactCardProps
           <h3 className="text-lg font-semibold">Still have questions?</h3>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">{description}</p>
         </div>
-        <Button render={<a href="mailto:support@globaly.app">Contact support@globaly.app</a>} />
+        <Button render={<a href="mailto:support@globalyapp.com">Contact support@globalyapp.com</a>} />
       </div>
     </Reveal>
   );

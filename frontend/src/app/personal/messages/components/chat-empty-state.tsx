@@ -46,7 +46,7 @@ export function ChatEmptyState({ threadCount }: Readonly<{ threadCount: number }
     <div className="flex h-full flex-col items-center justify-center px-4 py-8">
       <div className="relative mb-6">
         <div className="flex size-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 shadow-lg">
-          <Image src="/globaly-red-icon.png" alt="Globaly" width={283} height={283} className="size-12 rounded-lg" />
+          <Image src="/globaly-red-icon.png" alt="Globalyapp" width={283} height={283} className="size-12 rounded-lg" />
         </div>
         <div className="absolute -bottom-2 -right-2 flex size-8 items-center justify-center rounded-full bg-primary/20">
           <MessageSquare className="size-4 text-primary" aria-hidden />

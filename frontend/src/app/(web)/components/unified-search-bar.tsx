@@ -46,13 +46,7 @@ const MODES: { id: Mode; label: string; Icon: typeof Search }[] = [
   { id: "search", label: "Search", Icon: Search },
 ];
 
-export function UnifiedSearchBar({
-  defaultTabSlug, aiRing = false,
-}: Readonly<{
-  defaultTabSlug?: string;
-  /** Home only: the animated AI ring. The other heroes keep a plain card. */
-  aiRing?: boolean;
-}> = {}) {
+export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?: string }> = {}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("ai");
   // Courses everywhere except the pages that are about something else: a Search from the
@@ -107,7 +101,7 @@ export function UnifiedSearchBar({
 
   return (
     <div className="w-full">
-      <div className={cn("max-w-3xl mx-auto rounded-2xl bg-white shadow-lg p-3 text-left", aiRing && "ai-ring")}>
+      <div className="max-w-3xl mx-auto rounded-2xl bg-white shadow-lg p-3 text-left ai-ring">
         <input
           type="text"
           value={query}

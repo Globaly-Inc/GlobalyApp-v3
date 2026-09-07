@@ -1,17 +1,37 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Building2, Briefcase, Globe2, Compass, Sparkles, GraduationCap, Handshake } from "lucide-react";
+import { Handshake } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { INSTITUTION_LOGOS, PARTNER_LOGOS } from "@/lib/public-assets";
 import { MockupCard, MockupFrame } from "./mockup-frame";
 
-const AGENCIES = [
-  { name: "Horizon Edu Agency", location: "Mumbai, India", students: 240, Icon: Building2 },
-  { name: "Global Pathways Consult", location: "Lagos, Nigeria", students: 180, Icon: Briefcase },
-  { name: "Nova Study Abroad", location: "São Paulo, Brazil", students: 312, Icon: Globe2 },
-  { name: "Apex Education Partners", location: "Dubai, UAE", students: 156, Icon: Compass },
-  { name: "Bright Future Consultancy", location: "Manila, Philippines", students: 205, Icon: Sparkles },
+// A counselor partners with many institutions, so the institution side is what rotates — one
+// counselor on the right, a stream of universities connecting to it on the left.
+// Logos come from our own public GCS bucket (sourced from Wikipedia/Wikimedia) rather than being
+// hotlinked, so the mockup never depends on a third party staying up.
+const INSTITUTIONS = [
+  { name: "University of Toronto", location: "Toronto, Canada", logo: INSTITUTION_LOGOS.toronto },
+  { name: "University of Melbourne", location: "Melbourne, Australia", logo: INSTITUTION_LOGOS.melbourne },
+  { name: "University of Manchester", location: "Manchester, UK", logo: INSTITUTION_LOGOS.manchester },
+  { name: "Arizona State University", location: "Phoenix, USA", logo: INSTITUTION_LOGOS.asu },
+  { name: "National University of Singapore", location: "Singapore", logo: INSTITUTION_LOGOS.nus },
 ];
+
+// Apex is a stand-in agency. Swapping in a real counselor means a new mark in the bucket and a
+// new name here; the monogram is the fallback for as long as a logo fails to load.
+const COUNSELOR = {
+  name: "Apex Education Partners",
+  location: "Dubai, UAE",
+  students: 156,
+  logo: PARTNER_LOGOS.apex,
+  initials: "AE",
+};
+
+/** "University of Toronto" -> "UT". Only used if a logo file ever goes missing. */
+const institutionInitials = (name: string) =>
+  name.split(" ").filter((w) => w[0] === w[0]?.toUpperCase() && w.length > 2).slice(0, 2).map((w) => w[0]).join("");
 
 const CYCLE_MS = 3200;
 const IN_MS = 500;
@@ -27,6 +47,21 @@ function subscribeToReducedMotion(onChange: () => void) {
   return () => mq.removeEventListener("change", onChange);
 }
 
+/**
+ * Square logo tile. Built on Avatar purely for its fallback behaviour — a missing or broken
+ * logo file degrades to the monogram instead of a broken-image icon.
+ */
+function CardLogo({ src, alt, initials }: Readonly<{ src: string; alt: string; initials: string }>) {
+  return (
+    <Avatar className="h-10 w-10 rounded-lg border border-border bg-white mb-2">
+      <AvatarImage src={src} alt={alt} className="object-contain p-1" />
+      <AvatarFallback className="rounded-lg bg-primary/10 text-primary text-xs font-semibold">
+        {initials}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
 export function PartnershipConnectMockup() {
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("in");
@@ -36,7 +71,7 @@ export function PartnershipConnectMockup() {
     () => false,
   );
 
-  // Each cycle: slide in, hold, slide out, then advance to the next agency and reset to "in".
+  // Each cycle: slide in, hold, slide out, then advance to the next institution and reset to "in".
   // Resetting inside the last timeout rather than in the effect body keeps this off the
   // synchronous render path.
   useEffect(() => {
@@ -44,7 +79,7 @@ export function PartnershipConnectMockup() {
     const toHold = setTimeout(() => setPhase("hold"), IN_MS);
     const toOut = setTimeout(() => setPhase("out"), IN_MS + HOLD_MS);
     const toNext = setTimeout(() => {
-      setIndex((i) => (i + 1) % AGENCIES.length);
+      setIndex((i) => (i + 1) % INSTITUTIONS.length);
       setPhase("in");
     }, CYCLE_MS);
     return () => {
@@ -54,8 +89,7 @@ export function PartnershipConnectMockup() {
     };
   }, [index, reducedMotion]);
 
-  const agency = AGENCIES[index]!;
-  const AgencyIcon = agency.Icon;
+  const institution = INSTITUTIONS[index]!;
 
   const cardTransform =
     phase === "in" ? "translateY(40px)" : phase === "out" ? "translateY(-40px)" : "translateY(0)";
@@ -66,7 +100,7 @@ export function PartnershipConnectMockup() {
     <MockupFrame label="business portal / partnerships">
       <div className="relative py-4">
         <div className="grid grid-cols-2 gap-3 relative z-10 items-stretch">
-          {/* Rotating agency card */}
+          {/* Rotating institution card */}
           <div className="relative overflow-hidden" style={{ minHeight: 132 }}>
             <MockupCard
               className="p-4 absolute inset-0"
@@ -76,26 +110,22 @@ export function PartnershipConnectMockup() {
                 transition: "transform 500ms cubic-bezier(0.22,1,0.36,1), opacity 400ms ease-out",
               }}
             >
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
-                <AgencyIcon className="h-5 w-5 text-primary" />
-              </div>
-              <div className="text-sm font-semibold text-foreground truncate">{agency.name}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">{agency.location}</div>
+              <CardLogo src={institution.logo} alt={`${institution.name} logo`} initials={institutionInitials(institution.name)} />
+              <div className="text-sm font-semibold text-foreground truncate">{institution.name}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{institution.location}</div>
               <Badge variant="secondary" className="mt-2 text-[10px]">
-                Education Counselor · {agency.students} students
+                Institution · Verified
               </Badge>
             </MockupCard>
           </div>
 
-          {/* Fixed institution card */}
+          {/* Fixed education counselor card */}
           <MockupCard className="p-4">
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
-              <GraduationCap className="h-5 w-5 text-primary" />
-            </div>
-            <div className="text-sm font-semibold text-foreground">University of Toronto</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Toronto, Canada</div>
+            <CardLogo src={COUNSELOR.logo} alt={`${COUNSELOR.name} logo`} initials={COUNSELOR.initials} />
+            <div className="text-sm font-semibold text-foreground truncate">{COUNSELOR.name}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{COUNSELOR.location}</div>
             <Badge variant="secondary" className="mt-2 text-[10px]">
-              Institution · Verified
+              Education Counselor · {COUNSELOR.students} students
             </Badge>
           </MockupCard>
         </div>
@@ -138,7 +168,7 @@ export function PartnershipConnectMockup() {
         className="text-center text-xs text-muted-foreground"
         style={{ opacity: connected || reducedMotion ? 1 : 0.4, transition: "opacity 300ms ease-out" }}
       >
-        {connected || reducedMotion ? `Partnered with ${agency.name}` : "Connecting…"}
+        {connected || reducedMotion ? `Partnered with ${institution.name}` : "Connecting…"}
       </div>
     </MockupFrame>
   );

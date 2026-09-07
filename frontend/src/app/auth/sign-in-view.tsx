@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { sendSignInOtp, resendSignInOtp, verifySignInOtp, resetSignInError, fetchMe } from "./store/auth-slice";
+import { LOGO } from "@/lib/public-assets";
 
 const emailSchema = z.string().trim().max(255).pipe(z.email("Invalid email address"));
 const otpSchema = z.string().trim().length(6, "Please enter the 6-digit code").regex(/^\d+$/, "Code must be numeric");
@@ -136,7 +137,7 @@ export function SignInView() {
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-8">
           <Link href="/">
-            <Image src="/globaly-logo.png" alt="Globaly.io" width={753} height={157} className="h-10 w-auto" />
+            <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
           </Link>
         </div>
         <Card>

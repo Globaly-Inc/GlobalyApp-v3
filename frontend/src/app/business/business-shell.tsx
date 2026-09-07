@@ -191,7 +191,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         <div className="flex h-16 items-center">
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center">
-              <Image src="/globaly-red-icon.png" alt="Globaly" width={64} height={64} className="size-9 rounded-[10px]" />
+              <Image src="/globaly-red-icon.png" alt="Globalyapp" width={64} height={64} className="size-9 rounded-[10px]" />
             </Link>
           </div>
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}

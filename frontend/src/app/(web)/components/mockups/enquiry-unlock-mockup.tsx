@@ -5,7 +5,7 @@ import { MockupCard, MockupFrame } from "./mockup-frame";
 
 /**
  * Two states stacked: locked card fades out, unlocked card fades in.
- * Coin badge pulses between them.
+ * Credit badge pulses between them.
  */
 export function EnquiryUnlockMockup() {
   return (
@@ -14,7 +14,7 @@ export function EnquiryUnlockMockup() {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-foreground">New student enquiry</h3>
           <Badge variant="secondary" className="gap-1">
-            <Coins className="h-3 w-3 text-primary" /> 250 coins
+            <Coins className="h-3 w-3 text-primary" /> 250 credits
           </Badge>
         </div>
 
@@ -33,7 +33,7 @@ export function EnquiryUnlockMockup() {
               <div className="h-3 w-1/2 rounded bg-muted" />
             </div>
             <Button size="sm" className="w-full mt-2 gap-1.5">
-              <Coins className="h-3.5 w-3.5" /> Unlock for 50 coins
+              <Coins className="h-3.5 w-3.5" /> Unlock for 50 credits
             </Button>
           </MockupCard>
 

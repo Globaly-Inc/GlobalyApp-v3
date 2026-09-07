@@ -33,7 +33,7 @@ export function HeroSection() {
             </span>
           </h1>
           <p className="text-white/80 text-base mb-8 max-w-2xl mx-auto">
-            Join Globaly.app&apos;s AI-powered education marketplace built for institutions like
+            Join Globalyapp&apos;s AI-powered education marketplace built for institutions like
             yours. Manage your course listings, expand your education counselor network, and enroll more
             students — all in one smart, transparent platform.
           </p>
