@@ -20,10 +20,12 @@ import "dotenv/config";
 import type { Knex } from "knex";
 import { masterKnex } from "../src/core/db/master-pool.js";
 import {
+  feeBreakdown,
   feeLabel,
   normaliseCurrency,
   normalisePeriodType,
 } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
+import type { Installment } from "../src/modules/superadmin/data-extraction/lib/installment-parser.js";
 
 const TABLE = "superadmin.extraction_course_fees";
 
@@ -37,14 +39,16 @@ type FeeRow = {
   period_type: string | null;
   currency: string | null;
   total_amount: string | number | null;
+  installments: Installment[] | null;
 };
 
 async function normalise(db: Knex | Knex.Transaction) {
   const rows: FeeRow[] = await masterKnex(TABLE)
-    .select("id", "job_id", "name", "description", "period_type", "currency", "total_amount");
+    .select("id", "job_id", "name", "description", "period_type", "currency", "total_amount",
+      "installments");
   console.log(`${rows.length} fee row(s) to check\n`);
 
-  const changed = { period_type: 0, currency: 0, name: 0, description: 0 };
+  const changed = { period_type: 0, currency: 0, name: 0, description: 0, installments: 0 };
   let updated = 0;
 
   for (const row of rows) {
@@ -59,11 +63,21 @@ async function normalise(db: Knex | Knex.Transaction) {
       ? null
       : await normaliseCurrency(row.currency, row.job_id);
 
+    // Fees stored as a bare total open in the fee form as an empty installment worth 0, and
+    // saving that overwrites the real amount — give every one the form's {fee_type, amount} lines.
+    const totalAmount = row.total_amount == null ? null : Number(row.total_amount);
+    const installments = feeBreakdown({
+      name, period_type: periodType, total_amount: totalAmount, installments: row.installments,
+    });
+
     const patch: Record<string, unknown> = {};
     if (periodType !== row.period_type) patch.period_type = periodType;
     if (currency !== row.currency) patch.currency = currency;
     if (name !== row.name) patch.name = name;
     if (description !== row.description) patch.description = description;
+    if (JSON.stringify(installments) !== JSON.stringify(row.installments ?? [])) {
+      patch.installments = JSON.stringify(installments);
+    }
     if (Object.keys(patch).length === 0) continue;
 
     for (const key of Object.keys(patch)) changed[key as keyof typeof changed]++;

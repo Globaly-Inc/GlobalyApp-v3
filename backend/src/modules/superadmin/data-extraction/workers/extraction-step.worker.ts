@@ -951,7 +951,7 @@ async function handleEnrichmentStep(jobId: string) {
       total_amount: fee.amount,
       currency: fee.currency,
       period_type: fee.period,
-      installments: installments.length > 0 ? JSON.stringify(installments) : null,
+      installments,
     });
     await masterKnex(`${S}.extraction_course_fee_assignments`)
       .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
@@ -1072,7 +1072,7 @@ async function handleCourseDataStep(
           period_type: (fee.period_type as string) ?? "Per Year",
           currency: (fee.currency as string) ?? null,
           total_amount: fee.total_amount as number,
-          installments: installments.length > 0 ? JSON.stringify(installments) : null,
+          installments,
         });
         await masterKnex(`${S}.extraction_course_fee_assignments`)
           .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })

@@ -25,11 +25,14 @@ export interface CourseResult {
 
 export interface FeeResult {
   id: string;
+  /** Short label — "Semester Fee", "Tuition Fee". The page's own wording is in description. */
   name: string | null;
+  description: string | null;
   student_type: string;
   period_type: string | null;
-  currency: string;
-  total_amount: number;
+  /** Both nullable since 20260826_002 — null is "unknown", never a confirmed zero or AUD. */
+  currency: string | null;
+  total_amount: number | null;
 }
 
 export interface StudyOptionResult {
@@ -320,7 +323,8 @@ export async function searchCourses(opts: {
     masterKnex(`${SA}.extraction_course_fee_assignments as cfa`)
       .join(`${SA}.extraction_course_fees as f`, "cfa.course_fee_id", "f.id")
       .whereIn("cfa.course_id", courseIds)
-      .select("cfa.course_id", "f.id", "f.name", "f.student_type", "f.period_type", "f.currency", "f.total_amount"),
+      .select("cfa.course_id", "f.id", "f.name", "f.description", "f.student_type", "f.period_type",
+        "f.currency", "f.total_amount"),
     masterKnex(`${SA}.extraction_course_study_option_assignments as csoa`)
       .join(`${SA}.extraction_study_options as so`, "csoa.study_option_id", "so.id")
       .whereIn("csoa.course_id", courseIds)
@@ -562,7 +566,8 @@ export async function getCourseDetails(courseId: string): Promise<CourseDetailRe
       masterKnex(`${SA}.extraction_course_fee_assignments as cfa`)
         .join(`${SA}.extraction_course_fees as f`, "cfa.course_fee_id", "f.id")
         .where("cfa.course_id", courseId)
-        .select("f.id", "f.name", "f.student_type", "f.period_type", "f.currency", "f.total_amount"),
+        .select("f.id", "f.name", "f.description", "f.student_type", "f.period_type", "f.currency",
+          "f.total_amount"),
 
       masterKnex(`${SA}.extraction_course_eligibility_assignments as cea`)
         .join(`${SA}.extraction_eligibility_requirements as e`, "cea.eligibility_requirement_id", "e.id")

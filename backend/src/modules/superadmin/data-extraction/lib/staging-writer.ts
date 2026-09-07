@@ -3,6 +3,7 @@
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { parseInstallments, type Installment } from "./installment-parser.js";
 
 const logger = createChildLogger("staging-writer");
 
@@ -422,7 +423,8 @@ export async function upsertFee(jobId: string, fee: {
   period_type: string;
   currency?: string | null;
   total_amount?: number | null;
-  installments?: string | null;
+  /** The workers' duration-aware split; upsertFee derives one from the period when absent. */
+  installments?: Installment[] | null;
 }): Promise<string> {
   const currency = await normaliseCurrency(fee.currency, jobId);
   const periodType = normalisePeriodType(fee.period_type);
@@ -448,10 +450,55 @@ export async function upsertFee(jobId: string, fee: {
       period_type: periodType,
       currency,
       total_amount: fee.total_amount ?? null,
-      ...(fee.installments ? { installments: fee.installments } : {}),
+      installments: JSON.stringify(feeBreakdown({ ...fee, period_type: periodType, name })),
     })
     .returning("id");
   return row.id as string;
+}
+
+// public.fee_types holds the 8 global types the fee form's dropdown offers. An installment line
+// has to name one of them, so a fee's own label is matched onto the closest — an extracted
+// "Health Cover" is a Health Insurance Fee, and anything unrecognised is tuition.
+const FEE_TYPE_KEYWORDS: Array<[RegExp, string]> = [
+  [/applicat/i, "Application Fee"],
+  [/enrol|registration/i, "Enrollment Fee"],
+  [/material|book|equipment|resource/i, "Material Fee"],
+  [/exam|assessment/i, "Exam Fee"],
+  [/late/i, "Late Payment Fee"],
+  [/insurance|health|oshc|cover/i, "Health Insurance Fee"],
+  [/student services|amenit|ssaf/i, "Student Services Fee"],
+];
+
+export function feeTypeFor(name: string | null | undefined): string {
+  for (const [re, type] of FEE_TYPE_KEYWORDS) if (re.test(name ?? "")) return type;
+  return "Tuition Fee";
+}
+
+/**
+ * The installment breakdown in the shape the fee form reads and writes: every installment carries
+ * at least one {fee_type, amount} line.
+ *
+ * Without this a fee stored as a bare total opens in the form as an empty "Semester 1" worth 0 —
+ * no fee type selected, "Total Fees USD 0" — and saving that overwrites the real amount with zero.
+ * `existing` is the duration-aware split the workers compute; everything else falls back to
+ * parseInstallments on the period alone.
+ */
+export function feeBreakdown(fee: {
+  name?: string | null;
+  period_type: string;
+  total_amount?: number | null;
+  installments?: Installment[] | null;
+}): Array<Installment & { lines: Array<{ fee_type: string; amount: number }> }> {
+  const total = fee.total_amount ?? 0;
+  if (total <= 0) return [];
+  const parts = fee.installments?.length
+    ? fee.installments
+    : parseInstallments({ totalAmount: total, periodType: fee.period_type });
+  const feeType = feeTypeFor(fee.name);
+  return parts.map((i) => ({
+    ...i,
+    lines: i.lines?.length ? i.lines : [{ fee_type: feeType, amount: i.amount }],
+  }));
 }
 
 const GENERIC_FEE_LABEL: Record<string, string> = {

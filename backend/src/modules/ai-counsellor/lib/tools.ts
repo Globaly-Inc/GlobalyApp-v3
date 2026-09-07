@@ -102,13 +102,55 @@ export function cleanIntakes(names: string[], now = new Date()): string[] {
   });
 }
 
+// ── Fees ──
+// A fee row is only meaningful with its period and currency attached: "1,090" is a per-credit
+// rate at one institution and a semester's tuition at another, and currency is nullable (see
+// FeeResult) — printing a bare number, or the word "null", is how the chat misquotes a cost.
+
+const FEE_PERIODS: Record<string, string> = {
+  "Per Year": "per year",
+  "Per Semester": "per semester",
+  "Per Trimester": "per trimester",
+  "Per Unit": "per credit",
+  Total: "total",
+};
+
+/** How this fee is charged, in words the model can copy onto a card. */
+export function feePeriod(fee: knowledge.FeeResult | undefined): string | null {
+  if (!fee?.period_type) return null;
+  return FEE_PERIODS[fee.period_type] ?? fee.period_type.toLowerCase();
+}
+
+/** The fee a card should headline: a real figure over an unknown one, a whole-period price over a
+ * per-credit rate, and an international figure over a domestic one — a card reading
+ * "USD 1,090 per year" when 1,090 is the per-credit rate is worse than no fee at all. */
+export function headlineFee(fees: knowledge.FeeResult[]): knowledge.FeeResult | undefined {
+  const score = (f: knowledge.FeeResult) =>
+    (f.total_amount != null ? 8 : 0)
+    + (f.period_type === "Per Unit" ? 0 : 4)
+    + (f.student_type === "international" ? 2 : f.student_type === "both" ? 1 : 0);
+  return [...fees].sort((a, b) => score(b) - score(a))[0];
+}
+
+/** One fee as a line of context, never asserting more than the row states. */
+export function feeLine(f: knowledge.FeeResult): string {
+  const amount = f.total_amount == null
+    ? "amount not stated"
+    : f.currency
+      ? `${f.currency} ${Number(f.total_amount).toLocaleString("en-US")}`
+      : `${Number(f.total_amount).toLocaleString("en-US")} (currency not stated)`;
+  const line = [`${f.name ?? "Fee"}:`, amount, feePeriod(f), `(${f.student_type})`]
+    .filter(Boolean).join(" ");
+  return f.description ? `${line} — ${f.description}` : line;
+}
+
 /**
  * The exact object the model copies into a ```course-card``` block. Shared with
  * rag.service's CARD_FIELDS line so the two retrieval paths can never drift into
  * emitting different card shapes.
  */
 export function courseCardFields(c: knowledge.CourseDetailResult) {
-  const fee = c.fees.find((f) => f.student_type === "international") ?? c.fees[0];
+  const fee = headlineFee(c.fees);
   return {
     id: c.id,
     slug: courseSlug(c.name, c.id),
@@ -118,6 +160,7 @@ export function courseCardFields(c: knowledge.CourseDetailResult) {
     duration: c.duration_weeks ? `${c.duration_weeks} weeks` : null,
     fees: fee?.total_amount ?? null,
     currency: fee?.currency ?? null,
+    fee_period: feePeriod(fee),
     country: c.institution_country ?? c.country_code,
     city: c.campuses[0]?.campus_name ?? null,
     intakes: cleanIntakes(c.intakes.map((i) => i.intake_name).filter((n): n is string => !!n)),
@@ -135,7 +178,10 @@ function courseForModel(c: knowledge.CourseDetailResult) {
     subject_area: c.subject_area,
     duration_weeks: c.duration_weeks,
     country: c.institution_country ?? c.country_code,
-    fees: c.fees.map((f) => ({ student_type: f.student_type, currency: f.currency, total: f.total_amount })),
+    fees: c.fees.map((f) => ({
+      name: f.name, student_type: f.student_type, period: feePeriod(f),
+      currency: f.currency, total: f.total_amount, description: f.description,
+    })),
     intakes: cleanIntakes(c.intakes.map((i) => i.intake_name).filter((n): n is string => !!n)),
     study_modes: c.study_options.map((o) => o.study_mode).filter(Boolean),
     english_requirements: c.english_requirements.map((r) => ({
