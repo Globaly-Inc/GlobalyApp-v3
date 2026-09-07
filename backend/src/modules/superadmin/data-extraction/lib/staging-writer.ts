@@ -68,6 +68,7 @@ export interface ExtractedIntake {
   intake_name?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  orientation_date?: string | null;
   intake_month?: number | string | null;
   intake_year?: number | string | null;
   admission_deadline?: string | null;
@@ -80,7 +81,7 @@ const MONTH_NAMES: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
-function coerceMonth(v: unknown): number | null {
+export function coerceMonth(v: unknown): number | null {
   if (v == null) return null;
   if (typeof v === "number") return v >= 1 && v <= 12 ? v : null;
   const s = String(v).trim().toLowerCase();
@@ -104,10 +105,59 @@ export function coerceDate(v: unknown): string | null {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function coerceInt(v: unknown): number | null {
+export function coerceInt(v: unknown): number | null {
   if (v == null) return null;
   const n = Number(v);
   return isNaN(n) ? null : Math.floor(n);
+}
+
+/**
+ * intake_month / intake_year from the intake's own name or start date.
+ *
+ * These two columns are the only ones any intake feature reads — the year filter, the "next
+ * intake" badge, the year facet and institution search all key off them, so an intake row
+ * carrying just a name ("Semester 1 2027") is invisible to every one of them. The prompt lists
+ * both as bare nulls and the LLM routinely leaves them that way, so derive them here instead:
+ * deterministic, free, and — unlike a prompt fix — it backfills the rows already stored, which
+ * matters because the pipeline keeps no scraped markdown to re-extract from.
+ *
+ * Only fills what is missing; an explicit LLM or admin value always wins.
+ */
+export function deriveIntakeMonthYear(
+  name: unknown,
+  startDate: string | null,
+  month: number | null,
+  year: number | null,
+): { intake_month: number | null; intake_year: number | null } {
+  let m = month;
+  let y = year;
+
+  if ((m == null || y == null) && typeof name === "string") {
+    if (m == null) {
+      // Word-boundaried so a short form can't match inside a long one ("sep" vs "September"),
+      // and full names come first because MONTH_NAMES lists them first.
+      // ponytail: "may" can still fire on prose ("may be deferred"). Intake names are short
+      // labels, not sentences, so this hasn't been worth guarding — revisit if a real page bites.
+      for (const [word, num] of Object.entries(MONTH_NAMES)) {
+        if (new RegExp(`\\b${word}\\b`, "i").test(name)) { m = num; break; }
+      }
+    }
+    // 4-digit year, 19xx-20xx only — "Semester 1 2027" must yield 2027, not 1.
+    if (y == null) {
+      const match = name.match(/\b(19|20)\d{2}\b/);
+      if (match) y = Number(match[0]);
+    }
+  }
+
+  if ((m == null || y == null) && startDate) {
+    const iso = startDate.match(/^(\d{4})-(\d{2})-\d{2}/);
+    if (iso) {
+      y ??= Number(iso[1]);
+      m ??= Number(iso[2]);
+    }
+  }
+
+  return { intake_month: m != null && m >= 1 && m <= 12 ? m : null, intake_year: y };
 }
 
 // ponytail: takes the lower bound of a range/currency-symbol string ("$25,000-$30,000" -> 25000);
@@ -141,11 +191,28 @@ export function normaliseScoreType(v: unknown): ScoreType | null {
   return (SCORE_TYPES as readonly string[]).includes(s) ? (s as ScoreType) : null;
 }
 
+/**
+ * Contexts where a number is a cohort statistic, not an entry requirement.
+ *
+ * This guard exists because the percentage pattern below matched "95th percentile" in
+ * "Average quantitative GMAT scores are 49.5 (95th percentile)." and stored 95 as a minimum
+ * grade — a requirement the institution never stated, shown on the public course page as
+ * "Minimum score: 95%" and failed against real students' GPAs. A percentile, a cohort average
+ * and an acceptance rate are all percentage-shaped and none of them is a floor.
+ *
+ * Blocklist rather than an allowlist of "minimum"/"at least": most pages state a real threshold
+ * with no such keyword ("requires 65% in a bachelor degree"), and an allowlist would drop them.
+ */
+const NOT_A_MINIMUM = /percentile|\d+\s*(?:st|nd|rd|th)\b|average|\bmean\b|median|typical|top\s*\d|of\s+(?:applicants|admitted|graduates|students)|acceptance\s+rate|employment\s+rate|success\s+rate/i;
+
 // ponytail: same LLM-drift guard as coerceMoney — a score stated plainly in the
 // description ("GPA of 3.0") but missing from score_type/min_score. Bare "GPA of X"
 // defaults to a 4.0 scale (the common convention) unless the text names a different one.
 export function deriveScoreFromDescription(description: string | null | undefined): { score_type: ScoreType; value: number } | null {
   if (!description) return null;
+  // Derivation is a guess to begin with; a description carrying statistical language is not a
+  // safe place to guess from at all, so bail rather than pick a different number out of it.
+  if (NOT_A_MINIMUM.test(description)) return null;
   const patterns: { type: ScoreType; re: RegExp }[] = [
     { type: "percentage", re: /(\d+(?:\.\d+)?)\s*(?:%|percent)/i },
     { type: "cgpa", re: /cgpa[^\d]{0,10}(\d+(?:\.\d+)?)/i },
@@ -158,6 +225,51 @@ export function deriveScoreFromDescription(description: string | null | undefine
     if (m) return { score_type: type, value: Number(m[1]) };
   }
   return null;
+}
+
+export interface ExtractedAcademicTest {
+  test_name?: string | null;
+  /** A stated minimum the applicant must clear. Gates the eligibility verdict. */
+  score?: number | string | null;
+  /**
+   * What admitted students actually scored — an average, median or percentile the page reports.
+   *
+   * Separate from `score` because it is not a bar and must never be treated as one: a real page
+   * read "Average quantitative GMAT scores are 49.5 (95th percentile)" while also saying the test
+   * was not required, and storing 49.5 as a minimum would invent a requirement (and 95 as a
+   * percentage grade, which is what it originally did). Displayed as context, never compared.
+   */
+  typical_score?: number | string | null;
+  is_optional?: boolean | null;
+}
+
+/**
+ * The rows of an eligibility requirement's `academic_tests` jsonb.
+ *
+ * No resolution against `public.tests` here: both the public card's logo lookup (`testImage`) and
+ * the eligibility engine's `sameTest` already match a scraped name against the catalogue by
+ * substring, so "GRE General Test" finds GRE without being rewritten. Dropping nameless entries
+ * is the only thing that has to happen, since the card and the engine both key off the name.
+ */
+export function normaliseAcademicTests(v: unknown): ExtractedAcademicTest[] {
+  if (!Array.isArray(v)) return [];
+  const out: ExtractedAcademicTest[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const t = raw as ExtractedAcademicTest;
+    const name = typeof t.test_name === "string" ? t.test_name.trim() : "";
+    if (!name) continue;
+    const score = t.score == null || t.score === "" ? null : String(t.score).trim();
+    const typical = t.typical_score == null || t.typical_score === "" ? null : String(t.typical_score).trim();
+    out.push({
+      test_name: name,
+      score,
+      // A real minimum makes the cohort statistic redundant; never store both.
+      typical_score: score ? null : typical,
+      is_optional: t.is_optional === true,
+    });
+  }
+  return out;
 }
 
 export interface ExtractedStudyOption {
@@ -178,6 +290,7 @@ export interface ExtractedEligibility {
   min_degree_level?: string | null;
   score_type?: string | null;
   min_score?: number | string | null;
+  academic_tests?: ExtractedAcademicTest[] | null;
 }
 
 export interface ExtractedEnglishReq {
@@ -572,6 +685,151 @@ export async function normaliseCurrency(raw: string | null | undefined, jobId: s
   return allSymbols.has(s) ? null : job;
 }
 
+/** Dates that, if they disagree, mean two intakes are genuinely different sittings. */
+const INTAKE_DATE_FIELDS = ["start_date", "end_date", "orientation_date", "admission_deadline"] as const;
+
+/** A stored date column (pg hands back a Date) against an ISO string, treating null as "unknown". */
+function datesAgree(stored: unknown, incoming: string | null): boolean {
+  if (stored == null || incoming == null) return true; // one side unknown — not a disagreement
+  const iso = stored instanceof Date ? stored.toISOString().slice(0, 10) : String(stored).slice(0, 10);
+  return iso === incoming;
+}
+
+/**
+ * Upsert an intake for a JOB and link the course to it — one "Semester 1 2027" row shared by
+ * every course that offers it, exactly as eligibility requirements and fees are shared.
+ *
+ * Identity is name + month + year, with the four dates required merely not to CONTRADICT (a null
+ * on either side is unknown, not a difference) — so a page that adds a deadline enriches the
+ * shared row instead of forking a near-duplicate, while two genuinely different sittings under
+ * the same name stay apart.
+ *
+ * Sharing is what the schema was always built for: `extraction_course_intake_assignments` has
+ * carried `unique(course_id, intake_id)` since 20260805_005, the admin Intakes tab has had a
+ * course link/unlink picker throughout, and ai-counsellor already reads through the junction. The
+ * blocker was this writer keying on `course_id`, which forced one row per course.
+ *
+ * `course_id` is deliberately left NULL now. It is the legacy path — every public read has moved
+ * to the junction, because a shared intake cannot name a single course in a scalar column, and a
+ * column holding "whichever course happened to be written first" is worse than an empty one.
+ *
+ * ponytail: find-then-write, same as upsertStudyUnit/upsertCampus — a job's pages are consumed by
+ * one worker at a time, so the read-then-write gap isn't a real race. Add a unique index if pages
+ * are ever fanned out across worker processes.
+ */
+export async function upsertIntake(
+  jobId: string,
+  intake: ExtractedIntake,
+  sourceUrl: string | null,
+): Promise<string> {
+  const startDate = coerceDate(intake.start_date);
+  const derived = deriveIntakeMonthYear(
+    intake.intake_name,
+    startDate,
+    coerceMonth(intake.intake_month),
+    coerceInt(intake.intake_year),
+  );
+  const fields = {
+    intake_name: intake.intake_name ?? null,
+    start_date: startDate,
+    end_date: coerceDate(intake.end_date),
+    orientation_date: coerceDate(intake.orientation_date),
+    admission_deadline: coerceDate(intake.admission_deadline),
+    intake_month: derived.intake_month,
+    intake_year: derived.intake_year,
+    source_url: sourceUrl,
+  };
+
+  // Job-scoped, no course_id — this is what makes the row shareable.
+  const candidates = await masterKnex(`${S}.extraction_intakes`)
+    .where({ job_id: jobId })
+    .whereRaw("COALESCE(LOWER(TRIM(intake_name)), '') = ?", [(intake.intake_name ?? "").trim().toLowerCase()])
+    .whereRaw("COALESCE(intake_month, 0) = ?", [fields.intake_month ?? 0])
+    .whereRaw("COALESCE(intake_year, 0) = ?", [fields.intake_year ?? 0]);
+
+  // Best match, not first match. A job can hold several real sittings under one name — job
+  // 3e4a6521 has "Fall 2027" with deadlines 2025-11-30, 2025-12-14 and 2026-12-14 — plus rows
+  // with no dates at all, which are compatible with every one of them. Taking the first
+  // compatible candidate would attach this intake to whichever row happened to be created
+  // earliest; ranking by how many dates actually MATCH (rather than merely fail to contradict)
+  // puts it with the sitting it shares a deadline with, and leaves the dateless row as the
+  // fallback it should be.
+  const existing = candidates
+    .filter((row: Record<string, unknown>) =>
+      INTAKE_DATE_FIELDS.every((f) => datesAgree(row[f], fields[f])),
+    )
+    .map((row: Record<string, unknown>) => ({
+      row,
+      matched: INTAKE_DATE_FIELDS.filter((f) => row[f] != null && fields[f] != null).length,
+    }))
+    .sort((a, b) => b.matched - a.matched)[0]?.row;
+
+  if (existing) {
+    const updates = Object.fromEntries(
+      Object.entries(fields).filter(([k, v]) => v != null && existing[k] == null),
+    );
+    if (Object.keys(updates).length > 0) {
+      await masterKnex(`${S}.extraction_intakes`)
+        .where({ id: existing.id })
+        .update({ ...updates, updated_at: masterKnex.fn.now() });
+    }
+    return existing.id as string;
+  }
+
+  const [row] = await masterKnex(`${S}.extraction_intakes`)
+    .insert({ job_id: jobId, ...fields })
+    .returning("id");
+  return row.id;
+}
+
+/**
+ * Upsert an eligibility requirement for a job — deduplicates by normalised name + audience,
+ * mirroring upsertIntake above and for the same reason (see its comment).
+ *
+ * Job-scoped rather than course-scoped because that is how the table is already shared: a
+ * requirement row is attached to courses through extraction_course_eligibility_assignments, and
+ * one "Bachelor degree or equivalent" row legitimately serves many courses on the same job.
+ *
+ * A requirement with no name can't be identified, so it is always inserted — dedupe would have to
+ * compare free-text descriptions, which is not worth guessing at.
+ */
+export async function upsertEligibility(
+  jobId: string,
+  elig: ExtractedEligibility,
+  fields: Record<string, unknown>,
+): Promise<string> {
+  const name = (elig.name ?? "").trim();
+  if (name) {
+    const existing = await masterKnex(`${S}.extraction_eligibility_requirements`)
+      .where({ job_id: jobId, applicable_to: elig.applicable_to ?? "both" })
+      .whereRaw("LOWER(TRIM(name)) = ?", [name.toLowerCase()])
+      .first();
+    if (existing) {
+      // academic_tests is compared unparsed: '[]' is the column default, so "existing is empty"
+      // is the one case worth overwriting — an earlier page that found no tests must not keep a
+      // later page's findings out.
+      const updates = Object.fromEntries(
+        Object.entries(fields).filter(([k, v]) => {
+          if (v == null) return false;
+          if (k === "academic_tests") return v !== "[]" && (existing[k] == null || JSON.stringify(existing[k]) === "[]");
+          return existing[k] == null || existing[k] === "";
+        }),
+      );
+      if (Object.keys(updates).length > 0) {
+        await masterKnex(`${S}.extraction_eligibility_requirements`)
+          .where({ id: existing.id })
+          .update({ ...updates, updated_at: masterKnex.fn.now() });
+      }
+      return existing.id;
+    }
+  }
+
+  const [row] = await masterKnex(`${S}.extraction_eligibility_requirements`)
+    .insert({ job_id: jobId, ...fields })
+    .returning("id");
+  return row.id;
+}
+
 /**
  * Upsert a fee for a job — deduplicates by (student_type, period_type, currency, total_amount)
  * within the same job so a shared rate (e.g. "$325/credit for all programs") creates ONE row
@@ -882,20 +1140,9 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Intakes + assignments ──
   if (course.intakes?.length) {
     for (const intake of course.intakes) {
-      const [intakeRow] = await masterKnex(`${S}.extraction_intakes`)
-        .insert({
-          job_id: jobId,
-          course_id: courseId,
-          intake_name: intake.intake_name ?? null,
-          start_date: coerceDate(intake.start_date),
-          end_date: coerceDate(intake.end_date),
-          intake_month: coerceMonth(intake.intake_month),
-          intake_year: coerceInt(intake.intake_year),
-          admission_deadline: coerceDate(intake.admission_deadline),
-        })
-        .returning("id");
+      const intakeId = await upsertIntake(jobId, intake, course.source_url ?? null);
       await masterKnex(`${S}.extraction_course_intake_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, intake_id: intakeRow.id })
+        .insert({ job_id: jobId, course_id: courseId, intake_id: intakeId })
         .onConflict(["course_id", "intake_id"]).ignore();
     }
   }
@@ -930,20 +1177,19 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
       }
       const isPercentage = scoreType === "percentage";
 
-      const [eligRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
-        .insert({
-          job_id: jobId,
-          name: elig.name ?? null,
-          applicable_to: elig.applicable_to ?? "both",
-          description: elig.description ?? null,
-          min_score_percent: isPercentage ? scoreValue : coerceInt(elig.min_score_percent),
-          min_degree_level: elig.min_degree_level ?? null,
-          score_type: scoreType,
-          min_score: isPercentage ? null : scoreValue,
-        })
-        .returning("id");
+      const eligId = await upsertEligibility(jobId, elig, {
+        name: elig.name ?? null,
+        applicable_to: elig.applicable_to ?? "both",
+        description: elig.description ?? null,
+        min_score_percent: isPercentage ? scoreValue : coerceInt(elig.min_score_percent),
+        min_degree_level: elig.min_degree_level ?? null,
+        score_type: scoreType,
+        min_score: isPercentage ? null : scoreValue,
+        academic_tests: JSON.stringify(normaliseAcademicTests(elig.academic_tests)),
+        source_url: course.source_url ?? null,
+      });
       await masterKnex(`${S}.extraction_course_eligibility_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: eligRow.id })
+        .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: eligId })
         .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
     }
   }
@@ -960,6 +1206,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
         reading_score: eng.reading_score ?? null,
         writing_score: eng.writing_score ?? null,
         speaking_score: eng.speaking_score ?? null,
+        source_url: course.source_url ?? null,
       });
     }
   }

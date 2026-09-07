@@ -164,6 +164,11 @@ function institutionsQuery({
     // counts as January so a year-only row still lands in the right year.
     const [year, month] = intakeFrom.split("-").map(Number);
     q.whereRaw(
+      // Straight off ei.job_id. This used to reach the job by joining through
+      // extraction_courses on ei.course_id — a column that is now NULL, because an intake is
+      // shared by every course that offers it (see upsertIntake) and so can't name one. The
+      // join was only ever a detour: extraction_intakes carries job_id itself, and "does this
+      // institution have an upcoming intake" is a job-level question.
       `exists (
         select 1 from ${COURSE_INTAKES}
           join ${S}.extraction_courses ec on ec.id = ia.course_id
@@ -241,13 +246,15 @@ export async function listInstitutionCatalogFacets() {
 /** Intake months across every published institution's catalog, earliest first — "YYYY-MM". */
 export async function listInstitutionIntakeMonths() {
   const rows = await masterKnex.raw(
+    // Same as above: ei.job_id directly, no detour through extraction_courses on the now-NULL
+    // ei.course_id.
     `select distinct ei.intake_year, coalesce(ei.intake_month, 1) as intake_month
        from ${COURSE_INTAKES}
        join ${S}.extraction_courses ec on ec.id = ia.course_id
       where ei.intake_year is not null
         and ${NOT_REJECTED}
         and exists (select 1 from institutions i
-                     where i.source_job_id = ec.job_id and i.is_published = true and i.deleted_at is null)
+                     where i.source_job_id = ei.job_id and i.is_published = true and i.deleted_at is null)
       order by 1, 2`,
   );
   return (rows.rows as { intake_year: number; intake_month: number }[]).map(

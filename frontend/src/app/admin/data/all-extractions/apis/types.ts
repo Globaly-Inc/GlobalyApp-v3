@@ -395,7 +395,14 @@ export type LanguageTest = {
   speaking_score?: string;
 };
 
-export type AcademicTest = { test_name: string; score: string };
+export type AcademicTest = {
+  test_name: string;
+  /** A stated minimum the applicant must clear. */
+  score: string;
+  /** What admitted students scored (average/median/percentile) — context, never a bar. */
+  typical_score?: string | null;
+  is_optional?: boolean;
+};
 
 export type EligibilityRequirement = ActorFields & {
   id: string;

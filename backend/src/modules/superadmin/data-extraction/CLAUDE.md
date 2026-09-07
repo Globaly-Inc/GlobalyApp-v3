@@ -171,6 +171,86 @@ The centralized error handler maps these to HTTP responses.
    in the job header) raises the cap by 500 and re-dispatches the job worker —
    dedupe skips everything already queued, so only newly discovered pages bill.
    No V2 equivalent — cost guardrail, explicitly requested (V2 had no page cap).
+   Exception: eligibility + intake storage repair (2026-09-04) — six changes to how
+   entry requirements and intakes are stored, none a V2 behavior, all data-correctness
+   fixes. See `docs/data-extraction/2026-09-04-eligibility-intake-storage-plan.md` for
+   the findings behind each.
+   (a) `deriveScoreFromDescription` no longer reads a number out of statistical prose.
+   It used to match "95th percentile" and store 95 as a minimum percentage grade — a
+   requirement no institution stated, rendered on the public course page as "Minimum
+   score: 95%" and compared against real students' GPAs. Guarded by `NOT_A_MINIMUM`
+   (percentile/average/median/top-N/acceptance-rate/ordinals); regression-tested in
+   `tests/eligibility-extraction.ts`.
+   (b) `academic_tests` is now written by the pipeline. Both eligibility prompts gained
+   an `academic_tests` array (GRE/GMAT/SAT/… with `score` and `is_optional`) and both
+   writers persist it. The column existed since 20260805_004 and only the admin form
+   ever wrote it, so the public card's "Academic Test Score" section and the eligibility
+   engine's `academic_test` criterion were permanently empty — every student's stored
+   GRE/GMAT score went unused. `is_optional` is honoured end to end: an optional test
+   can never make a verdict `fail`. A test entry carries `score` (a stated minimum, which
+   gates the verdict) and `typical_score` (an average/median/percentile the page reports
+   about admitted students, which is displayed as "avg 49.5" and gates nothing) — kept
+   apart because a page stating only a cohort average is stating no requirement, and the
+   two are never stored together.
+   (c) Reruns are idempotent. `writeCourse` deduped the course by name but re-inserted
+   every child unconditionally, and the junction unique constraints never fired because
+   each child row was freshly inserted — so a course found on a listing page, its detail
+   page and a catalog entry accumulated three copies of every intake, requirement and
+   fee. `upsertIntake` / `upsertEligibility` / `upsertCourseFee` mirror the existing
+   `upsertStudyUnit` find-then-write pattern.
+   (d) The step worker's `eligibility` step now deletes the requirement ROWS it
+   unassigns, not just the assignments. Orphaned rows matched
+   `findRequirementsForCourse`'s institution-wide fallback (job-scoped, assigned to no
+   course), so re-extracting one course's eligibility silently applied its stale
+   requirements to every other course on the job.
+   (e) Intake `intake_month`/`intake_year` are derived from the intake name or start
+   date (`deriveIntakeMonthYear`), and the step worker's intake writes now go through
+   `coerceDate`/`coerceMonth` like the page worker's always have. Those two columns are
+   the only ones the year filter, "next intake" badge, year facet and institution search
+   read, and the LLM routinely left both null while naming the intake "Semester 1 2027".
+   `end_date`/`orientation_date` are now asked for too. Derivation is deterministic
+   rather than prompt-only specifically so it can backfill stored rows — the pipeline
+   persists no scraped markdown, so a prompt fix alone helps only future crawls.
+   (g) Intakes are SHARED across courses (2026-09-04, second pass). `upsertIntake` is
+   scoped by `job_id` alone, so one "Semester 1 2027" row is linked to every course
+   offering it via `extraction_course_intake_assignments` — matching how eligibility
+   requirements and fees already work, what the junction's `unique(course_id, intake_id)`
+   has allowed since 20260805_005, and what the admin Intakes tab's course link/unlink
+   picker always implied. Identity is name + month + year with the four date columns
+   required merely not to CONTRADICT (null on either side is unknown, not a difference),
+   so a page adding a deadline enriches the shared row instead of forking a duplicate.
+   `extraction_intakes.course_id` is now LEGACY and left NULL on write — a shared intake
+   cannot name one course in a scalar column. **Every public read moved to the junction**:
+   the intake-year filter, both `nextIntake()` subqueries, the year facet and the course
+   detail query in `search/repositories/courses.repository.ts`, plus two in
+   `businesses.repository.ts` that were only joining through `extraction_courses` to reach
+   `job_id` — a column `extraction_intakes` already has, so that join is gone. The step
+   worker's intake branch now calls `upsertIntake` rather than keeping its own copy (it had
+   already drifted once — see (e)). **Deploy hazard:** any legacy row reachable only via
+   `course_id`, with no assignment row, disappears from course pages when those reads
+   switch. `npm run eligibility:backfill` pass 5 rescues those FIRST, then collapses
+   duplicates; run it with the deploy, not after. Do not read or reintroduce `course_id`.
+   (h) Both workers now call the SAME upsert helpers (2026-09-07). The step worker's
+   `case "eligibility"` was still doing a direct insert, so requirement rows were shared
+   across courses on a first crawl but a fresh row was minted on any per-course
+   re-extraction. It now calls the exported `upsertEligibility`, and its assignment
+   insert gained the missing `.onConflict([...]).ignore()`. That branch had drifted from
+   the page worker three times (raw dates at date/integer columns; dropping
+   dated-but-unnamed intakes; this direct insert) — so any future change to extraction
+   write behaviour belongs in a shared helper in `staging-writer.ts` called from BOTH
+   workers, never reimplemented in the step worker's switch. Sharing dedupes on name, so
+   "Fall 2027" and "Fall Semester 2027" stay separate by design, and is per-job — two
+   institutions never share a row. `agentcis-product-staging.ts` is a third writer
+   (structured import, pre-coerced mappers, no LLM) that does not share rows; left as is.
+   (f) `source_url` added to `extraction_eligibility_requirements` and
+   `extraction_intakes` (migration `20260904_001`) and now written by both paths;
+   `extraction_english_requirements.source_url` existed and was never populated.
+   Also: "next intake" now means the soonest intake that hasn't started
+   (`nextIntake()` in search/repositories/courses.repository.ts) rather than the earliest
+   ever scraped, and the intake-year facet gained the `PUBLICLY_VISIBLE` gate every
+   other facet already had.
+   Repair for data already stored: `npm run eligibility:backfill` (dry-run by default,
+   `--apply` to write).
    Exception: `/jobs-filtered` search/sort/category-filter (2026-08-24) —
    added `q` (institution name/URL search), `sort`, and
    `business_category_id` params to `FilteredJobsQuerySchema`, plus a matching

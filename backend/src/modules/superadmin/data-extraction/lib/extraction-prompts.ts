@@ -132,10 +132,12 @@ Extract this JSON:
       ],
       "intakes": [
         {
-          "intake_name": "e.g. Semester 1 2027",
+          "intake_name": "e.g. \"Semester 1 2027\", \"Fall 2027\" — ALWAYS include the year, never a bare season (\"Fall\", \"Spring\", \"Summer\") or a bare term (\"Semester 1\")",
           "start_date": "YYYY-MM-DD or null",
-          "intake_month": null,
-          "intake_year": null,
+          "end_date": "YYYY-MM-DD or null",
+          "orientation_date": "YYYY-MM-DD or null",
+          "intake_month": "1-12, the month this intake starts — derive it from the intake name or start date when the page states it no other way",
+          "intake_year": "4-digit year this intake starts — derive it from the intake name (\\"Semester 1 2027\\" -> 2027) or start date",
           "admission_deadline": "YYYY-MM-DD or null"
         }
       ],
@@ -156,7 +158,15 @@ Extract this JSON:
           "description": "details",
           "score_type": "percentage|gpa_4|gpa_10|cgpa|null — the kind of number in min_score, if this requirement states one",
           "min_score": "the numeric minimum stated (e.g. 65 for '65%', 3.0 for 'GPA of 3.0') — null if no number is stated",
-          "min_degree_level": "Bachelor|Master|PhD|Diploma|Certificate|etc — the prior qualification level this requirement applies to, if stated or clearly implied (e.g. an 'undergraduate GPA' requirement for a Master's program implies Bachelor) — else null"
+          "min_degree_level": "Bachelor|Master|PhD|Diploma|Certificate|etc — the prior qualification level this requirement applies to, if stated or clearly implied (e.g. an 'undergraduate GPA' requirement for a Master's program implies Bachelor) — else null",
+          "academic_tests": [
+            {
+              "test_name": "GRE|GMAT|SAT|ACT|LSAT|MCAT|DAT|UCAT|GAMSAT|NEET|JEE — the standardised admission test, NOT an English test",
+              "score": "the MINIMUM score this course requires, as stated (e.g. \\"320\\", \\"1200\\") — null unless the page presents it as a floor",
+              "typical_score": "what admitted students actually scored, when the page reports an average/median/percentile instead of a minimum (e.g. \\"49.5\\" from \\"average GMAT of 49.5\\") — null otherwise",
+              "is_optional": false
+            }
+          ]
         }
       ],
       "english_requirements": [
@@ -204,8 +214,14 @@ Rules:
 - Do NOT extract a page as a course if it describes the ADMISSIONS PROCESS in general — e.g. "How to Apply as a First-Year Student", "Transfer Pathways", "Application Requirements", "Dates and Deadlines" — rather than one specific named qualification. These pages talk about applying, deadlines, or eligibility across many/all programs at once, and never name one degree with its own curriculum. Never invent a degree_level (e.g. "Bachelor") for a page like this just because it mentions undergraduate/first-year admission — if the page does not name one specific qualification, return an empty courses array.
 - Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
 - Never invent fees or dates — only extract what's explicitly stated
+- EVERY intake needs a YEAR. intake_year is what makes an intake findable at all — an intake with no year is invisible to the site's intake filters and its "next intake" display. US and Canadian catalogues label intakes by bare season ("Fall", "Spring Semester"); the year is almost always stated nearby, in a heading, an academic-year label ("Academic Year 2026-27" -> Fall 2026 and Spring 2027), a deadline, or a term table. Read it from that context and put it in both intake_year and the intake_name ("Fall" -> "Fall 2027"). Also set intake_month from the season using the institution's own hemisphere — for a Northern-hemisphere institution Fall/Autumn is 9, Spring is 1, Summer is 5, Winter is 1; for a Southern-hemisphere one (Australia, NZ) Autumn is 3, Spring is 9, Summer is 12, Winter is 6.
+- If the page truly states no year for an intake anywhere, still return it with its name, and leave intake_year null rather than guessing a year — a wrong year is worse than a missing one.
 - For eligibility requirements, always populate score_type + min_score when a specific numeric threshold is stated, not just in the free-text description: "percentage" for a % figure, "gpa_4" for a GPA (the default scale when no scale is named — most common convention), "gpa_10" only when the page explicitly says the GPA is out of 10, "cgpa" when the page uses that term specifically. Leave both null if no number is stated.
 - Always fill duration_text verbatim when the page states a duration anywhere, even if you also converted it to duration_weeks
+- score_type / min_score / min_degree_level describe the applicant's PRIOR QUALIFICATION GRADE and nothing else. A standardised admission test score (GRE, GMAT, SAT, ACT, LSAT, MCAT, …) goes in that requirement's academic_tests array — NEVER as an eligibility row named after the test with the test's score in min_score. Wrong: {"name": "GMAT Quantitative Score", "score_type": "percentage", "min_score": 95}. Right: {"name": "Admission test", "academic_tests": [{"test_name": "GMAT", "score": "49.5", "is_optional": true}]}.
+- A COHORT STATISTIC IS NOT A REQUIREMENT. A percentile ("49.5, which is the 95th percentile"), a class average ("average GMAT of our intake is 700"), a median, a "top 10%" claim, an acceptance rate, or an employment/success rate is describing who got in, not the bar for getting in. Never put such a number in min_score, min_score_percent or a test's "score". Only a number the page presents as a floor ("minimum", "at least", "no less than", "required", "or above", or a plainly stated entry threshold) is a requirement. A test's average/median/percentile goes in that test's "typical_score" instead — so "Average quantitative GMAT scores are 49.5 (95th percentile)" is {"test_name": "GMAT", "score": null, "typical_score": "49.5", "is_optional": true}, never score 49.5 and never min_score_percent 95.
+- Set is_optional true on a test the page calls optional, recommended, waivable, or "not required" — an optional test must never be recorded as a hard requirement.
+- English/language tests (IELTS, TOEFL, PTE, Duolingo, Cambridge, …) belong in english_requirements, never in academic_tests.
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If this page states no real fee figures but links to a dedicated fees/tuition/cost page (a schedule page, a catalog entry, an external PDF), leave fees empty and set fees_page_url to that link instead — never fabricate a fee entry with no amount just to record the URL
@@ -736,15 +752,20 @@ export function courseDataPrompt(
   }]
 }`,
     intakes: `{
-  "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD or null", "intake_month": null, "intake_year": null, "admission_deadline": "YYYY-MM-DD or null" }]
+  "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD or null", "end_date": "YYYY-MM-DD or null", "orientation_date": "YYYY-MM-DD or null", "intake_month": "1-12, the month this intake starts — derive it from the intake name or start date when the page doesn't state it separately", "intake_year": "4-digit year this intake starts — derive it from the intake name (\\"Semester 1 2027\\" -> 2027) or start date", "admission_deadline": "YYYY-MM-DD or null" }]
 }`,
     units: `{
   "study_units": [{ "unit_code": "code or null", "unit_name": "unit name", "credit_points": null }]
 }`,
     eligibility: `{
-  "requirements": [{ "name": "requirement name", "applicable_to": "domestic|international|both", "description": "details", "score_type": "percentage|gpa_4|gpa_10|cgpa|null", "min_score": "numeric minimum stated, or null", "min_degree_level": "Bachelor|Master|etc, if stated or implied, else null" }],
+  "requirements": [{ "name": "requirement name", "applicable_to": "domestic|international|both", "description": "details", "score_type": "percentage|gpa_4|gpa_10|cgpa|null", "min_score": "numeric minimum stated, or null", "min_degree_level": "Bachelor|Master|etc, if stated or implied, else null", "academic_tests": [{ "test_name": "GRE|GMAT|SAT|ACT|LSAT|MCAT|etc — a standardised admission test, never an English test", "score": "the MINIMUM score required, or null if the page states no floor", "typical_score": "the average/median/percentile score of admitted students, if the page reports one instead of a minimum, else null", "is_optional": false }] }],
   "english_requirements": [{ "test_type_name": "IELTS|TOEFL|PTE", "overall_score": null, "listening_score": null, "reading_score": null, "writing_score": null, "speaking_score": null }]
-}`,
+}
+
+Rules for requirements:
+- score_type / min_score / min_degree_level describe the applicant's PRIOR QUALIFICATION GRADE only. A standardised test score (GRE, GMAT, SAT, …) goes in that requirement's academic_tests array, NEVER as a requirement row named after the test with its score in min_score.
+- A cohort statistic is not a requirement: a percentile ("95th percentile"), a class average, a median, "top 10%", an acceptance rate or an employment rate describes who got in, not the bar for getting in. Keep min_score/min_score_percent null; a test's average/median goes in that test's "typical_score", never its "score".
+- Set is_optional true when the page calls a test optional, recommended, or waivable.`,
     accreditations: `{
   "accreditations": [{ "name": "accreditation body name", "issuing_organization": "org or null" }]
 }`,

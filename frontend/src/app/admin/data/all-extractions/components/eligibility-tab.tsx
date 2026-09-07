@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  FileText, GraduationCap, Hash, Languages, Link2, Loader2, Pencil, Percent, Plus, Search, Trash2, Type, Users, X,
+  FileText, GraduationCap, Hash, Link2, Loader2, Pencil, Percent, Plus, Search, Trash2, Type, Users, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, saveFormAndLearn, useFieldSaver } from "./editable-field";
 import { latestTimestamp } from "../utils";
 import { EligibilityForm } from "./eligibility-form";
+import { EligibilityTestSummary } from "./eligibility-test-summary";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RowActors } from "./row-actors";
@@ -73,7 +74,6 @@ function RequirementCard({
   const [showAll, setShowAll] = useState(false);
 
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
-  const languageCount = requirement.language_tests?.length ?? 0;
 
   const numberField = (v: string | null) => (v === null ? null : (Number(v) as unknown as string));
 
@@ -143,13 +143,14 @@ function RequirementCard({
           />
         </div>
 
+        {/* The tests themselves, not just a count — a reviewer had to open the edit form on
+            every row to see whether GRE/IELTS had actually been captured. */}
+        <EligibilityTestSummary
+          languageTests={requirement.language_tests}
+          academicTests={requirement.academic_tests}
+        />
+
         <div className="flex flex-wrap items-center gap-2">
-          {languageCount > 0 && (
-            <Badge variant="outline" className="gap-1 text-xs">
-              <Languages className="h-3 w-3" />
-              {languageCount}
-            </Badge>
-          )}
           <Badge className="text-xs">
             Shared by {linked.length} course{linked.length === 1 ? "" : "s"}
           </Badge>
@@ -254,10 +255,6 @@ export function EligibilityTab({
     return () => clearTimeout(t);
   }, [load]);
 
-  // A search change invalidates the current page.
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
 
   const allSelected = requirements.length > 0 && selectedIds.length === requirements.length;
 
@@ -305,7 +302,12 @@ export function EligibilityTab({
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              // A search change invalidates the current page. Done here rather than in an
+              // effect on [search]: same result, and the repo lints against set-state-in-effect.
+              setPage(1);
+            }}
             placeholder="Search eligibility requirements…"
             className="h-8 pl-7 text-sm"
           />

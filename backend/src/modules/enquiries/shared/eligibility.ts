@@ -53,7 +53,7 @@ export interface EligibilityRequirementRow {
   score_type: string | null;
   min_score: string | number | null;
   description: string | null;
-  academic_tests: { test_name?: string; score?: string }[] | null;
+  academic_tests: { test_name?: string; score?: string; is_optional?: boolean }[] | null;
   language_tests: { test_type_name?: string; overall_score?: string }[] | null;
 }
 
@@ -268,10 +268,16 @@ function scoreCriterion(
   };
 }
 
-/** One criterion per required test, matched against whatever the student has recorded. */
+/**
+ * One criterion per required test, matched against whatever the student has recorded.
+ *
+ * An `is_optional` test is scored when the student has it and never counted against them when
+ * they don't: a GMAT the institution calls optional or waivable cannot be the reason a verdict
+ * says `fail`, but a student who took it should still see it pass.
+ */
 function testCriteria(
   key: "academic_test" | "language_test",
-  required: { name: string | null | undefined; score: string | null | undefined }[],
+  required: { name: string | null | undefined; score: string | null | undefined; optional?: boolean }[],
   held: { test_type: string | null; overall_score: string | null }[],
 ): EligibilityCriterion[] {
   const out: EligibilityCriterion[] = [];
@@ -281,9 +287,13 @@ function testCriteria(
 
     const match = held.find((h) => sameTest(h.test_type, r.name));
     const heldScore = parseScore(match?.overall_score);
-    const base = { key, label: r.name, required: `≥ ${requiredScore}` };
+    const label = r.optional ? `${r.name} (optional)` : r.name;
+    const base = { key, label, required: `≥ ${requiredScore}` };
 
     if (!match || heldScore == null) {
+      // An optional test the student hasn't taken is not a gap in their profile — drop the
+      // criterion entirely rather than adding an `unknown` that reads as something missing.
+      if (r.optional) continue;
       out.push({
         ...base,
         actual: match?.overall_score ?? null,
@@ -292,7 +302,14 @@ function testCriteria(
       });
       continue;
     }
-    out.push({ ...base, actual: String(heldScore), status: heldScore >= requiredScore ? "pass" : "fail" });
+    // Below an optional test's score is not a failure — the institution said it isn't required.
+    const met = heldScore >= requiredScore;
+    out.push({
+      ...base,
+      actual: String(heldScore),
+      status: met ? "pass" : r.optional ? "unknown" : "fail",
+      ...(met || !r.optional ? {} : { hint: "This test is optional for this course." }),
+    });
   }
   return out;
 }
@@ -380,7 +397,7 @@ export function evaluateEligibility(input: {
     const criteria = [
       degreeCriterion(req, student, degreeLadder),
       scoreCriterion(req, student, degreeLadder),
-      ...testCriteria("academic_test", (req.academic_tests ?? []).map((t) => ({ name: t.test_name, score: t.score })), student.academicTests),
+      ...testCriteria("academic_test", (req.academic_tests ?? []).map((t) => ({ name: t.test_name, score: t.score, optional: t.is_optional === true })), student.academicTests),
       ...testCriteria("language_test", (req.language_tests ?? []).map((t) => ({ name: t.test_type_name, score: t.overall_score })), student.languageTests),
       ...english,
     ].filter((c): c is EligibilityCriterion => c !== null);

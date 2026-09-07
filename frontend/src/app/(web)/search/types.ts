@@ -114,7 +114,7 @@ export type CourseIntake = {
 };
 
 /** Rows of an eligibility requirement's `academic_tests` / `language_tests` jsonb. */
-export type EligibilityAcademicTest = { test_name: string; score?: string };
+export type EligibilityAcademicTest = { test_name: string; score?: string; typical_score?: string | null; is_optional?: boolean };
 export type EligibilityLanguageTest = { test_type_name: string; overall_score?: string };
 
 export type CourseEligibility = {

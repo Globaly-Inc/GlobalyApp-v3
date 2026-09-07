@@ -6,6 +6,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import * as repo from "../repositories/supporting.repository.js";
+import { deriveIntakeMonthYear } from "../lib/staging-writer.js";
 import type { SaveAndLearnInput } from "../schemas/supporting.schema.js";
 
 const logger = createChildLogger("supporting-service");
@@ -84,6 +85,30 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
   if (!original) throw new NotFoundError(`Row not found in ${table}`);
 
   await repo.patchEntityRow(table, id, patch, adminId);
+
+  // Re-derive an intake's month/year when the admin corrects the name or start date.
+  //
+  // intake_month/intake_year are what the year filter, the "next intake" badge, the year facet
+  // and institution search all read, and the Intakes tab does not expose them as fields — so an
+  // admin renaming "Fall" to "Fall 2027" would fix the label and leave the intake invisible to
+  // every one of those. Same helper the writers use, so a hand edit and a scrape agree.
+  if (table === "extraction_intakes" && ("intake_name" in patch || "start_date" in patch)) {
+    const row = await repo.findEntityRow(table, id);
+    if (row) {
+      const start = row.start_date
+        ? new Date(row.start_date as string).toISOString().slice(0, 10)
+        : null;
+      const derived = deriveIntakeMonthYear(
+        row.intake_name,
+        start,
+        row.intake_month as number | null,
+        row.intake_year as number | null,
+      );
+      if (derived.intake_month !== row.intake_month || derived.intake_year !== row.intake_year) {
+        await repo.patchEntityRow(table, id, derived, adminId);
+      }
+    }
+  }
 
   // Derive domain from source_url or job's institution_url
   let domain = "unknown";
