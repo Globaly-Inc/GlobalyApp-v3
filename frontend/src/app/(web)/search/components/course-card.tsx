@@ -34,9 +34,8 @@ export function CourseCard({
   const campuses = course.campus_locations ?? [];
 
   const feeCurrency = course.domestic_currency ?? course.international_currency ?? undefined;
-  const annualTuition = course.domestic_fee_total != null
-    ? Number(course.domestic_fee_total)
-    : course.international_fee_total != null ? Number(course.international_fee_total) : null;
+  const annualPrice = coursePrice(course, "per_year");
+  const annualTuition = annualPrice?.label === "Per Year" ? annualPrice.amount : null;
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card transition-all hover:border-primary/40 hover:shadow-md">
