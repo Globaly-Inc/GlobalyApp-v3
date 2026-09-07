@@ -52,7 +52,8 @@ const envSchema = z.object({
   // LLM fallback — used when Gemini is unavailable (billing hold, rate limit exhausted, etc.)
   // Set either OPENROUTER_API_KEY or OPENAI_API_KEY; OpenRouter takes precedence if both are set.
   OPENROUTER_API_KEY: z.string().optional(),
-  OPENROUTER_MODEL: z.string().default("google/gemini-2.5-flash-lite"),
+  // Non-Google on purpose: this is the fallback for Gemini outages, so it must not share Google's failure domain.
+  OPENROUTER_MODEL: z.string().default("openai/gpt-4.1-nano"),
   // text-embedding-004 is retired — it 404s on embedContent for current keys.
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
 
