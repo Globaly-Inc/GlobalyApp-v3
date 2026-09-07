@@ -37,8 +37,17 @@ export async function deleteStudyOption(id: string, adminId: number) {
 // ── Course fees ──
 
 export async function createCourseFee(data: Record<string, unknown>, adminId: number) {
+  const courseIds = (data.course_ids as string[] | undefined) ?? [];
+  delete data.course_ids;
   if (data.installments) data.installments = JSON.stringify(data.installments);
   const row = await repo.courseFees.insert(data);
+  for (const courseId of courseIds) {
+    await repo.assignJunction("course-fees", {
+      job_id: data.job_id as string,
+      course_id: courseId,
+      entity_id: row.id,
+    });
+  }
   await logAudit(adminId, "COURSE_FEE_CREATE", { entityType: "extraction_course_fees", entityId: row.id });
   return { id: row.id };
 }

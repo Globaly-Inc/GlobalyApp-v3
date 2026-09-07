@@ -350,6 +350,8 @@ export type CourseFeeParams = {
   total_amount?: number;
   installments?: FeeInstallment[];
   save_for_reuse?: boolean;
+  /** Courses to link on create. Junction write, not a column — never send it on a PATCH. */
+  course_ids?: string[];
 };
 export type Intake = {
   id: string;

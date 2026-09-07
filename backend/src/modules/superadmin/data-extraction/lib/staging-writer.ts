@@ -323,8 +323,9 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
 const PERIOD_TYPES: Record<string, string> = {
   "per year": "Per Year", year: "Per Year", yearly: "Per Year", annual: "Per Year",
   annually: "Per Year", "per annum": "Per Year",
-  "per semester": "Per Semester", semester: "Per Semester", "per term": "Per Semester",
-  term: "Per Semester", termly: "Per Semester",
+  "per semester": "Per Semester", semester: "Per Semester",
+  "per term": "Per Term", term: "Per Term", termly: "Per Term",
+  "per week": "Per Week", week: "Per Week", weekly: "Per Week", "per week of study": "Per Week",
   "per trimester": "Per Trimester", trimester: "Per Trimester",
   "per unit": "Per Unit", unit: "Per Unit", "per credit": "Per Unit", credit: "Per Unit",
   "per credit hour": "Per Unit", "credit hour": "Per Unit", "per subject": "Per Unit",

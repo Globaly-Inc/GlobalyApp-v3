@@ -42,9 +42,14 @@ export const CreateCourseFeeSchema = z.object({
   total_amount: z.number().optional(),
   installments: z.array(z.unknown()).optional(),
   save_for_reuse: z.boolean().optional(),
+  // Link the fee to courses in the same request, so the form doesn't have to save first and
+  // then go hunt for the course. Same trick as CreateStudyOptionSchema's course_id.
+  course_ids: z.array(z.string().uuid()).optional(),
 });
 
-export const PatchCourseFeeSchema = CreateCourseFeeSchema.omit({ job_id: true }).partial();
+// course_ids is create-only — it is a junction write, not a column, so a PATCH carrying it
+// would try to update a column that doesn't exist.
+export const PatchCourseFeeSchema = CreateCourseFeeSchema.omit({ job_id: true, course_ids: true }).partial();
 
 // ── Intakes (CE3-CE4) ──
 // .nullish() — the tab sends `null` for blank date/month/year fields, not just omitting the key.

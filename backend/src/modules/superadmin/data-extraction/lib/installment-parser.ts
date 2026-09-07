@@ -68,6 +68,12 @@ function resolveCount(
       return 2 * years;
     case "per trimester":
       return 3 * years;
+    // ponytail: 3 terms/year is the common academic reading — an explicit "N terms" in the
+    // fee text is matched above and still wins. Bump this if the data says otherwise.
+    case "per term":
+      return 3 * years;
+    case "per week":
+      return 0; // like "per unit": the amount IS the weekly rate (ELICOS), splitting it is noise
     case "per year":
       return years;
     case "per unit":
@@ -108,7 +114,7 @@ function pickLabelFn(
   if (/quarter/i.test(t)) {
     return (_i) => `Quarter ${_i + 1}`;
   }
-  if (/term/i.test(t)) {
+  if (pt === "per term" || /term/i.test(t)) {
     return (_i) => `Term ${_i + 1}`;
   }
   if (pt === "per year") {
@@ -173,6 +179,15 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/.*\//, 
   // Total, 2-year course → 4 semesters (104/26=4)
   const tot2yr = parseInstallments({ totalAmount: 20000, periodType: "Total", durationWeeks: 104 });
   assert(tot2yr.length === 4, "total 2yr → 4 semesters");
+
+  // Per Term, 1 year → 3 terms, labelled as terms
+  const term = parseInstallments({ totalAmount: 9000, periodType: "Per Term", durationWeeks: 52 });
+  assert(term.length === 3, "per term 1yr → 3");
+  assert(term[0]!.label === "Term 1", `per term label: ${term[0]!.label}`);
+
+  // Per Week → no split (the amount is the weekly rate)
+  const week = parseInstallments({ totalAmount: 450, periodType: "Per Week", durationWeeks: 52 });
+  assert(week.length === 1 && week[0]!.amount === 450, "per week → single");
 
   // Per Unit → 1
   const unit = parseInstallments({ totalAmount: 500, periodType: "Per Unit" });

@@ -184,6 +184,8 @@ export const PERIOD_TYPE_OPTIONS = [
   { value: "Per Year", label: "Per Year" },
   { value: "Per Semester", label: "Per Semester" },
   { value: "Per Trimester", label: "Per Trimester" },
+  { value: "Per Term", label: "Per Term" },
+  { value: "Per Week", label: "Per Week" },
   { value: "Per Unit", label: "Per Unit" },
   { value: "Total", label: "Total" },
 ];
