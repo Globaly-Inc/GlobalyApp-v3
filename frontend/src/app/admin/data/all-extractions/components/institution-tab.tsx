@@ -14,6 +14,7 @@ import { geoApi } from "@/app/geo/apis";
 import { allExtractionsApi } from "../apis";
 import { EditableField, type EditableFieldProps } from "./editable-field";
 import { RowActors } from "./row-actors";
+import { FindMissingDetailsButton } from "./find-missing-details-button";
 import type { InstitutionOverview } from "../apis/types";
 
 export type InstitutionTabProps = Readonly<{
@@ -196,7 +197,11 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
           <Building2 className="h-4 w-4 text-primary" />
           {isVisaServiceJob ? "Business" : "Institution"} Details
         </CardTitle>
-        <CardAction>
+        <CardAction className="flex gap-2">
+          <FindMissingDetailsButton
+            target={{ kind: "institution", overviewId: overview.id, jobId }}
+            onApplied={onReload}
+          />
           <Button variant="outline" size="sm" className="gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             Re-run

@@ -116,6 +116,17 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       data: { patterns: analysis.course_page_patterns },
     });
 
+    // ponytail: the "institution" step (extraction-step.worker.ts) does a much better job of this
+    // same overview than the homepage-only analysis above — it also scrapes guided_urls.contact_urls
+    // (or discovers/guesses a contact page), and non-destructively merges into what's already there.
+    // Previously only ran when an admin manually clicked "Re-run" on the Institution tab, so email/
+    // phone/address came back null on every fresh job. Auto-dispatch it (and "branches", same gap
+    // for campus data) right after site analysis instead of duplicating its contact-page logic here.
+    if (!isVisaService) {
+      await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "institution" });
+      await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "branches" });
+    }
+
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "processing", data_extraction: "waiting", verification: "waiting" }),
       processing_heartbeat_at: masterKnex.fn.now(),

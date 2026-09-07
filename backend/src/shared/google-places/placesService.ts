@@ -45,6 +45,45 @@ export async function autocompletePlaces(input: string, countryIso2?: string): P
   return (body.predictions ?? []).map((p) => ({ placeId: p.place_id, description: p.description }));
 }
 
+export type GeocodeResult = {
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+  postcode: string | null;
+  mapLink: string;
+};
+
+/** Looks up a raw address string directly (no place_id / autocomplete round-trip needed) —
+ * used to backfill postcode/map link for a record that already has a street address but
+ * was never geocoded (e.g. one written by the extraction pipeline from page text alone). */
+export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
+  const apiKey = requireApiKey();
+
+  const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  url.searchParams.set("address", address);
+  url.searchParams.set("key", apiKey);
+
+  const res = await fetch(url);
+  const body = (await res.json()) as {
+    status: string;
+    error_message?: string;
+    results?: { formatted_address: string; geometry: { location: { lat: number; lng: number } }; address_components: GoogleAddressComponent[] }[];
+  };
+  if (body.status === "ZERO_RESULTS") return null;
+  if (body.status !== "OK" || !body.results?.[0]) {
+    throw new AppError(body.error_message ?? `Geocoding failed: ${body.status}`, 502, "PLACES_API_ERROR");
+  }
+
+  const result = body.results[0];
+  return {
+    formattedAddress: result.formatted_address,
+    latitude: result.geometry.location.lat,
+    longitude: result.geometry.location.lng,
+    postcode: pickComponent(result.address_components, "postal_code"),
+    mapLink: `https://www.google.com/maps/search/?api=1&query=${result.geometry.location.lat},${result.geometry.location.lng}`,
+  };
+}
+
 export async function getPlaceDetails(placeId: string): Promise<PlaceDetails> {
   const apiKey = requireApiKey();
 

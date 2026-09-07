@@ -32,6 +32,7 @@ import type {
   JunctionSlug,
   LibraryAccreditation,
   LibraryAccreditationInput,
+  MissingDetailCandidate,
   Paginated,
   QueueItem,
   StudyOption,
@@ -275,6 +276,15 @@ export const allExtractionsRealApi = {
   saveAndLearn: async (params: { table: EditableTable; id: string; patch: Record<string, unknown>; job_id?: string; source_url?: string }): Promise<void> => {
     await httpPost("/admin/data-extraction/save-and-learn", params);
   },
+
+  // Looks up values for currently-empty institution overview fields only (homepage +
+  // best-effort /contact scrape), for the admin to individually accept via saveAndLearn.
+  findMissingInstitutionDetails: async (jobId: string): Promise<{ fields: MissingDetailCandidate[] }> =>
+    httpPost(`/admin/data-extraction/jobs/${jobId}/find-missing-institution-details`, {}),
+
+  // Geocodes a campus's existing address to backfill postcode/map link only.
+  findMissingCampusDetails: async (campusId: string): Promise<{ fields: MissingDetailCandidate[] }> =>
+    httpPost(`/admin/data-extraction/campuses/${campusId}/find-missing-details`, {}),
 
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
     await httpPatch(`/admin/data-extraction/jobs/${id}/context`, params);

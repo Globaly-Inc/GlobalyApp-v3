@@ -309,6 +309,15 @@ export type CreateCourseParams = {
   study_mode?: string | null;
   description?: string | null;
 };
+/** One result from the "Find Missing Details" lookup — a value found for a currently-empty
+ * extraction_institution_overview field, pending admin approval via save-and-learn. */
+export type MissingDetailCandidate = {
+  field: string;
+  label: string;
+  value: string;
+  source_url: string | null;
+};
+
 /** Tables the backend's save-and-learn endpoint accepts a patch for. */
 export type EditableTable =
   | "extraction_courses"

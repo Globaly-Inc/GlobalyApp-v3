@@ -16,6 +16,7 @@ import { latestTimestamp } from "../utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { BranchForm, type BranchValues } from "./branch-form";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
+import { FindMissingDetailsButton } from "./find-missing-details-button";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RowActors } from "./row-actors";
@@ -43,18 +44,22 @@ function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps 
 
 function BranchCard({
   branch,
+  jobId,
   selected,
   onToggleSelect,
   onEdit,
   onDelete,
   onSaveField,
+  onReload,
 }: Readonly<{
   branch: CampusFull;
+  jobId: string;
   selected: boolean;
   onToggleSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onSaveField: (column: string, next: string | null) => Promise<unknown>;
+  onReload: () => void;
 }>) {
   const field = (icon: LucideIcon, label: string, column: keyof CampusFull, span: string, multiline = false) => (
     <Field
@@ -77,6 +82,7 @@ function BranchCard({
           <span className="text-sm font-semibold text-foreground">{branch.name || branch.country || "Unnamed branch"}</span>
         </div>
         <div className="flex items-center gap-1">
+          <FindMissingDetailsButton target={{ kind: "campus", campusId: branch.id, jobId }} onApplied={onReload} compact />
           <Button
             variant="ghost"
             size="icon-sm"
@@ -324,11 +330,13 @@ export function BranchesTab({
             <BranchCard
               key={branch.id}
               branch={branch}
+              jobId={jobId}
               selected={selectedIds.includes(branch.id)}
               onToggleSelect={() => toggleSelect(branch.id)}
               onEdit={() => { setEditingId(branch.id); setAdding(false); }}
               onDelete={() => handleDelete([branch.id])}
               onSaveField={(column, next) => saveField("extraction_campuses", branch.id, column, next)}
+              onReload={onReload}
             />
           ),
         )}

@@ -24,6 +24,7 @@ import type {
   JunctionSlug,
   LibraryAccreditation,
   LibraryAccreditationInput,
+  MissingDetailCandidate,
   Paginated,
   QueueItem,
   StudyOption,
@@ -461,6 +462,28 @@ export const allExtractionsMockApi = {
   saveAndLearn: async (params: { table: EditableTable; id: string; patch: Record<string, unknown>; job_id?: string; source_url?: string }): Promise<void> => {
     console.log("[mock] POST save-and-learn", params);
     await delay(200);
+  },
+
+  findMissingInstitutionDetails: async (jobId: string): Promise<{ fields: MissingDetailCandidate[] }> => {
+    console.log("[mock] POST find-missing-institution-details", jobId);
+    await delay(600);
+    return {
+      fields: [
+        { field: "email", label: "Email", value: "admissions@example.edu", source_url: "https://example.edu/contact" },
+        { field: "phone", label: "Phone", value: "+1 555 0100", source_url: "https://example.edu/contact" },
+      ],
+    };
+  },
+
+  findMissingCampusDetails: async (campusId: string): Promise<{ fields: MissingDetailCandidate[] }> => {
+    console.log("[mock] POST campus find-missing-details", campusId);
+    await delay(600);
+    return {
+      fields: [
+        { field: "postcode", label: "Postcode", value: "94305", source_url: null },
+        { field: "map_link", label: "Map link", value: "https://www.google.com/maps/search/?api=1&query=37.4275,-122.1697", source_url: null },
+      ],
+    };
   },
 
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
