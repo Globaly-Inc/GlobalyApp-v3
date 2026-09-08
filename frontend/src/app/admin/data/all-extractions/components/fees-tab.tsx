@@ -215,15 +215,18 @@ export function FeesTab({
     }
   };
 
-  const handleCreate = (values: CourseFeeParams) =>
+  // One form can produce two fees — separate domestic and international pricing.
+  const handleCreate = (payloads: CourseFeeParams[]) =>
     run(async () => {
-      await allExtractionsApi.createCourseFee({ job_id: jobId, ...values });
+      for (const values of payloads) {
+        await allExtractionsApi.createCourseFee({ job_id: jobId, ...values });
+      }
       setAdding(false);
-    }, "Fee added");
+    }, payloads.length > 1 ? `${payloads.length} fees added` : "Fee added");
 
-  const handleUpdate = (fee: CourseFee, values: CourseFeeParams) =>
+  const handleUpdate = (fee: CourseFee, [values]: CourseFeeParams[]) =>
     run(async () => {
-      await saveFormAndLearn("extraction_course_fees", fee, values, jobId);
+      await saveFormAndLearn("extraction_course_fees", fee, values!, jobId);
       setEditingId(null);
     }, "Fee updated");
 
@@ -290,7 +293,7 @@ export function FeesTab({
       <div className="space-y-3">
         <Dialog open={adding} onOpenChange={setAdding}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
-            <FeeForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
+            <FeeForm jobId={jobId} saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
           </DialogContent>
         </Dialog>
 
@@ -314,6 +317,7 @@ export function FeesTab({
           editingId === fee.id ? (
             <FeeForm
               key={fee.id}
+              jobId={jobId}
               fee={fee}
               saving={saving}
               onCancel={() => setEditingId(null)}

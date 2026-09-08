@@ -18,7 +18,7 @@ export function CourseLinkPicker({
 }: Readonly<{
   jobId: string;
   excludeIds: string[];
-  onSelect: (courseId: string) => void;
+  onSelect: (courseId: string, name: string | null) => void;
   disabled?: boolean;
   className?: string;
 }>) {
@@ -87,8 +87,9 @@ export function CourseLinkPicker({
       options={options}
       value=""
       onChange={(courseId) => {
+        const picked = courses.find((c) => c.id === courseId);
         setCourses((prev) => prev.filter((c) => c.id !== courseId));
-        onSelect(courseId);
+        onSelect(courseId, picked?.name ?? null);
       }}
       onQueryChange={search}
       onLoadMore={() => fetchPage(loadedQueryRef.current, page + 1, true)}
