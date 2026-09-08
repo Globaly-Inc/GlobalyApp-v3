@@ -9,7 +9,7 @@ export function CountryBlog({ posts }: Readonly<{ posts: PublicBlogPost[] }>) {
 
   return (
     <Reveal>
-      <h2 className="mb-4 text-2xl font-bold">Community News &amp; Guides</h2>
+      <h2 className="mb-6 text-2xl font-bold">Community News &amp; Guides</h2>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {posts.map((post) => (
           <Link key={post.id} href={`/blog/${post.id}`}>

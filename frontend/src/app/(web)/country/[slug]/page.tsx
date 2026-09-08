@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { getPlatformStats } from "../../api";
 import { getCountryBySlug } from "../api";
 import { getPosts } from "../../blog/api";
 import { getCourses, getEducationAgencies, getInstitutions } from "../../search/api";
@@ -10,9 +11,7 @@ import { CountryCities } from "../components/country-cities";
 import { CountryWeather } from "../components/country-weather";
 import { CountryLiving } from "../components/country-living";
 import { CountryPlatformStats } from "../components/country-platform-stats";
-import { CountryInstitutions } from "../components/country-institutions";
-import { CountryServices } from "../components/country-services";
-import { CountryAgents } from "../components/country-agents";
+import { PlaceCounselors, PlaceInstitutions, PlaceServices } from "../../components/place-sections";
 import { CountryBlog } from "../components/country-blog";
 import { CountryCta } from "../components/country-cta";
 
@@ -43,10 +42,11 @@ export default async function CountryPage({ params }: Readonly<{ params: Promise
     .slice(0, 3);
 
   const emptyPage = { data: [], meta: { page: 1, limit: 6, total: 0, totalPages: 0 } };
-  const [institutionsRes, agentsRes, coursesRes] = await Promise.all([
+  const [institutionsRes, agentsRes, coursesRes, platformStats] = await Promise.all([
     getInstitutions({ country: country.name }).catch(() => emptyPage),
     getEducationAgencies({ country: country.name }).catch(() => emptyPage),
     getCourses({ country: country.name }).catch(() => emptyPage),
+    getPlatformStats().catch(() => null),
   ]);
   const institutions = institutionsRes.data.slice(0, 6);
   const agents = agentsRes.data.slice(0, 6);
@@ -54,10 +54,8 @@ export default async function CountryPage({ params }: Readonly<{ params: Promise
 
   return (
     <div>
-      <div className="flex h-[calc(100svh-64px)] flex-col">
-        <CountryHero country={country} />
-        <CountryKeyFacts country={country} />
-      </div>
+      <CountryHero country={country} />
+      <CountryKeyFacts country={country} />
 
       <div className="container mx-auto space-y-12 px-4 py-10 md:space-y-20 md:py-16">
         <CountryAbout country={country} />
@@ -67,16 +65,16 @@ export default async function CountryPage({ params }: Readonly<{ params: Promise
       </div>
 
       <CountryPlatformStats
-        country={country}
         institutionsCount={institutionsRes.meta.total}
         coursesCount={coursesRes.meta.total}
         agentsCount={agentsRes.meta.total}
+        studentsCount={platformStats?.students ?? 0}
       />
 
       <div className="container mx-auto space-y-12 px-4 py-10 md:space-y-20 md:py-16">
-        <CountryInstitutions countryName={country.name} institutions={institutions} />
-        <CountryServices countryName={country.name} courses={courses} />
-        <CountryAgents countryName={country.name} agents={agents} />
+        <PlaceInstitutions placeName={country.name} scope="country" institutions={institutions} />
+        <PlaceServices placeName={country.name} scope="country" courses={courses} />
+        <PlaceCounselors placeName={country.name} scope="country" agents={agents} />
         <CountryBlog posts={relatedPosts} />
         <CountryCta countryName={country.name} />
       </div>

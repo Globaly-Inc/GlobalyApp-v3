@@ -8,11 +8,11 @@ import {
   Home,
   Bell,
   Coins,
-  Sparkles,
   Menu as MenuIcon,
   User as UserIcon,
   LogOut,
 } from "lucide-react";
+import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,7 @@ type PortalTarget = { label: string; icon: LucideIcon; href: string } | null;
 
 /**
  * Below `md` the sidebar is hidden, so navigation comes from the bottom bar plus this drawer — which
- * also carries the header's utility links (AI Counsellor, Credits), since those are desktop-only pills.
+ * also carries the header's utility links (Ask Aly, Credits), since those are desktop-only pills.
  */
 export function PersonalMobileNav({
   portalTarget,
@@ -43,7 +43,7 @@ export function PersonalMobileNav({
       <div className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-border bg-background py-2 pb-[env(safe-area-inset-bottom)] md:hidden">
         <Link href="/personal/portal" className={tabClass("/personal/portal")}>
           <Home className="h-5 w-5" />
-          Home
+          Socials
         </Link>
         <Link href="/personal/notifications" className={tabClass("/personal/notifications")}>
           <Bell className="h-5 w-5" />
@@ -103,7 +103,7 @@ export function PersonalMobileNav({
               onClick={() => setDrawerOpen(false)}
               className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
             >
-              <Sparkles className="h-4 w-4" /> AI Counsellor
+              <AlyOrbIcon className="h-4 w-4" /> Ask Aly
             </Link>
             <Link
               href="/personal/credits"

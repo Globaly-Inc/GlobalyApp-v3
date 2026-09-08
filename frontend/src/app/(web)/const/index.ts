@@ -168,3 +168,14 @@ export const SEARCH_SUGGESTIONS_BY_SLUG: Record<string, string[]> = {
   "visa-services": ["Student visa", "Post-study work visa", "Dependent visa", "Visitor visa"],
   "other-services": ["Airport pickup", "Accommodation", "Tutoring", "SIM card"],
 };
+
+/**
+ * Fact chips — the country page's visa facts and the city page's highlights.
+ *
+ * `h-auto` is load-bearing: Badge pins `h-5`, which swallows any vertical padding a caller
+ * passes. Same for `size-4!` — the base sets `[&>svg]:size-3!` with an important flag. The
+ * primary tint is what makes these read as facts rather than faint outlines on the near-white
+ * page background.
+ */
+export const FACT_CHIP_CLASS =
+  "h-auto gap-2 border-primary/25 bg-primary/10 px-4 py-2 text-sm font-medium text-primary [&>svg]:size-4!";

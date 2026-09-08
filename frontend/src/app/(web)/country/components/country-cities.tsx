@@ -1,128 +1,71 @@
-"use client";
-
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
-import useEmblaCarousel from "embla-carousel-react";
-import Autoplay from "embla-carousel-autoplay";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "../../components/reveal";
 import { getCityFallbackImage } from "../hero-fallback";
 import type { CountryDetail } from "../types";
 
-function subscribeHoverCapability(callback: () => void) {
-  const mq = window.matchMedia("(hover: hover)");
-  mq.addEventListener("change", callback);
-  return () => mq.removeEventListener("change", callback);
-}
-const getHoverCapability = () => window.matchMedia("(hover: hover)").matches;
-const getHoverCapabilityServer = () => false;
+const SECONDS_PER_CITY = 7; // ~40px/s at these tile widths, regardless of how many cities there are
 
 function CityTile({
   city,
-  image,
-  active,
-}: Readonly<{ city: CountryDetail["cities"][number]; image: string; active: boolean }>) {
+  countrySlug,
+  clone,
+}: Readonly<{ city: CountryDetail["cities"][number]; countrySlug: string; clone: boolean }>) {
+  const image = city.thumbnail_image_url ?? city.hero_image_url ?? getCityFallbackImage(city.id);
   return (
-    <div
-      className={`relative mx-2 w-52 shrink-0 origin-center transition-[height] duration-500 ease-out sm:mx-3 sm:w-64 ${
-        active ? "h-64 sm:h-80" : "h-56 sm:h-72"
-      }`}
+    <Link
+      href={`/city/${countrySlug}/${city.slug}`}
+      aria-hidden={clone || undefined}
+      tabIndex={clone ? -1 : undefined}
+      // mr-4, not the parent's gap: the track must be perfectly periodic for the -50% loop.
+      className="relative mr-4 h-56 w-52 shrink-0 overflow-hidden rounded-2xl bg-muted shadow-sm sm:h-72 sm:w-64"
     >
-      <div className="relative h-full w-full overflow-hidden rounded-2xl bg-muted shadow-sm">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={image} alt="" className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 flex flex-col items-center px-4 pb-5 text-center text-white">
-          <p className="text-sm font-bold drop-shadow-sm sm:text-base">{city.name}</p>
-          {city.population_label && <p className="mt-1 text-xs text-white/85 drop-shadow-sm">Pop. {city.population_label}</p>}
-        </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={image} alt="" className="h-full w-full object-cover" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 flex flex-col items-center px-4 pb-5 text-center text-white">
+        <p className="text-sm font-bold drop-shadow-sm sm:text-base">{city.name}</p>
+        {city.population_label && <p className="mt-1 text-xs text-white/85 drop-shadow-sm">Pop. {city.population_label}</p>}
       </div>
       {city.is_featured && <Badge className="absolute top-1 left-1/2 -translate-x-1/2">Featured</Badge>}
-    </div>
+    </Link>
   );
 }
 
 export function CountryCities({ country }: Readonly<{ country: CountryDetail }>) {
   const cities = [...country.cities].sort((a, b) => Number(b.is_featured) - Number(a.is_featured));
-  const reducedMotion =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const canHover = useSyncExternalStore(subscribeHoverCapability, getHoverCapability, getHoverCapabilityServer);
-
-  // Both args must stay referentially stable — a fresh object/array literal on every render
-  // makes embla tear down and re-initialize instead of running continuously.
-  const emblaOptions = useMemo(() => ({ loop: true, align: "center" as const, containScroll: false as const }), []);
-  const emblaPlugins = useMemo(
-    () => (reducedMotion ? [] : [Autoplay({ delay: 3800, stopOnMouseEnter: true, stopOnInteraction: false })]),
-    [reducedMotion],
-  );
-  const [emblaRef, emblaApi] = useEmblaCarousel(emblaOptions, emblaPlugins);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const onSelect = useCallback(() => {
-    if (emblaApi) setSelectedIndex(emblaApi.selectedScrollSnap());
-  }, [emblaApi]);
-
-  useEffect(() => {
-    if (!emblaApi) return;
-    emblaApi.on("select", onSelect);
-    emblaApi.on("reInit", onSelect);
-    emblaApi.on("init", onSelect);
-    emblaApi.on("pointerDown", () => setIsDragging(true));
-    emblaApi.on("pointerUp", () => setIsDragging(false));
-  }, [emblaApi, onSelect]);
-
   if (cities.length === 0) return null;
+
+  // CSS marquee rather than a scroll container nudged from JS: no rAF, no measuring, and it
+  // cannot silently stall the way fractional scrollLeft writes do. Hover pauses it (see
+  // .animate-marquee-x), and the row is rendered twice so the wrap is invisible.
+  const track = [...cities, ...cities];
 
   return (
     <Reveal>
-      <div className="mb-6 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <span className="h-6 w-1.5 rounded-full bg-primary" />
-          <h2 className="text-2xl font-bold">Cities &amp; Places</h2>
-          <Badge variant="secondary">{cities.length} cities</Badge>
-        </div>
+      <div className="mb-6 flex items-center gap-2.5">
+        <h2 className="text-2xl font-bold">Cities &amp; Places</h2>
+        <Badge variant="secondary">{cities.length} cities</Badge>
       </div>
 
-      <div className="relative">
-        <div className={`overflow-hidden py-4 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`} ref={emblaRef}>
-          <div className="flex items-center">
-            {cities.map((city, i) => {
-              const image = city.thumbnail_image_url ?? city.hero_image_url ?? getCityFallbackImage(city.id);
-              return (
-                <Link key={city.id} href={`/city/${country.slug}/${city.slug}`} className="min-w-0 shrink-0 grow-0 basis-auto">
-                  <CityTile city={city} image={image} active={i === selectedIndex} />
-                </Link>
-              );
-            })}
-          </div>
+      {/* marquee-viewport: under prefers-reduced-motion the animation stops, and globals.css
+          turns this back into a real horizontal scroller so the cities past the fold stay
+          reachable instead of being clipped by overflow-hidden. */}
+      <div className="marquee-viewport -mx-4 overflow-hidden px-4 pb-3">
+        <div
+          className="animate-marquee-x flex w-max"
+          style={{ "--marquee-duration": `${cities.length * SECONDS_PER_CITY}s` } as CSSProperties}
+        >
+          {track.map((city, i) => (
+            <CityTile
+              key={`${city.id}-${i >= cities.length ? "clone" : "real"}`}
+              city={city}
+              countrySlug={country.slug}
+              clone={i >= cities.length}
+            />
+          ))}
         </div>
-
-        {cities.length > 1 && canHover && (
-          <>
-            <button
-              type="button"
-              onClick={() => emblaApi?.scrollPrev()}
-              aria-label="Previous city"
-              className="group absolute inset-y-0 left-0 z-10 flex w-1/5 cursor-none items-center justify-start pl-2 sm:pl-4"
-            >
-              <span className="flex h-11 w-11 scale-75 items-center justify-center rounded-full bg-background text-foreground opacity-0 shadow-md transition-all group-hover:scale-100 group-hover:opacity-100">
-                <ChevronLeft className="h-5 w-5" />
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => emblaApi?.scrollNext()}
-              aria-label="Next city"
-              className="group absolute inset-y-0 right-0 z-10 flex w-1/5 cursor-none items-center justify-end pr-2 sm:pr-4"
-            >
-              <span className="flex h-11 w-11 scale-75 items-center justify-center rounded-full bg-background text-foreground opacity-0 shadow-md transition-all group-hover:scale-100 group-hover:opacity-100">
-                <ChevronRight className="h-5 w-5" />
-              </span>
-            </button>
-          </>
-        )}
       </div>
     </Reveal>
   );
