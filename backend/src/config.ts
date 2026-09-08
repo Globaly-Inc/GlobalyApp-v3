@@ -56,6 +56,11 @@ const envSchema = z.object({
   OPENROUTER_MODEL: z.string().default("openai/gpt-4.1-nano"),
   // text-embedding-004 is retired — it 404s on embedContent for current keys.
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
+  // Which provider embed() calls. Gemini's embedContent 403s on keys without the Generative
+  // Language API enabled, and embed() would then fall back per call — a wasted round trip each
+  // time, and vectors from two different spaces in the same column. Point this at "openrouter"
+  // to use the fallback key directly, and re-embed after switching either way.
+  EMBEDDING_PROVIDER: z.enum(["gemini", "openrouter"]).default("gemini"),
 
   // Scrapers
   SCRAPLING_BASE_URL: z.string().optional(),  // base URL of Scrapling's own MCP server (e.g. http://localhost:8123) — /mcp is appended by scraper.ts

@@ -119,7 +119,16 @@ export const SOURCE_FILTER_OPTIONS = [
   { value: "all", label: "All sources" },
   { value: "ai", label: "AI Extraction" },
   { value: "agentcis", label: "AgentCIS" },
+  { value: "manual", label: "Manual institution" },
+  { value: "self_service", label: "Self-registered" },
 ];
+
+/**
+ * source_type values that mean "this listing owns its catalog, nothing crawled it". Their jobs
+ * exist only to give extraction_* rows a job_id to hang off, so every dashboard list excludes
+ * them — they would otherwise show up as completed extractions.
+ */
+export const OWNED_JOB_SOURCE_TYPES = ["manual", "self_service"];
 
 /** Stages of the AI pipeline, in run order — keys match pipeline_progress. */
 export const PIPELINE_STAGES: { key: string; label: string; icon: LucideIcon }[] = [

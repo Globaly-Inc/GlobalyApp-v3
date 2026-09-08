@@ -48,7 +48,7 @@ export async function jobsRoutes(app: FastifyInstance) {
           statuses,
           excludeStatuses,
           sourceType: query.source_type,
-          excludeSourceType: query.exclude_source_type,
+          excludeSourceTypes: query.exclude_source_type?.split(",").filter(Boolean),
           businessCategoryId: query.business_category_id,
           q: query.q,
           sort: query.sort,

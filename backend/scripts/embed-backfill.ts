@@ -13,7 +13,7 @@
 
 import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";
-import { embed, isConfigured } from "../src/modules/superadmin/data-extraction/lib/llm-client.js";
+import { embed, isEmbedConfigured as isConfigured } from "../src/modules/superadmin/data-extraction/lib/llm-client.js";
 
 const S = "superadmin";
 
@@ -66,7 +66,7 @@ async function backfillTable(t: Target) {
 }
 
 if (!isConfigured()) {
-  console.error("GEMINI_API_KEY not configured — cannot embed.");
+  console.error("No embedding provider configured — set GEMINI_API_KEY, or EMBEDDING_PROVIDER=openrouter with OPENROUTER_API_KEY.");
   process.exit(1);
 }
 

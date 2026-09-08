@@ -14,6 +14,8 @@ import { provisionInstitutionSchema } from "../../../core/business/provisioner.j
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
+import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.repository.js";
+import * as promoteRepo from "../../superadmin/data-extraction/repositories/promote.repository.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import type {
@@ -116,6 +118,35 @@ export async function onboardBusiness(userId: number, data: OnboardingBusinessIn
   });
 }
 
+/**
+ * RFC 2606 reserved TLD, matching the admin-create path's placeholder: onboarding captures no
+ * website, so there is nothing real to point the job at until the owner fills one in.
+ */
+const SELF_SERVICE_JOB_URL_DOMAIN = "self-service.globalyhub.invalid";
+
+/**
+ * An institution's course catalog lives in extraction_* keyed on job_id, so a self-registered
+ * institution needs its own job row before it can add a single course — same reason the admin
+ * create path mints one. No claim flow is involved: onboardInstitution already marks these
+ * claim_status 'claimed'.
+ *
+ * status "done" keeps the pipeline workers off it (they claim on pending/processing/stalled);
+ * source_type names the origin instead. institution_url is a per-institution placeholder —
+ * updateInstitutionProfile syncs the real website onto it when one is supplied, which is what
+ * the AI embed widget scopes courses on.
+ */
+async function mintSelfServiceJob(institutionName: string, subdomain: string): Promise<string> {
+  const row = await jobsRepo.insertJob({
+    institution_name: institutionName,
+    institution_url: `https://${SELF_SERVICE_JOB_URL_DOMAIN}/${subdomain}`,
+    source_type: "self_service",
+    status: "done",
+    // Promote routes by category; keep it resolvable by slug rather than a hardcoded id.
+    business_category_id: await promoteRepo.findCategoryIdBySlug("institutions"),
+  });
+  return row.id as string;
+}
+
 /** Institution onboarding — inserts into institutions table, provisions tenant schema (members, member_invitations). */
 export async function onboardInstitution(userId: number, data: OnboardingInstitutionInput) {
   const user = await repo.findByIdFull(userId);
@@ -130,8 +161,11 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     return Boolean(inst || biz);
   });
 
+  const sourceJobId = await mintSelfServiceJob(data.institution_name, subdomain);
+
   const institution = await repo.insertInstitution({
     platform_user_id: userId,
+    source_job_id: sourceJobId,
     first_name: user.first_name,
     last_name: user.last_name,
     email: data.email ?? user.email,
@@ -150,7 +184,10 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   try {
     await provisionInstitutionSchema(institution.schema_name);
   } catch (err) {
+    // The job is only reachable through this institution, so it goes with it — otherwise a
+    // failed onboarding leaves a job nothing points at, listed as a completed extraction.
     await repo.deleteInstitution(institution.id);
+    await jobsRepo.deleteJob(sourceJobId);
     throw err;
   }
 

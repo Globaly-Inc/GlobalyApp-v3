@@ -88,7 +88,7 @@ export type JobFilterOpts = {
   statuses?: string[];
   excludeStatuses?: string[];
   sourceType?: string;
-  excludeSourceType?: string;
+  excludeSourceTypes?: string[];
   businessCategoryId?: number;
   q?: string;
 };
@@ -100,7 +100,12 @@ function filteredJobsQuery(opts: JobFilterOpts) {
   if (opts.statuses?.length) query.whereIn("status", opts.statuses);
   if (opts.excludeStatuses?.length) query.whereNotIn("status", opts.excludeStatuses);
   if (opts.sourceType) query.where("source_type", opts.sourceType);
-  if (opts.excludeSourceType) query.whereNot("source_type", opts.excludeSourceType);
+  // whereNotIn drops NULL source_type rows, and 'institution' is the column default that
+  // predates it being set explicitly — coalesce so an exclusion can't hide real jobs.
+  if (opts.excludeSourceTypes?.length) {
+    query.whereRaw(`coalesce(${T}.source_type, 'institution') not in (${opts.excludeSourceTypes.map(() => "?").join(",")})`,
+      opts.excludeSourceTypes);
+  }
   if (opts.businessCategoryId) query.where("business_category_id", opts.businessCategoryId);
   if (opts.q) query.whereRaw(`(${RESOLVED_NAME} ilike ? or ${T}.institution_url ilike ?)`, [`%${opts.q}%`, `%${opts.q}%`]);
   return query;
@@ -217,6 +222,22 @@ export async function lockInstitutionHost(host: string, trx: Knex.Transaction) {
 export async function insertJob(data: Record<string, unknown>, db: Knex = masterKnex) {
   const [row] = await db(T).insert(data).returning("id");
   return row;
+}
+
+/**
+ * Point a non-crawl job (a manual or self-registered listing's own job) at its real website.
+ * That URL is what the AI embed widget matches courses on, so a website supplied after
+ * signup has to reach the job or the widget silently scopes to nothing.
+ *
+ * Guarded on source_type: a crawled or AgentCIS job's institution_url is its provenance — the
+ * address the pipeline actually fetched — and must never be rewritten from a display field.
+ */
+export async function syncOwnedJobUrl(jobId: string, website: string) {
+  const url = website.includes("://") ? website : `https://${website}`;
+  return masterKnex(T)
+    .where({ id: jobId })
+    .whereIn("source_type", ["manual", "self_service"])
+    .update({ institution_url: url, updated_at: masterKnex.fn.now() });
 }
 
 export async function updateJob(id: string, data: Record<string, unknown>) {
