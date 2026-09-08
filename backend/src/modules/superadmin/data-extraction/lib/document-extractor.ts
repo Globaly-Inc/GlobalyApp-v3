@@ -5,7 +5,8 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Storage } from "@google-cloud/storage";
-import { PDFParse } from "pdf-parse";
+import { createRequire } from "node:module";
+const pdfParse = createRequire(import.meta.url)("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 
@@ -144,20 +145,15 @@ async function extractPdfWithGemini(
 // Used when Gemini Vision is unavailable. Works for text-based PDFs (the vast
 // majority of fee schedules). Silently returns null for scanned/image-only PDFs.
 
-export async function extractPdfText(
+async function extractPdfText(
   pdfBuffer: Buffer,
   maxChars: number = MAX_RETURN_CHARS,
 ): Promise<string | null> {
   try {
-    const parser = new PDFParse({ data: pdfBuffer });
-    try {
-      const { text } = await parser.getText();
-      const trimmed = text?.trim();
-      if (!trimmed || trimmed.length < 20) return null;
-      return truncate(trimmed, maxChars);
-    } finally {
-      await parser.destroy();
-    }
+    const data = await pdfParse(pdfBuffer);
+    const text = data.text?.trim();
+    if (!text || text.length < 20) return null;
+    return truncate(text, maxChars);
   } catch (err) {
     logger.warn(`pdf-parse text extraction failed: ${err}`);
     return null;

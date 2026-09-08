@@ -62,10 +62,8 @@
     "test:guides": "node --import tsx tests/guides.ts",
     "test:public-search-sync": "node --import tsx tests/public-search-sync.ts",
     "test:public-course-links": "node --import tsx tests/public-course-links.ts",
-    "test:pdf-extract": "node --import tsx tests/pdf-extract.ts",
     "test:otp-log-redaction": "node --import tsx tests/otp-log-redaction.ts",
-    "test:integration-settings": "node --import tsx tests/integration-settings.ts",
-    "test:study-mode-normalisation": "node --import tsx tests/study-mode-normalisation.ts"
+    "test:integration-settings": "node --import tsx tests/integration-settings.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
@@ -97,6 +95,7 @@
     "@types/jsonwebtoken": "^9.0.0",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",
+    "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.23.1",
     "typescript": "^5.7.0"
   }

@@ -140,33 +140,16 @@ export interface MappedStudyOption {
 }
 
 const MODE_MAP: Record<string, string> = {
-  "on campus": "on_campus", "on_campus": "on_campus", "on-campus": "on_campus", "campus": "on_campus",
+  "on campus": "on_campus", "on-campus": "on_campus", "campus": "on_campus",
   "classroom": "on_campus", "offline": "on_campus", "in person": "on_campus",
   "online": "online", "distance": "online", "remote": "online",
   "hybrid": "hybrid", "blended": "hybrid", "mixed": "hybrid",
 };
 
-/**
- * One value from MODE_MAP, or null. Anything the map doesn't know is dropped rather than stored:
- * the extractor has repeatedly put a study *load* ("full time") in the mode field, and a load
- * saved as a mode surfaces as a bogus filter option and a wrong chip on the institution card.
- */
-export function normaliseStudyMode(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  return MODE_MAP[raw.trim().toLowerCase()] ?? null;
-}
-
-/**
- * Every mode a raw value names, deduped, empty when it names none. Compound values
- * ("on-campus, online") are split so both modes survive instead of only the first.
- */
-export function normaliseStudyModes(raw: unknown): string[] {
-  const modes = tokenize(raw).map((t) => MODE_MAP[t.toLowerCase()]).filter(Boolean);
-  return [...new Set(modes)];
-}
-
 export function extractStudyOptions(p: Record<string, unknown>): MappedStudyOption[] {
-  const modes = normaliseStudyModes(p.study_mode ?? p.delivery_mode ?? p.mode);
+  const modeRaw = p.study_mode ?? p.delivery_mode ?? p.mode;
+  const modeTokens = tokenize(modeRaw);
+  const modes = modeTokens.map((t) => MODE_MAP[t.toLowerCase()] || null).filter(Boolean) as string[];
 
   const loadRaw = p.study_load ?? p.load ?? p.attendance_type;
   const loadTokens = tokenize(loadRaw);
