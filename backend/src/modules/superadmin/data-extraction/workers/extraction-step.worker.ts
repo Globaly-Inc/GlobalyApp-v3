@@ -1268,10 +1268,31 @@ async function handleCourseDataStep(
       // has drifted from that worker four times now (raw dates at date/integer columns; dropping
       // dated-but-unnamed intakes; a direct eligibility insert; this one) — CLAUDE.md (h): write
       // behaviour belongs in a staging-writer helper called from BOTH, never reimplemented here.
-      await masterKnex(`${S}.extraction_english_requirements`).where({ course_id: courseId }).delete();
-      const engReqs = (extracted.english_requirements as Array<ExtractedEnglishReq>) || [];
-      for (const eng of engReqs) {
-        if (await upsertEnglishRequirement(jobId, courseId, eng, sourceUrl)) count++;
+      //
+      // AN EXTRACTION THAT FOUND NOTHING REPLACES NOTHING. Entries with no test name are dropped
+      // by the helper, so they are not counted here either — a response of `[]`, or one made
+      // entirely of nameless entries, means this run learned nothing about the English bar, which
+      // is overwhelmingly a scrape or chunking miss (the page's English table simply did not make
+      // the extracted text) rather than an institution dropping its requirement. Deleting on that
+      // signal wipes a good bar with nothing to put back, and these rows have no admin UI to
+      // restore them from. Same rule the fees path already applies: only act when something was
+      // actually found.
+      const engReqs = ((extracted.english_requirements as Array<ExtractedEnglishReq>) || [])
+        .filter((eng) => (eng?.test_type_name ?? "").trim());
+      if (engReqs.length > 0) {
+        // One transaction, so the course is never left with the old rows gone and the new ones
+        // not yet in: a failure part-way through would otherwise leave a partial English bar
+        // that the verdict engine judges a real student against.
+        await masterKnex.transaction(async (trx) => {
+          await trx(`${S}.extraction_english_requirements`).where({ course_id: courseId }).delete();
+          for (const eng of engReqs) {
+            if (await upsertEnglishRequirement(jobId, courseId, eng, sourceUrl, trx)) count++;
+          }
+        });
+      } else if (((extracted.english_requirements as unknown[]) || []).length > 0) {
+        logger.warn("English requirements extracted with no test name — existing rows kept", {
+          courseId, count: (extracted.english_requirements as unknown[]).length,
+        });
       }
       break;
     }

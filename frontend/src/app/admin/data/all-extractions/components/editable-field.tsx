@@ -36,18 +36,26 @@ export async function saveFormAndLearn(
 /**
  * Saves a single column through save-and-learn, so a reviewer's correction also
  * becomes a lesson for the extractor. Shared by every list tab.
+ *
+ * Reports the request's outcome rather than throwing — it owns the failure toast, and callers are
+ * click handlers with nowhere to catch. **Returns false when nothing was persisted**, which every
+ * editor must honour: swallowing the error and resolving anyway made a failed save look like a
+ * successful one, closing the editor and discarding what the reviewer had typed while the row was
+ * unchanged. Keep the editor open on false.
  */
 export function useFieldSaver(jobId: string, reload: () => Promise<unknown> | void) {
   return useCallback(
     // `next` also takes an array, for the jsonb columns a tab edits as a whole list
     // (extraction_intakes.custom_dates). patchEntityRow serialises it server-side.
-    async (table: EditableTable, id: string, column: string, next: string | null | unknown[]) => {
+    async (table: EditableTable, id: string, column: string, next: string | null | unknown[]): Promise<boolean> => {
       try {
         await allExtractionsApi.saveAndLearn({ table, id, patch: { [column]: next }, job_id: jobId });
         toast.success("Saved");
         await reload();
+        return true;
       } catch (e) {
         toast.error("Save failed", { description: (e as Error).message });
+        return false;
       }
     },
     [jobId, reload],
@@ -94,8 +102,9 @@ export function EditableField({
     }
     setSaving(true);
     try {
-      await onSave(next);
-      setEditing(false);
+      // Only an explicit `false` means the save failed — keep the field open so the edit isn't
+      // lost. Savers that report nothing are treated as successful, as they always were.
+      if ((await onSave(next)) !== false) setEditing(false);
     } finally {
       setSaving(false);
     }

@@ -59,7 +59,9 @@
  *      accumulated an IELTS row per page that mentioned it — several tiles on the public card, and
  *      English weighted several times over in the eligibility percentage. Merging also RECOVERS the
  *      per-component minimums: the first row is usually the thinnest (a listing page states "IELTS
- *      6.5", only the detail page carries the bands), and it was the one being displayed.
+ *      6.5", only the detail page carries the bands), and it was the one being displayed. Only
+ *      rows that AGREE are collapsed — copies stating different bars are reported and left alone,
+ *      same rule and same clustering as pass 4, because this pass deletes.
  *
  * Rerunnable: every pass is a no-op once applied.
  */
@@ -541,13 +543,25 @@ async function shareIntakesAcrossCourses() {
  * overwrite a value it already states. Rows are course-scoped with no junction, so unlike passes
  * 4 and 5 there are no assignments to repoint — the copies just go.
  *
- * A genuine disagreement (two rows stating different overall scores for the same test) keeps the
- * oldest and is REPORTED, not guessed at, matching the writer.
+ * ONLY ROWS THAT AGREE ARE MERGED, clustered exactly as pass 4 does and for the reason stated
+ * there: this pass DELETES, so it may only collapse rows it can prove state the same bar. Two
+ * rows saying IELTS 6.5 and IELTS 7.0 for one course are not a duplicate, they are a genuine
+ * disagreement between two pages — and deleting either one destroys a stated threshold that a
+ * real student is then evaluated against wrongly, with the discarded number surviving nowhere.
+ * Conflicting clusters are reported and LEFT for an admin, never merged. A blank on either side
+ * is unknown rather than a difference, so a row carrying only an overall score still merges into
+ * the one that adds the bands, which is the case this pass mainly exists to fix.
  */
 async function collapseDuplicateEnglishRequirements() {
+  /** Filled from the copies when the survivor is blank. Provenance, not identity. */
   const MERGED = [
     "overall_score", "listening_score", "reading_score",
     "writing_score", "speaking_score", "source_url",
+  ] as const;
+
+  /** The stated bar. Any populated difference here means two different requirements. */
+  const ENGLISH_IDENTITY_FIELDS = [
+    "overall_score", "listening_score", "reading_score", "writing_score", "speaking_score",
   ] as const;
 
   const rows = await masterKnex(ENGLISH)
@@ -565,20 +579,30 @@ async function collapseDuplicateEnglishRequirements() {
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
   }
 
+  const agree = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+    ENGLISH_IDENTITY_FIELDS.every((f) => a[f] == null || b[f] == null || sameValue(a[f], b[f]));
+  const specificity = (r: Record<string, unknown>) =>
+    ENGLISH_IDENTITY_FIELDS.filter((f) => r[f] != null && r[f] !== "").length;
+
   const merges: { keep: Record<string, unknown>; drop: Record<string, unknown>[] }[] = [];
-  const disagreements: { test: string; keep: string; other: string }[] = [];
+  const conflicts: { test: string; courseId: string; scores: string[] }[] = [];
   for (const group of groups.values()) {
     if (group.length < 2) continue;
-    const [keep, ...drop] = group;
-    merges.push({ keep, drop });
-    for (const d of drop) {
-      if (d.overall_score != null && keep.overall_score != null && !sameValue(d.overall_score, keep.overall_score)) {
-        disagreements.push({
-          test: String(keep.test_type_name),
-          keep: String(keep.overall_score),
-          other: String(d.overall_score),
-        });
-      }
+    const clusters = clusterCompatible(group, agree, specificity);
+    for (const cluster of clusters) {
+      if (cluster.length < 2) continue;
+      const [keep, ...drop] = cluster;
+      merges.push({ keep, drop });
+    }
+    // More than one cluster means the copies state genuinely different bars. Each cluster is
+    // still de-duplicated internally, but nothing is merged or deleted ACROSS them — every
+    // distinct requirement survives for an admin to resolve.
+    if (clusters.length > 1) {
+      conflicts.push({
+        test: String(group[0].test_type_name),
+        courseId: String(group[0].course_id),
+        scores: clusters.map((c) => String(c[0].overall_score ?? "—")),
+      });
     }
   }
 
@@ -588,10 +612,10 @@ async function collapseDuplicateEnglishRequirements() {
     console.log(`  - ${m.keep.test_type_name} on course ${m.keep.course_id} · ${m.drop.length + 1} copies → 1 row`);
   }
   if (merges.length > 15) console.log(`  … and ${merges.length - 15} more`);
-  if (disagreements.length > 0) {
-    console.log(`      ${disagreements.length} copies state a different overall score — the OLDEST is kept, review these:`);
-    for (const d of disagreements.slice(0, 10)) {
-      console.log(`        · ${d.test} — keeping ${d.keep}, discarding ${d.other}`);
+  if (conflicts.length > 0) {
+    console.log(`      ${conflicts.length} course/test pairs state DIFFERENT bars — kept as separate rows for review, nothing deleted:`);
+    for (const c of conflicts.slice(0, 10)) {
+      console.log(`        · ${c.test} on course ${c.courseId} — overall scores: ${c.scores.join(" vs ")}`);
     }
   }
 

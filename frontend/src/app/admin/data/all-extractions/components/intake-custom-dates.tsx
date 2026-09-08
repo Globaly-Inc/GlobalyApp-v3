@@ -116,8 +116,10 @@ export function IntakeCustomDates({
   const commit = async (next: IntakeCustomDate[]) => {
     setSaving(true);
     try {
-      await onSave(next);
-      setDraft(null);
+      // The shared field saver owns its own error toast and reports `false` rather than throwing.
+      // Closing the editor regardless would discard the typed row while the column still held the
+      // old value — a failed save that looked like a successful one.
+      if ((await onSave(next)) !== false) setDraft(null);
     } finally {
       setSaving(false);
     }

@@ -1,5 +1,6 @@
 // Writes LLM-extracted data to the staging tables with proper relationships.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
@@ -973,6 +974,8 @@ export async function upsertEnglishRequirement(
   courseId: string,
   eng: ExtractedEnglishReq,
   sourceUrl: string | null,
+  /** Query handle — pass a transaction to make a delete-then-rewrite of a course's rows atomic. */
+  db: Knex | Knex.Transaction = masterKnex,
 ): Promise<string | null> {
   const name = (eng.test_type_name ?? "").trim();
   if (!name) return null;
@@ -987,7 +990,7 @@ export async function upsertEnglishRequirement(
     source_url: sourceUrl,
   };
 
-  const existing = await masterKnex(`${S}.extraction_english_requirements`)
+  const existing = await db(`${S}.extraction_english_requirements`)
     .where({ job_id: jobId, course_id: courseId })
     .whereRaw("LOWER(TRIM(test_type_name)) = ?", [name.toLowerCase()])
     .orderBy("created_at", "asc")
@@ -995,14 +998,14 @@ export async function upsertEnglishRequirement(
   if (existing) {
     const updates = englishUpdates(existing, fields);
     if (Object.keys(updates).length > 0) {
-      await masterKnex(`${S}.extraction_english_requirements`)
+      await db(`${S}.extraction_english_requirements`)
         .where({ id: existing.id })
         .update({ ...updates, updated_at: masterKnex.fn.now() });
     }
     return existing.id;
   }
 
-  const [row] = await masterKnex(`${S}.extraction_english_requirements`)
+  const [row] = await db(`${S}.extraction_english_requirements`)
     .insert({ job_id: jobId, course_id: courseId, ...fields })
     .returning("id");
   return row.id;
