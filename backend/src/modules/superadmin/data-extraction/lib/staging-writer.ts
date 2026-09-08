@@ -798,23 +798,31 @@ function eligValuesAgree(stored: unknown, incoming: unknown): boolean {
   return String(stored).trim().toLowerCase() === String(incoming).trim().toLowerCase();
 }
 
-/** test_name -> stated minimum, for entries that state one. `typical_score` is deliberately
- * ignored: a cohort average gates nothing, so two rows quoting different averages are still the
- * same requirement. */
-function scoredTests(v: unknown): Map<string, string> {
+/**
+ * The gating shape of a row's academic tests, as a sorted comparable list: which test, the minimum
+ * to clear, and whether clearing it is required at all.
+ *
+ * `typical_score` is deliberately excluded — a cohort average gates nothing, so two rows quoting
+ * different averages are still the same requirement, and forking on one would cost sharing for no
+ * safety. Everything else is in: a scoreless entry counts (a row that names GRE without a number
+ * is a different rule from one that demands 320), and so does `is_optional` (the verdict engine
+ * drops a test the student lacks only when the requirement says it is optional).
+ */
+function testRules(v: unknown): string[] {
   let arr: unknown = v;
   if (typeof v === "string") {
-    try { arr = JSON.parse(v); } catch { return new Map(); }
+    try { arr = JSON.parse(v); } catch { return []; }
   }
-  const out = new Map<string, string>();
-  if (!Array.isArray(arr)) return out;
+  if (!Array.isArray(arr)) return [];
+  const rules: string[] = [];
   for (const t of arr) {
     const test = t as ExtractedAcademicTest | null;
-    const key = String(test?.test_name ?? "").trim().toLowerCase();
+    const name = String(test?.test_name ?? "").trim().toLowerCase();
+    if (!name) continue;
     const score = test?.score == null ? "" : String(test.score).trim();
-    if (key && score) out.set(key, score);
+    rules.push(`${name} ${score} ${test?.is_optional ? "opt" : "req"}`);
   }
-  return out;
+  return rules.sort();
 }
 
 /**
@@ -835,12 +843,24 @@ export function eligibilityRowsAgree(
   fields: Record<string, unknown>,
 ): boolean {
   if (!ELIG_GATE_FIELDS.every((f) => eligValuesAgree(existing[f], fields[f]))) return false;
-  // A test named on only one side is enrichment. A test both sides score DIFFERENTLY is not.
-  const incoming = scoredTests(fields.academic_tests);
-  const stored = scoredTests(existing.academic_tests);
-  for (const [test, score] of incoming) {
-    const other = stored.get(test);
-    if (other != null && other !== score) return false;
+
+  // Two rows that BOTH name tests must name the same ones, on the same terms.
+  //
+  // The update below only writes academic_tests when the stored value is the '[]' default, so
+  // there is no such thing as adding a test to a populated row: any difference here means the
+  // incoming course's own test rules are silently discarded and it is judged by the stored row's
+  // instead — a course wanting GMAT 650 evaluated against GRE 320, an optional test enforced as
+  // mandatory, or a real stated minimum replaced by a row that only quotes a cohort average.
+  //
+  // A row naming NO tests stays compatible with one that does, deliberately. Pages describe the
+  // same institution-level requirement at different levels of detail, and the pipeline already
+  // reads a requirement as institution-wide (see findRequirementsForCourse, which applies an
+  // unassigned requirement to every course lacking its own). Forking on absence would fork nearly
+  // every row and defeat the sharing this exists for.
+  const incoming = testRules(fields.academic_tests);
+  const stored = testRules(existing.academic_tests);
+  if (incoming.length > 0 && stored.length > 0 && incoming.join(" | ") !== stored.join(" | ")) {
+    return false;
   }
   return true;
 }

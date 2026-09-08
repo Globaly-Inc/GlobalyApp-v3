@@ -203,14 +203,47 @@ assert("the same test scored differently forks a row", () =>
   eq(eligibilityRowsAgree(
     { academic_tests: [{ test_name: "GRE", score: "300" }] },
     { academic_tests: JSON.stringify([{ test_name: "GRE", score: "320" }]) }), false));
-assert("a test named on one side only is enrichment", () =>
+// academic_tests is only ever written over the '[]' default, so a test named on one side is NOT
+// added to the other — it is dropped, and that course is then judged by the stored row's tests.
+assert("different tests fork a row — the incoming one would be dropped, not merged", () =>
   eq(eligibilityRowsAgree(
     { academic_tests: [{ test_name: "GRE", score: "320" }] },
-    { academic_tests: JSON.stringify([{ test_name: "GMAT", score: "650" }]) }), true));
+    { academic_tests: JSON.stringify([{ test_name: "GMAT", score: "650" }]) }), false));
+assert("required vs optional forks a row — is_optional gates the verdict", () =>
+  eq(eligibilityRowsAgree(
+    { academic_tests: [{ test_name: "GRE", score: "320", is_optional: false }] },
+    { academic_tests: JSON.stringify([{ test_name: "GRE", score: "320", is_optional: true }]) }), false));
+assert("a stated minimum never shares a row with a cohort average only", () =>
+  eq(eligibilityRowsAgree(
+    { academic_tests: [{ test_name: "GRE", typical_score: "167" }] },
+    { academic_tests: JSON.stringify([{ test_name: "GRE", score: "320" }]) }), false));
+assert("an extra test forks a row", () =>
+  eq(eligibilityRowsAgree(
+    { academic_tests: [{ test_name: "GRE", score: "320" }] },
+    { academic_tests: JSON.stringify([
+      { test_name: "GRE", score: "320" }, { test_name: "GMAT", score: "650" }]) }), false));
+assert("the same tests in a different order still share a row", () =>
+  eq(eligibilityRowsAgree(
+    { academic_tests: [{ test_name: "GMAT", score: "650" }, { test_name: "GRE", score: "320" }] },
+    { academic_tests: JSON.stringify([
+      { test_name: "GRE", score: "320" }, { test_name: "GMAT", score: "650" }]) }), true));
 assert("differing typical scores still share a row — an average gates nothing", () =>
   eq(eligibilityRowsAgree(
     { academic_tests: [{ test_name: "GRE", typical_score: "167" }] },
     { academic_tests: JSON.stringify([{ test_name: "GRE", typical_score: "160" }]) }), true));
+// Deliberate asymmetry: pages describe one institution-level requirement at different levels of
+// detail, and forking on absence would fork nearly every row.
+assert("a row naming no tests stays compatible with one that does", () => {
+  eq(eligibilityRowsAgree({ academic_tests: [{ test_name: "GRE", score: "320" }] },
+    { academic_tests: "[]" }), true);
+  eq(eligibilityRowsAgree({ academic_tests: [] },
+    { academic_tests: JSON.stringify([{ test_name: "GRE", score: "320" }]) }), true);
+});
+assert("a nameless test entry is ignored, not treated as a rule", () =>
+  eq(eligibilityRowsAgree(
+    { academic_tests: [{ test_name: "GRE", score: "320" }] },
+    { academic_tests: JSON.stringify([
+      { test_name: "GRE", score: "320" }, { test_name: "  ", score: "99" }]) }), true));
 assert("the column default '[]' never blocks a match", () =>
   eq(eligibilityRowsAgree({ academic_tests: [] }, { academic_tests: "[]" }), true));
 assert("unparseable stored json is not a disagreement", () =>
