@@ -15,8 +15,15 @@ export type ThreadRole = "admin" | "member";
 export interface ThreadMember {
   platform_user_id: number;
   role: ThreadRole;
-  /** 'auto' rows were placed by the system (owner, unlocker) and cannot be removed. */
-  source: "auto" | "manual";
+  /**
+   * 'auto' rows were placed by the system (owner, unlocker) and cannot be removed.
+   *
+   * 'student' is not a row in this table at all — it is the enquiry's own student, folded into the
+   * roster by findThreadStudent so one list can show everyone in the conversation. Nothing can be
+   * done to them here: they are a party to the enquiry, not a seat the agency administers, and
+   * every mutation below resolves its target through findMembership and so cannot see them.
+   */
+  source: "auto" | "manual" | "student";
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -32,6 +39,41 @@ export async function findMembership(
   return masterKnex(T)
     .where({ distribution_id: distributionId, platform_user_id: userId })
     .first("role", "source");
+}
+
+/**
+ * The thread's student, shaped as a ThreadMember so one roster can hold both parties.
+ *
+ * They are a participant by construction — the enquiry is theirs — rather than by a row in
+ * `enquiry_thread_members`, which exists to model the seats an agency assigns internally. That is
+ * why the roster showed everyone EXCEPT the person the conversation is with.
+ *
+ * `student_left_at` is honoured: a student who has left is no longer in the conversation, the same
+ * way a departed agent stops appearing. Undefined then, and for a thread that was never unlocked.
+ *
+ * `created_at` is the distribution's, not the enquiry's — when this conversation began, which is
+ * what the roster's oldest-first ordering means everywhere else.
+ */
+export async function findThreadStudent(distributionId: string): Promise<ThreadMember | undefined> {
+  const row = await masterKnex("enquiry_distributions as d")
+    .join("enquiries as e", "e.id", "d.enquiry_id")
+    .join("platform_users as u", "u.id", "e.student_id")
+    .where("d.id", distributionId)
+    .whereNull("d.deleted_at")
+    .whereNull("d.student_left_at")
+    .whereNotNull("d.unlocked_at")
+    .whereNull("u.deleted_at")
+    .first(
+      "u.id as platform_user_id",
+      "u.first_name",
+      "u.last_name",
+      "u.email",
+      "u.photo_url",
+      "d.created_at",
+    );
+  if (!row) return undefined;
+  // Always 'member': the student administers nothing on the agency's side of the thread.
+  return { ...row, role: "member", source: "student" } as ThreadMember;
 }
 
 export async function listMembers(distributionId: string): Promise<ThreadMember[]> {

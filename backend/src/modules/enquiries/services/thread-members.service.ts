@@ -108,7 +108,13 @@ function blockerMessage(blockers: string[]): string {
 
 export async function listMembers(distributionId: string, recipient: Recipient, userId: number) {
   const { distribution, role } = await requireMember(distributionId, recipient, userId);
-  const members = await repo.listMembers(distributionId);
+  const [staff, student] = await Promise.all([
+    repo.listMembers(distributionId),
+    repo.findThreadStudent(distributionId),
+  ]);
+  // Student first. The agency's own ordering puts the owner first because that is the name an agent
+  // looks for among colleagues — but the student is who the conversation is WITH, so they lead.
+  const members = student ? [student, ...staff] : staff;
   const blockers = await leaveBlockers(distributionId, userId, distribution.status);
   return {
     // Echoed back so the client does not have to find itself in the list to know what it may do.
@@ -247,6 +253,53 @@ export async function leave(distributionId: string, recipient: Recipient, userId
  * they themselves raised, because the agency working it would be left answering nobody. Once the
  * business closes it there is nothing left to answer, and they may go.
  */
+/**
+ * The same roster, read by the student.
+ *
+ * Deliberately NOT the business payload. Two things are withheld, because the student asked an
+ * agency a question and did not ask about its staff:
+ *
+ *   - **email** — a work address is contact detail the agency chose to give its staff, not the
+ *     student. Names and faces are what identifies who is replying, which is all this is for.
+ *   - **role and source** — who administers the thread, and who was assigned to it versus
+ *     invited later, is the agency's internal arrangement. Flattened to 'member'/'auto' so the
+ *     shape matches without carrying the meaning.
+ *
+ * `can_manage` is false and there are no member-mutation routes on the student side at all, so
+ * this is a read and only a read.
+ */
+export async function listMembersAsStudent(distributionId: string, studentId: number) {
+  const ctx = await messagesRepo.findThreadContext(distributionId);
+  // Same 404-for-everything convention as leaveAsStudent below.
+  if (!ctx || ctx.student_id !== studentId || ctx.unlocked_at == null || ctx.student_left_at != null) {
+    throw new NotFoundError("Conversation not found");
+  }
+
+  const [staff, student] = await Promise.all([
+    repo.listMembers(distributionId),
+    repo.findThreadStudent(distributionId),
+  ]);
+  const members = [
+    ...(student ? [student] : []),
+    ...staff.map((m) => ({ ...m, email: null, role: "member" as const, source: "auto" as const })),
+  ];
+
+  return {
+    my_role: "member" as const,
+    my_user_id: studentId,
+    can_manage: false,
+    // The student's own rule, not the agency's: they may go once the enquiry is closed.
+    can_leave: ctx.status === "closed",
+    leave_blocked_reason:
+      ctx.status === "closed"
+        ? null
+        : "You can leave this conversation once the business has closed your enquiry.",
+    members: await Promise.all(
+      members.map(async (m) => ({ ...m, photo_url: await storage.resolvePreviewUrl(m.photo_url) })),
+    ),
+  };
+}
+
 export async function leaveAsStudent(distributionId: string, studentId: number): Promise<void> {
   const ctx = await messagesRepo.findThreadContext(distributionId);
   // Same 404-for-everything convention as the rest of the module: not theirs, not yet unlocked and
