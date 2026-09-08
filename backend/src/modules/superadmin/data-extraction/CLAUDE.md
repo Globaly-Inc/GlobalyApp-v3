@@ -226,6 +226,62 @@ The centralized error handler maps these to HTTP responses.
    when a job has nothing queued yet to resume from — no V2 equivalent to
    port, this is a cost fix.
 
+## Subject area & degree level are CLOSED lists (2026-09-08)
+
+`public.areas_of_study` and `public.degree_levels` are the only values a course may be linked to.
+Extraction links to a seeded row and never adds one.
+
+- **The lists live in the seeders and nowhere else** —
+  `database/seeders/globalyapp/{areas_of_study,degree_levels}_seeder.ts`. Extraction reads the
+  active rows from the database at runtime (`loadLookupLists()`, cached per process) and the
+  extraction prompt's enums are built from them, so adding/renaming/retiring an entry is a seed
+  edit plus `knex seed:run` — no code change, and no second copy to keep in sync.
+- **The MODEL classifies; code validates and, failing a pick, places.** The prompt gives it the
+  live area and level names and asks which one the course belongs under; `resolveAreaOfStudy` /
+  `resolveDegreeLevel` check the answer against the list so a hallucinated or stale value links to
+  nothing instead of inventing a category. Neither can invent: every path ends on a seeded slug or
+  on null. Because a pick is often absent — rows staged before the prompt asked for an area, a
+  re-run during a model outage, an admin edit — each resolver also maps the page's own wording onto
+  the list, and tries the course NAME after the subject wording. Measured over the 2,365 staged
+  courses: 98% area, 95% level, and the residue is genuinely unplaceable ("Various", "Graduate
+  Studies", department index pages staged as courses), not a matching gap.
+- **What code still carries** (mapping, not list data — every target must be a slug that exists in
+  the seeded table, and `lookupListsHealth()` reports any that doesn't): the platform's own subject
+  taxonomy keyed by area slug, so "Nursing" reaches Health and Medicine and placement follows the
+  PLATFORM (Psychology → Health and Medicine, Economics → Social Studies and Media) rather than
+  intuition; the platform's own "Course Level → Degree Level" folds (Associate Degree / Bachelor Honours / Undergraduate Higher Diploma → Bachelor,
+  Graduate Certificate → Graduate Diploma, Masters (Extended) → Master, every school stage →
+  School, Other/short course → Non AQF Award) and the qualification-in-the-name reader
+  (BSc/MBChB → Bachelor, MPhil → research master, JD/EdD → doctoral). The name wins over the
+  model's pick — it is verbatim from the page and was the most reliable signal across 1,918
+  courses. `loadLookupLists()` warns if a rename leaves a fold pointing at a level that no longer
+  exists.
+- **The link is the `_code` column:** `extraction_courses.degree_level_code` =
+  `degree_levels.slug`, `subject_area_code` = `areas_of_study.slug`. `degree_level` holds the
+  row's display name; `subject_area` stays free description — the AREA is what a course links to.
+  Nothing matched → code null, i.e. UNLINKED and visible, never guessed.
+- **Written by:** `writeCourse` (insert and merge), the course_data step, and the admin
+  PATCH/save-and-learn path — an admin edit obeys the same lists, and the pickers can't create.
+- **The log:** every course write emits one `lookup-link` line — `info "linked"` or
+  `warn "unlinked"` with the text that failed. The per-job total is part of VERIFICATION, not a
+  script: `extraction-verify.worker.ts` ends with `verifyLookupLinks()`, which writes a
+  `lookup_links_verified` job event (level `warn` unless every course is linked) carrying the
+  linked counts and a sample of the wording that didn't match, so it shows on the job timeline
+  next to the other verification results. Pure counting — no scrape, no model call.
+  The same pass first checks the CONFIGURATION and raises `lookup_lists_unhealthy` when the lists
+  aren't seeded or a seeder rename left a Course Level fold pointing at a level that no longer
+  exists — that is the root cause behind a job full of unlinked courses, which the counts alone
+  can't explain (`lookupListsHealth()`).
+  This work adds NO npm scripts. Two files are run directly when needed:
+  `node --import tsx scripts/backfill-lookup-links.ts [--apply] [--job <id>]` re-binds
+  already-staged rows — no model call, no scrape, free and repeatable — and
+  `node --import tsx tests/lookup-catalog.ts` is the offline check on the matcher itself.
+- **Slugs and ids never move.** Degree-level slugs are a de-facto enum across the app (frontend
+  scholarship filters, personal-profile onboarding, the search `DEGREE_LABEL` map,
+  `lib/agentcis-mappers.ts`) and business services store level ids as field values. So "PHD"
+  keeps the slug `doctoral`, and a level the list drops (Associate Degree, Graduate Certificate,
+  Other) is deactivated, never deleted.
+
 ## External FK columns
 
 7 columns reference tables that may not exist yet in V3. These are plain

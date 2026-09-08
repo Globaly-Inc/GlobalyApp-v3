@@ -6,6 +6,7 @@ import { logAudit } from "../shared/audit.js";
 import { withActorNames } from "../shared/actor-names.js";
 import * as repo from "../repositories/courses.repository.js";
 import type { CreateCourseInput, PatchCourseInput } from "../schemas/courses.schema.js";
+import { resolveCourseLookups } from "../lib/staging-writer.js";
 
 export async function listCourses(
   jobId: string,
@@ -116,6 +117,22 @@ export async function patchCourse(id: string, input: PatchCourseInput, adminId: 
   const data: Record<string, unknown> = { ...input };
   if (input.career_paths) data.career_paths = input.career_paths;
   const found = await repo.updateCourse(id, data, adminId);
+  // An admin edit obeys the same closed lists as extraction, through the same resolver: the value
+  // is placed on a seeded row, or the link is CLEARED. It is never stored as an unlinkable value,
+  // and this path can no more create an area or a level than the pickers can.
+  if ("degree_level" in input || "subject_area" in input) {
+    const link = await resolveCourseLookups({
+      name: input.name ?? "",
+      degree_level: input.degree_level,
+      subject_area: input.subject_area,
+      area_of_study: input.subject_area,
+    });
+    if ("degree_level" in input) {
+      data.degree_level = link.degree_level;
+      data.degree_level_code = link.degree_level_code;
+    }
+    if ("subject_area" in input) data.subject_area_code = link.subject_area_code;
+  }
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_PATCH", { entityType: "extraction_courses", entityId: id });
   return { updated: true };

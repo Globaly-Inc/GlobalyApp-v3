@@ -4,8 +4,11 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
+import { loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel } from "./lookup-catalog.js";
 
 const logger = createChildLogger("staging-writer");
+/** Every course's lookup binding lands here, linked or not; the verify worker totals them per job. */
+const linkLogger = createChildLogger("lookup-link");
 
 // ── Types matching LLM output ──
 
@@ -17,6 +20,8 @@ export interface ExtractedCourse {
    * scoped to "Academic Courses" still surfaces short courses on the same pages. */
   course_category?: string | null;
   subject_area?: string | null;
+  /** The model's pick from the 14 platform areas — validated against the list, never stored raw. */
+  area_of_study?: string | null;
   duration_weeks?: number | null;
   study_mode?: string | null;
   description?: string | null;
@@ -297,9 +302,12 @@ export function normaliseUnitName(name: string): string {
  */
 export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): Promise<string> {
   const norm = normaliseUnitName(unit.unit_name);
+  // Same normalisation on both sides as normaliseUnitName() — it collapses internal whitespace
+  // runs, which a bare LOWER(TRIM()) does not, so a unit name carrying a double space or a
+  // newline never matched itself and was inserted again. (Same bug class as the course dedup.)
   const existing = await masterKnex(`${S}.extraction_study_units`)
     .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(unit_name)) = ?", [norm])
+    .whereRaw("regexp_replace(lower(trim(unit_name)), '\\s+', ' ', 'g') = ?", [norm])
     .first();
   if (existing) return existing.id;
 
@@ -573,22 +581,89 @@ export function normaliseCourseName(name: string): string {
  * merges richer data into the existing row and attaches new child entities.
  * Returns the course ID.
  */
+export interface CourseLookupLink {
+  /** public.degree_levels.name, or null when the course names no level on the platform list. */
+  degree_level: string | null;
+  /** public.degree_levels.slug — the link. null = unlinked. */
+  degree_level_code: string | null;
+  /**
+   * public.areas_of_study.slug — the link. null = unlinked. The subject text itself is stored as
+   * the model wrote it: `subject_area` is free description, the AREA is what a course links to.
+   */
+  subject_area_code: string | null;
+}
+
+/**
+ * Bind a course onto the platform's closed lists. The lists come from the database (seeded from
+ * database/seeders/globalyapp/*_seeder.ts) and are cached per process, so this is effectively free
+ * after the first call and makes no model call of its own — the model already chose `area_of_study`
+ * and `degree_level` while reading the page; this validates those choices against the live list.
+ */
+export async function resolveCourseLookups(course: ExtractedCourse): Promise<CourseLookupLink> {
+  const lists = await loadLookupLists();
+  const level = resolveDegreeLevel(lists, course.degree_level, course.name);
+  // Subject wording first, then the course's own name — "Bachelor of Nursing" still reaches Health
+  // and Medicine on a page that never stated a subject.
+  const area = resolveAreaOfStudy(lists, course.area_of_study, course.subject_area, course.name);
+  return {
+    degree_level: level?.name ?? null,
+    degree_level_code: level?.slug ?? null,
+    subject_area_code: area?.slug ?? null,
+  };
+}
+
+/**
+ * The link log. One line per course written, so "is this course linked to a subject area and a
+ * degree level?" is answerable from the worker output alone: `warn` when either side failed to
+ * match (with the raw text that didn't), `info` when both landed. The DB-wide view of the same
+ * question is the verify worker's `lookup_links_verified` job event.
+ */
+function logLookupLink(jobId: string, courseId: string, course: ExtractedCourse, link: CourseLookupLink) {
+  const entry = {
+    jobId, courseId, course: course.name,
+    degree_level: link.degree_level_code
+      ? { linked: true, raw: course.degree_level ?? null, name: link.degree_level, slug: link.degree_level_code }
+      : { linked: false, raw: course.degree_level ?? null },
+    subject_area: link.subject_area_code
+      ? { linked: true, subject: course.subject_area ?? null, area_pick: course.area_of_study ?? null, slug: link.subject_area_code }
+      : { linked: false, subject: course.subject_area ?? null, area_pick: course.area_of_study ?? null },
+  };
+  if (link.degree_level_code && link.subject_area_code) linkLogger.info("linked", entry);
+  else linkLogger.warn("unlinked", entry);
+}
+
 export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string> {
   // ── Dedup: check if this course name already exists for this job ──
+  // Both sides MUST apply the same normalisation as normaliseCourseName(). A bare
+  // LOWER(TRIM(name)) keeps the trailing ")" that the JS side strips, so "Nursing BSc (Hons)"
+  // compared "nursing bsc (hons)" against "nursing bsc (hons" and never matched itself — every
+  // re-extraction of a bracket-suffixed course (…(Hons), …(BSAsE), …(PhD) — most of a catalogue)
+  // inserted a DUPLICATE row instead of merging, so one copy carried the lookup links and the
+  // other did not. Caught by the end-to-end linking check.
   const normName = normaliseCourseName(course.name);
   const existing = await masterKnex(`${S}.extraction_courses`)
     .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
+    .whereRaw(
+      "regexp_replace(regexp_replace(lower(trim(name)), '\\s+', ' ', 'g'), '[^a-z0-9]+$', '') = ?",
+      [normName],
+    )
     .first();
 
   let courseId: string;
+
+  // ── Bind to the platform's closed lookup lists ──
+  // The link is the *_code column: degree_level_code = public.degree_levels.slug,
+  // subject_area_code = public.areas_of_study.slug. Deterministic, no model call. A value that
+  // matches nothing leaves the code null — the course stays unlinked and shows up in the link
+  // log and the verify worker's link check rather than being guessed at or inventing a lookup row.
+  const link = await resolveCourseLookups(course);
 
   if (existing) {
     courseId = existing.id;
     // Merge: fill nulls on the existing row with data from this extraction
     const updates: Record<string, unknown> = {};
     const mergeFields: Array<keyof ExtractedCourse> = [
-      "short_name", "degree_level", "course_category", "subject_area", "duration_weeks",
+      "short_name", "course_category", "subject_area", "duration_weeks",
       "study_mode", "description", "awarding_institution",
       "source_url",
     ];
@@ -600,6 +675,15 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
         updates[field] = newVal;
       }
     }
+    // A later page that names the qualification beats an earlier row that couldn't be linked;
+    // an existing link is never overwritten.
+    if (link.degree_level && existing.degree_level_code == null) {
+      updates.degree_level = link.degree_level;
+      updates.degree_level_code = link.degree_level_code;
+    }
+    if (link.subject_area_code && existing.subject_area_code == null) {
+      updates.subject_area_code = link.subject_area_code;
+    }
     if (course.career_paths?.length && (!existing.career_paths || existing.career_paths.length === 0)) {
       updates.career_paths = course.career_paths;
     }
@@ -610,15 +694,22 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     } else {
       logger.info("Skipped duplicate course (no new data)", { jobId, courseId, name: course.name });
     }
+    logLookupLink(jobId, courseId, course, {
+      ...link,
+      degree_level_code: link.degree_level_code ?? existing.degree_level_code,
+      subject_area_code: link.subject_area_code ?? existing.subject_area_code,
+    });
   } else {
     // ── Insert new course ──
     const courseInsert: Record<string, unknown> = {
       job_id: jobId,
       name: course.name,
       short_name: course.short_name ?? null,
-      degree_level: course.degree_level ?? null,
+      degree_level: link.degree_level,
+      degree_level_code: link.degree_level_code,
       course_category: normaliseCourseCategory(course.course_category),
       subject_area: course.subject_area ?? null,
+      subject_area_code: link.subject_area_code,
       duration_weeks: coerceInt(course.duration_weeks),
       study_mode: course.study_mode ?? null,
       description: course.description ?? null,
@@ -630,6 +721,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
 
     const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
     courseId = courseRow.id;
+    logLookupLink(jobId, courseId, course, link);
   }
 
   // ── Fees + assignments ──
@@ -974,9 +1066,10 @@ function coerceVisaNumber(v: unknown): number | null {
  */
 export async function writeVisaService(jobId: string, service: ExtractedVisaService): Promise<string> {
   const normName = normaliseVisaServiceName(service.name);
+  // Both sides normalise the same way — see the course and study-unit dedups above.
   const existing = await masterKnex(`${S}.extraction_visa_services`)
     .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
+    .whereRaw("regexp_replace(lower(trim(name)), '\\s+', ' ', 'g') = ?", [normName])
     .first();
 
   if (existing) {

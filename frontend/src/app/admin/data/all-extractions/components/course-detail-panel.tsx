@@ -282,12 +282,14 @@ export function CourseDetailPanel({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Degree level</Label>
+            {/* Closed platform lists (2026-09-08): a course may only be linked to a level/area that
+                already exists, so neither picker can create one. The server re-derives the link
+                codes from what's picked. */}
             <LookupCombobox
               kind="degree-levels"
               value={course.degree_level ?? ""}
               onChange={(v) => patchCourse({ degree_level: v || null })}
               placeholder="Select degree level"
-              creatable
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -297,7 +299,6 @@ export function CourseDetailPanel({
               value={course.subject_area ?? ""}
               onChange={(v) => patchCourse({ subject_area: v || null })}
               placeholder="Select subject area"
-              creatable
             />
           </div>
         </div>

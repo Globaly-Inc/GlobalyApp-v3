@@ -34,6 +34,7 @@ import {
   upsertStudyUnit,
   upsertFee,
   normaliseCourseCategory,
+  resolveCourseLookups,
   normaliseScoreType,
   deriveScoreFromDescription,
   coerceMoney,
@@ -1044,6 +1045,17 @@ async function handleCourseDataStep(
       }
       const category = normaliseCourseCategory(extracted.course_category);
       if (category) updates.course_category = category;
+      // Same closed-list binding as the page worker (lib/lookup-catalog.ts): the re-extracted
+      // level/subject only land as the platform's own values, with their *_code link.
+      const link = await resolveCourseLookups({
+        name: (typeof extracted.name === "string" && extracted.name) || course.name,
+        degree_level: updates.degree_level as string | undefined,
+        subject_area: updates.subject_area as string | undefined,
+        area_of_study: extracted.area_of_study as string | undefined,
+      });
+      updates.degree_level = link.degree_level;
+      updates.degree_level_code = link.degree_level_code;
+      updates.subject_area_code = link.subject_area_code;
       if (typeof extracted.duration_weeks === "number" && extracted.duration_weeks > 0) updates.duration_weeks = extracted.duration_weeks;
       if (Array.isArray(extracted.career_paths) && extracted.career_paths.length > 0) updates.career_paths = extracted.career_paths;
       if (Object.keys(updates).length > 0) {

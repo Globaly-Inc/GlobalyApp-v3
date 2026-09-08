@@ -23,6 +23,7 @@ import {
   writeCourse, upsertCampus, normaliseCampusName, writeVisaService, insertQueueItem, writeJobEvent,
   type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
+import { loadLookupLists } from "../lib/lookup-catalog.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { classifyFailure, type FailureClass } from "../lib/classify-failure.js";
 import { createDocumentExtractor } from "../lib/document-extractor.js";
@@ -420,7 +421,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // ponytail: 65536 tokens — listing pages with 50+ courses need room
       const extracted = await extractJson<ExtractionResult>({
         system,
-        prompt: courseExtractionPrompt(url, markdown, job.guidance_notes, siteIntel),
+        // The model picks the degree level and area of study from the platform's live lists
+        // (seeded, read once per process) — see lib/lookup-catalog.ts.
+        prompt: courseExtractionPrompt(url, markdown, job.guidance_notes, siteIntel, await loadLookupLists()),
         maxTokens: 65536,
       });
       extractedForMemory = extracted;
