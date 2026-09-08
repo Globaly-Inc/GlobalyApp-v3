@@ -199,7 +199,22 @@ export function ConversationView({
             onClose={() => setThreadParentId(null)}
           />
         ) : (
-          <ChatInfoPanel messages={messages} onJumpToMessage={jumpToMessage} />
+          <ChatInfoPanel
+            messages={messages}
+            onJumpToMessage={jumpToMessage}
+            distributionId={id}
+            showMembers
+            // `messagesApi` is a module singleton, so this identity is stable across renders —
+            // an object literal here would refetch the roster on every one.
+            membersApi={messagesApi}
+            leaveDescription="You'll stop receiving replies about this enquiry and it will disappear from your inbox. You can always send a new enquiry for this course."
+            // Leaving removes the thread from their inbox, so the open conversation has to close
+            // with it — the list is the authority for what may be selected.
+            onLeft={() => {
+              dispatch(fetchThreads());
+              onBack();
+            }}
+          />
         )}
       </div>
     </div>

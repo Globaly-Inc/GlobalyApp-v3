@@ -1,4 +1,5 @@
 import type { EnquiryMessage, MessageAttachment, ChatThread, StarredMessage } from "./types";
+import type { ThreadMembersResult } from "@/components/chat/types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -261,5 +262,42 @@ export const messagesMockApi = {
   leaveThread: async (distributionId: string): Promise<void> => {
     console.log("[mock] POST /enquiry-messages/:id/leave", { distributionId });
     await delay(200);
+  },
+
+  // Shaped like the student's payload, not the agency's: no staff emails, everyone a plain
+  // 'member', and can_manage false — there is nothing for a student to manage.
+  listMembers: async (distributionId: string): Promise<ThreadMembersResult> => {
+    console.log("[mock] GET /enquiry-messages/:id/members", { distributionId });
+    await delay(250);
+    return {
+      my_role: "member",
+      my_user_id: 1,
+      can_manage: false,
+      can_leave: false,
+      leave_blocked_reason:
+        "You can leave this conversation once the business has closed your enquiry.",
+      members: [
+        {
+          platform_user_id: 1,
+          role: "member",
+          source: "student",
+          first_name: "Rojan",
+          last_name: "Byanjankar",
+          email: "rojan.byanjankar@example.com",
+          photo_url: null,
+          created_at: new Date().toISOString(),
+        },
+        {
+          platform_user_id: 42,
+          role: "member",
+          source: "auto",
+          first_name: "Patricia",
+          last_name: "Hurley",
+          email: null,
+          photo_url: null,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
   },
 };
