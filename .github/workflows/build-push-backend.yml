@@ -7,9 +7,10 @@ on:
       - 'production'
       - 'staging'
       - 'develop'
+      - 'devops-queeue-subash'
 
-    paths:
-      - "backend/**"
+    # paths:
+    #   - "backend/**"
 
 env:
   RED_COLOR_MESSAGE: "\e[31m"
@@ -154,8 +155,11 @@ jobs:
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/api-globalyapp.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-auth.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-business-claim-requests.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-enquiry-match.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-enquiry-email.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-import-v2.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-agentcis.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-course-bulk-delete.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-pages.yml"                                 
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-schedule.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-extraction-step.yml"
@@ -165,6 +169,7 @@ jobs:
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-scholarship-bulk-delete.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-ai-knowledge-crawl.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-ai-knowledge-recrawl.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-blog-generate.yml"
 
            echo "updating globalyapp-images..."
            ## git config user.name "devops-github-actions"
