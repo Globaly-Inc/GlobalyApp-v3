@@ -35,6 +35,8 @@ import {
   upsertFee,
   normaliseCourseCategory,
   resolveCourseLookups,
+  resolveDurationWeeks,
+  type ExtractedStudyOption,
   normaliseScoreType,
   deriveScoreFromDescription,
   coerceMoney,
@@ -1053,10 +1055,27 @@ async function handleCourseDataStep(
         subject_area: updates.subject_area as string | undefined,
         area_of_study: extracted.area_of_study as string | undefined,
       });
-      updates.degree_level = link.degree_level;
-      updates.degree_level_code = link.degree_level_code;
-      updates.subject_area_code = link.subject_area_code;
-      if (typeof extracted.duration_weeks === "number" && extracted.duration_weeks > 0) updates.duration_weeks = extracted.duration_weeks;
+      // Fill, never erase — same rule as writeCourse's merge. A re-extract of a page that simply
+      // doesn't restate the qualification resolves to null, and assigning that would unlink a
+      // course that was already linked. When the resolver has no answer the raw text is dropped
+      // from the update too, so an unlinkable value is never stored in its place.
+      if (link.degree_level_code) {
+        updates.degree_level = link.degree_level;
+        updates.degree_level_code = link.degree_level_code;
+      } else {
+        delete updates.degree_level;
+      }
+      if (link.subject_area_code) updates.subject_area_code = link.subject_area_code;
+      // Through the same resolver as the writers, not the raw field: a re-extract that answers
+      // "3 years" (or answers nothing but states it in the description) must resolve identically
+      // to a first extraction, or a re-run silently downgrades a course that already had one.
+      const weeks = resolveDurationWeeks({
+        duration_weeks: extracted.duration_weeks as number | string | null | undefined,
+        duration_text: extracted.duration_text as string | null | undefined,
+        study_options: extracted.study_options as ExtractedStudyOption[] | undefined,
+        description: extracted.description as string | null | undefined,
+      });
+      if (weeks != null) updates.duration_weeks = weeks;
       if (Array.isArray(extracted.career_paths) && extracted.career_paths.length > 0) updates.career_paths = extracted.career_paths;
       if (Object.keys(updates).length > 0) {
         updates.updated_at = masterKnex.fn.now();

@@ -142,6 +142,10 @@ eq(lvl(null, "Certificate IV in Business"), "certificate", "AQF Cert IV");
 eq(lvl(null, "Year 12 Studies"), "high_school", "senior secondary");
 eq(lvl(null, "Finance Undergraduate Minor"), "non_aqf_award", "a minor is a Non AQF Award");
 eq(lvl(null, "Minor Surgery MSc"), "master", "'Minor' inside an MSc title is still a Master");
+eq(lvl(null, "Master In Teaching"), "master", "'in' is as valid a preposition as 'of'");
+eq(lvl(null, "Bachelor In Nursing"), "bachelor", "…on the undergraduate side too");
+eq(lvl(null, "Master in Research"), "master_research", "…and it doesn't shadow the research master");
+eq(lvl(null, "Educational Specialist (EdS)"), "master", "EdS folds onto the nearest platform level");
 eq(lvl(null, "Nursing"), null, "nothing to go on → unlinked, not guessed");
 
 // The name is verbatim from the page, so it outranks a vaguer model answer …

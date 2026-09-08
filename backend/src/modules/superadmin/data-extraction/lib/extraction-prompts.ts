@@ -114,6 +114,7 @@ Extract this JSON:
       "subject_area": "the shared subject/program name this qualification belongs to, WITHOUT the qualification suffix — e.g. 'Aerospace Engineering', 'Computer Science', 'Medicine', 'Business'",
       "area_of_study": "${areaEnum} — ONLY one of these exact values: the single heading this course's subject belongs under. Judge it from the subject itself, not the wording — e.g. a nursing, dentistry or psychology course belongs under the health heading; economics, politics, media and social work under the social-studies heading; architecture, construction and urban planning under the architecture heading. null ONLY if the entry names no real discipline at all (an enrolment status like 'Visiting Student', or an offering bucket like 'Summer Programs'). Never answer with a value that is not in the list above",
       "duration_weeks": null,
+      "duration_text": "the duration exactly as written on the page, e.g. '3 years full-time' or '18 months' — null if not stated",
       "study_mode": "on-campus|online|hybrid|null",
       "description": "course description or null",
       "awarding_institution": null,
@@ -144,7 +145,8 @@ Extract this JSON:
           "study_mode": "on_campus|online|hybrid",
           "study_load": "full_time|part_time",
           "duration_value": null,
-          "duration_unit": "months|weeks|years"
+          "duration_unit": "months|weeks|years|semesters|null",
+          "duration_text": "this option's duration exactly as written, e.g. '2 years part-time' — null if not stated"
         }
       ],
       "eligibility": [
@@ -203,6 +205,7 @@ Rules:
 - Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
 - Never invent fees or dates — only extract what's explicitly stated
 - For eligibility requirements, always populate score_type + min_score when a specific numeric threshold is stated, not just in the free-text description: "percentage" for a % figure, "gpa_4" for a GPA (the default scale when no scale is named — most common convention), "gpa_10" only when the page explicitly says the GPA is out of 10, "cgpa" when the page uses that term specifically. Leave both null if no number is stated.
+- Always fill duration_text verbatim when the page states a duration anywhere, even if you also converted it to duration_weeks
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If this page states no real fee figures but links to a dedicated fees/tuition/cost page (a schedule page, a catalog entry, an external PDF), leave fees empty and set fees_page_url to that link instead — never fabricate a fee entry with no amount just to record the URL
@@ -747,7 +750,7 @@ export function courseDataPrompt(
 }`,
     course: `{
   "name": "full course name", "short_name": null, "description": "2-4 sentences", "degree_level": "Bachelor|Master|Diploma|Certificate|etc",
-  "course_category": "academic|short_course", "subject_area": null, "duration_weeks": null, "study_mode": null, "career_paths": [], "awarding_institution": null
+  "course_category": "academic|short_course", "subject_area": null, "duration_weeks": null, "duration_text": "duration exactly as written on the page or null", "study_mode": null, "career_paths": [], "awarding_institution": null
 }`,
   };
 

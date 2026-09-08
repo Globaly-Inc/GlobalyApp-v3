@@ -54,6 +54,49 @@ export async function loadLookupLists(): Promise<LookupLists> {
   return cached;
 }
 
+// ─── Countries ───────────────────────────────────────────────────────────────
+// public.countries is a closed platform list too, and extraction_courses.country_code is joined
+// against it — the public course search does `upper(c.iso2) = upper(ec.country_code)`. So the
+// same rule applies as for areas and levels: store a value that exists on the list, or nothing.
+
+// ponytail: per-process cache, same reasoning as the lists above — the country table is reference
+// data that changes on a deploy.
+let countryIndex: Map<string, string> | null = null;
+
+/**
+ * Colloquial forms the countries table cannot supply. Site intelligence returns whatever the
+ * model wrote, and "UK" is the one it writes most — it is not an ISO2 code (that is GB), so
+ * without this every UK course fails the country join.
+ */
+const COUNTRY_ALIASES: Record<string, string> = {
+  uk: "GB", "great britain": "GB", england: "GB", scotland: "GB", wales: "GB",
+  "northern ireland": "GB", uae: "AE", "south korea": "KR", "united states of america": "US",
+};
+
+/** iso2 → iso2, plus iso3 and country name → iso2. Built once from the table itself. */
+async function loadCountryIndex(): Promise<Map<string, string>> {
+  if (countryIndex) return countryIndex;
+  const rows: Array<{ name: string; iso2: string; iso3: string }> =
+    await masterKnex("countries").select("name", "iso2", "iso3");
+  const idx = new Map<string, string>();
+  for (const r of rows) {
+    for (const key of [r.iso2, r.iso3, r.name]) if (key) idx.set(key.trim().toLowerCase(), r.iso2);
+  }
+  for (const [alias, iso2] of Object.entries(COUNTRY_ALIASES)) if (!idx.has(alias)) idx.set(alias, iso2);
+  if (!rows.length) logger.warn("public.countries is empty — courses will not link to a country");
+  countryIndex = idx;
+  return idx;
+}
+
+/**
+ * An ISO2 code that exists in public.countries, or null. Accepts what site intelligence actually
+ * produces: a code ("US"), a colloquial code ("UK"), an ISO3 ("GBR"), or a full name.
+ */
+export async function resolveCountryCode(value: unknown): Promise<string | null> {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return (await loadCountryIndex()).get(value.trim().toLowerCase()) ?? null;
+}
+
 export interface LookupListsHealth {
   ok: boolean;
   /** Seeders never run: nothing can link at all. */
@@ -192,6 +235,7 @@ const ABBREVIATIONS: Array<[RegExp, string]> = [
   [/\b(JD|MD|DDS|DMD|DVM|PharmD|OD|DPT|DC)\b/, "PHD"],
   [/\b(EdD|DBA|DSc|EngD|DProf|DNP|DClinPsy|DMus|DMA|ThD|SJD|DEng|DSocSci|DrPH)\b/, "PHD"],
   [/\b(MRes|MPhil)\b/, "Master (Research)"],
+  [/\b(EdS|SSP)\b/, "Master"],
   [/\b(GradCert|PGCert|PgCert|PGCE|GCert|GradDip|PGDip|PgDip|GDip|PGD)\b/, "Graduate Diploma"],
   [/\b(MSc|MA|MEng|MBA|LLM|MPH|MEd|MFA|MArch|MFin|MSt|MS|SM|MSW|MPA|MPP|MComm?|MMus|MChem|MBiol|MPhys|MMath|MPharm|MNurs|MCD|MDes|MTech|MEnvSc|MAcc|MIB|MBiochem|MGeol|MSci|MLA|MUP|MHA|MHS|MPS|MDiv|MTh|MEM|MPlan|MCom|MEc|MEcon|MAppSc|MProf)\b/, "Master"],
   [/\b(BSc|BA|BEng|BE|BCom|BBus|BBA|BEd|BFA|BArch|BN|BNurs|LLB|MBChB|MBBS|MBBCh|BDS|BVSc|BVMS|BPharm|AB|SB|BS|BASc|BTech|BDes|BMus|BAppSc|BIT|BInfTech|BSW|BPsych|BSocSc|BMed|BOptom|BPhty|BHSc|BMedSc|BCA|BAcc|BComm|BM|BMid|BEnvSc|BAgr|BCrim|BEcon|BPE|BPH|BSN|BFin|BLaws|BPlan|BLA|AA|AS|AAS)\b/, "Bachelor"],
@@ -203,10 +247,11 @@ const ABBREVIATIONS: Array<[RegExp, string]> = [
 /** Whole words in a course name, case-insensitive. Most specific first. */
 const LEVEL_WORDS: Array<[RegExp, string]> = [
   [/\b(doctor (?:of|in) philosophy|doctor (?:of|in)|doctorate|doctoral|professional doctorate)\b/i, "PHD"],
-  [/\b(master (?:of|by) research|research master'?s?|master (?:of )?philosophy)\b/i, "Master (Research)"],
+  [/\b(master (?:of|by|in) research|research master'?s?|master (?:of |in )?philosophy)\b/i, "Master (Research)"],
   [/\b(graduate certificate|postgraduate certificate|grad\.? cert(?:ificate)?|graduate diploma|postgraduate diploma|grad\.? dip(?:loma)?)\b/i, "Graduate Diploma"],
-  [/\b(master of|master'?s|masters|magister|executive master)\b/i, "Master"],
-  [/\b(bachelor of|bachelor'?s|bachelors|bachelor|licenciatura|honou?rs degree)\b/i, "Bachelor"],
+  // "of" is not the only preposition a catalogue uses — US programmes write "Master In Teaching".
+  [/\b(master (?:of|in)|master'?s|masters|magister|executive master|educational specialist)\b/i, "Master"],
+  [/\b(bachelor (?:of|in)|bachelor'?s|bachelors|bachelor|licenciatura|honou?rs degree)\b/i, "Bachelor"],
   [/\b(associate degree|associate of|associate in|undergraduate higher diploma)\b/i, "Bachelor"],
   [/\b(advanced? diploma)\b/i, "Advance Diploma"],
   [/\b(diploma of higher education|foundation degree|higher national diploma|diploma)\b/i, "Diploma"],
