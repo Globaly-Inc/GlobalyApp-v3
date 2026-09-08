@@ -1,5 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG } from "../const";
 import type { SortOrder } from "../const";
 import type {
   Accreditation,
@@ -64,11 +64,18 @@ export const allExtractionsRealApi = {
     if (statuses?.length) query.statuses = statuses.join(",");
     if (!params.showDeclined) query.exclude_statuses = "declined";
 
-    if (params.mode === "ai-ongoing") {
-      query.exclude_source_type = "agentcis";
+    // An admin-created institution ("manual") and a self-registered one ("self_service") each
+    // own a synthetic job, status "done", purely so their courses have a job_id to hang off.
+    // Neither is an extraction, so both stay out of every dashboard list unless asked for.
+    if (OWNED_JOB_SOURCE_TYPES.includes(params.sourceFilter ?? "")) {
+      query.source_type = params.sourceFilter!;
+    } else if (params.mode === "ai-ongoing") {
+      query.exclude_source_type = ["agentcis", ...OWNED_JOB_SOURCE_TYPES].join(",");
     } else if (params.mode === "completed" && params.sourceFilter && params.sourceFilter !== "all") {
       if (params.sourceFilter === "agentcis") query.source_type = "agentcis";
-      else query.exclude_source_type = "agentcis";
+      else query.exclude_source_type = ["agentcis", ...OWNED_JOB_SOURCE_TYPES].join(",");
+    } else {
+      query.exclude_source_type = OWNED_JOB_SOURCE_TYPES.join(",");
     }
 
     if (params.businessCategoryId) query.business_category_id = String(params.businessCategoryId);

@@ -43,7 +43,7 @@ export async function listJobsFiltered(
     statuses?: string[];
     excludeStatuses?: string[];
     sourceType?: string;
-    excludeSourceType?: string;
+    excludeSourceTypes?: string[];
     businessCategoryId?: number;
     q?: string;
     sort?: repo.JobSort;
@@ -54,7 +54,7 @@ export async function listJobsFiltered(
     statuses: opts.statuses,
     excludeStatuses: opts.excludeStatuses,
     sourceType: opts.sourceType,
-    excludeSourceType: opts.excludeSourceType,
+    excludeSourceTypes: opts.excludeSourceTypes,
     businessCategoryId: opts.businessCategoryId,
     q: opts.q,
   };

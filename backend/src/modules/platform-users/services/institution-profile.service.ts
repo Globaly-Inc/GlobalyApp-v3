@@ -2,6 +2,7 @@
 
 import * as storage from "../../../shared/storage/storageService.js";
 import * as repo from "../repositories/platform-users.repository.js";
+import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.repository.js";
 import type { InstitutionProfilePatchInput } from "../schemas/institution-profile.schema.js";
 import type { InstitutionRecord } from "../../../core/types.js";
 
@@ -29,5 +30,10 @@ export async function getMyInstitution(institution: InstitutionRecord) {
 
 export async function updateMyInstitution(institutionId: number, patch: InstitutionProfilePatchInput) {
   const updated = await repo.updateInstitution(institutionId, patch);
+  // Onboarding captures no website, so this is usually the first time the institution's own
+  // job gets a real URL — and that URL is what scopes its courses in the AI embed widget.
+  if (updated?.source_job_id && patch.website?.trim()) {
+    await jobsRepo.syncOwnedJobUrl(updated.source_job_id, patch.website.trim());
+  }
   return withImagePreviews(updated);
 }

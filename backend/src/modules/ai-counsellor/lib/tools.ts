@@ -11,7 +11,7 @@
 import { SchemaType, type FunctionDeclaration, type Tool } from "@google/generative-ai";
 import { createChildLogger } from "../../../shared/logger.js";
 import { courseSlug } from "../../search/utils/slug.js";
-import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
+import { embed, isEmbedConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 import * as knowledge from "../repositories/knowledge.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import type { CounsellingContext } from "../repositories/sessions.repository.js";

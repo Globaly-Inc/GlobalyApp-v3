@@ -7,7 +7,7 @@ import type { CounsellingContext } from "../repositories/sessions.repository.js"
 // shapes, or handing the model different amounts of rack context for the same question.
 import { capPerDocument, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
-import { embed, isConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
+import { embed, isEmbedConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
 const logger = createChildLogger("rag-service");
 

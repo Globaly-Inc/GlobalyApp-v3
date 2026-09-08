@@ -279,6 +279,13 @@ export const EMBEDDING_DIMS = 3072;
  * and L2 searches stay honest if the model ever drifts.
  */
 export async function embed(text: string): Promise<number[]> {
+  if (config.EMBEDDING_PROVIDER === "openrouter") {
+    if (!isORConfigured()) {
+      throw new Error("EMBEDDING_PROVIDER=openrouter but OPENROUTER_API_KEY is not set");
+    }
+    return orEmbed(text, EMBEDDING_DIMS);
+  }
+
   // Called over REST: @google/generative-ai SDK lacks outputDimensionality support.
   const model = config.GEMINI_EMBEDDING_MODEL;
   const res = await fetch(
@@ -314,4 +321,10 @@ export async function embed(text: string): Promise<number[]> {
 
 export function isConfigured(): boolean {
   return !!config.GEMINI_API_KEY;
+}
+
+/** Can embed() actually run? Not the same question as isConfigured() once EMBEDDING_PROVIDER
+ *  points at the fallback key — the Gemini key is then irrelevant. */
+export function isEmbedConfigured(): boolean {
+  return config.EMBEDDING_PROVIDER === "openrouter" ? isORConfigured() : isConfigured();
 }

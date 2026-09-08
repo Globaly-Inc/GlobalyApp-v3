@@ -7,6 +7,23 @@ import { SUPERADMIN_SCHEMA as S } from "../../../consts.js";
 
 const now = () => masterKnex.fn.now();
 
+/**
+ * Where a listing's branch/service counts come from.
+ *
+ * An institution's catalog lives in extraction_* under source_job_id and is never copied into
+ * a tenant schema (see promote.service's header), so an institution reads through the job
+ * whatever its claim state — its business_services table stays empty for good. An ordinary
+ * business only borrows the job's counts while it is pre-seeded (account_status 0, never
+ * provisioned); once it owns rows of its own, those are the truth.
+ */
+export function readsCountsFromJob(row: {
+  account_status?: number | null;
+  category_slug?: string | null;
+  source_job_id?: string | null;
+}): boolean {
+  return Boolean(row.source_job_id) && (row.category_slug === "institutions" || row.account_status === 0);
+}
+
 export type BusinessSort = "name_asc" | "name_desc" | "created_desc" | "created_asc";
 
 
@@ -64,6 +81,7 @@ export async function listBusinesses(
       "b.owner_id", "b.schema_name", "b.profile_views", "b.source_job_id",
       masterKnex.raw("b.owner_id IS NULL as is_unclaimed"),
       "cat.name as category_name",
+      "cat.slug as category_slug",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
     ),
@@ -76,19 +94,22 @@ export async function listBusinesses(
   // Same borrowing institutions do: a pre-seeded business (account_status 0, never provisioned)
   // has no business_branches/business_services rows of its own — its real counts are the source
   // extraction job's scraped campuses/courses instead of a permanent, meaningless zero.
-  const preSeededJobIds = rows.filter((r: any) => r.account_status === 0 && r.source_job_id).map((r: any) => r.source_job_id);
-  const [courseCounts, campusCounts] = preSeededJobIds.length
+  const borrowedJobIds = rows.filter(readsCountsFromJob).map((r: any) => r.source_job_id);
+  // Counted from extraction_courses, not extraction_jobs.courses_extracted: the denormalised
+  // column is only maintained by the crawl workers, so a manual institution's hand-added
+  // courses would otherwise always read as 0.
+  const [courseCounts, campusCounts] = borrowedJobIds.length
     ? await Promise.all([
-        masterKnex(`${S}.extraction_jobs`).whereIn("id", preSeededJobIds).select("id", "courses_extracted"),
-        masterKnex(`${S}.extraction_campuses`).whereIn("job_id", preSeededJobIds).groupBy("job_id").select("job_id").count("id as count"),
+        masterKnex(`${S}.extraction_courses`).whereIn("job_id", borrowedJobIds).groupBy("job_id").select("job_id").count("id as count"),
+        masterKnex(`${S}.extraction_campuses`).whereIn("job_id", borrowedJobIds).groupBy("job_id").select("job_id").count("id as count"),
       ])
     : [[], []];
-  const courseCountByJob = new Map(courseCounts.map((r: any) => [r.id, Number(r.courses_extracted) || 0]));
+  const courseCountByJob = new Map(courseCounts.map((r: any) => [r.job_id, Number(r.count)]));
   const campusCountByJob = new Map(campusCounts.map((r: any) => [r.job_id, Number(r.count)]));
 
   await Promise.all(
     rows.map(async (row: any) => {
-      if (row.account_status === 0 && row.source_job_id) {
+      if (readsCountsFromJob(row)) {
         row.branch_count = campusCountByJob.get(row.source_job_id) ?? 0;
         row.service_count = courseCountByJob.get(row.source_job_id) ?? 0;
         return;
@@ -185,11 +206,14 @@ export async function listInstitutions(
   const jobIds = rows.map((r: any) => r.source_job_id).filter(Boolean);
   const [courseCounts, campusCounts] = jobIds.length
     ? await Promise.all([
-        masterKnex(`${S}.extraction_jobs`).whereIn("id", jobIds).select("id", "courses_extracted"),
+        masterKnex(`${S}.extraction_courses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
         masterKnex(`${S}.extraction_campuses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
       ])
     : [[], []];
-  const courseCountByJob = new Map(courseCounts.map((r: any) => [r.id, Number(r.courses_extracted) || 0]));
+  // Counted from extraction_courses rather than extraction_jobs.courses_extracted: that column
+  // is only incremented by the crawl workers, so a self-registered or manually created
+  // institution's hand-added courses would always read as 0.
+  const courseCountByJob = new Map(courseCounts.map((r: any) => [r.job_id, Number(r.count)]));
   const campusCountByJob = new Map(campusCounts.map((r: any) => [r.job_id, Number(r.count)]));
 
   return rows.map((row: any) => ({
@@ -243,12 +267,12 @@ export async function findInstitutionDetail(id: number) {
   let branch_count = 0;
   let service_count = 0;
   if (row.source_job_id) {
-    const [job, [{ count }]] = await Promise.all([
-      masterKnex(`${S}.extraction_jobs`).where({ id: row.source_job_id }).first("courses_extracted"),
+    const [[{ count: courseCount }], [{ count: campusCount }]] = await Promise.all([
+      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).count("id as count"),
       masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
     ]);
-    service_count = Number(job?.courses_extracted) || 0;
-    branch_count = Number(count) || 0;
+    service_count = Number(courseCount) || 0;
+    branch_count = Number(campusCount) || 0;
   }
 
   // Same status-vocabulary mapping as listInstitutions.
@@ -320,22 +344,21 @@ export async function findBusinessDetail(id: number) {
       "b.*",
       masterKnex.raw("b.owner_id IS NULL as is_unclaimed"),
       "cat.name as category_name",
+      "cat.slug as category_slug",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
     )
     .first();
   if (!row) return row;
 
-  // Same fallback as listBusinesses: a pre-seeded business (account_status 0, never provisioned)
-  // has no business_branches/business_services rows of its own — its real counts are the source
-  // extraction job's scraped campuses/courses instead of a permanent, meaningless zero.
-  if (row.account_status === 0 && row.source_job_id) {
-    const [job, [{ count: campusCount }]] = await Promise.all([
-      masterKnex(`${S}.extraction_jobs`).where({ id: row.source_job_id }).first("courses_extracted"),
+  // Same rule as listBusinesses — see readsCountsFromJob.
+  if (readsCountsFromJob(row)) {
+    const [[{ count: courseCount }], [{ count: campusCount }]] = await Promise.all([
+      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).count("id as count"),
       masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
     ]);
     row.branch_count = Number(campusCount) || 0;
-    row.service_count = Number(job?.courses_extracted) || 0;
+    row.service_count = Number(courseCount) || 0;
     return row;
   }
 
