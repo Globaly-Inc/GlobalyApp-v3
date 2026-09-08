@@ -110,7 +110,7 @@ Extract this JSON:
       "career_paths": [],
       "fees": [
         {
-          "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+          "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
           "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
           "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
           "student_type": "domestic|international|both",
@@ -190,6 +190,7 @@ Rules:
 - If a page presents ONE subject area offered as MULTIPLE qualification variants — e.g. "Aerospace Engineering" offered as BEng(Hons), MEng, and BSc — extract ONE COURSE OBJECT PER VARIANT, never a single course for the subject as a whole. Each variant's "name" is its full specific title as shown (e.g. "Aerospace Engineering BEng(Hons)"), its "subject_area" is the shared subject name without the qualification (e.g. "Aerospace Engineering"), and its "degree_level" is derived from that variant's own qualification (BEng/BSc/BA/BBA → Bachelor; MEng/MSc/MA/MBA → Master; PhD/DPhil → PhD; Grad Cert → Graduate Certificate; Grad Dip → Graduate Diploma). Never emit a course for the bare subject heading with no qualification attached.
 - Do NOT extract a page as a course if it describes the ADMISSIONS PROCESS in general — e.g. "How to Apply as a First-Year Student", "Transfer Pathways", "Application Requirements", "Dates and Deadlines" — rather than one specific named qualification. These pages talk about applying, deadlines, or eligibility across many/all programs at once, and never name one degree with its own curriculum. Never invent a degree_level (e.g. "Bachelor") for a page like this just because it mentions undergraduate/first-year admission — if the page does not name one specific qualification, return an empty courses array.
 - Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
+- TUITION AND APPLICATION ONLY: extract the tuition/course fee and the fees a student pays to apply or enrol (application, admission, enrolment, registration). Ignore every other charge the page lists — health cover/OSHC/insurance, medical, materials/books, exams, student services/amenities, late payment, visa, accommodation, transport, graduation — even when it appears in the same fee table.
 - Never invent fees or dates — only extract what's explicitly stated
 - For eligibility requirements, always populate score_type + min_score when a specific numeric threshold is stated, not just in the free-text description: "percentage" for a % figure, "gpa_4" for a GPA (the default scale when no scale is named — most common convention), "gpa_10" only when the page explicitly says the GPA is out of 10, "cgpa" when the page uses that term specifically. Leave both null if no number is stated.
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
@@ -226,7 +227,7 @@ Return JSON:
 {
   "fees": [
     {
-      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
       "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
       "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
       "student_type": "domestic|international|both",
@@ -238,6 +239,7 @@ Return JSON:
 
 Rules:
 - NAME vs DESCRIPTION: name is only the label a student reads in a fee table ("Tuition Fee", "Semester Fee", "Application Fee"). Every figure, credit count, range, and caveat goes in description — never in name.
+- TUITION AND APPLICATION ONLY: extract the tuition/course fee and the fees a student pays to apply or enrol (application, admission, enrolment, registration). Ignore every other charge the page lists — health cover/OSHC/insurance, medical, materials/books, exams, student services/amenities, late payment, visa, accommodation, transport, graduation — even when it appears in the same fee table.
 - If a fee is shown as a range, set total_amount to the lower bound and keep the full range in description
 - If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
 - TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: period_type "Per Unit" with total_amount = rate, AND period_type "Total" with total_amount = the stated or computed total. Never capture only the per-unit rate when a total is derivable or stated.
@@ -274,7 +276,7 @@ Return JSON:
   ],
   "fees": [
     {
-      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
       "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
       "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
       "student_type": "domestic|international|both",
@@ -286,6 +288,7 @@ Return JSON:
 
 Rules:
 - NAME vs DESCRIPTION: name is only the label a student reads in a fee table ("Tuition Fee", "Semester Fee", "Application Fee"). Every figure, credit count, range, and caveat goes in description — never in name.
+- TUITION AND APPLICATION ONLY: extract the tuition/course fee and the fees a student pays to apply or enrol (application, admission, enrolment, registration). Ignore every other charge the page lists — health cover/OSHC/insurance, medical, materials/books, exams, student services/amenities, late payment, visa, accommodation, transport, graduation — even when it appears in the same fee table.
 - If a fee is shown as a range, set total_amount to the lower bound and keep the full range in description
 - If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
 - TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: period_type "Per Unit" with total_amount = rate, AND period_type "Total" with total_amount = the stated or computed total. Never capture only the per-unit rate when a total is derivable or stated.
@@ -671,6 +674,7 @@ Rules:
 - If a fee is per semester/term, calculate the annual total
 - If you cannot find a fee for a specific course, set its totals to 0
 - Currency: an ISO 4217 code only (never a symbol like "$"), defaulting to ${currency}${countryNote}. Only use a different code if explicitly stated
+- Extract TUITION ONLY — the course's tuition/programme fee. Ignore health cover/OSHC, medical, materials, exams, student services, visa, accommodation and other incidental charges even when the fee table lists them
 - Only extract fees explicitly stated — do NOT guess
 
 === FEES PAGE ===

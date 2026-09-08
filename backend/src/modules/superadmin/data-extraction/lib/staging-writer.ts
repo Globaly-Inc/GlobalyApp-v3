@@ -444,7 +444,8 @@ export async function upsertFee(jobId: string, fee: {
   total_amount?: number | null;
   /** The workers' duration-aware split; upsertFee derives one from the period when absent. */
   installments?: Installment[] | null;
-}): Promise<string> {
+}): Promise<string | null> {
+  if (!isQuotableFee(fee.name)) return null;
   const currency = await normaliseCurrency(fee.currency, jobId);
   const periodType = normalisePeriodType(fee.period_type);
   const name = feeLabel(fee.name, periodType);
@@ -503,6 +504,24 @@ const FEE_TYPE_KEYWORDS: Array<[RegExp, string]> = [
 export function feeTypeFor(name: string | null | undefined): string {
   for (const [re, type] of FEE_TYPE_KEYWORDS) if (re.test(name ?? "")) return type;
   return "Tuition Fee";
+}
+
+// Only what a student pays to study and to apply is staged. An institution's fee page also lists
+// health cover, materials, exams, late payment, services charges, visas and accommodation — real
+// fees, but not ours to quote, so they never reach the fee section.
+const QUOTABLE_FEE_TYPES = new Set(["Tuition Fee", "Application Fee", "Enrollment Fee"]);
+// feeTypeFor falls back to Tuition for anything it doesn't recognise, so a named non-academic
+// charge has to be rejected outright before that fallback keeps it.
+// ponytail: label only, never the description — page wording routinely mentions "OSHC not
+// included" inside a genuine tuition entry.
+const NON_QUOTABLE_FEE =
+  /medic|visa|accommodat|housing|hostel|dorm|airport|transport|travel|meal|food|uniform|laundr|librar|sport|gym|graduation|ceremon|bond|caution|excursion|orientation|transcript|replacement|parking|id ?card/i;
+
+/** True when a fee is tuition or part of the application/enrolment process — the only two kinds
+ *  this platform extracts. An unnamed fee is tuition: it comes from the bulk tuition table. */
+export function isQuotableFee(name?: string | null): boolean {
+  const label = (name ?? "").trim();
+  return !NON_QUOTABLE_FEE.test(label) && QUOTABLE_FEE_TYPES.has(feeTypeFor(label));
 }
 
 /**
@@ -643,6 +662,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
         currency: fee.currency ?? null,
         total_amount: coerceMoney(fee.total_amount),
       });
+      if (!feeId) continue;
       await masterKnex(`${S}.extraction_course_fee_assignments`)
         .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
         .onConflict(["course_id", "course_fee_id"]).ignore();

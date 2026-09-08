@@ -953,6 +953,7 @@ async function handleEnrichmentStep(jobId: string) {
       period_type: fee.period,
       installments,
     });
+    if (!feeId) continue;
     await masterKnex(`${S}.extraction_course_fee_assignments`)
       .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
       .onConflict(["course_id", "course_fee_id"]).ignore();
@@ -1074,6 +1075,7 @@ async function handleCourseDataStep(
           total_amount: fee.total_amount as number,
           installments,
         });
+        if (!feeId) continue;
         await masterKnex(`${S}.extraction_course_fee_assignments`)
           .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
           .onConflict(["course_id", "course_fee_id"]).ignore();
