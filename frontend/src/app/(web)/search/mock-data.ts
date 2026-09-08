@@ -365,8 +365,10 @@ function matchesCommon(
   return true;
 }
 
-function paginate<T>(rows: T[], params: SearchFilterParams): Paginated<T> {
-  const limit = 10;
+function paginate<T>(rows: T[], params: SearchFilterParams & { limit?: number }): Paginated<T> {
+  // Mirrors the API: a caller that asks for a bigger page gets one (the institution catalog asks
+  // for 100 so its in-card scroller holds the whole level), otherwise the API default of 10.
+  const limit = params.limit && params.limit > 0 ? params.limit : 10;
   const page = params.page && params.page > 0 ? params.page : 1;
   const start = (page - 1) * limit;
   return {
@@ -516,7 +518,7 @@ export function mockGetBusinessBySubdomain(subdomain: string): BusinessDetail | 
 }
 
 export function mockGetInstitutionCourses(
-  slug: string, params: Pick<SearchFilterParams, "page" | "search">,
+  slug: string, params: Pick<SearchFilterParams, "page" | "search"> & { limit?: number },
 ): Paginated<SearchCourse> {
   console.log("[mock] getInstitutionCourses", slug, params);
   const institution = MOCK_BUSINESSES.institutions.find((b) => b.slug === slug);
