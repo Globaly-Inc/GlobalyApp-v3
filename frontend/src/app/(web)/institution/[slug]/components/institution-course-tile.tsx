@@ -24,13 +24,13 @@ export function InstitutionCourseTile({ course }: Readonly<{ course: SearchCours
   const duration = formatDuration(course.duration_weeks, course.study_mode);
 
   return (
-    <div className="group relative rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40">
+    <div className="group relative rounded-md border border-border bg-card p-3 transition-colors hover:border-primary/40">
       {/* Whole-tile link sits underneath; the save button opts back into pointer events. */}
       <Link href={`/course/${course.slug}`} className="absolute inset-0 z-0" aria-label={course.name} />
 
       <div className="pointer-events-none flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
+          <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
             {course.name}
           </h3>
           {course.degree_level && (
@@ -44,7 +44,7 @@ export function InstitutionCourseTile({ course }: Readonly<{ course: SearchCours
         </div>
       </div>
 
-      <div className="pointer-events-none mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      <div className="pointer-events-none mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         {price && (
           <TileStat icon={Wallet} value={`${amountLabel(price.amount, price.currency)} · ${price.label}`} />
         )}

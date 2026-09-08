@@ -42,6 +42,19 @@ export async function listInstitutionCampuses(jobId: string) {
 }
 
 /**
+ * The education agents the institution appoints — "Representatives" on the public profile. Like
+ * campuses they hang off the extraction job, so a hand-registered institution has none. Review
+ * marks a rejected agent `archived`; rows predating that column default to visible.
+ */
+export async function listInstitutionRepresentatives(jobId: string) {
+  return masterKnex(`${S}.extraction_agents`)
+    .where({ job_id: jobId })
+    .whereRaw("coalesce(source_status, 'active') <> 'archived'")
+    .select("id", "name", "email", "phone", "website", "address", "city", "state", "country", "logo_url")
+    .orderByRaw("name asc nulls last");
+}
+
+/**
  * The institution's team, read from the master-DB membership index rather than the tenant
  * `members` table — this public endpoint has no tenant connection to open.
  */

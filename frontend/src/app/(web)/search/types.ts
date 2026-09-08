@@ -243,6 +243,20 @@ export type InstitutionCampus = {
   email: string | null;
 };
 
+/** A scraped education agent representing the institution — the "Representatives" card. */
+export type InstitutionRepresentative = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  logo_url: string | null;
+};
+
 export type InstitutionMember = {
   id: number;
   first_name: string | null;
@@ -284,6 +298,7 @@ export type InstitutionDetail = SearchBusiness & {
   /** Signed preview URLs for `gallery_images`, resolved server-side. */
   gallery_image_urls?: (string | null)[];
   campuses: InstitutionCampus[];
+  representatives: InstitutionRepresentative[];
   members: InstitutionMember[];
   subject_areas: SubjectAreaSummary[];
   degree_levels: CourseFacet[];

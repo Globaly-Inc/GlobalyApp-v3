@@ -479,7 +479,7 @@ export function mockGetInstitutionBySlug(slug: string): InstitutionDetail | null
     registration_number: null, registration_licenses: null,
     facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
     company_size: null, created_at: null, video_urls: null,
-    campuses: [], members: [], subject_areas: [], degree_levels: [],
+    campuses: [], representatives: [], members: [], subject_areas: [], degree_levels: [],
   };
 }
 

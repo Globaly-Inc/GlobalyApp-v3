@@ -211,6 +211,7 @@ export async function getInstitutionBySlug(slug: string): Promise<InstitutionDet
   return {
     ...data,
     campuses: data.campuses ?? [],
+    representatives: data.representatives ?? [],
     members: data.members ?? [],
     subject_areas: data.subject_areas ?? [],
     degree_levels: data.degree_levels ?? [],
