@@ -422,9 +422,22 @@ export function evaluateEligibility(input: {
     };
   }
 
+  // A pathway that produced NO criteria is not evidence of anything, and must not be allowed to
+  // speak for the course. `rollup([])` is "unknown", which outranks not_eligible — so a single
+  // content-free requirement row (a scraped section heading like "Target Audience Requirements",
+  // with no score, degree level, test or description; see the NAME vs DESCRIPTION rule in
+  // extraction-prompts.ts) reported "unknown" for a student who genuinely fails the course's real
+  // pathway, hiding the failure behind a row that states nothing.
+  //
+  // Kept as a filter here rather than a guard in the writer: an empty pathway is equally reachable
+  // from an admin-created row and from a requirement whose only content is its name, and the wrong
+  // thing about it is being ranked, not being stored. `pathways` is non-empty (returned above), so
+  // the fallback keeps today's "unknown" answer for a course that really does state nothing.
+  const stated = pathways.filter((p) => p.criteria.length > 0);
+
   // Best status wins; among equally-ranked pathways the higher percentage does, so the one shown
   // is the one the student comes closest on rather than whichever the query returned first.
-  const best = pathways.reduce((a, b) => {
+  const best = (stated.length > 0 ? stated : pathways).reduce((a, b) => {
     if (RANK[b.status] !== RANK[a.status]) return RANK[b.status] > RANK[a.status] ? b : a;
     return (b.percentage ?? -1) > (a.percentage ?? -1) ? b : a;
   });

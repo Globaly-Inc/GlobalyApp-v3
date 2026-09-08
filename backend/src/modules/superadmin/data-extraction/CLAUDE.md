@@ -249,6 +249,45 @@ The centralized error handler maps these to HTTP responses.
    (`nextIntake()` in search/repositories/courses.repository.ts) rather than the earliest
    ever scraped, and the intake-year facet gained the `PUBLICLY_VISIBLE` gate every
    other facet already had.
+   (i) English requirements are deduped and re-extraction replaces them (2026-09-08).
+   `extraction_english_requirements` was the last extracted child table still written with a
+   bare insert by BOTH workers — the one table (c) missed. A course found on a listing page,
+   its detail page and a catalog entry accumulated an IELTS row per page, and the step
+   worker's `eligibility` case deleted the requirement rows but not the English ones, so
+   every per-course re-extraction appended another full set, unbounded. Duplicates are not
+   cosmetic: the public card renders one tile per row, and `evaluateEligibility`'s percentage
+   is a share of the criteria it emitted, so three IELTS rows weighted English three times in
+   a real student's verdict. Worse, the row a reader saw was usually the THINNEST — a listing
+   page states "IELTS 6.5" and only the detail page carries the bands — which is why per-band
+   minimums looked like they were never extracted. Now `upsertEnglishRequirement` in
+   `staging-writer.ts` (called from both workers, per (h)) dedupes on (course_id, test name),
+   fills blanks and never overwrites a stated value; the step worker deletes the course's rows
+   first, so a re-extraction reflects the page as it reads now. Course-scoped with no junction,
+   so unlike (g) there is nothing to repoint. An entry naming NO test is dropped rather than
+   stored — `sameTest` can match nothing against a null name, so it could only ever emit a
+   permanently-`unknown` criterion capping the verdict percentage below 100, and render as a
+   tile labelled "Test". Both prompts now also name Duolingo/OET, ask for one entry PER
+   ACCEPTED TEST ("IELTS 6.5, TOEFL 79 or PTE 58" is three entries, not one), and ask for a
+   blanket band floor ("no band below 6.0") to be spread across all four columns.
+   Repair for rows already stored: `eligibility:backfill` pass 6.
+   (j) A requirement must state something, and can no longer speak for a course by stating
+   nothing (2026-09-08). Both eligibility prompts had `"description": "details"` and no
+   NAME vs DESCRIPTION rule, so the LLM routinely returned a scraped section heading with
+   every other field null — a live example: `{name: "Target Audience Requirements"}`, nothing
+   else. `description` is now specified as the page's own wording, verbatim where possible,
+   carrying every condition, exception, equivalency, subject prerequisite and alternative
+   pathway (the spec's "Requirement Description"), with the same NAME vs DESCRIPTION split the
+   fee prompt already had and an explicit ban on name-only rows. English WAIVER/EQUIVALENT
+   wording ("waived if your previous degree was taught in English", "or an approved
+   equivalent") goes in that description too — `extraction_english_requirements` holds SCORES
+   ONLY and deliberately gained no description column of its own; the requirement's
+   `description` (the admin form's "Notes / Remarks") is the single place that prose lives.
+   The engine side is fixed independently, because an empty row is equally reachable from an
+   admin-created one: `evaluateEligibility` now ignores pathways that produced no criteria at
+   all unless they are all there is. `rollup([])` is "unknown", which OUTRANKS not_eligible,
+   so one content-free row reported "unknown" for a student who genuinely failed the course's
+   real requirement — the failure hidden behind a row stating nothing. Regression-tested in
+   `tests/eligibility-extraction.ts` (verified failing without the fix).
    Repair for data already stored: `npm run eligibility:backfill` (dry-run by default,
    `--apply` to write).
    Exception: `/jobs-filtered` search/sort/category-filter (2026-08-24) —

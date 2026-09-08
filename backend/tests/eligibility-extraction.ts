@@ -15,7 +15,9 @@ import {
   deriveIntakeMonthYear,
   normaliseAcademicTests,
   eligibilityRowsAgree,
+  englishUpdates,
 } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
+import { evaluateEligibility } from "../src/modules/enquiries/shared/eligibility.js";
 import { findTests, testPattern } from "../src/modules/superadmin/data-extraction/lib/requirement-text.js";
 
 let passed = 0;
@@ -256,6 +258,69 @@ assert("a null seed lets a corrected name win", () =>
   eq(deriveIntakeMonthYear("Fall 2027", null, null, null).intake_year, 2027));
 assert("a provided seed still wins", () =>
   eq(deriveIntakeMonthYear("Fall 2027", null, null, 2026).intake_year, 2026));
+
+// extraction_english_requirements was the last child table written with a bare insert, so a course
+// found on a listing page, its detail page and a catalog entry ended up with three IELTS rows —
+// three tiles on the public card, and English weighted 3x in evaluateEligibility's percentage.
+console.log("\nenglishUpdates — one row per test per course, blanks filled, bars never rewritten");
+assert("a later page's band minimums fill in behind an overall-only row", () =>
+  eq(englishUpdates(
+    { overall_score: "6.5", reading_score: null },
+    { overall_score: "6.5", reading_score: "6.0" }),
+    { reading_score: "6.0" }));
+assert("a page stating a different overall never rewrites the stated bar", () =>
+  eq(englishUpdates({ overall_score: "6.5" }, { overall_score: "7.0" }), {}));
+assert("an empty string counts as blank on the stored side", () =>
+  eq(englishUpdates({ source_url: "" }, { source_url: "https://x.test/entry" }),
+    { source_url: "https://x.test/entry" }));
+assert("a null incoming value never blanks a stored one", () =>
+  eq(englishUpdates({ overall_score: "6.5" }, { overall_score: null }), {}));
+assert("nothing to do produces no update at all", () =>
+  eq(englishUpdates({ overall_score: "6.5" }, { overall_score: "6.5" }), {}));
+
+// A scraped section heading ("Target Audience Requirements") with no score, degree level, test or
+// description produces a PATHWAY WITH ZERO CRITERIA. rollup([]) is "unknown", which outranks
+// not_eligible, so that row spoke for the whole course and hid a real failure from the student.
+//
+// Note the english_requirements are empty in these cases on purpose: englishCriteria is appended to
+// EVERY pathway, so a course with an English bar has no criteria-less pathway to begin with and
+// exercises none of this.
+console.log("\nevaluateEligibility — a requirement that states nothing cannot outrank a failure");
+type EvalInput = Parameters<typeof evaluateEligibility>[0];
+const NO_STUDENT: EvalInput["student"] = { qualifications: [], languageTests: [], academicTests: [] };
+const belowBar: EvalInput["student"] = {
+  qualifications: [{ qualification_type: "Bachelor", grading_system: "percentage", grade_value: "50", end_date: "2024-01-01" }],
+  languageTests: [], academicTests: [],
+};
+const bareRow: EvalInput["requirements"][number] = {
+  id: "bare", name: "Target Audience Requirements", applicable_to: "both",
+  min_degree_level: null, min_score_percent: null, min_score_grade: null, score_type: null,
+  min_score: null, description: null, academic_tests: null, language_tests: null,
+};
+const realRow: EvalInput["requirements"][number] = { ...bareRow, id: "real", name: "Academic Entry", min_score_percent: 65 };
+
+assert("a bare heading row no longer masks the failed pathway beside it", () =>
+  eq(evaluateEligibility({
+    requirements: [bareRow, realRow], englishRequirements: [],
+    degreeLadder: new Map(), student: belowBar, studentType: "international",
+  }).status, "not_eligible"));
+assert("the verdict is reported against the pathway that actually stated something", () =>
+  eq(evaluateEligibility({
+    requirements: [bareRow, realRow], englishRequirements: [],
+    degreeLadder: new Map(), student: belowBar, studentType: "international",
+  }).requirement_id, "real"));
+assert("a real pass is still a pass with a bare row in the mix", () =>
+  eq(evaluateEligibility({
+    requirements: [bareRow, realRow], englishRequirements: [],
+    degreeLadder: new Map(),
+    student: { ...belowBar, qualifications: [{ ...belowBar.qualifications[0], grade_value: "80" }] },
+    studentType: "international",
+  }).status, "eligible"));
+assert("a course whose only row states nothing still answers unknown", () =>
+  eq(evaluateEligibility({
+    requirements: [bareRow], englishRequirements: [],
+    degreeLadder: new Map(), student: NO_STUDENT, studentType: "international",
+  }).status, "unknown"));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -21,7 +21,7 @@
  * the database — which is enough for these, because the information was captured, just written
  * to the wrong column (or to one row per course instead of one shared row).
  *
- * Five passes, each independently useful:
+ * Six passes, each independently useful:
  *
  *   1. UNFABRICATE. deriveScoreFromDescription used to read any percentage-shaped number out of
  *      the free-text description, including percentiles and cohort averages, and store it as a
@@ -54,6 +54,13 @@
  *      any legacy row reachable only via extraction_intakes.course_id gets its assignment row,
  *      or it would vanish from course pages.
  *
+ *   6. ONE ENGLISH ROW PER TEST PER COURSE. extraction_english_requirements was the last child
+ *      table written with a bare insert (pass 4's story, one table later), so the same course
+ *      accumulated an IELTS row per page that mentioned it — several tiles on the public card, and
+ *      English weighted several times over in the eligibility percentage. Merging also RECOVERS the
+ *      per-component minimums: the first row is usually the thinnest (a listing page states "IELTS
+ *      6.5", only the detail page carries the bands), and it was the one being displayed.
+ *
  * Rerunnable: every pass is a no-op once applied.
  */
 
@@ -68,6 +75,7 @@ import { findTests } from "../src/modules/superadmin/data-extraction/lib/require
 const S = "superadmin";
 const REQUIREMENTS = `${S}.extraction_eligibility_requirements`;
 const INTAKES = `${S}.extraction_intakes`;
+const ENGLISH = `${S}.extraction_english_requirements`;
 
 const apply = process.argv.includes("--apply");
 const refreshTests = process.argv.includes("--refresh-tests");
@@ -109,7 +117,7 @@ async function unfabricateScores() {
     return numbers.some((n) => Number(n) === stored);
   });
 
-  console.log(`\n[1/5] Fabricated minimum scores: ${doomed.length} of ${rows.length} scored requirements`);
+  console.log(`\n[1/6] Fabricated minimum scores: ${doomed.length} of ${rows.length} scored requirements`);
   for (const r of doomed.slice(0, 15)) {
     console.log(`  - ${r.name ?? "(unnamed)"} · ${r.min_score_percent ?? r.min_score} ← "${String(r.description).slice(0, 90)}"`);
   }
@@ -143,7 +151,7 @@ async function recoverAcademicTests(catalogue: string[]) {
   }
 
   const verb = refreshTests ? "re-derived" : "recoverable";
-  console.log(`\n[2/5] Academic tests ${verb} from name/notes: ${updates.length} of ${rows.length} requirements`);
+  console.log(`\n[2/6] Academic tests ${verb} from name/notes: ${updates.length} of ${rows.length} requirements`);
   for (const u of updates.slice(0, 15)) {
     const summary = u.tests
       .map((t) => `${t.test_name} ${t.score ? `≥ ${t.score}` : "(no minimum stated)"}${t.is_optional ? " · optional" : ""}`)
@@ -180,7 +188,7 @@ async function deriveIntakes() {
     }
   }
 
-  console.log(`\n[3/5] Intakes with a derivable month/year: ${updates.length} of ${rows.length} incomplete intakes`);
+  console.log(`\n[3/6] Intakes with a derivable month/year: ${updates.length} of ${rows.length} incomplete intakes`);
   // When nothing derives, the names are the diagnosis — show what is actually stored rather than
   // leaving a bare 0. US catalogues commonly name intakes by season with no year at all ("Fall",
   // "Spring Semester"), which carries no month and no year to recover.
@@ -326,7 +334,7 @@ async function mergeDuplicateRequirements() {
   }
 
   const dropCount = merges.reduce((n, m) => n + m.drop.length, 0);
-  console.log(`\n[4/5] Duplicate requirements to collapse: ${dropCount} rows across ${merges.length} requirements`);
+  console.log(`\n[4/6] Duplicate requirements to collapse: ${dropCount} rows across ${merges.length} requirements`);
   for (const m of merges.slice(0, 15)) {
     console.log(`  - "${m.keep.name}" (${m.keep.applicable_to}) · ${m.drop.length + 1} copies → 1 shared row`);
   }
@@ -405,7 +413,7 @@ async function shareIntakesAcrossCourses() {
     )
     .select("ei.id", "ei.job_id", "ei.course_id", "ei.intake_name");
 
-  console.log(`\n[5/5] Intakes reachable only by the legacy course_id column: ${orphans.length}`);
+  console.log(`\n[5/6] Intakes reachable only by the legacy course_id column: ${orphans.length}`);
   if (orphans.length > 0) {
     console.log("      these are INVISIBLE on public course pages until this runs with --apply — rescuing them");
     if (apply) {
@@ -518,6 +526,93 @@ async function shareIntakesAcrossCourses() {
   return orphans.length + dropCount;
 }
 
+/**
+ * Pass 6 — ONE ENGLISH ROW PER TEST PER COURSE.
+ *
+ * extraction_english_requirements was the last child table written with a bare insert, so a course
+ * found on a listing page, its detail page and a catalog entry ended up with three IELTS rows. The
+ * public card renders one tile per row and evaluateEligibility's percentage is a share of the
+ * criteria it emitted, so the duplicates both cluttered the card and weighted English several times
+ * over in a student's verdict. Frequently the first row (the one a reader sees) was also the
+ * thinnest — a listing page states "IELTS 6.5" and only the detail page carries the bands — so
+ * collapsing these is what makes the per-component minimums visible at all.
+ *
+ * Merge rule is upsertEnglishRequirement's: fill the survivor's blanks from its copies, never
+ * overwrite a value it already states. Rows are course-scoped with no junction, so unlike passes
+ * 4 and 5 there are no assignments to repoint — the copies just go.
+ *
+ * A genuine disagreement (two rows stating different overall scores for the same test) keeps the
+ * oldest and is REPORTED, not guessed at, matching the writer.
+ */
+async function collapseDuplicateEnglishRequirements() {
+  const MERGED = [
+    "overall_score", "listening_score", "reading_score",
+    "writing_score", "speaking_score", "source_url",
+  ] as const;
+
+  const rows = await masterKnex(ENGLISH)
+    .modify((q) => { if (jobId) q.where({ job_id: jobId }); })
+    .whereNotNull("course_id")
+    .whereNotNull("test_type_name")
+    .whereRaw("TRIM(test_type_name) <> ''")
+    .orderBy("created_at", "asc")
+    .select("*");
+
+  // Grouped by what upsertEnglishRequirement dedupes on, so this pass and the writer agree.
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const r of rows) {
+    const key = `${r.course_id} ${String(r.test_type_name).trim().toLowerCase()}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
+  }
+
+  const merges: { keep: Record<string, unknown>; drop: Record<string, unknown>[] }[] = [];
+  const disagreements: { test: string; keep: string; other: string }[] = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const [keep, ...drop] = group;
+    merges.push({ keep, drop });
+    for (const d of drop) {
+      if (d.overall_score != null && keep.overall_score != null && !sameValue(d.overall_score, keep.overall_score)) {
+        disagreements.push({
+          test: String(keep.test_type_name),
+          keep: String(keep.overall_score),
+          other: String(d.overall_score),
+        });
+      }
+    }
+  }
+
+  const dropCount = merges.reduce((n, m) => n + m.drop.length, 0);
+  console.log(`\n[6/6] Duplicate English requirement rows to collapse: ${dropCount} across ${merges.length} course/test pairs`);
+  for (const m of merges.slice(0, 15)) {
+    console.log(`  - ${m.keep.test_type_name} on course ${m.keep.course_id} · ${m.drop.length + 1} copies → 1 row`);
+  }
+  if (merges.length > 15) console.log(`  … and ${merges.length - 15} more`);
+  if (disagreements.length > 0) {
+    console.log(`      ${disagreements.length} copies state a different overall score — the OLDEST is kept, review these:`);
+    for (const d of disagreements.slice(0, 10)) {
+      console.log(`        · ${d.test} — keeping ${d.keep}, discarding ${d.other}`);
+    }
+  }
+
+  if (apply) {
+    for (const { keep, drop } of merges) {
+      const updates: Record<string, unknown> = {};
+      for (const f of MERGED) {
+        if (keep[f] != null && keep[f] !== "") continue;
+        const donor = drop.find((d) => d[f] != null && d[f] !== "");
+        if (donor) updates[f] = donor[f];
+      }
+      if (Object.keys(updates).length > 0) {
+        await masterKnex(ENGLISH).where({ id: keep.id }).update({ ...updates, updated_at: masterKnex.fn.now() });
+      }
+      await masterKnex(ENGLISH).whereIn("id", drop.map((d) => d.id as string)).delete();
+    }
+    if (dropCount > 0) console.log(`      ✓ collapsed ${dropCount} duplicate English rows`);
+  }
+  return dropCount;
+}
+
 async function main() {
   console.log(apply ? "APPLYING changes" : "DRY RUN — nothing will be written (pass --apply to write)");
   if (jobId) console.log(`Scoped to job ${jobId}`);
@@ -535,11 +630,13 @@ async function main() {
   // differed only by a fabricated score become mergeable once pass 1 has cleared it.
   const collapsed = await mergeDuplicateRequirements();
   const shared = await shareIntakesAcrossCourses();
+  const english = await collapseDuplicateEnglishRequirements();
 
   console.log(
     `\n${apply ? "Applied" : "Would change"}: ${fabricated} invented scores cleared, ` +
     `${recovered} requirements gained academic tests, ${intakes} intakes gained a month/year, ` +
-    `${collapsed} duplicate requirement rows collapsed, ${shared} intake rows linked or collapsed.`,
+    `${collapsed} duplicate requirement rows collapsed, ${shared} intake rows linked or collapsed, ` +
+    `${english} duplicate English rows collapsed.`,
   );
   if (!apply) console.log("Re-run with --apply to write.");
 }

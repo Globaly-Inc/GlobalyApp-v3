@@ -77,6 +77,12 @@ const TABLE_TO_STEP: Record<string, string> = {
   extraction_visa_services: "visa_service_extraction",
 };
 
+/**
+ * Columns an admin owns outright, which no extraction step writes. Edits to these are saved and
+ * recorded like any other, but never turned into a lesson for the extractor (see the loop below).
+ */
+const ADMIN_ONLY_FIELDS = new Set(["custom_dates"]);
+
 export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
   const { table, id, patch, job_id, source_url } = input;
 
@@ -154,6 +160,14 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
   // Ported from V2 extraction-memory "learn" action
   const step = TABLE_TO_STEP[table] ?? table;
   for (const field of Object.keys(patch)) {
+    // Fields the extractor never produces cannot teach it anything. `extraction_intakes.
+    // custom_dates` is authored entirely by admins (exam dates, scholarship deadlines — no
+    // scrape writes it), so the lesson this loop would mint after the second edit reads "admin
+    // has corrected custom_dates 2+ times on x.edu — use the corrected pattern", with one
+    // intake's exam dates as `example_good`, and that text goes into the extraction prompt as
+    // domain guidance. Teaching the LLM to reproduce a date nobody scraped is how fabricated
+    // data gets in. The correction is still recorded in extraction_memory above as provenance.
+    if (ADMIN_ONLY_FIELDS.has(field)) continue;
     const correctionCount = await masterKnex(`${S}.extraction_memory`)
       .where({ domain, step, entity_type: table })
       .whereRaw(`diff::text LIKE ?`, [`%"${field}"%`])

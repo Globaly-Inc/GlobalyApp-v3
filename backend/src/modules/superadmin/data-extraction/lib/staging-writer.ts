@@ -921,6 +921,94 @@ export async function upsertEligibility(
 }
 
 /**
+ * The patch an existing English row takes from a newly extracted one: blanks filled, stated values
+ * never overwritten.
+ *
+ * Pure and exported so the merge rule is testable without a database — see
+ * tests/eligibility-extraction.ts. It is the only non-obvious part of upsertEnglishRequirement.
+ *
+ * Never overwriting is the deliberate half. A page saying "IELTS 6.5" with no bands must not keep a
+ * later page's band minimums out, but a page saying 7.0 must not silently raise a bar another page
+ * already stated for this course either — that is the same defect class as a fabricated minimum,
+ * one page's number gating a student against a course that stated a different one.
+ *
+ * ponytail: on a genuine disagreement the first stated value stands and `source_url` records which
+ * page it came from, for the admin to resolve. Fork a second row (as upsertEligibility does for
+ * contradicting requirements) only if real sites turn out to state alternative English bars per
+ * entry pathway.
+ */
+export function englishUpdates(
+  existing: Record<string, unknown>,
+  fields: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(
+      ([k, v]) => v != null && v !== "" && (existing[k] == null || existing[k] === ""),
+    ),
+  );
+}
+
+/**
+ * Upsert a course's English requirement — deduplicates by (course_id, test name) so one bar stated
+ * on a listing page, its detail page and a catalog entry is ONE row.
+ *
+ * This was the last extracted child entity still written with a bare insert (see CLAUDE.md (c),
+ * which gave intakes, requirements and fees their upserts and missed this table). Duplicates here
+ * are not merely untidy: the public course card renders one tile per row, and evaluateEligibility's
+ * percentage is a share of the criteria it emitted, so three IELTS rows weight English three times
+ * in a real student's verdict.
+ *
+ * Course-scoped, unlike upsertEligibility/upsertIntake — this table has a direct `course_id` and
+ * `course_id IS NULL` is what findEnglishRequirementsForCourse reads as institution-wide, so these
+ * rows are never shared between courses and there is no junction to key on.
+ *
+ * An entry naming no test is dropped rather than stored. `sameTest` can match nothing against a
+ * null name, so a nameless row can never be compared to a student's tests: it would emit an
+ * "English test ≥ 6.5" criterion that is permanently `unknown`, capping the verdict percentage
+ * below 100 forever, and render on the public card as a tile labelled "Test". A score with no test
+ * to attach it to is not a requirement.
+ */
+export async function upsertEnglishRequirement(
+  jobId: string,
+  courseId: string,
+  eng: ExtractedEnglishReq,
+  sourceUrl: string | null,
+): Promise<string | null> {
+  const name = (eng.test_type_name ?? "").trim();
+  if (!name) return null;
+
+  const fields = {
+    test_type_name: name,
+    overall_score: eng.overall_score ?? null,
+    listening_score: eng.listening_score ?? null,
+    reading_score: eng.reading_score ?? null,
+    writing_score: eng.writing_score ?? null,
+    speaking_score: eng.speaking_score ?? null,
+    source_url: sourceUrl,
+  };
+
+  const existing = await masterKnex(`${S}.extraction_english_requirements`)
+    .where({ job_id: jobId, course_id: courseId })
+    .whereRaw("LOWER(TRIM(test_type_name)) = ?", [name.toLowerCase()])
+    .orderBy("created_at", "asc")
+    .first();
+  if (existing) {
+    const updates = englishUpdates(existing, fields);
+    if (Object.keys(updates).length > 0) {
+      await masterKnex(`${S}.extraction_english_requirements`)
+        .where({ id: existing.id })
+        .update({ ...updates, updated_at: masterKnex.fn.now() });
+    }
+    return existing.id;
+  }
+
+  const [row] = await masterKnex(`${S}.extraction_english_requirements`)
+    .insert({ job_id: jobId, course_id: courseId, ...fields })
+    .returning("id");
+  return row.id;
+}
+
+/**
  * Upsert a fee for a job — deduplicates by (student_type, period_type, currency, total_amount)
  * within the same job so a shared rate (e.g. "$325/credit for all programs") creates ONE row
  * linked to multiple courses via extraction_course_fee_assignments, not one identical row per
@@ -1287,17 +1375,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── English requirements ──
   if (course.english_requirements?.length) {
     for (const eng of course.english_requirements) {
-      await masterKnex(`${S}.extraction_english_requirements`).insert({
-        job_id: jobId,
-        course_id: courseId,
-        test_type_name: eng.test_type_name ?? null,
-        overall_score: eng.overall_score ?? null,
-        listening_score: eng.listening_score ?? null,
-        reading_score: eng.reading_score ?? null,
-        writing_score: eng.writing_score ?? null,
-        speaking_score: eng.speaking_score ?? null,
-        source_url: course.source_url ?? null,
-      });
+      await upsertEnglishRequirement(jobId, courseId, eng, course.source_url ?? null);
     }
   }
 

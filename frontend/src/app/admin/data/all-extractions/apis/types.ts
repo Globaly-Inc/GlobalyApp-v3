@@ -363,6 +363,15 @@ export type CourseFeeParams = {
   /** Courses to link on create. Junction write, not a column — never send it on a PATCH. */
   course_ids?: string[];
 };
+/**
+ * One row of an intake's `custom_dates` jsonb — a date this intake carries beyond the four fixed
+ * ones, named by the admin ("Exam Date", "Scholarship Deadline"). `date` is "YYYY-MM-DD".
+ */
+export type IntakeCustomDate = {
+  name: string;
+  date: string;
+};
+
 export type Intake = ActorFields & {
   id: string;
   intake_name: string | null;
@@ -372,6 +381,8 @@ export type Intake = ActorFields & {
   admission_deadline: string | null;
   intake_month: number | null;
   intake_year: number | null;
+  /** Optional on the wire: rows created before the column existed read back as `[]`. */
+  custom_dates?: IntakeCustomDate[] | null;
   created_at: string;
   updated_at?: string;
 };

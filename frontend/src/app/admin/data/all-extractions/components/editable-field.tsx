@@ -39,7 +39,9 @@ export async function saveFormAndLearn(
  */
 export function useFieldSaver(jobId: string, reload: () => Promise<unknown> | void) {
   return useCallback(
-    async (table: EditableTable, id: string, column: string, next: string | null) => {
+    // `next` also takes an array, for the jsonb columns a tab edits as a whole list
+    // (extraction_intakes.custom_dates). patchEntityRow serialises it server-side.
+    async (table: EditableTable, id: string, column: string, next: string | null | unknown[]) => {
       try {
         await allExtractionsApi.saveAndLearn({ table, id, patch: { [column]: next }, job_id: jobId });
         toast.success("Saved");

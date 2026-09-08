@@ -19,6 +19,7 @@ import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
 import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
+import { IntakeCustomDates } from "./intake-custom-dates";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RowActors } from "./row-actors";
@@ -173,7 +174,7 @@ function IntakeCard({
   onDelete: () => void;
   onLinkCourse: (courseId: string) => void;
   onUnlinkCourse: (courseId: string) => void;
-  onSaveField: (column: string, next: string | null) => Promise<unknown>;
+  onSaveField: (column: string, next: string | null | unknown[]) => Promise<unknown>;
 }>) {
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -211,6 +212,11 @@ function IntakeCard({
           <Field icon={CalendarClock} label="Admission Deadline" type="date" value={toDateInput(intake.admission_deadline)} onSave={(v) => onSaveField("admission_deadline", v)} />
           <Field icon={CalendarDays} label="Orientation" type="date" value={toDateInput(intake.orientation_date)} onSave={(v) => onSaveField("orientation_date", v)} />
         </div>
+
+        <IntakeCustomDates
+          dates={intake.custom_dates ?? []}
+          onSave={(next) => onSaveField("custom_dates", next)}
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -310,11 +316,6 @@ export function IntakesTab({
     return () => clearTimeout(t);
   }, [load]);
 
-  // A search change invalidates the current page.
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
-
   const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
   const allSelected = intakes.length > 0 && selectedIds.length === intakes.length;
@@ -360,7 +361,12 @@ export function IntakesTab({
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              // A search change invalidates the current page. Done here rather than in an
+              // effect on [search]: same result, and the repo lints against set-state-in-effect.
+              setPage(1);
+            }}
             placeholder="Search intakes…"
             className="h-8 pl-7 text-sm"
           />

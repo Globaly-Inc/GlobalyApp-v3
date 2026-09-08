@@ -42,6 +42,7 @@ import {
   normaliseAcademicTests,
   upsertIntake,
   upsertEligibility,
+  upsertEnglishRequirement,
   coerceMoney,
   coerceDate,
   coerceMonth,
@@ -52,6 +53,7 @@ import {
   normaliseVisaServiceName,
   atPageCap,
   type ExtractedCampus,
+  type ExtractedEnglishReq,
   type ExtractedIntake,
   type InstitutionOverview,
   type ExtractedVisaService,
@@ -1257,20 +1259,19 @@ async function handleCourseDataStep(
           .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
         count++;
       }
-      // English requirements
-      const engReqs = (extracted.english_requirements as Array<Record<string, unknown>>) || [];
+      // English requirements — replaced wholesale for this course, mirroring the requirement rows
+      // above, so a re-extraction reflects what the page says NOW rather than adding another copy
+      // of the bar on every run. Safe to delete outright where requirements needed care: these
+      // rows carry a direct course_id and no junction, so no other course can be sharing them.
+      //
+      // The insert itself is upsertEnglishRequirement, shared with the page worker. This branch
+      // has drifted from that worker four times now (raw dates at date/integer columns; dropping
+      // dated-but-unnamed intakes; a direct eligibility insert; this one) — CLAUDE.md (h): write
+      // behaviour belongs in a staging-writer helper called from BOTH, never reimplemented here.
+      await masterKnex(`${S}.extraction_english_requirements`).where({ course_id: courseId }).delete();
+      const engReqs = (extracted.english_requirements as Array<ExtractedEnglishReq>) || [];
       for (const eng of engReqs) {
-        await masterKnex(`${S}.extraction_english_requirements`).insert({
-          job_id: jobId, course_id: courseId,
-          test_type_name: eng.test_type_name ?? null,
-          overall_score: eng.overall_score ?? null,
-          listening_score: eng.listening_score ?? null,
-          reading_score: eng.reading_score ?? null,
-          writing_score: eng.writing_score ?? null,
-          speaking_score: eng.speaking_score ?? null,
-          source_url: sourceUrl,
-        });
-        count++;
+        if (await upsertEnglishRequirement(jobId, courseId, eng, sourceUrl)) count++;
       }
       break;
     }
