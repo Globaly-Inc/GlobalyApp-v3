@@ -3,12 +3,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PEOPLE_PHOTOS } from "@/lib/public-assets";
 import { MockupCard, MockupFrame } from "./mockup-frame";
 
-// `photo` points at /public/people (see the README there). AvatarImage falls back to the
+// `photo` comes from the public GCS bucket (see @/lib/public-assets). AvatarImage falls back to the
 // initials on its own while a file is missing, so an unfilled slot degrades instead of breaking.
 const pros = [
   { name: "Priya Sharma", role: "Senior Education Counselor", city: "Sydney, AU", rating: 4.9, trust: 96, initials: "PS", photo: PEOPLE_PHOTOS.priyaSharma },
   { name: "Daniel Okoye", role: "Visa & Admissions Expert", city: "Toronto, CA", rating: 4.8, trust: 93, initials: "DO", photo: PEOPLE_PHOTOS.danielOkoye },
-  { name: "Mei Tanaka", role: "STEM Programs Advisor", city: "London, UK", rating: 4.9, trust: 95, initials: "MT", photo: "/people/mei-tanaka.jpg" },
+  { name: "Elena Moreau", role: "STEM Programs Advisor", city: "London, UK", rating: 4.9, trust: 95, initials: "EM", photo: PEOPLE_PHOTOS.elenaMoreau },
 ];
 
 export function VerifiedProfessionalsMockup() {

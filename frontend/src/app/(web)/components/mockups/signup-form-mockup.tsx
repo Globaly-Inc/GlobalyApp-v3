@@ -19,7 +19,7 @@ export function SignupFormMockup() {
             <Label className="text-xs text-muted-foreground">Full name</Label>
             <div className="relative mt-1">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input readOnly value="Aanya Sharma" className="pl-9" />
+              <Input readOnly value="Sofia Almeida" className="pl-9" />
             </div>
           </div>
 

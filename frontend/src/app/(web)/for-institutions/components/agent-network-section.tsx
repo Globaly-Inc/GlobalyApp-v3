@@ -46,7 +46,7 @@ export function AgentNetworkSection() {
             </div>
           </Reveal>
           <Reveal direction="right">
-            <PartnershipConnectMockup />
+            <PartnershipConnectMockup audience="institution" />
           </Reveal>
         </div>
       </div>

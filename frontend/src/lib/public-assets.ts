@@ -30,15 +30,21 @@ export const INSTITUTION_LOGOS = {
   toronto: `${PHOTOS}/toronto.png`,
 } as const;
 
-/** The agency shown on the partnerships mockup. Apex is a stand-in name, not a real partner. */
+/** Agency marks for the partnerships mockup. All stand-in names, not real partners. */
 export const PARTNER_LOGOS = {
   apex: `${PHOTOS}/apex.png`,
+  northstar: `${PHOTOS}/360_F_506097171_1Kfn141Vfu4kPvblY1jH0oZYJrRT6V5e.jpg`,
+  brightPath: `${PHOTOS}/3856014-5476.png`,
+  mekong: `${PHOTOS}/MK-logo-design-vector-Graphics-17228864-1-1-580x386.jpg`,
+  silverline: `${PHOTOS}/0e36b0cd37d1fdddb417a56724f1a6f0.jpg`,
 } as const;
 
-/** Counselor portraits for the same mockups. */
+/** Counselor and student portraits for the same mockups. */
 export const PEOPLE_PHOTOS = {
   danielOkoye: `${PHOTOS}/daniel-okoye.jpg`,
   priyaSharma: `${PHOTOS}/priya-sharma.jpg`,
+  elenaMoreau: `${PHOTOS}/images%20(2).jpg`,
+  sofiaAlmeida: `${PHOTOS}/images%20(1).jpg`,
 } as const;
 
 /** Ask Aly's animated orb, used as the assistant's nav icon and avatar. Square, 240×240. */
