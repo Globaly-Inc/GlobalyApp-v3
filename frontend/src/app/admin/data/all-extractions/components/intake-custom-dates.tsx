@@ -5,6 +5,8 @@ import { CalendarPlus, Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { IntakeCustomDate } from "../apis/types";
+import { formatPartialDate } from "../utils";
+import { PartialDateInput } from "./partial-date-input";
 
 /**
  * The row currently open in the editor. `index` is the position in the saved list, or null while
@@ -44,12 +46,16 @@ function DateEditor({
   };
 
   return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2 md:col-span-2">
+    <div className="flex items-end gap-2.5 rounded-lg border border-border bg-muted/20 p-2 md:col-span-2">
       <DateIcon />
       {/* Both inputs `flex-1` (basis 0), so the name and the date split the row evenly however
           wide the card is — the date field was previously pinned to a fixed width and read as an
-          afterthought beside a name field that took everything left over. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+          afterthought beside a name field that took everything left over.
+          
+          Aligned on their BOTTOM edge, not centred: the date side carries a Full date / Month
+          selector stacked above its input, so it is taller than the name field. Centring left the
+          name box floating between the selector and the input, lined up with neither. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-end">
         <Input
           autoFocus
           value={draft.name}
@@ -59,13 +65,13 @@ function DateEditor({
           placeholder="Date name — e.g. Exam Date"
           className="h-9 w-full flex-1 sm:w-auto"
         />
-        <Input
-          type="date"
+        {/* Same Full date / Month choice as the four fixed fields — a scholarship deadline is
+            routinely published as a month only, and picking a day for it invents one. */}
+        <PartialDateInput
           value={draft.date}
           disabled={saving}
-          onChange={(e) => onChange({ date: e.target.value })}
-          onKeyDown={keys}
-          className="h-9 w-full flex-1 sm:w-auto"
+          onChange={(date) => onChange({ date })}
+          className="w-full flex-1 sm:w-auto"
         />
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -167,10 +173,9 @@ export function IntakeCustomDates({
                   >
                     <p className="truncate text-xs text-muted-foreground">{entry.name}</p>
                     <span className="mt-0.5 flex items-start justify-between gap-2">
-                      {/* Shown as stored (YYYY-MM-DD), like every other date on this card.
-                          Formatting per-locale would reparse the string as UTC and can land
-                          a day off. */}
-                      <span className="text-sm tabular-nums">{entry.date}</span>
+                      {/* Rendered from the string, never through Date(): reparsing as UTC lands
+                          a day off, and a month-only value would gain a 1st it never had. */}
+                      <span className="text-sm">{formatPartialDate(entry.date) ?? entry.date}</span>
                       <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/field:opacity-100" />
                     </span>
                   </button>

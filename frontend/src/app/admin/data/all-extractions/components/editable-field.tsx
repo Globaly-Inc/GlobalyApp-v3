@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { changedFields } from "../utils";
+import { changedFields, datePrecisionOf, formatPartialDate, toDateInputValue, type DatePrecision } from "../utils";
 import type { EditableTable } from "../apis/types";
 
 /**
@@ -74,6 +74,16 @@ export type EditableFieldProps = Readonly<{
   type?: string;
   className?: string;
   placeholder?: string;
+  /**
+   * Turns this into an intake-style date field: a Full date / Month selector beside the input,
+   * committing "YYYY-MM-DD" or "YYYY-MM" accordingly, and displaying the value at the precision
+   * it was stated ("September 2026", not "1 September 2026").
+   *
+   * Universities publish both — an exact term start, a month-only application deadline — and
+   * picking a day for them invents a deadline. Lives here rather than in a separate component so
+   * there stays exactly one inline editor to maintain.
+   */
+  datePrecision?: boolean;
 }>;
 
 export function EditableField({
@@ -84,14 +94,26 @@ export function EditableField({
   type = "text",
   className,
   placeholder = "—",
+  datePrecision = false,
 }: EditableFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [saving, setSaving] = useState(false);
+  // Defaults to whatever the stored value already is, so opening a month-only field and saving
+  // without touching the selector cannot silently promote it to a full date.
+  const [precision, setPrecision] = useState<DatePrecision>(() => datePrecisionOf(value) ?? "full_date");
 
   const start = () => {
-    setDraft(value ?? "");
+    const current = datePrecisionOf(value) ?? "full_date";
+    setPrecision(current);
+    setDraft(datePrecision ? toDateInputValue(value, current) : value ?? "");
     setEditing(true);
+  };
+
+  /** Switching precision reshapes what is already typed rather than clearing it. */
+  const switchPrecision = (next: DatePrecision) => {
+    setPrecision(next);
+    setDraft((d) => (next === "month" ? d.slice(0, 7) : d.length === 7 ? "" : d));
   };
 
   const commit = async () => {
@@ -115,10 +137,28 @@ export function EditableField({
     return (
       <div className={className}>
         <p className="text-xs text-muted-foreground">{label}</p>
+        {datePrecision && (
+          <div className="mt-1 inline-flex overflow-hidden rounded-md border border-border">
+            {(["full_date", "month"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                disabled={saving}
+                onClick={() => switchPrecision(p)}
+                className={cn(
+                  "cursor-pointer px-2 py-0.5 text-[11px] transition-colors",
+                  precision === p ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                )}
+              >
+                {p === "full_date" ? "Full date" : "Month"}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-0.5 flex items-start gap-1">
           <InputEl
             autoFocus
-            type={multiline ? undefined : type}
+            type={multiline ? undefined : datePrecision ? (precision === "month" ? "month" : "date") : type}
             value={draft}
             disabled={saving}
             onChange={(e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => setDraft(e.target.value)}
@@ -153,7 +193,9 @@ export function EditableField({
     >
       <p className="text-xs text-muted-foreground">{label}</p>
       <span className="mt-0.5 flex items-start justify-between gap-2">
-        <span className={cn("text-sm break-words", !value && "text-muted-foreground")}>{value || placeholder}</span>
+        <span className={cn("text-sm break-words", !value && "text-muted-foreground")}>
+          {(datePrecision ? formatPartialDate(value) : value) || placeholder}
+        </span>
         <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/field:opacity-100" />
       </span>
     </button>

@@ -6,6 +6,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
 import { loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel } from "./lookup-catalog.js";
+import { coercePartialDate, morePrecise, normaliseStored, partialDatesAgree } from "./partial-date.js";
 
 const logger = createChildLogger("staging-writer");
 /** Every course's lookup binding lands here, linked or not; the verify worker totals them per job. */
@@ -73,6 +74,44 @@ export interface ExtractedIntake {
   intake_month?: number | string | null;
   intake_year?: number | string | null;
   admission_deadline?: string | null;
+  /** Any OTHER dated milestone the page states — exam date, scholarship deadline, orientation
+   *  week. Open-ended by nature, which is why it is one jsonb column and not four more. */
+  custom_dates?: Array<{ name?: string | null; date?: string | null }> | null;
+}
+
+export interface IntakeCustomDate {
+  name: string;
+  /** "YYYY-MM-DD" or "YYYY-MM" — the precision the page stated, never widened. */
+  date: string;
+}
+
+/**
+ * custom_dates as the column stores them.
+ *
+ * An entry needs BOTH halves to mean anything: a date with no name is a number on a page nobody
+ * can act on, and a name with no date is a label. Either alone is dropped rather than stored —
+ * same call as normaliseAcademicTests dropping a nameless test.
+ *
+ * Deduped on the name, keeping the more precise date, because a calendar page routinely repeats a
+ * milestone in a table and again in prose.
+ */
+export function normaliseCustomDates(v: unknown): IntakeCustomDate[] {
+  let arr: unknown = v;
+  if (typeof v === "string") {
+    try { arr = JSON.parse(v); } catch { return []; }
+  }
+  if (!Array.isArray(arr)) return [];
+  const byName = new Map<string, IntakeCustomDate>();
+  for (const raw of arr) {
+    const entry = raw as { name?: unknown; date?: unknown } | null;
+    const name = String(entry?.name ?? "").trim();
+    const date = coercePartialDate(entry?.date);
+    if (!name || !date) continue;
+    const key = name.toLowerCase();
+    const prior = byName.get(key);
+    byName.set(key, { name: prior?.name ?? name, date: morePrecise(prior?.date, date)! });
+  }
+  return [...byName.values()];
 }
 
 // ponytail: LLM sometimes returns "September" instead of 9
@@ -89,21 +128,6 @@ export function coerceMonth(v: unknown): number | null {
   const n = Number(s);
   if (!isNaN(n) && n >= 1 && n <= 12) return n;
   return MONTH_NAMES[s] ?? null;
-}
-
-// ponytail: LLM emits "February 15" / "Feb 2026" for date columns — ISO or null, nothing else.
-// A string with no year ("February 15") is not a date; the month still survives via intake_month.
-export function coerceDate(v: unknown): string | null {
-  if (v == null) return null;
-  const s = String(v).trim();
-  const iso = s.match(/^(\d{4})-\d{2}-\d{2}/);
-  if (iso) return iso[1] === "0000" ? null : iso[0];
-  if (!/\d{4}/.test(s)) return null;
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return null;
-  // Local date parts, not toISOString(): non-ISO strings parse as local midnight,
-  // and the UTC rendering shifts them a day in any timezone ahead of UTC.
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export function coerceInt(v: unknown): number | null {
@@ -151,7 +175,11 @@ export function deriveIntakeMonthYear(
   }
 
   if ((m == null || y == null) && startDate) {
-    const iso = startDate.match(/^(\d{4})-(\d{2})-\d{2}/);
+    // The day is OPTIONAL. start_date is a partial date now (see lib/partial-date.ts), so a page
+    // publishing "February 2026" stores "2026-02" — and requiring `-DD` here left intake_month
+    // null for it, which is the one column the year filter, the year facet and the "next intake"
+    // badge all read. Month precision is exactly enough to fill them.
+    const iso = startDate.match(/^(\d{4})-(\d{2})/);
     if (iso) {
       y ??= Number(iso[1]);
       m ??= Number(iso[2]);
@@ -689,12 +717,10 @@ export async function normaliseCurrency(raw: string | null | undefined, jobId: s
 /** Dates that, if they disagree, mean two intakes are genuinely different sittings. */
 const INTAKE_DATE_FIELDS = ["start_date", "end_date", "orientation_date", "admission_deadline"] as const;
 
-/** A stored date column (pg hands back a Date) against an ISO string, treating null as "unknown". */
-function datesAgree(stored: unknown, incoming: string | null): boolean {
-  if (stored == null || incoming == null) return true; // one side unknown — not a disagreement
-  const iso = stored instanceof Date ? stored.toISOString().slice(0, 10) : String(stored).slice(0, 10);
-  return iso === incoming;
-}
+// Comparison and precision live in lib/partial-date.ts, because a stored value is now either a
+// full date or a month and "same sitting" has to mean the same across the two: a page stating
+// "September 2026" and one stating "21 September 2026" describe one intake, not two.
+const datesAgree = partialDatesAgree;
 
 /**
  * Upsert an intake for a JOB and link the course to it — one "Semester 1 2027" row shared by
@@ -723,7 +749,7 @@ export async function upsertIntake(
   intake: ExtractedIntake,
   sourceUrl: string | null,
 ): Promise<string> {
-  const startDate = coerceDate(intake.start_date);
+  const startDate = coercePartialDate(intake.start_date);
   const derived = deriveIntakeMonthYear(
     intake.intake_name,
     startDate,
@@ -733,13 +759,17 @@ export async function upsertIntake(
   const fields = {
     intake_name: intake.intake_name ?? null,
     start_date: startDate,
-    end_date: coerceDate(intake.end_date),
-    orientation_date: coerceDate(intake.orientation_date),
-    admission_deadline: coerceDate(intake.admission_deadline),
+    end_date: coercePartialDate(intake.end_date),
+    orientation_date: coercePartialDate(intake.orientation_date),
+    admission_deadline: coercePartialDate(intake.admission_deadline),
     intake_month: derived.intake_month,
     intake_year: derived.intake_year,
     source_url: sourceUrl,
   };
+  // Kept out of `fields` so it never joins the identity/agreement comparison below: two pages can
+  // legitimately list different subsets of an intake's milestones, and that is not a reason to
+  // fork the row. Merged into the existing row's set instead (see the update branch).
+  const customDates = normaliseCustomDates(intake.custom_dates);
 
   // Job-scoped, no course_id — this is what makes the row shareable.
   const candidates = await masterKnex(`${S}.extraction_intakes`)
@@ -766,9 +796,32 @@ export async function upsertIntake(
     .sort((a, b) => b.matched - a.matched)[0]?.row;
 
   if (existing) {
-    const updates = Object.fromEntries(
-      Object.entries(fields).filter(([k, v]) => v != null && existing[k] == null),
-    );
+    // Blanks get filled, and a DATE additionally gets sharpened: a row holding "2026-09" from a
+    // page that published only the month is improved by a later page publishing "2026-09-21", and
+    // the two agreed to reach here. Without this the first, vaguer page would win permanently —
+    // which is the same "thinnest row wins" failure the English requirements had (see CLAUDE.md
+    // (i)). Never the other way round: an exact date is never blurred back to its month.
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      if (v == null) continue;
+      if ((INTAKE_DATE_FIELDS as readonly string[]).includes(k)) {
+        const best = morePrecise(existing[k], v);
+        if (best !== normaliseStored(existing[k])) updates[k] = best;
+        continue;
+      }
+      if (existing[k] == null) updates[k] = v;
+    }
+    // Union by name, this page's precision winning a tie-break only when it is sharper. A page
+    // that lists no milestones must not wipe the ones another page found.
+    if (customDates.length > 0) {
+      const merged = normaliseCustomDates([
+        ...normaliseCustomDates(existing.custom_dates),
+        ...customDates,
+      ]);
+      if (JSON.stringify(merged) !== JSON.stringify(normaliseCustomDates(existing.custom_dates))) {
+        updates.custom_dates = JSON.stringify(merged);
+      }
+    }
     if (Object.keys(updates).length > 0) {
       await masterKnex(`${S}.extraction_intakes`)
         .where({ id: existing.id })
@@ -778,7 +831,7 @@ export async function upsertIntake(
   }
 
   const [row] = await masterKnex(`${S}.extraction_intakes`)
-    .insert({ job_id: jobId, ...fields })
+    .insert({ job_id: jobId, ...fields, custom_dates: JSON.stringify(customDates) })
     .returning("id");
   return row.id;
 }
@@ -821,7 +874,7 @@ function testRules(v: unknown): string[] {
     const name = String(test?.test_name ?? "").trim().toLowerCase();
     if (!name) continue;
     const score = test?.score == null ? "" : String(test.score).trim();
-    rules.push(`${name} ${score} ${test?.is_optional ? "opt" : "req"}`);
+    rules.push(`${name}\u0000${score}\u0000${test?.is_optional ? "opt" : "req"}`);
   }
   return rules.sort();
 }
@@ -1599,7 +1652,7 @@ const VISA_SERVICE_SCALAR_FIELDS: Array<keyof ExtractedVisaService> = [
 // ("invalid input syntax for type numeric"). Every numeric visa-service field gets the
 // same defensive coercion, not just the one that happened to be reported — same failure
 // mode, same fix, everywhere it can occur. Scoped to visa-service fields only; the
-// course pipeline's own coerceInt/coerceDate above are untouched.
+// course pipeline's own coerceInt above is untouched.
 const VISA_SERVICE_NUMERIC_FIELDS: Array<keyof ExtractedVisaService> = [
   "fee_amount", "fee_from", "fee_to", "consultation_fee", "success_rate",
   "cases_handled", "years_experience", "team_size", "qualified_agents_count",

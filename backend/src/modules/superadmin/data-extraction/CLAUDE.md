@@ -290,6 +290,94 @@ The centralized error handler maps these to HTTP responses.
    `tests/eligibility-extraction.ts` (verified failing without the fix).
    Repair for data already stored: `npm run eligibility:backfill` (dry-run by default,
    `--apply` to write).
+   (k) Intake dates keep the precision the source published (2026-09-09). `coerceDate` turned
+   "September 2026" into "2026-09-01" — a day the institution never stated, afterwards
+   indistinguishable from a real 1 September, and on a deadline that is a date a student can miss
+   by weeks. The four date columns are now `text` holding ISO 8601 reduced precision, "2026-09-21"
+   or "2026-09" (migration `20260909_001`, with a CHECK per column); both sort correctly as text
+   and nothing compares them as dates in SQL — every filter, facet and "next intake" ordering reads
+   the separate intake_month/intake_year integers. `lib/partial-date.ts` owns coercion, comparison
+   and formatting; `coerceDate` is DELETED rather than left exported, because reaching for it is
+   how the fabrication comes back. Precision is DERIVED from the value's shape, not stored beside
+   it — a second column could disagree with the value it describes. `upsertIntake` now also
+   SHARPENS on match (a row holding "2026-09" is upgraded by a later page's "2026-09-21", never
+   blurred back), which is the same "thinnest row wins" failure as (i). Two day-1 fabrications were
+   hiding outside the writers and are fixed too: `saveAndLearn` ran start_date through
+   `new Date(...).toISOString()`, and the public course card through `toLocaleDateString`. The
+   admin patch path is validated (`saveAndLearn` takes `patch: z.record(z.unknown())`, so a bad
+   date would otherwise hit the new CHECK as a 500 rather than a 400). `custom_dates` is now
+   EXTRACTED as well as admin-authored, so the prompts ask for named milestones; it stays in
+   `NON_TEACHABLE_FIELDS` regardless, because a lesson mints `example_good` from the corrected
+   value and these values are institution-specific live dates. Frontend: one Full date / Month
+   selector, `<input type="month">` doing the work natively. Regression-tested in
+   `tests/partial-date.ts` (38 assertions, including the gwu.edu year-0000 case inherited from the
+   deleted `tests/coerce-date.ts`).
+   (l) A page filed under Context -> Intakes is extracted as INTAKES, not as courses (2026-09-09).
+   The reported symptom was "intake dates are extracted but not persisted" for a Stanford job; the
+   actual cause was that nothing extracted them. `intakes` sits INSIDE each `courses[]` object in
+   the course prompt, so an academic calendar — which states term dates for the whole institution
+   and lists no courses at all — returned an empty courses array and every date on it was dropped.
+   The courses step already queued these guided URLs (COURSES_STEP_GUIDED_CATEGORIES) but nothing
+   told the page worker they were anything but a course page. It now checks `guided_urls.
+   intakes_urls` and uses the FLAT `courseDataPrompt(..., "intakes")` for them, writing through
+   `upsertIntake` at job level with no course assignment: keyed on job + name + month + year, a
+   calendar's "Autumn 2026-2027" lands on the row the courses are already linked to and fills its
+   empty dates, so no term-to-intake name matching of its own is needed. **That holds only while
+   the two pages spell the term identically** — the key is `LOWER(TRIM(name))`, so a calendar
+   saying "Semester 1, 2026" against a catalogue saying "Semester 1 2026" forks a second row
+   carrying the dates and no courses, beside the original carrying courses and no dates
+   (sydney.edu.au/students/key-dates.html is exactly this shape). Deliberately not loosened: a
+   fuzzier term key is how two genuinely different sittings get merged, which is the failure (g)
+   and the backfill's pass 4 exist to prevent. An open decision, not an oversight.
+   Also note neither page shape is discovered on its own — `looksLikeCourseUrl` skips both the
+   Sydney and Stanford calendars, so the operator must add the URL under Context -> Intakes. A term the catalogue never
+   mentioned becomes an unlinked intake — visible in the admin tab to link, and excluded from public
+   reads until then, since those go through the assignment junction. Note the Intakes tab's "Run
+   Intakes Extraction" button runs `step="courses"`; it is the crawl that had to learn this, not a
+   new step.
+   (n) YEAR gates an intake's visibility; MONTH only orders it (2026-09-09). Worth stating
+   separately because (e) says "intake_month/intake_year are the only columns any feature reads",
+   which is true and misleading: all three public reads gate on `ei.intake_year is not null`, while
+   a null `intake_month` is `coalesce(intake_month, 1)` — the intake still shows, treated as
+   January. So a row named "Fall" with no year is invisible everywhere, and a row named "Fall 2019"
+   with no month is merely ordered as January. Nothing derives a year the page never stated and the
+   pipeline keeps no markdown, so those rows are fixable only by re-extraction (both prompts now
+   demand a year on every intake) or a hand edit — never by the backfill, whose pass 3 lists them
+   as a diagnosis rather than repairing them. Confirmed on live data: 8 of 12 incomplete intakes on
+   job 19024311 carry no year at all.
+   The same dry run surfaced three intakes named "Day 1", "Day 2", "Day 3", scraped from an
+   orientation timetable. An intake is a term you ENROL in; a timetable row, exam sitting, payment
+   due date or holiday is not, and a dated one belongs in that intake's `custom_dates`. Both intake
+   prompts now say so, naming this exact failure.
+   (m) Audit of the intake + eligibility paths after (k)/(l) (2026-09-09). Six defects, five of
+   them created or exposed by (k)'s column type change — the pattern being that `date` and the
+   `score_type` CHECK had been doing validation the application never had to, and converting the
+   columns moved that burden onto every writer at once.
+   `scripts/eligibility-backfill.ts` had three: it re-fabricated a day via
+   `new Date(start_date).toISOString()`; its intake clustering compared `String(v).slice(0, 10)`,
+   so "2026-09" and "2026-09-21" read as different dates and two rows describing ONE sitting were
+   never merged; and the survivor-fill only looked at nulls, so a survivor holding a month kept it
+   while a copy held the exact date — the thinnest-row-wins defect of (i), third occurrence. All
+   three now call `partialDatesAgree`/`morePrecise`/`normaliseStored`, so the destructive pass and
+   the writer cannot disagree about what one intake is.
+   `agentcis-product-mappers.ts` had its own `toDateStr`, safe only because Postgres validated the
+   column: it passed the LLM's unknown-year sentinel "0000-01-07" through (the gwu.edu value the
+   `date` type used to reject), and a Date.parse fallback could emit a five-digit year that now
+   violates the CHECK and aborts an entire import. It is `coercePartialDate` now, so that feed also
+   gains month precision.
+   `staged.schema.ts` typed `academic_tests`/`language_tests` as `z.array(z.unknown())` and
+   `score_type` as a free string, and `saveAndLearn`'s `patch` is only `z.record(z.unknown())` — so
+   the admin and API paths could store a test with NO NAME. That is not cosmetic: `sameTest` matches
+   on name, so a nameless entry never matches a student's test and instead emits a permanently
+   `unknown` criterion, capping a real student's percentage below 100 and rendering as a tile
+   labelled "Test" — (i)'s defect still open on the hand-edit path. `AcademicTestSchema` /
+   `LanguageTestSchema` / `SCORE_TYPES` now guard both, and `normaliseEligibilityPatch` applies them
+   to save-and-learn.
+   Verified clean in the same pass, worth not re-deriving: every child-entity helper is reached from
+   BOTH writers; `custom_dates` flows because `writeCourse` passes the whole intake object; no reader
+   parses an intake date through `Date()` any more; AgentCIS creates a fresh job per import so its
+   direct inserts do not accumulate within one; and `business/profile`'s intakes tab writes
+   `service_intakes` in the business schema, NOT extraction data, despite looking identical.
    Exception: `/jobs-filtered` search/sort/category-filter (2026-08-24) —
    added `q` (institution name/URL search), `sort`, and
    `business_category_id` params to `FilteredJobsQuerySchema`, plus a matching

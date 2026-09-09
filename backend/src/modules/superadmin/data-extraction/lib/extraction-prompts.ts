@@ -133,12 +133,13 @@ Extract this JSON:
       "intakes": [
         {
           "intake_name": "e.g. \"Semester 1 2027\", \"Fall 2027\" — ALWAYS include the year, never a bare season (\"Fall\", \"Spring\", \"Summer\") or a bare term (\"Semester 1\")",
-          "start_date": "YYYY-MM-DD or null",
-          "end_date": "YYYY-MM-DD or null",
-          "orientation_date": "YYYY-MM-DD or null",
+          "start_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated",
+          "end_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated",
+          "orientation_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated",
           "intake_month": "1-12, the month this intake starts — derive it from the intake name or start date when the page states it no other way",
           "intake_year": "4-digit year this intake starts — derive it from the intake name (\\"Semester 1 2027\\" -> 2027) or start date",
-          "admission_deadline": "YYYY-MM-DD or null"
+          "admission_deadline": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated",
+          "custom_dates": "[] or, for any OTHER dated milestone this intake states, [{\"name\": \"the page's own label, e.g. Exam Date, Scholarship Deadline, Document Submission Deadline, Orientation Week\", \"date\": \"YYYY-MM-DD or YYYY-MM\"}] — never duplicate the four fields above"
         }
       ],
       "study_options": [
@@ -216,6 +217,9 @@ Rules:
 - Never invent fees or dates — only extract what's explicitly stated
 - EVERY intake needs a YEAR. intake_year is what makes an intake findable at all — an intake with no year is invisible to the site's intake filters and its "next intake" display. US and Canadian catalogues label intakes by bare season ("Fall", "Spring Semester"); the year is almost always stated nearby, in a heading, an academic-year label ("Academic Year 2026-27" -> Fall 2026 and Spring 2027), a deadline, or a term table. Read it from that context and put it in both intake_year and the intake_name ("Fall" -> "Fall 2027"). Also set intake_month from the season using the institution's own hemisphere — for a Northern-hemisphere institution Fall/Autumn is 9, Spring is 1, Summer is 5, Winter is 1; for a Southern-hemisphere one (Australia, NZ) Autumn is 3, Spring is 9, Summer is 12, Winter is 6.
 - If the page truly states no year for an intake anywhere, still return it with its name, and leave intake_year null rather than guessing a year — a wrong year is worse than a missing one.
+- NEVER INVENT A DAY. Every intake date takes either YYYY-MM-DD or YYYY-MM, and which one you use is decided by the page, not by convenience. A page that says "applications close in January 2027" states a MONTH: return "2027-01", never "2027-01-01". A page that says "Winter Quarter begins January 5, 2027" states a DAY: return "2027-01-05". Guessing the first of the month produces a deadline the institution never published, which a student can then miss by weeks. The same rule applies to every entry in custom_dates.
+- AN INTAKE IS A TERM YOU ENROL IN, not any other dated thing on the page. A semester, quarter, trimester, session or named start ("Semester 1 2027", "Fall 2027", "January 2027 intake") is an intake. A row from an orientation timetable ("Day 1", "Day 2", "Week 1"), a single event, an exam sitting, a payment due date or a public holiday is NOT — those belong in that intake's custom_dates if they are dated, and are otherwise left out entirely. A stored example of getting this wrong: three intakes named "Day 1", "Day 2" and "Day 3", scraped from an orientation schedule, carrying no year and so invisible to every intake feature on the site.
+- An ACADEMIC-YEAR label is not a date. "Autumn 2026-2027" or "Academic Year 2026-27" names a year span, not a start date — put it in intake_name and set intake_month/intake_year, and leave start_date null unless the page separately states when the term actually begins.
 - NAME vs DESCRIPTION for an eligibility requirement, same split as fees: name is the short label a student scans ("Academic Entry", "Undergraduate Degree", "Honours Program GPA"); description is the page's own wording carrying every figure, condition, exception, subject prerequisite and accepted equivalent. NEVER return a requirement that has a name and NOTHING else — no description, no min_score, no min_degree_level, no academic_tests. A bare heading ("Entry Requirements", "Target Audience Requirements", "Admission Criteria") is a section title, not a requirement: fill it in from the text under that heading, or leave it out of the array entirely. A row carrying only a label tells a student nothing and states no bar anyone can be measured against.
 - For eligibility requirements, always populate score_type + min_score when a specific numeric threshold is stated, not just in the free-text description: "percentage" for a % figure, "gpa_4" for a GPA (the default scale when no scale is named — most common convention), "gpa_10" only when the page explicitly says the GPA is out of 10, "cgpa" when the page uses that term specifically. Leave both null if no number is stated.
 - Always fill duration_text verbatim when the page states a duration anywhere, even if you also converted it to duration_weeks
@@ -755,7 +759,7 @@ export function courseDataPrompt(
   }]
 }`,
     intakes: `{
-  "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD or null", "end_date": "YYYY-MM-DD or null", "orientation_date": "YYYY-MM-DD or null", "intake_month": "1-12, the month this intake starts — derive it from the intake name or start date when the page doesn't state it separately", "intake_year": "4-digit year this intake starts — derive it from the intake name (\\"Semester 1 2027\\" -> 2027) or start date", "admission_deadline": "YYYY-MM-DD or null" }]
+  "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "end_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "orientation_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "intake_month": "1-12, the month this intake starts — derive it from the intake name or start date when the page doesn't state it separately", "intake_year": "4-digit year this intake starts — derive it from the intake name (\\"Semester 1 2027\\" -> 2027) or start date", "admission_deadline": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "custom_dates": "[] or [{\"name\": \"the page's own label\", \"date\": \"YYYY-MM-DD or YYYY-MM\"}] for any OTHER dated milestone — never duplicate the four fields above" }]
 }`,
     units: `{
   "study_units": [{ "unit_code": "code or null", "unit_name": "unit name", "credit_points": null }]

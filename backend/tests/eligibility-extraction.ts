@@ -18,6 +18,11 @@ import {
   englishUpdates,
 } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
 import { evaluateEligibility } from "../src/modules/enquiries/shared/eligibility.js";
+import {
+  AcademicTestSchema,
+  LanguageTestSchema,
+  SCORE_TYPES,
+} from "../src/modules/superadmin/data-extraction/schemas/staged.schema.js";
 import { findTests, testPattern } from "../src/modules/superadmin/data-extraction/lib/requirement-text.js";
 
 let passed = 0;
@@ -114,8 +119,45 @@ assert("a short form does not match inside a long one", () =>
   eq(deriveIntakeMonthYear("September 2026", null, null, null), { intake_month: 9, intake_year: 2026 }));
 assert("nothing derivable stays null", () =>
   eq(deriveIntakeMonthYear("Rolling admission", null, null, null), { intake_month: null, intake_year: null }));
+// start_date is a PARTIAL date now, so month precision has to be enough to fill intake_month —
+// that column is what the year filter, the year facet and the "next intake" badge all read, and
+// requiring a day left it null for any page publishing "February 2026".
+assert("a month-precision start date still yields intake_month", () =>
+  eq(deriveIntakeMonthYear("Semester 1 2026", "2026-02", null, null),
+    { intake_month: 2, intake_year: 2026 }));
+assert("a full start date still yields both", () =>
+  eq(deriveIntakeMonthYear("Semester 1 2026", "2026-02-23", null, null),
+    { intake_month: 2, intake_year: 2026 }));
 assert("a 2-digit number is not a year", () =>
   eq(deriveIntakeMonthYear("Intake 27", null, null, null), { intake_month: null, intake_year: null }));
+
+// The API and the admin save-and-learn path validate the test arrays with these, because `patch`
+// itself is only z.record(z.unknown()). A NAMELESS test is the case that matters: sameTest matches
+// on name, so an entry without one can never match a student's test — it emits a permanently
+// `unknown` criterion that caps a real student's percentage below 100 and renders as a tile
+// labelled "Test". The writers already drop those; these close the admin/API path.
+console.log("\nAcademicTestSchema / LanguageTestSchema — the admin path can't store a nameless test");
+assert("a nameless academic test is rejected", () => {
+  eq(AcademicTestSchema.safeParse({ test_name: "", score: "320" }).success, false);
+  eq(AcademicTestSchema.safeParse({ test_name: "   ", score: "320" }).success, false);
+  eq(AcademicTestSchema.safeParse({ score: "320" }).success, false);
+});
+assert("a named test passes and its score becomes text", () => {
+  const r = AcademicTestSchema.safeParse({ test_name: " GRE ", score: 320 });
+  eq(r.success, true);
+  eq(r.success && r.data, { test_name: "GRE", score: "320", typical_score: null, is_optional: false });
+});
+assert("a nameless English test is rejected", () =>
+  eq(LanguageTestSchema.safeParse({ test_type_name: "", overall_score: "6.5" }).success, false));
+assert("a named English test coerces its bands to text", () => {
+  const r = LanguageTestSchema.safeParse({ test_type_name: "IELTS", overall_score: 6.5, reading_score: 6 });
+  eq(r.success && r.data.overall_score, "6.5");
+  eq(r.success && r.data.reading_score, "6");
+});
+assert("score_type is limited to what the column's CHECK allows", () => {
+  eq(SCORE_TYPES.includes("gpa_4" as never), true);
+  eq(SCORE_TYPES.includes("percent" as never), false);
+});
 
 console.log("\nfindTests — recovering tests from stored requirement text (backfill)");
 // Longest-first, as loadAcademicTests() sorts it.

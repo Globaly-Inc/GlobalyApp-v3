@@ -242,3 +242,39 @@ export function buildFeePayloads(
 
   return { errors, values };
 }
+
+// ── Partial dates ──
+// An intake date is stored at the precision the institution published it at: "2026-09-21" when it
+// gave a day, "2026-09" when it gave only a month. The backend never widens a month into
+// "2026-09-01", because that is a deadline nobody published and a student can miss it by weeks.
+// See backend lib/partial-date.ts — this is the display half of the same contract.
+
+export type DatePrecision = "full_date" | "month";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** Which precision a stored value carries. Null when there is no usable value. */
+export function datePrecisionOf(value: string | null | undefined): DatePrecision | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return "full_date";
+  if (/^\d{4}-\d{2}$/.test(value)) return "month";
+  return null;
+}
+
+/** What the value goes in: `<input type="month">` wants "YYYY-MM", `type="date"` wants a full one. */
+export function toDateInputValue(value: string | null | undefined, precision: DatePrecision): string {
+  if (!value) return "";
+  return precision === "month" ? value.slice(0, 7) : value.slice(0, 10);
+}
+
+/** "September 2026" or "21 September 2026" — never a day the source didn't state. */
+export function formatPartialDate(value: string | null | undefined): string | null {
+  const precision = datePrecisionOf(value);
+  if (!precision || !value) return null;
+  const [y, m, d] = value.split("-");
+  const month = MONTH_NAMES[Number(m) - 1] ?? m;
+  return precision === "month" ? `${month} ${y}` : `${Number(d)} ${month} ${y}`;
+}

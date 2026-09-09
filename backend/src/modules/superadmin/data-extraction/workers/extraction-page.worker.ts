@@ -16,11 +16,13 @@ import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
   courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
+  courseDataPrompt, COURSE_DATA_SYSTEM,
   feesFromPagePrompt, FEES_FROM_PAGE_SYSTEM, curriculumAndFeesPrompt, CURRICULUM_AND_FEES_SYSTEM,
   visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
   writeCourse, upsertCampus, normaliseCampusName, writeVisaService, insertQueueItem, writeJobEvent,
+  upsertIntake, type ExtractedIntake,
   type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
 import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
@@ -33,6 +35,25 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const logger = createChildLogger("extraction-page-worker");
 
 /** Detect paginated sibling pages from links (DataTables, ?page=N, /page/N). */
+/**
+ * URLs the operator filed under Context -> Intakes, as a set.
+ *
+ * The courses step already queues these (COURSES_STEP_GUIDED_CATEGORIES in
+ * extraction-step.worker.ts), but nothing ever told this worker they were anything other than a
+ * course page — so they were extracted with the course prompt and produced nothing.
+ */
+function intakeGuidedUrls(job: Record<string, unknown>): Set<string> {
+  if (!job.guided_urls) return new Set();
+  try {
+    const guided = typeof job.guided_urls === "string"
+      ? JSON.parse(job.guided_urls as string)
+      : job.guided_urls as Record<string, unknown>;
+    return new Set((guided?.intakes_urls as string[] | undefined) ?? []);
+  } catch {
+    return new Set();
+  }
+}
+
 function detectPaginationUrls(baseUrl: string, links: string[], markdown: string): string[] {
   let baseObj: URL | null = null;
   try { baseObj = new URL(baseUrl); } catch { return []; }
@@ -392,7 +413,14 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     // extraction" in extraction-prompts.ts.
     const domain = domainOf(url);
     const isVisaService = job.source_type === "visa_service";
-    const memoryStep = isVisaService ? "visa_service_extraction" : "course_extraction";
+    // A page the operator filed under Context -> Intakes. An academic calendar is the case this
+    // exists for: it states term dates for the whole institution and lists no courses at all, so
+    // the course prompt (whose `intakes` live INSIDE each course object) returned an empty courses
+    // array and dropped every date on the page. Stanford's calendar is exactly this shape.
+    const isIntakeSource = !isVisaService && intakeGuidedUrls(job).has(url);
+    const memoryStep = isVisaService
+      ? "visa_service_extraction"
+      : isIntakeSource ? "intakes" : "course_extraction";
     const recalled = await recallMemory(domain, memoryStep, markdown.slice(0, 500));
     const addendum = buildSystemAddendum(recalled);
 
@@ -400,7 +428,28 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     let campusCount = 0;
     let extractedForMemory: unknown;
 
-    if (isVisaService) {
+    if (isIntakeSource) {
+      // The FLAT intakes schema, job-scoped — no course wrapper to come up empty.
+      const system = addendum ? `${COURSE_DATA_SYSTEM}\n\n${addendum}` : COURSE_DATA_SYSTEM;
+      const extracted = await extractJson<{ intakes?: ExtractedIntake[] }>({
+        system,
+        prompt: courseDataPrompt(url, markdown, "intakes", job.guidance_notes),
+        maxTokens: 65536,
+      });
+      extractedForMemory = extracted;
+
+      // Deliberately assigned to NO course. upsertIntake is keyed on job + name + month + year, so
+      // a calendar's "Autumn 2026-2027" lands on the row 38 courses are already linked to and
+      // fills its empty dates — which is the point, and why this needs no name-matching of its
+      // own. A term the catalogue never mentioned becomes an unlinked intake: visible in the admin
+      // tab for someone to link, and excluded from public reads until they do (those read through
+      // the assignment junction).
+      for (const intake of extracted.intakes ?? []) {
+        if (!intake.intake_name && !intake.start_date) continue;
+        await upsertIntake(jobId, intake, url);
+        entitiesWritten++;
+      }
+    } else if (isVisaService) {
       const system = addendum ? `${VISA_SERVICE_EXTRACTION_SYSTEM}\n\n${addendum}` : VISA_SERVICE_EXTRACTION_SYSTEM;
       const extracted = await extractJson<VisaServiceExtractionResult>({
         system,

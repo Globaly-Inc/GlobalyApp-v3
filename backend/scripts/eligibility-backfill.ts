@@ -73,6 +73,12 @@ import {
   deriveIntakeMonthYear,
 } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
 import { findTests } from "../src/modules/superadmin/data-extraction/lib/requirement-text.js";
+import {
+  datePrecision,
+  morePrecise,
+  normaliseStored,
+  partialDatesAgree,
+} from "../src/modules/superadmin/data-extraction/lib/partial-date.js";
 
 const S = "superadmin";
 const REQUIREMENTS = `${S}.extraction_eligibility_requirements`;
@@ -182,8 +188,10 @@ async function deriveIntakes() {
 
   const updates: { id: string; intake_month: number | null; intake_year: number | null }[] = [];
   for (const r of rows) {
-    // start_date arrives from pg as a Date; the helper wants the ISO prefix.
-    const start = r.start_date ? new Date(r.start_date).toISOString().slice(0, 10) : null;
+    // normaliseStored, not new Date(...): start_date is a partial date now (migration
+    // 20260909_001), and "2026-09" through Date becomes "2026-09-01" — the invented day this
+    // whole change removed. The helper takes either precision.
+    const start = normaliseStored(r.start_date);
     const derived = deriveIntakeMonthYear(r.intake_name, start, r.intake_month, r.intake_year);
     if (derived.intake_month !== r.intake_month || derived.intake_year !== r.intake_year) {
       updates.push({ id: r.id, ...derived });
@@ -445,19 +453,20 @@ async function shareIntakesAcrossCourses() {
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
   }
 
-  const dateOf = (v: unknown) =>
-    v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
 
   const merges: { keep: Record<string, unknown>; drop: Record<string, unknown>[] }[] = [];
   const split: { label: string; count: number; clusters: number }[] = [];
 
+  // partialDatesAgree, the same rule upsertIntake shares a row on — so this pass and the writer
+  // cannot disagree about what one sitting is. The old comparison was String(v).slice(0, 10),
+  // which read "2026-09" and "2026-09-21" as different dates and so refused to merge two rows
+  // describing one intake at different precisions.
   const agree = (a: Record<string, unknown>, b: Record<string, unknown>) =>
-    DATE_FIELDS.every((f) => {
-      const x = dateOf(a[f]);
-      const y = dateOf(b[f]);
-      return x == null || y == null || x === y;
-    });
-  const specificity = (r: Record<string, unknown>) => DATE_FIELDS.filter((f) => r[f] != null).length;
+    DATE_FIELDS.every((f) => partialDatesAgree(a[f], b[f]));
+  // A full date is more specific than a bare month, so it wins the survivor slot and the more
+  // precise value is the one courses end up pointing at.
+  const specificity = (r: Record<string, unknown>) =>
+    DATE_FIELDS.reduce((n, f) => n + (r[f] == null ? 0 : datePrecision(r[f]) === "full_date" ? 2 : 1), 0);
 
   for (const group of groups.values()) {
     if (group.length < 2) continue;
@@ -498,12 +507,18 @@ async function shareIntakesAcrossCourses() {
     for (const { keep, drop } of merges) {
       const dropIds = drop.map((d) => d.id as string);
 
-      // Fill the survivor's blank dates from its copies before anything is deleted.
+      // Fill the survivor's blank dates from its copies before anything is deleted — and SHARPEN
+      // the ones it already has. A survivor holding "2026-09" beside a copy holding "2026-09-21"
+      // used to keep the month, because the fill only looked at nulls: the thinnest value won,
+      // which is the same defect upsertIntake and the English pass both had.
       const updates: Record<string, unknown> = {};
-      for (const f of [...DATE_FIELDS, "source_url"] as const) {
-        if (keep[f] != null) continue;
-        const donor = drop.find((d) => d[f] != null);
-        if (donor) updates[f] = donor[f];
+      for (const f of DATE_FIELDS) {
+        const best = drop.reduce<string | null>((acc, d) => morePrecise(acc, d[f]), normaliseStored(keep[f]));
+        if (best != null && best !== normaliseStored(keep[f])) updates[f] = best;
+      }
+      if (keep.source_url == null) {
+        const donor = drop.find((d) => d.source_url != null);
+        if (donor) updates.source_url = donor.source_url;
       }
       if (Object.keys(updates).length > 0) {
         await masterKnex(INTAKES).where({ id: keep.id }).update({ ...updates, updated_at: masterKnex.fn.now() });
@@ -575,7 +590,7 @@ async function collapseDuplicateEnglishRequirements() {
   // Grouped by what upsertEnglishRequirement dedupes on, so this pass and the writer agree.
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const r of rows) {
-    const key = `${r.course_id} ${String(r.test_type_name).trim().toLowerCase()}`;
+    const key = `${r.course_id}\u0000${String(r.test_type_name).trim().toLowerCase()}`;
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
   }
 

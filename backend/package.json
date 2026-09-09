@@ -30,6 +30,7 @@
     "test:enquiry-email-queue": "node --import tsx tests/enquiries/email-queue.ts",
     "test:scraper-cascade": "node --import tsx tests/scraper-cascade.ts",
     "test:eligibility-extraction": "node --import tsx tests/eligibility-extraction.ts",
+    "test:partial-date": "node --import tsx tests/partial-date.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",
     "test:embeddings": "node --import tsx tests/embeddings.ts",
     "test:manual-institution-job": "node --import tsx tests/manual-institution-job.ts",

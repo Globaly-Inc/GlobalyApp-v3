@@ -1,6 +1,7 @@
 // Zod schemas for staged entities and junction endpoints.
 
 import { z } from "zod";
+import { PARTIAL_DATE_RE } from "../lib/partial-date.js";
 
 // ── Study options (SO1-SO3) ──
 // .nullish() — the create form sends `null` for blank optional fields (e.g. duration_unit
@@ -53,32 +54,94 @@ export const PatchCourseFeeSchema = CreateCourseFeeSchema.omit({ job_id: true, c
 
 // ── Intakes (CE3-CE4) ──
 // .nullish() — the tab sends `null` for blank date/month/year fields, not just omitting the key.
+//
+// Every date takes EITHER precision: "2026-09-21" when the institution published a day, "2026-09"
+// when it published only a month. Validated rather than merely typed as a string, because the
+// column now carries a CHECK constraint with the same pattern (migration 20260909_001) and a bad
+// value should be a 400 naming the field, not a 500 out of Postgres.
+//
+// An empty string is coerced to null: a cleared <input type="date"> sends "", and storing that
+// would violate the constraint.
+const PartialDateSchema = z
+  .union([z.string().regex(PARTIAL_DATE_RE, 'Use YYYY-MM-DD or YYYY-MM'), z.literal("")])
+  .nullish()
+  .transform((v) => (v === "" ? null : v));
+
+/** An admin-named milestone: both halves required, since either alone means nothing. */
+export const IntakeCustomDateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  date: z.string().regex(PARTIAL_DATE_RE, 'Use YYYY-MM-DD or YYYY-MM'),
+});
+
 export const CreateIntakeSchema = z.object({
   job_id: z.string().uuid(),
   intake_name: z.string().nullish(),
-  start_date: z.string().nullish(),
-  end_date: z.string().nullish(),
-  orientation_date: z.string().nullish(),
-  admission_deadline: z.string().nullish(),
-  intake_month: z.number().int().nullish(),
+  start_date: PartialDateSchema,
+  end_date: PartialDateSchema,
+  orientation_date: PartialDateSchema,
+  admission_deadline: PartialDateSchema,
+  intake_month: z.number().int().min(1).max(12).nullish(),
   intake_year: z.number().int().nullish(),
+  custom_dates: z.array(IntakeCustomDateSchema).nullish(),
 });
 
 // ── Eligibility requirements (CE5-CE6) ──
 // .nullish() — the form always sends one of min_score/min_score_percent as `null`
 // (only one of the pair holds a value at a time), plus other blank optional fields.
+/**
+ * The four values the column's CHECK constraint allows (migration 20260805_004).
+ *
+ * Enumerated rather than left as a free string so a bad value is a 400 naming the field instead of
+ * a Postgres constraint violation surfacing as a 500.
+ */
+export const SCORE_TYPES = ["percentage", "gpa_4", "gpa_10", "cgpa"] as const;
+
+/**
+ * One academic admission test on a requirement.
+ *
+ * `test_name` is REQUIRED and non-empty, which is the whole point of validating this array: the
+ * eligibility engine matches a stored test against the student's by name (`sameTest`), and a
+ * nameless entry can never match anything. It does not fail — it emits a permanently `unknown`
+ * criterion, which caps a real student's eligibility percentage below 100 forever and renders as a
+ * tile labelled "Test". Same defect the English requirements had (see module CLAUDE.md (i)), and
+ * the writers already drop nameless entries via normaliseAcademicTests; this closes the admin and
+ * API path that bypassed them.
+ *
+ * Scores are strings because a page states "6.5" and "1200" alike, and because that is what
+ * normaliseAcademicTests stores — a number here would compare unequal to the same value written
+ * by a scrape.
+ */
+export const AcademicTestSchema = z.object({
+  test_name: z.string().trim().min(1, "A test needs a name"),
+  /** A stated minimum. This is the only field that gates a verdict. */
+  score: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
+  /** What admitted students scored. Displayed, never compared. */
+  typical_score: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
+  is_optional: z.boolean().optional().default(false),
+});
+
+/** One accepted English test. `test_type_name` is required for exactly the reason above. */
+export const LanguageTestSchema = z.object({
+  test_type_name: z.string().trim().min(1, "A test needs a name"),
+  overall_score: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
+  listening_score: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
+  reading_score: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
+  writing_score: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
+  speaking_score: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
+});
+
 export const CreateEligibilitySchema = z.object({
   job_id: z.string().uuid(),
   name: z.string().nullish(),
   applicable_to: z.string().nullish(),
   min_degree_level: z.string().nullish(),
   degree_level_id: z.string().uuid().nullish(),
-  score_type: z.string().nullish(),
+  score_type: z.enum(SCORE_TYPES).nullish(),
   min_score: z.number().nullish(),
   min_score_percent: z.number().nullish(),
   description: z.string().nullish(),
-  academic_tests: z.array(z.unknown()).optional(),
-  language_tests: z.array(z.unknown()).optional(),
+  academic_tests: z.array(AcademicTestSchema).optional(),
+  language_tests: z.array(LanguageTestSchema).optional(),
 });
 
 export const PatchEligibilitySchema = CreateEligibilitySchema.omit({ job_id: true }).partial();

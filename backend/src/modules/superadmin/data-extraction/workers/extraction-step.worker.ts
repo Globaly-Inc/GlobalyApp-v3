@@ -44,7 +44,6 @@ import {
   upsertEligibility,
   upsertEnglishRequirement,
   coerceMoney,
-  coerceDate,
   coerceMonth,
   coerceInt,
   deriveIntakeMonthYear,
@@ -58,6 +57,7 @@ import {
   type InstitutionOverview,
   type ExtractedVisaService,
 } from "../lib/staging-writer.js";
+import { coercePartialDate } from "../lib/partial-date.js";
 import { parseAddress } from "../lib/address-parser.js";
 import { normalizeAgentRow } from "../lib/agent-normalizers.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
@@ -1153,13 +1153,14 @@ async function handleCourseDataStep(
           admission_deadline: (intake.admission_deadline as string | null) ?? null,
           intake_month: intake.intake_month as number | string | null,
           intake_year: intake.intake_year as number | string | null,
+          custom_dates: intake.custom_dates as ExtractedIntake["custom_dates"],
         };
         // Only a row with nothing identifying at all is worth skipping.
         const derived = deriveIntakeMonthYear(
-          parsed.intake_name, coerceDate(parsed.start_date),
+          parsed.intake_name, coercePartialDate(parsed.start_date),
           coerceMonth(parsed.intake_month), coerceInt(parsed.intake_year),
         );
-        if (!parsed.intake_name && !coerceDate(parsed.start_date) && derived.intake_year == null) continue;
+        if (!parsed.intake_name && !coercePartialDate(parsed.start_date) && derived.intake_year == null) continue;
 
         const intakeId = await upsertIntake(jobId, parsed, sourceUrl);
         await masterKnex(`${S}.extraction_course_intake_assignments`)
