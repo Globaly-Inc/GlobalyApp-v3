@@ -101,11 +101,16 @@ export type InstitutionOverview = ActorFields & {
   phone: string | null;
   address: string | null;
   zip_code: string | null;
+  /** "public" | "private" | null — ownership, not the educational category. */
+  ownership_type: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
   twitter_url: string | null;
   linkedin_url: string | null;
   youtube_url: string | null;
+  /** Social/profile links that don't fit a known platform column (TikTok, Threads, etc), each
+   * with a label — either LLM-guessed from the platform or set manually by an admin. */
+  other_social_links: { label: string; url: string }[] | null;
   updated_at?: string | null;
 };
 

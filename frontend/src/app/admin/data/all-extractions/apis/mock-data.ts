@@ -36,7 +36,7 @@ import type {
   VisaService,
 } from "./types";
 
-import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type { ExtractionStatus, GetJobsParams, GetJobsResult } from "./types";
 
@@ -85,10 +85,6 @@ let mockJobs: ExtractionJob[] = [
   { id: "23", institution_name: "Queensland University of Technology (QUT)", institution_url: "https://qut.edu.au", status: "done", total_pages_found: 65, courses_extracted: 58, verification_score: 55, verification_total: 58, pages_scraped: 65, pages_failed: 0, agent_count: 2, created_at: "2026-06-10T09:00:00Z", updated_at: "2026-06-10T09:00:00Z" },
 ];
 
-function rawStatusesForLabel(label: string): ExtractionStatus[] {
-  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
-}
-
 export const allExtractionsMockApi = {
   getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
     console.log("[mock] GET /admin/data-extraction/jobs-filtered", params);
@@ -97,7 +93,7 @@ export const allExtractionsMockApi = {
     const baseStatuses = MODE_STATUS_FILTER[params.mode];
     const statuses =
       params.statusLabel && params.statusLabel !== "all"
-        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        ? statusesForFilterValue(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
         : baseStatuses;
 
     let filtered = statuses ? mockJobs.filter((j) => statuses.includes(j.status)) : [...mockJobs];
@@ -875,11 +871,13 @@ export const allExtractionsMockApi = {
             phone: "+1 555 0100",
             address: null,
             zip_code: null,
+            ownership_type: null,
             facebook_url: null,
             instagram_url: null,
             twitter_url: null,
             linkedin_url: null,
             youtube_url: null,
+            other_social_links: null,
             updated_at: now,
           }
         : null,

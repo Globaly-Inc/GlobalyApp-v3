@@ -3,6 +3,7 @@
 import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
 import { loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel } from "./lookup-catalog.js";
@@ -352,6 +353,8 @@ export interface ExtractedCampus {
   state?: string | null;
   country?: string | null;
   address?: string | null;
+  postcode?: string | null;
+  map_link?: string | null;
   phone?: string | null;
   email?: string | null;
 }
@@ -365,6 +368,9 @@ export interface InstitutionOverview {
   city?: string | null;
   state?: string | null;
   country?: string | null;
+  /** "public" | "private" — ownership, not the educational category (that's
+   * extraction_site_intelligence.institution_type: university/college/tafe/...). */
+  ownership_type?: string | null;
   description?: string | null;
   logo_url?: string | null;
   source_url?: string | null;
@@ -374,6 +380,10 @@ export interface InstitutionOverview {
   twitter_url?: string | null;
   linkedin_url?: string | null;
   youtube_url?: string | null;
+  /** Social/profile links that don't match a known platform column (TikTok, Threads, WhatsApp
+   * Business, etc), each with an admin/LLM-supplied label. Not part of OVERVIEW_MERGE_COLUMNS
+   * since it's unioned, not overwritten; callers merge it themselves and pass the final array in. */
+  other_social_links?: { label: string; url: string }[] | null;
 }
 
 export interface SiteIntelligence {
@@ -389,7 +399,7 @@ export interface SiteIntelligence {
 // ── Writers ──
 const OVERVIEW_MERGE_COLUMNS = [
   "name", "website", "phone", "email", "address", "city", "state", "country",
-  "description", "logo_url", "source_url", "zip_code",
+  "description", "logo_url", "source_url", "zip_code", "ownership_type",
   "facebook_url", "instagram_url", "twitter_url", "linkedin_url", "youtube_url",
 ] as const;
 
@@ -400,8 +410,11 @@ export async function writeInstitutionOverview(jobId: string, data: InstitutionO
       `COALESCE(NULLIF(EXCLUDED.${col}, ''), ${S}.extraction_institution_overview.${col})`,
     );
   }
+  const insertData: Record<string, unknown> = { job_id: jobId, ...data };
+  if (data.other_social_links) insertData.other_social_links = JSON.stringify(data.other_social_links);
+
   const [row] = await masterKnex(`${S}.extraction_institution_overview`)
-    .insert({ job_id: jobId, ...data })
+    .insert(insertData)
     .onConflict("job_id")
     .merge(mergeSet)
     .returning("id");
@@ -433,6 +446,19 @@ export function normaliseCampusName(name: string): string {
     .replace(/\s+/g, " ");
 }
 
+// Generic labels that, for the common case of a single-primary-site institution, refer to the
+// institution's own address even though the name itself doesn't match — "Main Campus" doesn't
+// literally say "Ball State University", but it IS Ball State's own address for most schools.
+const GENERIC_MAIN_CAMPUS_LABELS = new Set(["main", "central", "home", "primary", "head office", "headquarters"]);
+
+/** Is this campus name either literally the institution's own name, or a generic label
+ * ("Main Campus", "Central Campus", ...) that conventionally means the same place? */
+export function isMainCampusLabel(campusName: string, institutionName: string): boolean {
+  const norm = normaliseCampusName(campusName);
+  if (norm === normaliseCampusName(institutionName)) return true;
+  return GENERIC_MAIN_CAMPUS_LABELS.has(norm);
+}
+
 /**
  * Upsert a campus for a job — deduplicates by normalised name within the same job.
  */
@@ -445,10 +471,77 @@ export async function upsertCampus(jobId: string, campus: ExtractedCampus): Prom
   const norm = normaliseCampusName(campus.name);
   const existing = allCampuses.find(c => normaliseCampusName(c.name) === norm);
 
-  if (existing) return existing.id;
+  // A course page frequently names a campus (its own institution, "Main Campus", or any other
+  // generic label) when no more specific location is stated (course.campus_names in
+  // extraction-page.worker.ts) — that call only ever supplies a bare `{ name }`, with none of
+  // the enrichment (address parsing, geocoding, phone/email fallback) handleBranchesStep's
+  // real 3-phase discovery gets. Left as-is, this stub is indistinguishable in the UI from a
+  // genuine, fully-blank branch.
+  const isBare = (c: { city?: unknown; state?: unknown; country?: unknown; address?: unknown; phone?: unknown; email?: unknown }) =>
+    !c.city && !c.state && !c.country && !c.address && !c.phone && !c.email;
+
+  const overviewFor = (() => {
+    let cached: Promise<Record<string, unknown> | undefined> | null = null;
+    return () => (cached ??= masterKnex(`${S}.extraction_institution_overview`).where({ job_id: jobId }).first());
+  })();
+
+  // The institution overview has no map_link column of its own — geocode whatever address is
+  // being copied in, same as the "Find Missing Details" button does per-campus. Best-effort:
+  // the caller still gets everything else even if this fails.
+  const geocodeOverview = async (overview: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    if (!overview.address) return {};
+    const addressLine = [overview.address, overview.city, overview.state, overview.country].filter(Boolean).join(", ");
+    try {
+      const geocoded = await geocodeAddress(addressLine);
+      if (!geocoded) return {};
+      return { map_link: geocoded.mapLink, ...(overview.zip_code ? {} : { postcode: geocoded.postcode }) };
+    } catch (e) {
+      logger.warn("Campus geocoding failed during stub enrichment", { error: e instanceof Error ? e.message : String(e) });
+      return {};
+    }
+  };
+
+  if (existing) {
+    if (isBare(existing)) {
+      const overview = await overviewFor();
+      if (overview?.name && isMainCampusLabel(campus.name!, overview.name as string)) {
+        // Same entity as the institution itself — safe to copy its full location too.
+        await masterKnex(`${S}.extraction_campuses`).where({ id: existing.id }).update({
+          city: overview.city, state: overview.state, country: overview.country,
+          address: overview.address, postcode: overview.zip_code,
+          phone: overview.phone, email: overview.email,
+          ...(await geocodeOverview(overview)),
+        });
+      } else if (overview && (overview.phone || overview.email) && !existing.phone && !existing.email) {
+        // A differently-named branch ("Main Campus", "City Campus", ...) isn't necessarily at
+        // the institution's own address, so its location stays unset — but a branch office
+        // reasonably shares the institution's phone/email until it has its own on file.
+        await masterKnex(`${S}.extraction_campuses`).where({ id: existing.id }).update({
+          phone: existing.phone ?? overview.phone, email: existing.email ?? overview.email,
+        });
+      }
+    }
+    return existing.id;
+  }
+
+  let enriched = campus;
+  if (isBare(campus)) {
+    const overview = await overviewFor();
+    if (overview?.name && isMainCampusLabel(campus.name!, overview.name as string)) {
+      enriched = {
+        ...campus,
+        city: overview.city, state: overview.state, country: overview.country,
+        address: overview.address, postcode: overview.zip_code,
+        phone: overview.phone, email: overview.email,
+        ...(await geocodeOverview(overview)),
+      } as ExtractedCampus;
+    } else if (overview && (overview.phone || overview.email)) {
+      enriched = { ...campus, phone: overview.phone as string | null, email: overview.email as string | null };
+    }
+  }
 
   const [row] = await masterKnex(`${S}.extraction_campuses`)
-    .insert({ job_id: jobId, ...campus })
+    .insert({ job_id: jobId, ...enriched })
     .returning("id");
   return row.id;
 }

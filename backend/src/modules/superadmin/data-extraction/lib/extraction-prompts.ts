@@ -27,19 +27,21 @@ Extract this JSON structure:
     "name": "full institution name",
     "website": "${url}",
     "phone": "main phone or null",
-    "email": "main contact email or null",
-    "address": "street address or null",
+    "email": "the institution's own contact email or null — priority: 1) main/general (info@/contact@/enquiries@) 2) department (admissions@) 3) any other listed email",
+    "address": "street address line only — do NOT repeat city/state/postcode here, they have their own fields",
     "city": "city or null",
     "state": "state/province or null",
     "country": "country or null",
     "zip_code": "postal code or null",
+    "ownership_type": "\"public\" or \"private\" — ONLY if explicitly stated (e.g. \"a public research university\", \"private college\"); null if the page doesn't say",
     "description": "brief description of the institution",
     "logo_url": "logo image URL or null",
-    "facebook_url": "null if not found",
-    "instagram_url": "null if not found",
-    "twitter_url": "null if not found",
-    "linkedin_url": "null if not found",
-    "youtube_url": "null if not found"
+    "facebook_url": "a facebook.com link, or null — never put a link to a different platform here just because it was near a Facebook icon",
+    "instagram_url": "an instagram.com link, or null",
+    "twitter_url": "a twitter.com or x.com link, or null — do NOT put tiktok.com, threads.net or any other domain here",
+    "linkedin_url": "a linkedin.com link, or null",
+    "youtube_url": "a youtube.com or youtu.be link, or null",
+    "other_social_urls": [{ "label": "short platform/site name, e.g. \"TikTok\", \"WhatsApp\", \"Booking\"", "url": "the link" }]
   },
   "site_intelligence": {
     "institution_type": "university|college|tafe|polytechnic|training_provider|other",
@@ -388,11 +390,12 @@ Extract this JSON structure:
     "zip_code": "postal code or null",
     "description": "brief description of the provider",
     "logo_url": "logo image URL or null",
-    "facebook_url": "null if not found",
-    "instagram_url": "null if not found",
-    "twitter_url": "null if not found",
-    "linkedin_url": "null if not found",
-    "youtube_url": "null if not found"
+    "facebook_url": "a facebook.com link, or null — never put a link to a different platform here just because it was near a Facebook icon",
+    "instagram_url": "an instagram.com link, or null",
+    "twitter_url": "a twitter.com or x.com link, or null — do NOT put tiktok.com, threads.net or any other domain here",
+    "linkedin_url": "a linkedin.com link, or null",
+    "youtube_url": "a youtube.com or youtu.be link, or null",
+    "other_social_urls": [{ "label": "short platform/site name, e.g. \"TikTok\", \"WhatsApp\", \"Booking\"", "url": "the link" }]
   },
   "site_intelligence": {
     "institution_type": "visa_service_provider",
@@ -525,20 +528,28 @@ Return JSON:
   "name": "full institution name or null",
   "logo_url": "logo image URL or null",
   "website": "institution website or null",
-  "email": "main contact email or null",
+  "email": "the institution's own contact email or null — priority: 1) main/general (info@/contact@/enquiries@) 2) department (admissions@) 3) any other listed email",
   "phone": "main phone or null",
   "description": "brief description or null",
   "country": "country or null",
   "state": "state/province or null",
   "city": "city or null",
-  "address": "street address or null",
+  "address": "street address line only — do NOT repeat city/state/postcode here, they have their own fields",
   "zip_code": "postal code or null",
-  "facebook_url": "null if not found",
-  "instagram_url": "null if not found",
-  "twitter_url": "null if not found",
-  "linkedin_url": "null if not found",
-  "youtube_url": "null if not found"
-}`;
+  "ownership_type": "\"public\" or \"private\" — ONLY if explicitly stated (e.g. \"a public research university\", \"private college\"); null if the page doesn't say",
+  "facebook_url": "a facebook.com link, or null — never put a link to a different platform here just because it was near a Facebook icon",
+  "instagram_url": "an instagram.com link, or null",
+  "twitter_url": "a twitter.com or x.com link, or null — do NOT put tiktok.com, threads.net or any other domain here",
+  "linkedin_url": "a linkedin.com link, or null",
+  "youtube_url": "a youtube.com or youtu.be link, or null",
+  "other_social_urls": [{ "label": "short platform/site name, e.g. \"TikTok\", \"WhatsApp\", \"Booking\"", "url": "the link" }]
+}
+
+Email selection rule, in priority order:
+1. The main/general institution email (e.g. info@institution.com, contact@, enquiries@).
+2. If none is stated, a department email (e.g. admissions@institution.com).
+3. If neither is stated, any other email address listed on the page.
+Only use null if the page lists no email address at all.`;
 }
 
 // ── Phase 2c: Campus extraction (step worker) ──

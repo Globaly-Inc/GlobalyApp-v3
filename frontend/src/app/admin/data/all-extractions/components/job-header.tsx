@@ -50,7 +50,7 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
         <Button
           variant="ghost"
           className="gap-1.5 shrink-0 cursor-pointer"
-          onClick={() => router.push("/admin/data/all-extractions")}
+          onClick={() => router.back()}
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back

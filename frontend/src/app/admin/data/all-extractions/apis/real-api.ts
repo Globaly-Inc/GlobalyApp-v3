@@ -1,5 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG,statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type {
   Accreditation,
@@ -45,10 +45,6 @@ import type {
   VisaService,
 } from "./types";
 
-function rawStatusesForLabel(label: string): ExtractionStatus[] {
-  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
-}
-
 export const allExtractionsRealApi = {
   getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
     const query: Record<string, string> = {
@@ -60,7 +56,7 @@ export const allExtractionsRealApi = {
     const baseStatuses = MODE_STATUS_FILTER[params.mode];
     const statuses =
       params.statusLabel && params.statusLabel !== "all"
-        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        ? statusesForFilterValue(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
         : baseStatuses;
     if (statuses?.length) query.statuses = statuses.join(",");
     if (!params.showDeclined) query.exclude_statuses = "declined";

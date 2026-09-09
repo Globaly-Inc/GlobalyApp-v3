@@ -1,6 +1,115 @@
 // URL filtering and markdown utilities.
 // Scrapers return markdown, so we mostly work with URLs and text — not raw HTML.
 
+/**
+ * Every `href="..."` value in raw HTML — deliberately not the scraper's own `links` array,
+ * which (for Scrapling/Crawl4AI) is `extractLinksFromMarkdown()` in scraper.ts: a regex over
+ * the already-converted MARKDOWN text, looking for `[text](url)` or bare URLs. An icon-only
+ * anchor (`<a href="..."><span class="fab fa-facebook-f"></span></a>`, no visible text) never
+ * produces either pattern in markdown, so that array is exactly as blind to it as the LLM
+ * reading the same markdown — pulling from raw HTML is the only way to actually see it.
+ */
+export function extractHrefsFromHtml(html: string): string[] {
+  const hrefs = new Set<string>();
+  const re = /\bhref\s*=\s*["']([^"'#][^"']*)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) hrefs.add(m[1]);
+  return [...hrefs];
+}
+
+export type SocialLinks = {
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
+  youtube_url: string | null;
+  other_social_links: { label: string; url: string }[];
+};
+
+const KNOWN_PLATFORMS: { key: keyof Omit<SocialLinks, "other_social_links">; hosts: RegExp }[] = [
+  { key: "facebook_url", hosts: /(^|\.)facebook\.com$/i },
+  { key: "instagram_url", hosts: /(^|\.)instagram\.com$/i },
+  { key: "twitter_url", hosts: /(^|\.)(twitter\.com|x\.com)$/i },
+  { key: "linkedin_url", hosts: /(^|\.)linkedin\.com$/i },
+  { key: "youtube_url", hosts: /(^|\.)(youtube\.com|youtu\.be)$/i },
+];
+
+// A handful of other platforms worth a recognizable label instead of a generic "Link".
+const OTHER_PLATFORM_LABELS: { hosts: RegExp; label: string }[] = [
+  { hosts: /(^|\.)tiktok\.com$/i, label: "TikTok" },
+  { hosts: /(^|\.)threads\.net$/i, label: "Threads" },
+  { hosts: /(^|\.)wa\.me$|whatsapp\.com$/i, label: "WhatsApp" },
+  { hosts: /(^|\.)pinterest\.com$/i, label: "Pinterest" },
+  { hosts: /(^|\.)snapchat\.com$/i, label: "Snapchat" },
+  { hosts: /(^|\.)wechat\.com$/i, label: "WeChat" },
+];
+
+/**
+ * Classifies raw page links (the scraper's separate `links` array, not markdown text) into
+ * known social platforms by domain — deterministic, no LLM involved. Exists because an
+ * icon-only social footer (`<a href="..."><span class="fab fa-facebook-f"></span></a>`, no
+ * visible link text) is extremely common and gets stripped or blanked by HTML→markdown
+ * conversion before the LLM ever sees it — the raw href survives in `links` regardless of
+ * what markdown conversion did to the surrounding text.
+ */
+export function extractSocialLinks(links: string[]): SocialLinks {
+  const result: SocialLinks = {
+    facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
+    other_social_links: [],
+  };
+  const seenOther = new Set<string>();
+
+  for (const link of links) {
+    let host: string;
+    try {
+      host = new URL(link).hostname;
+    } catch {
+      continue;
+    }
+
+    const known = KNOWN_PLATFORMS.find((p) => p.hosts.test(host));
+    if (known) {
+      if (!result[known.key]) result[known.key] = link;
+      continue;
+    }
+
+    const other = OTHER_PLATFORM_LABELS.find((p) => p.hosts.test(host));
+    if (other && !seenOther.has(link)) {
+      seenOther.add(link);
+      result.other_social_links.push({ label: other.label, url: link });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Fixes a specific LLM extraction quirk: given a page with a root-relative asset URL like
+ * `<img src="/-/media/logos/foo.png">` (Sitecore's media-library convention, but any
+ * root-relative path triggers this), the LLM sometimes "helpfully" absolutizes it by
+ * prefixing `https://` without ever inserting the actual domain — producing
+ * `https://-/media/logos/foo.png`, which parses as a syntactically valid URL (hostname:
+ * "-") so nothing downstream catches it, but is completely broken.
+ *
+ * Detects this by hostname shape (a real one has a dot, or is "localhost") and re-resolves
+ * treating "hostname + pathname + search" as the real relative path it should have been.
+ */
+export function fixMalformedAbsoluteUrl(value: string | null | undefined, pageUrl: string): string | null {
+  if (!value) return value ?? null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.hostname.includes(".") || parsed.hostname === "localhost") return value;
+    const relative = `/${parsed.hostname}${parsed.pathname}${parsed.search}`;
+    return new URL(relative, pageUrl).href;
+  } catch {
+    try {
+      return new URL(value, pageUrl).href;
+    } catch {
+      return value;
+    }
+  }
+}
+
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
   const signals = [
@@ -223,4 +332,50 @@ export function domainOf(url: string): string {
   } catch {
     return "unknown";
   }
+}
+
+// ponytail: self-check
+if (import.meta.url.endsWith("/html-utils.ts") && process.argv[1]?.endsWith("html-utils.ts")) {
+  const assert = (cond: boolean, msg: string) => { if (!cond) throw new Error(`FAIL: ${msg}`); };
+
+  const r = extractSocialLinks([
+    "https://www.facebook.com/ballstate",
+    "https://twitter.com/BallState",
+    "https://www.youtube.com/officialballstate",
+    "https://www.instagram.com/ballstateuniversity/",
+    "https://www.linkedin.com/school/ball-state-university/",
+    "https://www.tiktok.com/@ballstate/",
+    "https://www.bsu.edu/about",
+    "not a url",
+  ]);
+  assert(r.facebook_url === "https://www.facebook.com/ballstate", `facebook: ${r.facebook_url}`);
+  assert(r.twitter_url === "https://twitter.com/BallState", `twitter (twitter.com): ${r.twitter_url}`);
+  assert(r.youtube_url === "https://www.youtube.com/officialballstate", `youtube: ${r.youtube_url}`);
+  assert(r.instagram_url === "https://www.instagram.com/ballstateuniversity/", `instagram: ${r.instagram_url}`);
+  assert(r.linkedin_url === "https://www.linkedin.com/school/ball-state-university/", `linkedin: ${r.linkedin_url}`);
+  assert(r.other_social_links.length === 1 && r.other_social_links[0].label === "TikTok", `tiktok in other: ${JSON.stringify(r.other_social_links)}`);
+
+  const rX = extractSocialLinks(["https://x.com/BallState"]);
+  assert(rX.twitter_url === "https://x.com/BallState", `twitter (x.com): ${rX.twitter_url}`);
+
+  const rEmpty = extractSocialLinks([]);
+  assert(rEmpty.facebook_url === null && rEmpty.other_social_links.length === 0, "empty input returns all-null");
+
+  const hrefs = extractHrefsFromHtml(
+    `<a href="https://www.facebook.com/ballstate" title="Facebook"><span class="fab fa-facebook-f"></span></a>` +
+    `<a href="#top">Back to top</a><a href="/about">About</a>`,
+  );
+  assert(hrefs.includes("https://www.facebook.com/ballstate"), `icon-only anchor href captured: ${JSON.stringify(hrefs)}`);
+  assert(hrefs.includes("/about"), `relative href captured: ${JSON.stringify(hrefs)}`);
+  assert(!hrefs.includes("#top"), `fragment-only href excluded: ${JSON.stringify(hrefs)}`);
+
+  const fixed = fixMalformedAbsoluteUrl(
+    "https://-/media/www/images/logos/bsu-logo_top.png?h=112&w=402",
+    "https://www.bsu.edu/about/contactus",
+  );
+  assert(fixed === "https://www.bsu.edu/-/media/www/images/logos/bsu-logo_top.png?h=112&w=402", `fixMalformedAbsoluteUrl: ${fixed}`);
+  assert(fixMalformedAbsoluteUrl("https://www.facebook.com/ballstate", "https://www.bsu.edu") === "https://www.facebook.com/ballstate", "real absolute URL untouched");
+  assert(fixMalformedAbsoluteUrl(null, "https://www.bsu.edu") === null, "null passes through");
+
+  console.log("html-utils: all checks passed");
 }

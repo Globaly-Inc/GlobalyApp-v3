@@ -186,7 +186,10 @@ export async function getCourseLinks(jobId: string) {
     if (key === "accreditations") {
       return masterKnex(table).select("*").then((rows) => [key, rows] as const);
     }
-    const query = key.endsWith("_assignments")
+    // course_campuses stores campus_name denormalized already but not course_name — join it
+    // here too (not just "_assignments" tables) so the Branches tab can list linked courses
+    // without a second round-trip to fetch every course's name.
+    const query = key.endsWith("_assignments") || key === "course_campuses"
       ? masterKnex(table).select(`${table}.*`, `${T}.name as course_name`)
         .leftJoin(T, `${table}.course_id`, `${T}.id`)
         .where(`${table}.job_id`, jobId)
