@@ -393,19 +393,6 @@ async function handleInstitutionStep(jobId: string) {
     merged.other_social_links = unionSocialLinks(merged.other_social_links, detectedSocial.other_social_links);
   }
 
-  // Last-resort email fallback: the LLM's own tiers (main/general → department → any other
-  // listed email) are a text judgment call and can reasonably skip past a niche address like
-  // privacy@ or webmaster@ that's still perfectly usable. A plain same-domain regex scan over
-  // every scraped page's text never misses one that's actually there. Only fires if every
-  // tier above found nothing.
-  if (!merged.email) {
-    const institutionDomain = domainOf(baseUrl);
-    for (const { markdown } of scrapedPairs) {
-      const found = extractDomainEmails(markdown, institutionDomain);
-      if (found.length) { merged.email = found[0]; break; }
-    }
-  }
-
   // Process supporting documents (PDFs/files attached to the job)
   const docs: DocInput[] = Array.isArray(job.supporting_documents) ? job.supporting_documents : [];
   if (docs.length > 0) {
@@ -436,6 +423,18 @@ async function handleInstitutionStep(jobId: string) {
     // labeled) should never be dropped just because this run's pages didn't happen to restate it.
     const unioned = unionSocialLinks(existing.other_social_links, merged.other_social_links);
     if (unioned.length) merged.other_social_links = unioned;
+  }
+
+  // Last-resort email fallback: only after existing (possibly admin-reviewed) values have
+  // already been restored above, so a same-domain regex hit like privacy@ or webmaster@
+  // never overwrites a real reviewed email — it only fills a field that's genuinely still
+  // empty everywhere (fresh LLM pass AND no prior saved value).
+  if (!merged.email) {
+    const institutionDomain = domainOf(baseUrl);
+    for (const { markdown } of scrapedPairs) {
+      const found = extractDomainEmails(markdown, institutionDomain);
+      if (found.length) { merged.email = found[0]; break; }
+    }
   }
 
   // The LLM occasionally "absolutizes" a root-relative asset URL (e.g. Sitecore's

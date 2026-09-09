@@ -2,6 +2,12 @@
 // Scrapers return markdown, so we mostly work with URLs and text — not raw HTML.
 
 
+// Local-parts that name a narrow mailbox rather than a general point of contact — a same-domain
+// scan turns these up constantly (footer privacy notices, webmaster credits) but they're a worse
+// answer than almost anything else on the same domain, so callers should prefer any other match
+// found before falling back to one of these.
+const LOW_PRIORITY_LOCAL_PARTS = new Set(["privacy", "webmaster", "postmaster", "noreply", "no-reply", "abuse"]);
+
 export function extractDomainEmails(text: string, institutionDomain: string): string[] {
   const domain = institutionDomain.replace(/^www\./i, "").toLowerCase();
   const re = /[a-zA-Z0-9._%+-]+@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
@@ -11,7 +17,13 @@ export function extractDomainEmails(text: string, institutionDomain: string): st
     const emailDomain = m[1].toLowerCase();
     if (emailDomain === domain || emailDomain.endsWith(`.${domain}`)) found.add(m[0]);
   }
-  return [...found];
+  // Rank ordinary addresses ahead of low-priority ones (privacy@, webmaster@, ...) so the first
+  // entry is the best guess, not just whichever appeared first in the text.
+  return [...found].sort((a, b) => {
+    const aLow = LOW_PRIORITY_LOCAL_PARTS.has(a.split("@")[0].toLowerCase()) ? 1 : 0;
+    const bLow = LOW_PRIORITY_LOCAL_PARTS.has(b.split("@")[0].toLowerCase()) ? 1 : 0;
+    return aLow - bLow;
+  });
 }
 
 /**
