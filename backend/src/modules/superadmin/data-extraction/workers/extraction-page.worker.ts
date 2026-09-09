@@ -233,6 +233,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     masterKnex(`${S}.extraction_site_intelligence`)
       .select("fee_structure", "extraction_hints", "country")
       .where({ job_id: jobId })
+      .orderBy("created_at", "desc")
       .first(),
   ]);
 

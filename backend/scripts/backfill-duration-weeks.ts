@@ -98,13 +98,12 @@ async function backfillCountry() {
   const jobs = masterKnex("superadmin.extraction_site_intelligence as si")
     .join("superadmin.extraction_jobs as j", "j.id", "si.job_id")
     .whereNotNull("si.country")
+    .orderBy("si.created_at", "desc")
     .select("si.job_id", "si.country");
   if (jobId) jobs.where("si.job_id", jobId);
 
   let filled = 0;
   const unresolved = new Set<string>();
-  // A job can carry more than one site-intelligence row; take the first country per job or the
-  // dry-run count re-counts the same courses once per row.
   const perJob = new Map<string, string>();
   for (const { job_id, country } of await jobs) if (!perJob.has(job_id)) perJob.set(job_id, country);
   for (const [job_id, country] of perJob) {
