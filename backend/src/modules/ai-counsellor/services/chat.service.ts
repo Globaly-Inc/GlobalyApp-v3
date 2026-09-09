@@ -227,6 +227,7 @@ export async function handleMessage(opts: {
         query: opts.content,
         userId: opts.userId,
         jobIds: opts.embed?.jobIds,
+        rackInstitutionId: opts.embed?.rackInstitutionId,
         skipCourses: discoveryTurn,
         onTrace: trace,
       });

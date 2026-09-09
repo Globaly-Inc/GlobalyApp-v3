@@ -83,9 +83,10 @@ async function matchRack(
   vector: number[],
   countryCode: string | null,
   trace: (step: string) => void,
+  institutionId?: number | null,
 ): Promise<knowledge.KnowledgeChunkResult[]> {
-  const capped = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 8, countryCode));
-  trace(`Knowledge rack: ${capped.length} chunks found`);
+  const capped = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 8, countryCode, institutionId));
+  trace(institutionId ? `This website: ${capped.length} passages found` : `Knowledge rack: ${capped.length} chunks found`);
   return capped;
 }
 
@@ -105,6 +106,9 @@ export async function searchAll(opts: {
   /** Discovery turn: skip course retrieval so the model counsels instead of
    * recommending — it cannot list courses it never saw. */
   skipCourses?: boolean;
+  /** Embed mode: read THIS institution's own crawled website instead of the global rack.
+   *  Unset for a business widget, which keeps the rack switched off entirely. */
+  rackInstitutionId?: number | null;
   onTrace?: (step: string) => void;
 }): Promise<RagOutput> {
   const embedScoped = opts.jobIds != null;
@@ -128,7 +132,7 @@ export async function searchAll(opts: {
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
-  const [courses, visas, institutions, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = await Promise.all([
+  const [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = await Promise.all([
     opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
       : knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
         .then(r => { trace(`Courses: ${r.length} found`); return r; })
@@ -139,6 +143,19 @@ export async function searchAll(opts: {
     embedScoped ? none : knowledge.searchInstitutions({ query: searchQuery, limit: 5 })
       .then(r => { trace(`Institutions: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Institution search failed", { err: String(err) }); trace("Institution search failed"); return []; }),
+
+    // The widget owner's OWN profile. Embed mode suppresses the institution search above so
+    // a competitor never surfaces under this brand — but that also hid the one institution
+    // the widget is FOR. Scoped strictly to the owner's own jobIds, so the anti-leak
+    // guarantee is unchanged: an empty scope still yields nothing.
+    embedScoped
+      ? knowledge.ownerProfileByJobs(opts.jobIds ?? [])
+        .then(r => { trace(`Own profile: ${r.overview.length ? "found" : "none"}, ${r.campuses.length} campuses`); return r; })
+        .catch(err => {
+          logger.warn("Owner profile lookup failed", { err: String(err) });
+          return { overview: [], campuses: [], accreditations: [] };
+        })
+      : Promise.resolve({ overview: [], campuses: [], accreditations: [] }),
     embedScoped ? none : knowledge.searchAgents({ query: searchQuery, limit: 5 })
       .then(r => { trace(`Agents: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Agent search failed", { err: String(err) }); trace("Agent search failed"); return []; }),
@@ -155,10 +172,15 @@ export async function searchAll(opts: {
     knowledge.searchCountryGuides({ query: searchQuery, limit: 2 })
       .then(r => { trace(`Country guides: ${r.length} found`); return r; })
       .catch(err => { logger.warn("Country guide search failed", { err: String(err) }); return []; }),
-    // Rack retrieval is semantic (vector) search on the raw query. Skipped in embed
-    // mode — crawled institution updates must not surface under another business's brand.
-    embedScoped || !embeddingConfigured() ? none : embed(opts.query)
-      .then(v => matchRack(v, countryCode, trace))
+    // Rack retrieval is semantic (vector) search on the raw query.
+    //
+    // In embed mode it reads the WIDGET OWNER'S OWN crawled website and nothing else, so a
+    // visitor can ask about anything published on the site the widget is installed on —
+    // policies, scholarships, eligibility prose — that structured extraction never captured.
+    // Global rack content stays out of embed answers, and the owner's site stays out of
+    // global ones; the SQL function enforces both directions.
+    !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(opts.query)
+      .then(v => matchRack(v, countryCode, trace, opts.rackInstitutionId))
       .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
   ]);
 
@@ -182,6 +204,44 @@ export async function searchAll(opts: {
   // ── Build context text ──
   const parts: string[] = [];
   const sources: RagOutput["sources"] = [];
+
+  // First in the context on purpose: everything after it is offered BY this institution,
+  // and the model needs to know who "we" is before it reads the catalogue.
+  if (ownerProfile.overview.length) {
+    const [own] = ownerProfile.overview;
+    const lines = [
+      "--- THIS INSTITUTION (you represent it; answer questions about it from here) ---",
+      `Name: ${own.name ?? "Unknown"}`,
+      own.description ? `About: ${own.description.slice(0, 1200)}` : "",
+      [own.address, own.city, own.state, own.country].filter(Boolean).length
+        ? `Location: ${[own.address, own.city, own.state, own.country].filter(Boolean).join(", ")}`
+        : "",
+      // Its own published contact details, from its own website — safe to quote, unlike a
+      // person's. The privacy rule in the system prompt is narrowed to match.
+      own.phone ? `Phone: ${own.phone}` : "",
+      own.email ? `Email: ${own.email}` : "",
+      own.website ? `Website: ${own.website}` : "",
+    ];
+
+    if (ownerProfile.campuses.length) {
+      lines.push(`Campuses (${ownerProfile.campuses.length}):`);
+      for (const c of ownerProfile.campuses) {
+        const where = [c.address, c.city, c.state, c.country].filter(Boolean).join(", ");
+        lines.push(`  - ${c.name ?? "Campus"}${where ? `: ${where}` : ""}${c.phone ? ` (${c.phone})` : ""}`);
+      }
+    }
+    if (ownerProfile.accreditations.length) {
+      lines.push(
+        `Accreditations: ${ownerProfile.accreditations
+          .map(a => (a.issuing_organization ? `${a.name} (${a.issuing_organization})` : a.name))
+          .join("; ")}`,
+      );
+    }
+    lines.push("");
+
+    parts.push(lines.filter(Boolean).join("\n"));
+    sources.push({ type: "institution", id: own.id, title: own.name ?? "This institution" });
+  }
 
   if (hydratedCourses.length) {
     const lines = ["--- COURSES ---"];

@@ -26,6 +26,26 @@ const envSchema = z.object({
   API_URL: z.string().optional(),
   APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
+  /**
+   * Fastify `trustProxy` — decides what `req.ip` means, and `req.ip` is the only
+   * unforgeable client identity the rate limiter and the guest gate have.
+   *
+   * Defaults to `loopback` because the backend image ALWAYS runs nginx in front of Fastify
+   * in the same container (`Dockerfile`: `service nginx start && npm start`), proxying over
+   * localhost with `X-Forwarded-For $proxy_add_x_forwarded_for`. Trusting loopback means
+   * Fastify takes the rightmost address nginx appended — the real client — and ignores
+   * anything the caller prepended, so header rotation buys nothing.
+   *
+   * `loopback` rather than the hop count `1`: identical behind nginx, but strictly safer if
+   * Fastify is ever exposed directly, where `1` would trust the connecting client itself
+   * and hand its own `X-Forwarded-For` straight back.
+   *
+   * Add ranges if something else goes in FRONT of nginx: a CDN or ALB makes the client one
+   * hop further away, so `loopback,<cdn cidr>` is needed or `req.ip` becomes the CDN's
+   * address and every visitor shares one rate-limit bucket. Avoid `true` — it trusts the
+   * whole chain and returns the attacker-controlled leftmost value.
+   */
+  TRUST_PROXY: z.string().default("loopback"),
 
   // Third-party (optional at skeleton stage)
   DRAGONFLY_URL: z.string().optional(),
