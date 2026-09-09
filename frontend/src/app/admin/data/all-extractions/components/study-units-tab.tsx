@@ -25,6 +25,7 @@ import { UNIT_TYPE_OPTIONS } from "../const";
 import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type { CourseLinks, ExtractionJob, StudyUnit, StudyUnitParams } from "../apis/types";
 
 type LinkedCourse = { id: string; name: string | null };
@@ -333,6 +334,7 @@ function StudyUnitCard({
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={unit} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );

@@ -16,7 +16,7 @@ export async function listJobs(opts: { status?: string; q?: string; limit: numbe
   const query = masterKnex(T)
     .select(`${T}.*`)
     .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
-    .orderBy("created_at", "desc")
+    .orderBy(`${T}.created_at`, "desc")
     .limit(opts.limit);
   if (opts.status) query.where("status", opts.status);
   if (opts.q) query.whereRaw(`coalesce(${T}.institution_name, ${OVERVIEW_NAME}) ilike ?`, [`%${opts.q}%`]);
@@ -125,7 +125,7 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
 
   switch (opts.sort) {
     case "oldest":
-      query.orderBy("created_at", "asc");
+      query.orderBy(`${T}.created_at`, "asc");
       break;
     case "name_asc":
       query.orderByRaw(`${RESOLVED_NAME} asc nulls last`);
@@ -135,7 +135,7 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
       break;
     case "newest":
     default:
-      query.orderBy("created_at", "desc");
+      query.orderBy(`${T}.created_at`, "desc");
   }
 
   const jobs = await query;
@@ -240,10 +240,13 @@ export async function syncOwnedJobUrl(jobId: string, website: string) {
     .update({ institution_url: url, updated_at: masterKnex.fn.now() });
 }
 
-export async function updateJob(id: string, data: Record<string, unknown>) {
+// adminId is required for the same reason as the staged repos: every admin action on a job
+// records who took it. The workers don't call this — they write status/heartbeat/counters
+// through their own queries — so updated_by stays an admin trail, not worker noise.
+export async function updateJob(id: string, data: Record<string, unknown>, adminId: number) {
   const count = await masterKnex(T)
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
   return count > 0;
 }
 

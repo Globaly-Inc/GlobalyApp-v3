@@ -21,6 +21,7 @@ import { latestTimestamp } from "../utils";
 import { EligibilityForm } from "./eligibility-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type {
   CourseLinks, EligibilityParams, EligibilityRequirement, ExtractionJob,
 } from "../apis/types";
@@ -189,6 +190,7 @@ function RequirementCard({
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={requirement} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );

@@ -5,8 +5,13 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 // ── Generic insert/delete for staged entities ──
 
-async function insertEntity(table: string, data: Record<string, unknown>) {
-  const [row] = await masterKnex(`${S}.${table}`).insert(data).returning("id");
+// adminId is required, not optional, so a new staged table added here cannot silently
+// forget to record who hand-added the row. Pipeline writers don't go through this path —
+// they use staging-writer.ts — so `created_by_platform_user_id` stays null for scraped rows.
+async function insertEntity(table: string, data: Record<string, unknown>, adminId: number) {
+  const [row] = await masterKnex(`${S}.${table}`)
+    .insert({ ...data, created_by_platform_user_id: adminId })
+    .returning("id");
   return row;
 }
 
@@ -15,54 +20,57 @@ async function deleteEntity(table: string, id: string) {
   return count > 0;
 }
 
-async function updateEntity(table: string, id: string, data: Record<string, unknown>) {
-  const count = await masterKnex(`${S}.${table}`).where({ id }).update(data);
+// Same required-adminId rule as insertEntity: an edit from the UI always records its editor.
+async function updateEntity(table: string, id: string, data: Record<string, unknown>, adminId: number) {
+  const count = await masterKnex(`${S}.${table}`)
+    .where({ id })
+    .update({ ...data, updated_by_platform_user_id: adminId });
   return count > 0;
 }
 
 // ── Study options ──
 
 export const studyOptions = {
-  insert: (data: Record<string, unknown>) => insertEntity("extraction_study_options", data),
-  update: (id: string, data: Record<string, unknown>) => updateEntity("extraction_study_options", id, data),
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_study_options", data, adminId),
+  update: (id: string, data: Record<string, unknown>, adminId: number) => updateEntity("extraction_study_options", id, data, adminId),
   delete: (id: string) => deleteEntity("extraction_study_options", id),
 };
 
 // ── Course fees ──
 
 export const courseFees = {
-  insert: (data: Record<string, unknown>) => insertEntity("extraction_course_fees", data),
-  update: (id: string, data: Record<string, unknown>) => updateEntity("extraction_course_fees", id, data),
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_course_fees", data, adminId),
+  update: (id: string, data: Record<string, unknown>, adminId: number) => updateEntity("extraction_course_fees", id, data, adminId),
   delete: (id: string) => deleteEntity("extraction_course_fees", id),
 };
 
 // ── Intakes ──
 
 export const intakes = {
-  insert: (data: Record<string, unknown>) => insertEntity("extraction_intakes", data),
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_intakes", data, adminId),
   delete: (id: string) => deleteEntity("extraction_intakes", id),
 };
 
 // ── Eligibility requirements ──
 
 export const eligibility = {
-  insert: (data: Record<string, unknown>) => insertEntity("extraction_eligibility_requirements", data),
-  update: (id: string, data: Record<string, unknown>) => updateEntity("extraction_eligibility_requirements", id, data),
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_eligibility_requirements", data, adminId),
+  update: (id: string, data: Record<string, unknown>, adminId: number) => updateEntity("extraction_eligibility_requirements", id, data, adminId),
   delete: (id: string) => deleteEntity("extraction_eligibility_requirements", id),
 };
 
 // ── Study units ──
 
 export const studyUnits = {
-  insert: (data: Record<string, unknown>) => insertEntity("extraction_study_units", data),
-  update: (id: string, data: Record<string, unknown>) => updateEntity("extraction_study_units", id, data),
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_study_units", data, adminId),
+  update: (id: string, data: Record<string, unknown>, adminId: number) => updateEntity("extraction_study_units", id, data, adminId),
   delete: (id: string) => deleteEntity("extraction_study_units", id),
 };
 
 // ── Staged accreditations ──
 
 export const accreditations = {
-  insert: (data: Record<string, unknown>) => insertEntity("extraction_accreditations", data),
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_accreditations", data, adminId),
   delete: (id: string) => deleteEntity("extraction_accreditations", id),
 };
 
@@ -109,14 +117,14 @@ export const accreditationLibrary = {
 // ── Agents ──
 
 export const agents = {
-  insert: (data: Record<string, unknown>) => insertEntity("extraction_agents", data),
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_agents", data, adminId),
   delete: (id: string) => deleteEntity("extraction_agents", id),
 };
 
 // ── Campuses ──
 
 export const campuses = {
-  insert: (data: Record<string, unknown>) => insertEntity("extraction_campuses", data),
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_campuses", data, adminId),
   delete: (id: string) => deleteEntity("extraction_campuses", id),
 };
 

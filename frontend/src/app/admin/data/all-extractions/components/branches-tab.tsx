@@ -18,6 +18,7 @@ import { BranchForm, type BranchValues } from "./branch-form";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type { CampusFull, ExtractionJob } from "../apis/types";
 import type { LucideIcon } from "lucide-react";
 
@@ -109,6 +110,7 @@ function BranchCard({
           {field(MapPin, "Address", "address", "col-span-2 md:col-span-6", true)}
           {field(Link2, "Map link", "map_link", "col-span-2 md:col-span-6")}
         </div>
+        <RowActors row={branch} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );

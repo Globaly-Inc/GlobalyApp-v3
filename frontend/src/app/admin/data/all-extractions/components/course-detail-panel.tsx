@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { RowActors } from "./row-actors";
 import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -245,6 +246,7 @@ export function CourseDetailPanel({
                 Source
               </a>
             )}
+            <RowActors row={course} className="mt-1" />
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {course.verification_status && course.verification_status !== "unverified" && (

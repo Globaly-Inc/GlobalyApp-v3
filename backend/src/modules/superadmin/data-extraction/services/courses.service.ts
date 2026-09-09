@@ -3,6 +3,7 @@
 import { NotFoundError } from "../../../../shared/errors.js";
 import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
+import { withActorNames } from "../shared/actor-names.js";
 import * as repo from "../repositories/courses.repository.js";
 import type { CreateCourseInput, PatchCourseInput } from "../schemas/courses.schema.js";
 
@@ -19,7 +20,7 @@ export async function listCourses(
     repo.countCoursesByJob(jobId, listFilters),
     repo.countCoursesByStatus(jobId),
   ]);
-  return { ...buildPaginatedResponse(courses, total, pagination), statusCounts };
+  return { ...buildPaginatedResponse(await withActorNames(courses), total, pagination), statusCounts };
 }
 
 export async function getCourseLinks(jobId: string) {
@@ -37,7 +38,7 @@ export async function listStudyUnits(
     repo.listStudyUnitsByJob(jobId, limit, offset, filters),
     repo.countStudyUnitsByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(studyUnits, total, pagination);
+  return buildPaginatedResponse(await withActorNames(studyUnits), total, pagination);
 }
 
 export async function listStudyOptions(
@@ -51,7 +52,7 @@ export async function listStudyOptions(
     repo.listStudyOptionsByJob(jobId, limit, offset, filters),
     repo.countStudyOptionsByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(studyOptions, total, pagination);
+  return buildPaginatedResponse(await withActorNames(studyOptions), total, pagination);
 }
 
 export async function listEligibility(
@@ -65,7 +66,7 @@ export async function listEligibility(
     repo.listEligibilityByJob(jobId, limit, offset, filters),
     repo.countEligibilityByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(rows, total, pagination);
+  return buildPaginatedResponse(await withActorNames(rows), total, pagination);
 }
 
 export async function listIntakes(
@@ -79,7 +80,7 @@ export async function listIntakes(
     repo.listIntakesByJob(jobId, limit, offset, filters),
     repo.countIntakesByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(rows, total, pagination);
+  return buildPaginatedResponse(await withActorNames(rows), total, pagination);
 }
 
 export async function listCourseFees(
@@ -93,7 +94,7 @@ export async function listCourseFees(
     repo.listCourseFeesByJob(jobId, limit, offset, filters),
     repo.countCourseFeesByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(rows, total, pagination);
+  return buildPaginatedResponse(await withActorNames(rows), total, pagination);
 }
 
 export async function createCourse(jobId: string, input: CreateCourseInput, adminId: number) {
@@ -101,6 +102,7 @@ export async function createCourse(jobId: string, input: CreateCourseInput, admi
     job_id: jobId,
     ...input,
     verification_status: "manual",
+    created_by_platform_user_id: adminId,
   });
   await logAudit(adminId, "COURSE_CREATE", {
     entityType: "extraction_courses",
@@ -113,7 +115,7 @@ export async function createCourse(jobId: string, input: CreateCourseInput, admi
 export async function patchCourse(id: string, input: PatchCourseInput, adminId: number) {
   const data: Record<string, unknown> = { ...input };
   if (input.career_paths) data.career_paths = input.career_paths;
-  const found = await repo.updateCourse(id, data);
+  const found = await repo.updateCourse(id, data, adminId);
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_PATCH", { entityType: "extraction_courses", entityId: id });
   return { updated: true };
@@ -123,7 +125,7 @@ export async function approveCourse(id: string, adminId: number) {
   const found = await repo.updateCourse(id, {
     verification_status: "confirmed",
     last_verified_at: new Date().toISOString(),
-  });
+  }, adminId);
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_APPROVE", { entityType: "extraction_courses", entityId: id });
   return { updated: true };
@@ -133,7 +135,7 @@ export async function bulkVerifyCourses(ids: string[], approve: boolean, adminId
   const data = approve
     ? { verification_status: "confirmed", last_verified_at: new Date().toISOString() }
     : { verification_status: "flagged" };
-  const updated = await repo.updateCoursesByIds(ids, data);
+  const updated = await repo.updateCoursesByIds(ids, data, adminId);
   if (updated === 0) throw new NotFoundError("No courses found");
   await logAudit(adminId, approve ? "COURSE_APPROVE" : "COURSE_REJECT", {
     entityType: "extraction_courses",
@@ -143,7 +145,7 @@ export async function bulkVerifyCourses(ids: string[], approve: boolean, adminId
 }
 
 export async function rejectCourse(id: string, adminId: number) {
-  const found = await repo.updateCourse(id, { verification_status: "flagged" });
+  const found = await repo.updateCourse(id, { verification_status: "flagged" }, adminId);
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_REJECT", { entityType: "extraction_courses", entityId: id });
   return { updated: true };

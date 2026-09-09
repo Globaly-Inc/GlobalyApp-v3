@@ -6,6 +6,7 @@ import { ArrowLeft, Landmark, RotateCcw, Square, Upload, XCircle, Loader2 } from
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { RowActors } from "./row-actors";
 import { useAppDispatch } from "@/lib/hooks";
 import { ACTIVE_STATUSES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
@@ -60,6 +61,7 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-foreground truncate">{job.institution_name || "Extraction Review"}</h1>
           <p className="text-xs text-muted-foreground truncate">{job.institution_url}</p>
+          <RowActors row={job} className="mt-0.5" />
         </div>
       </div>
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { z } from "zod";
 import { useEffect, useState } from "react";
 import { DollarSign, Link2, Loader2, Save, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -16,55 +15,11 @@ import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { geoApi } from "@/app/geo/apis";
 import { Textarea } from "@/components/ui/textarea";
 import { CURRENCY_OPTIONS, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "../const";
+import { buildFeePayloads, emptyFeeInstallment, feeInstallmentsFromFee } from "../utils";
 import { CourseLinkPicker } from "./course-link-picker";
-import {
-  FeeInstallments,
-  buildInstallments,
-  hasSeparateIntlPrices,
-  sumLines,
-  toInstallments,
-  type Installment,
-} from "./fee-installments";
+import { FeeInstallmentsEditor } from "./fee-installments-editor";
 import type { CourseFee, CourseFeeParams } from "../apis/types";
-
-const feeSchema = z.object({
-  studentType: z.string().min(1, "Please select who the fee applies to"),
-  periodType: z.string().trim().min(1, "Period type is required"),
-  currency: z.string().trim().min(1, "Currency is required"),
-  name: z.string().trim().transform((v) => v || null),
-  description: z.string().trim().transform((v) => v || null),
-  installments: z.array(
-    z.object({
-      label: z.string(),
-      lines: z.array(
-        z.object({
-          fee_type: z.string(),
-          amount: z.string(),
-          intl_amount: z.string(),
-        })
-      ),
-    })
-  ).refine((insts) => {
-    let totalLinesCount = 0;
-    let missingType = false;
-    let missingAmount = false;
-    insts.forEach((inst) => {
-      inst.lines.forEach((line) => {
-        const hasType = Boolean(line.fee_type.trim());
-        const amt = Number(line.amount);
-        const hasAmount = Boolean(line.amount.trim()) && !isNaN(amt) && amt > 0;
-        if (hasType || hasAmount) {
-          totalLinesCount++;
-          if (!hasType) missingType = true;
-          if (!hasAmount) missingAmount = true;
-        }
-      });
-    });
-    return totalLinesCount > 0 && !missingType && !missingAmount;
-  }, {
-    message: "At least one valid fee line with a fee type and amount (> 0) is required",
-  }),
-});
+import type { FeeFormInstallment } from "../types";
 
 export function FeeForm({
   jobId,
@@ -77,7 +32,7 @@ export function FeeForm({
   fee?: CourseFee;
   saving: boolean;
   onCancel: () => void;
-  /** One payload normally; two when domestic and international prices were given separately. */
+  /** One entry normally; two — domestic then international — when the split toggle is on. */
   onSave: (values: CourseFeeParams[]) => void;
 }>) {
   const [studentType, setStudentType] = useState(fee?.student_type ?? "both");
@@ -85,7 +40,11 @@ export function FeeForm({
   const [currency, setCurrency] = useState(fee?.currency ?? "AUD");
   const [name, setName] = useState(fee?.name ?? "");
   const [description, setDescription] = useState(fee?.description ?? "");
-  const [installments, setInstallments] = useState<Installment[]>(() => toInstallments(fee));
+  const [installments, setInstallments] = useState<FeeFormInstallment[]>(() => feeInstallmentsFromFee(fee));
+  // Offered on add only: splitting an EXISTING row would have to pick which of the two fees on
+  // screen is the one being edited, and the rows carry no pairing key to pick with.
+  const [split, setSplit] = useState(false);
+  const [intlInstallments, setIntlInstallments] = useState<FeeFormInstallment[]>(() => [emptyFeeInstallment(0)]);
   const [saveForReuse, setSaveForReuse] = useState(fee?.save_for_reuse ?? false);
   const [courses, setCourses] = useState<{ id: string; name: string | null }[]>([]);
   const [feeTypes, setFeeTypes] = useState<{ value: string; label: string }[]>([]);
@@ -115,52 +74,29 @@ export function FeeForm({
       .catch(() => setCurrencyOptions(CURRENCY_OPTIONS));
   }, []);
 
-  // "Both" on a new fee gets a price column per student type — one configuration, two rows
-  // saved. Editing stays single-column: an existing row already has its own student_type.
-  const split = studentType === "both" && !fee;
-  const totalFor = (intl: boolean) => installments.reduce((sum, i) => sum + sumLines(i.lines, intl), 0);
-  const total = totalFor(false);
-
   const clearError = (key: string) => {
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: "" }));
   };
 
   const submit = () => {
-    const result = feeSchema.safeParse({ studentType, periodType, currency, name, description, installments });
-    if (!result.success) {
-      const errs: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const key = String(issue.path[0]);
-        if (!errs[key]) errs[key] = issue.message;
-      }
+    const { errors: errs, values } = buildFeePayloads(
+      { periodType, currency, name, description, saveForReuse },
+      split
+        ? [
+            { studentType: "domestic", installments, errorKey: "installments" },
+            { studentType: "international", installments: intlInstallments, errorKey: "intlInstallments" },
+          ]
+        : [{ studentType, installments, errorKey: "installments" }],
+    );
+
+    if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
     }
-
     setErrors({});
-    const d = result.data;
-    const base = {
-      name: d.name,
-      description: d.description,
-      period_type: d.periodType,
-      currency: d.currency,
-      save_for_reuse: saveForReuse,
-      // Junction write, create-only — an update goes through save-and-learn, which would try to
-      // patch it as a column.
-      ...(fee ? {} : { course_ids: courses.map((c) => c.id) }),
-    };
-    const forType = (studentType: string, intl: boolean): CourseFeeParams => ({
-      ...base,
-      student_type: studentType,
-      total_amount: totalFor(intl),
-      installments: buildInstallments(d.installments, intl),
-    });
-
-    onSave(
-      split && hasSeparateIntlPrices(d.installments)
-        ? [forType("domestic", false), forType("international", true)]
-        : [forType(d.studentType, false)],
-    );
+    // Junction write, create-only — an update goes through save-and-learn, which would try to
+    // patch it as a column.
+    onSave(fee ? values : values.map((v) => ({ ...v, course_ids: courses.map((c) => c.id) })));
   };
 
   return (
@@ -172,32 +108,38 @@ export function FeeForm({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto">
-        <div className="flex flex-col gap-2">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-            Fee structure <span className="text-destructive">*</span>
-          </Label>
-          <div className="flex flex-wrap items-center gap-6">
-            {STUDENT_TYPE_OPTIONS.map((option) => (
-              <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox
-                  checked={studentType === option.value}
-                  onCheckedChange={() => {
-                    setStudentType(option.value);
-                    clearError("studentType");
-                  }}
-                />
-                {option.label}
-              </label>
-            ))}
+        {!fee && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+            <div>
+              <span className="text-sm">Separate domestic &amp; international amounts</span>
+              <p className="text-xs text-muted-foreground">Fill both below and save once — adds one fee for each.</p>
+            </div>
+            <Switch checked={split} onCheckedChange={setSplit} />
           </div>
-          {split && (
-            <p className="text-xs text-muted-foreground">
-              Enter a domestic and an international price per fee line. Different prices are saved as
-              two fees; leave the international cell blank to charge the same amount.
-            </p>
-          )}
-          <FieldError message={errors.studentType} />
-        </div>
+        )}
+
+        {!split && (
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Fee structure <span className="text-destructive">*</span>
+            </Label>
+            <div className="flex flex-wrap items-center gap-6">
+              {STUDENT_TYPE_OPTIONS.map((option) => (
+                <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={studentType === option.value}
+                    onCheckedChange={() => {
+                      setStudentType(option.value);
+                      clearError("studentType");
+                    }}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+            <FieldError message={errors.studentType} />
+          </div>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="fee-name">Fee Name</Label>
@@ -259,30 +201,27 @@ export function FeeForm({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-            Installments <span className="text-destructive">*</span>
-          </Label>
-          <FieldError message={errors.installments} />
-          <FeeInstallments
-            installments={installments}
+        <FeeInstallmentsEditor
+          heading={split ? "Domestic Students" : undefined}
+          installments={installments}
+          setInstallments={setInstallments}
+          currency={currency}
+          feeTypes={feeTypes}
+          error={errors.installments}
+          onDirty={() => clearError("installments")}
+        />
+
+        {split && (
+          <FeeInstallmentsEditor
+            heading="International Students"
+            installments={intlInstallments}
+            setInstallments={setIntlInstallments}
             currency={currency}
             feeTypes={feeTypes}
-            split={split}
-            onChange={(next) => {
-              clearError("installments");
-              setInstallments(next);
-            }}
+            error={errors.intlInstallments}
+            onDirty={() => clearError("intlInstallments")}
           />
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2.5">
-          <span className="text-sm text-muted-foreground">Total Fees</span>
-          <span className="font-semibold">
-            {currency} {total}
-            {split && <span className="text-muted-foreground"> / {totalFor(true)} intl.</span>}
-          </span>
-        </div>
+        )}
 
         {/* Linking here saves the round trip of creating the fee, finding the course and
             linking it there. Editing keeps using the card's own link editor. */}
@@ -327,7 +266,7 @@ export function FeeForm({
         </Button>
         <Button className="gap-1.5 cursor-pointer" onClick={submit} disabled={saving}>
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Save Fee
+          {split ? "Save Both Fees" : "Save Fee"}
         </Button>
       </CardFooter>
     </Card>

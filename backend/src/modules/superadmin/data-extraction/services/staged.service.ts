@@ -3,13 +3,14 @@
 import { BadRequestError, NotFoundError } from "../../../../shared/errors.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/staged.repository.js";
+import { withActorNames } from "../shared/actor-names.js";
 
 // ── Study options ──
 
 export async function createStudyOption(data: Record<string, unknown>, adminId: number) {
   const courseId = data.course_id as string | undefined;
   delete data.course_id;
-  const row = await repo.studyOptions.insert(data);
+  const row = await repo.studyOptions.insert(data, adminId);
   // Auto-assign to course if course_id provided
   if (courseId) {
     await repo.assignJunction("study-options", {
@@ -23,7 +24,7 @@ export async function createStudyOption(data: Record<string, unknown>, adminId: 
 }
 
 export async function patchStudyOption(id: string, data: Record<string, unknown>, adminId: number) {
-  await repo.studyOptions.update(id, data);
+  await repo.studyOptions.update(id, data, adminId);
   await logAudit(adminId, "STUDY_OPTION_PATCH", { entityType: "extraction_study_options", entityId: id });
   return { updated: true };
 }
@@ -40,7 +41,7 @@ export async function createCourseFee(data: Record<string, unknown>, adminId: nu
   const courseIds = (data.course_ids as string[] | undefined) ?? [];
   delete data.course_ids;
   if (data.installments) data.installments = JSON.stringify(data.installments);
-  const row = await repo.courseFees.insert(data);
+  const row = await repo.courseFees.insert(data, adminId);
   for (const courseId of courseIds) {
     await repo.assignJunction("course-fees", {
       job_id: data.job_id as string,
@@ -53,7 +54,7 @@ export async function createCourseFee(data: Record<string, unknown>, adminId: nu
 }
 
 export async function patchCourseFee(id: string, data: Record<string, unknown>, adminId: number) {
-  await repo.courseFees.update(id, data);
+  await repo.courseFees.update(id, data, adminId);
   await logAudit(adminId, "COURSE_FEE_PATCH", { entityType: "extraction_course_fees", entityId: id });
   return { updated: true };
 }
@@ -67,7 +68,7 @@ export async function deleteCourseFee(id: string, adminId: number) {
 // ── Intakes ──
 
 export async function createIntake(data: Record<string, unknown>, adminId: number) {
-  const row = await repo.intakes.insert(data);
+  const row = await repo.intakes.insert(data, adminId);
   await logAudit(adminId, "INTAKE_CREATE", { entityType: "extraction_intakes", entityId: row.id });
   return { id: row.id };
 }
@@ -83,13 +84,13 @@ export async function deleteIntake(id: string, adminId: number) {
 export async function createEligibility(data: Record<string, unknown>, adminId: number) {
   if (data.academic_tests) data.academic_tests = JSON.stringify(data.academic_tests);
   if (data.language_tests) data.language_tests = JSON.stringify(data.language_tests);
-  const row = await repo.eligibility.insert(data);
+  const row = await repo.eligibility.insert(data, adminId);
   await logAudit(adminId, "ELIGIBILITY_CREATE", { entityType: "extraction_eligibility_requirements", entityId: row.id });
   return { id: row.id };
 }
 
 export async function patchEligibility(id: string, data: Record<string, unknown>, adminId: number) {
-  await repo.eligibility.update(id, data);
+  await repo.eligibility.update(id, data, adminId);
   await logAudit(adminId, "ELIGIBILITY_PATCH", { entityType: "extraction_eligibility_requirements", entityId: id });
   return { updated: true };
 }
@@ -103,13 +104,13 @@ export async function deleteEligibility(id: string, adminId: number) {
 // ── Study units ──
 
 export async function createStudyUnit(data: Record<string, unknown>, adminId: number) {
-  const row = await repo.studyUnits.insert(data);
+  const row = await repo.studyUnits.insert(data, adminId);
   await logAudit(adminId, "STUDY_UNIT_CREATE", { entityType: "extraction_study_units", entityId: row.id });
   return { id: row.id };
 }
 
 export async function patchStudyUnit(id: string, data: Record<string, unknown>, adminId: number) {
-  await repo.studyUnits.update(id, data);
+  await repo.studyUnits.update(id, data, adminId);
   await logAudit(adminId, "STUDY_UNIT_PATCH", { entityType: "extraction_study_units", entityId: id });
   return { updated: true };
 }
@@ -123,7 +124,7 @@ export async function deleteStudyUnit(id: string, adminId: number) {
 // ── Staged accreditations ──
 
 export async function createAccreditation(data: Record<string, unknown>, adminId: number) {
-  const row = await repo.accreditations.insert(data);
+  const row = await repo.accreditations.insert(data, adminId);
   await logAudit(adminId, "STAGED_ACCREDITATION_CREATE", { entityType: "extraction_accreditations", entityId: row.id });
   return { id: row.id };
 }
@@ -135,7 +136,8 @@ export async function deleteAccreditation(id: string, adminId: number) {
 }
 
 export async function getJobAccreditations(jobId: string) {
-  return repo.getJobAccreditations(jobId);
+  const { scraped, assignments } = await repo.getJobAccreditations(jobId);
+  return { scraped: await withActorNames(scraped), assignments };
 }
 
 // ── Global accreditation library ──
@@ -167,7 +169,7 @@ export async function deleteLibraryAccreditation(id: string, adminId: number) {
 // ── Agents ──
 
 export async function createAgent(data: Record<string, unknown>, adminId: number) {
-  const row = await repo.agents.insert(data);
+  const row = await repo.agents.insert(data, adminId);
   await logAudit(adminId, "AGENT_CREATE", { entityType: "extraction_agents", entityId: row.id });
   return { id: row.id };
 }
@@ -181,7 +183,7 @@ export async function deleteAgent(id: string, adminId: number) {
 // ── Campuses ──
 
 export async function createCampus(data: Record<string, unknown>, adminId: number) {
-  const row = await repo.campuses.insert(data);
+  const row = await repo.campuses.insert(data, adminId);
   await logAudit(adminId, "CAMPUS_CREATE", { entityType: "extraction_campuses", entityId: row.id });
   return { id: row.id };
 }

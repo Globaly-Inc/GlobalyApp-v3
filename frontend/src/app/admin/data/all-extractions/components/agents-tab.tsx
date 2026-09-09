@@ -25,6 +25,7 @@ import { latestTimestamp } from "../utils";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type { AgentFull, AgentRun, ExtractionJob } from "../apis/types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -347,6 +348,7 @@ function AgentCard({
           {field(Hash, "Postcode", "postcode", "col-span-2 md:col-span-2")}
           {field(MapPin, "Address", "address", "col-span-2 md:col-span-6", true)}
         </div>
+        <RowActors row={agent} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );

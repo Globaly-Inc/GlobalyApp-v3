@@ -20,6 +20,7 @@ import {
   Play,
   RotateCw,
   Trash2,
+  UserRound,
   Users,
   XCircle,
 } from "lucide-react";
@@ -153,6 +154,12 @@ export function ExtractionJobRow({
                 <Calendar className="h-3.5 w-3.5" />
                 {new Date(job.created_at).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}
               </span>
+              {(job.created_by_name || job.created_by_email) && (
+                <span className="flex items-center gap-1 shrink-0" title={job.created_by_email ?? undefined}>
+                  <UserRound className="h-3.5 w-3.5" />
+                  {job.created_by_name || job.created_by_email}
+                </span>
+              )}
             </div>
 
             {(job.courses_extracted > 0 || Boolean(job.agent_count) || Boolean(job.campus_count)) && (

@@ -6,6 +6,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
+import { withActorNames, withActorNamesOne } from "../shared/actor-names.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import * as repo from "../repositories/jobs.repository.js";
 import * as coursesRepo from "../repositories/courses.repository.js";
@@ -24,10 +25,10 @@ const logger = createChildLogger("extraction-jobs-service");
 async function withResolvedNames(rows: any[]) {
   const unnamed = rows.filter((r: any) => !r.institution_name && !r.overview_name);
   const serviceNames = await repo.findServiceNames(unnamed);
-  return rows.map(({ overview_name, ...job }: any) => ({
+  return withActorNames(rows.map(({ overview_name, ...job }: any) => ({
     ...job,
     institution_name: job.institution_name ?? overview_name ?? serviceNames.get(job.id) ?? null,
-  }));
+  })));
 }
 
 export async function listJobs(opts: { status?: string; q?: string; limit: number }) {
@@ -75,7 +76,12 @@ export async function getJob(id: string) {
   const { job, overview } = await repo.findJobWithOverview(id);
   if (!job) throw new NotFoundError("Extraction job not found");
   // Same title fallback the list uses — the overview row is already loaded here.
-  return { job: { ...job, institution_name: job.institution_name ?? overview?.name ?? null }, overview };
+  // The overview carries its own editor: the Institution tab is edited field-by-field.
+  const [jobWithActors, overviewWithActors] = await Promise.all([
+    withActorNamesOne({ ...job, institution_name: job.institution_name ?? overview?.name ?? null }),
+    withActorNamesOne(overview),
+  ]);
+  return { job: jobWithActors, overview: overviewWithActors };
 }
 
 export async function getTabCounts(jobId: string) {
@@ -133,7 +139,8 @@ export async function createJob(input: CreateJobInput, adminId: number) {
     const existing = await repo.findJobByInstitutionHost(input.institution_url, trx);
     if (existing) throw conflictFor(existing);
 
-    return repo.insertJob(input, trx);
+    // The signed-in admin owns the job — the list shows them as the extractor.
+    return repo.insertJob({ ...input, created_by_platform_user_id: adminId }, trx);
   });
   await logAudit(adminId, "EXTRACTION_JOB_CREATE", {
     entityType: "extraction_jobs",
@@ -167,7 +174,7 @@ async function setJobStatus(
   action: string,
   extra?: Record<string, unknown>,
 ) {
-  const found = await repo.updateJob(id, { status, ...extra });
+  const found = await repo.updateJob(id, { status, ...extra }, adminId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, action, { entityType: "extraction_jobs", entityId: id });
   return { updated: true };
@@ -201,7 +208,7 @@ export async function failJob(id: string, input: FailJobInput, adminId: number) 
   const updates: Record<string, unknown> = { status: "failed" };
   if (input.error) updates.error_message = input.error;
   // ponytail: V2 optionally patches pipeline_progress phase — skipping, add if needed
-  const found = await repo.updateJob(id, updates);
+  const found = await repo.updateJob(id, updates, adminId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, "JOB_FAIL", {
     entityType: "extraction_jobs",
@@ -215,7 +222,7 @@ export async function patchJobContext(id: string, input: PatchJobContextInput, a
   const updates: Record<string, unknown> = {};
   if (input.guided_urls !== undefined) updates.guided_urls = JSON.stringify(input.guided_urls);
   if (input.guidance_notes !== undefined) updates.guidance_notes = input.guidance_notes;
-  const found = await repo.updateJob(id, updates);
+  const found = await repo.updateJob(id, updates, adminId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, "JOB_CONTEXT_UPDATE", { entityType: "extraction_jobs", entityId: id });
   return { updated: true };

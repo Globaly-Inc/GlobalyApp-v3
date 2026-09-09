@@ -19,7 +19,17 @@ export type ExtractionStatus =
   | "stalled"
   | "paused";
 
-export type ExtractionJob = {
+/** Who hand-added and who last edited a row, resolved from the platform user ids the
+ *  backend stores. A null created_by_name means the pipeline scraped the row — nobody
+ *  typed it in. Present on every extraction row the admin UI can edit. */
+export type ActorFields = {
+  created_by_name?: string | null;
+  created_by_email?: string | null;
+  updated_by_name?: string | null;
+  updated_by_email?: string | null;
+};
+
+export type ExtractionJob = ActorFields & {
   id: string;
   institution_name: string | null;
   institution_url: string;
@@ -78,7 +88,7 @@ export type ExistingJobConflict = {
   phone: string | null;
 };
 
-export type InstitutionOverview = {
+export type InstitutionOverview = ActorFields & {
   id: string;
   name: string | null;
   website: string | null;
@@ -125,9 +135,9 @@ export type GetJobsResult = { jobs: ExtractionJob[]; meta: JobsPageMeta };
 // recent timestamp of, on the Overview tab's "Extraction Details by Tab" cards.
 export type TimestampedRow = { updated_at?: string | null; created_at?: string | null };
 
-export type CampusRow = TimestampedRow & { id: string };
-export type AgentRow = TimestampedRow & { id: string };
-export type CourseRow = TimestampedRow & { id: string; name: string; verification_status?: string | null };
+export type CampusRow = ActorFields & TimestampedRow & { id: string };
+export type AgentRow = ActorFields & TimestampedRow & { id: string };
+export type CourseRow = ActorFields & TimestampedRow & { id: string; name: string; verification_status?: string | null };
 
 export type CourseAssignment = { id: string; course_id: string; course_name: string | null } & Record<string, string | null>;
 
@@ -183,7 +193,7 @@ export type JobFull = {
 
 // ── Full entity types for tab views ──────────────────────────────
 
-export type CourseFull = {
+export type CourseFull = ActorFields & {
   id: string;
   name: string;
   short_name?: string | null;
@@ -204,7 +214,7 @@ export type CourseFull = {
   updated_at: string;
 };
 
-export type CampusFull = {
+export type CampusFull = ActorFields & {
   id: string;
   name: string | null;
   address: string | null;
@@ -220,7 +230,7 @@ export type CampusFull = {
   updated_at: string;
 };
 
-export type AgentFull = {
+export type AgentFull = ActorFields & {
   id: string;
   name: string | null;
   country: string | null;
@@ -326,7 +336,7 @@ export type FeeInstallment = {
   lines?: { fee_type: string; amount: number }[];
 };
 
-export type CourseFee = {
+export type CourseFee = ActorFields & {
   id: string;
   name: string | null;
   /** The source page's own fee wording — the label stays short, the detail lives here. */
@@ -353,7 +363,7 @@ export type CourseFeeParams = {
   /** Courses to link on create. Junction write, not a column — never send it on a PATCH. */
   course_ids?: string[];
 };
-export type Intake = {
+export type Intake = ActorFields & {
   id: string;
   intake_name: string | null;
   start_date: string | null;
@@ -387,7 +397,7 @@ export type LanguageTest = {
 
 export type AcademicTest = { test_name: string; score: string };
 
-export type EligibilityRequirement = {
+export type EligibilityRequirement = ActorFields & {
   id: string;
   name: string | null;
   applicable_to: string | null;
@@ -413,7 +423,7 @@ export type EligibilityParams = {
   language_tests?: LanguageTest[];
   academic_tests?: AcademicTest[];
 };
-export type StudyUnit = { id: string; unit_code: string | null; unit_name: string; credit_points: number | null; unit_type: string | null; description: string | null; created_at: string; updated_at?: string };
+export type StudyUnit = ActorFields & { id: string; unit_code: string | null; unit_name: string; credit_points: number | null; unit_type: string | null; description: string | null; created_at: string; updated_at?: string };
 
 export type StudyUnitParams = {
   unit_name?: string;
@@ -422,14 +432,14 @@ export type StudyUnitParams = {
   unit_type?: string | null;
   description?: string | null;
 };
-export type StudyOption = { id: string; name: string | null; study_mode: string | null; study_load: string | null; duration_value: number | null; duration_unit: string | null; applicable_to: string | null; save_for_reuse?: boolean; created_at: string; updated_at?: string };
+export type StudyOption = ActorFields & { id: string; name: string | null; study_mode: string | null; study_load: string | null; duration_value: number | null; duration_unit: string | null; applicable_to: string | null; save_for_reuse?: boolean; created_at: string; updated_at?: string };
 
 // ── Visa services (source_type: "visa_service") ──────────────────
 
 export type VisaServiceStatus = "pending" | "approved" | "discarded";
 
 /** One row of extraction_visa_services — flat table, no child/junction entities. */
-export type VisaService = {
+export type VisaService = ActorFields & {
   id: string;
   job_id: string;
   status: VisaServiceStatus | string;
@@ -482,7 +492,7 @@ export type StudyOptionParams = {
   applicable_to?: string | null;
   save_for_reuse?: boolean;
 };
-export type Accreditation = { id: string; name: string; issuing_organization: string | null; website: string | null; description: string | null; created_at: string; updated_at?: string };
+export type Accreditation = ActorFields & { id: string; name: string; issuing_organization: string | null; website: string | null; description: string | null; created_at: string; updated_at?: string };
 
 /** One junction row: which scraped accreditation is on which course, and its library mapping. */
 export type AccreditationAssignment = {

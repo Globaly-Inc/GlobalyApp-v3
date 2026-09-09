@@ -21,6 +21,7 @@ import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type { CourseLinks, ExtractionJob, Intake, IntakeParams } from "../apis/types";
 
 type LinkedCourse = { id: string; name: string | null };
@@ -246,6 +247,7 @@ function IntakeCard({
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={intake} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );

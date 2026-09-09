@@ -83,7 +83,7 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
   const original = await repo.findEntityRow(table, id);
   if (!original) throw new NotFoundError(`Row not found in ${table}`);
 
-  await repo.patchEntityRow(table, id, patch);
+  await repo.patchEntityRow(table, id, patch, adminId);
 
   // Derive domain from source_url or job's institution_url
   let domain = "unknown";
