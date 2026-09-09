@@ -471,8 +471,10 @@ export function normaliseDurationUnit(v: unknown): DurationUnit | null {
 export function normaliseStudyLoad(v: unknown): "full_time" | "part_time" | null {
   if (typeof v !== "string") return null;
   const s = v.toLowerCase();
-  if (/\b(part[- ]?time|pt)\b/.test(s)) return "part_time";
-  if (/\b(full[- ]?time|ft)\b/.test(s)) return "full_time";
+  // `_` too: the prompt asks the extractor for exactly `full_time`/`part_time`, and \b treats
+  // that as one word — so the canonical values were the two this failed to recognise.
+  if (/\b(part[-_ ]?time|pt)\b/.test(s)) return "part_time";
+  if (/\b(full[-_ ]?time|ft)\b/.test(s)) return "full_time";
   return null;
 }
 

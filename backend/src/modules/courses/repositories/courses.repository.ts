@@ -3,6 +3,10 @@
 // listForStudent (globalyapp and superadmin are schemas in one database).
 
 import { masterKnex } from "../../../core/db/master-pool.js";
+// Duration is read the same way as on the public search page — off the course row, falling back
+// to the durations curated on its linked study options — so the picker can't quote a different
+// length than the card the student came from.
+import { courseDurationWeeks } from "../../search/repositories/courses.repository.js";
 
 const T = "superadmin.extraction_courses";
 
@@ -53,7 +57,7 @@ export async function listCourses(opts: { limit: number; offset: number }): Prom
       "c.short_name",
       "c.degree_level",
       "c.subject_area",
-      "c.duration_weeks",
+      masterKnex.raw(`${courseDurationWeeks("c")} as duration_weeks`),
       "c.study_mode",
       "c.country_code",
       "c.domestic_fee_total",
