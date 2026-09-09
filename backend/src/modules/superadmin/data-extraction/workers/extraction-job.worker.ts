@@ -137,7 +137,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     // pages/LLM calls), reads institution overview before institution step has written email/
     // phone, finds it still empty, and silently has nothing to fall back to. Chaining instead of
     // firing in parallel guarantees the institution row is actually complete first.
-    if (!isVisaService) {
+    if (!job.source_type || job.source_type === "institution") {
       await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "institution" });
     }
 

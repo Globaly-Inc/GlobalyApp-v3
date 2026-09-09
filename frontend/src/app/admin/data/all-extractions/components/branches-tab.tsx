@@ -388,6 +388,19 @@ export function BranchesTab({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!editingId} onOpenChange={(next) => !next && setEditingId(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
+          {editingId && (
+            <BranchForm
+              branch={branches.find((b) => b.id === editingId)}
+              saving={saving}
+              onCancel={() => setEditingId(null)}
+              onSave={(values) => handleUpdate(editingId, values)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
         {loading && (
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -406,16 +419,7 @@ export function BranchesTab({
           </Card>
         )}
 
-        {branches.map((branch) =>
-          editingId === branch.id ? (
-            <BranchForm
-              key={branch.id}
-              branch={branch}
-              saving={saving}
-              onCancel={() => setEditingId(null)}
-              onSave={(values) => handleUpdate(branch.id, values)}
-            />
-          ) : (
+        {branches.map((branch) => (
             <BranchCard
               key={branch.id}
               branch={branch}
@@ -434,8 +438,7 @@ export function BranchesTab({
                 runLink(() => allExtractionsApi.unassignJunction("campuses", { job_id: jobId, course_id: courseId, entity_id: branch.id }), "Unlinked")
               }
             />
-          ),
-        )}
+        ))}
       </div>
 
       {total > 0 && (

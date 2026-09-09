@@ -102,6 +102,7 @@ export function SignInView() {
     if (verifySignInOtp.fulfilled.match(outcome)) {
       toast.success("Welcome back!", { description: "You have been signed in." });
       if (redirectPath) {
+        await dispatch(fetchMe());
         router.push(redirectPath);
         return;
       }

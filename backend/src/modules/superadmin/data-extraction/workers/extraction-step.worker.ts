@@ -479,14 +479,6 @@ async function handleInstitutionStep(jobId: string) {
     data: { fields_filled: Object.keys(merged).filter(k => merged[k] != null).length },
   });
 
-  // Chained here (not fired alongside "institution" by extraction-job.worker.ts) so branches'
-  // own institution-phone/email fallback always sees a fully-written overview row instead of
-  // racing this step's writes above. Only for a job's first pass — an admin manually re-running
-  // "institution" later shouldn't also silently re-trigger a full branches re-extraction.
-  const hasCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first();
-  if (!hasCampuses) {
-    await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "branches" });
-  }
 }
 
 async function handleBranchesStep(jobId: string) {

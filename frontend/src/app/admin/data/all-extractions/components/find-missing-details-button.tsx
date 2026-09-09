@@ -91,7 +91,7 @@ export function FindMissingDetailsButton({ target, onApplied, compact }: FindMis
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next && !searched) search();
+        if (next) search();
       }}
     >
       <PopoverTrigger

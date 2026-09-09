@@ -58,11 +58,22 @@ export async function findMissingOverviewFields(jobId: string): Promise<{ fields
   try {
     origin = new URL(job.institution_url).origin;
   } catch { /* leave empty */ }
-  const contact = origin ? await scrapeMarkdown(`${origin}/contact`, { onlyMainContent: false }).catch(() => null) : null;
+
+  let contact: { url: string; markdown: string } | null = null;
+  if (origin) {
+    for (const path of ["/contact", "/contact-us", "/about/contact", "/about-us/contact"]) {
+      const url = `${origin}${path}`;
+      const page = await scrapeMarkdown(url, { onlyMainContent: false }).catch(() => null);
+      if (page?.markdown && page.markdown.length > 50) {
+        contact = { url, markdown: page.markdown };
+        break;
+      }
+    }
+  }
 
   const pages = [
     { url: job.institution_url, markdown: homepage.markdown },
-    ...(contact?.markdown ? [{ url: `${origin}/contact`, markdown: contact.markdown }] : []),
+    ...(contact ? [contact] : []),
   ].filter((p) => p.markdown && p.markdown.length > 50);
 
   if (pages.length === 0) return { fields: [] };
