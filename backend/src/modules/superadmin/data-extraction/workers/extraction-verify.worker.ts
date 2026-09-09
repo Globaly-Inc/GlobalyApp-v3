@@ -12,6 +12,7 @@ import { scrapeMarkdown } from "../lib/scraper.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import { verificationPrompt, VERIFICATION_SYSTEM } from "../lib/extraction-prompts.js";
+import { loadLookupLists, lookupListsHealth } from "../lib/lookup-catalog.js";
 import { writeJobEvent } from "../lib/staging-writer.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
@@ -28,6 +29,66 @@ interface VerifyResult {
     live_value: string | null;
     status: "match" | "mismatch" | "not_found";
   }>;
+}
+
+/**
+ * Is every course in this job bound to a subject area and a degree level?
+ *
+ * Runs as part of verification rather than as a script someone has to remember: this is the same
+ * question verification already answers for the other fields, and the job timeline is where an
+ * admin looks. Counts come from the link columns — `subject_area_code` = areas_of_study.slug,
+ * `degree_level_code` = degree_levels.slug — so "linked" means a real seeded row, not just text.
+ * Pure counting: no scrape, no model call. The per-course detail is in staging-writer's
+ * `lookup-link` log lines, written when the course was extracted.
+ */
+async function verifyLookupLinks(jobId: string) {
+  // The list configuration travels with the counts: an unseeded list, or a fold pointing at a
+  // level that is no longer seeded, is WHY a job comes out unlinked — the counts can't say that.
+  const health = lookupListsHealth(await loadLookupLists());
+
+  const { rows } = await masterKnex.raw(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE degree_level_code IS NOT NULL)::int AS level_linked,
+            count(*) FILTER (WHERE subject_area_code IS NOT NULL)::int AS area_linked
+       FROM ${S}.extraction_courses WHERE job_id = :jobId`,
+    { jobId },
+  );
+  const { total, level_linked: levelLinked, area_linked: areaLinked } = rows[0] as
+    { total: number; level_linked: number; area_linked: number };
+  if (total === 0) return;
+
+  // The wording that failed to link, so the event says WHY, not just how many.
+  const unlinked = await masterKnex(`${S}.extraction_courses`)
+    .where({ job_id: jobId })
+    .where((qb) => qb.whereNull("degree_level_code").orWhereNull("subject_area_code"))
+    .select("name", "degree_level", "subject_area", "degree_level_code", "subject_area_code")
+    .limit(25);
+  const unlinkedLevels = [...new Set(unlinked.filter((c) => !c.degree_level_code).map((c) => c.degree_level ?? "(none extracted)"))];
+  const unlinkedAreas = [...new Set(unlinked.filter((c) => !c.subject_area_code).map((c) => c.subject_area ?? "(none extracted)"))];
+
+  const pct = (n: number) => Math.round((n / total) * 100);
+  const complete = levelLinked === total && areaLinked === total && health.ok;
+  const message = complete
+    ? `Lookup links: all ${total} courses linked to a degree level and a subject area`
+    : `Lookup links: degree level ${levelLinked}/${total} (${pct(levelLinked)}%), subject area ${areaLinked}/${total} (${pct(areaLinked)}%)`
+      + (health.ok ? "" : ` — lookup lists need seeding (${health.areas_seeded} areas, ${health.levels_seeded} levels; unseeded levels: ${health.missing_fold_targets.join(", ") || "none"})`);
+
+  await writeJobEvent(jobId, "lookup_links_verified", {
+    level: complete ? "info" : "warn",
+    phase: "verification",
+    message,
+    data: {
+      total, degree_level_linked: levelLinked, subject_area_linked: areaLinked,
+      unlinked_degree_levels: unlinkedLevels.slice(0, 10),
+      unlinked_subject_areas: unlinkedAreas.slice(0, 10),
+      lists: health,
+    },
+  });
+  logger[complete ? "info" : "warn"]("Lookup links verified", {
+    jobId, total, degree_level_linked: levelLinked, subject_area_linked: areaLinked,
+    unlinked_degree_levels: unlinkedLevels.slice(0, 10),
+    unlinked_subject_areas: unlinkedAreas.slice(0, 10),
+  });
 }
 
 await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
@@ -137,6 +198,8 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "done" }),
       updated_at: masterKnex.fn.now(),
     });
+
+    await verifyLookupLinks(jobId);
 
     await writeJobEvent(jobId, "verification_complete", {
       phase: "verification",

@@ -6,6 +6,7 @@ import { logAudit } from "../shared/audit.js";
 import { withActorNames } from "../shared/actor-names.js";
 import * as repo from "../repositories/courses.repository.js";
 import type { CreateCourseInput, PatchCourseInput } from "../schemas/courses.schema.js";
+import { resolveCourseLookups } from "../lib/staging-writer.js";
 
 export async function listCourses(
   jobId: string,
@@ -97,10 +98,37 @@ export async function listCourseFees(
   return buildPaginatedResponse(await withActorNames(rows), total, pagination);
 }
 
+/**
+ * Put an admin-supplied level/subject onto the platform's closed lists, through the same resolver
+ * extraction uses. The pickers cannot create rows, so the picked value IS the area/level name —
+ * passed as both the model-pick and the subject text. A value that matches nothing clears the
+ * link rather than being stored as something a course can never link to.
+ */
+async function applyCourseLookups(
+  data: Record<string, unknown>,
+  input: { name?: string; degree_level?: string | null; subject_area?: string | null },
+) {
+  const link = await resolveCourseLookups({
+    name: input.name ?? "",
+    degree_level: input.degree_level,
+    subject_area: input.subject_area,
+    area_of_study: input.subject_area,
+  });
+  if ("degree_level" in input) {
+    data.degree_level = link.degree_level;
+    data.degree_level_code = link.degree_level_code;
+  }
+  if ("subject_area" in input) data.subject_area_code = link.subject_area_code;
+}
+
 export async function createCourse(jobId: string, input: CreateCourseInput, adminId: number) {
+  const data: Record<string, unknown> = { ...input };
+  // A manually created course obeys the same closed lists as an extracted one — without this it
+  // is inserted with the picked text and no *_code, i.e. reported as unlinked until someone edits it.
+  await applyCourseLookups(data, input);
   const row = await repo.insertCourse({
     job_id: jobId,
-    ...input,
+    ...data,
     verification_status: "manual",
     created_by_platform_user_id: adminId,
   });
@@ -115,6 +143,7 @@ export async function createCourse(jobId: string, input: CreateCourseInput, admi
 export async function patchCourse(id: string, input: PatchCourseInput, adminId: number) {
   const data: Record<string, unknown> = { ...input };
   if (input.career_paths) data.career_paths = input.career_paths;
+  if ("degree_level" in input || "subject_area" in input) await applyCourseLookups(data, input);
   const found = await repo.updateCourse(id, data, adminId);
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_PATCH", { entityType: "extraction_courses", entityId: id });

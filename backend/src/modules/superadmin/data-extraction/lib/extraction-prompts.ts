@@ -1,5 +1,11 @@
 // LLM prompts for each extraction phase.
 
+// The closed platform lists the model chooses from are passed in, not hardcoded: they are read
+// from public.areas_of_study / public.degree_levels (seeded from
+// database/seeders/globalyapp/*_seeder.ts), so a prompt can never offer a value a course cannot
+// actually be linked to, and editing a seed file changes the prompt with no code change.
+import type { LookupLists } from "./lookup-catalog.js";
+
 // ── Phase 1: Site analysis (job worker) ──
 
 export const SITE_ANALYSIS_SYSTEM = `You are a data extraction specialist for educational institutions.
@@ -79,7 +85,11 @@ export function courseExtractionPrompt(
   url: string, pageText: string,
   guidanceNotes?: string | null,
   siteHints?: { fee_structure?: unknown; extraction_hints?: string[] } | null,
+  lookups?: LookupLists,
 ) {
+  const enumOf = (rows?: { name: string }[]) => (rows?.length ? rows.map((r) => r.name).join("|") : "null");
+  const levelEnum = enumOf(lookups?.levels);
+  const areaEnum = enumOf(lookups?.areas);
   const hints: string[] = [];
   if (guidanceNotes) hints.push(`Admin guidance: ${guidanceNotes}`);
   if (siteHints?.extraction_hints?.length) hints.push(`Site hints: ${siteHints.extraction_hints.join("; ")}`);
@@ -99,10 +109,12 @@ Extract this JSON:
     {
       "name": "full course name, including its own qualification — e.g. 'Aerospace Engineering BEng(Hons)', not just 'Aerospace Engineering'",
       "short_name": "abbreviated name or null",
-      "degree_level": "Bachelor|Master|PhD|Diploma|Certificate|Graduate Certificate|Graduate Diploma|Associate Degree|Doctorate|Other",
+      "degree_level": "${levelEnum} — ONLY one of these exact values, taken from the qualification in the course's own name or heading (BSc/BA/MBBS → Bachelor; MSc/MA/MBA → Master; MRes/MPhil → a research master; PhD/EdD/JD/MD → the doctoral level; Grad Cert/PGCert → the graduate level; a minor, exchange, summer school, short course or foundation year → the non-award level). null if the page names no qualification — never invent a level, and never answer with a value that is not in the list above",
       "course_category": "academic|short_course — 'academic' is a formal qualification requiring sustained enrolment (any degree_level above); 'short_course' is a standalone, non-award offering — a workshop, single-topic training, professional development, or language course with no degree_level qualification",
       "subject_area": "the shared subject/program name this qualification belongs to, WITHOUT the qualification suffix — e.g. 'Aerospace Engineering', 'Computer Science', 'Medicine', 'Business'",
+      "area_of_study": "${areaEnum} — ONLY one of these exact values: the single heading this course's subject belongs under. Judge it from the subject itself, not the wording — e.g. a nursing, dentistry or psychology course belongs under the health heading; economics, politics, media and social work under the social-studies heading; architecture, construction and urban planning under the architecture heading. null ONLY if the entry names no real discipline at all (an enrolment status like 'Visiting Student', or an offering bucket like 'Summer Programs'). Never answer with a value that is not in the list above",
       "duration_weeks": null,
+      "duration_text": "the duration exactly as written on the page, e.g. '3 years full-time' or '18 months' — null if not stated",
       "study_mode": "on-campus|online|hybrid|null",
       "description": "course description or null",
       "awarding_institution": null,
@@ -133,7 +145,8 @@ Extract this JSON:
           "study_mode": "on_campus|online|hybrid",
           "study_load": "full_time|part_time",
           "duration_value": null,
-          "duration_unit": "months|weeks|years"
+          "duration_unit": "months|weeks|years|semesters|null",
+          "duration_text": "this option's duration exactly as written, e.g. '2 years part-time' — null if not stated"
         }
       ],
       "eligibility": [
@@ -187,11 +200,12 @@ Rules:
 - If it's a listing page with multiple courses, extract all of them
 - Do NOT extract a page as a course if it describes a single SUBJECT/UNIT/MODULE that sits inside a larger qualification — e.g. a page titled "Introduction to Databases" or "COMP101 — Introduction to Databases", with a short code (2-4 letters + 2-3 digits) and content describing one subject rather than an entire degree/diploma/certificate. These belong in study_units under their parent course, never as a standalone course. If this page IS such a unit/subject page, return an empty courses array.
 - Classify EVERY course's course_category yourself from what the page shows about it — never copy one value onto every course just because the page is generally about "programs" or "courses". A page mixing both (e.g. a Bachelor's degree next to a 6-week professional certificate with no admission/degree structure) must return each with its own correct course_category.
-- If a page presents ONE subject area offered as MULTIPLE qualification variants — e.g. "Aerospace Engineering" offered as BEng(Hons), MEng, and BSc — extract ONE COURSE OBJECT PER VARIANT, never a single course for the subject as a whole. Each variant's "name" is its full specific title as shown (e.g. "Aerospace Engineering BEng(Hons)"), its "subject_area" is the shared subject name without the qualification (e.g. "Aerospace Engineering"), and its "degree_level" is derived from that variant's own qualification (BEng/BSc/BA/BBA → Bachelor; MEng/MSc/MA/MBA → Master; PhD/DPhil → PhD; Grad Cert → Graduate Certificate; Grad Dip → Graduate Diploma). Never emit a course for the bare subject heading with no qualification attached.
+- If a page presents ONE subject area offered as MULTIPLE qualification variants — e.g. "Aerospace Engineering" offered as BEng(Hons), MEng, and BSc — extract ONE COURSE OBJECT PER VARIANT, never a single course for the subject as a whole. Each variant's "name" is its full specific title as shown (e.g. "Aerospace Engineering BEng(Hons)"), its "subject_area" is the shared subject name without the qualification (e.g. "Aerospace Engineering"), and its "degree_level" is that variant's own qualification, expressed as one of the degree_level values listed above. Never emit a course for the bare subject heading with no qualification attached.
 - Do NOT extract a page as a course if it describes the ADMISSIONS PROCESS in general — e.g. "How to Apply as a First-Year Student", "Transfer Pathways", "Application Requirements", "Dates and Deadlines" — rather than one specific named qualification. These pages talk about applying, deadlines, or eligibility across many/all programs at once, and never name one degree with its own curriculum. Never invent a degree_level (e.g. "Bachelor") for a page like this just because it mentions undergraduate/first-year admission — if the page does not name one specific qualification, return an empty courses array.
 - Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
 - Never invent fees or dates — only extract what's explicitly stated
 - For eligibility requirements, always populate score_type + min_score when a specific numeric threshold is stated, not just in the free-text description: "percentage" for a % figure, "gpa_4" for a GPA (the default scale when no scale is named — most common convention), "gpa_10" only when the page explicitly says the GPA is out of 10, "cgpa" when the page uses that term specifically. Leave both null if no number is stated.
+- Always fill duration_text verbatim when the page states a duration anywhere, even if you also converted it to duration_weeks
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
 - If this page states no real fee figures but links to a dedicated fees/tuition/cost page (a schedule page, a catalog entry, an external PDF), leave fees empty and set fees_page_url to that link instead — never fabricate a fee entry with no amount just to record the URL
@@ -736,7 +750,7 @@ export function courseDataPrompt(
 }`,
     course: `{
   "name": "full course name", "short_name": null, "description": "2-4 sentences", "degree_level": "Bachelor|Master|Diploma|Certificate|etc",
-  "course_category": "academic|short_course", "subject_area": null, "duration_weeks": null, "study_mode": null, "career_paths": [], "awarding_institution": null
+  "course_category": "academic|short_course", "subject_area": null, "duration_weeks": null, "duration_text": "duration exactly as written on the page or null", "study_mode": null, "career_paths": [], "awarding_institution": null
 }`,
   };
 

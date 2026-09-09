@@ -4,8 +4,11 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
+import { loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel } from "./lookup-catalog.js";
 
 const logger = createChildLogger("staging-writer");
+/** Every course's lookup binding lands here, linked or not; the verify worker totals them per job. */
+const linkLogger = createChildLogger("lookup-link");
 
 // ── Types matching LLM output ──
 
@@ -17,11 +20,18 @@ export interface ExtractedCourse {
    * scoped to "Academic Courses" still surfaces short courses on the same pages. */
   course_category?: string | null;
   subject_area?: string | null;
-  duration_weeks?: number | null;
+  /** The model's pick from the 14 platform areas — validated against the list, never stored raw. */
+  area_of_study?: string | null;
+  /** LLM output isn't schema-enforced — usually a number, sometimes "3 years" (resolveDurationWeeks handles both). */
+  duration_weeks?: number | string | null;
+  /** Duration verbatim from the page ("3 years full-time") — parsed when the model left duration_weeks null; not persisted. */
+  duration_text?: string | null;
   study_mode?: string | null;
   description?: string | null;
   awarding_institution?: string | null;
   source_url?: string | null;
+  /** ISO2 from site intelligence, resolved against public.countries — the worker passes it, never the model. */
+  country_code?: string | null;
   career_paths?: string[] | null;
   fees?: ExtractedFee[];
   intakes?: ExtractedIntake[];
@@ -152,10 +162,12 @@ export function deriveScoreFromDescription(description: string | null | undefine
 
 export interface ExtractedStudyOption {
   name?: string | null;
-  study_mode?: string;
-  study_load?: string;
-  duration_value?: number | null;
-  duration_unit?: string;
+  study_mode?: string | null;
+  study_load?: string | null;
+  duration_value?: number | string | null;
+  duration_unit?: string | null;
+  /** Duration verbatim for this option ("2 years part-time") — parsed when duration_value is null. */
+  duration_text?: string | null;
 }
 
 export interface ExtractedEligibility {
@@ -284,6 +296,134 @@ export async function upsertCampus(jobId: string, campus: ExtractedCampus): Prom
   return row.id;
 }
 
+// ── Duration ─────────────────────────────────────────────────────────────────
+
+export type DurationUnit = "days" | "weeks" | "months" | "years" | "semesters";
+
+export function normaliseDurationUnit(v: unknown): DurationUnit | null {
+  if (typeof v !== "string") return null;
+  const s = v.toLowerCase();
+  if (/^day/.test(s)) return "days";
+  if (/^w(ee)?k/.test(s)) return "weeks";
+  if (/^mo/.test(s)) return "months";
+  if (/^y(ea)?r/.test(s)) return "years";
+  if (/^(semester|term|trimester)/.test(s)) return "semesters";
+  return null;
+}
+
+export function normaliseStudyLoad(v: unknown): "full_time" | "part_time" | null {
+  if (typeof v !== "string") return null;
+  const s = v.toLowerCase();
+  if (/\b(part[- ]?time|pt)\b/.test(s)) return "part_time";
+  if (/\b(full[- ]?time|ft)\b/.test(s)) return "full_time";
+  return null;
+}
+
+/**
+ * "3 years", "18 months", "2 years full-time / 4 years part-time" (first figure), "1.5 years",
+ * "52 weeks", "4 semesters", "3-4 years" (lower bound), "three years". Null when no figure.
+ */
+export function parseDurationText(text: unknown): { value: number; unit: DurationUnit } | null {
+  if (typeof text !== "string") return null;
+  const words: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12, eighteen: 18 };
+  const s = text.toLowerCase().replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|twelve|eighteen)\b/g, (w) => String(words[w]));
+  const m = s.match(/(\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*\d+(?:\.\d+)?)?\s*(days?|weeks?|wks?|months?|mos?|years?|yrs?|semesters?|terms?|trimesters?)\b/);
+  if (!m) return null;
+  const value = Number(m[1]);
+  const unit = normaliseDurationUnit(m[2]);
+  if (!unit || !(value > 0)) return null;
+  return { value, unit };
+}
+
+/** Same conversions the prompt states: 1 year = 52 weeks, 1 semester = 26 weeks. */
+export function durationToWeeks(value: number | null | undefined, unit: DurationUnit | null | undefined): number | null {
+  if (value == null || !unit) return null;
+  const perUnit: Record<DurationUnit, number> = { days: 1 / 7, weeks: 1, months: 52 / 12, years: 52, semesters: 26 };
+  const weeks = Math.round(value * perUnit[unit]);
+  return weeks > 0 ? weeks : null;
+}
+
+// ponytail: a course longer than 10 years or shorter than a week is a unit mix-up, not a course.
+const MAX_COURSE_WEEKS = 520;
+
+function plausibleWeeks(weeks: number | null): number | null {
+  return weeks != null && weeks >= 1 && weeks <= MAX_COURSE_WEEKS ? weeks : null;
+}
+
+/**
+ * A course's duration in prose ("The programme is delivered over three years full-time",
+ * "a two-year MSc", "Duration: 18 months"). Unlike parseDurationText this only trusts a
+ * figure that sits next to a duration cue — a description also mentions "two years of work
+ * experience" and "a 10-week placement", which are not the course length.
+ */
+export function durationFromProse(text: unknown): { value: number; unit: DurationUnit } | null {
+  if (typeof text !== "string" || !text) return null;
+  const num = "(\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|twelve|eighteen)";
+  const unit = "(days?|weeks?|months?|years?|semesters?|terms?|trimesters?)";
+  const cues: RegExp[] = [
+    // "three-year programme", "2 year full-time course", "18-month MSc"
+    new RegExp(`\\b${num}[- ]${unit}(?:,? full[- ]time| part[- ]time)? (?:programme|program|course|degree|masters?|bachelors?|diploma|certificate|phd|doctorate|study|studies|msc|ma|mba|mres|mphil|meng|llm|bsc|ba|beng|llb|pgcert|pgdip|honou?rs)\\b`, "i"),
+    // "duration: 3 years", "length of programme 2 years", "lasts 18 months", "delivered over three years", "completed in two years"
+    new RegExp(`\\b(?:duration|length|lasts?|delivered over|studied over|taken over|spread over|completed? (?:in|over|within)|takes)\\b[^.\\d]{0,40}?${num}[- ]?${unit}\\b`, "i"),
+    // "3 years full-time", "two years (full-time)"
+    new RegExp(`\\b${num}[- ]?${unit}\\s*\\(?(?:of )?(?:full|part)[- ]time`, "i"),
+  ];
+  for (const re of cues) {
+    const m = text.match(re);
+    if (m) {
+      const parsed = parseDurationText(`${m[1]} ${m[2]}`);
+      if (parsed) return parsed;
+    }
+  }
+  return null;
+}
+
+/**
+ * One resolver for duration_weeks, most reliable source first:
+ *  1. duration_text (verbatim from the page) — the model's arithmetic is the weak link;
+ *  2. the model's numeric duration_weeks, or that field when it came back as text ("3 years");
+ *  3. the shortest full-time study option, then any option, with a stated duration;
+ *  4. a duration cue in the description.
+ * Audit 2026-09-04: only 221 of 1,918 staged courses had a duration, while 126 of the empty
+ * ones had a study option that stated it and the writer never looked there.
+ */
+export function resolveDurationWeeks(course: Pick<ExtractedCourse, "duration_weeks" | "duration_text" | "study_options" | "description">): number | null {
+  const fromText = parseDurationText(course.duration_text);
+  if (fromText) return plausibleWeeks(durationToWeeks(fromText.value, fromText.unit));
+
+  const numeric = coerceInt(course.duration_weeks);
+  if (numeric != null) return plausibleWeeks(numeric);
+  if (typeof course.duration_weeks === "string") {
+    const p = parseDurationText(course.duration_weeks);
+    if (p) return plausibleWeeks(durationToWeeks(p.value, p.unit));
+  }
+
+  const fromOptions = weeksFromStudyOptions(course.study_options);
+  if (fromOptions) return fromOptions;
+
+  const prose = durationFromProse(course.description);
+  return prose ? plausibleWeeks(durationToWeeks(prose.value, prose.unit)) : null;
+}
+
+/** Shortest full-time option's duration, else shortest of any option — the standard length. */
+export function weeksFromStudyOptions(options: ExtractedStudyOption[] | null | undefined): number | null {
+  if (!options?.length) return null;
+  const weeks = options.map((o) => {
+    let value = coerceMoney(o.duration_value);
+    let unit = normaliseDurationUnit(o.duration_unit);
+    if (value == null || !unit) {
+      const p = parseDurationText(o.duration_text) ?? parseDurationText(o.name);
+      if (p) { value = p.value; unit = p.unit; }
+    }
+    const load = normaliseStudyLoad(o.study_load) ?? normaliseStudyLoad(o.name) ?? normaliseStudyLoad(o.duration_text);
+    return { weeks: plausibleWeeks(durationToWeeks(value, unit)), load };
+  }).filter((x): x is { weeks: number; load: "full_time" | "part_time" | null } => x.weeks != null);
+  if (!weeks.length) return null;
+  const fullTime = weeks.filter((x) => x.load === "full_time");
+  const pool = fullTime.length ? fullTime : weeks;
+  return Math.min(...pool.map((x) => x.weeks));
+}
+
 // ponytail: same shape as normaliseCampusName — LLM re-extracts the same unit with
 // slightly different casing/whitespace across course pages and job re-runs
 export function normaliseUnitName(name: string): string {
@@ -297,9 +437,12 @@ export function normaliseUnitName(name: string): string {
  */
 export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): Promise<string> {
   const norm = normaliseUnitName(unit.unit_name);
+  // Same normalisation on both sides as normaliseUnitName() — it collapses internal whitespace
+  // runs, which a bare LOWER(TRIM()) does not, so a unit name carrying a double space or a
+  // newline never matched itself and was inserted again. (Same bug class as the course dedup.)
   const existing = await masterKnex(`${S}.extraction_study_units`)
     .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(unit_name)) = ?", [norm])
+    .whereRaw("regexp_replace(lower(trim(unit_name)), '\\s+', ' ', 'g') = ?", [norm])
     .first();
   if (existing) return existing.id;
 
@@ -573,32 +716,108 @@ export function normaliseCourseName(name: string): string {
  * merges richer data into the existing row and attaches new child entities.
  * Returns the course ID.
  */
+export interface CourseLookupLink {
+  /** public.degree_levels.name, or null when the course names no level on the platform list. */
+  degree_level: string | null;
+  /** public.degree_levels.slug — the link. null = unlinked. */
+  degree_level_code: string | null;
+  /**
+   * public.areas_of_study.slug — the link. null = unlinked. The subject text itself is stored as
+   * the model wrote it: `subject_area` is free description, the AREA is what a course links to.
+   */
+  subject_area_code: string | null;
+}
+
+/**
+ * Bind a course onto the platform's closed lists. The lists come from the database (seeded from
+ * database/seeders/globalyapp/*_seeder.ts) and are cached per process, so this is effectively free
+ * after the first call and makes no model call of its own — the model already chose `area_of_study`
+ * and `degree_level` while reading the page; this validates those choices against the live list.
+ */
+export async function resolveCourseLookups(course: ExtractedCourse): Promise<CourseLookupLink> {
+  const lists = await loadLookupLists();
+  const level = resolveDegreeLevel(lists, course.degree_level, course.name);
+  // Subject wording first, then the course's own name — "Bachelor of Nursing" still reaches Health
+  // and Medicine on a page that never stated a subject.
+  const area = resolveAreaOfStudy(lists, course.area_of_study, course.subject_area, course.name);
+  return {
+    degree_level: level?.name ?? null,
+    degree_level_code: level?.slug ?? null,
+    subject_area_code: area?.slug ?? null,
+  };
+}
+
+/**
+ * The link log. One line per course written, so "is this course linked to a subject area and a
+ * degree level?" is answerable from the worker output alone: `warn` when either side failed to
+ * match (with the raw text that didn't), `info` when both landed. The DB-wide view of the same
+ * question is the verify worker's `lookup_links_verified` job event.
+ */
+function logLookupLink(jobId: string, courseId: string, course: ExtractedCourse, link: CourseLookupLink) {
+  const entry = {
+    jobId, courseId, course: course.name,
+    degree_level: link.degree_level_code
+      ? { linked: true, raw: course.degree_level ?? null, name: link.degree_level, slug: link.degree_level_code }
+      : { linked: false, raw: course.degree_level ?? null },
+    subject_area: link.subject_area_code
+      ? { linked: true, subject: course.subject_area ?? null, area_pick: course.area_of_study ?? null, slug: link.subject_area_code }
+      : { linked: false, subject: course.subject_area ?? null, area_pick: course.area_of_study ?? null },
+  };
+  if (link.degree_level_code && link.subject_area_code) linkLogger.info("linked", entry);
+  else linkLogger.warn("unlinked", entry);
+}
+
 export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string> {
   // ── Dedup: check if this course name already exists for this job ──
+  // Both sides MUST apply the same normalisation as normaliseCourseName(). A bare
+  // LOWER(TRIM(name)) keeps the trailing ")" that the JS side strips, so "Nursing BSc (Hons)"
+  // compared "nursing bsc (hons)" against "nursing bsc (hons" and never matched itself — every
+  // re-extraction of a bracket-suffixed course (…(Hons), …(BSAsE), …(PhD) — most of a catalogue)
+  // inserted a DUPLICATE row instead of merging, so one copy carried the lookup links and the
+  // other did not. Caught by the end-to-end linking check.
   const normName = normaliseCourseName(course.name);
   const existing = await masterKnex(`${S}.extraction_courses`)
     .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
+    .whereRaw(
+      "regexp_replace(regexp_replace(lower(trim(name)), '\\s+', ' ', 'g'), '[^a-z0-9]+$', '') = ?",
+      [normName],
+    )
     .first();
 
   let courseId: string;
+
+  // ── Bind to the platform's closed lookup lists ──
+  // The link is the *_code column: degree_level_code = public.degree_levels.slug,
+  // subject_area_code = public.areas_of_study.slug. Deterministic, no model call. A value that
+  // matches nothing leaves the code null — the course stays unlinked and shows up in the link
+  // log and the verify worker's link check rather than being guessed at or inventing a lookup row.
+  const link = await resolveCourseLookups(course);
 
   if (existing) {
     courseId = existing.id;
     // Merge: fill nulls on the existing row with data from this extraction
     const updates: Record<string, unknown> = {};
     const mergeFields: Array<keyof ExtractedCourse> = [
-      "short_name", "degree_level", "course_category", "subject_area", "duration_weeks",
+      "short_name", "course_category", "subject_area", "duration_weeks",
       "study_mode", "description", "awarding_institution",
-      "source_url",
+      "source_url", "country_code",
     ];
     for (const field of mergeFields) {
-      const newVal = field === "duration_weeks" ? coerceInt(course[field])
+      const newVal = field === "duration_weeks" ? resolveDurationWeeks(course)
         : field === "course_category" ? normaliseCourseCategory(course[field])
         : (course[field] ?? null);
       if (newVal != null && newVal !== "" && (existing[field] == null || existing[field] === "")) {
         updates[field] = newVal;
       }
+    }
+    // A later page that names the qualification beats an earlier row that couldn't be linked;
+    // an existing link is never overwritten.
+    if (link.degree_level && existing.degree_level_code == null) {
+      updates.degree_level = link.degree_level;
+      updates.degree_level_code = link.degree_level_code;
+    }
+    if (link.subject_area_code && existing.subject_area_code == null) {
+      updates.subject_area_code = link.subject_area_code;
     }
     if (course.career_paths?.length && (!existing.career_paths || existing.career_paths.length === 0)) {
       updates.career_paths = course.career_paths;
@@ -610,26 +829,37 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     } else {
       logger.info("Skipped duplicate course (no new data)", { jobId, courseId, name: course.name });
     }
+    logLookupLink(jobId, courseId, course, {
+      ...link,
+      degree_level_code: link.degree_level_code ?? existing.degree_level_code,
+      subject_area_code: link.subject_area_code ?? existing.subject_area_code,
+    });
   } else {
     // ── Insert new course ──
     const courseInsert: Record<string, unknown> = {
       job_id: jobId,
       name: course.name,
       short_name: course.short_name ?? null,
-      degree_level: course.degree_level ?? null,
+      degree_level: link.degree_level,
+      degree_level_code: link.degree_level_code,
       course_category: normaliseCourseCategory(course.course_category),
       subject_area: course.subject_area ?? null,
-      duration_weeks: coerceInt(course.duration_weeks),
+      subject_area_code: link.subject_area_code,
+      duration_weeks: resolveDurationWeeks(course),
       study_mode: course.study_mode ?? null,
       description: course.description ?? null,
       awarding_institution: course.awarding_institution ?? null,
       source_url: course.source_url ?? null,
+      // The public course search joins on upper(countries.iso2) = upper(country_code), so an
+      // unresolvable country stays null rather than storing text that can never match.
+      country_code: course.country_code ?? null,
       verification_status: "unverified",
     };
     if (course.career_paths?.length) courseInsert.career_paths = course.career_paths;
 
     const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
     courseId = courseRow.id;
+    logLookupLink(jobId, courseId, course, link);
   }
 
   // ── Fees + assignments ──
@@ -974,9 +1204,10 @@ function coerceVisaNumber(v: unknown): number | null {
  */
 export async function writeVisaService(jobId: string, service: ExtractedVisaService): Promise<string> {
   const normName = normaliseVisaServiceName(service.name);
+  // Both sides normalise the same way — see the course and study-unit dedups above.
   const existing = await masterKnex(`${S}.extraction_visa_services`)
     .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(name)) = ?", [normName])
+    .whereRaw("regexp_replace(lower(trim(name)), '\\s+', ' ', 'g') = ?", [normName])
     .first();
 
   if (existing) {
