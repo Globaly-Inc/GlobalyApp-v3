@@ -37,14 +37,25 @@ function isPrivateIPv4(ip: string): boolean {
   );
 }
 
+/**
+ * IPv6 is ALLOW-listed, not deny-listed: an address counts as public only inside
+ * 2000::/3, the range IANA actually allocates as global unicast.
+ *
+ * A deny-list could not hold here. WHATWG `URL` rewrites an IPv4-mapped address into hex —
+ * `http://[::ffff:127.0.0.1]/` arrives as `::ffff:7f00:1` — so a dotted-quad pattern
+ * matched nothing after parsing and loopback sailed through. Rather than chase each
+ * spelling (`::ffff:7f00:1`, `::ffff:0:7f00:1`, `64:ff9b::7f00:1`, …), anything that is not
+ * allocated global unicast is refused: mapped and embedded IPv4 all sit outside 2000::/3,
+ * so the entire class goes with one rule.
+ */
 function isPrivateIPv6(ip: string): boolean {
   const s = ip.toLowerCase().replace(/^\[|\]$/g, "");
-  if (s === "::" || s === "::1") return true;               // unspecified, loopback
-  if (s.startsWith("fe80")) return true;                     // link-local
-  if (/^f[cd]/.test(s)) return true;                          // fc00::/7 unique-local
-  // ::ffff:127.0.0.1 — an IPv4 loopback wearing an IPv6 hat.
-  const mapped = s.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPrivateIPv4(mapped[1]);
+  const firstHextet = parseInt(s.split(":")[0] || "0", 16);
+  // 2000::/3 — the top three bits are 001, i.e. a leading hextet of 2000–3fff.
+  const isGlobalUnicast = !Number.isNaN(firstHextet) && firstHextet >= 0x2000 && firstHextet <= 0x3fff;
+  if (!isGlobalUnicast) return true;
+  // 2001:db8::/32 is reserved for documentation and routes nowhere real.
+  if (/^2001:0*db8:/.test(s)) return true;
   return false;
 }
 
@@ -79,7 +90,11 @@ export async function assertPublicUrl(
     throw new UnsafeUrlError("Web addresses with embedded credentials are not allowed");
   }
 
-  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  // URL.hostname keeps the square brackets on an IPv6 literal while isIP() wants them
+  // gone. Left on, every IPv6 URL fell through to the dotless-name check below and was
+  // rejected as private — which meant the IPv6 range logic was never reached AT ALL, and
+  // the ::1 / fe80:: tests passed for the wrong reason.
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (BLOCKED_HOSTNAMES.has(host) || BLOCKED_SUFFIXES.some((s) => host.endsWith(s))) {
     throw new UnsafeUrlError("That address points inside a private network");
   }

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { GuestMessageSchema, GuestMigrateSchema, GuestSessionQuerySchema } from "../schemas/chat.schema.js";
 import * as guestService from "../services/guest.service.js";
 import * as embedService from "../services/embed.service.js";
@@ -17,6 +17,37 @@ const logger = createChildLogger("guest-routes");
 
 /** Matches chat.service's HISTORY_LIMIT — an adopted thread must not change behaviour. */
 const HISTORY_LIMIT = 20;
+
+/**
+ * Per-route limits for the two PUBLIC, unauthenticated endpoints in this module.
+ *
+ * The embed key is deliberately public — it sits in the script tag on the institution's
+ * own website — and embed visitors skip the one-reply fingerprint gate. Without a limit
+ * here, anyone could read a university's key off its homepage and spend its whole monthly
+ * allowance (default 1000) in about two minutes at the global 600/min, each message
+ * costing a scrape-free but real Gemini call plus an embedding. The global limit is also
+ * keyed on IP alone, which one office behind a NAT shares.
+ *
+ * Keyed on embed key + IP so one abusive visitor cannot exhaust the widget for everyone
+ * else on that site, and one busy site cannot exhaust another.
+ *
+ * `hook: "preHandler"` is required, not cosmetic: @fastify/rate-limit runs keyGenerator on
+ * `onRequest` by default, where `req.body` does not exist yet — the POST key would silently
+ * degrade to "no-key:ip" and every widget on the internet would share one bucket per IP.
+ */
+const MESSAGE_RATE = { max: 12, timeWindow: "1 minute", hook: "preHandler" } as const;
+const SESSION_RATE = { max: 30, timeWindow: "1 minute", hook: "preHandler" } as const;
+
+/** `embed_key:ip`, falling back to IP for a plain (non-widget) guest. */
+function embedRateKey(req: FastifyRequest): string {
+  const body = (req.body ?? {}) as { embed_key?: unknown };
+  const query = (req.query ?? {}) as { embed_key?: unknown };
+  const key = typeof body.embed_key === "string" ? body.embed_key
+    : typeof query.embed_key === "string" ? query.embed_key
+    : "no-key";
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip;
+  return `${key}:${ip}`;
+}
 
 /**
  * Store one visitor turn as the two messages that make it up, so the thread reads the
@@ -56,7 +87,9 @@ async function persistVisitorTurn(
 /** Public: anonymous chat — plain guests (1 reply, signup wall) and embed-widget visitors. */
 export async function guestRoutes(app: FastifyInstance) {
   // POST /guest/messages — no auth, SSE stream
-  app.post("/guest/messages", async (req, reply) => {
+  app.post("/guest/messages", {
+    config: { rateLimit: { ...MESSAGE_RATE, keyGenerator: embedRateKey } },
+  }, async (req, reply) => {
     const input = GuestMessageSchema.parse(req.body ?? {});
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip;
     const fingerprintHash = guestService.hashFingerprint(input.fingerprint, ip);
@@ -190,7 +223,9 @@ export async function guestRoutes(app: FastifyInstance) {
  * a first-time visitor — no thread yet is the normal case, not an error.
  */
 export async function guestSessionRoutes(app: FastifyInstance) {
-  app.get("/guest/session", async (req, reply) => {
+  app.get("/guest/session", {
+    config: { rateLimit: { ...SESSION_RATE, keyGenerator: embedRateKey } },
+  }, async (req, reply) => {
     const query = GuestSessionQuerySchema.parse(req.query ?? {});
     const config = await embedService.resolveActiveConfig(query.embed_key);
     const session = await sessionsRepo.findByVisitor(
