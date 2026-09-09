@@ -143,11 +143,8 @@ export async function createCourse(jobId: string, input: CreateCourseInput, admi
 export async function patchCourse(id: string, input: PatchCourseInput, adminId: number) {
   const data: Record<string, unknown> = { ...input };
   if (input.career_paths) data.career_paths = input.career_paths;
-  const found = await repo.updateCourse(id, data, adminId);
-  // An admin edit obeys the same closed lists as extraction, through the same resolver: the value
-  // is placed on a seeded row, or the link is CLEARED. It is never stored as an unlinkable value,
-  // and this path can no more create an area or a level than the pickers can.
   if ("degree_level" in input || "subject_area" in input) await applyCourseLookups(data, input);
+  const found = await repo.updateCourse(id, data, adminId);
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_PATCH", { entityType: "extraction_courses", entityId: id });
   return { updated: true };
