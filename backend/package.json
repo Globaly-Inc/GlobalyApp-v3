@@ -66,6 +66,7 @@
     "test:guides": "node --import tsx tests/guides.ts",
     "test:public-search-sync": "node --import tsx tests/public-search-sync.ts",
     "test:public-course-links": "node --import tsx tests/public-course-links.ts",
+    "test:course-duration-study-options": "node --import tsx tests/course-duration-study-options.ts",
     "test:otp-log-redaction": "node --import tsx tests/otp-log-redaction.ts",
     "test:integration-settings": "node --import tsx tests/integration-settings.ts"
   },

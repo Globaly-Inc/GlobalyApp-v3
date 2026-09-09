@@ -107,9 +107,45 @@ const INSTITUTION_CREST = masterKnex.raw(
       where ei.job_id = ec.job_id and ei.logo_url is not null limit 1)) as institution_logo_url`,
 );
 
+const OPTION_WEEKS = `round(o.duration_value * case lower(coalesce(o.duration_unit, 'months'))
+        when 'day' then 1.0/7 when 'days' then 1.0/7
+        when 'week' then 1 when 'weeks' then 1
+        when 'month' then 52.0/12 when 'months' then 52.0/12
+        when 'semester' then 26 when 'semesters' then 26
+        when 'year' then 52 when 'years' then 52
+        else 52.0/12 end)`;
+
+function optionDuration(course: string, loadFilter = "") {
+  return `(select min(${OPTION_WEEKS})::int
+      from ${S}.extraction_study_options o
+      join ${S}.extraction_course_study_option_assignments oa on oa.study_option_id = o.id
+     where oa.course_id = ${course}.id and o.duration_value > 0
+       and ${OPTION_WEEKS} between 1 and 520${loadFilter})`;
+}
+
+/**
+ * Course length in weeks, for a query that aliases extraction_courses as `course`.
+ *
+ * The course column only holds a figure when an extraction run resolved one (staging-writer's
+ * resolveDurationWeeks). The durations an admin curates by hand live on the linked study options
+ * as a value + unit, and creating or editing one never revisits the course row — so a course
+ * whose Study Options tab reads "3 years" showed no duration at all on the public pages.
+ *
+ * Same order of trust as that resolver: the course's own figure, then the shortest full-time
+ * option, then the shortest of any. A result over ten years (or under a week) is a unit mix-up
+ * rather than a course — the MAX_COURSE_WEEKS clamp the writers already apply.
+ */
+export function courseDurationWeeks(course = "ec") {
+  return `coalesce(${course}.duration_weeks,
+  ${optionDuration(course, " and o.study_load = 'full_time'")},
+  ${optionDuration(course)})`;
+}
+
+const DURATION_WEEKS = courseDurationWeeks();
+
 const LIST_COLUMNS = [
   "ec.id", "ec.name", "ec.short_name", "ec.degree_level", "ec.subject_area",
-  "ec.duration_weeks", "ec.study_mode", "ec.description",
+  masterKnex.raw(`${DURATION_WEEKS} as duration_weeks`), "ec.study_mode", "ec.description",
   masterKnex.raw(`${DOMESTIC_FEE} as domestic_fee_total`),
   masterKnex.raw(`${DOMESTIC_CURRENCY} as domestic_currency`),
   masterKnex.raw(`${INTERNATIONAL_FEE} as international_fee_total`),
@@ -229,8 +265,8 @@ function baseQuery({
   if (duration) {
     // "min-max", max optional. A course with no duration is excluded rather than assumed short.
     const [min, max] = duration.split("-");
-    q.where("ec.duration_weeks", ">=", Number(min));
-    if (max) q.where("ec.duration_weeks", "<=", Number(max));
+    q.whereRaw(`${DURATION_WEEKS} >= ?`, [Number(min)]);
+    if (max) q.whereRaw(`${DURATION_WEEKS} <= ?`, [Number(max)]);
   }
   return q;
 }
@@ -239,7 +275,7 @@ function applySort(q: ReturnType<typeof baseQuery>, sort: CourseSort | undefined
   switch (sort) {
     case "fee_asc": return q.orderByRaw(`${EFFECTIVE_FEE} asc nulls last`);
     case "fee_desc": return q.orderByRaw(`${EFFECTIVE_FEE} desc nulls last`);
-    case "duration_asc": return q.orderByRaw("ec.duration_weeks asc nulls last");
+    case "duration_asc": return q.orderByRaw(`${DURATION_WEEKS} asc nulls last`);
     default: return q.orderBy("ec.name");
   }
 }
