@@ -10,3 +10,4 @@ export type {
   ChatThread,
   StarredMessage,
 } from "./types";
+export type { ThreadMember, ThreadMembersResult } from "@/components/chat/types";

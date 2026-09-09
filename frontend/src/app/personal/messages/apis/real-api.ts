@@ -1,5 +1,6 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPostNoContent } from "@/lib/api/http";
 import type { ChatThread, EnquiryMessage, MessageAttachment, StarredMessage, StarredWire, ThreadWire } from "./types";
+import type { ThreadMembersResult } from "@/components/chat/types";
 import { toChatThread, toStarredMessage } from "./types";
 
 export const messagesRealApi = {
@@ -68,4 +69,14 @@ export const messagesRealApi = {
    */
   leaveThread: (distributionId: string): Promise<void> =>
     httpPostNoContent(`/enquiry-messages/${distributionId}/leave`),
+
+  /**
+   * Everyone in this conversation: the student themselves, then the agency staff handling it.
+   *
+   * Narrower than the business roster at the same path shape — the server withholds staff emails,
+   * roles and assignment source, because a student asked an agency a question and did not ask
+   * about how it staffs itself. There is deliberately no student-side add/role/remove.
+   */
+  listMembers: (distributionId: string): Promise<ThreadMembersResult> =>
+    httpGet(`/enquiry-messages/${distributionId}/members`),
 };
