@@ -17,7 +17,7 @@
 
 import { masterKnex } from "../../src/core/db/master-pool.js";
 import { mailerService } from "../../src/shared/mail/mailerService.js";
-import { enquiryDigestEmail, enquiryDistributedEmail } from "../../src/shared/mail/templates.js";
+import { enquiryDigestEmail, enquiryDistributedEmail, enquiryUnlockedEmail } from "../../src/shared/mail/templates.js";
 import * as emailQueueService from "../../src/modules/enquiries/services/email-queue.service.js";
 
 // The throttle exists to stay inside the provider's rate limit; in tests it only makes the
@@ -258,6 +258,33 @@ async function main() {
     if (digest.html.includes("Course 6")) throw new Error("the sixth enquiry should not be listed");
     if (!digest.html.includes("7 more")) throw new Error("the unlisted enquiries are not accounted for");
     eq((digest.text.match(/^• /gm) ?? []).length, 5, "text part lists five too");
+  });
+
+  // A throw in a template is not cosmetic: sendQueuedRow catches it, marks the row failed,
+  // and after the attempt cap the recipient is simply never told. So every name that reaches
+  // a template has to survive being blank, whitespace, or absent.
+  await assert("a blank or whitespace name renders rather than throwing", async () => {
+    for (const name of ["   ", "", null, undefined, "\t\n"]) {
+      const unlocked = enquiryUnlockedEmail({
+        businessName: name as string | null,
+        courseName: "Law & Society Minor",
+        enquiryId: "enq-1",
+      });
+      if (!unlocked.html.includes("A business")) {
+        throw new Error(`unlock mail did not fall back to a generic name for ${JSON.stringify(name)}`);
+      }
+      if (unlocked.subject.includes("  ")) throw new Error(`subject has a blank name for ${JSON.stringify(name)}`);
+
+      // The footnotes take the same value down a different path.
+      const digest = enquiryDigestEmail({ items: [{ courseName: "A" }, { courseName: "B" }], businessName: name });
+      if (digest.html.includes("Sent to  ")) throw new Error("digest footnote names a blank business");
+      const single = enquiryDistributedEmail({ courseName: "A", businessName: name });
+      if (single.html.includes("Sent to  ")) throw new Error("single footnote names a blank business");
+    }
+
+    // A student with no usable first name gets the bullet placeholder, not a broken initial.
+    const nameless = enquiryDigestEmail({ items: [{ studentFirstName: "  " }, { courseName: "B" }] });
+    if (!nameless.html.includes("&#8226;")) throw new Error("blank student name lost its placeholder initial");
   });
 
   await assert("the summary carries one CTA and no per-card action", async () => {
@@ -611,16 +638,47 @@ async function main() {
         await emailQueueService.enqueueDistributionEmails(enquiryId, distId, businessId);
       }
 
-      // Cap 2 against 5 pending rows: without the group lock the second sweep picks up rows
-      // 3 and 4 and sends a second mail concurrently.
-      const mine = await withDigestCap(2, () =>
-        withCapturedMail(async (sent) => {
-          await Promise.all([sweepWithWindow(0), sweepWithWindow(0)]);
-          return sent.filter((m) => m.to === inbox);
-        }),
-      );
+      // Cap 2 against 5 pending rows. The overlap has to be forced, not hoped for: with an
+      // instant mailer, Promise.all lets the first sweep commit before the second one even
+      // queries, and two SEQUENTIAL sweeps each mailing part of an oversized group is correct
+      // behaviour, not the bug. So the first sweep is held inside its transaction — still
+      // holding the group's advisory lock — while the second runs to completion.
+      const mine = await withDigestCap(2, async () => {
+        const sent: SentMail[] = [];
+        const original = mailerService.sendMail.bind(mailerService);
+        let firstSweepIsInside = () => {};
+        const reachedSend = new Promise<void>((resolve) => (firstSweepIsInside = resolve));
+        let releaseFirstSweep = () => {};
+        const held = new Promise<void>((resolve) => (releaseFirstSweep = resolve));
 
-      eq(mine.length, 1, "one summary, not one per overlapping sweep");
+        (mailerService as unknown as { sendMail: (o: SentMail) => Promise<void> }).sendMail = async (o) => {
+          sent.push(o);
+          if (o.to === inbox && sent.filter((m) => m.to === inbox).length === 1) {
+            firstSweepIsInside();
+            await held; // keep this transaction — and the advisory lock — open
+          }
+        };
+
+        try {
+          const first = sweepWithWindow(0);
+          await Promise.race([
+            reachedSend,
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("the first sweep never reached the mailer")), 10_000),
+            ),
+          ]);
+          // Runs while the first sweep still owns the group: must find nothing to send.
+          await sweepWithWindow(0);
+          releaseFirstSweep();
+          await first;
+        } finally {
+          releaseFirstSweep();
+          (mailerService as unknown as { sendMail: typeof original }).sendMail = original;
+        }
+        return sent.filter((m) => m.to === inbox);
+      });
+
+      eq(mine.length, 1, "the second sweep must not mail a group the first still owns");
       const rows = await masterKnex("enquiry_email_queue").whereIn("enquiry_id", enquiryIds);
       eq(rows.filter((r: any) => r.status === "sent").length, 2, "only the claimed rows were resolved");
       eq(rows.filter((r: any) => r.status === "pending").length, 3, "the surplus waits for the next sweep");

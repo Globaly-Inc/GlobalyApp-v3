@@ -154,6 +154,7 @@ function renderEmail(
       });
     case "enquiry_institution_fallback":
       return enquiryInstitutionFallbackEmail({
+        studentFirstName: str("student_first_name"),
         courseName: str("course_name"),
         institutionName: str("institution_name"),
         intake: str("intake"),
@@ -508,8 +509,12 @@ export async function enqueueInstitutionFallbackEmail(
 
   const enquiry = await masterKnex("enquiries as e")
     .leftJoin("superadmin.extraction_courses as c", "c.id", "e.course_id")
+    // First name only — the same pre-unlock boundary the business notice draws. Without it
+    // these cards render nameless in a summary, which reads as missing data rather than as
+    // withheld data.
+    .leftJoin("platform_users as u", "u.id", "e.student_id")
     .where("e.id", enquiryId)
-    .first("e.preferred_intake", "e.preferred_year", "c.name as course_name");
+    .first("e.preferred_intake", "e.preferred_year", "c.name as course_name", "u.first_name as student_first_name");
   const intake = [enquiry?.preferred_intake, enquiry?.preferred_year].filter(Boolean).join(" ") || null;
 
   for (const r of recipients) {
@@ -517,6 +522,7 @@ export async function enqueueInstitutionFallbackEmail(
       dedupKey: `enquiry_institution_fallback:${distributionId}:${r.userId ?? "institution"}`,
       template: "enquiry_institution_fallback",
       payload: {
+        student_first_name: enquiry?.student_first_name ?? null,
         course_name: enquiry?.course_name ?? null,
         institution_name: institution.institution_name ?? null,
         intake,
