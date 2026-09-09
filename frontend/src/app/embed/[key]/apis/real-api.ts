@@ -2,7 +2,9 @@
 // session, so it must never import the token/refresh HTTP client.
 
 import type { CourseCard } from "@/app/ai/apis/types";
-import type { EmbedChatEvent, EmbedPublicConfig, GuestMessageRequest, WireCourseCard } from "./types";
+import type {
+  EmbedChatEvent, EmbedPublicConfig, EmbedThread, GuestMessageRequest, WireCourseCard,
+} from "./types";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3/ai-chat`;
@@ -38,6 +40,25 @@ function toCourseCard(w: WireCourseCard): CourseCard {
 }
 
 export const embedRealApi = {
+  /**
+   * The visitor's existing thread with THIS widget, so reopening the launcher resumes
+   * the conversation. A first-time visitor gets `{ session_id: null, messages: [] }`,
+   * and a failure resolves empty rather than throwing — an unreachable history endpoint
+   * must not stop someone from starting a new chat.
+   */
+  getThread: async (key: string, fingerprint: string): Promise<EmbedThread> => {
+    const params = new URLSearchParams({ embed_key: key, fingerprint });
+    try {
+      const res = await fetch(`${BASE_URL}/guest/session?${params}`);
+      if (!res.ok) return { session_id: null, messages: [] };
+      return res.json();
+    } catch {
+      return { session_id: null, messages: [] };
+    }
+  },
+
+  toCourseCards: (cards: WireCourseCard[]): CourseCard[] => cards.map(toCourseCard),
+
   resolveConfig: async (key: string): Promise<EmbedPublicConfig> => {
     const res = await fetch(`${BASE_URL}/embed/resolve?key=${encodeURIComponent(key)}`);
     if (!res.ok) throw new Error(res.status === 404 ? "This counsellor is unavailable." : "Failed to load.");

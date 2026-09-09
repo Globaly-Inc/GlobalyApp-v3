@@ -8,9 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { EmbedConfig } from "../apis/types";
 
+// One script tag, not a raw iframe: public/embed.js renders the floating orb and only
+// loads the chat panel once a visitor opens it, so the host page doesn't have to find room
+// for a 420x640 block — or pay for a session nobody asked for.
 function embedSnippet(embedKey: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `<iframe src="${origin}/embed/${embedKey}" style="width:100%;max-width:420px;height:640px;border:0;border-radius:12px" title="AI Counsellor"></iframe>`;
+  return `<script src="${origin}/embed.js" data-key="${embedKey}" async></script>`;
 }
 
 export function WidgetCard({
