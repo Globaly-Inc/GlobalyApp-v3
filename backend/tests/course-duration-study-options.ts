@@ -52,15 +52,22 @@ async function addOption(jobId: string, courseId: string, opt: { study_load: str
 async function main() {
   console.log("Public course duration from study options (DB integration)\n");
 
-  // Any publicly-visible course: the same predicate listPublicCourses enforces.
+  // A publicly-visible course (the same predicate listPublicCourses enforces) that carries no
+  // study options of its own. The query takes min() across every assigned option, so a course
+  // that already had one would move the expected 156 and keep the 40-year case from reaching
+  // null — the assertions below only hold when the two options added here are the only ones.
   const course = await masterKnex(`${S}.extraction_courses as ec`)
     .join("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
     .whereRaw(`exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')`)
     .whereRaw(repo.NOT_REJECTED)
+    .whereNotExists((q) =>
+      q.select(masterKnex.raw("1"))
+        .from(`${S}.extraction_course_study_option_assignments as oa`)
+        .whereRaw("oa.course_id = ec.id"))
     .select("ec.id", "ec.job_id", "ec.duration_weeks")
     .first();
   if (!course) {
-    console.log("  no publicly-visible course in this DB — nothing to assert");
+    console.log("  no publicly-visible course without study options in this DB — nothing to assert");
     return;
   }
 
@@ -73,6 +80,19 @@ async function main() {
 
     await assert("shortest full-time option fills an empty course duration", async () => {
       eq(await durationOf(course.id), 156, "duration_weeks");
+    });
+
+    // Neither column is constrained, so the table really does hold these spellings.
+    await assert("non-canonical unit and load spellings read the same", async () => {
+      await masterKnex(`${S}.extraction_study_options`).where({ id: optionIds[0] })
+        .update({ study_load: "part-time", duration_unit: "yrs" });
+      await masterKnex(`${S}.extraction_study_options`).where({ id: optionIds[1] })
+        .update({ study_load: "FT", duration_unit: "yrs" });
+      eq(await durationOf(course.id), 156, "duration_weeks");
+      await masterKnex(`${S}.extraction_study_options`).where({ id: optionIds[0] })
+        .update({ study_load: "part_time", duration_unit: "years" });
+      await masterKnex(`${S}.extraction_study_options`).where({ id: optionIds[1] })
+        .update({ study_load: "full_time", duration_unit: "years" });
     });
 
     await assert("a derived duration is filterable and sortable", async () => {

@@ -107,13 +107,29 @@ const INSTITUTION_CREST = masterKnex.raw(
       where ei.job_id = ec.job_id and ei.logo_url is not null limit 1)) as institution_logo_url`,
 );
 
-const OPTION_WEEKS = `round(o.duration_value * case lower(coalesce(o.duration_unit, 'months'))
-        when 'day' then 1.0/7 when 'days' then 1.0/7
-        when 'week' then 1 when 'weeks' then 1
-        when 'month' then 52.0/12 when 'months' then 52.0/12
-        when 'semester' then 26 when 'semesters' then 26
-        when 'year' then 52 when 'years' then 52
+/**
+ * Neither column is constrained: the staging writer inserts `study_load`/`duration_unit`
+ * straight from the extractor and the staged schema types both as a plain string, so the table
+ * holds `yrs`, `wk`, `FT`, `full-time` beside the canonical values. Matching an exact list read
+ * every unrecognised unit as months — "3 yrs" showed as 13 weeks — so match by prefix instead,
+ * the same way normaliseDurationUnit does. Spelled `(k|eek)` rather than `(ee)?k`: knex reads a
+ * `?` inside raw SQL as a binding placeholder, and the query then fails to prepare.
+ */
+const OPTION_UNIT = "lower(coalesce(o.duration_unit, 'months'))";
+const OPTION_WEEKS = `round(o.duration_value * case
+        when ${OPTION_UNIT} like 'day%' then 1.0/7
+        when ${OPTION_UNIT} ~ '^w(k|eek)' then 1
+        when ${OPTION_UNIT} like 'mo%' then 52.0/12
+        when ${OPTION_UNIT} ~ '^(semester|term|trimester)' then 26
+        when ${OPTION_UNIT} ~ '^y(r|ear)' then 52
         else 52.0/12 end)`;
+
+/**
+ * `full_time`, `full-time`, `Full Time`, `FT` — separators and case carry no meaning here, and
+ * an exact `= 'full_time'` skipped every option that spelled it any other way, silently falling
+ * through to the shortest part-time duration.
+ */
+const FULL_TIME = `regexp_replace(lower(coalesce(o.study_load, '')), '[^a-z]', '', 'g') in ('fulltime', 'ft')`;
 
 function optionDuration(course: string, loadFilter = "") {
   return `(select min(${OPTION_WEEKS})::int
@@ -137,7 +153,7 @@ function optionDuration(course: string, loadFilter = "") {
  */
 export function courseDurationWeeks(course = "ec") {
   return `coalesce(${course}.duration_weeks,
-  ${optionDuration(course, " and o.study_load = 'full_time'")},
+  ${optionDuration(course, ` and ${FULL_TIME}`)},
   ${optionDuration(course)})`;
 }
 
