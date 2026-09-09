@@ -39,15 +39,25 @@ import {
   type ExtractedStudyOption,
   normaliseScoreType,
   deriveScoreFromDescription,
+  normaliseAcademicTests,
+  upsertIntake,
+  upsertEligibility,
+  upsertEnglishRequirement,
   coerceMoney,
+  coerceMonth,
+  coerceInt,
+  deriveIntakeMonthYear,
   writeVisaService,
   updateVisaServiceById,
   normaliseVisaServiceName,
   atPageCap,
   type ExtractedCampus,
+  type ExtractedEnglishReq,
+  type ExtractedIntake,
   type InstitutionOverview,
   type ExtractedVisaService,
 } from "../lib/staging-writer.js";
+import { coercePartialDate } from "../lib/partial-date.js";
 import { parseAddress } from "../lib/address-parser.js";
 import { normalizeAgentRow } from "../lib/agent-normalizers.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
@@ -1131,19 +1141,31 @@ async function handleCourseDataStep(
       await masterKnex(`${S}.extraction_course_intake_assignments`).where({ course_id: courseId }).delete();
       const intakes = (extracted.intakes as Array<Record<string, unknown>>) || [];
       for (const intake of intakes) {
-        if (!intake.intake_name) continue;
-        const [intakeRow] = await masterKnex(`${S}.extraction_intakes`)
-          .insert({
-            job_id: jobId, course_id: courseId,
-            intake_name: intake.intake_name,
-            start_date: intake.start_date ?? null,
-            admission_deadline: intake.admission_deadline ?? null,
-            intake_month: intake.intake_month ?? null,
-            intake_year: intake.intake_year ?? null,
-          })
-          .returning("id");
+        // Shared with the page worker rather than reimplemented. This branch previously kept its
+        // own copy and had drifted: raw LLM strings went straight at `date`/`integer` columns
+        // (the LLM emits "February 15" and "September"), and a dated-but-unnamed intake was
+        // dropped here while the page worker kept it. One helper, one behaviour.
+        const parsed: ExtractedIntake = {
+          intake_name: (intake.intake_name as string | null) ?? null,
+          start_date: (intake.start_date as string | null) ?? null,
+          end_date: (intake.end_date as string | null) ?? null,
+          orientation_date: (intake.orientation_date as string | null) ?? null,
+          admission_deadline: (intake.admission_deadline as string | null) ?? null,
+          intake_month: intake.intake_month as number | string | null,
+          intake_year: intake.intake_year as number | string | null,
+          custom_dates: intake.custom_dates as ExtractedIntake["custom_dates"],
+        };
+        // Only a row with nothing identifying at all is worth skipping.
+        const derived = deriveIntakeMonthYear(
+          parsed.intake_name, coercePartialDate(parsed.start_date),
+          coerceMonth(parsed.intake_month), coerceInt(parsed.intake_year),
+        );
+        if (!parsed.intake_name && !coercePartialDate(parsed.start_date) && derived.intake_year == null) continue;
+
+        const intakeId = await upsertIntake(jobId, parsed, sourceUrl);
         await masterKnex(`${S}.extraction_course_intake_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, intake_id: intakeRow.id });
+          .insert({ job_id: jobId, course_id: courseId, intake_id: intakeId })
+          .onConflict(["course_id", "intake_id"]).ignore();
         count++;
       }
       break;
@@ -1170,8 +1192,34 @@ async function handleCourseDataStep(
     }
 
     case "eligibility": {
-      // Delete existing eligibility assignments for this course
+      // Unassign this course's existing requirements AND delete the rows themselves.
+      //
+      // Deleting only the assignments used to leave the requirement rows behind with no
+      // assignment at all — which is exactly the condition findRequirementsForCourse reads as
+      // "institution-wide" (a job-scoped row assigned to no course applies to every course that
+      // names none of its own). So re-extracting one course's eligibility silently injected its
+      // stale requirements into every other course on the job. Scoped to the ids these
+      // assignments actually pointed at, so an admin's deliberately-unassigned institution-wide
+      // requirement is untouched.
+      const priorIds = await masterKnex(`${S}.extraction_course_eligibility_assignments`)
+        .where({ course_id: courseId })
+        .pluck("eligibility_requirement_id");
       await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
+      const orphanIds = priorIds.filter((id): id is string => id != null);
+      if (orphanIds.length > 0) {
+        // A requirement still assigned to another course is shared and must survive; only the
+        // ones left assigned to nothing get deleted. Two plain queries rather than a correlated
+        // NOT EXISTS against the delete target — same result, nothing to get subtly wrong.
+        const stillAssigned = new Set<string>(
+          await masterKnex(`${S}.extraction_course_eligibility_assignments`)
+            .whereIn("eligibility_requirement_id", orphanIds)
+            .pluck("eligibility_requirement_id"),
+        );
+        const unreferenced = orphanIds.filter((id) => !stillAssigned.has(id));
+        if (unreferenced.length > 0) {
+          await masterKnex(`${S}.extraction_eligibility_requirements`).whereIn("id", unreferenced).delete();
+        }
+      }
       const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
       for (const req of reqs) {
         const description = (req.description as string | null) ?? null;
@@ -1183,9 +1231,19 @@ async function handleCourseDataStep(
         }
         const isPercentage = scoreType === "percentage";
 
-        const [reqRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
-          .insert({
-            job_id: jobId,
+        // Shared with the page worker, like the intakes branch above. A direct insert here made
+        // this the one path that did NOT share: re-extracting a course's eligibility minted a
+        // fresh row instead of joining the job's existing "Bachelor degree or equivalent",
+        // so sharing worked on a first crawl and silently stopped working after any per-course
+        // re-run. upsertEligibility dedupes on (job_id, name, applicable_to) and fills blanks.
+        const reqId = await upsertEligibility(
+          jobId,
+          {
+            name: req.name as string | null,
+            applicable_to: (req.applicable_to as string) ?? "both",
+            description,
+          },
+          {
             name: req.name ?? null,
             applicable_to: req.applicable_to ?? "both",
             description,
@@ -1193,25 +1251,49 @@ async function handleCourseDataStep(
             min_degree_level: req.min_degree_level ?? null,
             score_type: scoreType,
             min_score: isPercentage ? null : scoreValue,
-          })
-          .returning("id");
+            academic_tests: JSON.stringify(normaliseAcademicTests(req.academic_tests)),
+            source_url: sourceUrl,
+          },
+        );
         await masterKnex(`${S}.extraction_course_eligibility_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: reqRow.id });
+          .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: reqId })
+          .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
         count++;
       }
-      // English requirements
-      const engReqs = (extracted.english_requirements as Array<Record<string, unknown>>) || [];
-      for (const eng of engReqs) {
-        await masterKnex(`${S}.extraction_english_requirements`).insert({
-          job_id: jobId, course_id: courseId,
-          test_type_name: eng.test_type_name ?? null,
-          overall_score: eng.overall_score ?? null,
-          listening_score: eng.listening_score ?? null,
-          reading_score: eng.reading_score ?? null,
-          writing_score: eng.writing_score ?? null,
-          speaking_score: eng.speaking_score ?? null,
+      // English requirements — replaced wholesale for this course, mirroring the requirement rows
+      // above, so a re-extraction reflects what the page says NOW rather than adding another copy
+      // of the bar on every run. Safe to delete outright where requirements needed care: these
+      // rows carry a direct course_id and no junction, so no other course can be sharing them.
+      //
+      // The insert itself is upsertEnglishRequirement, shared with the page worker. This branch
+      // has drifted from that worker four times now (raw dates at date/integer columns; dropping
+      // dated-but-unnamed intakes; a direct eligibility insert; this one) — CLAUDE.md (h): write
+      // behaviour belongs in a staging-writer helper called from BOTH, never reimplemented here.
+      //
+      // AN EXTRACTION THAT FOUND NOTHING REPLACES NOTHING. Entries with no test name are dropped
+      // by the helper, so they are not counted here either — a response of `[]`, or one made
+      // entirely of nameless entries, means this run learned nothing about the English bar, which
+      // is overwhelmingly a scrape or chunking miss (the page's English table simply did not make
+      // the extracted text) rather than an institution dropping its requirement. Deleting on that
+      // signal wipes a good bar with nothing to put back, and these rows have no admin UI to
+      // restore them from. Same rule the fees path already applies: only act when something was
+      // actually found.
+      const engReqs = ((extracted.english_requirements as Array<ExtractedEnglishReq>) || [])
+        .filter((eng) => (eng?.test_type_name ?? "").trim());
+      if (engReqs.length > 0) {
+        // One transaction, so the course is never left with the old rows gone and the new ones
+        // not yet in: a failure part-way through would otherwise leave a partial English bar
+        // that the verdict engine judges a real student against.
+        await masterKnex.transaction(async (trx) => {
+          await trx(`${S}.extraction_english_requirements`).where({ course_id: courseId }).delete();
+          for (const eng of engReqs) {
+            if (await upsertEnglishRequirement(jobId, courseId, eng, sourceUrl, trx)) count++;
+          }
         });
-        count++;
+      } else if (((extracted.english_requirements as unknown[]) || []).length > 0) {
+        logger.warn("English requirements extracted with no test name — existing rows kept", {
+          courseId, count: (extracted.english_requirements as unknown[]).length,
+        });
       }
       break;
     }

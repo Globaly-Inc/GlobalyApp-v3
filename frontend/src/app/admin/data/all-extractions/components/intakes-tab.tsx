@@ -19,6 +19,8 @@ import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
 import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
+import { PartialDateInput, monthYearOf } from "./partial-date-input";
+import { IntakeCustomDates } from "./intake-custom-dates";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RowActors } from "./row-actors";
@@ -27,8 +29,6 @@ import type { CourseLinks, ExtractionJob, Intake, IntakeParams } from "../apis/t
 type LinkedCourse = { id: string; name: string | null };
 
 /** Native date inputs need YYYY-MM-DD; the API hands back full timestamps. */
-const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
-
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -94,19 +94,19 @@ function IntakeForm({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="intake-start">Start Date</Label>
-              <Input id="intake-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <PartialDateInput id="intake-start" value={startDate} onChange={setStartDate} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="intake-end">End Date</Label>
-              <Input id="intake-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <PartialDateInput id="intake-end" value={endDate} onChange={setEndDate} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="intake-orientation">Orientation</Label>
-              <Input id="intake-orientation" type="date" value={orientation} onChange={(e) => setOrientation(e.target.value)} />
+              <PartialDateInput id="intake-orientation" value={orientation} onChange={setOrientation} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="intake-deadline">Admission Deadline</Label>
-              <Input id="intake-deadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              <PartialDateInput id="intake-deadline" value={deadline} onChange={setDeadline} />
             </div>
           </div>
         </div>
@@ -131,7 +131,9 @@ function IntakeForm({
               }
               setErrors({});
               const d = result.data;
-              const start = d.startDate ? new Date(d.startDate) : null;
+              // Read off the string. new Date("2026-09") is UTC midnight on the 1st, so
+              // getMonth() in a timezone behind UTC files the intake under the previous month.
+              const start = d.startDate ? monthYearOf(d.startDate) : null;
               onSave({
                 intake_name: d.name,
                 ...(d.startDate ? { start_date: d.startDate } : {}),
@@ -139,7 +141,7 @@ function IntakeForm({
                 ...(d.orientation ? { orientation_date: d.orientation } : {}),
                 ...(d.deadline ? { admission_deadline: d.deadline } : {}),
                 // Month/year mirror the start date so the list can group by intake year.
-                ...(start ? { intake_month: start.getMonth() + 1, intake_year: start.getFullYear() } : {}),
+                ...(start ?? {}),
               });
             }}
           >
@@ -173,13 +175,15 @@ function IntakeCard({
   onDelete: () => void;
   onLinkCourse: (courseId: string) => void;
   onUnlinkCourse: (courseId: string) => void;
-  onSaveField: (column: string, next: string | null) => Promise<unknown>;
+  onSaveField: (column: string, next: string | null | unknown[]) => Promise<unknown>;
 }>) {
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
-  const year = intake.intake_year ?? (intake.start_date ? new Date(intake.start_date).getFullYear() : null);
+  // Read off the string, not through Date(): "2026-09" parses as UTC midnight on the 1st, which is
+  // the fabrication this feature removes — and in a timezone behind UTC it lands in 2026-08.
+  const year = intake.intake_year ?? (intake.start_date?.slice(0, 4) ? Number(intake.start_date.slice(0, 4)) : null);
 
   return (
     <Card className="group overflow-hidden">
@@ -206,11 +210,16 @@ function IntakeCard({
       <CardContent className="flex flex-col gap-3 p-4">
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <Field icon={Type} label="Intake Name" value={intake.intake_name} onSave={(v) => onSaveField("intake_name", v)} />
-          <Field icon={Calendar} label="Start Date" type="date" value={toDateInput(intake.start_date)} onSave={(v) => onSaveField("start_date", v)} />
-          <Field icon={Calendar} label="End Date" type="date" value={toDateInput(intake.end_date)} onSave={(v) => onSaveField("end_date", v)} />
-          <Field icon={CalendarClock} label="Admission Deadline" type="date" value={toDateInput(intake.admission_deadline)} onSave={(v) => onSaveField("admission_deadline", v)} />
-          <Field icon={CalendarDays} label="Orientation" type="date" value={toDateInput(intake.orientation_date)} onSave={(v) => onSaveField("orientation_date", v)} />
+          <Field icon={Calendar} label="Start Date" datePrecision value={intake.start_date} onSave={(v) => onSaveField("start_date", v)} />
+          <Field icon={Calendar} label="End Date" datePrecision value={intake.end_date} onSave={(v) => onSaveField("end_date", v)} />
+          <Field icon={CalendarClock} label="Admission Deadline" datePrecision value={intake.admission_deadline} onSave={(v) => onSaveField("admission_deadline", v)} />
+          <Field icon={CalendarDays} label="Orientation" datePrecision value={intake.orientation_date} onSave={(v) => onSaveField("orientation_date", v)} />
         </div>
+
+        <IntakeCustomDates
+          dates={intake.custom_dates ?? []}
+          onSave={(next) => onSaveField("custom_dates", next)}
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -310,11 +319,6 @@ export function IntakesTab({
     return () => clearTimeout(t);
   }, [load]);
 
-  // A search change invalidates the current page.
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
-
   const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
   const allSelected = intakes.length > 0 && selectedIds.length === intakes.length;
@@ -360,7 +364,12 @@ export function IntakesTab({
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              // A search change invalidates the current page. Done here rather than in an
+              // effect on [search]: same result, and the repo lints against set-state-in-effect.
+              setPage(1);
+            }}
             placeholder="Search intakes…"
             className="h-8 pl-7 text-sm"
           />

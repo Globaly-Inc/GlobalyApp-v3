@@ -567,6 +567,10 @@ export const allExtractionsMockApi = {
       { id: "intake-1", intake_name: "Semester 1 2026", start_date: "2026-02-15", end_date: "2026-06-30", orientation_date: "2026-02-10", admission_deadline: "2026-01-15", intake_month: 2, intake_year: 2026, created_at: now },
       { id: "intake-2", intake_name: "Semester 2 2026", start_date: "2026-07-20", end_date: "2026-11-30", orientation_date: "2026-07-15", admission_deadline: "2026-06-20", intake_month: 7, intake_year: 2026, created_at: now },
       { id: "intake-3", intake_name: "Summer Intensive 2027", start_date: "2027-01-05", end_date: "2027-02-20", orientation_date: "2027-01-02", admission_deadline: "2026-12-01", intake_month: 1, intake_year: 2027, created_at: now },
+      // Month-precision throughout, which is what a calendar page stating "applications close in
+      // December 2026" actually gives. Kept in the mock so the Month selector and the
+      // "December 2026" rendering are exercised without a backend.
+      { id: "intake-4", intake_name: "Autumn 2026-2027", start_date: "2026-09", end_date: "2026-12", orientation_date: null, admission_deadline: "2026-12", intake_month: 9, intake_year: 2026, custom_dates: [{ name: "Scholarship Deadline", date: "2026-11" }, { name: "Exam Date", date: "2026-12-11" }], created_at: now },
     ];
     const filtered = params.search
       ? all.filter((i) => (i.intake_name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
@@ -586,7 +590,8 @@ export const allExtractionsMockApi = {
       id: uuid(), intake_name: params.intake_name ?? null, start_date: params.start_date ?? null,
       end_date: params.end_date ?? null, orientation_date: params.orientation_date ?? null,
       admission_deadline: params.admission_deadline ?? null, intake_month: params.intake_month ?? null,
-      intake_year: params.intake_year ?? null, created_at: new Date().toISOString(),
+      intake_year: params.intake_year ?? null, custom_dates: params.custom_dates ?? [],
+      created_at: new Date().toISOString(),
     };
   },
 

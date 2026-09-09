@@ -3,6 +3,7 @@
 // 300-line-per-file convention. Pure functions, no I/O.
 
 import { coerceLabel, mapDegreeLevel } from "./agentcis-mappers.js";
+import { coercePartialDate } from "./partial-date.js";
 
 // ── Intakes ──
 
@@ -116,19 +117,19 @@ function parseMonthYear(s: string): { month: number | null; year: number | null 
   return { month, year };
 }
 
-function toDateStr(v: unknown): string | null {
-  if (v == null) return null;
-  const s = String(v).trim();
-  if (!s) return null;
-  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
-  const t = Date.parse(s);
-  if (!isNaN(t)) {
-    const d = new Date(t);
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-  }
-  return null;
-}
+/**
+ * Intake dates go through the SAME coercer as every other writer (see lib/partial-date.ts).
+ *
+ * This used to be a local parser, and it was safe only because the column was `date` and Postgres
+ * did the validating. Now that the column is text with a CHECK, the local version had two ways to
+ * be wrong: it passed the LLM's unknown-year sentinel "0000-01-07" straight through — the exact
+ * gwu.edu value Postgres used to reject outright — and a Date.parse fallback on an odd string
+ * could yield a five-digit year that violates the constraint and aborts the whole import.
+ *
+ * Sharing the coercer also means an AgentCIS feed stating only "September 2026" now keeps the
+ * month instead of discarding it, which the local parser could not express.
+ */
+const toDateStr = coercePartialDate;
 
 // ── Study options ──
 

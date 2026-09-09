@@ -363,27 +363,50 @@ export type CourseFeeParams = {
   /** Courses to link on create. Junction write, not a column — never send it on a PATCH. */
   course_ids?: string[];
 };
+/**
+ * One row of an intake's `custom_dates` jsonb — a date this intake carries beyond the four fixed
+ * ones, named by the admin or extracted from a calendar page ("Exam Date", "Scholarship Deadline").
+ *
+ * `date` is a PARTIAL date: "2026-09-21" when the source gave a day, "2026-09" when it gave only a
+ * month. The precision is the value's own shape (see utils/datePrecisionOf) rather than a separate
+ * field, so the two can never disagree.
+ */
+export type IntakeCustomDate = {
+  name: string;
+  /** "YYYY-MM-DD" or "YYYY-MM" — never widened into a day the source didn't state. */
+  date: string;
+};
+
 export type Intake = ActorFields & {
   id: string;
   intake_name: string | null;
+  /**
+   * The four fixed dates, each a PARTIAL date: "2026-09-21" or "2026-09". A university that
+   * publishes "applications close in January 2027" has stated a month, and storing "2027-01-01"
+   * for it is a deadline nobody set — which a student can then miss by weeks.
+   */
   start_date: string | null;
   end_date: string | null;
   orientation_date: string | null;
   admission_deadline: string | null;
   intake_month: number | null;
   intake_year: number | null;
+  /** Optional on the wire: rows created before the column existed read back as `[]`. */
+  custom_dates?: IntakeCustomDate[] | null;
   created_at: string;
   updated_at?: string;
 };
 
 export type IntakeParams = {
   intake_name?: string;
+  /** Partial dates, as Intake above. */
   start_date?: string;
   end_date?: string;
   orientation_date?: string;
   admission_deadline?: string;
   intake_month?: number;
   intake_year?: number;
+  custom_dates?: IntakeCustomDate[];
 };
 /** One row of an eligibility requirement's language_tests / academic_tests jsonb. */
 export type LanguageTest = {
@@ -395,7 +418,14 @@ export type LanguageTest = {
   speaking_score?: string;
 };
 
-export type AcademicTest = { test_name: string; score: string };
+export type AcademicTest = {
+  test_name: string;
+  /** A stated minimum the applicant must clear. */
+  score: string;
+  /** What admitted students scored (average/median/percentile) — context, never a bar. */
+  typical_score?: string | null;
+  is_optional?: boolean;
+};
 
 export type EligibilityRequirement = ActorFields & {
   id: string;

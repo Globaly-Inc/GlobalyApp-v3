@@ -23,10 +23,26 @@ function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{children}</p>;
 }
 
+/**
+ * `score` is a bar to clear; `typical` is what admitted students scored. They are shown in
+ * different words — "≥ 320" versus "avg 49.5" — because a page that reports only an average
+ * is stating no requirement at all, and rendering it as a minimum tells a student they fall
+ * short of a threshold the institution never set.
+ */
 function TestTile({
-  name, score, tests,
-}: Readonly<{ name: string; score: string | null | undefined; tests: PlatformTest[] }>) {
+  name, score, typical, tests, optional,
+}: Readonly<{
+  name: string;
+  score: string | null | undefined;
+  typical?: string | null;
+  tests: PlatformTest[];
+  optional?: boolean;
+}>) {
   const logo = testImage(name, tests);
+  const detail = [
+    score ? `≥ ${score}` : typical ? `avg ${typical}` : null,
+    optional ? "optional" : null,
+  ].filter(Boolean).join(" · ");
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2">
       {logo && (
@@ -35,7 +51,7 @@ function TestTile({
       )}
       <div className="min-w-0">
         <p className="truncate text-[11px] font-semibold leading-tight">{name}</p>
-        {score && <p className="text-[10px] text-muted-foreground">≥ {score}</p>}
+        {detail && <p className="text-[10px] text-muted-foreground">{detail}</p>}
       </div>
     </div>
   );
@@ -132,7 +148,14 @@ function AcademicRequirement({
           <SectionLabel>Academic Test Score</SectionLabel>
           <div className="grid grid-cols-2 gap-1.5">
             {scores.map((score) => (
-              <TestTile key={score.test_name} name={score.test_name} score={score.score} tests={tests} />
+              <TestTile
+                key={score.test_name}
+                name={score.test_name}
+                score={score.score}
+                typical={score.typical_score}
+                optional={score.is_optional}
+                tests={tests}
+              />
             ))}
           </div>
         </div>

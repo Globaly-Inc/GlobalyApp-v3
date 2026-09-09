@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { changedFields } from "../utils";
+import { changedFields, datePrecisionOf, formatPartialDate, toDateInputValue, type DatePrecision } from "../utils";
 import type { EditableTable } from "../apis/types";
 
 /**
@@ -36,16 +36,26 @@ export async function saveFormAndLearn(
 /**
  * Saves a single column through save-and-learn, so a reviewer's correction also
  * becomes a lesson for the extractor. Shared by every list tab.
+ *
+ * Reports the request's outcome rather than throwing — it owns the failure toast, and callers are
+ * click handlers with nowhere to catch. **Returns false when nothing was persisted**, which every
+ * editor must honour: swallowing the error and resolving anyway made a failed save look like a
+ * successful one, closing the editor and discarding what the reviewer had typed while the row was
+ * unchanged. Keep the editor open on false.
  */
 export function useFieldSaver(jobId: string, reload: () => Promise<unknown> | void) {
   return useCallback(
-    async (table: EditableTable, id: string, column: string, next: string | null) => {
+    // `next` also takes an array, for the jsonb columns a tab edits as a whole list
+    // (extraction_intakes.custom_dates). patchEntityRow serialises it server-side.
+    async (table: EditableTable, id: string, column: string, next: string | null | unknown[]): Promise<boolean> => {
       try {
         await allExtractionsApi.saveAndLearn({ table, id, patch: { [column]: next }, job_id: jobId });
         toast.success("Saved");
         await reload();
+        return true;
       } catch (e) {
         toast.error("Save failed", { description: (e as Error).message });
+        return false;
       }
     },
     [jobId, reload],
@@ -64,6 +74,16 @@ export type EditableFieldProps = Readonly<{
   type?: string;
   className?: string;
   placeholder?: string;
+  /**
+   * Turns this into an intake-style date field: a Full date / Month selector beside the input,
+   * committing "YYYY-MM-DD" or "YYYY-MM" accordingly, and displaying the value at the precision
+   * it was stated ("September 2026", not "1 September 2026").
+   *
+   * Universities publish both — an exact term start, a month-only application deadline — and
+   * picking a day for them invents a deadline. Lives here rather than in a separate component so
+   * there stays exactly one inline editor to maintain.
+   */
+  datePrecision?: boolean;
 }>;
 
 export function EditableField({
@@ -74,14 +94,26 @@ export function EditableField({
   type = "text",
   className,
   placeholder = "—",
+  datePrecision = false,
 }: EditableFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [saving, setSaving] = useState(false);
+  // Defaults to whatever the stored value already is, so opening a month-only field and saving
+  // without touching the selector cannot silently promote it to a full date.
+  const [precision, setPrecision] = useState<DatePrecision>(() => datePrecisionOf(value) ?? "full_date");
 
   const start = () => {
-    setDraft(value ?? "");
+    const current = datePrecisionOf(value) ?? "full_date";
+    setPrecision(current);
+    setDraft(datePrecision ? toDateInputValue(value, current) : value ?? "");
     setEditing(true);
+  };
+
+  /** Switching precision reshapes what is already typed rather than clearing it. */
+  const switchPrecision = (next: DatePrecision) => {
+    setPrecision(next);
+    setDraft((d) => (next === "month" ? d.slice(0, 7) : d.length === 7 ? "" : d));
   };
 
   const commit = async () => {
@@ -92,8 +124,9 @@ export function EditableField({
     }
     setSaving(true);
     try {
-      await onSave(next);
-      setEditing(false);
+      // Only an explicit `false` means the save failed — keep the field open so the edit isn't
+      // lost. Savers that report nothing are treated as successful, as they always were.
+      if ((await onSave(next)) !== false) setEditing(false);
     } finally {
       setSaving(false);
     }
@@ -104,10 +137,28 @@ export function EditableField({
     return (
       <div className={className}>
         <p className="text-xs text-muted-foreground">{label}</p>
+        {datePrecision && (
+          <div className="mt-1 inline-flex overflow-hidden rounded-md border border-border">
+            {(["full_date", "month"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                disabled={saving}
+                onClick={() => switchPrecision(p)}
+                className={cn(
+                  "cursor-pointer px-2 py-0.5 text-[11px] transition-colors",
+                  precision === p ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                )}
+              >
+                {p === "full_date" ? "Full date" : "Month"}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-0.5 flex items-start gap-1">
           <InputEl
             autoFocus
-            type={multiline ? undefined : type}
+            type={multiline ? undefined : datePrecision ? (precision === "month" ? "month" : "date") : type}
             value={draft}
             disabled={saving}
             onChange={(e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => setDraft(e.target.value)}
@@ -142,7 +193,9 @@ export function EditableField({
     >
       <p className="text-xs text-muted-foreground">{label}</p>
       <span className="mt-0.5 flex items-start justify-between gap-2">
-        <span className={cn("text-sm break-words", !value && "text-muted-foreground")}>{value || placeholder}</span>
+        <span className={cn("text-sm break-words", !value && "text-muted-foreground")}>
+          {(datePrecision ? formatPartialDate(value) : value) || placeholder}
+        </span>
         <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/field:opacity-100" />
       </span>
     </button>

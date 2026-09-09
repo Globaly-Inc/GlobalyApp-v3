@@ -90,6 +90,12 @@ export async function createEligibility(data: Record<string, unknown>, adminId: 
 }
 
 export async function patchEligibility(id: string, data: Record<string, unknown>, adminId: number) {
+  // Same serialisation as createEligibility above — node-postgres renders a JS array as a
+  // Postgres array literal, which a jsonb column rejects. The admin edit form currently reaches
+  // these columns through saveAndLearn (patchEntityRow serialises), so this route has never been
+  // called with them; it would break the first caller that does.
+  if (data.academic_tests) data.academic_tests = JSON.stringify(data.academic_tests);
+  if (data.language_tests) data.language_tests = JSON.stringify(data.language_tests);
   await repo.eligibility.update(id, data, adminId);
   await logAudit(adminId, "ELIGIBILITY_PATCH", { entityType: "extraction_eligibility_requirements", entityId: id });
   return { updated: true };

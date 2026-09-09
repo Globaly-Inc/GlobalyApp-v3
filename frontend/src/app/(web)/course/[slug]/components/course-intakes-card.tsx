@@ -10,16 +10,30 @@ type Intake = CourseDetail["intakes"][number];
 
 function intakeLabel(intake: Intake) {
   if (intake.intake_name) return intake.intake_name;
-  const start = intake.start_date ? new Date(intake.start_date) : null;
-  const month = start ? MONTH_NAMES[start.getMonth()] : intake.intake_month ? MONTH_NAMES[intake.intake_month - 1] : null;
-  const year = start ? start.getFullYear() : intake.intake_year;
+  // Read off the string, not through Date(): a month-only "2026-09" parses as UTC midnight on the
+  // 1st, so getMonth()/getFullYear() shift a month (and a year, each January) for any visitor in a
+  // timezone behind UTC.
+  const parts = intake.start_date?.match(/^(\d{4})-(\d{2})/);
+  const month = parts ? MONTH_NAMES[Number(parts[2]) - 1] : intake.intake_month ? MONTH_NAMES[intake.intake_month - 1] : null;
+  const year = parts ? Number(parts[1]) : intake.intake_year;
   if (month && year) return `${month} ${year} Intake`;
   return year ? `${year} Intake` : "Intake TBC";
 }
 
+/**
+ * An intake date at the precision the institution published it.
+ *
+ * A value can be "2026-09-21" or "2026-09" — universities publish both, and the pipeline no longer
+ * turns the second into "2026-09-01". Formatted from the string rather than through Date():
+ * toLocaleDateString on a month-only value renders "1 September 2026", putting an application
+ * deadline on this page that nobody set.
+ */
 function formatDate(value: string | null) {
-  if (!value) return null;
-  return new Date(value).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  const parts = value?.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (!parts) return null;
+  const [, year, month, day] = parts;
+  const name = MONTH_NAMES[Number(month) - 1] ?? month;
+  return day ? `${Number(day)} ${name} ${year}` : `${name} ${year}`;
 }
 
 function Detail({

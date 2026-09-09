@@ -68,7 +68,13 @@ const feeSchedule = (scope: "domestic" | "international") =>
 
 /** Only the intakes linked to the course — `extraction_intakes.course_id` also holds the rows a
  *  re-extraction superseded, which is why the page showed an intake the admin no longer lists.
- *  Exported so the institutions tab's intake filter and facets can't drift from this rule. */
+ *  Exported so the institutions tab's intake filter and facets can't drift from this rule.
+ *
+ *  DEPLOY ORDER: because this reads through the junction only, an intake written before the
+ *  writers started creating assignment rows is reachable solely via the legacy `course_id` and is
+ *  invisible to every read below. `npm run eligibility:backfill -- --apply` (step 1) links those
+ *  rows in, and is a required pre-deploy step, not a cleanup — until it runs, affected courses
+ *  render with no intakes at all. */
 export const COURSE_INTAKES = `${S}.extraction_intakes ei
   join ${S}.extraction_course_intake_assignments ia on ia.intake_id = ei.id`;
 
@@ -252,6 +258,26 @@ type PublicCourseRow = {
   campus_locations: string[] | null;
 };
 
+/**
+ * The course's soonest intake that hasn't started yet.
+ *
+ * "Next" has to mean next. Without the date floor this was the earliest intake ever scraped, so a
+ * course whose 2024 semester is long past advertised it as the upcoming one. Compared as a single
+ * `year*100+month` integer so December doesn't sort ahead of the following January; an intake with
+ * no month is treated as that year's January. A row with no year at all can't be ordered against
+ * today and is excluded rather than assumed current.
+ */
+function nextIntake(column: "intake_year" | "intake_month") {
+  return `(select ei.${column}
+    from ${COURSE_INTAKES}
+    where ia.course_id = ec.id
+      and ei.intake_year is not null
+      and (ei.intake_year * 100 + coalesce(ei.intake_month, 1))
+          >= (extract(year from current_date) * 100 + extract(month from current_date))
+    order by ei.intake_year asc, coalesce(ei.intake_month, 1) asc
+    limit 1)`;
+}
+
 export async function listPublicCourses(
   filters: CourseSearchFilters, sort: CourseSort | undefined, limit: number, offset: number,
 ) {
@@ -259,16 +285,8 @@ export async function listPublicCourses(
     .select(
       ...LIST_COLUMNS,
       ...CARD_COLUMNS,
-      masterKnex.raw(
-        `(select ei.intake_year from ${COURSE_INTAKES}
-          where ia.course_id = ec.id
-          order by ei.intake_year asc, ei.intake_month asc limit 1) as next_intake_year`,
-      ),
-      masterKnex.raw(
-        `(select ei.intake_month from ${COURSE_INTAKES}
-          where ia.course_id = ec.id
-          order by ei.intake_year asc, ei.intake_month asc limit 1) as next_intake_month`,
-      ),
+      masterKnex.raw(`${nextIntake("intake_year")} as next_intake_year`),
+      masterKnex.raw(`${nextIntake("intake_month")} as next_intake_month`),
     )
     .limit(limit)
     .offset(offset);
