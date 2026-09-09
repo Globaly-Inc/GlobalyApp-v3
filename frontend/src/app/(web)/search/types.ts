@@ -217,6 +217,12 @@ export type SearchBusiness = {
   city: string | null;
   country_name: string | null;
   status?: string;
+  /** "claimed" once the owner has taken the listing over — earns the same tick as verified. */
+  claim_status?: string | null;
+  /** Institutions: extraction job behind the listing, which keys the enquiry dialog's filter. */
+  job_id?: string | null;
+  /** Businesses: whether POST /enquiries would accept this business as a target. */
+  enquiry_enabled?: boolean;
   category_name?: string | null;
   website: string | null;
   email: string | null;
@@ -241,6 +247,20 @@ export type InstitutionCampus = {
   country: string | null;
   phone: string | null;
   email: string | null;
+};
+
+/** A scraped education agent representing the institution — the "Representatives" card. */
+export type InstitutionRepresentative = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  logo_url: string | null;
 };
 
 export type InstitutionMember = {
@@ -284,6 +304,7 @@ export type InstitutionDetail = SearchBusiness & {
   /** Signed preview URLs for `gallery_images`, resolved server-side. */
   gallery_image_urls?: (string | null)[];
   campuses: InstitutionCampus[];
+  representatives: InstitutionRepresentative[];
   members: InstitutionMember[];
   subject_areas: SubjectAreaSummary[];
   degree_levels: CourseFacet[];

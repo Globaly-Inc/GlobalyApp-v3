@@ -58,7 +58,8 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
   });
 
   // The detail response carries everything the public profile renders in one round trip:
-  // campuses (Locations), the course facets (subject-area grid + level tabs) and the team.
+  // campuses (Locations), the appointed agents (Representatives), the course facets (subject-area
+  // grid + level tabs) and the team.
   // The catalog pieces hang off the extraction job, so a hand-registered institution — which
   // has no source_job_id — simply gets empty arrays and the page drops those sections.
   app.get("/search/institutions/:slug", async (req, reply) => {
@@ -67,9 +68,10 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     if (!institution) throw new NotFoundError("Institution not found");
 
     const jobId = institution.job_id;
-    const [row, campuses, rawMembers, facets, courseCount] = await Promise.all([
+    const [row, campuses, representatives, rawMembers, facets, courseCount] = await Promise.all([
       withImagePreviews(institution),
       jobId ? repo.listInstitutionCampuses(jobId) : [],
+      jobId ? repo.listInstitutionRepresentatives(jobId) : [],
       repo.listInstitutionMembers(Number(institution.id)),
       jobId ? coursesRepo.listCourseFacets(jobId) : { subject_areas: [], degree_levels: [] },
       jobId ? coursesRepo.countPublicCourses({ jobId }) : 0,
@@ -78,7 +80,7 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
       ...m, photo_url: await storage.resolvePreviewUrl(m.photo_url),
     })));
 
-    return reply.send({ ...row, campuses, members, ...facets, course_count: courseCount });
+    return reply.send({ ...row, campuses, representatives, members, ...facets, course_count: courseCount });
   });
 
   app.get("/search/institutions/:slug/courses", async (req, reply) => {

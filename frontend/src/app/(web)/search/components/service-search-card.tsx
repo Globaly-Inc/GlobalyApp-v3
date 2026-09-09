@@ -23,7 +23,7 @@ export function ServiceSearchCard({ service: s }: Readonly<{ service: SearchServ
           </div>
         </div>
 
-        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 px-4 py-3 flex flex-col justify-center gap-2">
+        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border px-4 py-3 flex flex-col justify-between gap-2">
           {s.price && <p className="text-sm font-bold text-primary leading-tight whitespace-nowrap">{s.price}</p>}
           <Link href={`/business/${s.business_subdomain}`}>
             <Button size="sm" className="w-full text-xs h-9">View business</Button>

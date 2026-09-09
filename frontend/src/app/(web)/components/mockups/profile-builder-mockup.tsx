@@ -1,6 +1,7 @@
 import { CheckCircle2, Circle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { PEOPLE_PHOTOS } from "@/lib/public-assets";
 import { MockupBar, MockupFrame } from "./mockup-frame";
 
 const steps = [
@@ -17,13 +18,13 @@ export function ProfileBuilderMockup() {
       <div className="space-y-4">
         <div className="flex items-center gap-3 animate-fade-in" style={{ animationDelay: "0ms", animationFillMode: "both" }}>
           <Avatar className="h-12 w-12 border-2 border-primary/20">
-            {/* Falls back to the initials until a photo lands in /public/people. */}
-            <AvatarImage src="/people/aanya-sharma.jpg" alt="Aanya Sharma" />
-            <AvatarFallback className="bg-primary/10 text-primary font-semibold">AS</AvatarFallback>
+            {/* Falls back to the initials if the bucket file ever goes missing. */}
+            <AvatarImage src={PEOPLE_PHOTOS.sofiaAlmeida} alt="Sofia Almeida" />
+            <AvatarFallback className="bg-primary/10 text-primary font-semibold">SA</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-foreground">Aanya Sharma</div>
-            <div className="text-xs text-muted-foreground">Prospective student · India</div>
+            <div className="text-sm font-semibold text-foreground">Sofia Almeida</div>
+            <div className="text-xs text-muted-foreground">Prospective student · Brazil</div>
           </div>
           <Badge variant="secondary" className="text-[10px]">
             80%

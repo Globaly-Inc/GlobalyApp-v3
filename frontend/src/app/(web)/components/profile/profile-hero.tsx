@@ -1,6 +1,7 @@
-import { Building2, CheckCircle, Globe, MapPin } from "lucide-react";
+import { Building2, Globe, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SocialIcon } from "../social-icon";
+import { VerifiedTick } from "../verified-tick";
 import { externalUrl } from "./profile-section";
 import type { ProfileData } from "./profile-data";
 
@@ -47,18 +48,14 @@ export function ProfileHero({ data }: Readonly<{ data: ProfileData }>) {
                     <Building2 className="h-3 w-3" />{data.categoryLabel}
                   </Badge>
                 )}
-                <h1 className="text-2xl font-bold text-foreground">{data.name}</h1>
+                <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+                  {data.name}
+                  <VerifiedTick status={data.verified ? "verified" : null} className="h-5 w-5" />
+                </h1>
                 {data.locationLabel && (
                   <span className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5" />{data.locationLabel}
                   </span>
-                )}
-                {data.verified && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className="gap-1 text-xs">
-                      <CheckCircle className="h-3 w-3 text-primary" />Verified
-                    </Badge>
-                  </div>
                 )}
               </div>
 

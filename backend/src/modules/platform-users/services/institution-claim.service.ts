@@ -152,7 +152,7 @@ export async function acceptInstitutionClaim(
     await repo.updateUser(owner.id, { is_personal_account: true });
     await repo.addAccountCategory(owner.id, {
       type: "institution",
-      role: institution.institution_type ?? "institution",
+      role: "institution",
     });
 
     // Last, exactly as activateClaimedListing does for a business: account_status 1 is what

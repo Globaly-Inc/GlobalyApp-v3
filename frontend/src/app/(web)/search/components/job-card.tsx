@@ -18,7 +18,7 @@ export function JobCard({ job }: Readonly<{ job: SearchJob }>) {
     <div className="bg-card border border-border rounded-xl hover:shadow-md transition-shadow overflow-hidden">
       <div className="flex flex-col sm:flex-row">
         <div className="flex-1 min-w-0 flex items-start gap-3 py-3.5 px-4">
-          <div className="w-12 h-12 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-12 h-12 rounded-lg border border-border bg-card flex items-center justify-center flex-shrink-0 overflow-hidden">
             {job.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={job.logo_url} alt={company ?? job.title} className="w-full h-full object-contain p-1" />
@@ -35,7 +35,7 @@ export function JobCard({ job }: Readonly<{ job: SearchJob }>) {
           </div>
         </div>
 
-        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 px-4 py-3 flex flex-col justify-center gap-2">
+        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border px-4 py-3 flex flex-col justify-between gap-2">
           {pay ? (
             <p className="text-sm font-bold text-primary leading-tight whitespace-nowrap">{pay}</p>
           ) : (

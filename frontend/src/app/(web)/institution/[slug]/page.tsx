@@ -14,6 +14,7 @@ import type { InstitutionDetail } from "../../search/types";
 import { InstitutionStats } from "./components/institution-stats";
 import { InstitutionSubjectAreas } from "./components/institution-subject-areas";
 import { InstitutionCoursesSection } from "./components/institution-courses-section";
+import { InstitutionRepresentatives } from "./components/institution-representatives";
 import { ProfileGallery } from "../../components/profile/profile-gallery";
 import { InstitutionTeamCard } from "./components/institution-sidebar";
 import { PageViews } from "../../components/page-views";
@@ -99,7 +100,9 @@ export default async function InstitutionPage({ params, searchParams }: Institut
   const institution = await getInstitutionBySlug(slug);
   if (!institution) notFound();
 
-  const { data: courses, meta } = await getInstitutionCourses(slug, { page, search, degree_level: level });
+  // The catalog scrolls inside its card rather than paging, so ask for the whole first page of
+  // it — 100 is the API cap. Past that the section falls back to showing its pager.
+  const { data: courses, meta } = await getInstitutionCourses(slug, { page, search, degree_level: level, limit: 100 });
   const profile = toProfileData(institution);
   // The stats and the subject grid count the whole catalog; `meta.total` counts only the
   // level/search currently shown.
@@ -148,6 +151,8 @@ export default async function InstitutionPage({ params, searchParams }: Institut
           />
 
           <ProfileLocationsCard locations={profile.locations} />
+
+          <InstitutionRepresentatives representatives={institution.representatives} />
 
           <ProfileGallery items={profile.gallery} />
         </div>

@@ -296,6 +296,35 @@
     border-radius: 9999px;
   }
 
+  /* A list that scrolls inside its own card, with the bar only visible on hover — so a long
+     catalog needs no pagination without a scrollbar sitting there permanently. scrollbar-gutter
+     reserves the track width up front, so revealing the thumb cannot reflow the grid underneath.
+     :focus-within keeps it reachable for a keyboard, which never hovers. */
+  .scroll-on-hover {
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .scroll-on-hover:hover,
+  .scroll-on-hover:focus-within {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+  .scroll-on-hover::-webkit-scrollbar {
+    width: 8px;
+  }
+  .scroll-on-hover::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-on-hover::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+  }
+  .scroll-on-hover:hover::-webkit-scrollbar-thumb,
+  .scroll-on-hover:focus-within::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+  }
+
   /* Staggered entrance/exit for the public-page "mockup" illustrations — ported from V2's
      public mockups, which reference these class names but never actually define them there. */
   @keyframes fade-in {

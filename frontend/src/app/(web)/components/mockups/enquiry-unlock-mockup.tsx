@@ -44,7 +44,7 @@ export function EnquiryUnlockMockup() {
           >
             <div className="flex items-center gap-2 text-primary">
               <Unlock className="h-4 w-4" />
-              <span className="text-sm font-semibold">Unlocked · Aanya S.</span>
+              <span className="text-sm font-semibold">Unlocked · Sofia A.</span>
             </div>
             <div className="space-y-1.5 text-xs text-foreground">
               <div className="flex items-center gap-2">

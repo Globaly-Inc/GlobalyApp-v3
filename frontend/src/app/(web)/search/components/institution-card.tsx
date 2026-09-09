@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { BadgeCheck, BookOpen, Building2, FileText, GraduationCap } from "lucide-react";
+import { Building2, FileText, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { flagFromIso2 } from "@/lib/utils";
+import { VerifiedTick } from "../../components/verified-tick";
 import { CampusChips } from "./campus-chips";
 import { FavouriteButton } from "./favourite-button";
 import { STUDY_MODE_LABEL, type SearchBusiness } from "../types";
 
 function InstitutionStat({
   icon: Icon, label, children,
-}: Readonly<{ icon: typeof BookOpen; label: string; children: React.ReactNode }>) {
+}: Readonly<{ icon: typeof Building2; label: string; children: React.ReactNode }>) {
   return (
     // Padding pairs with the parent's sm:divide-x so the partition lines sit evenly between stats.
     <div className="flex min-w-0 items-center gap-2 sm:px-4 sm:first:pl-0">
@@ -48,9 +49,7 @@ export function InstitutionCard({ institution }: Readonly<{ institution: SearchB
             <div className="min-w-0 flex-1">
               <h3 className="flex items-center gap-1.5 text-lg font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
                 {institution.business_name}
-                {institution.status === "verified" && (
-                  <BadgeCheck className="h-4 w-4 shrink-0 text-primary" aria-label="Verified" />
-                )}
+                <VerifiedTick status={institution.status} claimStatus={institution.claim_status} />
               </h3>
 
               {(institution.city ?? institution.country_name) && (
@@ -66,7 +65,7 @@ export function InstitutionCard({ institution }: Readonly<{ institution: SearchB
               <CampusChips locations={institution.campus_locations ?? []} />
             </div>
 
-            {/* The course count moved down into the stats row, so this corner is the heart alone. */}
+            {/* The course count sits in the action rail, so this corner is the heart alone. */}
             <div className="pointer-events-auto relative z-10 shrink-0">
               <FavouriteButton itemType="institution" itemId={String(institution.id)} />
             </div>
@@ -74,6 +73,9 @@ export function InstitutionCard({ institution }: Readonly<{ institution: SearchB
 
           {/* Stacked on mobile, so the dividers only appear once the three sit side by side. */}
           <div className="grid min-w-0 grid-cols-1 gap-3 border-t border-border px-4 py-3 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-border">
+            <InstitutionStat icon={Building2} label="Institution Type">
+              {institution.institution_type ?? "—"}
+            </InstitutionStat>
             <InstitutionStat icon={GraduationCap} label="Study Mode">
               {studyModes.length > 0 ? (
                 <span className="flex flex-wrap gap-1">
@@ -85,28 +87,27 @@ export function InstitutionCard({ institution }: Readonly<{ institution: SearchB
                 </span>
               ) : "—"}
             </InstitutionStat>
-            <InstitutionStat icon={FileText} label="Subject Area">{subjectAreaCount || "—"}</InstitutionStat>
-            <InstitutionStat icon={BookOpen} label="Available Courses">
-              {(institution.course_count ?? 0).toLocaleString()}
-            </InstitutionStat>
+            <InstitutionStat icon={FileText} label="Subject Areas">{subjectAreaCount || "—"}</InstitutionStat>
           </div>
         </div>
 
         {/* pointer-events-auto + z-10, same as the heart above: the card-wide overlay Link sits at
             inset-0, so anything meant to stay clickable has to opt back in. */}
-        <div className="pointer-events-auto relative z-10 flex w-full flex-col justify-center border-t border-border bg-muted/30 p-5 sm:w-48 sm:shrink-0 sm:border-l sm:border-t-0">
-          <div className="flex flex-col gap-2">
-            {/* PersonalShell bounces anonymous visitors to sign-in and preserves this URL, so they
-                land back on the enquiry form rather than a generic signup. */}
-            <Link href="/personal/enquiries">
-              <Button size="sm" className="h-9 w-full text-xs">Contact</Button>
-            </Link>
-            <Link href={profileHref}>
-              <Button size="sm" variant="outline" className="h-9 w-full text-xs font-normal text-muted-foreground">
-                View Profile
-              </Button>
-            </Link>
+        <div className="pointer-events-auto relative z-10 flex w-full flex-col justify-between gap-6 border-t border-border p-5 sm:w-48 sm:shrink-0 sm:border-l sm:border-t-0">
+          <div>
+            <p className="text-xs text-muted-foreground">Available Courses</p>
+            <p className="text-xl font-bold leading-tight text-foreground">
+              {(institution.course_count ?? 0).toLocaleString()}
+            </p>
           </div>
+
+          {/* An enquiry is always about a course, so the school can't be the target — instead it
+              preselects the dialog's institution filter and the course picker opens on this
+              catalog alone. PersonalShell bounces anonymous visitors to sign-in and preserves
+              this URL, so they come back to the same filtered dialog. */}
+          <Link href={institution.job_id ? `/personal/enquiries?institution=${institution.job_id}` : "/personal/enquiries"}>
+            <Button size="sm" className="h-9 w-full text-xs">Enquiry</Button>
+          </Link>
         </div>
       </div>
     </div>

@@ -7,31 +7,36 @@ import { Badge } from "@/components/ui/badge";
 import { INSTITUTION_LOGOS, PARTNER_LOGOS } from "@/lib/public-assets";
 import { MockupCard, MockupFrame } from "./mockup-frame";
 
-// A counselor partners with many institutions, so the institution side is what rotates — one
-// counselor on the right, a stream of universities connecting to it on the left.
-// Logos come from our own public GCS bucket (sourced from Wikipedia/Wikimedia) rather than being
-// hotlinked, so the mockup never depends on a third party staying up.
-const INSTITUTIONS = [
-  { name: "University of Toronto", location: "Toronto, Canada", logo: INSTITUTION_LOGOS.toronto },
-  { name: "University of Melbourne", location: "Melbourne, Australia", logo: INSTITUTION_LOGOS.melbourne },
-  { name: "University of Manchester", location: "Manchester, UK", logo: INSTITUTION_LOGOS.manchester },
-  { name: "Arizona State University", location: "Phoenix, USA", logo: INSTITUTION_LOGOS.asu },
-  { name: "National University of Singapore", location: "Singapore", logo: INSTITUTION_LOGOS.nus },
-];
-
-// Apex is a stand-in agency. Swapping in a real counselor means a new mark in the bucket and a
-// new name here; the monogram is the fallback for as long as a logo fails to load.
-const COUNSELOR = {
-  name: "Apex Education Partners",
-  location: "Dubai, UAE",
-  students: 156,
-  logo: PARTNER_LOGOS.apex,
-  initials: "AE",
+// Whoever is being sold to sits still on the left; the network they would gain streams past them
+// on the right. A counselor partners with many institutions, an institution recruits through many
+// counselors — same animation, opposite stream.
+type Party = {
+  name: string;
+  location: string;
+  badge: string;
+  /** Omitted where we have no mark in the bucket — the monogram stands in. */
+  logo?: string;
+  initials: string;
 };
 
-/** "University of Toronto" -> "UT". Only used if a logo file ever goes missing. */
-const institutionInitials = (name: string) =>
-  name.split(" ").filter((w) => w[0] === w[0]?.toUpperCase() && w.length > 2).slice(0, 2).map((w) => w[0]).join("");
+// Logos come from our own public GCS bucket (sourced from Wikipedia/Wikimedia) rather than being
+// hotlinked, so the mockup never depends on a third party staying up.
+const INSTITUTIONS: Party[] = [
+  { name: "University of Toronto", location: "Toronto, Canada", logo: INSTITUTION_LOGOS.toronto, initials: "UT", badge: "Institution · Verified" },
+  { name: "University of Melbourne", location: "Melbourne, Australia", logo: INSTITUTION_LOGOS.melbourne, initials: "UM", badge: "Institution · Verified" },
+  { name: "University of Manchester", location: "Manchester, UK", logo: INSTITUTION_LOGOS.manchester, initials: "UM", badge: "Institution · Verified" },
+  { name: "Arizona State University", location: "Phoenix, USA", logo: INSTITUTION_LOGOS.asu, initials: "AS", badge: "Institution · Verified" },
+  { name: "National University of Singapore", location: "Singapore", logo: INSTITUTION_LOGOS.nus, initials: "NU", badge: "Institution · Verified" },
+];
+
+// Stand-in agencies, not real partners — every mark is a file in our own public bucket.
+const COUNSELORS: Party[] = [
+  { name: "Apex Education Partners", location: "Dubai, UAE", logo: PARTNER_LOGOS.apex, initials: "AE", badge: "Education Counselor · 156 students" },
+  { name: "Northstar Study Abroad", location: "Kathmandu, Nepal", logo: PARTNER_LOGOS.northstar, initials: "NS", badge: "Education Counselor · 210 students" },
+  { name: "BrightPath Counselling", location: "Hyderabad, India", logo: PARTNER_LOGOS.brightPath, initials: "BP", badge: "Education Counselor · 184 students" },
+  { name: "Mekong Education Group", location: "Ho Chi Minh City, Vietnam", logo: PARTNER_LOGOS.mekong, initials: "MK", badge: "Education Counselor · 132 students" },
+  { name: "Silverline Education", location: "Lagos, Nigeria", logo: PARTNER_LOGOS.silverline, initials: "SL", badge: "Education Counselor · 98 students" },
+];
 
 const CYCLE_MS = 3200;
 const IN_MS = 500;
@@ -51,10 +56,10 @@ function subscribeToReducedMotion(onChange: () => void) {
  * Square logo tile. Built on Avatar purely for its fallback behaviour — a missing or broken
  * logo file degrades to the monogram instead of a broken-image icon.
  */
-function CardLogo({ src, alt, initials }: Readonly<{ src: string; alt: string; initials: string }>) {
+function CardLogo({ src, alt, initials }: Readonly<{ src?: string; alt: string; initials: string }>) {
   return (
     <Avatar className="h-10 w-10 rounded-lg border border-border bg-white mb-2">
-      <AvatarImage src={src} alt={alt} className="object-contain p-1" />
+      {src && <AvatarImage src={src} alt={alt} className="object-contain p-1" />}
       <AvatarFallback className="rounded-lg bg-primary/10 text-primary text-xs font-semibold">
         {initials}
       </AvatarFallback>
@@ -62,7 +67,24 @@ function CardLogo({ src, alt, initials }: Readonly<{ src: string; alt: string; i
   );
 }
 
-export function PartnershipConnectMockup() {
+function PartyCard({ party }: Readonly<{ party: Party }>) {
+  return (
+    <>
+      <CardLogo src={party.logo} alt={`${party.name} logo`} initials={party.initials} />
+      <div className="text-sm font-semibold text-foreground truncate">{party.name}</div>
+      <div className="text-xs text-muted-foreground mt-0.5">{party.location}</div>
+      <Badge variant="secondary" className="mt-2 text-[10px]">{party.badge}</Badge>
+    </>
+  );
+}
+
+/**
+ * `audience` names who is reading the page, not what is drawn: their own kind is the still card,
+ * the network they would gain is the one that cycles.
+ */
+export function PartnershipConnectMockup({
+  audience = "counselor",
+}: Readonly<{ audience?: "counselor" | "institution" }>) {
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("in");
   const reducedMotion = useSyncExternalStore(
@@ -71,7 +93,11 @@ export function PartnershipConnectMockup() {
     () => false,
   );
 
-  // Each cycle: slide in, hold, slide out, then advance to the next institution and reset to "in".
+  const forInstitution = audience === "institution";
+  const fixed = forInstitution ? INSTITUTIONS[0]! : COUNSELORS[0]!;
+  const stream = forInstitution ? COUNSELORS : INSTITUTIONS;
+
+  // Each cycle: slide in, hold, slide out, then advance to the next partner and reset to "in".
   // Resetting inside the last timeout rather than in the effect body keeps this off the
   // synchronous render path.
   useEffect(() => {
@@ -79,7 +105,7 @@ export function PartnershipConnectMockup() {
     const toHold = setTimeout(() => setPhase("hold"), IN_MS);
     const toOut = setTimeout(() => setPhase("out"), IN_MS + HOLD_MS);
     const toNext = setTimeout(() => {
-      setIndex((i) => (i + 1) % INSTITUTIONS.length);
+      setIndex((i) => (i + 1) % stream.length);
       setPhase("in");
     }, CYCLE_MS);
     return () => {
@@ -87,9 +113,11 @@ export function PartnershipConnectMockup() {
       clearTimeout(toOut);
       clearTimeout(toNext);
     };
-  }, [index, reducedMotion]);
+  }, [index, reducedMotion, stream.length]);
 
-  const institution = INSTITUTIONS[index]!;
+  // Apex is the still card on the institution variant as well as the first counselor in the
+  // stream, so that variant starts one along — nothing is ever shown partnered with itself.
+  const partner = stream[forInstitution ? (index + 1) % stream.length : index]!;
 
   const cardTransform =
     phase === "in" ? "translateY(40px)" : phase === "out" ? "translateY(-40px)" : "translateY(0)";
@@ -100,7 +128,12 @@ export function PartnershipConnectMockup() {
     <MockupFrame label="business portal / partnerships">
       <div className="relative py-4">
         <div className="grid grid-cols-2 gap-3 relative z-10 items-stretch">
-          {/* Rotating institution card */}
+          {/* The side reading the page — always still, always left */}
+          <MockupCard className="p-4">
+            <PartyCard party={fixed} />
+          </MockupCard>
+
+          {/* The network they gain — cycles through */}
           <div className="relative overflow-hidden" style={{ minHeight: 132 }}>
             <MockupCard
               className="p-4 absolute inset-0"
@@ -110,24 +143,9 @@ export function PartnershipConnectMockup() {
                 transition: "transform 500ms cubic-bezier(0.22,1,0.36,1), opacity 400ms ease-out",
               }}
             >
-              <CardLogo src={institution.logo} alt={`${institution.name} logo`} initials={institutionInitials(institution.name)} />
-              <div className="text-sm font-semibold text-foreground truncate">{institution.name}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">{institution.location}</div>
-              <Badge variant="secondary" className="mt-2 text-[10px]">
-                Institution · Verified
-              </Badge>
+              <PartyCard party={partner} />
             </MockupCard>
           </div>
-
-          {/* Fixed education counselor card */}
-          <MockupCard className="p-4">
-            <CardLogo src={COUNSELOR.logo} alt={`${COUNSELOR.name} logo`} initials={COUNSELOR.initials} />
-            <div className="text-sm font-semibold text-foreground truncate">{COUNSELOR.name}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{COUNSELOR.location}</div>
-            <Badge variant="secondary" className="mt-2 text-[10px]">
-              Education Counselor · {COUNSELOR.students} students
-            </Badge>
-          </MockupCard>
         </div>
 
         {/* Connector line */}
@@ -168,7 +186,7 @@ export function PartnershipConnectMockup() {
         className="text-center text-xs text-muted-foreground"
         style={{ opacity: connected || reducedMotion ? 1 : 0.4, transition: "opacity 300ms ease-out" }}
       >
-        {connected || reducedMotion ? `Partnered with ${institution.name}` : "Connecting…"}
+        {connected || reducedMotion ? `Partnered with ${partner.name}` : "Connecting…"}
       </div>
     </MockupFrame>
   );

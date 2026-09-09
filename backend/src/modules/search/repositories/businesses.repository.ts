@@ -42,6 +42,19 @@ export async function listInstitutionCampuses(jobId: string) {
 }
 
 /**
+ * The education agents the institution appoints — "Representatives" on the public profile. Like
+ * campuses they hang off the extraction job, so a hand-registered institution has none. Review
+ * marks a rejected agent `archived`; rows predating that column default to visible.
+ */
+export async function listInstitutionRepresentatives(jobId: string) {
+  return masterKnex(`${S}.extraction_agents`)
+    .where({ job_id: jobId })
+    .whereRaw("coalesce(source_status, 'active') <> 'archived'")
+    .select("id", "name", "email", "phone", "website", "address", "city", "state", "country", "logo_url")
+    .orderByRaw("name asc nulls last");
+}
+
+/**
  * The institution's team, read from the master-DB membership index rather than the tenant
  * `members` table — this public endpoint has no tenant connection to open.
  */
@@ -340,7 +353,11 @@ const INSTITUTION_LIST_COLUMNS = [
   "i.id", "i.institution_name as business_name", INSTITUTION_CREST, "i.description",
   "i.city", "i.state", "c.name as country_name", "c.iso2 as country_code", "i.website", "i.email",
   // Verified tick and the Institution Type stat on the card.
-  "i.status", "i.institution_type",
+  "i.status", "i.claim_status", "i.institution_type",
+  // The card's Enquiry button deep-links the enquiry dialog's institution filter, which is
+  // keyed by extraction job — null for an institution registered by hand, which just means
+  // the dialog opens unfiltered.
+  "i.source_job_id as job_id",
 ];
 
 function toPublicInstitution(r: PublicInstitutionRow) {
@@ -574,7 +591,10 @@ export async function listPublicBusinesses(filters: BusinessSearchFilters, limit
   const rows = await baseQuery(filters)
     .select(
       "b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.schema_provisioned_at", "b.logo_url", "b.description",
-      "b.city", "c.name as country_name", "b.status", "cat.name as category_name",
+      "b.city", "c.name as country_name", "b.status", "b.claim_status", "cat.name as category_name",
+      // POST /enquiries rejects a business_id whose owner has enquiries switched off, so the
+      // card only names the business as a target when it would be accepted.
+      "b.enquiry_enabled",
       "b.website", "b.email",
     )
     .orderBy("b.business_name")
@@ -585,6 +605,7 @@ export async function listPublicBusinesses(filters: BusinessSearchFilters, limit
     id: number; business_name: string; subdomain: string; schema_name: string; schema_provisioned_at: Date | null;
     logo_url: string | null; description: string | null; city: string | null; country_name: string | null;
     status: string; category_name: string | null; website: string | null; email: string | null;
+    enquiry_enabled: boolean;
   };
   return Promise.all(rows.map(async ({ schema_name, schema_provisioned_at, ...row }: ListRow) => {
     // Promoted-but-unclaimed listings have no tenant schema yet (see promote.service) —

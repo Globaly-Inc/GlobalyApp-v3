@@ -41,9 +41,12 @@ const schema: z.ZodType<CreateEnquiryInput> = z.object({
   share_contact_number: z.boolean().optional(),
 });
 
-function emptyInput(courseId: string | null): CreateEnquiryInput {
+function emptyInput(courseId: string | null, businessId: number | null): CreateEnquiryInput {
   return {
     course_id: courseId ?? "",
+    // Set only by a business card's Enquiry button; POST /enquiries validates it and stores the
+    // enquiry against that business.
+    business_id: businessId,
     message: "",
     // Opt-in: never pre-ticked. A pre-checked consent box is not consent.
     share_contact_number: false,
@@ -59,24 +62,31 @@ function emptyInput(courseId: string | null): CreateEnquiryInput {
  *
  * `prefillCourseId` is supplied by the parent (from ?course_id= on the deep link
  * from the course search) and only for the first open, so a lingering query param
- * can't keep re-prefilling later opens.
+ * can't keep re-prefilling later opens. `prefillInstitutionJobId` and `prefillBusinessId`
+ * arrive the same way from the institution and business search cards.
  */
 export function NewEnquiryDialog({
   open,
   onOpenChange,
   prefillCourseId = null,
+  prefillInstitutionJobId = null,
+  prefillBusinessId = null,
   onSubmitted,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   prefillCourseId?: string | null;
+  /** Extraction job of the institution whose card was clicked — preselects the course filter. */
+  prefillInstitutionJobId?: string | null;
+  /** Business whose card was clicked; travels with the enquiry as its target. */
+  prefillBusinessId?: number | null;
   /** Fired after the enquiry is accepted, with the consent the student actually gave — the parent
    *  owns the disclaimer, since this dialog has already closed by then. */
   onSubmitted?: (sharedContact: boolean) => void;
 }>) {
   const dispatch = useAppDispatch();
   const createStatus = useAppSelector((s) => s.enquiries.createStatus);
-  const { form, setForm, errors, validate } = useValidatedForm(schema, () => emptyInput(prefillCourseId));
+  const { form, setForm, errors, validate } = useValidatedForm(schema, () => emptyInput(prefillCourseId, prefillBusinessId));
 
   const courses = useAppSelector((s) => s.enquiries.courseOptions);
   const courseOptionsStatus = useAppSelector((s) => s.enquiries.courseOptionsStatus);
@@ -99,7 +109,9 @@ export function NewEnquiryDialog({
   // against) and keeps the field correct in that race. An explicit "" means the
   // user cleared it deliberately, which must NOT snap back to the course's
   // institution.
-  const [institutionTouched, setInstitutionTouched] = useState<string | null>(null);
+  // An institution card's deep link starts it explicitly set, which is what scopes the course
+  // picker to that school; from then on it behaves exactly as if the user had picked it.
+  const [institutionTouched, setInstitutionTouched] = useState<string | null>(prefillInstitutionJobId);
   const selectedCourse = courses.find((c) => c.id === form.course_id);
   const institutionJobId = institutionTouched ?? selectedCourse?.job_id ?? "";
 
