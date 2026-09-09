@@ -1,6 +1,19 @@
 // URL filtering and markdown utilities.
 // Scrapers return markdown, so we mostly work with URLs and text — not raw HTML.
 
+
+export function extractDomainEmails(text: string, institutionDomain: string): string[] {
+  const domain = institutionDomain.replace(/^www\./i, "").toLowerCase();
+  const re = /[a-zA-Z0-9._%+-]+@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+  const found = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const emailDomain = m[1].toLowerCase();
+    if (emailDomain === domain || emailDomain.endsWith(`.${domain}`)) found.add(m[0]);
+  }
+  return [...found];
+}
+
 /**
  * Every `href="..."` value in raw HTML — deliberately not the scraper's own `links` array,
  * which (for Scrapling/Crawl4AI) is `extractLinksFromMarkdown()` in scraper.ts: a regex over
@@ -376,6 +389,14 @@ if (import.meta.url.endsWith("/html-utils.ts") && process.argv[1]?.endsWith("htm
   assert(fixed === "https://www.bsu.edu/-/media/www/images/logos/bsu-logo_top.png?h=112&w=402", `fixMalformedAbsoluteUrl: ${fixed}`);
   assert(fixMalformedAbsoluteUrl("https://www.facebook.com/ballstate", "https://www.bsu.edu") === "https://www.facebook.com/ballstate", "real absolute URL untouched");
   assert(fixMalformedAbsoluteUrl(null, "https://www.bsu.edu") === null, "null passes through");
+
+  const domainEmails = extractDomainEmails(
+    "Contact privacy@gatech.edu for data requests. Vendors write to sales@othercorp.com. Also webmaster@mail.gatech.edu helps.",
+    "gatech.edu",
+  );
+  assert(domainEmails.includes("privacy@gatech.edu"), `same-domain email found: ${JSON.stringify(domainEmails)}`);
+  assert(domainEmails.includes("webmaster@mail.gatech.edu"), `subdomain email found: ${JSON.stringify(domainEmails)}`);
+  assert(!domainEmails.includes("sales@othercorp.com"), `off-domain email excluded: ${JSON.stringify(domainEmails)}`);
 
   console.log("html-utils: all checks passed");
 }

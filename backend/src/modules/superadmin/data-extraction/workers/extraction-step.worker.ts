@@ -12,7 +12,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown, scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
-import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
   institutionExtractionPrompt, INSTITUTION_EXTRACTION_SYSTEM,
@@ -391,6 +391,19 @@ async function handleInstitutionStep(jobId: string) {
   }
   if (detectedSocial.other_social_links.length) {
     merged.other_social_links = unionSocialLinks(merged.other_social_links, detectedSocial.other_social_links);
+  }
+
+  // Last-resort email fallback: the LLM's own tiers (main/general → department → any other
+  // listed email) are a text judgment call and can reasonably skip past a niche address like
+  // privacy@ or webmaster@ that's still perfectly usable. A plain same-domain regex scan over
+  // every scraped page's text never misses one that's actually there. Only fires if every
+  // tier above found nothing.
+  if (!merged.email) {
+    const institutionDomain = domainOf(baseUrl);
+    for (const { markdown } of scrapedPairs) {
+      const found = extractDomainEmails(markdown, institutionDomain);
+      if (found.length) { merged.email = found[0]; break; }
+    }
   }
 
   // Process supporting documents (PDFs/files attached to the job)
