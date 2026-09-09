@@ -18,6 +18,7 @@ import { EditableField, saveFormAndLearn, useFieldSaver, type EditableFieldProps
 import { FeeForm } from "./fee-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type { CourseFee, CourseFeeParams, CourseLinks, ExtractionJob } from "../apis/types";
 
 type LinkedCourse = { id: string; name: string | null };
@@ -152,6 +153,7 @@ function FeeCard({
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={fee} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );
@@ -215,18 +217,16 @@ export function FeesTab({
     }
   };
 
-  // One form can produce two fees — separate domestic and international pricing.
-  const handleCreate = (payloads: CourseFeeParams[]) =>
+  // The form hands back one fee, or two when domestic and international were filled together.
+  const handleCreate = (values: CourseFeeParams[]) =>
     run(async () => {
-      for (const values of payloads) {
-        await allExtractionsApi.createCourseFee({ job_id: jobId, ...values });
-      }
+      for (const v of values) await allExtractionsApi.createCourseFee({ job_id: jobId, ...v });
       setAdding(false);
-    }, payloads.length > 1 ? `${payloads.length} fees added` : "Fee added");
+    }, values.length > 1 ? `${values.length} fees added` : "Fee added");
 
-  const handleUpdate = (fee: CourseFee, [values]: CourseFeeParams[]) =>
+  const handleUpdate = (fee: CourseFee, values: CourseFeeParams[]) =>
     run(async () => {
-      await saveFormAndLearn("extraction_course_fees", fee, values!, jobId);
+      await saveFormAndLearn("extraction_course_fees", fee, values[0]!, jobId);
       setEditingId(null);
     }, "Fee updated");
 

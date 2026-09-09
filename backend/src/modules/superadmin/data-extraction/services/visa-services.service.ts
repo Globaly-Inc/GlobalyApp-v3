@@ -2,6 +2,7 @@
 
 import { NotFoundError } from "../../../../shared/errors.js";
 import { logAudit } from "../shared/audit.js";
+import { withActorNames } from "../shared/actor-names.js";
 import * as repo from "../repositories/visa-services.repository.js";
 import type { PatchVisaServiceInput } from "../schemas/visa-services.schema.js";
 
@@ -10,25 +11,25 @@ export async function listVisaServices(jobId: string, status?: string) {
     repo.listVisaServicesByJob(jobId, status),
     repo.countVisaServicesByStatus(jobId),
   ]);
-  return { visa_services, statusCounts };
+  return { visa_services: await withActorNames(visa_services), statusCounts };
 }
 
 export async function patchVisaService(id: string, input: PatchVisaServiceInput, adminId: number) {
-  const found = await repo.updateVisaService(id, input);
+  const found = await repo.updateVisaService(id, input, adminId);
   if (!found) throw new NotFoundError("Visa service not found");
   await logAudit(adminId, "VISA_SERVICE_PATCH", { entityType: "extraction_visa_services", entityId: id });
   return { updated: true };
 }
 
 export async function approveVisaService(id: string, adminId: number) {
-  const found = await repo.updateVisaService(id, { status: "approved" });
+  const found = await repo.updateVisaService(id, { status: "approved" }, adminId);
   if (!found) throw new NotFoundError("Visa service not found");
   await logAudit(adminId, "VISA_SERVICE_APPROVE", { entityType: "extraction_visa_services", entityId: id });
   return { updated: true };
 }
 
 export async function discardVisaService(id: string, adminId: number) {
-  const found = await repo.updateVisaService(id, { status: "discarded" });
+  const found = await repo.updateVisaService(id, { status: "discarded" }, adminId);
   if (!found) throw new NotFoundError("Visa service not found");
   await logAudit(adminId, "VISA_SERVICE_DISCARD", { entityType: "extraction_visa_services", entityId: id });
   return { updated: true };

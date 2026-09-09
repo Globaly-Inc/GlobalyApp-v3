@@ -181,6 +181,41 @@ The centralized error handler maps these to HTTP responses.
    load), which meant search and sort had to move server-side too or they'd
    silently stop covering anything past the current page. Explicitly
    requested and scoped by the team, not a V2 port.
+   Exception: manual attribution on staged rows (2026-09-08) — migration `20260908_001`
+   gives `extraction_jobs` both `created_by_platform_user_id` (who started the extraction)
+   and `updated_by_platform_user_id` (the last admin to act on the job — pause/resume/
+   decline/fail, context edit, rerun, reset-pipeline, deep-scrape). Worker writes
+   (heartbeats, counters, status advances) use other queries and leave updated_by alone,
+   so it stays an admin-action trail rather than worker noise.
+   Migration `20260908_002` adds, to the job sub-tab tables:
+   `created_by_platform_user_id` on the nine an admin can insert into (courses,
+   course_fees, study_units, study_options, intakes, eligibility_requirements,
+   accreditations, agents, campuses) and `updated_by_platform_user_id` on those nine plus
+   `extraction_institution_overview` and `extraction_visa_services` — both pipeline-created
+   but hand-corrected, so created_by would sit null on them forever while updated_by is
+   what answers "who changed this field". **Null created_by means scraped, non-null means
+   hand-added** — no separate `is_manual` flag. updated_by holds the LAST editor only;
+   `extraction_memory` already keeps the per-edit diff trail for save-and-learn.
+   Every write funnel takes `adminId` as a REQUIRED argument and stamps it, so a table
+   added there cannot silently skip attribution: `insertEntity`/`updateEntity`
+   (staged.repository), `patchEntityRow` (save-and-learn, all 11 tables), `updateCourse`,
+   `updateCoursesByIds`, `updateVisaService`, `updateAgent`, `updateCampus`.
+   `staging-writer.ts` (the pipeline) sets neither.
+   Read side: `shared/actor-names.ts` — `withActorNames(rows)` / `withActorNamesOne(row)`
+   resolve both ids into `created_by_name`/`created_by_email`/`updated_by_name`/
+   `updated_by_email` with ONE `platform_users` lookup per page, and every list and detail
+   service calls it (jobs, courses, review, visa-services, staged). Deliberately not a
+   LEFT JOIN: the list queries all rely on `select *` plus unqualified `where`/`order by`,
+   which joining `platform_users` (its own id/created_at/updated_at) breaks one call site
+   at a time — the earlier `withExtractor` join in jobs.repository.ts did exactly that and
+   was removed in favour of the helper. Rows missing the columns resolve to all-null, so
+   the read path is safe before the migrations are applied. The UI renders it through
+   `components/row-actors.tsx` (`<RowActors row={…} />`) on every sub-tab card, the job
+   header and the job list row; a row with no creator shows "Extracted automatically".
+   Guarded by
+   `npm run test:extraction-created-by`, a static check that the migration's table lists
+   cover every write path. No V2 equivalent — V2 could not tell a hand-typed fee from a
+   scraped one, or say who corrected an overview field.
    Exception: `POST /jobs/:id/rerun` resumes instead of always restarting
    (2026-09-01) — if the job has pending/failed queue items, rerun retries
    just those via the "courses" step instead of `resetPipeline` wiping the

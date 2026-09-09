@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { geoApi } from "@/app/geo/apis";
 import { allExtractionsApi } from "../apis";
 import { EditableField, type EditableFieldProps } from "./editable-field";
+import { RowActors } from "./row-actors";
 import type { InstitutionOverview } from "../apis/types";
 
 export type InstitutionTabProps = Readonly<{
@@ -236,6 +237,8 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
           <Field icon={Link2} label="LinkedIn" value={overview.linkedin_url} onSave={(v) => saveField("linkedin_url", v)} />
           <Field icon={Link2} label="YouTube" value={overview.youtube_url} onSave={(v) => saveField("youtube_url", v)} />
         </Section>
+
+        <RowActors row={overview} className="border-t border-border pt-3" />
       </CardContent>
     </Card>
   );

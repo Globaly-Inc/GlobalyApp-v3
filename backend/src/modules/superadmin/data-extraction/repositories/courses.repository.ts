@@ -140,17 +140,17 @@ export async function insertCourse(data: Record<string, unknown>) {
   return row;
 }
 
-export async function updateCourse(id: string, data: Record<string, unknown>) {
+export async function updateCourse(id: string, data: Record<string, unknown>, adminId: number) {
   const count = await masterKnex(T)
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
   return count > 0;
 }
 
-export async function updateCoursesByIds(ids: string[], data: Record<string, unknown>) {
+export async function updateCoursesByIds(ids: string[], data: Record<string, unknown>, adminId: number) {
   return masterKnex(T)
     .whereIn("id", ids)
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
 }
 
 export async function deleteCourse(id: string) {

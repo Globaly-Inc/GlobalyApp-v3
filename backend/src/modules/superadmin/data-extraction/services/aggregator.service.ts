@@ -33,6 +33,7 @@ export async function extractFromAggregator(
       source_type: "aggregator",
       aggregator_name: provider.name,
       status: "extracting",
+      created_by_platform_user_id: adminId,
     })
     .returning("id");
 

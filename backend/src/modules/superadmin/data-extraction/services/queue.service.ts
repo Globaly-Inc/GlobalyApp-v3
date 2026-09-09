@@ -92,7 +92,7 @@ export async function stopAll(jobId: string, adminId: number) {
 }
 
 export async function resetPipeline(jobId: string, adminId: number) {
-  const found = await repo.resetPipeline(jobId);
+  const found = await repo.resetPipeline(jobId, adminId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, "JOB_RESET_PIPELINE", { entityType: "extraction_jobs", entityId: jobId });
   return { updated: true };
@@ -130,7 +130,7 @@ export async function rerunJob(jobId: string, adminId: number) {
   if (retryable > 0) {
     // Reactivate BEFORE dispatching — the page worker skips paused/failed/declined jobs,
     // so the reverse order would race it into silently dropping the re-dispatched pages.
-    await repo.reactivateJob(jobId);
+    await repo.reactivateJob(jobId, adminId);
     await logAudit(adminId, "JOB_RERUN", { entityType: "extraction_jobs", entityId: jobId, details: { mode: "resume", retryable } });
     try {
       await dispatchStep(jobId, { step: "courses" }, adminId);
@@ -139,13 +139,13 @@ export async function rerunJob(jobId: string, adminId: number) {
       // published. Without this rollback a failed dispatch (LavinMQ down) leaves the job
       // showing "processing" with a fresh heartbeat and no work queued — stalled until
       // someone notices. Restore the pre-rerun status so the failure state stays truthful.
-      await updateJob(jobId, { status: job.status });
+      await updateJob(jobId, { status: job.status }, adminId);
       throw err;
     }
     return { updated: true, mode: "resume" };
   }
 
-  const found = await repo.resetPipeline(jobId);
+  const found = await repo.resetPipeline(jobId, adminId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, "JOB_RERUN", { entityType: "extraction_jobs", entityId: jobId, details: { mode: "full" } });
 
@@ -173,11 +173,11 @@ export async function deepScrape(jobId: string, adminId: number) {
   // doesn't revive them) — raising the cap would mutate state, report success, and run
   // nothing. The guard is inside raisePageCap's UPDATE (not a check here) so a promotion
   // landing mid-request can't slip an increment onto a freshly exported job.
-  const pageCap = await repo.raisePageCap(jobId, 500);
+  const pageCap = await repo.raisePageCap(jobId, 500, adminId);
   if (pageCap == null) {
     throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
   }
-  await repo.reactivateJob(jobId);
+  await repo.reactivateJob(jobId, adminId);
   await logAudit(adminId, "JOB_DEEP_SCRAPE", { entityType: "extraction_jobs", entityId: jobId, details: { page_cap: pageCap } });
 
   try {

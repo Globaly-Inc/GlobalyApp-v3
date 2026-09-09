@@ -1,4 +1,6 @@
-import type { CourseAssignment, JunctionSlug, TimestampedRow } from "../apis/types";
+import { z } from "zod";
+import type { CourseAssignment, CourseFee, CourseFeeParams, FeeInstallment, JunctionSlug, TimestampedRow } from "../apis/types";
+import type { FeeFormInstallment, FeeLine } from "../types";
 
 /**
  * The subset of `values` that differs from `original`.
@@ -93,4 +95,150 @@ export async function runLimited<T>(tasks: (() => Promise<T>)[], limit: number):
   };
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
   return results;
+}
+
+// ── Fee form ──
+
+const emptyFeeLine = (): FeeLine => ({ fee_type: "", amount: "" });
+
+export const emptyFeeInstallment = (index: number): FeeFormInstallment => ({
+  label: `Semester ${index + 1}`,
+  lines: [emptyFeeLine()],
+});
+
+export const sumFeeLines = (lines: FeeLine[]) =>
+  lines.reduce((total, l) => total + (Number(l.amount) || 0), 0);
+
+export const sumFeeInstallments = (list: FeeFormInstallment[]) =>
+  list.reduce((total, i) => total + sumFeeLines(i.lines), 0);
+
+const PERIOD_INSTALLMENT_LABEL: Record<string, string> = {
+  "Per Year": "Year 1",
+  "Per Semester": "Semester 1",
+  "Per Trimester": "Trimester 1",
+  "Per Unit": "Per Credit",
+  Total: "Full Payment",
+};
+
+/**
+ * An extracted fee is stored as a total, sometimes with a {label, amount} split and no fee-type
+ * lines. Seeding those from the fee itself is what keeps the form from opening on an empty
+ * installment worth 0 — which, once saved, overwrites the real amount with zero.
+ */
+export function feeInstallmentsFromFee(fee?: CourseFee): FeeFormInstallment[] {
+  if (fee?.installments?.length) {
+    return fee.installments.map((i) => ({
+      label: i.label,
+      lines: i.lines?.length
+        ? i.lines.map((l) => ({ fee_type: l.fee_type, amount: String(l.amount) }))
+        : [{ fee_type: fee.name ?? "", amount: String(i.amount ?? "") }],
+    }));
+  }
+  if (fee?.total_amount != null) {
+    return [{
+      label: PERIOD_INSTALLMENT_LABEL[fee.period_type ?? ""] ?? "Installment 1",
+      lines: [{ fee_type: fee.name ?? "", amount: String(fee.total_amount) }],
+    }];
+  }
+  return [emptyFeeInstallment(0)];
+}
+
+const feeSchema = z.object({
+  studentType: z.string().min(1, "Please select who the fee applies to"),
+  periodType: z.string().trim().min(1, "Period type is required"),
+  currency: z.string().trim().min(1, "Currency is required"),
+  name: z.string().trim().transform((v) => v || null),
+  description: z.string().trim().transform((v) => v || null),
+  installments: z.array(
+    z.object({
+      label: z.string(),
+      lines: z.array(z.object({ fee_type: z.string(), amount: z.string() })),
+    }),
+  ).refine((insts) => {
+    let totalLinesCount = 0;
+    let missingType = false;
+    let missingAmount = false;
+    insts.forEach((inst) => {
+      inst.lines.forEach((line) => {
+        const hasType = Boolean(line.fee_type.trim());
+        const amt = Number(line.amount);
+        const hasAmount = Boolean(line.amount.trim()) && !isNaN(amt) && amt > 0;
+        if (hasType || hasAmount) {
+          totalLinesCount++;
+          if (!hasType) missingType = true;
+          if (!hasAmount) missingAmount = true;
+        }
+      });
+    });
+    return totalLinesCount > 0 && !missingType && !missingAmount;
+  }, {
+    message: "At least one valid fee line with a fee type and amount (> 0) is required",
+  }),
+});
+
+/** One audience's amounts. `errorKey` is where this side's installment error is reported, so a
+ *  split form can show the failure under the block that caused it. */
+export type FeeFormSide = {
+  studentType: string;
+  installments: FeeFormInstallment[];
+  errorKey: string;
+};
+
+/**
+ * Validate the fee form and build one CourseFeeParams per side. Name, description, period and
+ * currency are shared — a split entry is ONE fee quoted to two audiences, differing only in
+ * amount. Returns errors keyed for the form's FieldErrors; `values` is only complete when
+ * `errors` is empty.
+ */
+export function buildFeePayloads(
+  shared: { periodType: string; currency: string; name: string; description: string; saveForReuse: boolean },
+  sides: FeeFormSide[],
+): { errors: Record<string, string>; values: CourseFeeParams[] } {
+  const errors: Record<string, string> = {};
+  const values: CourseFeeParams[] = [];
+
+  for (const side of sides) {
+    const result = feeSchema.safeParse({
+      studentType: side.studentType,
+      periodType: shared.periodType,
+      currency: shared.currency,
+      name: shared.name,
+      description: shared.description,
+      installments: side.installments,
+    });
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        const key = String(issue.path[0]);
+        errors[key === "installments" ? side.errorKey : key] ??= issue.message;
+      }
+      continue;
+    }
+
+    const d = result.data;
+    const installments: FeeInstallment[] = d.installments
+      .map((i) => {
+        const lines = i.lines
+          .filter((l) => l.fee_type.trim() && Boolean(l.amount.trim()))
+          .map((l) => ({ fee_type: l.fee_type.trim(), amount: Number(l.amount) || 0 }));
+        return {
+          label: i.label.trim() || "Installment",
+          amount: lines.reduce((sum, l) => sum + l.amount, 0),
+          lines,
+        };
+      })
+      .filter((i) => i.lines.length > 0);
+
+    values.push({
+      name: d.name,
+      description: d.description,
+      student_type: d.studentType,
+      period_type: d.periodType,
+      currency: d.currency,
+      total_amount: installments.reduce((sum, i) => sum + i.amount, 0),
+      installments,
+      save_for_reuse: shared.saveForReuse,
+    });
+  }
+
+  return { errors, values };
 }
