@@ -27,21 +27,25 @@ const envSchema = z.object({
   APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
   /**
-   * Fastify `trustProxy`. MUST be set in any deployment that sits behind a load balancer
-   * or CDN, or `req.ip` is the proxy's address and every visitor on the internet shares
-   * one rate-limit bucket.
+   * Fastify `trustProxy` — decides what `req.ip` means, and `req.ip` is the only
+   * unforgeable client identity the rate limiter and the guest gate have.
    *
-   * Deliberately defaults to OFF. `X-Forwarded-For` is caller-supplied: trusting it by
-   * default lets anyone rotate the header to mint a fresh rate-limit bucket per request,
-   * which is the difference between a limit and the appearance of one. Off means `req.ip`
-   * is the raw socket peer — coarse behind a proxy, but not forgeable.
+   * Defaults to `loopback` because the backend image ALWAYS runs nginx in front of Fastify
+   * in the same container (`Dockerfile`: `service nginx start && npm start`), proxying over
+   * localhost with `X-Forwarded-For $proxy_add_x_forwarded_for`. Trusting loopback means
+   * Fastify takes the rightmost address nginx appended — the real client — and ignores
+   * anything the caller prepended, so header rotation buys nothing.
    *
-   * Accepts "true"/"false", a hop count ("1" = trust the last proxy only — the usual
-   * answer), or a comma-separated IP/CIDR allowlist. Prefer a hop count or CIDR over
-   * "true": "true" trusts the entire chain and hands the leftmost value — the attacker's —
-   * straight back.
+   * `loopback` rather than the hop count `1`: identical behind nginx, but strictly safer if
+   * Fastify is ever exposed directly, where `1` would trust the connecting client itself
+   * and hand its own `X-Forwarded-For` straight back.
+   *
+   * Add ranges if something else goes in FRONT of nginx: a CDN or ALB makes the client one
+   * hop further away, so `loopback,<cdn cidr>` is needed or `req.ip` becomes the CDN's
+   * address and every visitor shares one rate-limit bucket. Avoid `true` — it trusts the
+   * whole chain and returns the attacker-controlled leftmost value.
    */
-  TRUST_PROXY: z.string().default("false"),
+  TRUST_PROXY: z.string().default("loopback"),
 
   // Third-party (optional at skeleton stage)
   DRAGONFLY_URL: z.string().optional(),

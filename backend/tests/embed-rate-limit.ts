@@ -31,22 +31,30 @@ function embedRateKey(req: { body?: unknown; query?: unknown; ip: string }): str
 }
 
 async function main() {
-  // trustProxy OFF, matching the default in config.ts — req.ip is the socket peer, so a
-  // caller-supplied x-forwarded-for must have no effect on the bucket.
-  const app = Fastify();
+  // trustProxy "loopback", matching the default in config.ts and the shipped image: nginx
+  // runs in the same container and proxies over localhost, appending the real client to
+  // X-Forwarded-For. So req.ip must be the CLIENT, never nginx and never a spoofed value.
+  const app = Fastify({ trustProxy: ["loopback"] });
   await app.register(rateLimit, { max: 5000, timeWindow: "1 minute" }); // the global default
   app.post("/guest/messages", {
     config: { rateLimit: { ...MESSAGE_RATE, keyGenerator: embedRateKey as never } },
   }, async () => ({ ok: true }));
 
-  /** `spoof` goes in x-forwarded-for; `from` is the real (injected) socket address. */
-  const send = (embedKey: string, opts: { spoof?: string; from?: string } = {}) =>
-    app.inject({
+  /**
+   * Simulates the real topology: nginx connects from loopback and appends the client to
+   * whatever the caller sent, so the header is `<caller's spoof>, <real client>`.
+   * `client` is the genuine visitor; `spoof` is what they tried to prepend.
+   */
+  const send = (embedKey: string, opts: { client?: string; spoof?: string } = {}) => {
+    const client = opts.client ?? "203.0.113.9";
+    const xff = opts.spoof ? `${opts.spoof}, ${client}` : client;
+    return app.inject({
       method: "POST", url: "/guest/messages",
-      remoteAddress: opts.from ?? "203.0.113.9",
-      headers: opts.spoof ? { "x-forwarded-for": opts.spoof } : {},
+      remoteAddress: "127.0.0.1",            // nginx, same container
+      headers: { "x-forwarded-for": xff },
       payload: { content: "hi", fingerprint: "fp", embed_key: embedKey },
     });
+  };
 
   const KEY_A = "aaaaaaaa-0000-0000-0000-000000000001";
   const KEY_B = "bbbbbbbb-0000-0000-0000-000000000002";
@@ -63,7 +71,10 @@ async function main() {
   assert((await send(KEY_B)).statusCode === 200, "a different embed key has its own bucket");
 
   // And the same key from a different visitor IP is also separate.
-  assert((await send(KEY_A, { from: "198.51.100.7" })).statusCode === 200, "the same key from another IP has its own bucket");
+  assert(
+    (await send(KEY_A, { client: "198.51.100.7" })).statusCode === 200,
+    "a DIFFERENT real visitor gets its own bucket — req.ip is the client, not nginx",
+  );
 
   // THE BYPASS. x-forwarded-for is caller-supplied and Fastify is started with
   // trustProxy off, so a rotated header must NOT buy a fresh bucket. Reading that header
