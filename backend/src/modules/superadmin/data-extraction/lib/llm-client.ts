@@ -3,7 +3,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
-import { isORConfigured, orExtractJson, orGenerateText, orEmbed } from "../../../../shared/ai/openrouter.js";
+import { isORConfigured, orExtractJson, orGenerateText, orEmbed, tryPrimary, primaryProvider, orFallback, fallbackProviders } from "../../../../shared/ai/openrouter.js";
 
 const logger = createChildLogger("llm-client");
 
@@ -96,6 +96,10 @@ export async function extractJson<T>(opts: {
    */
   tier?: "lite";
 }): Promise<T> {
+  const primary = await tryPrimary("extractJson", () =>
+    orExtractJson<T>({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens }, primaryProvider()));
+  if (primary !== undefined) return primary;
+
   let modelId: string;
   let text: string;
   let truncated = false;
@@ -116,9 +120,13 @@ export async function extractJson<T>(opts: {
     text = result.response.text();
     truncated = result.response.candidates?.[0]?.finishReason === "MAX_TOKENS";
   } catch (geminiErr) {
-    if (isORConfigured()) {
-      logger.warn("Gemini extractJson failed — falling back to OpenRouter");
-      return orExtractJson<T>({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens });
+    if (fallbackProviders().length) {
+      logger.warn("Gemini extractJson failed — trying the fallback chain");
+      return orFallback(
+        "extractJson",
+        (via) => orExtractJson<T>({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens }, via),
+        (r) => r == null,
+      );
     }
     throw geminiErr;
   }
@@ -243,6 +251,10 @@ export async function complete(opts: {
   model?: string;
   maxTokens?: number;
 }): Promise<string> {
+  const primary = await tryPrimary("complete", () =>
+    orGenerateText({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens }, primaryProvider()));
+  if (primary !== undefined) return primary;
+
   try {
     const ai = getClient();
     const modelId = opts.model ?? config.GEMINI_MODEL;
@@ -257,9 +269,13 @@ export async function complete(opts: {
     logUsage(modelId, result.response.usageMetadata);
     return result.response.text();
   } catch (geminiErr) {
-    if (isORConfigured()) {
-      logger.warn("Gemini complete() failed — falling back to OpenRouter");
-      return orGenerateText({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens });
+    if (fallbackProviders().length) {
+      logger.warn("Gemini complete() failed — trying the fallback chain");
+      return orFallback(
+        "complete",
+        (via) => orGenerateText({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens }, via),
+        (text) => !text.trim(),
+      );
     }
     throw geminiErr;
   }
@@ -326,5 +342,7 @@ export function isConfigured(): boolean {
 /** Can embed() actually run? Not the same question as isConfigured() once EMBEDDING_PROVIDER
  *  points at the fallback key — the Gemini key is then irrelevant. */
 export function isEmbedConfigured(): boolean {
-  return config.EMBEDDING_PROVIDER === "openrouter" ? isORConfigured() : isConfigured();
+  // Deliberately explicit rather than isORConfigured(): embeddings need OpenRouter specifically,
+  // and must not start reporting ready if that helper ever widens to cover another provider again.
+  return config.EMBEDDING_PROVIDER === "openrouter" ? !!config.OPENROUTER_API_KEY : isConfigured();
 }

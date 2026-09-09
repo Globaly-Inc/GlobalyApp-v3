@@ -74,6 +74,39 @@ const envSchema = z.object({
   OPENROUTER_API_KEY: z.string().optional(),
   // Non-Google on purpose: this is the fallback for Gemini outages, so it must not share Google's failure domain.
   OPENROUTER_MODEL: z.string().default("openai/gpt-4.1-nano"),
+  // Self-hosted Ollama behind an authenticated gateway, OpenAI-compatible /v1. When BASE_URL is set it
+  // replaces OpenRouter as the fallback LLM for chat/text. Embeddings stay on OpenRouter either way —
+  // the vector column is 3072-dim and a chat model cannot produce that. See shared/ai/openrouter.ts.
+  OLLAMA_BASE_URL: z.string().optional(),  // e.g. https://model.globalyapp.com/v1
+  OLLAMA_API_KEY: z.string().optional(),   // bearer token for the gateway
+  OLLAMA_MODEL: z.string().default("hf.co/unsloth/Qwen3.8-27B-GGUF:Q4_0"),
+  /**
+   * How long the self-hosted box gets before the chain moves on, in ms.
+   *
+   * It needs a bound. The OpenAI SDK defaults to a 600s timeout with 2 retries, so a cold
+   * Ollama — measured at 83s to load the model, against ~5-19s warm — could hold an
+   * interactive counselling request for minutes and reach the student as no answer at all.
+   * 20s is longer than a warm reply and far shorter than a cold load, so the first request
+   * after an idle period pays 20s and then OpenRouter answers.
+   */
+  OLLAMA_TIMEOUT_MS: z.coerce.number().default(20_000),
+  // Which provider gets first crack at every LLM call; the rest stay behind it as fallbacks.
+  //
+  // "ollama" gives the self-hosted box first go. Note it IS now in the fallback chain as well
+  // (Gemini → Ollama → OpenRouter), which an earlier version of this comment claimed but the
+  // code did not do — Ollama used to be reachable only as primary.
+  //
+  // "openrouter" exists for the state this project is actually in: GEMINI_API_KEY returns
+  // API_KEY_SERVICE_BLOCKED for every generativelanguage method (the whole API is blocked for
+  // the key's project, which is also why EMBEDDING_PROVIDER is openrouter). Left on "gemini",
+  // every single AI request pays a doomed 403 round-trip before falling back. Set this to
+  // "openrouter" to skip it. Flip back to "gemini" the moment the key is unblocked — Gemini
+  // stays the intended primary.
+  //
+  // Note the fallback chain is unchanged: if the primary fails, the Gemini attempt still
+  // happens. With "openrouter" that means a failed OpenRouter call is retried after a pointless
+  // 403 — deliberate, because resilience on a rare failure path beats saving one request.
+  LLM_PRIMARY: z.enum(["gemini", "ollama", "openrouter"]).default("gemini"),
   // text-embedding-004 is retired — it 404s on embedContent for current keys.
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
   // Which provider embed() calls. Gemini's embedContent 403s on keys without the Generative

@@ -2,7 +2,7 @@ import { GoogleGenerativeAI, type Content, type FunctionCall, type Part, type To
 import { config } from "../../../config.js";
 import { BadRequestError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
-import { isORConfigured, orStreamChat, orStreamChatWithTools, orGenerateTitle } from "../../../shared/ai/openrouter.js";
+import { orStreamChat, orStreamChatWithTools, orGenerateTitle, tryPrimary, primaryProvider, orFallback, fallbackProviders } from "../../../shared/ai/openrouter.js";
 
 const logger = createChildLogger("gemini-stream");
 
@@ -53,6 +53,16 @@ async function withRetry<T>(call: () => Promise<T>): Promise<T> {
 
 /** Stream a multi-turn chat with Gemini. Retries transient errors up to 3 times. */
 export async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult> {
+  // Once a chunk is out, a fall-through would replay the answer on top of it — so `emitted`
+  // turns a mid-stream failure into a thrown error instead.
+  let emitted = false;
+  const primary = await tryPrimary(
+    "streamChat",
+    () => orStreamChat({ ...opts, onChunk: (t) => { emitted = true; opts.onChunk(t); } }, primaryProvider()),
+    () => emitted,
+  );
+  if (primary !== undefined) return primary;
+
   try {
     const model = getClient().getGenerativeModel({
       model: config.GEMINI_MODEL,
@@ -99,9 +109,15 @@ export async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult
     }
     throw new Error("unreachable");
   } catch (err) {
-    logger.warn("Gemini stream failed — trying OpenRouter fallback", { err: err instanceof Error ? err.message : String(err) });
-    if (isORConfigured()) return orStreamChat(opts);
-    throw err;
+    logger.warn("Gemini stream failed — trying the fallback chain", { err: err instanceof Error ? err.message : String(err) });
+    if (!fallbackProviders().length) throw err;
+    let streamed = false;
+    return orFallback(
+      "streamChat",
+      (via) => orStreamChat({ ...opts, onChunk: (t) => { streamed = true; opts.onChunk(t); } }, via),
+      (r) => !r.fullText.trim(),
+      () => streamed,
+    );
   }
 }
 
@@ -173,14 +189,36 @@ function toORTools(tools: Tool[]) {
 export async function streamChatWithTools(
   opts: StreamChatWithToolsOpts,
 ): Promise<StreamChatWithToolsResult> {
+  let emitted = false;
+  const primary = await tryPrimary(
+    "streamChatWithTools",
+    () => orStreamChatWithTools({
+      ...opts,
+      tools: toORTools(opts.tools),
+      onChunk: (t) => { emitted = true; opts.onChunk(t); },
+    }, primaryProvider()),
+    () => emitted,
+  );
+  if (primary !== undefined) return primary;
+
   try {
     return await streamChatWithToolsGemini(opts);
   } catch (err) {
-    logger.warn("Gemini streamChatWithTools failed — trying OpenRouter fallback", {
+    logger.warn("Gemini streamChatWithTools failed — trying the fallback chain", {
       err: err instanceof Error ? err.message : String(err),
     });
-    if (!isORConfigured()) throw err;
-    return orStreamChatWithTools({ ...opts, tools: toORTools(opts.tools) });
+    if (!fallbackProviders().length) throw err;
+    let streamed = false;
+    return orFallback(
+      "streamChatWithTools",
+      (via) => orStreamChatWithTools({
+        ...opts,
+        tools: toORTools(opts.tools),
+        onChunk: (t) => { streamed = true; opts.onChunk(t); },
+      }, via),
+      (r) => !r.fullText.trim(),
+      () => streamed,
+    );
   }
 }
 
@@ -290,6 +328,9 @@ export function cleanTitle(raw: string): string {
 
 /** Quick one-shot generation for auto-titling (non-streaming). */
 export async function generateTitle(content: string): Promise<string> {
+  const primary = await tryPrimary("generateTitle", async () => cleanTitle(await orGenerateTitle(content, primaryProvider())));
+  if (primary !== undefined) return primary;
+
   try {
     const model = getClient().getGenerativeModel({
       model: config.GEMINI_MODEL,
@@ -306,10 +347,14 @@ export async function generateTitle(content: string): Promise<string> {
     const result = await model.generateContent(content.slice(0, 500));
     return cleanTitle(result.response.text());
   } catch (err) {
-    logger.warn("Gemini generateTitle failed — trying OpenRouter fallback", {
+    logger.warn("Gemini generateTitle failed — trying the fallback chain", {
       err: err instanceof Error ? err.message : String(err),
     });
-    if (!isORConfigured()) throw err;
-    return cleanTitle(await orGenerateTitle(content));
+    if (!fallbackProviders().length) throw err;
+    return orFallback(
+      "generateTitle",
+      async (via) => cleanTitle(await orGenerateTitle(content, via)),
+      (title) => !title.trim(),
+    );
   }
 }

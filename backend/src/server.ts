@@ -223,7 +223,13 @@ export async function buildServer() {
 const app = await buildServer();
 
 if (config.GEMINI_API_KEY && !config.OPENROUTER_API_KEY) {
-  app.log.warn("OPENROUTER_API_KEY is not set — Gemini has no fallback LLM. Set OPENROUTER_API_KEY to enable OpenRouter fallback.");
+  app.log.warn("OPENROUTER_API_KEY is not set — Gemini has no fallback. Chain is Ollama → Gemini → OpenRouter; the last hop is missing.");
+}
+if (config.LLM_PRIMARY === "ollama" && !config.OLLAMA_BASE_URL) {
+  app.log.warn("LLM_PRIMARY=ollama but OLLAMA_BASE_URL is not set — the primary hop is skipped, Gemini still serves.");
+}
+if (config.EMBEDDING_PROVIDER === "openrouter" && !config.OPENROUTER_API_KEY) {
+  app.log.warn("EMBEDDING_PROVIDER=openrouter but OPENROUTER_API_KEY is not set — embed() will fail. Ollama cannot serve embeddings.");
 }
 
 // Graceful shutdown

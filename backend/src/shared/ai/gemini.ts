@@ -8,7 +8,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../../config.js";
 import { BadRequestError } from "../errors.js";
 import { createChildLogger } from "../logger.js";
-import { isORConfigured, orGenerateText } from "./openrouter.js";
+import { orGenerateText, tryPrimary, primaryProvider, orFallback, fallbackProviders } from "./openrouter.js";
 
 const logger = createChildLogger("gemini-text");
 
@@ -39,6 +39,9 @@ export async function generateText(opts: {
   maxTokens?: number;
   temperature?: number;
 }): Promise<string> {
+  const primary = await tryPrimary("generateText", () => orGenerateText(opts, primaryProvider()));
+  if (primary !== undefined) return primary;
+
   try {
     const model = getClient().getGenerativeModel({
       model: config.GEMINI_MODEL,
@@ -65,8 +68,8 @@ export async function generateText(opts: {
     }
     throw new Error("unreachable");
   } catch (err) {
-    logger.warn("Gemini generateText failed — trying OpenRouter fallback", { err: err instanceof Error ? err.message : String(err) });
-    if (isORConfigured()) return orGenerateText(opts);
-    throw err;
+    logger.warn("Gemini generateText failed — trying the fallback chain", { err: err instanceof Error ? err.message : String(err) });
+    if (!fallbackProviders().length) throw err;
+    return orFallback("generateText", (via) => orGenerateText(opts, via), (text) => !text.trim());
   }
 }
