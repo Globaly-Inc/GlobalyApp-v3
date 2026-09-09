@@ -64,6 +64,11 @@ export const EmbedKeyQuerySchema = z.object({
   key: z.string().uuid(),
 });
 
+export const GuestSessionQuerySchema = z.object({
+  embed_key: z.string().uuid(),
+  fingerprint: z.string().min(1),
+});
+
 export const GuestMigrateSchema = z.object({
   fingerprint_hash: z.string().min(1),
 });
@@ -71,3 +76,4 @@ export const GuestMigrateSchema = z.object({
 export type CreditGrantInput = z.infer<typeof CreditGrantSchema>;
 export type GuestMessageInput = z.infer<typeof GuestMessageSchema>;
 export type GuestMigrateInput = z.infer<typeof GuestMigrateSchema>;
+export type GuestSessionQuery = z.infer<typeof GuestSessionQuerySchema>;

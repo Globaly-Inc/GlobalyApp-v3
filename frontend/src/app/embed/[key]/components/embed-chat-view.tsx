@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CourseCard, Message } from "@/app/ai/apis/types";
 import { embedApi, type EmbedPublicConfig } from "../apis";
+import { toMessage } from "../utils";
 import { uuid } from "@/lib/utils";
 
 const FINGERPRINT_KEY = "globaly_embed_fp";
@@ -90,6 +91,15 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     embedApi.resolveConfig(embedKey).then(setConfig, (e: Error) => setConfigError(e.message));
+    // Resume the visitor's thread with this widget. Reopening the launcher used to show
+    // an empty panel even though the backend had the conversation.
+    embedApi.getThread(embedKey, getFingerprint()).then(({ messages: stored }) => {
+      if (!stored.length) return;
+      setMessages(stored.map((row) => toMessage(row, embedApi.toCourseCards(row.cards))));
+      // Already past the first reply, so the signup nudge would be re-offered on every
+      // reopen — it belongs to the first answer only.
+      setSignupDismissed(true);
+    });
   }, [embedKey]);
 
   useEffect(() => {

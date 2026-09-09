@@ -6,7 +6,7 @@
 import type { FastifyInstance } from "fastify";
 import { chatRoutes } from "./routes/chat.routes.js";
 import { creditsRoutes } from "./routes/credits.routes.js";
-import { guestRoutes, guestMigrateRoutes } from "./routes/guest.routes.js";
+import { guestRoutes, guestMigrateRoutes, guestSessionRoutes } from "./routes/guest.routes.js";
 import { embedRoutes, embedPublicRoutes } from "./routes/embed.routes.js";
 
 export default async function aiChatModule(app: FastifyInstance) {
@@ -18,5 +18,6 @@ export default async function aiChatModule(app: FastifyInstance) {
 
 export async function publicAiCounsellorModule(app: FastifyInstance) {
   app.register(guestRoutes, { prefix: "/api/v3/ai-chat" });
+  app.register(guestSessionRoutes, { prefix: "/api/v3/ai-chat" });
   app.register(embedPublicRoutes, { prefix: "/api/v3/ai-chat" });
 }

@@ -36,6 +36,21 @@ export type EmbedChatEvent =
   | { type: "chips"; chips: string[] }
   | { type: "done" };
 
+/** One stored turn of the visitor's thread, as /guest/session returns it. */
+export type EmbedStoredMessage = {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  cards: WireCourseCard[];
+  chips: string[];
+  created_at: string;
+};
+
+export type EmbedThread = {
+  session_id: number | null;
+  messages: EmbedStoredMessage[];
+};
+
 export type GuestMessageRequest = {
   content: string;
   fingerprint: string;
