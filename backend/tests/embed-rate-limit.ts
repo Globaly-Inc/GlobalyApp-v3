@@ -21,27 +21,30 @@ function assert(ok: boolean, label: string) {
 /** Mirrors guest.routes.ts. Kept in step by the assertions below, not by import: the real
  *  module pulls in the DB pool and the queue, which this test must not need. */
 const MESSAGE_RATE = { max: 12, timeWindow: "1 minute", hook: "preHandler" } as const;
-function embedRateKey(req: { body?: unknown; query?: unknown; headers: Record<string, unknown>; ip: string }): string {
+function embedRateKey(req: { body?: unknown; query?: unknown; ip: string }): string {
   const body = (req.body ?? {}) as { embed_key?: unknown };
   const query = (req.query ?? {}) as { embed_key?: unknown };
   const key = typeof body.embed_key === "string" ? body.embed_key
     : typeof query.embed_key === "string" ? query.embed_key
     : "no-key";
-  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip;
-  return `${key}:${ip}`;
+  return `${key}:${req.ip}`;
 }
 
 async function main() {
+  // trustProxy OFF, matching the default in config.ts — req.ip is the socket peer, so a
+  // caller-supplied x-forwarded-for must have no effect on the bucket.
   const app = Fastify();
   await app.register(rateLimit, { max: 5000, timeWindow: "1 minute" }); // the global default
   app.post("/guest/messages", {
     config: { rateLimit: { ...MESSAGE_RATE, keyGenerator: embedRateKey as never } },
   }, async () => ({ ok: true }));
 
-  const send = (embedKey: string, ip = "203.0.113.9") =>
+  /** `spoof` goes in x-forwarded-for; `from` is the real (injected) socket address. */
+  const send = (embedKey: string, opts: { spoof?: string; from?: string } = {}) =>
     app.inject({
       method: "POST", url: "/guest/messages",
-      headers: { "x-forwarded-for": ip },
+      remoteAddress: opts.from ?? "203.0.113.9",
+      headers: opts.spoof ? { "x-forwarded-for": opts.spoof } : {},
       payload: { content: "hi", fingerprint: "fp", embed_key: embedKey },
     });
 
@@ -60,7 +63,20 @@ async function main() {
   assert((await send(KEY_B)).statusCode === 200, "a different embed key has its own bucket");
 
   // And the same key from a different visitor IP is also separate.
-  assert((await send(KEY_A, "198.51.100.7")).statusCode === 200, "the same key from another IP has its own bucket");
+  assert((await send(KEY_A, { from: "198.51.100.7" })).statusCode === 200, "the same key from another IP has its own bucket");
+
+  // THE BYPASS. x-forwarded-for is caller-supplied and Fastify is started with
+  // trustProxy off, so a rotated header must NOT buy a fresh bucket. Reading that header
+  // by hand turned the whole limit into decoration while still billing the institution
+  // for every model call.
+  const spoofed: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    spoofed.push((await send(KEY_A, { spoof: `198.51.100.${100 + i}` })).statusCode);
+  }
+  assert(
+    spoofed.every((c) => c === 429),
+    `rotating x-forwarded-for does not mint new buckets (got ${spoofed.join(",")})`,
+  );
 
   // The guard is only real if the body was actually visible to keyGenerator: on the
   // default onRequest hook the key degrades to "no-key:ip" and KEY_B would have been 429.

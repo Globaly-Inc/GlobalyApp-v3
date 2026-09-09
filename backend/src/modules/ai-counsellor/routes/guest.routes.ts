@@ -38,15 +38,21 @@ const HISTORY_LIMIT = 20;
 const MESSAGE_RATE = { max: 12, timeWindow: "1 minute", hook: "preHandler" } as const;
 const SESSION_RATE = { max: 30, timeWindow: "1 minute", hook: "preHandler" } as const;
 
-/** `embed_key:ip`, falling back to IP for a plain (non-widget) guest. */
+/**
+ * `embed_key:ip`, falling back to IP for a plain (non-widget) guest.
+ *
+ * `req.ip` ONLY — never `x-forwarded-for` directly. That header is caller-supplied, so
+ * reading it here let anyone rotate it and mint a fresh bucket per request, which turns a
+ * 12/min limit into no limit at all while still billing the institution for every model
+ * call. `req.ip` is the socket peer unless TRUST_PROXY says how many hops to believe.
+ */
 function embedRateKey(req: FastifyRequest): string {
   const body = (req.body ?? {}) as { embed_key?: unknown };
   const query = (req.query ?? {}) as { embed_key?: unknown };
   const key = typeof body.embed_key === "string" ? body.embed_key
     : typeof query.embed_key === "string" ? query.embed_key
     : "no-key";
-  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip;
-  return `${key}:${ip}`;
+  return `${key}:${req.ip}`;
 }
 
 /**
@@ -91,7 +97,9 @@ export async function guestRoutes(app: FastifyInstance) {
     config: { rateLimit: { ...MESSAGE_RATE, keyGenerator: embedRateKey } },
   }, async (req, reply) => {
     const input = GuestMessageSchema.parse(req.body ?? {});
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip;
+    // Same reason as embedRateKey: taking x-forwarded-for here meant a plain guest could
+    // rotate the header for an unlimited supply of "first" replies past the signup wall.
+    const ip = req.ip;
     const fingerprintHash = guestService.hashFingerprint(input.fingerprint, ip);
     const ipHash = guestService.hashIp(ip);
 

@@ -40,8 +40,24 @@ import publicPageViewsModule from "./modules/page-views/index.js";
 
 const logger = createChildLogger("server");
 
+
+/**
+ * "false" | "true" | "2" | "10.0.0.0/8,192.168.1.1" → the shape Fastify wants.
+ *
+ * A hop count and an allowlist both survive header rotation; `true` does not, so it is
+ * accepted only because Fastify defines it and someone may knowingly want it.
+ */
+function parseTrustProxy(value: string): boolean | number | string[] {
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "false") return false;
+  if (trimmed.toLowerCase() === "true") return true;
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  return trimmed.split(",").map((v) => v.trim()).filter(Boolean);
+}
 export async function buildServer() {
-  const app = Fastify({ logger: true });
+  // trustProxy decides what req.ip means, and req.ip is the only unforgeable client
+  // identity the rate limiter and the guest gate have. See config.TRUST_PROXY.
+  const app = Fastify({ logger: true, trustProxy: parseTrustProxy(config.TRUST_PROXY) });
 
   // --- Framework plugins ---
   await app.register(cors, { origin: config.CORS_ORIGINS, credentials: true });

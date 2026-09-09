@@ -26,6 +26,22 @@ const envSchema = z.object({
   API_URL: z.string().optional(),
   APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
+  /**
+   * Fastify `trustProxy`. MUST be set in any deployment that sits behind a load balancer
+   * or CDN, or `req.ip` is the proxy's address and every visitor on the internet shares
+   * one rate-limit bucket.
+   *
+   * Deliberately defaults to OFF. `X-Forwarded-For` is caller-supplied: trusting it by
+   * default lets anyone rotate the header to mint a fresh rate-limit bucket per request,
+   * which is the difference between a limit and the appearance of one. Off means `req.ip`
+   * is the raw socket peer — coarse behind a proxy, but not forgeable.
+   *
+   * Accepts "true"/"false", a hop count ("1" = trust the last proxy only — the usual
+   * answer), or a comma-separated IP/CIDR allowlist. Prefer a hop count or CIDR over
+   * "true": "true" trusts the entire chain and hands the leftmost value — the attacker's —
+   * straight back.
+   */
+  TRUST_PROXY: z.string().default("false"),
 
   // Third-party (optional at skeleton stage)
   DRAGONFLY_URL: z.string().optional(),
