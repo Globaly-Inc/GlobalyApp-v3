@@ -219,6 +219,10 @@ export type SearchBusiness = {
   status?: string;
   /** "claimed" once the owner has taken the listing over — earns the same tick as verified. */
   claim_status?: string | null;
+  /** Institutions: extraction job behind the listing, which keys the enquiry dialog's filter. */
+  job_id?: string | null;
+  /** Businesses: whether POST /enquiries would accept this business as a target. */
+  enquiry_enabled?: boolean;
   category_name?: string | null;
   website: string | null;
   email: string | null;
