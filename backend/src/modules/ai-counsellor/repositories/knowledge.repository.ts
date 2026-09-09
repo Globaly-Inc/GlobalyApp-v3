@@ -393,6 +393,12 @@ export async function searchInstitutions(opts: {
  *
  * Accreditations have no job_id of their own; they hang off the course-assignment
  * junction, so they are reached through it and de-duplicated.
+ *
+ * Everything is read from ONE job — the identity job — not from all of `jobIds`. A
+ * business widget resolves its scope by domain substring, which can match several
+ * institutions' jobs; merging their campuses and accreditations while showing only the
+ * first institution's name printed one university's phone numbers and accreditations
+ * under another's brand.
  */
 export async function ownerProfileByJobs(jobIds: string[]): Promise<{
   overview: InstitutionResult[];
@@ -401,23 +407,29 @@ export async function ownerProfileByJobs(jobIds: string[]): Promise<{
 }> {
   if (!jobIds.length) return { overview: [], campuses: [], accreditations: [] };
 
-  const [overview, campuses, accreditations] = await Promise.all([
-    masterKnex(`${SA}.extraction_institution_overview`)
-      .select("id", "job_id", "name", "website", "phone", "email", "address", "city", "state", "country", "description", "logo_url")
-      .whereIn("job_id", jobIds),
+  // Pick the identity first, then read only that job's satellites. Oldest job wins so the
+  // choice is stable across turns instead of drifting with row order.
+  const identity = await masterKnex(`${SA}.extraction_institution_overview`)
+    .select("id", "job_id", "name", "website", "phone", "email", "address", "city", "state", "country", "description", "logo_url")
+    .whereIn("job_id", jobIds)
+    .orderBy("created_at", "asc")
+    .first();
+  if (!identity) return { overview: [], campuses: [], accreditations: [] };
+
+  const [campuses, accreditations] = await Promise.all([
     masterKnex(`${SA}.extraction_campuses`)
       .select("name", "address", "city", "state", "country", "phone", "email")
-      .whereIn("job_id", jobIds)
+      .where({ job_id: identity.job_id })
       .orderBy("created_at", "asc")
       .limit(12),
     masterKnex(`${SA}.extraction_accreditations as a`)
       .join(`${SA}.extraction_course_accreditation_assignments as j`, "j.extraction_accreditation_id", "a.id")
-      .whereIn("j.job_id", jobIds)
+      .where("j.job_id", identity.job_id)
       .distinct("a.name", "a.issuing_organization")
       .orderBy("a.name", "asc")
       .limit(12),
   ]);
-  return { overview, campuses, accreditations };
+  return { overview: [identity], campuses, accreditations };
 }
 
 export async function searchVisas(opts: {

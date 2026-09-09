@@ -13,6 +13,21 @@ import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("embed-routes");
 
+/**
+ * Kick off (or refresh) the owner's website index.
+ *
+ * Fire-and-forget: crawling takes minutes and must never hold up — or fail — the request.
+ * Called on activate as well as create, because a widget that existed before this feature
+ * shipped would otherwise never get an index: nothing backfills them, and the recrawl
+ * dispatcher only revisits sources that already exist. Activating is the one action such an
+ * owner is likely to take, and `ensureOwnerSiteIndex` is idempotent.
+ */
+function startSiteIndex(owner: ReturnType<typeof recipientFromRequest>) {
+  embedRepo.ownerWebsite(owner)
+    .then((website) => ensureOwnerSiteIndex(owner, website))
+    .catch((err) => logger.error("Owner site index failed to start", { owner, err: String(err) }));
+}
+
 /** Embed-config management — served to both org kinds; the owner comes from the token's
  *  orgType, so an institution's widgets are scoped to the institution, never to a business. */
 export async function embedRoutes(app: FastifyInstance) {
@@ -22,11 +37,8 @@ export async function embedRoutes(app: FastifyInstance) {
     const config = await embedRepo.create(owner, data);
 
     // Index the owner's own website so the widget can answer from anything published on
-    // it, not just from structured extraction. Fire-and-forget: crawling takes minutes and
-    // must not hold up the create response or fail it.
-    embedRepo.ownerWebsite(owner)
-      .then((website) => ensureOwnerSiteIndex(owner, website))
-      .catch((err) => logger.warn("Owner site index not started", { owner, err: String(err) }));
+    // it, not just from structured extraction.
+    startSiteIndex(owner);
 
     return reply.status(201).send(config);
   });
@@ -45,8 +57,13 @@ export async function embedRoutes(app: FastifyInstance) {
 
   app.patch("/embed/configs/:id/activate", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { id } = EmbedConfigIdParamSchema.parse(req.params);
-    const updated = await embedRepo.reactivate(id, recipientFromRequest(req));
+    const owner = recipientFromRequest(req);
+    const updated = await embedRepo.reactivate(id, owner);
     if (!updated) throw new NotFoundError("Embed config not found");
+
+    // Covers widgets created before site indexing existed — see startSiteIndex.
+    startSiteIndex(owner);
+
     return reply.send({ ok: true });
   });
 }

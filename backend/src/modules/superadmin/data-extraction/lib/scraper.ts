@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { siteOf } from "./html-utils.js";
+import { assertPublicUrl, UnsafeUrlError } from "../../../../shared/public-url.js";
 
 const logger = createChildLogger("scraper");
 
@@ -433,8 +434,26 @@ export async function scrapeRenderedHtml(
 /**
  * Scrape a URL to markdown.
  * Cascade: Scrapling → Crawl4AI fit → Crawl4AI raw → Firecrawl.
+ *
+ * Every URL is SSRF-checked here rather than only at the callers. This is the single
+ * choke point through which user- and LLM-supplied URLs reach the network: the widget
+ * site index, the admin rack crawler (an admin could add any URL as a source), and the
+ * extraction pipeline's discovered links. A guard per caller would leave whichever one
+ * gets added next unprotected.
  */
 export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Promise<ScrapeResult> {
+  try {
+    await assertPublicUrl(url);
+  } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      logger.warn(`Refusing to scrape a non-public address: ${url} (${err.message})`);
+      // "none" is the existing all-scrapers-failed value; callers already treat it as
+      // "no content" and skip the page, which is exactly the behaviour wanted here.
+      return { markdown: "", links: [], scraper: "none" };
+    }
+    throw err;
+  }
+
   const fcKey = getFirecrawlKey();
   const scrapling = opts.forceFirecrawl ? null : getScraplingConfig();
   const c4 = opts.forceFirecrawl ? null : getCrawl4aiConfig();

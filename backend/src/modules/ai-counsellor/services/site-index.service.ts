@@ -10,6 +10,7 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import { queueService } from "../../../shared/queue/queueService.js";
 import { KNOWLEDGE_QUEUES } from "../../superadmin/ai-knowledge/shared/queues.js";
 import { createChildLogger } from "../../../shared/logger.js";
+import { assertPublicUrl, UnsafeUrlError } from "../../../shared/public-url.js";
 import type { EmbedOwner } from "../repositories/embed.repository.js";
 
 const logger = createChildLogger("site-index");
@@ -21,9 +22,35 @@ const SOURCES = `${S}.ai_knowledge_sources`;
 // unbounded crawl. The rack's own recrawl dispatcher keeps it fresh from here.
 const MAX_PAGES = 200;
 
-/** Owner site indexes ride in an ordinary category — isolation comes from the owner
- *  columns the match function filters on, not from the category. */
-const CATEGORY_KIND = "institution_update";
+/** Owner site indexes ride in their own category row — isolation comes from the owner
+ *  column the match function filters on, not from the category, but a dedicated row keeps
+ *  them out of the admin's curated "Institution updates" list. `kind` must stay inside
+ *  rack.schema's enum, so it reuses institution_update. */
+const CATEGORY = {
+  slug: "embed-site-index",
+  label: "Widget site indexes",
+  kind: "institution_update",
+  description: "Websites crawled for an institution's own embed widget. Not global knowledge.",
+} as const;
+
+/**
+ * The category row for site indexes, created on first use.
+ *
+ * Created rather than looked up: nothing seeds categories, so depending on one having been
+ * provisioned by hand meant every widget creation in a fresh environment logged a warning
+ * and silently skipped indexing — the feature would simply never switch on.
+ */
+async function siteIndexCategoryId(): Promise<string> {
+  const existing = await masterKnex(`${S}.ai_knowledge_categories`).where({ slug: CATEGORY.slug }).first();
+  if (existing) return existing.id;
+
+  const [row] = await masterKnex(`${S}.ai_knowledge_categories`)
+    .insert({ ...CATEGORY, active: true, sort_order: 999 })
+    .onConflict("slug")            // two widget creations racing the first insert
+    .merge({ active: true })
+    .returning("id");
+  return row.id;
+}
 
 /**
  * Register the owner's website as their private rack source and queue a crawl.
@@ -46,33 +73,40 @@ export async function ensureOwnerSiteIndex(
   let url: string;
   let domain: string;
   try {
-    const parsed = new URL(website.includes("://") ? website : `https://${website}`);
+    // SSRF gate. The institution website field is a free-text string (institution-profile
+    // .schema.ts has no .url()), and whatever lands here is fetched BY THE SERVER and then
+    // served back to this same institution through its widget. Without this an institution
+    // member could point it at the cloud metadata endpoint and read the credentials out of
+    // their own chat panel.
+    const parsed = await assertPublicUrl(website);
     // Crawl from the site root: a website field pointing at /about would otherwise
     // bound the crawl to that one branch.
     url = parsed.origin;
     domain = parsed.hostname.replace(/^www\./, "");
-  } catch {
-    logger.warn("Owner website is not a usable URL — skipping site index", { website });
-    return null;
+  } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      logger.warn("Refusing to index an unsafe website", { institutionId: owner.id, website, reason: err.message });
+      return null;
+    }
+    throw err;
   }
 
-  const category = await masterKnex(`${S}.ai_knowledge_categories`)
-    .where({ kind: CATEGORY_KIND, active: true })
-    .orderBy("sort_order", "asc")
+  const categoryId = await siteIndexCategoryId();
+
+  // Look up on the columns the DATABASE makes unique — (category_id, url) — not on
+  // (institution_id, url). Two institution records can share one website: this database
+  // has three rows on www.curtin.edu.au and three on www.ibm.vic.edu.au. Keying the
+  // lookup on the owner meant the second one's insert hit the unique index and its site
+  // index was silently dropped.
+  const existing = await masterKnex(SOURCES)
+    .where({ category_id: categoryId, url, institution_id: owner.id })
     .first();
-  if (!category) {
-    logger.warn("No active category for owner site indexes — skipping", { kind: CATEGORY_KIND });
-    return null;
-  }
-
-  const cols = { institution_id: owner.id };
-  const existing = await masterKnex(SOURCES).where({ ...cols, url }).first();
 
   const source = existing
     ? existing
     : await masterKnex(SOURCES)
       .insert({
-        category_id: category.id,
+        category_id: categoryId,
         url,
         domain,
         title: `${domain} (widget site)`,
@@ -84,7 +118,7 @@ export async function ensureOwnerSiteIndex(
         max_pages: MAX_PAGES,
         active: true,
         added_via: "embed_widget",
-        ...cols,
+        institution_id: owner.id,
       })
       .returning("*")
       .then(([row]) => row);

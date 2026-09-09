@@ -31,6 +31,24 @@ async function main() {
     "an unparseable website is skipped, not crawled",
   );
 
+  // SSRF: whatever lands in the website field is fetched by the SERVER and then served
+  // back to this same institution through its widget, so a private target would be
+  // credential exfiltration, not a blind request. institution-profile.schema.ts has no
+  // .url() on the field, so these are reachable by any authenticated institution member.
+  for (const target of [
+    "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "http://metadata.google.internal/computeMetadata/v1/",
+    "http://localhost:6379",
+    "http://127.0.0.1/admin",
+    "http://10.0.0.5/",
+    "file:///etc/passwd",
+  ]) {
+    assert(
+      (await ensureOwnerSiteIndex({ kind: "institution", id: 51 }, target)) === null,
+      `refuses to index ${target}`,
+    );
+  }
+
   // ── Retrieval isolation, once migration 20260909_003 is applied ──
   const [{ applied }] = (await masterKnex.raw(`
     SELECT EXISTS (

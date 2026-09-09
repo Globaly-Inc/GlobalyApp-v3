@@ -34,6 +34,27 @@ export async function up(knex: Knex): Promise<void> {
     WHERE institution_id IS NOT NULL
   `);
 
+  // Uniqueness has to become owner-aware. Two institution records legitimately share one
+  // website — this database holds three rows on www.curtin.edu.au and three on
+  // www.ibm.vic.edu.au — and the old blanket UNIQUE (category_id, url) meant the second
+  // institution's site index collided with the first and was dropped.
+  //
+  // Split rather than widened to (category_id, url, institution_id): NULLs compare as
+  // distinct in a Postgres unique index, so a single widened index would have silently
+  // allowed duplicate GLOBAL sources for the same URL.
+  await knex.raw(`ALTER TABLE ${S}.ai_knowledge_sources DROP CONSTRAINT IF EXISTS ai_knowledge_sources_category_id_url_unique`);
+  await knex.raw(`DROP INDEX IF EXISTS ${S}.ai_knowledge_sources_category_id_url_unique`);
+  await knex.raw(`
+    CREATE UNIQUE INDEX ai_knowledge_sources_global_url_unique
+    ON ${S}.ai_knowledge_sources (category_id, url)
+    WHERE institution_id IS NULL
+  `);
+  await knex.raw(`
+    CREATE UNIQUE INDEX ai_knowledge_sources_owned_url_unique
+    ON ${S}.ai_knowledge_sources (category_id, url, institution_id)
+    WHERE institution_id IS NOT NULL
+  `);
+
   // DROP first, not CREATE OR REPLACE: a different parameter list makes a second OVERLOAD
   // rather than replacing the function, and then any 2- or 4-arg call fails with
   // "function is not unique". Verified — it is exactly what happened on the first attempt.
@@ -125,6 +146,15 @@ export async function down(knex: Knex): Promise<void> {
       ORDER BY k.embedding::halfvec(3072) <=> query_embedding::halfvec(3072)
       LIMIT match_count
     $function$
+  `);
+  await knex.raw(`DROP INDEX IF EXISTS ${S}.ai_knowledge_sources_owned_url_unique`);
+  await knex.raw(`DROP INDEX IF EXISTS ${S}.ai_knowledge_sources_global_url_unique`);
+  // Owned rows must go before the blanket unique index can come back — two institutions
+  // on one URL are legal now and would violate it.
+  await knex(`${S}.ai_knowledge_sources`).whereNotNull("institution_id").del();
+  await knex.raw(`
+    CREATE UNIQUE INDEX ai_knowledge_sources_category_id_url_unique
+    ON ${S}.ai_knowledge_sources (category_id, url)
   `);
   await knex.raw(`DROP INDEX IF EXISTS ${S}.idx_akd_sources_institution`);
   await knex.schema.withSchema(S).alterTable("ai_knowledge_sources", (t) => {
