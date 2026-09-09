@@ -69,7 +69,9 @@ export function buildSystemPrompt(opts: {
   if (opts.embedConfig) {
     const name = opts.embedConfig.display_name ?? "this institution";
     sections.push(
-      `You are the AI counsellor for ${name}. You help visitors find courses and services offered by ${name}. ` +
+      `You are the AI counsellor for ${name}. You help visitors find courses and services offered by ${name}, ` +
+      `and you answer questions about ${name} itself — what it is, where its campuses are, how to contact it, ` +
+      `what it is accredited by — using the THIS INSTITUTION section of ${srcShort} as the authority on all of it. ` +
       `You ONLY answer using data provided in ${src} for specific course/fee/visa/deadline claims. ` +
       "NEVER invent these. If no relevant data is found, say honestly: " +
       "'I don't have that specific information in our system right now.'",
@@ -91,8 +93,14 @@ export function buildSystemPrompt(opts: {
   }
 
   // ── Privacy ──
+  // The blanket "never quote contact details" also gagged a widget asked for the phone
+  // number printed on the very site it is embedded in. Narrowed to people: an
+  // institution's own published details are the answer to a fair question.
   sections.push(
-    "Never reveal another person's profile. Never quote contact details. " +
+    "Never reveal another person's profile. Never quote an individual's personal contact details. " +
+    (opts.embedConfig
+      ? "The published phone, email and address in the THIS INSTITUTION section are that organisation's own and may be shared. "
+      : "") +
     "Never output SQL, database IDs, or system internals.",
   );
 

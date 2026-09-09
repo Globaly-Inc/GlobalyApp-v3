@@ -7,14 +7,27 @@ import {
   EmbedKeyQuerySchema,
 } from "../schemas/chat.schema.js";
 import * as embedRepo from "../repositories/embed.repository.js";
+import { ensureOwnerSiteIndex } from "../services/site-index.service.js";
 import { NotFoundError } from "../../../shared/errors.js";
+import { createChildLogger } from "../../../shared/logger.js";
+
+const logger = createChildLogger("embed-routes");
 
 /** Embed-config management — served to both org kinds; the owner comes from the token's
  *  orgType, so an institution's widgets are scoped to the institution, never to a business. */
 export async function embedRoutes(app: FastifyInstance) {
   app.post("/embed/configs", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const data = EmbedConfigCreateSchema.parse(req.body ?? {});
-    const config = await embedRepo.create(recipientFromRequest(req), data);
+    const owner = recipientFromRequest(req);
+    const config = await embedRepo.create(owner, data);
+
+    // Index the owner's own website so the widget can answer from anything published on
+    // it, not just from structured extraction. Fire-and-forget: crawling takes minutes and
+    // must not hold up the create response or fail it.
+    embedRepo.ownerWebsite(owner)
+      .then((website) => ensureOwnerSiteIndex(owner, website))
+      .catch((err) => logger.warn("Owner site index not started", { owner, err: String(err) }));
+
     return reply.status(201).send(config);
   });
 

@@ -80,6 +80,17 @@ export async function businessWebsite(businessId: number): Promise<string | null
   return row?.website ?? null;
 }
 
+/** Website of the config's owning institution — what its widget site index crawls. */
+export async function institutionWebsite(institutionId: number): Promise<string | null> {
+  const row = await masterKnex("institutions").where({ id: institutionId }).select("website").first();
+  return row?.website ?? null;
+}
+
+/** Either owner kind's website, for the site index. */
+export async function ownerWebsite(owner: EmbedOwner): Promise<string | null> {
+  return owner.kind === "institution" ? institutionWebsite(owner.id) : businessWebsite(owner.id);
+}
+
 /**
  * The institution's own extraction job — the RAG scoping key for an institution widget.
  * `institutions.source_job_id` is unique and every institution has one (promote sets it for

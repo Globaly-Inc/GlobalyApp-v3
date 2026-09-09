@@ -107,6 +107,7 @@ export async function guestRoutes(app: FastifyInstance) {
         query: input.content,
         userId: 0, // ponytail: guests have no userId, profile context will be empty
         jobIds: embed?.jobIds,
+        rackInstitutionId: embed?.rackInstitutionId,
         onTrace: (step) => writeEvent(reply, "trace", { step }),
       });
 

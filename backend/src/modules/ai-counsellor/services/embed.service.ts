@@ -9,6 +9,9 @@ export type EmbedContext = {
   config: embedRepo.EmbedConfigRow;
   /** extraction_jobs ids whose courses belong to this widget's owner; [] = no courses surface. */
   jobIds: string[];
+  /** Which crawled website the counsellor may read — this institution's, never another's.
+   *  Null for a business widget: businesses answer from their matched extraction jobs. */
+  rackInstitutionId: number | null;
 };
 
 /**
@@ -45,13 +48,17 @@ export async function resolveActiveConfig(embedKey: string): Promise<embedRepo.E
 export async function buildEmbedContext(config: embedRepo.EmbedConfigRow): Promise<EmbedContext> {
   if (config.institution_id != null) {
     const jobId = await embedRepo.institutionSourceJobId(Number(config.institution_id));
-    return { config, jobIds: jobId ? [jobId] : [] };
+    return {
+      config,
+      jobIds: jobId ? [jobId] : [],
+      rackInstitutionId: Number(config.institution_id),
+    };
   }
 
   const website = await embedRepo.businessWebsite(Number(config.business_id));
   const domain = website ? extractDomain(website) : null;
   const jobIds = domain ? await knowledgeRepo.jobIdsByInstitutionDomain(domain) : [];
-  return { config, jobIds };
+  return { config, jobIds, rackInstitutionId: null };
 }
 
 /** "https://www.uts.edu.au/courses" → "uts.edu.au" */
