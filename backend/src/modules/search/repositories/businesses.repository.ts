@@ -353,7 +353,7 @@ const INSTITUTION_LIST_COLUMNS = [
   "i.id", "i.institution_name as business_name", INSTITUTION_CREST, "i.description",
   "i.city", "i.state", "c.name as country_name", "c.iso2 as country_code", "i.website", "i.email",
   // Verified tick and the Institution Type stat on the card.
-  "i.status", "i.institution_type",
+  "i.status", "i.claim_status", "i.institution_type",
 ];
 
 function toPublicInstitution(r: PublicInstitutionRow) {
@@ -587,7 +587,7 @@ export async function listPublicBusinesses(filters: BusinessSearchFilters, limit
   const rows = await baseQuery(filters)
     .select(
       "b.id", "b.business_name", "b.subdomain", "b.schema_name", "b.schema_provisioned_at", "b.logo_url", "b.description",
-      "b.city", "c.name as country_name", "b.status", "cat.name as category_name",
+      "b.city", "c.name as country_name", "b.status", "b.claim_status", "cat.name as category_name",
       "b.website", "b.email",
     )
     .orderBy("b.business_name")

@@ -34,7 +34,7 @@ export function ScholarshipSearchCard({ scholarship: s }: Readonly<{ scholarship
           </div>
         </div>
 
-        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 px-4 py-3 flex flex-col justify-center gap-2">
+        <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border px-4 py-3 flex flex-col justify-between gap-2">
           <p className="text-sm font-bold text-primary leading-tight whitespace-nowrap capitalize">{award}</p>
           {s.deadline && <p className="text-xs text-muted-foreground">Deadline {new Date(s.deadline).toLocaleDateString()}</p>}
           <Link href={`/scholarships/${s.slug}`}>

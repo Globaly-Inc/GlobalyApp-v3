@@ -169,7 +169,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   });
 
   await repo.updateUser(userId, { is_institution_account: true });
-  await repo.addAccountCategory(userId, { type: "institution", role: institution.institution_type ?? "institution" });
+  await repo.addAccountCategory(userId, { type: "institution", role: "institution" });
 
   // Last, as registerBusiness does with its own account_status: 1 is what makes the
   // institution resolvable by findInstitutionBySchemaName and listUserInstitutions, so it must

@@ -217,6 +217,8 @@ export type SearchBusiness = {
   city: string | null;
   country_name: string | null;
   status?: string;
+  /** "claimed" once the owner has taken the listing over — earns the same tick as verified. */
+  claim_status?: string | null;
   category_name?: string | null;
   website: string | null;
   email: string | null;
