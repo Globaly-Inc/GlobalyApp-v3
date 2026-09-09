@@ -7,7 +7,7 @@ import { NotFoundError, ForbiddenError, TooManyRequestsError } from "../../../sh
 
 export type EmbedContext = {
   config: embedRepo.EmbedConfigRow;
-  /** extraction_jobs ids whose courses belong to this business; [] = no courses surface. */
+  /** extraction_jobs ids whose courses belong to this widget's owner; [] = no courses surface. */
   jobIds: string[];
 };
 
@@ -31,13 +31,24 @@ export async function resolveActiveConfig(embedKey: string): Promise<embedRepo.E
 }
 
 /**
- * Course scoping for embed mode: courses whose extraction job URL matches the
- * business's website domain. No website or no match → empty scope (the AI answers
- * from shared knowledge only) — never leak other institutions' courses under a
- * business's brand.
+ * Course scoping for embed mode. Empty scope → the AI answers from shared knowledge only;
+ * it must never leak another institution's courses under this widget's brand.
+ *
+ * An institution owns exactly one extraction job (`institutions.source_job_id`, unique), which
+ * IS its catalog — so it is scoped directly, no domain matching. That also means a freshly
+ * registered institution's widget works immediately: its self-service job carries a
+ * `.invalid` placeholder URL that no domain match could ever hit.
+ *
+ * A business has no such link, so it stays on the website-domain match: courses whose
+ * extraction job URL is on the business's own website domain.
  */
 export async function buildEmbedContext(config: embedRepo.EmbedConfigRow): Promise<EmbedContext> {
-  const website = await embedRepo.businessWebsite(config.business_id);
+  if (config.institution_id != null) {
+    const jobId = await embedRepo.institutionSourceJobId(Number(config.institution_id));
+    return { config, jobIds: jobId ? [jobId] : [] };
+  }
+
+  const website = await embedRepo.businessWebsite(Number(config.business_id));
   const domain = website ? extractDomain(website) : null;
   const jobIds = domain ? await knowledgeRepo.jobIdsByInstitutionDomain(domain) : [];
   return { config, jobIds };
