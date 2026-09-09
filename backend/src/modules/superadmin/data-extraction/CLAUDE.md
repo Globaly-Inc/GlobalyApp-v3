@@ -335,6 +335,25 @@ The centralized error handler maps these to HTTP responses.
    reads until then, since those go through the assignment junction. Note the Intakes tab's "Run
    Intakes Extraction" button runs `step="courses"`; it is the crawl that had to learn this, not a
    new step.
+   (o) Review follow-ups to (k) (2026-09-09). Three, all "never silently choose between two stated
+   values" — the same principle as (b)'s score/typical_score split and (g)'s non-contradiction rule.
+   `normaliseCustomDates` keyed milestones on the lowercased name and broke ties by string LENGTH,
+   so two "Scholarship Deadline" months tied and the second was dropped — and because the intake row
+   is shared, the survivor became the only deadline every linked course displayed. It now separates
+   enrichment from contradiction with `partialDatesAgree`: two precisions of one milestone merge to
+   the sharper, two genuinely different dates are BOTH kept for an admin to resolve. A guessed
+   deadline is one a student can miss.
+   `coercePartialDate` accepted impossible days. Its ISO fast-path returned on shape alone, so
+   "2026-02-31" was stored verbatim by every writer — only the prose path ran `isRealDate`, which is
+   why the "31 February 2026" test looked like coverage of the rule and was not. The `date` column
+   used to reject these; text with a shape-only CHECK does not, and a CHECK cannot know February has
+   no 31st (no way to attempt a cast inside one), so calendar validity is enforced in the
+   application by the single new predicate `isValidPartialDate`. Two behaviours on purpose: WRITERS
+   coerce ("2026-02-31" -> "2026-02", keeping the half that can be true), API validators REJECT, so
+   an admin who typed an impossible day is told rather than quietly given a different value.
+   The backfill's pass 5 merged duplicate intakes and deleted the copies without carrying their
+   `custom_dates` across, losing every milestone on a dropped row permanently. It now unions them
+   with the same rule. Low impact while the column is new; fixed now because that pass deletes.
    (n) YEAR gates an intake's visibility; MONTH only orders it (2026-09-09). Worth stating
    separately because (e) says "intake_month/intake_year are the only columns any feature reads",
    which is true and misleading: all three public reads gate on `ei.intake_year is not null`, while

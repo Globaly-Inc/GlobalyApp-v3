@@ -14,6 +14,7 @@ import {
   deriveScoreFromDescription,
   deriveIntakeMonthYear,
   normaliseAcademicTests,
+  normaliseCustomDates,
   eligibilityRowsAgree,
   englishUpdates,
 } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
@@ -158,6 +159,43 @@ assert("score_type is limited to what the column's CHECK allows", () => {
   eq(SCORE_TYPES.includes("gpa_4" as never), true);
   eq(SCORE_TYPES.includes("percent" as never), false);
 });
+
+// The intake row is SHARED across every linked course, so a milestone silently dropped here is a
+// deadline every one of those courses stops showing. Contradiction is kept, not resolved.
+console.log("\nnormaliseCustomDates — a contradicted milestone is never silently dropped");
+assert("two precisions of one milestone merge to the sharper", () =>
+  eq(normaliseCustomDates([
+    { name: "Scholarship Deadline", date: "2026-11" },
+    { name: "Scholarship Deadline", date: "2026-11-15" },
+  ]), [{ name: "Scholarship Deadline", date: "2026-11-15" }]));
+assert("two DIFFERENT dates for one label are both kept", () =>
+  eq(normaliseCustomDates([
+    { name: "Scholarship Deadline", date: "2026-11" },
+    { name: "Scholarship Deadline", date: "2026-12" },
+  ]), [
+    { name: "Scholarship Deadline", date: "2026-11" },
+    { name: "Scholarship Deadline", date: "2026-12" },
+  ]));
+assert("order does not decide which survives", () =>
+  eq(normaliseCustomDates([
+    { name: "Scholarship Deadline", date: "2026-12" },
+    { name: "Scholarship Deadline", date: "2026-11" },
+  ]).length, 2));
+assert("an exact repeat is still deduped", () =>
+  eq(normaliseCustomDates([
+    { name: "Exam Date", date: "2026-12-11" },
+    { name: "exam date", date: "2026-12-11" },
+  ]), [{ name: "Exam Date", date: "2026-12-11" }]));
+assert("different milestones are untouched", () =>
+  eq(normaliseCustomDates([
+    { name: "Exam Date", date: "2026-12-11" },
+    { name: "Scholarship Deadline", date: "2026-11" },
+  ]).length, 2));
+assert("an entry missing either half is dropped", () =>
+  eq(normaliseCustomDates([{ name: "", date: "2026-11" }, { name: "Exam", date: "nope" }]), []));
+assert("an impossible day degrades rather than being dropped", () =>
+  eq(normaliseCustomDates([{ name: "Exam", date: "2026-02-31" }]),
+    [{ name: "Exam", date: "2026-02" }]));
 
 console.log("\nfindTests — recovering tests from stored requirement text (backfill)");
 // Longest-first, as loadAcademicTests() sorts it.

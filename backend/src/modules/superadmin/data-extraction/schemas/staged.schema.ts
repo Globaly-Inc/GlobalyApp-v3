@@ -1,7 +1,7 @@
 // Zod schemas for staged entities and junction endpoints.
 
 import { z } from "zod";
-import { PARTIAL_DATE_RE } from "../lib/partial-date.js";
+import { PARTIAL_DATE_RE, isValidPartialDate } from "../lib/partial-date.js";
 
 // ── Study options (SO1-SO3) ──
 // .nullish() — the create form sends `null` for blank optional fields (e.g. duration_unit
@@ -63,14 +63,26 @@ export const PatchCourseFeeSchema = CreateCourseFeeSchema.omit({ job_id: true, c
 // An empty string is coerced to null: a cleared <input type="date"> sends "", and storing that
 // would violate the constraint.
 const PartialDateSchema = z
-  .union([z.string().regex(PARTIAL_DATE_RE, 'Use YYYY-MM-DD or YYYY-MM'), z.literal("")])
+  .union([
+    z
+      .string()
+      .regex(PARTIAL_DATE_RE, "Use YYYY-MM-DD or YYYY-MM")
+      // Shape is not enough: the regex and the column's CHECK both accept "2026-02-31", and the
+      // `date` column that used to reject it is gone. Rejected rather than coerced here — an admin
+      // who typed an impossible day should be told, not quietly given a different value.
+      .refine(isValidPartialDate, "That date does not exist"),
+    z.literal(""),
+  ])
   .nullish()
   .transform((v) => (v === "" ? null : v));
 
 /** An admin-named milestone: both halves required, since either alone means nothing. */
 export const IntakeCustomDateSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  date: z.string().regex(PARTIAL_DATE_RE, 'Use YYYY-MM-DD or YYYY-MM'),
+  date: z
+    .string()
+    .regex(PARTIAL_DATE_RE, "Use YYYY-MM-DD or YYYY-MM")
+    .refine(isValidPartialDate, "That date does not exist"),
 });
 
 export const CreateIntakeSchema = z.object({

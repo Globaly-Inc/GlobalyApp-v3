@@ -33,6 +33,20 @@ export function isPartialDate(v: unknown): v is string {
   return typeof v === "string" && PARTIAL_DATE_RE.test(v);
 }
 
+/**
+ * Shape AND calendar: `true` only for a value that names a real point in time.
+ *
+ * `isPartialDate` is shape-only, and so is the column's CHECK constraint — a regex cannot know that
+ * February has no 31st, and Postgres offers no way to try a cast inside a CHECK. So calendar
+ * validity is enforced in the application, and this is the single predicate that does it. The
+ * write paths coerce (degrading a bad day to its month); the API validators reject, because an
+ * admin who typed an impossible date should be told rather than quietly given a different value.
+ */
+export function isValidPartialDate(v: unknown): v is string {
+  if (!isPartialDate(v)) return false;
+  return v.length === 7 || isRealDate(v);
+}
+
 export function datePrecision(v: unknown): DatePrecision | null {
   if (!isPartialDate(v)) return null;
   return v.length === 7 ? "month" : "full_date";
@@ -61,8 +75,18 @@ export function coercePartialDate(v: unknown): string | null {
   const iso = s.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
   if (iso) {
     if (iso[1] === "0000") return null;
-    const candidate = iso[3] ? `${iso[1]}-${iso[2]}-${iso[3]}` : `${iso[1]}-${iso[2]}`;
-    return PARTIAL_DATE_RE.test(candidate) ? candidate : null;
+    const month = `${iso[1]}-${iso[2]}`;
+    if (!iso[3]) return PARTIAL_DATE_RE.test(month) ? month : null;
+    const candidate = `${month}-${iso[3]}`;
+    if (!PARTIAL_DATE_RE.test(candidate)) return null;
+    // The calendar check applies HERE too, not only to the prose path below. This branch used to
+    // return early on shape alone, so an ISO-shaped impossible date — "2026-02-31", which a model
+    // does emit — was stored verbatim by every writer. The `date` column used to reject it; text
+    // with a shape-only CHECK does not, so the check has to live here.
+    //
+    // Degraded to the month rather than dropped: the source clearly meant February 2026, and the
+    // day is the only part that cannot be true. Same resolution as the prose path.
+    return isRealDate(candidate) ? candidate : month;
   }
 
   const year = s.match(/\b(19|20)\d{2}\b/)?.[0];

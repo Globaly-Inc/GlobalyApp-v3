@@ -11,6 +11,7 @@
 import {
   PARTIAL_DATE_RE,
   coercePartialDate,
+  isValidPartialDate,
   datePrecision,
   formatPartialDate,
   isPartialDate,
@@ -78,6 +79,35 @@ assert("a real ISO date passes through unchanged", () =>
 assert("a deadline with no year at all is null", () => eq(coercePartialDate("February 15"), null));
 assert("natural language with a real year parses", () =>
   eq(coercePartialDate("Feb 15, 2026"), "2026-02-15"));
+
+// Shape is not calendar validity, and the `date` column that used to enforce the difference is
+// gone. The ISO fast-path returned early on shape alone, so "2026-02-31" — which a model does
+// emit — was stored verbatim by EVERY writer; only the prose path was checked, which is what made
+// the "31 February 2026" case pass and look like coverage.
+console.log("\ncoercePartialDate — an impossible day degrades to its month");
+assert("31 February in ISO form is not stored verbatim", () =>
+  eq(coercePartialDate("2026-02-31"), "2026-02"));
+assert("31 April too", () => eq(coercePartialDate("2026-04-31"), "2026-04"));
+assert("29 February in a non-leap year", () => eq(coercePartialDate("2026-02-29"), "2026-02"));
+assert("a real leap day survives", () => eq(coercePartialDate("2024-02-29"), "2024-02-29"));
+assert("the last real day of a short month survives", () =>
+  eq(coercePartialDate("2026-04-30"), "2026-04-30"));
+
+console.log("\nisValidPartialDate — what the API validators reject outright");
+assert("an impossible day is invalid, not degraded", () => {
+  eq(isValidPartialDate("2026-02-31"), false);
+  eq(isValidPartialDate("2026-02-29"), false);
+});
+assert("a month needs no day to be valid", () => eq(isValidPartialDate("2026-02"), true));
+assert("real dates are valid", () => {
+  eq(isValidPartialDate("2026-09-21"), true);
+  eq(isValidPartialDate("2024-02-29"), true);
+});
+assert("junk is invalid", () => {
+  eq(isValidPartialDate("2026-13"), false);
+  eq(isValidPartialDate("nonsense"), false);
+  eq(isValidPartialDate(null), false);
+});
 
 console.log("\ndatePrecision / isPartialDate");
 assert("a month reads as month precision", () => eq(datePrecision("2026-09"), "month"));

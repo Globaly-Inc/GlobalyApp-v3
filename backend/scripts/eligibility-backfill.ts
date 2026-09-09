@@ -71,6 +71,7 @@ import { masterKnex } from "../src/core/db/master-pool.js";
 import {
   deriveScoreFromDescription,
   deriveIntakeMonthYear,
+  normaliseCustomDates,
 } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
 import { findTests } from "../src/modules/superadmin/data-extraction/lib/requirement-text.js";
 import {
@@ -519,6 +520,18 @@ async function shareIntakesAcrossCourses() {
       if (keep.source_url == null) {
         const donor = drop.find((d) => d.source_url != null);
         if (donor) updates.source_url = donor.source_url;
+      }
+      // Carry the copies' milestones across before they are deleted. Without this the merge lost
+      // every custom date on a dropped row for good — and the same union rule as upsertIntake, so
+      // two precisions of one milestone collapse while two contradicting dates both survive rather
+      // than one being silently chosen. Skipped entirely when nothing has any, so the common case
+      // writes nothing.
+      const mergedDates = normaliseCustomDates([
+        ...normaliseCustomDates(keep.custom_dates),
+        ...drop.flatMap((d) => normaliseCustomDates(d.custom_dates)),
+      ]);
+      if (JSON.stringify(mergedDates) !== JSON.stringify(normaliseCustomDates(keep.custom_dates))) {
+        updates.custom_dates = JSON.stringify(mergedDates);
       }
       if (Object.keys(updates).length > 0) {
         await masterKnex(INTAKES).where({ id: keep.id }).update({ ...updates, updated_at: masterKnex.fn.now() });

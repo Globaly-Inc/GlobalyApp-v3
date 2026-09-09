@@ -101,17 +101,32 @@ export function normaliseCustomDates(v: unknown): IntakeCustomDate[] {
     try { arr = JSON.parse(v); } catch { return []; }
   }
   if (!Array.isArray(arr)) return [];
-  const byName = new Map<string, IntakeCustomDate>();
+  const out: IntakeCustomDate[] = [];
   for (const raw of arr) {
     const entry = raw as { name?: unknown; date?: unknown } | null;
     const name = String(entry?.name ?? "").trim();
     const date = coercePartialDate(entry?.date);
     if (!name || !date) continue;
     const key = name.toLowerCase();
-    const prior = byName.get(key);
-    byName.set(key, { name: prior?.name ?? name, date: morePrecise(prior?.date, date)! });
+
+    // Same name, dates that AGREE: one milestone stated at two precisions ("2026-11" on a listing
+    // page, "2026-11-15" on the detail page). Keep the sharper — that is enrichment.
+    const twin = out.find((e) => e.name.toLowerCase() === key && partialDatesAgree(e.date, date));
+    if (twin) {
+      twin.date = morePrecise(twin.date, date)!;
+      continue;
+    }
+
+    // Same name, dates that genuinely CONTRADICT ("2026-11" vs "2026-12"): both are kept. This
+    // used to key on the name alone and pick between them by string length, so one stated deadline
+    // was silently dropped — and because the intake row is SHARED, the survivor became the only
+    // deadline every linked course showed. Choosing between two dates an institution published is
+    // guessing, and a guessed deadline is one a student can miss; two visible rows are honest and
+    // an admin can delete the wrong one. Same principle as eligibilityRowsAgree forking a row on
+    // contradiction rather than merging, and as the intake's own dates never being averaged.
+    out.push({ name, date });
   }
-  return [...byName.values()];
+  return out;
 }
 
 // ponytail: LLM sometimes returns "September" instead of 9
