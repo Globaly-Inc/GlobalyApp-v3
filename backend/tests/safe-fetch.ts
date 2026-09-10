@@ -46,5 +46,22 @@ redirectTo(null);
 ok((await safeFetch(PUBLIC)).status === 200, "an ordinary public response passes through");
 
 globalThis.fetch = real;
+
+// The PDF branch of the extraction workers' secondary fetch. Its URL comes from scraped
+// catalogue HTML, so it is attacker-influenced; it used a bare fetch() and reached whatever it
+// was pointed at. Asserted against a REAL listening socket — a target that merely fails to
+// connect would look identical to one that is refused, which is how this hid.
+{
+  const { createServer } = await import("node:http");
+  const { createDocumentExtractor } = await import("../src/modules/superadmin/data-extraction/lib/document-extractor.js");
+  let hits = 0;
+  const srv = createServer((_q, res) => { hits++; res.writeHead(200, { "content-type": "application/pdf" }); res.end("%PDF-1.4"); });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+  const port = (srv.address() as { port: number }).port;
+  await createDocumentExtractor().extract({ file_url: `http://127.0.0.1:${port}/x.pdf`, file_name: "x.pdf" });
+  srv.close();
+  ok(hits === 0, "a PDF link pointing at loopback never reaches the socket");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
