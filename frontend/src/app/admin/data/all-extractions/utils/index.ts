@@ -278,3 +278,14 @@ export function formatPartialDate(value: string | null | undefined): string | nu
   const month = MONTH_NAMES[Number(m) - 1] ?? m;
   return precision === "month" ? `${month} ${y}` : `${Number(d)} ${month} ${y}`;
 }
+
+/**
+ * Weeks are how the column stores it, years are how a degree is advertised. No month form:
+ * 4 weeks is not a month, and rounding to one turns a stored figure into a wrong claim.
+ */
+export function courseDuration(weeks: number | null | undefined): string | null {
+  if (!weeks || weeks <= 0) return null;
+  if (weeks < 52) return `${weeks} ${weeks === 1 ? "week" : "weeks"}`;
+  const years = weeks / 52;
+  return `${Number.isInteger(years) ? years : years.toFixed(1)} ${years === 1 ? "year" : "years"}`;
+}

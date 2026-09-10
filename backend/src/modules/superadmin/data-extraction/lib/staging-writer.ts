@@ -1518,6 +1518,21 @@ export function normaliseCourseName(name: string): string {
 }
 
 /**
+ * An index anchor carries the bare programme name; the model routinely appends the award it saw
+ * on the card — "Data Science: Visualization (Individual Certificate)". `normaliseCourseName`
+ * strips only the trailing ")", so the exact lookup misses every such course. Retry without a
+ * trailing parenthetical. NOT fixable in normaliseCourseName itself: that is the dedup key, and
+ * collapsing parentheticals would merge "Computer Science (Bachelor)" with "… (Master)".
+ */
+export function courseOwnPage(links: Map<string, string>, name: string): string | null {
+  const exact = links.get(normaliseCourseName(name));
+  if (exact) return exact;
+  const bare = name.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  if (!bare || bare === name.trim()) return null;
+  return links.get(normaliseCourseName(bare)) ?? null;
+}
+
+/**
  * Write a full course with all its child entities and junction assignments.
  * Deduplicates by normalised name within the same job — if a course already exists,
  * merges richer data into the existing row and attaches new child entities.

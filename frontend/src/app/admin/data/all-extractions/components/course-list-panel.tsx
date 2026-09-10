@@ -10,6 +10,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { SORT_OPTIONS, VERIFICATION_DOT, type SortOrder } from "../const";
+import { courseDuration } from "../utils";
 import type { CourseFull } from "../apis/types";
 
 export function CourseListPanel({
@@ -204,6 +205,11 @@ export function CourseListPanel({
                   className={cn("h-1.5 w-1.5 shrink-0 rounded-full", VERIFICATION_DOT[course.verification_status ?? "unverified"] ?? "bg-muted-foreground/30")}
                 />
                 <span className="truncate">{course.name}</span>
+                {courseDuration(course.duration_weeks) && (
+                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {courseDuration(course.duration_weeks)}
+                  </span>
+                )}
               </span>
               {course.source_url && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
             </button>
