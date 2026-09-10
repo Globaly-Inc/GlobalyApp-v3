@@ -19,8 +19,7 @@
  *   node --import tsx tests/lookup-catalog.ts
  */
 import {
-  resolveAreaOfStudy, resolveDegreeLevel, type LookupLists,
-} from "../src/modules/superadmin/data-extraction/lib/lookup-catalog.js";
+  resolveAreaOfStudy, resolveDegreeLevel, type LookupLists, courseCategoryForLevel, categoryForServiceSlug, lookupListsHealth } from "../src/modules/superadmin/data-extraction/lib/lookup-catalog.js";
 
 let passed = 0;
 let failed = 0;
@@ -185,6 +184,27 @@ eq(lvl(null, "General Certificate of Secondary Education"), "high_school", "the 
 eq(lvl(null, "Certificate III in Aged Care"), "certificate", "an AQF certificate is untouched");
 eq(lvl(null, "Advanced Diploma of Primary School Teaching"), "advance_diploma", "a teaching diploma stays a diploma");
 eq(lvl(null, "Master of Teaching (Secondary)"), "master", "…and a teaching master stays a master");
+
+// ── The stepper's service category is a second, coarser scope ──
+// "Academic Courses" must not stage a certificate or a short course; "Short Courses" must not
+// stage a bachelor or a master. Every seeded level lands in exactly one bucket.
+eq(categoryForServiceSlug("courses"), "academic", "the Academic Courses category");
+eq(categoryForServiceSlug("short_courses"), "short_course", "the Short Courses category");
+eq(categoryForServiceSlug("accommodation"), null, "a non-course vertical scopes nothing");
+eq(categoryForServiceSlug(null), null, "no category chosen scopes nothing");
+
+for (const slug of ["school", "high_school", "bachelor", "graduate_diploma", "master", "master_research", "doctoral"]) {
+  eq(courseCategoryForLevel(slug), "academic", `${slug} is academic`);
+}
+for (const slug of ["certificate", "diploma", "advance_diploma", "non_aqf_award"]) {
+  eq(courseCategoryForLevel(slug), "short_course", `${slug} is a short course`);
+}
+eq(courseCategoryForLevel(null), null, "an unlinked course has no category from its level");
+// A level in neither bucket would be out of scope on BOTH kinds of job — the health check says so.
+for (const l of LISTS.levels) {
+  eq(typeof courseCategoryForLevel(l.slug), "string", `every seeded level has a bucket: ${l.slug}`);
+}
+eq(lookupListsHealth(LISTS).ok, true, "the seeded lists are healthy, category buckets included");
 
 // ── An ADMIN edit resolves from the pick alone ──
 // normaliseCoursePatch passes name: "" precisely so the course NAME cannot act as a fallback.

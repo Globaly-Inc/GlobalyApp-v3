@@ -6,7 +6,10 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
-import { loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel } from "./lookup-catalog.js";
+import {
+  loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel,
+  courseCategoryForLevel, categoryForServiceSlug, type CourseCategory,
+} from "./lookup-catalog.js";
 import { coercePartialDate, morePrecise, normaliseStored, partialDatesAgree } from "./partial-date.js";
 
 const logger = createChildLogger("staging-writer");
@@ -897,9 +900,33 @@ async function jobDegreeLevels(jobId: string): Promise<Set<string>> {
   return set;
 }
 
+/** The kind of course the job's service category asks for; null for a job with no category. */
+const jobCategoryCache = new Map<string, CourseCategory | null>();
+
+async function jobCourseCategory(jobId: string): Promise<CourseCategory | null> {
+  const cached = jobCategoryCache.get(jobId);
+  if (cached !== undefined) return cached;
+  const row = await masterKnex(`${S}.extraction_jobs as j`)
+    .leftJoin("public.service_categories as sc", "sc.id", "j.service_category_id")
+    .where("j.id", jobId)
+    .first("sc.slug");
+  const resolved = categoryForServiceSlug(row?.slug);
+  jobCategoryCache.set(jobId, resolved);
+  return resolved;
+}
+
+/**
+ * Both scopes apply: the stepper's service category (Academic vs Short Courses) and, within it,
+ * the degree levels picked. A course with no level is kept — it can't be judged by either.
+ */
 export async function isCourseInScope(jobId: string, levelCode: string | null): Promise<boolean> {
-  const wanted = await jobDegreeLevels(jobId);
-  return wanted.size === 0 || !levelCode || wanted.has(levelCode);
+  if (!levelCode) return true;
+
+  const wantedCategory = await jobCourseCategory(jobId);
+  if (wantedCategory && courseCategoryForLevel(levelCode) !== wantedCategory) return false;
+
+  const wantedLevels = await jobDegreeLevels(jobId);
+  return wantedLevels.size === 0 || wantedLevels.has(levelCode);
 }
 
 // A course with no level is kept — it can't be judged.

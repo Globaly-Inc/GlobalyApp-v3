@@ -115,12 +115,44 @@ export interface LookupListsHealth {
  * counts, because an empty list or an orphaned fold is the ROOT CAUSE behind a job full of
  * unlinked courses — the counts alone don't say why.
  */
+// ─── Which levels each service category is after ─────────────────────────────
+// The stepper's service category ("Academic Courses" / "Short Courses") is a second, coarser
+// scope alongside the degree-level picker. Mapping, not list data: every slug must exist in the
+// seeder, and lookupListsHealth reports a seeded level that lands in neither bucket — such a level
+// would be out of scope on BOTH kinds of job.
+const ACADEMIC_LEVELS = new Set([
+  "school", "high_school", "bachelor", "graduate_diploma", "master", "master_research", "doctoral",
+]);
+const SHORT_COURSE_LEVELS = new Set([
+  "certificate", "diploma", "advance_diploma", "non_aqf_award",
+]);
+
+export type CourseCategory = "academic" | "short_course";
+
+/** The kind of course a degree level implies. Null when the course linked to no level. */
+export function courseCategoryForLevel(levelSlug: unknown): CourseCategory | null {
+  if (typeof levelSlug !== "string") return null;
+  if (ACADEMIC_LEVELS.has(levelSlug)) return "academic";
+  if (SHORT_COURSE_LEVELS.has(levelSlug)) return "short_course";
+  return null;
+}
+
+/** public.service_categories.slug → the kind of course that job is for. */
+export function categoryForServiceSlug(slug: unknown): CourseCategory | null {
+  if (slug === "courses") return "academic";
+  if (slug === "short_courses") return "short_course";
+  return null;
+}
+
 export function lookupListsHealth(lists: LookupLists): LookupListsHealth {
   const missing = [
     ...[...new Set(Object.values(COURSE_LEVEL_FOLDS))]
       .filter((target) => !lists.levels.some((l) => norm(l.name) === norm(target))),
     ...Object.keys(SUBJECTS_BY_AREA)
       .filter((slug) => !lists.areas.some((a) => a.slug === slug)),
+    ...lists.levels
+      .filter((l) => !courseCategoryForLevel(l.slug))
+      .map((l) => `level "${l.slug}" is in no course-category bucket`),
   ];
   return {
     ok: lists.areas.length > 0 && lists.levels.length > 0 && missing.length === 0,
