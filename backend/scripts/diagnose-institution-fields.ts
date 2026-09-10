@@ -60,7 +60,8 @@ async function main() {
   if (jobId) {
     await diagnoseJob(jobId);
   } else {
-    const jobs = await masterKnex(`${S}.extraction_jobs`).where({ source_type: "institution" }).orWhereNull("source_type");
+    
+    const jobs = await masterKnex(`${S}.extraction_jobs`).whereNot({ source_type: "visa_service" }).orWhereNull("source_type");
     console.log(`No jobId given — diagnosing all ${jobs.length} institution job(s)\n`);
     for (const job of jobs) {
       await diagnoseJob(job.id);

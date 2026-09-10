@@ -213,9 +213,12 @@ export function BusinessCard({
               <Eye className="mr-1 h-3.5 w-3.5" />
               View
             </Button>
-            <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onView}>
-              Edit
-            </Button>
+          
+            {b.is_unclaimed && (
+              <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onView}>
+                Edit
+              </Button>
+            )}
             {b.status !== "verified" && b.status !== "suspended" && (
               <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onVerify}>
                 <CheckCircle className="mr-1 h-3.5 w-3.5" />

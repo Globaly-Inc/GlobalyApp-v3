@@ -84,7 +84,11 @@ export async function listBusinesses(
       // doesn't count until that owner verifies via OTP, which is the only thing that flips
       // is_email_verified from its false default. Self-registered owners are already verified
       // the moment their business exists, so they read as claimed immediately.
-      masterKnex.raw("(b.owner_id IS NULL OR owner.is_email_verified IS NOT TRUE) as is_unclaimed"),
+      // claim_status = 'claimed' is a second, independent way to count as claimed: acceptClaim
+      // (businesses.service.ts) sets owner_id + claim_status synchronously, but the claimant's
+      // own OTP verification is a separate later request — without this OR, a business sits
+      // is_unclaimed=true for the whole gap between "claim accepted" and "claimant's first login".
+      masterKnex.raw("(b.owner_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND b.claim_status != 'claimed')) as is_unclaimed"),
       "cat.name as category_name",
       "cat.slug as category_slug",
       "c.name as country_name",
@@ -195,7 +199,7 @@ export async function listInstitutions(
       "i.logo_url", "i.account_status", "i.created_at",
       "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
-      masterKnex.raw("(i.platform_user_id IS NULL OR owner.is_email_verified IS NOT TRUE) as is_unclaimed"),
+      masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
       masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
       masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
       "c.name as country_name",
@@ -260,7 +264,7 @@ export async function findInstitutionDetail(id: number) {
       "i.account_status", "i.created_at", "i.updated_at", "i.verified_at",
       "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
-      masterKnex.raw("(i.platform_user_id IS NULL OR owner.is_email_verified IS NOT TRUE) as is_unclaimed"),
+      masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
       masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
       masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
       "c.name as country_name",
@@ -350,7 +354,7 @@ export async function findBusinessDetail(id: number) {
     .select(
       "b.*",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
-      masterKnex.raw("(b.owner_id IS NULL OR owner.is_email_verified IS NOT TRUE) as is_unclaimed"),
+      masterKnex.raw("(b.owner_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND b.claim_status != 'claimed')) as is_unclaimed"),
       "cat.name as category_name",
       "cat.slug as category_slug",
       "c.name as country_name",
