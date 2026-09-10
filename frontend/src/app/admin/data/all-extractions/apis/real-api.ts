@@ -175,7 +175,7 @@ export const allExtractionsRealApi = {
     const res = await httpPost<{ id: string; name: string; created_at: string; updated_at: string }>(
       `/admin/data-extraction/jobs/${jobId}/courses`, params,
     );
-    return { ...params, id: res.id, name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: res.created_at, updated_at: res.updated_at };
+    return { ...params, id: res.id, name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, subject_area_code: null, degree_level_code: null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: res.created_at, updated_at: res.updated_at };
   },
 
   updateCourse: async (id: string, params: UpdateCourseParams): Promise<void> => {

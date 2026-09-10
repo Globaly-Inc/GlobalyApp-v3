@@ -89,6 +89,42 @@ async function verifyLookupLinks(jobId: string) {
     unlinked_degree_levels: unlinkedLevels.slice(0, 10),
     unlinked_subject_areas: unlinkedAreas.slice(0, 10),
   });
+  await verifyRequestedLevels(jobId, total);
+}
+
+async function verifyRequestedLevels(jobId: string, total: number) {
+  const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first("degree_level_codes");
+  const wanted: string[] = job?.degree_level_codes ?? [];
+  if (!wanted.length || total === 0) return;
+
+  const { rows } = await masterKnex.raw(
+    `SELECT count(*) FILTER (WHERE degree_level_code = ANY(:wanted))::int      AS in_scope,
+            count(*) FILTER (WHERE degree_level_code IS NOT NULL
+                               AND NOT (degree_level_code = ANY(:wanted)))::int AS out_of_scope,
+            count(*) FILTER (WHERE degree_level_code IS NULL)::int             AS no_level
+       FROM ${S}.extraction_courses WHERE job_id = :jobId`,
+    { jobId, wanted },
+  );
+  const { in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel } = rows[0] as
+    { in_scope: number; out_of_scope: number; no_level: number };
+
+  const found = outOfScope
+    ? await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId })
+        .whereNotNull("degree_level_code").whereNotIn("degree_level_code", wanted)
+        .select("degree_level_code").count("id as count").groupBy("degree_level_code")
+    : [];
+
+  await writeJobEvent(jobId, "requested_levels_verified", {
+    level: outOfScope ? "warn" : "info",
+    phase: "verification",
+    message: outOfScope
+      ? `Degree levels: ${inScope}/${total} courses are one this job asked for, ${outOfScope} are another level`
+      : `Degree levels: all ${inScope} courses are one this job asked for`,
+    data: { requested: wanted, in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel, other_levels: found },
+  });
+  logger[outOfScope ? "warn" : "info"]("Requested levels verified", {
+    jobId, requested: wanted, in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel,
+  });
 }
 
 await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {

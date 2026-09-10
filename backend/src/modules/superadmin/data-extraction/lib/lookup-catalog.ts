@@ -255,9 +255,15 @@ const LEVEL_WORDS: Array<[RegExp, string]> = [
   [/\b(associate degree|associate of|associate in|undergraduate higher diploma)\b/i, "Bachelor"],
   [/\b(advanced? diploma)\b/i, "Advance Diploma"],
   [/\b(diploma of higher education|foundation degree|higher national diploma|diploma)\b/i, "Diploma"],
-  [/\b(certificate (?:i|ii|iii|iv|1|2|3|4) in|certificate)\b/i, "Certificate"],
-  [/\b(high school|secondary school|senior secondary|year (?:11|12)|sixth form|a-?levels?)\b/i, "High School"],
+  // Above `certificate`: a school qualification usually HAS "certificate" in its name — HSC, VCE,
+  // GCSE — and the bare certificate row would swallow them all. The school ones are NAMED, so they
+  // are enumerated rather than matched on a bare "certificate of education", which would also
+  // catch the tertiary CertEd — and because a name match outranks the model's own answer, that
+  // would silently override a correct "Certificate".
+  // Still below both diploma rows, so "Advanced Diploma of Primary School Teaching" stays a diploma.
+  [/\b(high school|secondary school|senior secondary|higher school certificate|secondary education|(?:victorian|western australian|south australian|queensland|tasmanian|northern territory|general) certificate of education|year (?:11|12)|sixth form|a-?levels?)\b/i, "High School"],
   [/\b(primary school|elementary school|junior secondary|middle school|kindergarten|early years)\b/i, "School"],
+  [/\b(certificate (?:i|ii|iii|iv|1|2|3|4) in|certificate)\b/i, "Certificate"],
   [/\b(foundation (?:year|programme|program|course|pathway)|year (?:0|zero)|pre-?masters?|pre-?sessional|access to he|short course|professional development|cpd)\b/i, "Non AQF Award"],
 ];
 

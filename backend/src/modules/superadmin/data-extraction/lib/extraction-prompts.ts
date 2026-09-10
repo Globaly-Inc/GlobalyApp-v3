@@ -88,9 +88,18 @@ export function courseExtractionPrompt(
   guidanceNotes?: string | null,
   siteHints?: { fee_structure?: unknown; extraction_hints?: string[] } | null,
   lookups?: LookupLists,
+  wantedLevels?: string[],
 ) {
   const enumOf = (rows?: { name: string }[]) => (rows?.length ? rows.map((r) => r.name).join("|") : "null");
+  // Full list even when the job wants a subset — narrowing it would force a course onto a wrong
+  // level instead of letting the writer flag it.
   const levelEnum = enumOf(lookups?.levels);
+  const wantedNames = wantedLevels?.length
+    ? (lookups?.levels ?? []).filter((l) => wantedLevels.includes(l.slug)).map((l) => l.name)
+    : [];
+  const levelFocus = wantedNames.length
+    ? `\n- This job is looking for ${wantedNames.join(", ")} courses. Prefer those pages and list those courses first, but when a course of another level is on the page, extract it and label its real level — never relabel it to fit.`
+    : "";
   const areaEnum = enumOf(lookups?.areas);
   const hints: string[] = [];
   if (guidanceNotes) hints.push(`Admin guidance: ${guidanceNotes}`);
@@ -187,7 +196,9 @@ Extract this JSON:
         {
           "unit_code": "code or null",
           "unit_name": "unit/subject name as it appears in the curriculum",
-          "credit_points": null
+          "credit_points": null,
+          "unit_type": "compulsory if the unit is listed under a core/required/compulsory block, elective if listed under an electives/options/'choose N of' block, null if the page does not say",
+          "description": "the unit's own one-or-two-sentence synopsis if the page carries one, else null"
         }
       ],
       "curriculum_page_url": "URL to this course's dedicated curriculum/course-structure/programs-of-study page, if linked from this page — else null",
@@ -208,7 +219,7 @@ Extract this JSON:
 }
 
 Rules:
-- Extract ALL courses visible on this page
+- Extract ALL courses visible on this page${levelFocus}
 - If the page is a single course detail page, return exactly 1 course
 - If it's a listing page with multiple courses, extract all of them
 - Do NOT extract a page as a course if it describes a single SUBJECT/UNIT/MODULE that sits inside a larger qualification — e.g. a page titled "Introduction to Databases" or "COMP101 — Introduction to Databases", with a short code (2-4 letters + 2-3 digits) and content describing one subject rather than an entire degree/diploma/certificate. These belong in study_units under their parent course, never as a standalone course. If this page IS such a unit/subject page, return an empty courses array.
@@ -239,6 +250,7 @@ Rules:
 - TOTAL vs PER-UNIT: When the page shows a per-credit/per-unit rate AND states the total credit requirement (e.g. "$325/credit hour × 12 credits = $3,900"), extract BOTH: one entry with period_type "Per Unit" and total_amount = the rate (325), AND one entry with period_type "Total" and total_amount = the computed or explicitly stated total (3900). Never capture ONLY the per-unit rate when a total is derivable or explicitly stated — the total is what matters most for display.
 - STUDENT TYPE: Use student_type "both" whenever the page shows ONE fee figure with no domestic/international distinction. Only emit separate "domestic" and "international" entries when the page explicitly states TWO DIFFERENT amounts — one labelled for domestic students and one for international. Never duplicate the same amount into two separate entries.
 - Use consistent campus names — prefer the shortest unambiguous form (e.g. "Sydney" not "Sydney Campus")
+- unit_type comes from the HEADING of the requirement block the unit is listed under, not from the unit itself — "Core courses"/"Required Coursework" means compulsory, "Electives"/"Options"/"Choose two of the following" means elective. Leave it null rather than guessing when the curriculum is an undifferentiated list.
 - study_units are the individual subjects/units taught within THIS course's curriculum (e.g. a listed core/elective unit with its own code or name) — only include units explicitly listed as part of this course's structure, not unrelated courses mentioned elsewhere on the page. A differently-titled qualification or award-level variant of the same subject (anything containing a degree word/abbreviation — BEng, MEng, BSc, MSc, BA, MA, PhD, "(Hons)", Diploma, Certificate, Bachelor, Master, Doctorate) is ALWAYS its own course per the rule above, NEVER a study_unit, regardless of what list or section it appears under.
 - Set curriculum_page_url whenever a link on this page plausibly leads to THIS course's own detailed curriculum/program-structure page (e.g. "View Degree Program Website", "Course Structure", "Programs of Study", or a "Curriculum" link within a program-specific site) — not a generic institution-wide "Programs" or "Courses" catalog link. Set it EVEN IF you already found some study_units on this page: an admissions or overview page often names only a few example courses, while the dedicated curriculum page lists the full set — more complete data always wins.
 - Set fees_page_url whenever a link on this page plausibly leads to THIS course's own fees/tuition/cost detail (e.g. a "Tuition & Fees", "Program Costs", or catalog/schedule link naming this specific program) and this page itself has no fees array entries — not a generic institution-wide tuition homepage.`;
@@ -308,7 +320,9 @@ Return JSON:
     {
       "unit_code": "code or null",
       "unit_name": "unit/subject name as it appears in the curriculum",
-      "credit_points": null
+      "credit_points": null,
+      "unit_type": "compulsory if the unit is listed under a core/required/compulsory block, elective if listed under an electives/options/'choose N of' block, null if the page does not say",
+      "description": "the unit's own one-or-two-sentence synopsis if the page carries one, else null"
     }
   ],
   "fees": [
@@ -356,7 +370,9 @@ Return JSON:
     {
       "unit_code": "code or null",
       "unit_name": "unit/subject name as it appears in the curriculum",
-      "credit_points": null
+      "credit_points": null,
+      "unit_type": "compulsory if the unit is listed under a core/required/compulsory block, elective if listed under an electives/options/'choose N of' block, null if the page does not say",
+      "description": "the unit's own one-or-two-sentence synopsis if the page carries one, else null"
     }
   ]
 }`;
@@ -773,7 +789,7 @@ export function courseDataPrompt(
   "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "end_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "orientation_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "intake_month": "1-12, the month this intake starts — derive it from the intake name or start date when the page doesn't state it separately", "intake_year": "4-digit year this intake starts — derive it from the intake name (\\"Semester 1 2027\\" -> 2027) or start date", "admission_deadline": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "custom_dates": "[] or [{\"name\": \"the page's own label\", \"date\": \"YYYY-MM-DD or YYYY-MM\"}] for any OTHER dated milestone — never duplicate the four fields above" }]
 }`,
     units: `{
-  "study_units": [{ "unit_code": "code or null", "unit_name": "unit name", "credit_points": null }]
+  "study_units": [{ "unit_code": "code or null", "unit_name": "unit name", "credit_points": null, "unit_type": "compulsory|elective|null", "description": "unit synopsis if stated, else null" }]
 }`,
     eligibility: `{
   "requirements": [{ "name": "short label a student scans, e.g. Academic Entry", "applicable_to": "domestic|international|both", "description": "the requirement in the PAGE'S OWN WORDS — the sentence(s) stating it, verbatim where you can, keeping every condition, exception, equivalency, subject prerequisite and alternative pathway. Never null for a requirement you are reporting", "score_type": "percentage|gpa_4|gpa_10|cgpa|null", "min_score": "numeric minimum stated, or null", "min_degree_level": "Bachelor|Master|etc, if stated or implied, else null", "academic_tests": [{ "test_name": "GRE|GMAT|SAT|ACT|LSAT|MCAT|etc — a standardised admission test, never an English test", "score": "the MINIMUM score required, or null if the page states no floor", "typical_score": "the average/median/percentile score of admitted students, if the page reports one instead of a minimum, else null", "is_optional": false }] }],

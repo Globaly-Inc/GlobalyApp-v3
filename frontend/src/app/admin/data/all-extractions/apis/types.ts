@@ -78,6 +78,8 @@ export type CreateJobParams = {
   guided_urls?: Record<string, string[]>;
   guidance_notes?: string;
   sample_course_url?: string;
+  /** Omitted means every level. */
+  degree_level_codes?: string[];
 };
 
 export type ExistingJobConflict = {
@@ -205,6 +207,9 @@ export type CourseFull = ActorFields & {
   source_url: string | null;
   degree_level: string | null;
   subject_area: string | null;
+  /** areas_of_study.slug — the actual link. subject_area above is free description. */
+  subject_area_code: string | null;
+  degree_level_code: string | null;
   duration_weeks: number | null;
   study_mode: string | null;
   description: string | null;

@@ -17,6 +17,7 @@ import {
   SCORE_TYPES,
 } from "../schemas/staged.schema.js";
 import type { SaveAndLearnInput } from "../schemas/supporting.schema.js";
+import { resolveCourseLookups } from "../lib/staging-writer.js";
 
 const logger = createChildLogger("supporting-service");
 
@@ -110,6 +111,40 @@ const INTAKE_DATE_KEYS = ["start_date", "end_date", "orientation_date", "admissi
  * Accepts what a person would type as well as what the form sends, but refuses anything that is
  * neither — a silent null here would look like the admin cleared a field they had just filled in.
  */
+/**
+ * A course edit obeys the same closed lists as extraction. saveAndLearn writes the patch straight
+ * to the column, so without this the Subject area picker set free text and left subject_area_code
+ * — the actual link — untouched.
+ */
+async function normaliseCoursePatch(patch: Record<string, unknown>): Promise<void> {
+  const editsLevel = "degree_level" in patch;
+  const editsArea = "subject_area_code" in patch || "subject_area" in patch;
+  if (!editsLevel && !editsArea) return;
+
+  // `name: ""` on purpose. The resolver falls back to the qualification in the course name, which
+  // is right for extraction and wrong here: an admin who clears the picker sends null, and
+  // inferring from the name would immediately restore the link they just removed. On an admin
+  // edit the picked value is the whole input — pick something unmatched and it clears too.
+  const level = patch.degree_level;
+  const area = "subject_area_code" in patch ? patch.subject_area_code : patch.subject_area;
+  const link = await resolveCourseLookups({
+    name: "",
+    degree_level: (level ?? undefined) as string | undefined,
+    subject_area: (area ?? undefined) as string | undefined,
+    area_of_study: (area ?? undefined) as string | undefined,
+  });
+
+  if (editsLevel) {
+    patch.degree_level = link.degree_level;
+    patch.degree_level_code = link.degree_level_code;
+  }
+  if (editsArea) {
+    patch.subject_area_code = link.subject_area_code;
+    // The picker sends the LINK; the page's own wording in subject_area is left as extracted.
+    if ("subject_area_code" in patch) delete patch.subject_area;
+  }
+}
+
 function normaliseIntakePatch(patch: Record<string, unknown>): void {
   for (const key of INTAKE_DATE_KEYS) {
     if (!(key in patch)) continue;
@@ -172,6 +207,7 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
   // typing "September 2026" is accepted and stored as the month it is.
   if (table === "extraction_intakes") normaliseIntakePatch(patch);
   if (table === "extraction_eligibility_requirements") normaliseEligibilityPatch(patch);
+  if (table === "extraction_courses") await normaliseCoursePatch(patch);
 
   await repo.patchEntityRow(table, id, patch, adminId);
 

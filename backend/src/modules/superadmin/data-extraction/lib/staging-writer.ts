@@ -53,6 +53,12 @@ export interface ExtractedStudyUnit {
   unit_code?: string | null;
   unit_name: string;
   credit_points?: number | null;
+  /** The unit's own synopsis, when the curriculum page carries one. */
+  description?: string | null;
+  /** "compulsory" | "elective" — from the requirement block the unit was listed under
+   * ("Core courses", "Electives", "choose two of"). Anything else normalises to null and the
+   * column keeps its default. */
+  unit_type?: string | null;
 }
 
 export interface ExtractedFee {
@@ -683,6 +689,89 @@ export function normaliseUnitName(name: string): string {
 }
 
 /**
+ * Canonical `unit_type` — the platform's enum is compulsory | elective. Sources say it in the
+ * requirement block's heading rather than in a field ("Core courses", "Required Coursework",
+ * "Electives", "Choose two of the following"), so both wordings are matched.
+ *
+ * Returns null when the source says nothing, so the caller can leave the column alone: it is
+ * NOT NULL DEFAULT 'compulsory', and writing a guess would assert a requirement the page never
+ * made.
+ */
+export function normaliseUnitType(v: unknown): "compulsory" | "elective" | null {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return null;
+  if (/elective|option|optional|choose|select|specialis|specializ/.test(s)) return "elective";
+  if (/compulsory|core|required|mandatory|prescribed/.test(s)) return "compulsory";
+  return null;
+}
+
+/**
+ * A study unit is a COURSE the student sits inside a qualification. The model sometimes reads a
+ * programme INDEX page and hands back the programme list as one course's curriculum — that is
+ * how a job ended up with "Business Administration (Evening)" and "Biomedical Informatics" as
+ * study units. Those rows are worse than a gap: they read as a real curriculum.
+ *
+ * Two tests, because the single-row one alone is too weak. Per unit: reject a name that is the
+ * course's own name, that carries a degree word, or that is another course of the same job.
+ * Per batch: when most of a batch collides with the job's own course names, the model was
+ * reading an index page, so the WHOLE batch goes — the few names that happen not to collide are
+ * no more trustworthy than the ones that do.
+ *
+ * `isProgrammeName` is injected (writeCourse resolves it against the job's courses in one
+ * query) so this stays pure and testable.
+ */
+const UNIT_DEGREE_TOKEN_RE = /\b(bachelors?|masters?|doctor(?:al|ate)?|ph\.?d|d\.?phil|mba|mphil|m\.?sc|b\.?sc|b\.?eng|m\.?eng|b\.?a|m\.?a|ll\.?b|ll\.?m|b\.?ed|m\.?ed|associate degree|foundation degree|(?:under)?graduate (?:certificate|diploma)|postgraduate (?:certificate|diploma)|minor in|major in|honours degree|\(hons\))\b/i;
+
+/** Above this share of a batch colliding with the job's course names, the batch is an index
+ * page rather than a curriculum. Judged only from 3 units up — a 1-2 unit batch has no shape. */
+const UNIT_BATCH_COLLISION_LIMIT = 0.6;
+const UNIT_BATCH_MIN = 3;
+
+export function filterStudyUnits(
+  units: ExtractedStudyUnit[],
+  courseName: string,
+  isProgrammeName: (normalisedName: string) => boolean,
+): { kept: ExtractedStudyUnit[]; dropped: Array<{ name: string; reason: string }>; batchRejected: boolean } {
+  const ownName = normaliseCourseName(courseName);
+  const dropped: Array<{ name: string; reason: string }> = [];
+  const kept: ExtractedStudyUnit[] = [];
+  let collisions = 0;
+
+  for (const unit of units) {
+    const name = unit.unit_name?.trim();
+    if (!name || name.length < 3) {
+      dropped.push({ name: String(unit.unit_name ?? ""), reason: "empty or too short" });
+      continue;
+    }
+    const key = normaliseCourseName(name);
+    if (key === ownName) {
+      dropped.push({ name, reason: "is the course's own name" });
+      continue;
+    }
+    if (UNIT_DEGREE_TOKEN_RE.test(name)) {
+      dropped.push({ name, reason: "carries a degree word — it is a qualification, not a unit" });
+      continue;
+    }
+    if (isProgrammeName(key)) {
+      collisions++;
+      dropped.push({ name, reason: "is another course of this job" });
+      continue;
+    }
+    kept.push(unit);
+  }
+
+  const batchRejected =
+    units.length >= UNIT_BATCH_MIN && collisions / units.length > UNIT_BATCH_COLLISION_LIMIT;
+  if (batchRejected) {
+    for (const unit of kept) {
+      dropped.push({ name: unit.unit_name, reason: "batch rejected — the page was a programme index" });
+    }
+    return { kept: [], dropped, batchRejected };
+  }
+  return { kept, dropped, batchRejected };
+}
+
+/**
  * Upsert a study unit for a job — deduplicates by normalised unit_name within the same
  * job, mirroring upsertCampus. Without this, every course extraction (including re-runs)
  * inserted a fresh extraction_study_units row for the same unit shared across courses.
@@ -696,7 +785,25 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
     .where({ job_id: jobId })
     .whereRaw("regexp_replace(lower(trim(unit_name)), '\\s+', ' ', 'g') = ?", [norm])
     .first();
-  if (existing) return existing.id;
+  const unitType = normaliseUnitType(unit.unit_type);
+  const description = unit.description?.trim() || null;
+  if (existing) {
+    // The same unit is listed on several pages of a catalogue, and a later one is often the
+    // richer: the programme page gives a bare title, the course catalogue adds the code, the
+    // credits and the synopsis. Fill what the stored row is missing; never overwrite.
+    const fill: Record<string, unknown> = {};
+    if (existing.unit_code == null && unit.unit_code) fill.unit_code = unit.unit_code;
+    if (existing.credit_points == null && coerceInt(unit.credit_points) != null) {
+      fill.credit_points = coerceInt(unit.credit_points);
+    }
+    if (existing.description == null && description) fill.description = description;
+    if (Object.keys(fill).length) {
+      await masterKnex(`${S}.extraction_study_units`)
+        .where({ id: existing.id })
+        .update({ ...fill, updated_at: masterKnex.fn.now() });
+    }
+    return existing.id;
+  }
 
   const [row] = await masterKnex(`${S}.extraction_study_units`)
     .insert({
@@ -704,6 +811,10 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
       unit_code: unit.unit_code ?? null,
       unit_name: unit.unit_name,
       credit_points: coerceInt(unit.credit_points),
+      description,
+      // Omitted when the source said nothing, so the column's own default stands rather than
+      // this write asserting "compulsory" for an elective.
+      ...(unitType ? { unit_type: unitType } : {}),
     })
     .returning("id");
   return row.id;
@@ -772,6 +883,33 @@ async function currencyRef() {
   }
   currencyRefCache = { codes, bySymbol, symbolsFor, allSymbols: new Set(symbolCurrencies.keys()) };
   return currencyRefCache;
+}
+
+/** Empty = the job wants every level. */
+const jobLevelsCache = new Map<string, Set<string>>();
+
+async function jobDegreeLevels(jobId: string): Promise<Set<string>> {
+  const cached = jobLevelsCache.get(jobId);
+  if (cached) return cached;
+  const row = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first("degree_level_codes");
+  const set = new Set<string>(row?.degree_level_codes ?? []);
+  jobLevelsCache.set(jobId, set);
+  return set;
+}
+
+export async function isCourseInScope(jobId: string, levelCode: string | null): Promise<boolean> {
+  const wanted = await jobDegreeLevels(jobId);
+  return wanted.size === 0 || !levelCode || wanted.has(levelCode);
+}
+
+// A course with no level is kept — it can't be judged.
+async function skipOutOfScope(jobId: string, course: ExtractedCourse, levelCode: string | null) {
+  if (await isCourseInScope(jobId, levelCode)) return false;
+  linkLogger.info("skipped — outside the job's degree levels", {
+    jobId, course: course.name, degree_level_code: levelCode,
+    job_wants: [...(await jobDegreeLevels(jobId))],
+  });
+  return true;
 }
 
 const jobCurrencyCache = new Map<string, string | null>();
@@ -1355,9 +1493,12 @@ export async function resolveCourseLookups(course: ExtractedCourse): Promise<Cou
  * match (with the raw text that didn't), `info` when both landed. The DB-wide view of the same
  * question is the verify worker's `lookup_links_verified` job event.
  */
-function logLookupLink(jobId: string, courseId: string, course: ExtractedCourse, link: CourseLookupLink) {
+function logLookupLink(
+  jobId: string, courseId: string, course: ExtractedCourse, link: CourseLookupLink, inScope = true,
+) {
   const entry = {
     jobId, courseId, course: course.name,
+    ...(inScope ? {} : { in_scope: false }),
     degree_level: link.degree_level_code
       ? { linked: true, raw: course.degree_level ?? null, name: link.degree_level, slug: link.degree_level_code }
       : { linked: false, raw: course.degree_level ?? null },
@@ -1365,11 +1506,12 @@ function logLookupLink(jobId: string, courseId: string, course: ExtractedCourse,
       ? { linked: true, subject: course.subject_area ?? null, area_pick: course.area_of_study ?? null, slug: link.subject_area_code }
       : { linked: false, subject: course.subject_area ?? null, area_pick: course.area_of_study ?? null },
   };
-  if (link.degree_level_code && link.subject_area_code) linkLogger.info("linked", entry);
+  if (!inScope) linkLogger.warn("outside the job's degree levels", entry);
+  else if (link.degree_level_code && link.subject_area_code) linkLogger.info("linked", entry);
   else linkLogger.warn("unlinked", entry);
 }
 
-export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string> {
+export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string | null> {
   // ── Dedup: check if this course name already exists for this job ──
   // Both sides MUST apply the same normalisation as normaliseCourseName(). A bare
   // LOWER(TRIM(name)) keeps the trailing ")" that the JS side strips, so "Nursing BSc (Hons)"
@@ -1394,6 +1536,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // matches nothing leaves the code null — the course stays unlinked and shows up in the link
   // log and the verify worker's link check rather than being guessed at or inventing a lookup row.
   const link = await resolveCourseLookups(course);
+  if (await skipOutOfScope(jobId, course, link.degree_level_code)) return null;
 
   if (existing) {
     courseId = existing.id;
@@ -1431,11 +1574,12 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     } else {
       logger.info("Skipped duplicate course (no new data)", { jobId, courseId, name: course.name });
     }
-    logLookupLink(jobId, courseId, course, {
+    const merged = {
       ...link,
       degree_level_code: link.degree_level_code ?? existing.degree_level_code,
       subject_area_code: link.subject_area_code ?? existing.subject_area_code,
-    });
+    };
+    logLookupLink(jobId, courseId, course, merged, await isCourseInScope(jobId, merged.degree_level_code));
   } else {
     // ── Insert new course ──
     const courseInsert: Record<string, unknown> = {
@@ -1461,7 +1605,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
 
     const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
     courseId = courseRow.id;
-    logLookupLink(jobId, courseId, course, link);
+    logLookupLink(jobId, courseId, course, link, await isCourseInScope(jobId, link.degree_level_code));
   }
 
   // ── Fees + assignments ──
@@ -1547,8 +1691,32 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
 
   // ── Study units + assignments ──
   if (course.study_units?.length) {
-    for (const unit of course.study_units) {
-      if (!unit.unit_name) continue;
+    // Which of these "units" are really other courses of this job. Asked as one query over the
+    // candidate names rather than by loading every course name, so a 800-course job costs the
+    // same as a small one.
+    const keys = [...new Set(course.study_units
+      .map((u) => normaliseCourseName(u.unit_name ?? ""))
+      .filter(Boolean))];
+    const NORM_SQL = "regexp_replace(regexp_replace(lower(trim(name)), '\\s+', ' ', 'g'), '[^a-z0-9]+$', '')";
+    const clash: Array<{ k: string }> = keys.length
+      ? await masterKnex(`${S}.extraction_courses`)
+        .where({ job_id: jobId })
+        .whereRaw(`${NORM_SQL} = ANY(?)`, [keys])
+        .select(masterKnex.raw(`${NORM_SQL} as k`))
+      : [];
+    const programmeNames = new Set(clash.map((r) => r.k));
+
+    const { kept, dropped, batchRejected } = filterStudyUnits(
+      course.study_units, course.name, (k) => programmeNames.has(k),
+    );
+    if (dropped.length) {
+      logger.warn("Rejected implausible study units", {
+        jobId, courseId, course: course.name, batchRejected,
+        kept: kept.length, dropped: dropped.length,
+        examples: dropped.slice(0, 5),
+      });
+    }
+    for (const unit of kept) {
       const unitId = await upsertStudyUnit(jobId, unit);
       await masterKnex(`${S}.extraction_course_study_unit_assignments`)
         .insert({ job_id: jobId, course_id: courseId, study_unit_id: unitId })
@@ -1896,7 +2064,20 @@ export async function updateVisaServiceById(id: string, service: Partial<Extract
  * ponytail: the cap check isn't serialized against concurrent inserts — racing workers
  * can overshoot by a few rows, fine for a billing guardrail.
  */
+// The unique index is on the exact string, so "/programs" and "/programs/" queued twice.
+function normaliseQueueUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    if (u.pathname.length > 1 && u.pathname.endsWith("/")) u.pathname = u.pathname.replace(/\/+$/, "");
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export async function insertQueueItem(jobId: string, url: string): Promise<string | null> {
+  url = normaliseQueueUrl(url);
   const { rows } = await masterKnex.raw(
     `INSERT INTO ${S}.extraction_queue (job_id, url, status)
      SELECT :jobId, :url, 'pending'

@@ -3,6 +3,7 @@
 import OpenAI from "openai";
 import { config } from "../../config.js";
 import { createChildLogger } from "../logger.js";
+import { parseModelJson } from "./parse-model-json.js";
 
 const logger = createChildLogger("llm-fallback");
 
@@ -126,8 +127,13 @@ export async function orExtractJson<T>(opts: {
     temperature: 0,
   });
   const text = res.choices[0]?.message.content ?? "";
-  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  return JSON.parse(cleaned) as T;
+  const { value, via } = parseModelJson<T>(text);
+  if (value === null) {
+    logger.error("OpenRouter returned invalid JSON", { raw: text.slice(0, 500), length: text.length });
+    throw new Error("LLM returned invalid JSON");
+  }
+  if (via !== "direct") logger.warn("Repaired OpenRouter JSON", { via, length: text.length });
+  return value;
 }
 
 /** Streaming multi-turn chat. Mirrors gemini-stream.ts `streamChat()` contract. */

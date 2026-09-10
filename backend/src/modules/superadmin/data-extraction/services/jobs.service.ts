@@ -1,6 +1,6 @@
 // Extraction jobs service — CRUD, status transitions, pipeline control.
 
-import { NotFoundError, ConflictError } from "../../../../shared/errors.js";
+import { NotFoundError, ConflictError, BadRequestError } from "../../../../shared/errors.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
@@ -8,6 +8,7 @@ import { buildPaginatedResponse, type PaginationInput } from "../../../../shared
 import { logAudit } from "../shared/audit.js";
 import { withActorNames, withActorNamesOne } from "../shared/actor-names.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
+import { loadLookupLists } from "../lib/lookup-catalog.js";
 import * as repo from "../repositories/jobs.repository.js";
 import * as coursesRepo from "../repositories/courses.repository.js";
 import * as reviewRepo from "../repositories/review.repository.js";
@@ -130,8 +131,21 @@ function conflictFor(existing: {
   });
 }
 
+async function validateDegreeLevelCodes(codes: string[]): Promise<string[]> {
+  const { levels } = await loadLookupLists();
+  const seeded = new Set(levels.map((l) => l.slug));
+  const kept = [...new Set(codes)].filter((c) => seeded.has(c));
+  if (!kept.length) {
+    throw new BadRequestError("None of the selected degree levels exist. Pick from the list.");
+  }
+  return kept;
+}
+
 export async function createJob(input: CreateJobInput, adminId: number) {
   const host = repo.normaliseHost(input.institution_url);
+  const degree_level_codes = input.degree_level_codes?.length
+    ? await validateDegreeLevelCodes(input.degree_level_codes)
+    : undefined;
 
   const row = await masterKnex.transaction(async (trx) => {
     if (host) await repo.lockInstitutionHost(host, trx);
@@ -140,7 +154,7 @@ export async function createJob(input: CreateJobInput, adminId: number) {
     if (existing) throw conflictFor(existing);
 
     // The signed-in admin owns the job — the list shows them as the extractor.
-    return repo.insertJob({ ...input, created_by_platform_user_id: adminId }, trx);
+    return repo.insertJob({ ...input, degree_level_codes, created_by_platform_user_id: adminId }, trx);
   });
   await logAudit(adminId, "EXTRACTION_JOB_CREATE", {
     entityType: "extraction_jobs",

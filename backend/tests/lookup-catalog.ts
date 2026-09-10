@@ -154,6 +154,49 @@ eq(lvl("Other", "Anthropology Ph.D."), "doctoral", "the name beats a vague 'Othe
 eq(lvl("Graduate Certificate", "Certificate in Clinical Education"), "graduate_diploma", "a more specific model answer wins over a bare 'Certificate'");
 eq(lvl("Certificate", "Certificate in Clinical Education"), "certificate", "…but not when the model also just said Certificate");
 
+// ── Every seeded level must be reachable from a real course name ──
+// Selecting a level is useless if nothing can resolve INTO it.
+eq(lvl(null, "Primary School Studies"), "school", "school");
+eq(lvl(null, "Certificate IV in Business"), "certificate", "certificate");
+eq(lvl(null, "Diploma of Nursing"), "diploma", "diploma");
+eq(lvl(null, "Advanced Diploma of Engineering"), "advance_diploma", "advance diploma");
+eq(lvl(null, "Undergraduate Minor in Music"), "non_aqf_award", "non-award");
+eq(lvl(null, "Bachelor of Science in Nursing"), "bachelor", "bachelor");
+eq(lvl(null, "Graduate Certificate in Data Analytics"), "graduate_diploma", "graduate diploma");
+eq(lvl(null, "Master of Business Administration"), "master", "master");
+eq(lvl(null, "Master of Philosophy in History"), "master_research", "research master");
+eq(lvl(null, "Doctor of Philosophy in Chemistry"), "doctoral", "doctoral");
+
+// A school qualification almost always has "certificate" in its name, and the bare certificate
+// row used to swallow every one of them — so picking High School matched nothing real.
+eq(lvl(null, "Year 12 Certificate of Education"), "high_school", "Year 12 Certificate is a school qualification");
+eq(lvl(null, "Higher School Certificate"), "high_school", "the NSW HSC");
+eq(lvl(null, "Victorian Certificate of Education"), "high_school", "the VCE");
+eq(lvl(null, "Western Australian Certificate of Education"), "high_school", "the WACE");
+eq(lvl(null, "Queensland Certificate of Education"), "high_school", "the QCE");
+eq(lvl(null, "General Certificate of Education"), "high_school", "the UK GCE");
+// …but a BARE "certificate of education" is the tertiary CertEd, and a name match outranks the
+// model's own answer, so matching it here would silently override a correct "Certificate".
+eq(lvl(null, "Certificate of Education"), "certificate", "the tertiary CertEd stays a certificate");
+eq(lvl(null, "Certificate in Education"), "certificate", "…however it is worded");
+eq(lvl("Certificate", "Professional Certificate of Education"), "certificate", "a model-stated Certificate is not overridden");
+eq(lvl(null, "General Certificate of Secondary Education"), "high_school", "the GCSE");
+// …without dragging real certificates or teaching qualifications with it.
+eq(lvl(null, "Certificate III in Aged Care"), "certificate", "an AQF certificate is untouched");
+eq(lvl(null, "Advanced Diploma of Primary School Teaching"), "advance_diploma", "a teaching diploma stays a diploma");
+eq(lvl(null, "Master of Teaching (Secondary)"), "master", "…and a teaching master stays a master");
+
+// ── An ADMIN edit resolves from the pick alone ──
+// normaliseCoursePatch passes name: "" precisely so the course NAME cannot act as a fallback.
+// With the name in play, clearing the picker on "Bachelor of Nursing" re-derived `bachelor` and
+// the admin could never remove the link.
+eq(lvl(null, "Bachelor of Nursing"), "bachelor", "extraction: the name is a fallback");
+eq(lvl(null, ""), null, "admin edit: no name, so a cleared pick stays cleared");
+eq(area(null, null, ""), null, "…and the same for the area");
+eq(lvl("Master", ""), "master", "a picked level still applies");
+eq(area("health_medicine", null, ""), "health_medicine", "the picker's slug still applies");
+eq(lvl("Not A Level", ""), null, "an unmatched pick clears rather than guessing");
+
 // ── Empty lists (seeders never run) must not crash or link ──
 const EMPTY: LookupLists = { areas: [], levels: [] };
 eq(resolveAreaOfStudy(EMPTY, "Health and Medicine"), null, "no seeded areas → nothing links");

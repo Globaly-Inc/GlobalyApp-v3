@@ -122,3 +122,33 @@ export async function assertPublicUrl(
   }
   return url;
 }
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * fetch() with the guard applied to EVERY hop.
+ *
+ * assertPublicUrl before a request is not enough on its own: fetch follows redirects by default,
+ * so a public URL answering 302 http://169.254.169.254/ reaches the metadata endpoint with the
+ * check already passed. Redirects are followed manually here so each hop is validated, which also
+ * closes the DNS-rebind window between check and connect for every hop after the first.
+ */
+export async function safeFetch(
+  input: string,
+  init: RequestInit = {},
+  opts: { maxRedirects?: number } = {},
+): Promise<Response> {
+  const maxRedirects = opts.maxRedirects ?? 5;
+  let current = input;
+
+  for (let hop = 0; ; hop++) {
+    await assertPublicUrl(current);
+    const res = await fetch(current, { ...init, redirect: "manual" });
+    if (!REDIRECT_STATUSES.has(res.status)) return res;
+
+    const location = res.headers.get("location");
+    if (!location) return res;
+    if (hop >= maxRedirects) throw new UnsafeUrlError("Too many redirects");
+    current = new URL(location, current).toString();
+  }
+}

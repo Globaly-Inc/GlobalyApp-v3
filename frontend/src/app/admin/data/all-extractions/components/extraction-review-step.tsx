@@ -16,6 +16,7 @@ export function ExtractionReviewStep({
   guidedUrlCategories,
   guidedUrls,
   guidanceNotes,
+  degreeLevels,
 }: Readonly<{
   businessLabel: string;
   serviceLabel: string;
@@ -26,6 +27,7 @@ export function ExtractionReviewStep({
   guidedUrlCategories: readonly GuidedUrlCategory[];
   guidedUrls: Record<string, string[]>;
   guidanceNotes: string;
+  degreeLevels: string[];
 }>) {
   return (
     <div className="flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1 text-sm">
@@ -40,6 +42,12 @@ export function ExtractionReviewStep({
         label={isVisaServiceSource ? "Sample service page URL" : "Sample course page URL"}
         value={sampleCourseUrl.trim()}
       />
+      {!isVisaServiceSource && (
+        <SummaryRow
+          label="Degree levels to extract"
+          value={degreeLevels.length ? degreeLevels.join(", ") : "All levels"}
+        />
+      )}
 
       {guidedUrlCategories.map(({ key, label }) => (
         <SummaryRow key={key} label={`${label} page URLs`} value={cleanUrls(guidedUrls[key])} />
