@@ -113,21 +113,28 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
 
         <div className="flex items-center gap-2 mt-2">
           <div className="flex items-center gap-1 bg-slate-100 rounded-full p-1 flex-shrink-0">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setMode(m.id)}
-                aria-pressed={mode === m.id}
-                className={cn(
-                  "flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium transition-colors duration-200 cursor-pointer",
-                  mode === m.id ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-900",
-                )}
-              >
-                <m.Icon className="h-4 w-4" />
-                <span>{m.label}</span>
-              </button>
-            ))}
+            {MODES.map((m) => {
+              // Only the selected Ask AI gets the gradient: on the unselected pill it would be
+              // colour competing with the mode actually in use, and Search is not the AI feature.
+              const gradient = mode === m.id && m.id === "ai";
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMode(m.id)}
+                  aria-pressed={mode === m.id}
+                  className={cn(
+                    "flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium transition-colors duration-200 cursor-pointer",
+                    mode === m.id ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-900",
+                  )}
+                >
+                  {/* The glyph is stroked, not filled, so it cannot take the clipped gradient —
+                      it holds the ramp's opening cyan instead and the text carries on from there. */}
+                  <m.Icon className={cn("h-4 w-4", gradient && "text-[hsl(196_88%_38%)]")} />
+                  <span className={cn(gradient && "ai-gradient-text")}>{m.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex-1" />

@@ -57,15 +57,11 @@ export function BusinessCard({ business }: Readonly<{ business: SearchBusiness }
 
         {/* ── Right: CTAs ──────────────────────────────────────────────── */}
         {/* Nothing sits above the CTA here, so the button hangs off the bottom rather than
-            floating mid-rail. View Profile is gone: the card-wide Link already opens it. */}
+            floating mid-rail. */}
         <div className="w-full sm:w-44 sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-border p-5 flex flex-col justify-end">
-          {/* business_id is a real enquiry target (POST /enquiries validates and stores it), so
-              the enquiry the visitor starts stays attached to the listing they clicked. */}
-          <Link
-            href={business.enquiry_enabled ? `/personal/enquiries?business_id=${business.id}` : "/personal/enquiries"}
-            className="pointer-events-auto"
-          >
-            <Button size="sm" className="w-full text-xs h-9">Enquiry</Button>
+          {/* Same destination as the card-wide overlay Link — the button just states it. */}
+          <Link href={profileHref} className="pointer-events-auto">
+            <Button size="sm" className="w-full text-xs h-9">View Details</Button>
           </Link>
         </div>
       </div>

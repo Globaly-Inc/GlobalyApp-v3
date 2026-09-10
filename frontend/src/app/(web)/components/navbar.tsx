@@ -22,6 +22,7 @@ import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
 import { LOGO, LOGO_WHITE } from "@/lib/public-assets";
+import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
 import { NAV_LINKS } from "../const/index";
 
 /** Where a signed-in user's own profile lives. */
@@ -117,7 +118,7 @@ export function Navbar() {
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
                     Personal Portal
                   </DropdownMenuItem>
                   <DropdownMenuItem
@@ -210,7 +211,7 @@ export function Navbar() {
                           nativeButton={false}
                           render={
                             <Link
-                              href={"/personal/portal"}
+                              href={PERSONAL_PORTAL_HOME}
                               onClick={() => setMobileOpen(false)}
                             />
                           }

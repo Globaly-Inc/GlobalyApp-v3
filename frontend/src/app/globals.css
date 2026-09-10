@@ -55,7 +55,7 @@
 }
 
 :root {
-  /* Globaly Editorial Red Design System — ported verbatim from GlobalyApp-V2 */
+  /* Globaly Editorial Design System — ported from GlobalyApp-V2, recolored from the original red/maroon brand to #012E8A */
   /* Cloud white, matching GlobalyOS's `--background: 210 20% 99%`: a hair off pure white, so white cards,
      the header and the sidebar read as surfaces on a page instead of merging into it. */
   --background: hsl(210 20% 99%);
@@ -64,19 +64,21 @@
   --card-foreground: hsl(222 47% 11%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(222 47% 11%);
-  --primary: hsl(0 63% 31%);
+  /* The brand colour, literal rather than hsl(220 99% 27%): that triple rounds
+     to #012e89 once compiled, a step off the specified hex. */
+  --primary: #012E8A;
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(0 30% 96%);
-  --secondary-foreground: hsl(0 63% 31%);
+  --secondary: hsl(220 30% 96%);
+  --secondary-foreground: #012E8A;
   --muted: hsl(210 17% 96%);
   --muted-foreground: hsl(215 16% 47%);
-  --accent: hsl(0 86% 80%);
-  --accent-foreground: hsl(0 63% 25%);
+  --accent: hsl(220 86% 80%);
+  --accent-foreground: hsl(220 99% 22%);
   --destructive: hsl(0 84% 60%);
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(215 16% 90%);
   --input: hsl(215 16% 90%);
-  --ring: hsl(0 63% 31%);
+  --ring: #012E8A;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -85,21 +87,24 @@
   --radius: 0.625rem;
   --sidebar: hsl(222 47% 11%);
   --sidebar-foreground: hsl(240 5% 85%);
-  --sidebar-primary: hsl(0 63% 45%);
+  --sidebar-primary: hsl(220 99% 40%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
   --sidebar-accent: hsl(222 30% 18%);
   --sidebar-accent-foreground: hsl(0 0% 95%);
   --sidebar-border: hsl(222 30% 18%);
-  --sidebar-ring: hsl(0 63% 45%);
+  --sidebar-ring: hsl(220 99% 40%);
 
   /* Extra brand tokens — kept as raw "H S% L%" triples (not pre-wrapped in
      hsl()) so ported V2 markup using hsl(var(--token)) works unchanged. */
-  --gold: 38 92% 50%;
-  --gold-foreground: 0 0% 100%;
+  /* The bright accent against the navy brand. Still named --gold for the ported
+     V2 markup that reads it; the value is now the aqua that replaced the gold. */
+  --gold: 187 92% 55%;
+  /* Navy, not white: white on a 55%-lightness aqua is ~1.6:1 and unreadable. */
+  --gold-foreground: 220 99% 27%;
   --navy: 222 47% 11%;
   --navy-foreground: 0 0% 95%;
-  --purple-dark: 0 63% 20%;
-  --purple-deep: 0 63% 14%;
+  --purple-dark: 220 99% 18%;
+  --purple-deep: 220 99% 12%;
 
   /* The heading face. A plain custom property rather than a @theme token, so it
      survives to runtime: layout.tsx and applyThemeSettings reassign this when a
@@ -114,7 +119,7 @@
   --card-foreground: hsl(240 5% 95%);
   --popover: hsl(222 47% 11%);
   --popover-foreground: hsl(240 5% 95%);
-  --primary: hsl(0 70% 50%);
+  --primary: hsl(220 90% 50%);
   --primary-foreground: hsl(0 0% 100%);
   --secondary: hsl(222 30% 18%);
   --secondary-foreground: hsl(240 5% 90%);
@@ -126,7 +131,7 @@
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(222 30% 22%);
   --input: hsl(222 30% 22%);
-  --ring: hsl(0 70% 50%);
+  --ring: hsl(220 90% 50%);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -134,19 +139,22 @@
   --chart-5: oklch(0.269 0 0);
   --sidebar: hsl(222 47% 8%);
   --sidebar-foreground: hsl(240 5% 85%);
-  --sidebar-primary: hsl(0 70% 50%);
+  --sidebar-primary: hsl(220 90% 50%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
   --sidebar-accent: hsl(222 30% 14%);
   --sidebar-accent-foreground: hsl(0 0% 95%);
   --sidebar-border: hsl(222 30% 14%);
-  --sidebar-ring: hsl(0 70% 50%);
+  --sidebar-ring: hsl(220 90% 50%);
 
-  --gold: 38 92% 50%;
-  --gold-foreground: 0 0% 100%;
+  /* The bright accent against the navy brand. Still named --gold for the ported
+     V2 markup that reads it; the value is now the aqua that replaced the gold. */
+  --gold: 187 92% 55%;
+  /* Navy, not white: white on a 55%-lightness aqua is ~1.6:1 and unreadable. */
+  --gold-foreground: 220 99% 27%;
   --navy: 222 47% 8%;
   --navy-foreground: 0 0% 95%;
-  --purple-dark: 0 63% 20%;
-  --purple-deep: 0 63% 14%;
+  --purple-dark: 220 99% 18%;
+  --purple-deep: 220 99% 12%;
 }
 
 @layer base {
@@ -196,16 +204,48 @@
 /* ── Ported from GlobalyApp-V2 for the (web) landing page ── */
 @layer components {
   .btn-gold {
-    @apply bg-[hsl(var(--gold))] text-white font-semibold hover:bg-[hsl(38,92%,44%)] transition-colors;
+    @apply bg-[hsl(var(--gold))] text-[hsl(var(--gold-foreground))] font-semibold hover:bg-[hsl(187,88%,47%)] transition-colors;
   }
   .gradient-text {
     /* --primary already stores a complete hsl(...) value (unlike --gold, a
        raw triplet) — wrapping it in hsl() again is invalid and silently
-       drops the whole background shorthand, making the gradient text invisible. */
-    background: linear-gradient(135deg, var(--primary), hsl(var(--gold)));
+       drops the whole background shorthand, making the gradient text invisible.
+
+       The warm end is a mid cyan rather than --gold itself: this runs on the
+       light landing sections, where the full-bright accent lands at ~2:1 and
+       the tail of the heading washes out. */
+    background: linear-gradient(135deg, var(--primary), hsl(190 95% 38%));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+  }
+  /* The four landing heroes lay white type over bright stock footage. They each used
+     a flat navy scrim, which protected the type but flattened the footage into one
+     heavy slab. This wash spends the same light budget differently: the tone travels
+     navy -> cerulean instead of sitting on one value, and two soft blooms imply a
+     light source, so the footage reads as lit rather than dimmed.
+
+     Pair it with .hero-radiant on the section. White-on-video here was already only
+     ~3.4:1 before the wash lightened, and the text-shadow that class adds is what
+     holds the copy legible over the bright frames the video passes through. */
+  .hero-wash {
+    background:
+      radial-gradient(ellipse 85% 55% at 50% 4%, hsl(188 95% 72% / 0.3), transparent 62%),
+      radial-gradient(ellipse 65% 55% at 92% 102%, hsl(203 92% 55% / 0.38), transparent 60%),
+      linear-gradient(
+        152deg,
+        hsl(226 92% 15% / 0.86) 0%,
+        hsl(219 90% 24% / 0.7) 34%,
+        hsl(206 86% 34% / 0.56) 68%,
+        hsl(192 84% 44% / 0.46) 100%
+      );
+  }
+  /* Scoped to h1/p rather than every descendant: UnifiedSearchBar sits inside the
+     same copy wrapper and its light-background controls must not inherit this. */
+  .hero-radiant :is(h1, h2, p) {
+    text-shadow:
+      0 1px 2px hsl(224 92% 6% / 0.45),
+      0 2px 22px hsl(224 92% 6% / 0.55);
   }
   .highlight-text {
     position: relative;
@@ -401,11 +441,15 @@
     position: relative;
   }
   /*
-   * Both layers carry the same sweep. Six hue stops rather than three: the halo in the
+   * Both layers carry the same sweep. A dozen hue stops rather than three: the halo in the
    * reference reads as a continuous run of colour, and with a couple of stops a conic gradient
-   * spends most of its circumference on one hue. These are the brand's own family lifted into
-   * the 55-62% lightness range — a 31% maroon cannot glow — closing on gold so the loop has no
-   * seam.
+   * spends most of its circumference on one hue. The run is the vibrant half of the wheel —
+   * cyan, blue, violet, magenta, pink, coral — kept in the 58-67% lightness range, since
+   * neither a 27% navy nor a 55% ember can glow.
+   *
+   * The back half mirrors the front back to cyan, which buys two things: the loop closes on
+   * the opening hue so there is no seam, and the wrap never interpolates coral straight into
+   * cyan, which in sRGB crosses a grey-olive dead zone.
    */
   .ai-ring::before,
   .ai-ring::after {
@@ -414,18 +458,20 @@
     border-radius: inherit;
     background: conic-gradient(
       from var(--ai-ring-angle),
-      hsl(0 68% 64%) 0deg,
-      hsl(350 78% 76%) 48deg,
-      hsl(336 68% 84%) 96deg,
-      hsl(320 56% 74%) 140deg,
-      hsl(302 48% 64%) 182deg,
-      hsl(330 70% 80%) 220deg,
-      /* the glint: 10deg of light rose, the brightest point of the sweep */
-      hsl(6 96% 92%) 244deg,
-      hsl(6 96% 92%) 254deg,
-      hsl(348 76% 78%) 274deg,
-      hsl(10 70% 66%) 312deg,
-      hsl(0 68% 64%) 360deg
+      hsl(188 92% 58%) 0deg,
+      hsl(210 94% 63%) 36deg,
+      hsl(248 88% 67%) 72deg,
+      hsl(288 80% 63%) 108deg,
+      hsl(322 90% 65%) 144deg,
+      hsl(348 94% 65%) 176deg,
+      /* the glint: 12deg of pale apricot, the brightest point of the sweep */
+      hsl(24 98% 82%) 196deg,
+      hsl(24 98% 82%) 208deg,
+      hsl(10 96% 67%) 228deg,
+      hsl(338 92% 65%) 260deg,
+      hsl(296 80% 63%) 292deg,
+      hsl(224 92% 65%) 324deg,
+      hsl(188 92% 58%) 360deg
     );
     animation: ai-ring-spin 6s linear infinite;
     pointer-events: none;
@@ -456,6 +502,28 @@
     z-index: -1;
     filter: blur(7px);
     opacity: 0.4;
+  }
+
+  /* The "Ask AI" label, painted with the same hue run as the ring around the card it sits in.
+     Text is the one place the ring's own 58-67% lightness cannot be reused: at 14px on white
+     those stops land near 2.5:1. This ramp is the same cyan → blue → violet → pink path taken
+     30-40% darker, so every stop clears 4.5:1 and the sweep still reads as colour rather than
+     as a muddy near-black.
+
+     background-clip: text needs a transparent foreground to show through, so anything that
+     must stay solid — the Sparkles glyph, whose stroke follows currentColor — sets its own
+     colour rather than inheriting from here. */
+  .ai-gradient-text {
+    background-image: linear-gradient(
+      100deg,
+      hsl(192 88% 34%) 0%,
+      hsl(220 88% 46%) 30%,
+      hsl(268 78% 50%) 62%,
+      hsl(326 84% 45%) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 }
 

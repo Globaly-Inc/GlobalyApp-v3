@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 // wants a styled hover (same call as chat-sidebar.tsx).
 const MAX_CHIPS = 4;
 
-// Slate, not the `secondary` variant's pale red: a campus city is neutral metadata, and the
+// Slate, not the `secondary` variant's pale blue: a campus city is neutral metadata, and the
 // brand tint made these read as status. twMerge drops the variant's bg-secondary for bg-slate-100.
 const CHIP = "border-slate-200 bg-slate-100 font-normal text-slate-700";
 
