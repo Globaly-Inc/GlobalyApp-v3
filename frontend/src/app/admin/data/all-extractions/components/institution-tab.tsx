@@ -14,6 +14,9 @@ import { geoApi } from "@/app/geo/apis";
 import { allExtractionsApi } from "../apis";
 import { EditableField, type EditableFieldProps } from "./editable-field";
 import { RowActors } from "./row-actors";
+import { LogoPreview } from "./logo-preview";
+import { OtherSocialLinksField } from "./other-social-links-field";
+import { OwnershipTypeField } from "./ownership-type-field";
 import type { InstitutionOverview } from "../apis/types";
 
 export type InstitutionTabProps = Readonly<{
@@ -142,7 +145,7 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
   const noun = isVisaServiceJob ? "business" : "institution";
 
   // Inline edits go through save-and-learn so corrections also train the extractor.
-  const saveField = async (column: string, next: string | null) => {
+  const saveField = async (column: string, next: string | string[] | { label: string; url: string }[] | null) => {
     if (!overview) return;
     try {
       await allExtractionsApi.saveAndLearn({
@@ -196,7 +199,7 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
           <Building2 className="h-4 w-4 text-primary" />
           {isVisaServiceJob ? "Business" : "Institution"} Details
         </CardTitle>
-        <CardAction>
+        <CardAction className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             Re-run
@@ -205,13 +208,11 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-start gap-4">
-          {overview.logo_url && (
-            // eslint-disable-next-line @next/next/no-img-element -- extracted logos are arbitrary remote hosts
-            <img src={overview.logo_url} alt="" className="h-16 w-16 shrink-0 rounded-xl border object-contain p-1" />
-          )}
+          {overview.logo_url && <LogoPreview src={overview.logo_url} />}
           <div className="grid flex-1 grid-cols-1 gap-2.5 md:grid-cols-2">
             <Field icon={Type} label="Name" value={overview.name} onSave={(v) => saveField("name", v)} />
             <Field icon={Globe} label="Website" value={overview.website} onSave={(v) => saveField("website", v)} />
+            <OwnershipTypeField value={overview.ownership_type} onSave={(v) => saveField("ownership_type", v)} />
             <Field icon={Image} label="Logo URL" value={overview.logo_url} onSave={(v) => saveField("logo_url", v)} className="md:col-span-2" />
           </div>
         </div>
@@ -226,7 +227,7 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
           <Field icon={Building2} label="City" value={overview.city} onSave={(v) => saveField("city", v)} />
           <Field icon={MapPin} label="State" value={overview.state} onSave={(v) => saveField("state", v)} />
           <Field icon={Hash} label="Zip / Postcode" value={overview.zip_code} onSave={(v) => saveField("zip_code", v)} />
-          <Field icon={MapPin} label="Address" value={overview.address} onSave={(v) => saveField("address", v)} multiline className="md:col-span-2" />
+          <Field icon={MapPin} label="Address Line" value={overview.address} onSave={(v) => saveField("address", v)} multiline className="md:col-span-2" />
           <Field icon={FileText} label="Description" value={overview.description} onSave={(v) => saveField("description", v)} multiline className="md:col-span-2" />
         </Section>
 
@@ -236,6 +237,7 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
           <Field icon={Link2} label="Twitter" value={overview.twitter_url} onSave={(v) => saveField("twitter_url", v)} />
           <Field icon={Link2} label="LinkedIn" value={overview.linkedin_url} onSave={(v) => saveField("linkedin_url", v)} />
           <Field icon={Link2} label="YouTube" value={overview.youtube_url} onSave={(v) => saveField("youtube_url", v)} />
+          <OtherSocialLinksField value={overview.other_social_links} onSave={(v) => saveField("other_social_links", v)} />
         </Section>
 
         <RowActors row={overview} className="border-t border-border pt-3" />

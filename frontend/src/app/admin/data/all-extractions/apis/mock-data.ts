@@ -24,6 +24,7 @@ import type {
   JunctionSlug,
   LibraryAccreditation,
   LibraryAccreditationInput,
+  MissingDetailCandidate,
   Paginated,
   QueueItem,
   StudyOption,
@@ -35,7 +36,7 @@ import type {
   VisaService,
 } from "./types";
 
-import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type { ExtractionStatus, GetJobsParams, GetJobsResult } from "./types";
 
@@ -84,10 +85,6 @@ let mockJobs: ExtractionJob[] = [
   { id: "23", institution_name: "Queensland University of Technology (QUT)", institution_url: "https://qut.edu.au", status: "done", total_pages_found: 65, courses_extracted: 58, verification_score: 55, verification_total: 58, pages_scraped: 65, pages_failed: 0, agent_count: 2, created_at: "2026-06-10T09:00:00Z", updated_at: "2026-06-10T09:00:00Z" },
 ];
 
-function rawStatusesForLabel(label: string): ExtractionStatus[] {
-  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
-}
-
 export const allExtractionsMockApi = {
   getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
     console.log("[mock] GET /admin/data-extraction/jobs-filtered", params);
@@ -96,7 +93,7 @@ export const allExtractionsMockApi = {
     const baseStatuses = MODE_STATUS_FILTER[params.mode];
     const statuses =
       params.statusLabel && params.statusLabel !== "all"
-        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        ? statusesForFilterValue(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
         : baseStatuses;
 
     let filtered = statuses ? mockJobs.filter((j) => statuses.includes(j.status)) : [...mockJobs];
@@ -461,6 +458,28 @@ export const allExtractionsMockApi = {
   saveAndLearn: async (params: { table: EditableTable; id: string; patch: Record<string, unknown>; job_id?: string; source_url?: string }): Promise<void> => {
     console.log("[mock] POST save-and-learn", params);
     await delay(200);
+  },
+
+  findMissingInstitutionDetails: async (jobId: string): Promise<{ fields: MissingDetailCandidate[] }> => {
+    console.log("[mock] POST find-missing-institution-details", jobId);
+    await delay(600);
+    return {
+      fields: [
+        { field: "email", label: "Email", value: "admissions@example.edu", source_url: "https://example.edu/contact" },
+        { field: "phone", label: "Phone", value: "+1 555 0100", source_url: "https://example.edu/contact" },
+      ],
+    };
+  },
+
+  findMissingCampusDetails: async (campusId: string): Promise<{ fields: MissingDetailCandidate[] }> => {
+    console.log("[mock] POST campus find-missing-details", campusId);
+    await delay(600);
+    return {
+      fields: [
+        { field: "postcode", label: "Postcode", value: "94305", source_url: null },
+        { field: "map_link", label: "Map link", value: "https://www.google.com/maps/search/?api=1&query=37.4275,-122.1697", source_url: null },
+      ],
+    };
   },
 
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
@@ -852,11 +871,13 @@ export const allExtractionsMockApi = {
             phone: "+1 555 0100",
             address: null,
             zip_code: null,
+            ownership_type: null,
             facebook_url: null,
             instagram_url: null,
             twitter_url: null,
             linkedin_url: null,
             youtube_url: null,
+            other_social_links: null,
             updated_at: now,
           }
         : null,

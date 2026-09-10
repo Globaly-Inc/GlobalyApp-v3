@@ -12,7 +12,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown, scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
-import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
   institutionExtractionPrompt, INSTITUTION_EXTRACTION_SYSTEM,
@@ -59,6 +59,7 @@ import {
 } from "../lib/staging-writer.js";
 import { coercePartialDate } from "../lib/partial-date.js";
 import { parseAddress } from "../lib/address-parser.js";
+import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
 import { normalizeAgentRow } from "../lib/agent-normalizers.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { detectAgentSource } from "../lib/agent-sources/index.js";
@@ -158,6 +159,44 @@ async function findContactLink(markdown: string, links: string[], origin: string
   if (await resolvesToPrivateHost(url.hostname)) return null;
 
   return candidate;
+}
+
+type SocialLink = { label: string; url: string };
+
+/** Unions two other_social_links lists, deduping by URL (case-insensitive) — first-seen label
+ * wins so an admin's own label on an existing entry survives a later extraction run. */
+function unionSocialLinks(existing: unknown, incoming: unknown): SocialLink[] {
+  const seen = new Map<string, SocialLink>();
+  for (const list of [existing, incoming]) {
+    if (!Array.isArray(list)) continue;
+    for (const entry of list) {
+      const url = typeof entry === "string" ? entry : entry?.url;
+      if (typeof url !== "string" || !url) continue;
+      const key = url.trim().toLowerCase();
+      if (!seen.has(key)) {
+        const label = typeof entry === "string" ? "Link" : (entry?.label || "Link");
+        seen.set(key, { label, url });
+      }
+    }
+  }
+  return [...seen.values()];
+}
+
+/** Folds one page's institutionExtractionPrompt result into the running `merged` accumulator.
+ * Scalars use first-non-null-wins; the LLM's `other_social_urls` (plural pages can each surface
+ * different links) is unioned into `merged.other_social_links` instead of overwritten. */
+function mergeInstitutionFields(merged: Record<string, unknown>, data: Record<string, unknown>): void {
+  for (const [key, val] of Object.entries(data)) {
+    if (key === "other_social_urls") {
+      if (Array.isArray(val) && val.length) {
+        merged.other_social_links = unionSocialLinks(merged.other_social_links, val);
+      }
+      continue;
+    }
+    if (val != null && val !== "" && (merged[key] == null || merged[key] === "")) {
+      merged[key] = val;
+    }
+  }
 }
 
 function sha1(...parts: (string | null | undefined)[]): string {
@@ -272,15 +311,29 @@ async function handleInstitutionStep(jobId: string) {
 
   const homepage = await scrapeInstitutionPage(baseUrl);
   const discoveredContact = homepage && origin ? await findContactLink(homepage.markdown, homepage.links, origin) : null;
-  const guessContact = origin ? new URL("/contact", origin).href : null;
 
-  const urlsToScrape = [...new Set([
-    baseUrl,
-    ...contactUrls,
-    ...(contactUrls.length === 0 ? [discoveredContact, guessContact].filter((u): u is string => !!u) : []),
-  ])];
+  // Most institution detail (phone/email/address) lives on a Contact page, not the homepage —
+  // try several common paths (cheap markdown scrape, no LLM call yet) and keep the first that
+  // has real content, so a missing "/contact" doesn't silently fall back to homepage-only data.
+  let guessedContact: string | null = null;
+  if (!discoveredContact && contactUrls.length === 0 && origin) {
+    for (const path of ["/contact", "/contact-us", "/about/contact", "/about-us/contact"]) {
+      const candidate = new URL(path, origin).href;
+      if (await scrapeUrl(candidate)) { guessedContact = candidate; break; }
+    }
+  }
 
-  await writeJobEvent(jobId, "step_start", { phase: "institution", message: `Scraping ${urlsToScrape.length} URLs for institution data` });
+  const contactCandidates = contactUrls.length > 0 ? contactUrls : [discoveredContact, guessedContact].filter((u): u is string => !!u);
+  // Cost control: Contact page(s) first (primary source), homepage as fallback, and — only if
+  // still missing required fields after both — a generic /about page as a last resort. Capped
+  // so one job can never run away extracting an unbounded number of pages.
+  const REQUIRED_FIELDS = ["email", "phone", "address"];
+  const MAX_INSTITUTION_PAGES = 4;
+  const candidateQueue = [...new Set([...contactCandidates, baseUrl, origin ? new URL("/about", origin).href : null])]
+    .filter((u): u is string => !!u)
+    .slice(0, MAX_INSTITUTION_PAGES);
+
+  await writeJobEvent(jobId, "step_start", { phase: "institution", message: `Scraping up to ${candidateQueue.length} URLs for institution data` });
 
   // Recall memory
   const domain = domainOf(baseUrl);
@@ -288,36 +341,56 @@ async function handleInstitutionStep(jobId: string) {
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${INSTITUTION_EXTRACTION_SYSTEM}\n\n${addendum}` : INSTITUTION_EXTRACTION_SYSTEM;
 
-  // Scrape the rest in parallel — the homepage was already scraped above, reuse it instead
-  // of scraping it again.
-  const scrapeResults = await Promise.all(
-    urlsToScrape.map((u) =>
-      u === baseUrl ? Promise.resolve(homepage?.markdown ?? null) : scrapeInstitutionPage(u).then((r) => r?.markdown ?? null),
-    ),
-  );
+  // One page at a time (not fetched/extracted in parallel up front) — each iteration can end
+  // the loop early, so a page after the required fields are already filled is never fetched at
+  // all, let alone billed to an LLM call. Contact pages are processed first (and merged first),
+  // so when both a contact page and the homepage state a field, the contact page — a more
+  // authoritative, single-purpose source — wins.
   const scrapedPairs: { url: string; markdown: string }[] = [];
-  for (let i = 0; i < urlsToScrape.length; i++) {
-    if (scrapeResults[i]) scrapedPairs.push({ url: urlsToScrape[i], markdown: scrapeResults[i]! });
+  let merged: Record<string, unknown> = {};
+  const allLinks: string[] = [];
+  for (const url of candidateQueue) {
+    const hasAllRequired = REQUIRED_FIELDS.every((f) => merged[f] != null && merged[f] !== "");
+    if (hasAllRequired) break;
+
+    const page = url === baseUrl ? homepage : await scrapeInstitutionPage(url);
+    if (!page?.markdown) continue;
+    scrapedPairs.push({ url, markdown: page.markdown });
+    if (page.links) allLinks.push(...page.links);
+
+    await heartbeat(jobId);
+    const pageText = truncateMarkdown(page.markdown, 25000);
+    const data = await extractJson<Record<string, unknown>>({
+      system,
+      prompt: institutionExtractionPrompt(url, pageText, job.guidance_notes),
+    });
+    mergeInstitutionFields(merged, data);
   }
 
   if (scrapedPairs.length === 0) {
     throw new Error("Failed to scrape any pages for institution data");
   }
 
-  // LLM per page → merge (first non-null per field)
-  let merged: Record<string, unknown> = {};
-  for (const { url, markdown } of scrapedPairs) {
-    await heartbeat(jobId);
-    const pageText = truncateMarkdown(markdown, 25000);
-    const data = await extractJson<Record<string, unknown>>({
-      system,
-      prompt: institutionExtractionPrompt(url, pageText, job.guidance_notes),
-    });
-    for (const [key, val] of Object.entries(data)) {
-      if (val != null && val !== "" && (merged[key] == null || merged[key] === "")) {
-        merged[key] = val;
-      }
-    }
+  // The scraper's own `links` array (pushed into allLinks above) is derived from the
+  // already-converted MARKDOWN text (extractLinksFromMarkdown in scraper.ts), so it's just
+  // as blind to icon-only anchors (no visible text — a common social-footer pattern) as the
+  // LLM reading that same markdown. One extra raw-HTML fetch of the homepage — footers are
+  // sitewide, so whichever page carries the social bar, the homepage has it too — recovers
+  // every href regardless of visible text. Best-effort: silently proceeds without it if this
+  // fails, since allLinks/the LLM's own answer may still have found something.
+  const { html: homepageHtml } = await scrapeRenderedHtml(baseUrl).catch(() => ({ html: "" }));
+  if (homepageHtml) allLinks.push(...extractHrefsFromHtml(homepageHtml));
+
+  // Deterministic domain-based classification of every raw link seen across the scraped
+  // pages — catches icon-only social footers (no visible anchor text) that markdown
+  // conversion strips before the LLM above ever sees them. Only fills gaps; never
+  // overwrites what the LLM already found from visible page text.
+  const detectedSocial = extractSocialLinks(allLinks);
+  for (const key of ["facebook_url", "instagram_url", "twitter_url", "linkedin_url", "youtube_url"] as const) {
+    if (!merged[key] && detectedSocial[key]) merged[key] = detectedSocial[key];
+  }
+  if (detectedSocial.other_social_links.length) {
+    merged.other_social_links = unionSocialLinks(merged.other_social_links, detectedSocial.other_social_links);
   }
 
   // Process supporting documents (PDFs/files attached to the job)
@@ -331,11 +404,7 @@ async function handleInstitutionStep(jobId: string) {
         system,
         prompt: institutionExtractionPrompt("supporting-documents", docContext, job.guidance_notes),
       });
-      for (const [key, val] of Object.entries(docData)) {
-        if (val != null && val !== "" && (merged[key] == null || merged[key] === "")) {
-          merged[key] = val;
-        }
-      }
+      mergeInstitutionFields(merged, docData);
     }
   }
 
@@ -345,17 +414,59 @@ async function handleInstitutionStep(jobId: string) {
 
   if (existing) {
     for (const [key, val] of Object.entries(existing)) {
-      if (["id", "job_id", "created_at", "updated_at", "source_url"].includes(key)) continue;
+      if (["id", "job_id", "created_at", "updated_at", "source_url", "other_social_links"].includes(key)) continue;
       if ((merged[key] == null || merged[key] === "") && val != null && val !== "") {
         merged[key] = val;
       }
     }
-    merged.source_url = baseUrl;
+    // Union rather than fill-if-empty — an existing link the admin already found (or manually
+    // labeled) should never be dropped just because this run's pages didn't happen to restate it.
+    const unioned = unionSocialLinks(existing.other_social_links, merged.other_social_links);
+    if (unioned.length) merged.other_social_links = unioned;
+  }
+
+  // Last-resort email fallback: only after existing (possibly admin-reviewed) values have
+  // already been restored above, so a same-domain regex hit like privacy@ or webmaster@
+  // never overwrites a real reviewed email — it only fills a field that's genuinely still
+  // empty everywhere (fresh LLM pass AND no prior saved value).
+  if (!merged.email) {
+    const institutionDomain = domainOf(baseUrl);
+    for (const { markdown } of scrapedPairs) {
+      const found = extractDomainEmails(markdown, institutionDomain);
+      if (found.length) { merged.email = found[0]; break; }
+    }
+  }
+
+  // The LLM occasionally "absolutizes" a root-relative asset URL (e.g. Sitecore's
+  // `/-/media/...` convention) by prefixing https:// without the actual domain, producing
+  // a syntactically valid but broken URL like "https://-/media/...". Fix it up against the
+  // institution's own homepage origin, which every root-relative path on this site resolves
+  // against regardless of which scraped page (or even Phase 1's earlier pass) found it.
+  if (typeof merged.logo_url === "string") {
+    merged.logo_url = fixMalformedAbsoluteUrl(merged.logo_url, baseUrl);
+  }
+
+  // The LLM (or the older homepage-only pass) often returns the FULL address ("77 Main St,
+  // Cambridge, MA, USA") in one field instead of just the street line, duplicating city/state/
+  // country the admin already sees in their own fields. Trim it down to the street portion and
+  // pull a postcode out of it if one wasn't found separately.
+  if (typeof merged.address === "string" && merged.address) {
+    const parsed = parseAddress(merged.address, (merged.country as string | undefined) ?? existing?.country);
+    const streetLine = [parsed.street1, parsed.street2].filter(Boolean).join(", ");
+    if (streetLine) merged.address = streetLine;
+    if (!merged.zip_code && parsed.postcode) merged.zip_code = parsed.postcode;
+  }
+
+  merged.source_url = baseUrl;
+  if (existing) {
+    // jsonb column — the insert path (writeInstitutionOverview) stringifies internally, but this
+    // direct .update() doesn't, so it must be done here.
+    const updateData = { ...merged };
+    if (updateData.other_social_links) updateData.other_social_links = JSON.stringify(updateData.other_social_links);
     await masterKnex(`${S}.extraction_institution_overview`).where({ id: existing.id }).update({
-      ...merged, updated_at: masterKnex.fn.now(),
+      ...updateData, updated_at: masterKnex.fn.now(),
     });
   } else {
-    merged.source_url = baseUrl;
     await writeInstitutionOverview(jobId, merged as InstitutionOverview);
   }
 
@@ -379,6 +490,7 @@ async function handleInstitutionStep(jobId: string) {
     message: `Institution data extracted from ${scrapedPairs.length} pages`,
     data: { fields_filled: Object.keys(merged).filter(k => merged[k] != null).length },
   });
+
 }
 
 async function handleBranchesStep(jobId: string) {
@@ -471,19 +583,51 @@ async function handleBranchesStep(jobId: string) {
     }
   }
 
-  // parseAddress on each result for structured fields
+  // parseAddress on each result for structured fields — also trims `address` down to just the
+  // street line instead of the full "street, city, state postcode" string the LLM tends to
+  // return (city/state/postcode already have their own fields), and fills postcode if found.
   for (const campus of allCampuses) {
     if (campus.address) {
       const parsed = parseAddress(campus.address, campus.country);
       if (!campus.city && parsed.city) campus.city = parsed.city;
       if (!campus.state && parsed.state) campus.state = parsed.state;
       if (!campus.country && parsed.country) campus.country = parsed.country;
+      if (!campus.postcode && parsed.postcode) campus.postcode = parsed.postcode;
+      const streetLine = [parsed.street1, parsed.street2].filter(Boolean).join(", ");
+      if (streetLine) campus.address = streetLine;
+    }
+  }
+
+  // Geocode a map link (and postcode, if the address text didn't state one) from the address
+  // now on file — no LLM call, just Google's Geocoding API, so this doesn't add to LLM spend.
+  // Best-effort: a campus keeps going with whatever it already has if geocoding fails.
+  for (const campus of allCampuses) {
+    if (campus.map_link || !campus.address) continue;
+    try {
+      const addressLine = [campus.address, campus.city, campus.state, campus.country].filter(Boolean).join(", ");
+      const geocoded = await geocodeAddress(addressLine);
+      if (geocoded) {
+        campus.map_link = geocoded.mapLink;
+        if (!campus.postcode && geocoded.postcode) campus.postcode = geocoded.postcode;
+      }
+    } catch (e) {
+      logger.warn("Campus geocoding failed, continuing without map link", { name: campus.name, error: e instanceof Error ? e.message : String(e) });
     }
   }
 
   // 3-layer dedup (street filter → name → address)
   const deduped = dedupCampuses(allCampuses);
   logger.info("Campus dedup", { raw: allCampuses.length, final: deduped.length });
+
+  // A branch's own phone/email is frequently never published on its own page — fall back to
+  // the institution's, which the "institution" step already found. Admin can still override.
+  const overview = await masterKnex(`${S}.extraction_institution_overview`).where({ job_id: jobId }).first();
+  if (overview?.phone || overview?.email) {
+    for (const campus of deduped) {
+      if (!campus.phone && overview.phone) campus.phone = overview.phone;
+      if (!campus.email && overview.email) campus.email = overview.email;
+    }
+  }
 
   // Replace existing campuses, re-link junctions
   const idMap = await replaceCampuses(jobId, deduped);

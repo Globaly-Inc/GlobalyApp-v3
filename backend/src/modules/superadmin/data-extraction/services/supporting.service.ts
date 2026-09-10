@@ -5,6 +5,7 @@ import { BadRequestError, NotFoundError } from "../../../../shared/errors.js";
 import { logAudit } from "../shared/audit.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import * as repo from "../repositories/supporting.repository.js";
 import { deriveIntakeMonthYear } from "../lib/staging-writer.js";
@@ -204,6 +205,28 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
       };
       if (derived.intake_month !== row.intake_month || derived.intake_year !== row.intake_year) {
         await repo.patchEntityRow(table, id, derived, adminId);
+      }
+    }
+  }
+
+  // A manually-typed campus address (or city/state/country) never gets a map link otherwise —
+  // extraction-time geocoding and "Find Missing Details" both exist, but a plain inline edit
+  // through this same save-and-learn path had no equivalent. Best-effort: the address edit
+  // still saves even if geocoding fails.
+  if (table === "extraction_campuses" && ("address" in patch || "city" in patch || "state" in patch || "country" in patch)) {
+    const updated = { ...original, ...patch };
+    if (updated.address && !updated.map_link) {
+      const addressLine = [updated.address, updated.city, updated.state, updated.country].filter(Boolean).join(", ");
+      try {
+        const geocoded = await geocodeAddress(addressLine);
+        if (geocoded) {
+          await repo.patchEntityRow(table, id, {
+            map_link: geocoded.mapLink,
+            ...(updated.postcode ? {} : { postcode: geocoded.postcode }),
+          }, adminId);
+        }
+      } catch (e) {
+        logger.warn("Campus geocoding failed after manual address save", { id, error: e instanceof Error ? e.message : String(e) });
       }
     }
   }

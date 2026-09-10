@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Building2, Globe, Hash, Link2, Loader2, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, Type,
+  Building2, Globe, Hash, Link2, Loader2, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, Type, X,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,13 +16,19 @@ import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { BranchForm, type BranchValues } from "./branch-form";
+import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
+import { FindMissingDetailsButton } from "./find-missing-details-button";
+import { LinkCoursesToBranchesDialog } from "./link-courses-to-branches-dialog";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RowActors } from "./row-actors";
-import type { CampusFull, ExtractionJob } from "../apis/types";
+import type { CampusFull, CourseLinks, ExtractionJob } from "../apis/types";
 import type { LucideIcon } from "lucide-react";
 
+type LinkedCourse = { id: string; name: string | null };
+
+const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
 
 // Empty strings would overwrite extracted values with blanks — send nulls instead.
@@ -43,19 +50,33 @@ function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps 
 
 function BranchCard({
   branch,
+  jobId,
   selected,
   onToggleSelect,
   onEdit,
   onDelete,
   onSaveField,
+  onReload,
+  linked,
+  onLinkCourse,
+  onUnlinkCourse,
 }: Readonly<{
   branch: CampusFull;
+  jobId: string;
   selected: boolean;
   onToggleSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onSaveField: (column: string, next: string | null) => Promise<unknown>;
+  onReload: () => void;
+  linked: LinkedCourse[];
+  onLinkCourse: (courseId: string) => void;
+  onUnlinkCourse: (courseId: string) => void;
 }>) {
+  const [editingLinks, setEditingLinks] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
+
   const field = (icon: LucideIcon, label: string, column: keyof CampusFull, span: string, multiline = false) => (
     <Field
       icon={icon}
@@ -77,6 +98,7 @@ function BranchCard({
           <span className="text-sm font-semibold text-foreground">{branch.name || branch.country || "Unnamed branch"}</span>
         </div>
         <div className="flex items-center gap-1">
+          <FindMissingDetailsButton target={{ kind: "campus", campusId: branch.id, jobId }} onApplied={onReload} compact />
           <Button
             variant="ghost"
             size="icon-sm"
@@ -107,10 +129,46 @@ function BranchCard({
           {field(Building2, "City", "city", "col-span-2 md:col-span-2")}
           {field(MapPin, "State", "state", "col-span-2 md:col-span-2")}
           {field(Hash, "Postcode", "postcode", "col-span-2 md:col-span-2")}
-          {field(MapPin, "Address", "address", "col-span-2 md:col-span-6", true)}
+          {field(MapPin, "Address Line", "address", "col-span-2 md:col-span-6", true)}
           {field(Link2, "Map link", "map_link", "col-span-2 md:col-span-6")}
         </div>
         <RowActors row={branch} className="border-t border-border pt-2" />
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+          {visible.map((course) => (
+            <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
+              {course.name ?? "Unnamed course"}
+              {editingLinks && (
+                <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </Badge>
+          ))}
+          {linked.length === 0 && <span className="text-xs text-muted-foreground">Not linked to any course</span>}
+          {linked.length > CHIP_LIMIT && (
+            <Button variant="outline" size="sm" className="h-6 cursor-pointer px-2 text-xs" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? "Show less" : `+${linked.length - CHIP_LIMIT} more`}
+            </Button>
+          )}
+          <Button
+            variant="ghost" size="sm" className="h-6 gap-1 cursor-pointer px-2 text-xs"
+            onClick={() => setEditingLinks((v) => !v)}
+          >
+            <Pencil className="h-3 w-3" />
+            {editingLinks ? "Done" : "Edit"}
+          </Button>
+        </div>
+
+        {editingLinks && (
+          <CourseLinkPicker
+            jobId={jobId}
+            excludeIds={linked.map((c) => c.id)}
+            onSelect={onLinkCourse}
+            className="mt-2 h-8 text-xs"
+          />
+        )}
       </CardContent>
     </Card>
   );
@@ -136,8 +194,33 @@ export function BranchesTab({
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [linkingBranchIds, setLinkingBranchIds] = useState<string[] | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [links, setLinks] = useState<CourseLinks | null>(null);
   const fetchedRef = useRef(false);
+
+  const loadLinks = useCallback(async () => {
+    try {
+      setLinks(await allExtractionsApi.getCourseLinks(jobId));
+    } catch (e) {
+      toast.error("Failed to load course links", { description: (e as Error).message });
+    }
+  }, [jobId]);
+
+  const coursesForBranch = (campusId: string): LinkedCourse[] =>
+    (links?.course_campuses ?? [])
+      .filter((a) => a.campus_id === campusId)
+      .map((a) => ({ id: a.course_id, name: a.course_name }));
+
+  const runLink = async (action: () => Promise<unknown>, success: string) => {
+    try {
+      await action();
+      toast.success(success);
+      await loadLinks();
+    } catch (e) {
+      toast.error("Action failed", { description: (e as Error).message });
+    }
+  };
 
   // Accepts overrides for the same reason study-units-tab.tsx does — setState is async, so a
   // caller that also resets page/search right before reloading needs the new values applied
@@ -162,12 +245,13 @@ export function BranchesTab({
     if (!fetchedRef.current) {
       fetchedRef.current = true;
       load();
+      loadLinks();
       return;
     }
     // Debounce so typing in the search box doesn't fire a request per keystroke.
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [load]);
+  }, [load, loadLinks]);
 
   // A search change invalidates the current page.
   useEffect(() => {
@@ -267,15 +351,26 @@ export function BranchesTab({
             {search.trim() && ` · ${branches.length} on this page`}
           </label>
           {selectedIds.length > 0 && (
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-8 gap-1.5 cursor-pointer"
-              onClick={() => handleDelete(selectedIds)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete {selectedIds.length}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 cursor-pointer"
+                onClick={() => setLinkingBranchIds(selectedIds)}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Link Courses
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-8 gap-1.5 cursor-pointer"
+                onClick={() => handleDelete(selectedIds)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete {selectedIds.length}
+              </Button>
+            </>
           )}
         </div>
         {!adding && (
@@ -290,6 +385,19 @@ export function BranchesTab({
       <Dialog open={adding} onOpenChange={setAdding}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
           <BranchForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingId} onOpenChange={(next) => !next && setEditingId(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
+          {editingId && (
+            <BranchForm
+              branch={branches.find((b) => b.id === editingId)}
+              saving={saving}
+              onCancel={() => setEditingId(null)}
+              onSave={(values) => handleUpdate(editingId, values)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -311,27 +419,26 @@ export function BranchesTab({
           </Card>
         )}
 
-        {branches.map((branch) =>
-          editingId === branch.id ? (
-            <BranchForm
-              key={branch.id}
-              branch={branch}
-              saving={saving}
-              onCancel={() => setEditingId(null)}
-              onSave={(values) => handleUpdate(branch.id, values)}
-            />
-          ) : (
+        {branches.map((branch) => (
             <BranchCard
               key={branch.id}
               branch={branch}
+              jobId={jobId}
               selected={selectedIds.includes(branch.id)}
               onToggleSelect={() => toggleSelect(branch.id)}
               onEdit={() => { setEditingId(branch.id); setAdding(false); }}
               onDelete={() => handleDelete([branch.id])}
               onSaveField={(column, next) => saveField("extraction_campuses", branch.id, column, next)}
+              onReload={onReload}
+              linked={coursesForBranch(branch.id)}
+              onLinkCourse={(courseId) =>
+                runLink(() => allExtractionsApi.assignJunction("campuses", { job_id: jobId, course_id: courseId, entity_id: branch.id }), "Linked to course")
+              }
+              onUnlinkCourse={(courseId) =>
+                runLink(() => allExtractionsApi.unassignJunction("campuses", { job_id: jobId, course_id: courseId, entity_id: branch.id }), "Unlinked")
+              }
             />
-          ),
-        )}
+        ))}
       </div>
 
       {total > 0 && (
@@ -342,6 +449,17 @@ export function BranchesTab({
           onPageChange={setPage}
           align="end"
           onPageSizeChange={(next) => { setLimit(next); setPage(1); }}
+        />
+      )}
+
+      {linkingBranchIds && (
+        <LinkCoursesToBranchesDialog
+          open
+          onOpenChange={(next) => !next && setLinkingBranchIds(null)}
+          jobId={jobId}
+          branchIds={linkingBranchIds}
+          branchLabel={linkingBranchIds.length === 1 ? (branches.find((b) => b.id === linkingBranchIds[0])?.name ?? "branch") : `${linkingBranchIds.length} branches`}
+          onLinked={loadLinks}
         />
       )}
     </div>

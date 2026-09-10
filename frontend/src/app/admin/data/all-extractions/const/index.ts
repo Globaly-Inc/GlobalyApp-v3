@@ -48,6 +48,25 @@ export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "
 export const PAUSABLE_STATUSES: ExtractionStatus[] = ["scraping", "extracting"];
 export const FINISHED_STATUSES: ExtractionStatus[] = ["done", "completed", "approved", "verified", "exported", "pushed"];
 
+// Curated status filter shown in the toolbar dropdown — collapses the raw per-stage statuses
+// (mapping/scraping/extracting/processing/verifying, failed/stalled) into the handful of
+// states a user actually filters by, instead of every distinct STATUS_CONFIG label.
+export const STATUS_FILTER_OPTIONS: { value: string; label: string; statuses: ExtractionStatus[] }[] = [
+  { value: "pending", label: "Pending", statuses: ["pending"] },
+  { value: "in_progress", label: "In Progress", statuses: ACTIVE_STATUSES },
+  { value: "review", label: "Pending Review", statuses: ["review"] },
+  { value: "approved", label: "Approved", statuses: ["verified", "approved"] },
+  { value: "completed", label: "Completed", statuses: ["done", "completed"] },
+  { value: "published", label: "Published", statuses: ["exported", "pushed"] },
+  { value: "failed", label: "Failed", statuses: ["failed", "stalled"] },
+  { value: "declined", label: "Declined", statuses: ["declined"] },
+  { value: "paused", label: "Paused", statuses: ["paused"] },
+];
+
+export function statusesForFilterValue(value: string): ExtractionStatus[] {
+  return STATUS_FILTER_OPTIONS.find((o) => o.value === value)?.statuses ?? [];
+}
+
 // Every guided-URL bucket the backend actually reads. Keys must stay `*_urls` — the job
 // worker seeds the crawl from every key with that suffix, and the per-course data steps
 // look up `<data_type>_urls`. Adding a category here is enough to make it work end to end.

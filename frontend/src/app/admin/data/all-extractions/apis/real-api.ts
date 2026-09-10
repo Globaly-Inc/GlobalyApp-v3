@@ -1,5 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG,statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type {
   Accreditation,
@@ -32,6 +32,7 @@ import type {
   JunctionSlug,
   LibraryAccreditation,
   LibraryAccreditationInput,
+  MissingDetailCandidate,
   Paginated,
   QueueItem,
   StudyOption,
@@ -44,10 +45,6 @@ import type {
   VisaService,
 } from "./types";
 
-function rawStatusesForLabel(label: string): ExtractionStatus[] {
-  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
-}
-
 export const allExtractionsRealApi = {
   getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
     const query: Record<string, string> = {
@@ -59,7 +56,7 @@ export const allExtractionsRealApi = {
     const baseStatuses = MODE_STATUS_FILTER[params.mode];
     const statuses =
       params.statusLabel && params.statusLabel !== "all"
-        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        ? statusesForFilterValue(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
         : baseStatuses;
     if (statuses?.length) query.statuses = statuses.join(",");
     if (!params.showDeclined) query.exclude_statuses = "declined";
@@ -275,6 +272,15 @@ export const allExtractionsRealApi = {
   saveAndLearn: async (params: { table: EditableTable; id: string; patch: Record<string, unknown>; job_id?: string; source_url?: string }): Promise<void> => {
     await httpPost("/admin/data-extraction/save-and-learn", params);
   },
+
+  // Looks up values for currently-empty institution overview fields only (homepage +
+  // best-effort /contact scrape), for the admin to individually accept via saveAndLearn.
+  findMissingInstitutionDetails: async (jobId: string): Promise<{ fields: MissingDetailCandidate[] }> =>
+    httpPost(`/admin/data-extraction/jobs/${jobId}/find-missing-institution-details`, {}),
+
+  // Geocodes a campus's existing address to backfill postcode/map link only.
+  findMissingCampusDetails: async (campusId: string): Promise<{ fields: MissingDetailCandidate[] }> =>
+    httpPost(`/admin/data-extraction/campuses/${campusId}/find-missing-details`, {}),
 
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
     await httpPatch(`/admin/data-extraction/jobs/${id}/context`, params);

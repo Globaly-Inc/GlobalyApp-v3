@@ -142,7 +142,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="ghost" className="gap-1.5" onClick={() => router.push("/admin/platform/businesses")}>
+        <Button variant="ghost" className="gap-1.5" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4" /> Back
         </Button>
         <div className="flex flex-wrap items-center gap-2">

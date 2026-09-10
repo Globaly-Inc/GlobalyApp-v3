@@ -231,6 +231,13 @@ async function checkAllPagesDone(jobId: string) {
       phase: "data_extraction", message: "All pages extracted, starting verification",
     });
     await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+    const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
+    if (!job?.source_type || job.source_type === "institution") {
+      const hasCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first();
+      if (!hasCampuses) {
+        await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "branches" });
+      }
+    }
   }
 }
 
