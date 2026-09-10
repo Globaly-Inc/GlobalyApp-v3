@@ -294,12 +294,19 @@ export function CourseDetailPanel({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Subject area</Label>
+            {/* Bound to the LINK, not to `subject_area` — that column holds the page's own wording
+                ("Civil Engineering"), which is never one of the 14 options, so the picker rendered
+                blank on a correctly linked course. */}
             <LookupCombobox
               kind="areas-of-study"
-              value={course.subject_area ?? ""}
-              onChange={(v) => patchCourse({ subject_area: v || null })}
+              by="slug"
+              value={course.subject_area_code ?? ""}
+              onChange={(v) => patchCourse({ subject_area_code: v || null })}
               placeholder="Select subject area"
             />
+            {course.subject_area && (
+              <p className="text-xs text-muted-foreground">Extracted as “{course.subject_area}”</p>
+            )}
           </div>
         </div>
 

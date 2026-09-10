@@ -7,6 +7,8 @@
  *   node --import tsx scripts/backfill-lookup-links.ts               dry run — prints what would change
  *   node --import tsx scripts/backfill-lookup-links.ts --apply       writes
  *   node --import tsx scripts/backfill-lookup-links.ts --job <uuid>  restrict to one job
+ *   node --import tsx scripts/backfill-lookup-links.ts --orphans      only rows whose area link
+ *                                                                    is not on the active list
  *
  * Both sides re-bind fully without the model: the qualification is in the course's own name plus
  * the platform's Course Level folds, and the area comes from the subject wording (then the name)
@@ -20,6 +22,9 @@ import { loadLookupLists } from "../src/modules/superadmin/data-extraction/lib/l
 import { resolveCourseLookups } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
 
 const apply = process.argv.includes("--apply");
+// Only rows whose current link points at nothing on the active list — a course already bound to a
+// seeded area is left alone rather than re-classified.
+const orphansOnly = process.argv.includes("--orphans");
 const jobIdx = process.argv.indexOf("--job");
 const jobId = jobIdx > -1 ? process.argv[jobIdx + 1] : null;
 
@@ -39,7 +44,11 @@ async function main() {
   const q = masterKnex("superadmin.extraction_courses")
     .select("id", "name", "degree_level", "degree_level_code", "subject_area", "subject_area_code");
   if (jobId) q.where({ job_id: jobId });
-  const rows: Row[] = await q;
+  let rows: Row[] = await q;
+  if (orphansOnly) {
+    const live = new Set(lists.areas.map((a) => a.slug));
+    rows = rows.filter((r) => r.subject_area_code && !live.has(r.subject_area_code));
+  }
 
   const changes: Array<{ id: string; patch: Record<string, string | null> }> = [];
   const tally = new Map<string, number>();

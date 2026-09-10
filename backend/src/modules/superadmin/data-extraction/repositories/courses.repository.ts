@@ -4,13 +4,22 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
-export type CourseListFilters = { search?: string; status?: string };
+export type CourseListFilters = { search?: string; status?: string; scope?: "in" | "out" };
 export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc";
 
-function filteredCoursesQuery(jobId: string, { search, status }: CourseListFilters) {
+function filteredCoursesQuery(jobId: string, { search, status, scope }: CourseListFilters) {
   const q = masterKnex(T).where({ job_id: jobId });
   if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   if (status) q.where("verification_status", status);
+  // Derived, not a stored column: a job that picked nothing wants everything, and a course with
+  // no level can't be judged, so both count as in scope.
+  if (scope) {
+    const wanted = masterKnex(`${S}.extraction_jobs`).where("id", jobId).select("degree_level_codes");
+    const inScope = `(coalesce(array_length((${wanted.toString()}), 1), 0) = 0
+                      OR degree_level_code IS NULL
+                      OR degree_level_code = ANY((${wanted.toString()})))`;
+    q.whereRaw(scope === "in" ? inScope : `NOT ${inScope}`);
+  }
   return q;
 }
 

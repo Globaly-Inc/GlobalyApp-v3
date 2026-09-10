@@ -247,7 +247,7 @@ export const allExtractionsMockApi = {
       short_name: null,
       source_url: null,
       degree_level: i % 2 === 0 ? "bachelor" : "master",
-      subject_area: "General Studies",
+      subject_area: "General Studies", subject_area_code: null, degree_level_code: null,
       duration_weeks: 104,
       study_mode: "full-time",
       description: `Mock course ${i + 1} description`,
@@ -287,7 +287,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST course for job", jobId, params);
     await delay(300);
     const now = new Date().toISOString();
-    return { id: uuid(), name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: now, updated_at: now };
+    return { id: uuid(), name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, subject_area_code: null, degree_level_code: null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: now, updated_at: now };
   },
 
   updateCourse: async (id: string, params: UpdateCourseParams): Promise<void> => {

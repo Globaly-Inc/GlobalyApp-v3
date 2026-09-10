@@ -15,6 +15,7 @@ const DEBOUNCE_MS = 300;
 
 export function LookupCombobox({
   kind,
+  by = "name",
   value,
   onChange,
   placeholder = "Select…",
@@ -23,6 +24,8 @@ export function LookupCombobox({
   className,
 }: Readonly<{
   kind: LookupKind;
+  /** What `value` holds. Slug for a column storing the link (subject_area_code); name otherwise. */
+  by?: "name" | "slug";
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -39,13 +42,13 @@ export function LookupCombobox({
     setLoading(true);
     try {
       const res = await categoriesApi.getLookups(kind, { search: query.trim() || undefined, limit: SEARCH_LIMIT });
-      setOptions(res.data.map((l) => ({ value: l.name, label: l.name })));
+      setOptions(res.data.map((l) => ({ value: by === "slug" ? l.slug : l.name, label: l.name })));
     } catch {
       setOptions([]);
     } finally {
       setLoading(false);
     }
-  }, [kind]);
+  }, [kind, by]);
 
   const search = useCallback((query: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

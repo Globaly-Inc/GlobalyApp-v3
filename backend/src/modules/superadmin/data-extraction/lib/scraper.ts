@@ -6,7 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { siteOf } from "./html-utils.js";
-import { assertPublicUrl, UnsafeUrlError } from "../../../../shared/public-url.js";
+import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/public-url.js";
 
 const logger = createChildLogger("scraper");
 
@@ -168,7 +168,10 @@ export async function politeFetch(
   while (attempt <= maxRetries) {
     await throttleForHost(url);
     const headers = { ...humanHeaders(opts.referer), ...(init.headers as Record<string, string> | undefined) };
-    const res = await fetch(url, { ...init, headers });
+    // safeFetch, not fetch: the URLs reaching here come from remote content — a sitemap index's
+    // <loc> children and robots.txt's Sitemap: lines — and bare fetch follows redirects, so a
+    // guard on the seed alone protects neither.
+    const res = await safeFetch(url, { ...init, headers });
     lastRes = res;
     if (res.status !== 429 && res.status !== 503) return res;
     const retryAfter = parseInt(res.headers.get("retry-after") ?? "", 10);
@@ -297,15 +300,35 @@ interface ScraplingToolResult {
 }
 
 const SCRAPLING_TIERS: { tool: string; timeoutMs: number; args: Record<string, unknown> }[] = [
-  { tool: "get", timeoutMs: 22_000, args: { timeout: 10 } },
+  // follow_redirects "safe" is Scrapling's own SSRF guard — it follows redirects but refuses ones
+  // aiming at private or link-local addresses. It is the default, set explicitly so a Scrapling
+  // upgrade changing that default cannot silently reopen the hole. assertPublicUrl only validates
+  // the URL we hand over; this is what covers the hops after it.
+  //
+  // The two browser tiers below take no such option — a browser follows redirects natively — and
+  // they run in a container ON THIS HOST, so a catalogue that makes tier 1 fail can still escalate
+  // to one and be redirected inward. Egress policy on the Scrapling container (deny RFC1918 and
+  // 169.254.0.0/16) is the control for that; it cannot be closed from here.
+  { tool: "get", timeoutMs: 22_000, args: { timeout: 10, follow_redirects: "safe", max_redirects: 5 } },
   { tool: "stealthy_fetch", timeoutMs: 30_000, args: { timeout: 25_000, network_idle: true, solve_cloudflare: true } },
   { tool: "fetch", timeoutMs: 35_000, args: { timeout: 30_000, network_idle: true } },
 ];
 
+/**
+ * `mainContentOnly` maps to Scrapling's own `main_content_only`, which DEFAULTS TO TRUE on its
+ * side. Never passing it cost us two silent failures:
+ *   - `scrapeRenderedHtml` came back with the page's tab panels emptied, so a CourseLeaf
+ *     catalogue's `table.sc_courselist` curriculum vanished — Johns Hopkins' Civil Engineering
+ *     page returns 330,489 characters with 23 of those tables to curl and 236,634 characters
+ *     with ZERO to us;
+ *   - `ScrapeOptions.onlyMainContent` did nothing at all on the Scrapling path, which is why
+ *     asking for the full page and asking for main content returned byte-identical markdown.
+ */
 async function scraplingScrape(
   url: string,
   cfg: { baseUrl: string; apiKey?: string },
   extractionType: ScraplingExtractionType,
+  mainContentOnly: boolean,
 ): Promise<{ content: string; tierUsed?: string; error?: string }> {
   let client: Client;
   try {
@@ -322,7 +345,12 @@ async function scraplingScrape(
     logger.info(`scrapling mcp: calling tool "${tier.tool}" for ${url}`);
     try {
       const result = await client.callTool(
-        { name: tier.tool, arguments: { url, extraction_type: extractionType, ...tier.args } },
+        {
+          name: tier.tool,
+          arguments: {
+            url, extraction_type: extractionType, main_content_only: mainContentOnly, ...tier.args,
+          },
+        },
         undefined,
         { timeout: tier.timeoutMs },
       );
@@ -402,9 +430,22 @@ export async function scrapeRenderedHtml(
   url: string,
   opts: { waitFor?: number } = {},
 ): Promise<{ html: string; error?: string }> {
+  // Guarded like scrapeMarkdown: this URL can come from a catalogue page's own anchors, so a
+  // hostile or compromised source could otherwise aim it at localhost or the metadata endpoint.
+  try {
+    await assertPublicUrl(url);
+  } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      logger.warn(`Refusing to fetch a non-public address: ${url} (${err.message})`);
+      return { html: "", error: err.message };
+    }
+    throw err;
+  }
   const scrapling = getScraplingConfig();
   if (scrapling) {
-    const s = await scraplingScrape(url, scrapling, "html");
+    // The WHOLE document: this exists to be parsed, and Scrapling's main-content extraction
+    // strips exactly the tabbed panels a catalogue keeps its curriculum in.
+    const s = await scraplingScrape(url, scrapling, "html", false);
     if (isUsableContent(s.content)) {
       logger.info(`scrapling OK (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return { html: s.content };
@@ -460,7 +501,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
 
   // Path 0: Scrapling available
   if (scrapling) {
-    const s = await scraplingScrape(url, scrapling, "markdown");
+    const s = await scraplingScrape(url, scrapling, "markdown", opts.onlyMainContent ?? true);
     if (isUsableContent(s.content)) {
       logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return {
@@ -575,6 +616,16 @@ export async function mapUrlsDetailed(
 }
 
 export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<string[]> {
+  // Same guard: sitemapsFromLinkedHosts derives the host from a page's own links.
+  try {
+    await assertPublicUrl(seedUrl);
+  } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      logger.warn(`Refusing to fetch a sitemap from a non-public address: ${seedUrl}`);
+      return [];
+    }
+    throw err;
+  }
   let origin = "";
   try { origin = new URL(seedUrl).origin; } catch { return []; }
   const seen = new Set<string>();
@@ -644,6 +695,27 @@ const CATALOGUE_SUBDOMAINS = [
   "courses", "programs", "handbook", "study", "studies",
 ];
 
+const CATALOGUE_HOST_RE = /catalog|catalogue|bulletin|explorecourses|handbook|curriculum|programs?\b|courses?\b/i;
+
+/** The list above matches an exact prefix, so e-catalogue.jhu.edu is never probed. Match the
+ *  hosts the site actually links to instead. */
+async function sitemapsFromLinkedHosts(links: string[], limit: number): Promise<string[]> {
+  const hosts = new Set<string>();
+  for (const link of links) {
+    try {
+      const { hostname } = new URL(link);
+      if (CATALOGUE_HOST_RE.test(hostname)) hosts.add(hostname);
+    } catch { /* not a URL */ }
+  }
+  if (!hosts.size) return [];
+  const found = await Promise.all(
+    [...hosts].slice(0, 5).map(async (h) => {
+      try { return await fetchSitemapUrls(`https://${h}`, limit); } catch { return []; }
+    }),
+  );
+  return found.flat();
+}
+
 /** Sitemaps from any catalogue subdomain that resolves. */
 async function fetchCatalogueSitemaps(seedUrl: string, limit: number): Promise<string[]> {
   let site: string;
@@ -666,7 +738,7 @@ async function fetchCatalogueSitemaps(seedUrl: string, limit: number): Promise<s
       // Returning the root still hands the crawler a real entry point instead of
       // nothing at all.
       try {
-        const res = await fetch(root, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(10_000) });
+        const res = await safeFetch(root, { method: "GET", signal: AbortSignal.timeout(10_000) });
         return res.ok ? [res.url || root] : [];
       } catch {
         return [];
@@ -696,9 +768,13 @@ export async function discoverUrlsForCrawl(seedUrl: string, opts: MapOptions = {
   if (merged.length > 1) {
     return { urls: merged, method: "sitemap", error: map.error };
   }
-  // 3. Scrape seed page for links
+  // 3. Scrape seed page for links.
   const res = await scrapeMarkdown(seedUrl, { withLinks: true, onlyMainContent: false });
   if (res.links.length > 1) {
+    const linked = await sitemapsFromLinkedHosts(res.links, limit);
+    if (linked.length) {
+      return { urls: [...new Set([...linked, ...res.links])], method: "sitemap", error: map.error };
+    }
     return { urls: res.links, method: "page-links", error: map.error };
   }
   // 4. Seed URL only

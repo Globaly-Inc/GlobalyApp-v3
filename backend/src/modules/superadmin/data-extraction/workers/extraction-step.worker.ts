@@ -35,6 +35,7 @@ import {
   upsertFee,
   normaliseCourseCategory,
   resolveCourseLookups,
+  isCourseInScope,
   resolveDurationWeeks,
   type ExtractedStudyOption,
   normaliseScoreType,
@@ -1213,7 +1214,14 @@ async function handleCourseDataStep(
       // doesn't restate the qualification resolves to null, and assigning that would unlink a
       // course that was already linked. When the resolver has no answer the raw text is dropped
       // from the update too, so an unlinkable value is never stored in its place.
-      if (link.degree_level_code) {
+      // A re-extract must not move a course onto a level the job did not ask for — writeCourse
+      // refuses to stage one, and this path would otherwise smuggle it in on an update.
+      if (link.degree_level_code && !(await isCourseInScope(jobId, link.degree_level_code))) {
+        logger.warn("Re-extract resolved a level outside the job's selection — keeping the stored one", {
+          jobId, courseId, course: course.name, resolved: link.degree_level_code,
+        });
+        delete updates.degree_level;
+      } else if (link.degree_level_code) {
         updates.degree_level = link.degree_level;
         updates.degree_level_code = link.degree_level_code;
       } else {

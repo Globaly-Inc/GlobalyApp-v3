@@ -245,19 +245,43 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     });
 
     // ── Phase 3: Queue each page for extraction ──
+    let queued = 0;
     for (const url of courseUrls) {
       const queueItemId = await insertQueueItem(jobId, url);
       if (!queueItemId) continue; // already queued (e.g. duplicate JOBS message) — its owner dispatches it
       await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
+      queued++;
     }
+
+    // Nothing published means nothing advances the job — a re-dispatch whose URLs are all
+    // already queued would otherwise sit in "processing" forever.
+    // Counts `processing` too: a duplicate job message arriving while pages are still in flight
+    // queues nothing and has no pending rows, and calling that idle retires the job to `review`
+    // before its pages finish — after which the normal completion path can no longer start
+    // verification, leaving it permanently `waiting`.
+    const live = await masterKnex(`${S}.extraction_queue`)
+      .where({ job_id: jobId }).whereIn("status", ["pending", "processing"]).count({ n: "*" }).first();
+    const idle = queued === 0 && Number(live?.n ?? 0) === 0;
 
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: courseUrls.length,
       pages_total: courseUrls.length,
-      pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "processing", verification: "waiting" }),
+      ...(idle ? { status: "review" } : {}),
+      pipeline_progress: JSON.stringify({
+        site_mapping: "done", course_discovery: "done",
+        data_extraction: idle ? "done" : "processing", verification: "waiting",
+      }),
       processing_heartbeat_at: masterKnex.fn.now(),
       updated_at: masterKnex.fn.now(),
     });
+
+    if (idle) {
+      await writeJobEvent(jobId, "discovery_found_nothing_new", {
+        level: "warn", phase: "course_discovery",
+        message: `Discovery found no pages that weren't already queued (${courseUrls.length} URLs, all known)`,
+        data: { method: discovery.method, urls: courseUrls.length },
+      });
+    }
 
     logger.info("Job discovery complete", { jobId, method: discovery.method, pages: courseUrls.length });
 

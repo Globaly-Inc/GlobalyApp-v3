@@ -442,6 +442,46 @@ The centralized error handler maps these to HTTP responses.
    `npm run test:extraction-created-by`, a static check that the migration's table lists
    cover every write path. No V2 equivalent — V2 could not tell a hand-typed fee from a
    scraped one, or say who corrected an overview field.
+   Exception: curriculum from the MARKUP before the model (2026-09-09) —
+   `lib/courselist-parser.ts` reads a programme's curriculum straight out of
+   `table.sc_courselist`, the CourseLeaf (Leepfrog) shape used by Johns Hopkins,
+   Georgia Tech and much of the US sector: code, title, credit hours, and the
+   requirement block each row sits under. The page worker tries it BEFORE any
+   Gemini call on a curriculum page, and on the primary page when the model left a
+   course without units. Where it hits, the model is not called for units at all —
+   cheaper AND exact.
+   Why: Johns Hopkins renders its whole catalogue navigation tree inline, so one
+   programme page comes out of the scraper as ~155,000 characters of school and
+   department links, the curriculum sits past `truncateMarkdown`'s 120,000-character
+   cut, and the tables do not survive the HTML→markdown conversion at all (one pipe
+   character in the file). Every JHU course was staged with zero study units while
+   42 rows of real curriculum sat in the page. Even where the model does read a
+   curriculum it loses what only the markup carries: Georgia Tech's tables give 31
+   units per course with codes and credits, a prose read of Harvard gave 10 per
+   course, bare lowercase, no code, no credits.
+   Same file also carries `courseLinksByName(html, baseUrl)`: every programme a page
+   links to, keyed by the anchor's own text on the same normalisation `writeCourse`
+   dedupes course names by. The page worker uses it to fill `curriculum_page_url`
+   when the model flagged none — on JHU's `/programs/` index the model flagged
+   nothing and 18 of 19 courses were staged with the index as their source_url,
+   while that index carried an exact-name link to every one of them (1,202 anchors).
+   Recovering the link from the markup is cheaper and far more reliable than asking
+   the model to emit fifteen URLs. Bounded by the same `SECONDARY_FETCH_CAP`, cached
+   per URL like the markdown path, and only tried for a course that still has no
+   units. Guarded by `npm run test:courselist`.
+   Exception: study-unit plausibility gate + unit_type/description (2026-09-09) —
+   `filterStudyUnits` in `staging-writer.ts` rejects a "unit" that is the course's own
+   name, that carries a degree word, or that is another course of the same job; and
+   when most of a batch of 3+ collides with the job's own course names it drops the
+   WHOLE batch, because that is a model reading a programme INDEX page rather than a
+   curriculum (seen live: University of Chicago courses whose units were
+   "Business Administration (Evening)", "Biomedical Informatics"). `ExtractedStudyUnit`
+   also gained `description` and `unit_type`, which `search/repositories/courses.repository.ts`
+   and the AI counsellor already SELECT and the writer never wrote. `unit_type` is
+   `NOT NULL DEFAULT 'compulsory'`, so `normaliseUnitType` returns null when the page
+   says nothing and the insert OMITS the column rather than asserting "compulsory" for
+   an elective — 13,856 of 13,866 staged units carried that false assertion.
+   Guarded by `npm run test:study-units`.
    Exception: `POST /jobs/:id/rerun` resumes instead of always restarting
    (2026-09-01) — if the job has pending/failed queue items, rerun retries
    just those via the "courses" step instead of `resetPipeline` wiping the

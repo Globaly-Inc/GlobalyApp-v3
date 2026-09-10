@@ -13,7 +13,7 @@ export async function listCourses(
   limit: number,
   offset: number,
   pagination: PaginationInput,
-  filters: { search?: string; status?: string; sort?: repo.CourseSort },
+  filters: { search?: string; status?: string; sort?: repo.CourseSort; scope?: "in" | "out" },
 ) {
   const { sort, ...listFilters } = filters;
   const [courses, total, statusCounts] = await Promise.all([
