@@ -115,12 +115,46 @@ export interface LookupListsHealth {
  * counts, because an empty list or an orphaned fold is the ROOT CAUSE behind a job full of
  * unlinked courses — the counts alone don't say why.
  */
+// ─── Which levels each service category is after ─────────────────────────────
+// The stepper's service category ("Academic Courses" / "Short Courses") is a second, coarser
+// scope alongside the degree-level picker. Mapping, not list data: every slug must exist in the
+// seeder, and lookupListsHealth reports a seeded level that lands in neither bucket — such a level
+// would be out of scope on BOTH kinds of job.
+// Follows the SEEDED category descriptions, the platform's own definition: Academic Courses is
+// "Degree programs, diplomas, and certificates"; Short Courses is "Professional development and
+// language courses" — the non-award bucket and nothing else.
+const ACADEMIC_LEVELS = new Set([
+  "school", "high_school", "certificate", "diploma", "advance_diploma",
+  "bachelor", "graduate_diploma", "master", "master_research", "doctoral",
+]);
+const SHORT_COURSE_LEVELS = new Set(["non_aqf_award"]);
+
+export type CourseCategory = "academic" | "short_course";
+
+/** The kind of course a degree level implies. Null when the course linked to no level. */
+export function courseCategoryForLevel(levelSlug: unknown): CourseCategory | null {
+  if (typeof levelSlug !== "string") return null;
+  if (ACADEMIC_LEVELS.has(levelSlug)) return "academic";
+  if (SHORT_COURSE_LEVELS.has(levelSlug)) return "short_course";
+  return null;
+}
+
+/** public.service_categories.slug → the kind of course that job is for. */
+export function categoryForServiceSlug(slug: unknown): CourseCategory | null {
+  if (slug === "courses") return "academic";
+  if (slug === "short_courses") return "short_course";
+  return null;
+}
+
 export function lookupListsHealth(lists: LookupLists): LookupListsHealth {
   const missing = [
     ...[...new Set(Object.values(COURSE_LEVEL_FOLDS))]
       .filter((target) => !lists.levels.some((l) => norm(l.name) === norm(target))),
     ...Object.keys(SUBJECTS_BY_AREA)
       .filter((slug) => !lists.areas.some((a) => a.slug === slug)),
+    ...lists.levels
+      .filter((l) => !courseCategoryForLevel(l.slug))
+      .map((l) => `level "${l.slug}" is in no course-category bucket`),
   ];
   return {
     ok: lists.areas.length > 0 && lists.levels.length > 0 && missing.length === 0,
@@ -248,13 +282,17 @@ const ABBREVIATIONS: Array<[RegExp, string]> = [
 const LEVEL_WORDS: Array<[RegExp, string]> = [
   [/\b(doctor (?:of|in) philosophy|doctor (?:of|in)|doctorate|doctoral|professional doctorate)\b/i, "PHD"],
   [/\b(master (?:of|by|in) research|research master'?s?|master (?:of |in )?philosophy)\b/i, "Master (Research)"],
-  [/\b(graduate certificate|postgraduate certificate|grad\.? cert(?:ificate)?|graduate diploma|postgraduate diploma|grad\.? dip(?:loma)?)\b/i, "Graduate Diploma"],
+  [/\b(graduate certificate|(?:post)?graduate [\w\s-]{0,30}?certificate|postgraduate certificate|grad\.? cert(?:ificate)?|graduate diploma|postgraduate diploma|grad\.? dip(?:loma)?)\b/i, "Graduate Diploma"],
   // "of" is not the only preposition a catalogue uses — US programmes write "Master In Teaching".
   [/\b(master (?:of|in)|master'?s|masters|magister|executive master|educational specialist)\b/i, "Master"],
   [/\b(bachelor (?:of|in)|bachelor'?s|bachelors|bachelor|licenciatura|honou?rs degree)\b/i, "Bachelor"],
   [/\b(associate degree|associate of|associate in|undergraduate higher diploma)\b/i, "Bachelor"],
   [/\b(advanced? diploma)\b/i, "Advance Diploma"],
   [/\b(diploma of higher education|foundation degree|higher national diploma|diploma)\b/i, "Diploma"],
+  // Above `certificate` too: a microcredential, an edX-style MOOC ("7.03.2x Genetics…") and a
+  // half-day workshop all carry the word "certificate" or none at all, so the certificate row
+  // claimed them. NON_AWARD_RE cannot help — it is only consulted after LEVEL_WORDS has missed.
+  [/\b(microcert\w*|microcred\w*|micro[- ]cert\w*|individual certificate|executive education|webinar|bootcamp|masterclass|(?:half|one|two|three)[\s\u2010-\u2015-]?day)\b|^\d+\.[\dA-Za-z.]*x\s/i, "Non AQF Award"],
   // Above `certificate`: a school qualification usually HAS "certificate" in its name — HSC, VCE,
   // GCSE — and the bare certificate row would swallow them all. The school ones are NAMED, so they
   // are enumerated rather than matched on a bare "certificate of education", which would also
@@ -272,6 +310,28 @@ const LEVEL_WORDS: Array<[RegExp, string]> = [
  * the name carries no qualification token, so "Minor Surgery MSc" stays a Master.
  */
 const NON_AWARD_RE = /\b(minor|non-?degree|non-?award|visiting student|exchange (?:program(?:me)?|student)|summer (?:school|session|program(?:me)?)|certificate of (?:attendance|participation|completion)|study abroad)\b/i;
+
+/**
+ * A name that ASSERTS a formal credential, so a short stated duration must not overrule it — an
+ * "Undergraduate Certificate in Data Science" delivered in a 4-week intensive is still an award.
+ * Bare "Certificate in X" is deliberately absent: that is exactly the wording a workshop uses.
+ */
+const FORMAL_CREDENTIAL_RE =
+  /\b(certificate (?:i{1,3}v?|iv|[1-4])\b|(?:under|post)?graduate certificate|grad\.? cert|advanced? diploma|diploma (?:of|in)\b|certificate of higher education)/i;
+
+const SHORT_BY_DURATION = new Set(["certificate", "diploma", "advance_diploma"]);
+const SHORT_COURSE_MAX_WEEKS = 4;
+
+/**
+ * A short run reclassifies a credential as a non-award — but under a scoped job that is a
+ * deletion, not a relabelling, so it takes TWO signals: the run is short AND the name itself
+ * claims no credential.
+ */
+export function shouldDemoteForDuration(levelSlug: string | null | undefined, weeks: number | null, name: unknown): boolean {
+  if (!levelSlug || !SHORT_BY_DURATION.has(levelSlug)) return false;
+  if (weeks === null || weeks > SHORT_COURSE_MAX_WEEKS) return false;
+  return !FORMAL_CREDENTIAL_RE.test(typeof name === "string" ? name : "");
+}
 
 /** The qualification a course NAME states, as a platform level name (unvalidated). */
 function levelFromName(name: string): string | null {

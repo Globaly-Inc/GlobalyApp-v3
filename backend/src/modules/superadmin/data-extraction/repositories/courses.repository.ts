@@ -4,21 +4,19 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
-export type CourseListFilters = { search?: string; status?: string; scope?: "in" | "out" };
+export type CourseListFilters = { search?: string; status?: string; scope?: "in" | "out"; excluded?: string[] | null };
 export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc";
 
-function filteredCoursesQuery(jobId: string, { search, status, scope }: CourseListFilters) {
+function filteredCoursesQuery(jobId: string, { search, status, scope, excluded }: CourseListFilters) {
   const q = masterKnex(T).where({ job_id: jobId });
   if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   if (status) q.where("verification_status", status);
-  // Derived, not a stored column: a job that picked nothing wants everything, and a course with
-  // no level can't be judged, so both count as in scope.
-  if (scope) {
-    const wanted = masterKnex(`${S}.extraction_jobs`).where("id", jobId).select("degree_level_codes");
-    const inScope = `(coalesce(array_length((${wanted.toString()}), 1), 0) = 0
-                      OR degree_level_code IS NULL
-                      OR degree_level_code = ANY((${wanted.toString()})))`;
-    q.whereRaw(scope === "in" ? inScope : `NOT ${inScope}`);
+  if (scope && excluded) {
+    // Mirrors isCourseInScope on a SCOPED job: the level must be resolved AND not excluded.
+    const inScope = "(degree_level_code IS NOT NULL AND NOT (degree_level_code = ANY(?)))";
+    q.whereRaw(scope === "in" ? inScope : `NOT ${inScope}`, [excluded]);
+  } else if (scope === "out") {
+    q.whereRaw("false");   // an unscoped job excludes nothing
   }
   return q;
 }

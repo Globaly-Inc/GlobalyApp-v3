@@ -12,7 +12,8 @@ import { scrapeMarkdown } from "../lib/scraper.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import { verificationPrompt, VERIFICATION_SYSTEM } from "../lib/extraction-prompts.js";
-import { loadLookupLists, lookupListsHealth } from "../lib/lookup-catalog.js";
+import { loadLookupLists, lookupListsHealth, categoryForServiceSlug } from "../lib/lookup-catalog.js";
+import { jobExcludedLevels } from "../lib/staging-writer.js";
 import { writeJobEvent } from "../lib/staging-writer.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
@@ -93,24 +94,43 @@ async function verifyLookupLinks(jobId: string) {
 }
 
 async function verifyRequestedLevels(jobId: string, total: number) {
-  const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first("degree_level_codes");
+  const job = await masterKnex(`${S}.extraction_jobs as j`)
+    .leftJoin("public.service_categories as sc", "sc.id", "j.service_category_id")
+    .where("j.id", jobId)
+    .first("j.degree_level_codes", "sc.name as category_name", "sc.slug as category_slug");
   const wanted: string[] = job?.degree_level_codes ?? [];
-  if (!wanted.length || total === 0) return;
+  const category = categoryForServiceSlug(job?.category_slug) ? job?.category_name : null;
+  if (!wanted.length && !category) return;   // nothing was scoped, so nothing to report
 
+  // An empty job is the case most worth reporting, not least: when a scope matches nothing the
+  // result looks identical to a failed crawl. Say which scope emptied it.
+  if (total === 0) {
+    await writeJobEvent(jobId, "requested_levels_verified", {
+      level: "warn", phase: "verification",
+      message: `No courses staged. This job is scoped to ${[category, wanted.join(", ")].filter(Boolean).join(" / ")} — widen it, or check whether the site publishes those.`,
+      data: { requested: wanted, category, in_scope: 0, out_of_scope: 0, no_level: 0 },
+    });
+    return;
+  }
+
+  // Counted against the SAME exclusion set the writer and the review filter use. Counting against
+  // `wanted` alone reported every course out of scope on a category-only job, because
+  // `= ANY('{}')` is false for everything.
+  const excluded = (await jobExcludedLevels(jobId)) ?? [];
   const { rows } = await masterKnex.raw(
-    `SELECT count(*) FILTER (WHERE degree_level_code = ANY(:wanted))::int      AS in_scope,
-            count(*) FILTER (WHERE degree_level_code IS NOT NULL
-                               AND NOT (degree_level_code = ANY(:wanted)))::int AS out_of_scope,
-            count(*) FILTER (WHERE degree_level_code IS NULL)::int             AS no_level
+    `SELECT count(*) FILTER (WHERE degree_level_code IS NOT NULL
+                               AND NOT (degree_level_code = ANY(:excluded)))::int AS in_scope,
+            count(*) FILTER (WHERE degree_level_code = ANY(:excluded))::int       AS out_of_scope,
+            count(*) FILTER (WHERE degree_level_code IS NULL)::int                AS no_level
        FROM ${S}.extraction_courses WHERE job_id = :jobId`,
-    { jobId, wanted },
+    { jobId, excluded },
   );
   const { in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel } = rows[0] as
     { in_scope: number; out_of_scope: number; no_level: number };
 
   const found = outOfScope
     ? await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId })
-        .whereNotNull("degree_level_code").whereNotIn("degree_level_code", wanted)
+        .whereIn("degree_level_code", excluded)
         .select("degree_level_code").count("id as count").groupBy("degree_level_code")
     : [];
 
@@ -120,7 +140,7 @@ async function verifyRequestedLevels(jobId: string, total: number) {
     message: outOfScope
       ? `Degree levels: ${inScope}/${total} courses are one this job asked for, ${outOfScope} are another level`
       : `Degree levels: all ${inScope} courses are one this job asked for`,
-    data: { requested: wanted, in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel, other_levels: found },
+    data: { requested: wanted, category, in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel, other_levels: found },
   });
   logger[outOfScope ? "warn" : "info"]("Requested levels verified", {
     jobId, requested: wanted, in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel,

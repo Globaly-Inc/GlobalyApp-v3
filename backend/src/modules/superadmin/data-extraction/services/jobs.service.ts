@@ -8,7 +8,7 @@ import { buildPaginatedResponse, type PaginationInput } from "../../../../shared
 import { logAudit } from "../shared/audit.js";
 import { withActorNames, withActorNamesOne } from "../shared/actor-names.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { loadLookupLists } from "../lib/lookup-catalog.js";
+import { loadLookupLists, categoryForServiceSlug, courseCategoryForLevel } from "../lib/lookup-catalog.js";
 import * as repo from "../repositories/jobs.repository.js";
 import * as coursesRepo from "../repositories/courses.repository.js";
 import * as reviewRepo from "../repositories/review.repository.js";
@@ -131,12 +131,29 @@ function conflictFor(existing: {
   });
 }
 
-async function validateDegreeLevelCodes(codes: string[]): Promise<string[]> {
+async function validateDegreeLevelCodes(codes: string[], serviceCategoryId?: number): Promise<string[]> {
   const { levels } = await loadLookupLists();
-  const seeded = new Set(levels.map((l) => l.slug));
+  const seeded = new Map(levels.map((l) => [l.slug, l.name]));
   const kept = [...new Set(codes)].filter((c) => seeded.has(c));
   if (!kept.length) {
     throw new BadRequestError("None of the selected degree levels exist. Pick from the list.");
+  }
+
+  const category = serviceCategoryId
+    ? categoryForServiceSlug(
+        (await masterKnex("public.service_categories").where({ id: serviceCategoryId }).first("slug"))?.slug,
+      )
+    : null;
+  if (category) {
+    const clash = kept.filter((c) => {
+      const own = courseCategoryForLevel(c);
+      return own && own !== category;
+    });
+    if (clash.length === kept.length) {
+      throw new BadRequestError(
+        `Those degree levels (${clash.map((c) => seeded.get(c)).join(", ")}) are not part of this service category. Pick levels it covers, or change the category.`,
+      );
+    }
   }
   return kept;
 }
@@ -144,7 +161,7 @@ async function validateDegreeLevelCodes(codes: string[]): Promise<string[]> {
 export async function createJob(input: CreateJobInput, adminId: number) {
   const host = repo.normaliseHost(input.institution_url);
   const degree_level_codes = input.degree_level_codes?.length
-    ? await validateDegreeLevelCodes(input.degree_level_codes)
+    ? await validateDegreeLevelCodes(input.degree_level_codes, input.service_category_id)
     : undefined;
 
   const row = await masterKnex.transaction(async (trx) => {
