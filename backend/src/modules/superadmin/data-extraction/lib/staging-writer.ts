@@ -2183,10 +2183,18 @@ export async function updateVisaServiceById(id: string, service: Partial<Extract
  * can overshoot by a few rows, fine for a billing guardrail.
  */
 // The unique index is on the exact string, so "/programs" and "/programs/" queued twice.
-function normaliseQueueUrl(url: string): string {
+// Also the identity test for "do these two links point at the same page?" — an index that links
+// one course twice with a trailing slash or a campaign parameter must not read as two courses.
+// Only unambiguous campaign tags. "ref" and "source" are deliberately absent — a catalogue can
+// use them to select content, and merging two genuinely different pages is the expensive error.
+const TRACKING_PARAMS = /^(utm_|fbclid$|gclid$|msclkid$|mc_cid$|mc_eid$)/i;
+export function normaliseQueueUrl(url: string): string {
   try {
     const u = new URL(url);
     u.hash = "";
+    for (const key of [...u.searchParams.keys()]) {
+      if (TRACKING_PARAMS.test(key)) u.searchParams.delete(key);
+    }
     if (u.pathname.length > 1 && u.pathname.endsWith("/")) u.pathname = u.pathname.replace(/\/+$/, "");
     return u.toString();
   } catch {

@@ -138,6 +138,32 @@ eq(
   "the same href twice under one name is one link, not a conflict",
 );
 
+// …and neither are the harmless spellings of one href. A raw string compare treated
+// "/biology" and "/biology/" as rival destinations and deleted a perfectly good mapping,
+// which then blocked the course-page fetch that recovers duration and curriculum.
+const ALIASES = `<ul>
+<li><a href="/programs/biology">Biology Programme</a>
+    <a href="/programs/biology/">Biology Programme</a>
+    <a href="/programs/biology/?utm_source=nav">Biology Programme</a>
+    <a href="/programs/biology#overview">Biology Programme</a></li>
+</ul>`;
+eq(
+  courseLinksByName(ALIASES, "https://x.edu/").get("biology programme"),
+  "https://x.edu/programs/biology",
+  "trailing slash, campaign parameter and fragment are the same page, so the link survives",
+);
+
+// The guard still has to bite when the destinations really do differ.
+const REAL_CONFLICT = `<ul>
+<li><a href="/undergrad/biology/">Biology Programme</a>
+    <a href="/grad/biology/?utm_source=nav">Biology Programme</a></li>
+</ul>`;
+eq(
+  courseLinksByName(REAL_CONFLICT, "https://x.edu/").has("biology programme"),
+  false,
+  "…and a campaign parameter does not disguise two genuinely different pages",
+);
+
 
 // Credit hours: the column is an INTEGER, so anything that cannot be one is left unknown rather
 // than published as the lower bound — a markup hit suppresses the model fallback, so a guess here

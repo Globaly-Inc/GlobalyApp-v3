@@ -20,7 +20,7 @@
  *
  * Pure: HTML in, units out. No network, no model, no database.
  */
-import { normaliseCourseName, normaliseUnitType, type ExtractedStudyUnit } from "./staging-writer.js";
+import { normaliseCourseName, normaliseQueueUrl, normaliseUnitType, type ExtractedStudyUnit } from "./staging-writer.js";
 
 /** A parsed unit keeps the requirement block it came from, as unit_type. */
 export interface ParsedCurriculum {
@@ -174,8 +174,9 @@ export function courseLinksByName(html: string, baseUrl: string): Map<string, st
     if (seen === undefined) { out.set(key, url); continue; }
     // The SAME anchor text pointing somewhere else — an index listing "Computer Science" under
     // both Undergraduate and Graduate. Keeping whichever came first silently hands one award's
-    // page to the other, so the name is dropped: no link beats the wrong link.
-    if (seen !== url) ambiguous.add(key);
+    // page to the other, so the name is dropped: no link beats the wrong link. Compared
+    // CANONICALLY, or "/biology" and "/biology/" would read as a conflict and drop a good link.
+    if (normaliseQueueUrl(seen) !== normaliseQueueUrl(url)) ambiguous.add(key);
   }
   for (const key of ambiguous) out.delete(key);
   return out;
