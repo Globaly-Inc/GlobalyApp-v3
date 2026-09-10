@@ -280,12 +280,16 @@ export function formatPartialDate(value: string | null | undefined): string | nu
 }
 
 /**
- * Weeks are how the column stores it, years are how a degree is advertised. No month form:
- * 4 weeks is not a month, and rounding to one turns a stored figure into a wrong claim.
+ * Weeks are how the column stores it, years are how a degree is advertised. The label must be
+ * REVERSIBLE — a rounded one made 53 and 54 weeks both read "1.0 years", so a reviewer could not
+ * tell two stored values apart. Only exact whole and half years take the year form; anything else
+ * stays in weeks. No month form either: 4 weeks is not a month.
  */
 export function courseDuration(weeks: number | null | undefined): string | null {
   if (!weeks || weeks <= 0) return null;
-  if (weeks < 52) return `${weeks} ${weeks === 1 ? "week" : "weeks"}`;
-  const years = weeks / 52;
-  return `${Number.isInteger(years) ? years : years.toFixed(1)} ${years === 1 ? "year" : "years"}`;
+  if (weeks >= 52 && weeks % 26 === 0) {
+    const years = weeks / 52;
+    return `${years} ${years === 1 ? "year" : "years"}`;
+  }
+  return `${weeks} ${weeks === 1 ? "week" : "weeks"}`;
 }
