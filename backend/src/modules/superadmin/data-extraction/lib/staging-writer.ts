@@ -1524,12 +1524,21 @@ export function normaliseCourseName(name: string): string {
  * trailing parenthetical. NOT fixable in normaliseCourseName itself: that is the dedup key, and
  * collapsing parentheticals would merge "Computer Science (Bachelor)" with "… (Master)".
  */
-export function courseOwnPage(links: Map<string, string>, name: string): string | null {
+export function bareCourseKey(name: string): string | null {
+  const bare = name.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  return bare && bare !== name.trim() ? normaliseCourseName(bare) : null;
+}
+
+export function courseOwnPage(
+  links: Map<string, string>, name: string, contestedBareNames?: ReadonlySet<string>,
+): string | null {
   const exact = links.get(normaliseCourseName(name));
   if (exact) return exact;
-  const bare = name.replace(/\s*\([^()]*\)\s*$/, "").trim();
-  if (!bare || bare === name.trim()) return null;
-  return links.get(normaliseCourseName(bare)) ?? null;
+  const bare = bareCourseKey(name);
+  // Two awards of one programme reduce to the same bare name. Whichever anchor the index carries,
+  // it belongs to at most one of them and the name cannot say which — so neither may claim it.
+  if (!bare || contestedBareNames?.has(bare)) return null;
+  return links.get(bare) ?? null;
 }
 
 /**

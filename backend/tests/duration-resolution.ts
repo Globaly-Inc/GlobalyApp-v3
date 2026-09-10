@@ -80,6 +80,18 @@ async function main() {
   eq(w.courseOwnPage(links, "Nursing (Graduate)"), null, "a course the page does not link stays unmatched");
   eq(w.courseOwnPage(links, "(Individual Certificate)"), null, "a name that is ONLY a parenthetical never matches everything");
 
+  // Two awards of one programme both reduce to "computer science". The index carries a single
+  // anchor for it, which belongs to at most one of them — so NEITHER may take it, or one award's
+  // curriculum and duration is staged onto the other.
+  const contested = new Set(["computer science"]);
+  eq(w.courseOwnPage(links, "Computer Science (Bachelor)", contested), null, "a contested bare name is refused…");
+  eq(w.courseOwnPage(links, "Computer Science (Master)", contested), null, "…for every award that claims it");
+  eq(w.courseOwnPage(links, "Computer Science", contested), "https://x.edu/cs", "an EXACT anchor match is still that course's own page");
+  eq(w.courseOwnPage(links, "Data Science: Visualization (Individual Certificate)", contested), "https://x.edu/course/dsv", "an uncontested name is unaffected");
+
+  eq(w.bareCourseKey("Computer Science (Bachelor)"), "computer science", "the bare key drops a trailing award");
+  eq(w.bareCourseKey("Computer Science"), null, "a name with no parenthetical has no separate bare key");
+
   // Study options helper
   eq(w.weeksFromStudyOptions([{ name: "On Campus", duration_value: 3, duration_unit: "years" }]), 156, "single option without load");
   eq(w.weeksFromStudyOptions([]), null, "no options");

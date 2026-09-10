@@ -115,6 +115,29 @@ eq(links.has("skip to content"), false, "an in-page anchor is never a programme 
 // would drop real programmes — the expensive mistake, not this one.
 eq(links.has("az index"), true, "nav entries are not filtered — the exact-name lookup makes them unreachable");
 
+// The same anchor text under two sections — an index listing one programme name under both
+// Undergraduate and Graduate. Keeping whichever came first hands one award's page to the other,
+// so the name is dropped entirely: no link beats the wrong link.
+const DUPLICATE_NAMES = `<ul>
+<li><a href="/undergrad/computer-science/">Computer Science</a></li>
+<li><a href="/grad/computer-science/">Computer Science</a></li>
+<li><a href="/arts/anthropology-ba/">Anthropology, Bachelor of Arts</a></li>
+</ul>`;
+const dup = courseLinksByName(DUPLICATE_NAMES, "https://x.edu/programs/");
+eq(dup.has("computer science"), false, "one name pointing at two different pages resolves to neither");
+eq(dup.get("anthropology, bachelor of arts")?.endsWith("/anthropology-ba/"), true, "…while every unambiguous programme on the same index survives");
+
+// A card that links the same programme twice (image + title) is NOT ambiguous — same target.
+const REPEATED_LINK = `<ul>
+<li><a href="/programs/biology/"><img alt="Biology"/>Biology Programme</a>
+    <a href="/programs/biology/">Biology Programme</a></li>
+</ul>`;
+eq(
+  courseLinksByName(REPEATED_LINK, "https://x.edu/").get("biology programme"),
+  "https://x.edu/programs/biology/",
+  "the same href twice under one name is one link, not a conflict",
+);
+
 
 // Credit hours: the column is an INTEGER, so anything that cannot be one is left unknown rather
 // than published as the lower bound — a markup hit suppresses the model fallback, so a guess here

@@ -23,7 +23,8 @@ import {
 } from "../lib/extraction-prompts.js";
 import {
   writeCourse, upsertCampus, normaliseCampusName, writeVisaService, insertQueueItem, writeJobEvent,
-  upsertIntake, type ExtractedIntake, resolveDurationWeeks, durationFromProse, courseOwnPage,
+  upsertIntake, type ExtractedIntake, resolveDurationWeeks, durationFromProse, courseOwnPage, bareCourseKey,
+  normaliseCourseName,
   type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
 import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
@@ -573,6 +574,19 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         }
       }
 
+      // Which bare names more than one course on this page would claim. "CS (Bachelor)" and
+      // "CS (Master)" both reduce to "cs", and the index's single "CS" anchor belongs to at most
+      // one of them — so the fallback refuses it for both rather than staging one's curriculum
+      // and duration onto the other.
+      const bareClaims = new Map<string, number>();
+      for (const c of extracted.courses ?? []) {
+        const key = c.name ? (bareCourseKey(c.name) ?? normaliseCourseName(c.name)) : null;
+        if (key) bareClaims.set(key, (bareClaims.get(key) ?? 0) + 1);
+      }
+      const contestedBareNames = new Set(
+        [...bareClaims].filter(([, n]) => n > 1).map(([key]) => key),
+      );
+
       if (extracted.courses?.length) {
         for (const course of extracted.courses) {
           if (!course.name) continue;
@@ -611,7 +625,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           // curriculum. Only when the course still has no units, so a page that already
           // produced one is never re-fetched.
           if (!currUrl && !course.study_units?.length) {
-            const own = courseOwnPage(pageCourseLinks, course.name);
+            const own = courseOwnPage(pageCourseLinks, course.name, contestedBareNames);
             if (own && own !== url) currUrl = own;
           }
 
@@ -709,7 +723,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           }
 
           if (resolveDurationWeeks(course) == null && secondaryFetches < SECONDARY_FETCH_CAP) {
-            const ownUrl = courseOwnPage(pageCourseLinks, course.name);
+            const ownUrl = courseOwnPage(pageCourseLinks, course.name, contestedBareNames);
             if (ownUrl && ownUrl !== url) {
               const cached = secondaryPageCache.has(ownUrl);
               const md = await scrapeSecondaryPage(ownUrl, secondaryPageCache, jobId);

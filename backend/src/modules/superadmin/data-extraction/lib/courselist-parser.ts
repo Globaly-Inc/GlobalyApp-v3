@@ -156,17 +156,27 @@ export function parseCreditHours(cell: string): number | null {
 
 export function courseLinksByName(html: string, baseUrl: string): Map<string, string> {
   const out = new Map<string, string>();
+  const ambiguous = new Set<string>();
   for (const m of html.matchAll(/<a[^>]+href="([^"#][^"]*)"[^>]*>([\s\S]{0,200}?)<\/a>/g)) {
     const text = cellText(m[2]);
     // A programme name is a phrase, not a nav word; the cap keeps a stray block of prose out.
     if (text.length < 6 || text.length > 160) continue;
     const key = normaliseCourseName(text);
-    if (!key || out.has(key)) continue;
+    if (!key) continue;
+    let url: string;
     try {
-      out.set(key, new URL(m[1], baseUrl).toString());
+      url = new URL(m[1], baseUrl).toString();
     } catch {
       // A malformed href on a page is not a reason to lose the rest of the index.
+      continue;
     }
+    const seen = out.get(key);
+    if (seen === undefined) { out.set(key, url); continue; }
+    // The SAME anchor text pointing somewhere else — an index listing "Computer Science" under
+    // both Undergraduate and Graduate. Keeping whichever came first silently hands one award's
+    // page to the other, so the name is dropped: no link beats the wrong link.
+    if (seen !== url) ambiguous.add(key);
   }
+  for (const key of ambiguous) out.delete(key);
   return out;
 }
