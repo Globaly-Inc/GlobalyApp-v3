@@ -185,6 +185,28 @@ eq(lvl(null, "Certificate III in Aged Care"), "certificate", "an AQF certificate
 eq(lvl(null, "Advanced Diploma of Primary School Teaching"), "advance_diploma", "a teaching diploma stays a diploma");
 eq(lvl(null, "Master of Teaching (Secondary)"), "master", "…and a teaching master stays a master");
 
+// ── A one- or two-day course is NOT an academic certificate ──
+// These carry the word "certificate" (or no qualification at all), so the certificate row claimed
+// them and they landed in Academic Courses jobs.
+eq(lvl(null, "AI in Business Microcertificate (Online)"), "non_aqf_award", "a microcertificate");
+eq(lvl(null, "Advanced Negotiation Microcredential"), "non_aqf_award", "a microcredential");
+eq(lvl(null, "Ancient Masterpieces of World Literature (Individual Certificate)"), "non_aqf_award", "an individual certificate");
+eq(lvl(null, "AI Fundamentals for Business Leaders (Live Online, Half-Day)"), "non_aqf_award", "a half-day workshop");
+eq(lvl(null, "Negotiation Essentials: Two Day Intensive"), "non_aqf_award", "a two-day course");
+eq(lvl(null, "7.03.2x Genetics: Analysis and Application"), "non_aqf_award", "an edX MOOC code");
+eq(lvl(null, "7.QBWx Quantitative Biology Workshop"), "non_aqf_award", "…including a lettered one");
+
+// …without taking real credentials with it.
+eq(lvl(null, "Undergraduate Certificate in Environmental Engineering"), "certificate", "an undergraduate certificate is real");
+eq(lvl(null, "Global Public Administration, Certificate"), "certificate", "a named certificate is real");
+eq(lvl(null, "Certificate IV in Business"), "certificate", "an AQF certificate is real");
+eq(lvl(null, "Graduate Certificate in Data Analytics"), "graduate_diploma", "a graduate certificate is postgraduate");
+eq(lvl(null, "Postgraduate APRN Certificate - Family Nurse Practitioner"), "graduate_diploma", "…with words between 'postgraduate' and 'certificate'");
+eq(lvl(null, "Postgraduate Executive Leadership Certificate"), "graduate_diploma", "…however long the middle");
+eq(lvl(null, "Undergraduate Certificate in Child Life"), "certificate", "an UNDERgraduate certificate is not postgraduate");
+eq(lvl(null, "Diploma of Nursing"), "diploma", "a diploma is untouched");
+eq(lvl(null, "Bachelor of Science in Daydreaming Studies"), "bachelor", "a degree is not caught by the day pattern");
+
 // ── The stepper's service category is a second, coarser scope ──
 // "Academic Courses" must not stage a certificate or a short course; "Short Courses" must not
 // stage a bachelor or a master. Every seeded level lands in exactly one bucket.
@@ -193,12 +215,14 @@ eq(categoryForServiceSlug("short_courses"), "short_course", "the Short Courses c
 eq(categoryForServiceSlug("accommodation"), null, "a non-course vertical scopes nothing");
 eq(categoryForServiceSlug(null), null, "no category chosen scopes nothing");
 
-for (const slug of ["school", "high_school", "bachelor", "graduate_diploma", "master", "master_research", "doctoral"]) {
+// Academic Courses is seeded as "Degree programs, diplomas, and certificates", so a certificate
+// and a diploma are ACADEMIC. Short Courses is "Professional development and language courses" —
+// the non-award bucket alone.
+for (const slug of ["school", "high_school", "certificate", "diploma", "advance_diploma",
+                    "bachelor", "graduate_diploma", "master", "master_research", "doctoral"]) {
   eq(courseCategoryForLevel(slug), "academic", `${slug} is academic`);
 }
-for (const slug of ["certificate", "diploma", "advance_diploma", "non_aqf_award"]) {
-  eq(courseCategoryForLevel(slug), "short_course", `${slug} is a short course`);
-}
+eq(courseCategoryForLevel("non_aqf_award"), "short_course", "the non-award bucket is the short course");
 eq(courseCategoryForLevel(null), null, "an unlinked course has no category from its level");
 // A level in neither bucket would be out of scope on BOTH kinds of job — the health check says so.
 for (const l of LISTS.levels) {

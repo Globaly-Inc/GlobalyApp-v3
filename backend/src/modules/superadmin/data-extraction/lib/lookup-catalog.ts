@@ -120,12 +120,14 @@ export interface LookupListsHealth {
 // scope alongside the degree-level picker. Mapping, not list data: every slug must exist in the
 // seeder, and lookupListsHealth reports a seeded level that lands in neither bucket — such a level
 // would be out of scope on BOTH kinds of job.
+// Follows the SEEDED category descriptions, the platform's own definition: Academic Courses is
+// "Degree programs, diplomas, and certificates"; Short Courses is "Professional development and
+// language courses" — the non-award bucket and nothing else.
 const ACADEMIC_LEVELS = new Set([
-  "school", "high_school", "bachelor", "graduate_diploma", "master", "master_research", "doctoral",
+  "school", "high_school", "certificate", "diploma", "advance_diploma",
+  "bachelor", "graduate_diploma", "master", "master_research", "doctoral",
 ]);
-const SHORT_COURSE_LEVELS = new Set([
-  "certificate", "diploma", "advance_diploma", "non_aqf_award",
-]);
+const SHORT_COURSE_LEVELS = new Set(["non_aqf_award"]);
 
 export type CourseCategory = "academic" | "short_course";
 
@@ -280,13 +282,17 @@ const ABBREVIATIONS: Array<[RegExp, string]> = [
 const LEVEL_WORDS: Array<[RegExp, string]> = [
   [/\b(doctor (?:of|in) philosophy|doctor (?:of|in)|doctorate|doctoral|professional doctorate)\b/i, "PHD"],
   [/\b(master (?:of|by|in) research|research master'?s?|master (?:of |in )?philosophy)\b/i, "Master (Research)"],
-  [/\b(graduate certificate|postgraduate certificate|grad\.? cert(?:ificate)?|graduate diploma|postgraduate diploma|grad\.? dip(?:loma)?)\b/i, "Graduate Diploma"],
+  [/\b(graduate certificate|(?:post)?graduate [\w\s-]{0,30}?certificate|postgraduate certificate|grad\.? cert(?:ificate)?|graduate diploma|postgraduate diploma|grad\.? dip(?:loma)?)\b/i, "Graduate Diploma"],
   // "of" is not the only preposition a catalogue uses — US programmes write "Master In Teaching".
   [/\b(master (?:of|in)|master'?s|masters|magister|executive master|educational specialist)\b/i, "Master"],
   [/\b(bachelor (?:of|in)|bachelor'?s|bachelors|bachelor|licenciatura|honou?rs degree)\b/i, "Bachelor"],
   [/\b(associate degree|associate of|associate in|undergraduate higher diploma)\b/i, "Bachelor"],
   [/\b(advanced? diploma)\b/i, "Advance Diploma"],
   [/\b(diploma of higher education|foundation degree|higher national diploma|diploma)\b/i, "Diploma"],
+  // Above `certificate` too: a microcredential, an edX-style MOOC ("7.03.2x Genetics…") and a
+  // half-day workshop all carry the word "certificate" or none at all, so the certificate row
+  // claimed them. NON_AWARD_RE cannot help — it is only consulted after LEVEL_WORDS has missed.
+  [/\b(microcert\w*|microcred\w*|micro[- ]cert\w*|individual certificate|(?:half|one|two|three)[\s\u2010-\u2015-]?day)\b|^\d+\.[\dA-Za-z.]*x\s/i, "Non AQF Award"],
   // Above `certificate`: a school qualification usually HAS "certificate" in its name — HSC, VCE,
   // GCSE — and the bare certificate row would swallow them all. The school ones are NAMED, so they
   // are enumerated rather than matched on a bare "certificate of education", which would also
