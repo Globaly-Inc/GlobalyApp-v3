@@ -594,7 +594,7 @@ const REGISTRANT_TYPE_LABELS: Record<string, string> = {
   other: "Other",
   newsletter: "Newsletter Subscriber",
 };
-const LAUNCH_DATE_LABEL = new Date("2026-09-01T00:00:00+10:00").toLocaleDateString("en-US", {
+const LAUNCH_DATE_LABEL = new Date("2026-09-18T00:00:00+10:00").toLocaleDateString("en-US", {
   month: "long",
   day: "numeric",
   year: "numeric",
