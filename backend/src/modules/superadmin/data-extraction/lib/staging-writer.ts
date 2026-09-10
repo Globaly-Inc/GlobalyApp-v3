@@ -6,7 +6,10 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
-import { loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel } from "./lookup-catalog.js";
+import {
+  loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel,
+  courseCategoryForLevel, categoryForServiceSlug, shouldDemoteForDuration, type CourseCategory,
+} from "./lookup-catalog.js";
 import { coercePartialDate, morePrecise, normaliseStored, partialDatesAgree } from "./partial-date.js";
 
 const logger = createChildLogger("staging-writer");
@@ -897,17 +900,81 @@ async function jobDegreeLevels(jobId: string): Promise<Set<string>> {
   return set;
 }
 
+/** The kind of course the job's service category asks for; null for a job with no category. */
+const jobCategoryCache = new Map<string, CourseCategory | null>();
+
+async function jobCourseCategory(jobId: string): Promise<CourseCategory | null> {
+  const cached = jobCategoryCache.get(jobId);
+  if (cached !== undefined) return cached;
+  const row = await masterKnex(`${S}.extraction_jobs as j`)
+    .leftJoin("public.service_categories as sc", "sc.id", "j.service_category_id")
+    .where("j.id", jobId)
+    .first("sc.slug");
+  const resolved = categoryForServiceSlug(row?.slug);
+  jobCategoryCache.set(jobId, resolved);
+  return resolved;
+}
+
+/**
+ * The level slugs this job would REFUSE, or null when it refuses nothing. Stated as an EXCLUSION
+ * because isCourseInScope only ever rejects a level it positively knows about. Listing the allowed
+ * ones instead needs a complete universe, and any level missing from it — deactivated after the job
+ * was created, or added through the admin catalogue API — silently flips to out-of-scope on the
+ * read side while the writer still accepts it.
+ *
+ * Reads ALL levels, active or not: this module deactivates rather than deletes, and a course staged
+ * before a level was retired still carries it.
+ */
+export async function jobExcludedLevels(jobId: string): Promise<string[] | null> {
+  const wantedCategory = await jobCourseCategory(jobId);
+  const wantedLevels = await jobDegreeLevels(jobId);
+  if (!wantedCategory && wantedLevels.size === 0) return null;
+
+  const rows: Array<{ slug: string }> = await masterKnex("degree_levels").select("slug");
+  // (a null degree_level_code is excluded too on a scoped job — see the SQL in courses.repository)
+  return rows
+    .map((r) => r.slug)
+    .filter((slug) => {
+      const category = courseCategoryForLevel(slug);
+      if (wantedCategory && category && category !== wantedCategory) return true;
+      return wantedLevels.size > 0 && !wantedLevels.has(slug);
+    });
+}
+
+/**
+ * Both scopes apply: the stepper's service category (Academic vs Short Courses) and, within it,
+ * the degree levels picked. A course with no level is kept — it can't be judged by either.
+ */
 export async function isCourseInScope(jobId: string, levelCode: string | null): Promise<boolean> {
-  const wanted = await jobDegreeLevels(jobId);
-  return wanted.size === 0 || !levelCode || wanted.has(levelCode);
+  const wantedCategory = await jobCourseCategory(jobId);
+  const wantedLevels = await jobDegreeLevels(jobId);
+
+  // An unscoped job takes whatever the site publishes.
+  if (!wantedCategory && wantedLevels.size === 0) return true;
+
+  // A SCOPED job takes only what it can positively place. A course whose level could not be
+  // resolved is not provably academic (or provably short), so it does not belong — this is what
+  // keeps department index pages and unlabelled workshops out. Every skip is logged by name, and
+  // an unscoped job still stages them for review.
+  if (!levelCode) return false;
+
+  const category = courseCategoryForLevel(levelCode);
+  if (wantedCategory && category && category !== wantedCategory) return false;
+
+  return wantedLevels.size === 0 || wantedLevels.has(levelCode);
 }
 
 // A course with no level is kept — it can't be judged.
 async function skipOutOfScope(jobId: string, course: ExtractedCourse, levelCode: string | null) {
   if (await isCourseInScope(jobId, levelCode)) return false;
-  linkLogger.info("skipped — outside the job's degree levels", {
+  const wantedCategory = await jobCourseCategory(jobId);
+  const wantedLevels = [...(await jobDegreeLevels(jobId))];
+  linkLogger.info("skipped — outside the job's scope", {
     jobId, course: course.name, degree_level_code: levelCode,
-    job_wants: [...(await jobDegreeLevels(jobId))],
+    // Which scope refused it: the category, the picked levels, or both.
+    refused_by: wantedCategory && courseCategoryForLevel(levelCode) !== wantedCategory
+      ? "service category" : "degree levels",
+    job_category: wantedCategory, job_levels: wantedLevels,
   });
   return true;
 }
@@ -1474,9 +1541,36 @@ export interface CourseLookupLink {
  * after the first call and makes no model call of its own — the model already chose `area_of_study`
  * and `degree_level` while reading the page; this validates those choices against the live list.
  */
+// A month or less is not a qualification, whatever the page calls it: every course at these levels
+// running <= 4 weeks in the staged data is executive education — "Harvard Mediation Intensive",
+// "Senior Executive Fellows", "Ethical Leadership". Applied ONLY to the non-degree levels, because
+// a degree with a short duration is a PARSING error, not a short course (live example: "Literary
+// Reportage (MFA)" stored as 2 weeks). No bachelor, graduate diploma or doctorate in the data runs
+// under 35 weeks, so the degrees need no such rescue.
+/** The duration the page stated for the COURSE — never inferred from a study option or prose. */
+function statedDurationWeeks(course: ExtractedCourse): number | null {
+  const fromText = parseDurationText(course.duration_text);
+  if (fromText) return plausibleWeeks(durationToWeeks(fromText.value, fromText.unit));
+  const numeric = coerceInt(course.duration_weeks);
+  if (numeric != null) return plausibleWeeks(numeric);
+  if (typeof course.duration_weeks === "string") {
+    const p = parseDurationText(course.duration_weeks);
+    if (p) return plausibleWeeks(durationToWeeks(p.value, p.unit));
+  }
+  return null;
+}
+
 export async function resolveCourseLookups(course: ExtractedCourse): Promise<CourseLookupLink> {
   const lists = await loadLookupLists();
-  const level = resolveDegreeLevel(lists, course.degree_level, course.name);
+  let level = resolveDegreeLevel(lists, course.degree_level, course.name);
+
+  // Only a duration the SOURCE STATED for the course itself may demote it. resolveDurationWeeks
+  // also falls back to the shortest study option and to description prose — fine for filling a
+  // display field, unsafe here: a diploma offering a 4-week intensive beside a 52-week standard
+  // would report 4, and under strict scoping a demotion is not a mislabel but a DELETION.
+  if (shouldDemoteForDuration(level?.slug, statedDurationWeeks(course), course.name)) {
+    level = lists.levels.find((l) => l.slug === "non_aqf_award") ?? level;
+  }
   // Subject wording first, then the course's own name — "Bachelor of Nursing" still reaches Health
   // and Medicine on a page that never stated a subject.
   const area = resolveAreaOfStudy(lists, course.area_of_study, course.subject_area, course.name);

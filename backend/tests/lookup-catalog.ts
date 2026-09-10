@@ -19,7 +19,7 @@
  *   node --import tsx tests/lookup-catalog.ts
  */
 import {
-  resolveAreaOfStudy, resolveDegreeLevel, type LookupLists,
+  resolveAreaOfStudy, resolveDegreeLevel, type LookupLists, courseCategoryForLevel, categoryForServiceSlug, lookupListsHealth, shouldDemoteForDuration,
 } from "../src/modules/superadmin/data-extraction/lib/lookup-catalog.js";
 
 let passed = 0;
@@ -186,6 +186,61 @@ eq(lvl(null, "Certificate III in Aged Care"), "certificate", "an AQF certificate
 eq(lvl(null, "Advanced Diploma of Primary School Teaching"), "advance_diploma", "a teaching diploma stays a diploma");
 eq(lvl(null, "Master of Teaching (Secondary)"), "master", "…and a teaching master stays a master");
 
+// ── A one- or two-day course is NOT an academic certificate ──
+// These carry the word "certificate" (or no qualification at all), so the certificate row claimed
+// them and they landed in Academic Courses jobs.
+eq(lvl(null, "AI in Business Microcertificate (Online)"), "non_aqf_award", "a microcertificate");
+eq(lvl(null, "Advanced Negotiation Microcredential"), "non_aqf_award", "a microcredential");
+eq(lvl(null, "Ancient Masterpieces of World Literature (Individual Certificate)"), "non_aqf_award", "an individual certificate");
+eq(lvl(null, "AI Fundamentals for Business Leaders (Live Online, Half-Day)"), "non_aqf_award", "a half-day workshop");
+eq(lvl(null, "Negotiation Essentials: Two Day Intensive"), "non_aqf_award", "a two-day course");
+eq(lvl(null, "7.03.2x Genetics: Analysis and Application"), "non_aqf_award", "an edX MOOC code");
+eq(lvl(null, "7.QBWx Quantitative Biology Workshop"), "non_aqf_award", "…including a lettered one");
+
+// …without taking real credentials with it.
+eq(lvl(null, "Undergraduate Certificate in Environmental Engineering"), "certificate", "an undergraduate certificate is real");
+eq(lvl(null, "Global Public Administration, Certificate"), "certificate", "a named certificate is real");
+eq(lvl(null, "Certificate IV in Business"), "certificate", "an AQF certificate is real");
+eq(lvl(null, "Graduate Certificate in Data Analytics"), "graduate_diploma", "a graduate certificate is postgraduate");
+eq(lvl(null, "Postgraduate APRN Certificate - Family Nurse Practitioner"), "graduate_diploma", "…with words between 'postgraduate' and 'certificate'");
+eq(lvl(null, "Postgraduate Executive Leadership Certificate"), "graduate_diploma", "…however long the middle");
+eq(lvl(null, "Undergraduate Certificate in Child Life"), "certificate", "an UNDERgraduate certificate is not postgraduate");
+eq(lvl(null, "Diploma of Nursing"), "diploma", "a diploma is untouched");
+eq(lvl(null, "Bachelor of Science in Daydreaming Studies"), "bachelor", "a degree is not caught by the day pattern");
+
+// Duration is the other short-course tell, applied in resolveCourseLookups (it needs the whole
+// course, not just the name) — see tests run against the live resolver. The taxonomy side asserted
+// here is only that the levels it demotes TO and FROM sit in the right buckets.
+eq(courseCategoryForLevel("certificate"), "academic", "certificate is academic until demoted");
+eq(courseCategoryForLevel("non_aqf_award"), "short_course", "…and non-award is where it lands");
+
+// ── The stepper's service category is a second, coarser scope ──
+// "Academic Courses" must not stage a certificate or a short course; "Short Courses" must not
+// stage a bachelor or a master. Every seeded level lands in exactly one bucket.
+eq(categoryForServiceSlug("courses"), "academic", "the Academic Courses category");
+eq(categoryForServiceSlug("short_courses"), "short_course", "the Short Courses category");
+eq(categoryForServiceSlug("accommodation"), null, "a non-course vertical scopes nothing");
+eq(categoryForServiceSlug(null), null, "no category chosen scopes nothing");
+
+// Academic Courses is seeded as "Degree programs, diplomas, and certificates", so a certificate
+// and a diploma are ACADEMIC. Short Courses is "Professional development and language courses" —
+// the non-award bucket alone.
+for (const slug of ["school", "high_school", "certificate", "diploma", "advance_diploma",
+                    "bachelor", "graduate_diploma", "master", "master_research", "doctoral"]) {
+  eq(courseCategoryForLevel(slug), "academic", `${slug} is academic`);
+}
+eq(courseCategoryForLevel("non_aqf_award"), "short_course", "the non-award bucket is the short course");
+eq(courseCategoryForLevel(null), null, "an unlinked course has no category from its level");
+// A level in neither bucket would be out of scope on BOTH kinds of job — the health check says so.
+for (const l of LISTS.levels) {
+  eq(typeof courseCategoryForLevel(l.slug), "string", `every seeded level has a bucket: ${l.slug}`);
+}
+eq(lookupListsHealth(LISTS).ok, true, "the seeded lists are healthy, category buckets included");
+
+eq(courseCategoryForLevel("some_new_level_from_admin_api"), null, "an admin-added level has no bucket");
+eq(lookupListsHealth({ ...LISTS, levels: [...LISTS.levels, { slug: "brand_new", name: "Brand New" }] }).ok,
+   false, "…and the health check says so rather than letting it linger");
+
 // ── An ADMIN edit resolves from the pick alone ──
 // normaliseCoursePatch passes name: "" precisely so the course NAME cannot act as a fallback.
 // With the name in play, clearing the picker on "Bachelor of Nursing" re-derived `bachelor` and
@@ -201,6 +256,34 @@ eq(lvl("Not A Level", ""), null, "an unmatched pick clears rather than guessing"
 const EMPTY: LookupLists = { areas: [], levels: [] };
 eq(resolveAreaOfStudy(EMPTY, "Health and Medicine"), null, "no seeded areas → nothing links");
 eq(resolveDegreeLevel(EMPTY, "Bachelor", "Nursing BSc"), null, "no seeded levels → nothing links");
+
+// ── A short duration demotes only when the NAME does not assert a credential ──
+// The destructive direction: under a scoped Academic job a demotion is a deletion, so a real
+// award delivered as an intensive must survive. The permissive direction still has to hold —
+// a 4-week "Certificate in Excel" is what the rule exists to catch.
+for (const [name, level] of [
+  ["Certificate III in Business", "certificate"],
+  ["Certificate IV in Ageing Support", "certificate"],
+  ["Undergraduate Certificate in Data Science", "certificate"],
+  ["Graduate Certificate in Cyber Security", "certificate"],
+  ["Advanced Diploma of Engineering", "advance_diploma"],
+  ["Diploma of Nursing", "diploma"],
+  ["Diploma in Project Management", "diploma"],
+] as const) {
+  eq(shouldDemoteForDuration(level, 3, name), false, `"${name}" survives a 3-week run — the name claims the credential`);
+}
+for (const [name, level] of [
+  ["Certificate in Excel", "certificate"],
+  ["Professional Certificate in Leadership", "certificate"],
+  ["Digital Marketing Certificate", "certificate"],
+  ["Leadership Essentials", "certificate"],
+] as const) {
+  eq(shouldDemoteForDuration(level, 3, name), true, `"${name}" claims no credential — a 3-week run demotes it`);
+}
+eq(shouldDemoteForDuration("certificate", 52, "Certificate in Excel"), false, "a year-long run is not short, whatever the name");
+eq(shouldDemoteForDuration("certificate", null, "Certificate in Excel"), false, "no stated duration never demotes");
+eq(shouldDemoteForDuration("bachelor", 3, "Bachelor of Nursing"), false, "a degree is never reached by the duration rule");
+eq(shouldDemoteForDuration(null, 3, "Something"), false, "an unresolved level is left alone");
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -6,7 +6,7 @@ import { logAudit } from "../shared/audit.js";
 import { withActorNames } from "../shared/actor-names.js";
 import * as repo from "../repositories/courses.repository.js";
 import type { CreateCourseInput, PatchCourseInput } from "../schemas/courses.schema.js";
-import { resolveCourseLookups } from "../lib/staging-writer.js";
+import { resolveCourseLookups, jobExcludedLevels } from "../lib/staging-writer.js";
 
 export async function listCourses(
   jobId: string,
@@ -15,7 +15,9 @@ export async function listCourses(
   pagination: PaginationInput,
   filters: { search?: string; status?: string; sort?: repo.CourseSort; scope?: "in" | "out" },
 ) {
-  const { sort, ...listFilters } = filters;
+
+  const excluded = filters.scope ? await jobExcludedLevels(jobId) : undefined;
+  const { sort, ...listFilters } = { ...filters, excluded };
   const [courses, total, statusCounts] = await Promise.all([
     repo.listCoursesByJob(jobId, limit, offset, listFilters, sort),
     repo.countCoursesByJob(jobId, listFilters),
