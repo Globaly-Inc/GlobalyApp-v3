@@ -79,7 +79,7 @@ const envSchema = z.object({
   // the vector column is 3072-dim and a chat model cannot produce that. See shared/ai/openrouter.ts.
   OLLAMA_BASE_URL: z.string().optional(),  // e.g. https://model.globalyapp.com/v1
   OLLAMA_API_KEY: z.string().optional(),   // bearer token for the gateway
-  OLLAMA_MODEL: z.string().default("hf.co/unsloth/Qwen3.8-27B-GGUF:Q4_0"),
+  OLLAMA_MODEL: z.string().default("hf.co/unsloth/Qwen3.8-27B-GGUF:UD-IQ3_XXS"),
   /**
    * How long the self-hosted box gets before the chain moves on, in ms.
    *
