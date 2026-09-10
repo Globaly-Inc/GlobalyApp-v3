@@ -21,6 +21,7 @@ import { getVisibleNavGroups, isNavPathActive } from "./nav-config";
 import { AdminMobileNav } from "./components/admin-mobile-nav";
 import { AdminPortalSwitcher } from "./components/admin-portal-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
+import { ICON } from "@/lib/public-assets";
 
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
@@ -102,7 +103,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
         <div className="flex items-center min-w-0">
           <div className="flex h-16 shrink-0 items-center px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex items-center shrink-0">
-              <Image src="/globaly-red-icon.png" alt="Globalyapp" width={283} height={283} className="size-9 rounded-[10px]" />
+              <Image src={ICON.src} alt="Globalyapp" width={ICON.width} height={ICON.height} className="size-9 rounded-[10px]" />
             </Link>
           </div>
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}

@@ -24,6 +24,7 @@ import { BUSINESS_NAV_GROUPS, INSTITUTION_SCHOLARSHIPS_ITEM, withBusinessId } fr
 import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
+import { ICON } from "@/lib/public-assets";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
@@ -191,7 +192,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         <div className="flex h-16 items-center">
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center">
-              <Image src="/globaly-red-icon.png" alt="Globalyapp" width={64} height={64} className="size-9 rounded-[10px]" />
+              <Image src={ICON.src} alt="Globalyapp" width={ICON.width} height={ICON.height} className="size-9 rounded-[10px]" />
             </Link>
           </div>
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}

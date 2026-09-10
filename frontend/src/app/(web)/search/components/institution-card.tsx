@@ -101,13 +101,16 @@ export function InstitutionCard({ institution }: Readonly<{ institution: SearchB
             </p>
           </div>
 
-          {/* An enquiry is always about a course, so the school can't be the target — instead it
-              preselects the dialog's institution filter and the course picker opens on this
-              catalog alone. PersonalShell bounces anonymous visitors to sign-in and preserves
-              this URL, so they come back to the same filtered dialog. */}
-          <Link href={institution.job_id ? `/personal/enquiries?institution=${institution.job_id}` : "/personal/enquiries"}>
-            <Button size="sm" className="h-9 w-full text-xs">Enquiry</Button>
-          </Link>
+          {/* Same destination as the card-wide overlay Link — the button just states it. A
+              listing with no slug has no profile page to open, so the CTA sits disabled rather
+              than pointing at "#". */}
+          {institution.slug ? (
+            <Link href={profileHref}>
+              <Button size="sm" className="h-9 w-full text-xs">View Details</Button>
+            </Link>
+          ) : (
+            <Button size="sm" className="h-9 w-full text-xs" disabled>View Details</Button>
+          )}
         </div>
       </div>
     </div>

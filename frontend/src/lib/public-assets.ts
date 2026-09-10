@@ -13,8 +13,34 @@
 const BUCKET = "https://storage.googleapis.com/globalyapp-public-images";
 
 /** The brand marks sit under `logos/`; everything else under `photos/`. */
-export const LOGO = { src: `${BUCKET}/logos/globaly-logo.png`, width: 753, height: 157 } as const;
-export const LOGO_WHITE = { src: `${BUCKET}/logos/globaly-logo-white.png`, width: 776, height: 188 } as const;
+
+/** The full GlobalyApp wordmark in navy — for light backgrounds. */
+export const LOGO = {
+  src: `${BUCKET}/logos/GlobalyApp%20Main%20Full%20Logo%20(2).png`,
+  width: 737,
+  height: 157,
+} as const;
+/** The same wordmark reversed to white — for navy and photographic backgrounds. */
+export const LOGO_WHITE = {
+  src: `${BUCKET}/logos/GlobalyApp%20Main%20Full%20Logo%20White%20(1).png`,
+  width: 737,
+  height: 157,
+} as const;
+
+/**
+ * The square app mark: a navy rounded tile with a white glyph, replacing the red tile the
+ * portal headers used. It carries its own background, so it holds up on `bg-card` in either
+ * theme without needing a per-theme swap.
+ *
+ * The inverse cut (white tile, navy glyph) is the browser favicon and ships at
+ * `src/app/icon.png` instead of here — Next's app-dir icon convention only reads a real
+ * file, so a bucket URL cannot serve it.
+ */
+export const ICON = {
+  src: `${BUCKET}/logos/GlobalyOS%20White%20BG%20Icon.png`,
+  width: 283,
+  height: 283,
+} as const;
 
 const PHOTOS = `${BUCKET}/photos`;
 

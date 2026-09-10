@@ -21,13 +21,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AiLauncher } from "@/components/ai-widget/ai-launcher";
+// import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { NAV_ITEMS } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
+import { ICON } from "@/lib/public-assets";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
@@ -93,10 +94,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center">
               <Image
-                src="/globaly-red-icon.png"
+                src={ICON.src}
                 alt="Globalyapp"
-                width={283}
-                height={283}
+                width={ICON.width}
+                height={ICON.height}
                 className="size-9 rounded-[10px]"
                 priority
               />
@@ -202,7 +203,8 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
       </div>
 
       <PersonalMobileNav portalTarget={portalTarget} myProfileHref={myProfileHref} onSignOut={handleSignOut} />
-      <AiLauncher />
+      {/* Ask Aly floating orb — parked for now. */}
+      {/* <AiLauncher /> */}
     </div>
   );
 }

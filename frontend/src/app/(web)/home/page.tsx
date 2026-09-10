@@ -58,14 +58,14 @@ export default function HomePage() {
 
   return (
     <>
-      <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden bg-[hsl(var(--purple-dark))]">
+      <section className="hero-radiant relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden bg-[hsl(var(--purple-dark))]">
         <AutoplayVideo
           src="https://videos.pexels.com/video-files/7945680/7945680-hd_1920_1080_25fps.mp4"
           poster="https://images.pexels.com/photos/1205651/pexels-photo-1205651.jpeg?auto=compress&cs=tinysrgb&w=1920"
           className="absolute inset-0 w-full h-full object-cover scale-105"
           style={{ transformOrigin: "center" }}
         />
-        <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/60" />
+        <div className="hero-wash absolute inset-0" />
         <div className="container mx-auto px-4 py-16 sm:py-20 md:py-20 relative z-10">
           <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
             <p className="text-white/70 text-sm font-medium mb-2 tracking-wide">
