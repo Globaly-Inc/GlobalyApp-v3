@@ -187,6 +187,21 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
 }
 
 /**
+ * Issues a fresh claim link for a business nobody owns yet — the twin of
+ * `mintInstitutionClaimUrl`, and exported for the same reason: an enquiry matching an unclaimed
+ * business has to put a way in inside its notification, or the mail asks someone to sign into an
+ * account that cannot be signed into.
+ *
+ * A new token supersedes the previous one — `setClaimPending` overwrites `claim_token`, so the
+ * newest link is always the live one and any older mail's button is spent.
+ */
+export async function mintBusinessClaimUrl(businessId: string | number): Promise<string> {
+  const token = randomBytes(32).toString("hex");
+  await repo.setClaimPending(businessId, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
+  return `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
+}
+
+/**
  * Self-serve claim trigger, called from the registration page after a user is told a business
  * profile already exists for their email. Always resolves silently (no "found"/"not found"
  * signal) to avoid leaking account existence — same anti-enumeration stance as `registerUser`.
@@ -197,10 +212,7 @@ export async function requestClaimByEmail(email: string): Promise<void> {
   const business = await repo.findUnclaimedBusinessByContactEmail(email);
   if (!business) return;
 
-  const token = randomBytes(32).toString("hex");
-  await repo.setClaimPending(business.id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-
-  const claimUrl = `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
+  const claimUrl = await mintBusinessClaimUrl(business.id);
   // Personalise only if someone already registered on this address; otherwise stay generic,
   // since the listing itself has no name for a person.
   const existingUser = await userRepo.findByEmail(email);

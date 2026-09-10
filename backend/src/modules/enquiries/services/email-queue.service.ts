@@ -13,10 +13,18 @@
 // The old policy was "immediate if idle, else batched", which never held under
 // load — one enquiry fans out to every member of every matched business, so a
 // burst of 100 enquiries meant ~800 messages, sent serially behind a 1.2s
-// throttle, most of them rejected by the provider for rate. Now a
-// `enquiry_distributed` / `enquiry_institution_fallback` row is only inserted;
+// throttle, most of them rejected by the provider for rate. Now a row for one of
+// the four new-enquiry templates (see TEMPLATE) is only inserted;
 // `sweepDigests()` (driven by enquiry-email.worker.ts) later collects everything
 // pending for one recipient and sends ONE mail listing all of it.
+//
+// Who gets mailed is decided by matching, never here: claimed and unclaimed,
+// verified and unverified recipients are all eligible. `claim_status` picks the
+// TEMPLATE — a lead notice for a recipient someone has taken ownership of, an
+// acquisition mail with a claim CTA for one nobody has — and reachability (a
+// deliverable address) is the only thing that can stop a mail being queued at all.
+// Do not reach for `account_status` here: it says a schema exists, not that a
+// human agreed to work the leads. See resolveBusinessRecipients.
 //
 // The window is tumbling, keyed on the oldest pending row in a
 // (recipient_email, template) group — see findReadyDigestGroups. Grouping on the
@@ -31,13 +39,13 @@ import { config } from "../../../config.js";
 import { mailerService } from "../../../shared/mail/mailerService.js";
 import {
   emailLayout,
-  enquiryDigestEmail,
-  enquiryDistributedEmail,
-  enquiryInstitutionFallbackEmail,
+  enquiryClaimEmail,
+  enquiryLeadEmail,
   enquiryUnlockedEmail,
   type DigestItem,
 } from "../../../shared/mail/templates.js";
 import { mintInstitutionClaimUrl } from "../../platform-users/services/institution-claim.service.js";
+import { mintBusinessClaimUrl } from "../../businesses/services/businesses.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as emailQueueRepo from "../repositories/email-queue.repository.js";
 
@@ -46,14 +54,56 @@ const logger = createChildLogger("enquiry-email-queue");
 export const MAX_ATTEMPTS = Number(process.env.ENQUIRY_EMAIL_MAX_ATTEMPTS) || 5;
 
 /**
- * Templates that wait for a summary instead of sending on enqueue. These are the two
+ * The four new-enquiry notices, one per (recipient kind × claimed state).
+ *
+ * The claimed/unclaimed split is a TEMPLATE split rather than a flag inside one template, and
+ * that is load-bearing rather than stylistic: summaries are grouped by (template,
+ * recipient_email), so two template names is what keeps a claimed recipient's lead notice and an
+ * unclaimed one's acquisition mail out of the same digest. A single template with an `is_claimed`
+ * payload flag would put both kinds of row in one group and force the digest to pick one voice
+ * for a mixed batch — which is exactly the case that arises when one address owns a claimed
+ * listing and an unclaimed one.
+ */
+export const TEMPLATE = {
+  /** Matched business, claimed: the ordinary lead notice. */
+  BUSINESS: "enquiry_distributed",
+  /** Matched business, unclaimed: the acquisition mail with a claim CTA. */
+  BUSINESS_CLAIM: "enquiry_business_claim",
+  /** Fallback institution, claimed. */
+  INSTITUTION: "enquiry_institution_fallback",
+  /** Fallback institution, unclaimed. */
+  INSTITUTION_CLAIM: "enquiry_institution_claim",
+} as const;
+
+/**
+ * Templates that wait for a summary instead of sending on enqueue. These are the four
  * high-fan-out new-enquiry notices; `enquiry_unlocked` goes to the student, is one per
  * unlock, and is time-sensitive, so it stays immediate.
  *
  * Read at call time rather than captured, so a test can widen the window without
  * reloading the module.
  */
-export const BATCHED_TEMPLATES = ["enquiry_distributed", "enquiry_institution_fallback"];
+export const BATCHED_TEMPLATES: string[] = [
+  TEMPLATE.BUSINESS,
+  TEMPLATE.BUSINESS_CLAIM,
+  TEMPLATE.INSTITUTION,
+  TEMPLATE.INSTITUTION_CLAIM,
+];
+
+/**
+ * Is this address worth queuing a message for?
+ *
+ * `.invalid` is RFC 2606 reserved and can never resolve, and promote deliberately mints owner
+ * placeholders on `unclaimed.globalyhub.invalid` when extraction found no contact at all. Queuing
+ * one produced a guaranteed bounce, five retry attempts, and a `failed` row that read like an
+ * outage — while the institution path had guarded the identical case since it was written. The
+ * rule is the general one rather than that one domain, so the next placeholder scheme is covered
+ * without a second look.
+ */
+function deliverable(email: string | null | undefined): email is string {
+  const trimmed = email?.trim();
+  return !!trimmed && !/\.invalid$/i.test(trimmed);
+}
 
 const windowMs = () => Number(process.env.ENQUIRY_EMAIL_WINDOW_MS ?? 5 * 60_000);
 
@@ -135,14 +185,26 @@ function renderEmail(
   const str = (key: string) => (payload[key] as string | null) ?? null;
 
   switch (template) {
-    case "enquiry_distributed":
-      return enquiryDistributedEmail({
-        courseName: str("course_name"),
-        institutionName: str("institution_name"),
-        intake: str("intake"),
-        businessName: str("business_name"),
-        studentFirstName: str("student_first_name"),
+    case TEMPLATE.BUSINESS:
+    case TEMPLATE.INSTITUTION:
+      return enquiryLeadEmail({
+        kind: template === TEMPLATE.INSTITUTION ? "institution" : "business",
+        recipientName: str("business_name") ?? str("institution_name"),
+        items: [digestItemOf(payload)],
         distributionId: str("distribution_id"),
+        windowMinutes: Math.max(1, Math.round(windowMs() / 60_000)),
+      });
+    // A window holding exactly one enquiry still renders the acquisition mail, not a lead
+    // notice: the recipient's problem is that they cannot open anything, and that is
+    // independent of how many enquiries are waiting.
+    case TEMPLATE.BUSINESS_CLAIM:
+    case TEMPLATE.INSTITUTION_CLAIM:
+      return enquiryClaimEmail({
+        kind: template === TEMPLATE.INSTITUTION_CLAIM ? "institution" : "business",
+        recipientName: str("business_name") ?? str("institution_name"),
+        items: [digestItemOf(payload)],
+        claimUrl: str("claim_url"),
+        windowMinutes: Math.max(1, Math.round(windowMs() / 60_000)),
       });
     case "enquiry_unlocked":
       return enquiryUnlockedEmail({
@@ -151,15 +213,7 @@ function renderEmail(
         institutionName: str("institution_name"),
         enquiryId: str("enquiry_id"),
         sharedContact: payload.shared_contact === true,
-      });
-    case "enquiry_institution_fallback":
-      return enquiryInstitutionFallbackEmail({
-        studentFirstName: str("student_first_name"),
-        courseName: str("course_name"),
-        institutionName: str("institution_name"),
-        intake: str("intake"),
-        isClaimed: payload.is_claimed === true,
-        claimUrl: str("claim_url"),
+        messagePreview: str("message_preview"),
       });
     default: {
       // WEB_APP_URL, not APP_URL: the latter is this API's own origin, so a recipient
@@ -189,30 +243,46 @@ function renderDigest(
   if (rows.length === 1) return renderEmail(template, rows[0].payload ?? {});
 
   const str = (p: Record<string, unknown>, key: string) => (p[key] as string | null) ?? null;
+  const payloadOf = (row: emailQueueRepo.QueueRow) => (row.payload ?? {}) as Record<string, unknown>;
 
-  // An unclaimed institution has no inbox to open, so the CTA offers the claim link instead.
-  // Any row's link works; the newest has the most life left on its 72-hour token.
-  const lastPayload = (rows[rows.length - 1].payload ?? {}) as Record<string, unknown>;
-  const claimUrl = lastPayload.is_claimed === false ? str(lastPayload, "claim_url") : null;
+  // Every row goes in: the templates print the first five and count the rest, so the heading's
+  // number is the true size of this window.
+  const items: DigestItem[] = rows.map((row) => digestItemOf(payloadOf(row)));
+  const windowMinutes = Math.max(1, Math.round(windowMs() / 60_000));
+  const first = payloadOf(rows[0]);
 
-  const items: DigestItem[] = rows.map((row) => {
-    const payload = (row.payload ?? {}) as Record<string, unknown>;
-    return {
-      studentFirstName: str(payload, "student_first_name"),
-      courseName: str(payload, "course_name"),
-      institutionName: str(payload, "institution_name"),
-      intake: str(payload, "intake"),
-    };
-  });
+  if (template === TEMPLATE.BUSINESS_CLAIM || template === TEMPLATE.INSTITUTION_CLAIM) {
+    // `claimGroup` orders by created_at ASC, so the LAST row carries the newest token — and
+    // `setClaimPending` overwrites, so the newest is the only one that still opens. Reading any
+    // other row's link would hand the recipient a button that was spent by the enquiry after it.
+    const newest = payloadOf(rows[rows.length - 1]);
+    return enquiryClaimEmail({
+      kind: template === TEMPLATE.INSTITUTION_CLAIM ? "institution" : "business",
+      recipientName: str(first, "business_name") ?? str(first, "institution_name"),
+      items,
+      claimUrl: str(newest, "claim_url"),
+      windowMinutes,
+    });
+  }
 
-  // Every claimed row goes in: the template prints the first five and counts the rest, so the
-  // heading's number is the true size of this window.
-  return enquiryDigestEmail({
+  return enquiryLeadEmail({
+    kind: template === TEMPLATE.INSTITUTION ? "institution" : "business",
+    recipientName: str(first, "business_name") ?? str(first, "institution_name"),
     items,
-    businessName: str((rows[0].payload ?? {}) as Record<string, unknown>, "business_name"),
-    windowMinutes: Math.max(1, Math.round(windowMs() / 60_000)),
-    claimUrl,
+    windowMinutes,
   });
+}
+
+/** The four card fields, pulled out of a queue payload. Shared so the single and summary
+ *  renders of the same row cannot describe it differently. */
+function digestItemOf(payload: Record<string, unknown>): DigestItem {
+  const str = (key: string) => (payload[key] as string | null) ?? null;
+  return {
+    studentFirstName: str("student_first_name"),
+    courseName: str("course_name"),
+    institutionName: str("institution_name"),
+    intake: str("intake"),
+  };
 }
 
 /**
@@ -249,8 +319,22 @@ export async function sendQueuedRow(id: string): Promise<void> {
       const { subject, text, html } = renderEmail(row.template, row.payload ?? {});
       await mailerService.sendMail({ to: row.recipient_email, subject, text, html });
       await emailQueueRepo.markSent(trx, id);
+      logger.info("Sent enquiry email", { id, template: row.template, recipientEmail: row.recipient_email });
     } catch (err) {
-      logger.error("Failed to send queued enquiry email", { id, error: err });
+      // Says which it was — a requeue that will be retried, or the cap, after which nobody is
+      // ever told. The second is an incident; without the attempt count they read identically.
+      const attempts = (row.attempts ?? 0) + 1;
+      logger.error("Failed to send queued enquiry email", {
+        id,
+        template: row.template,
+        attempts,
+        maxAttempts: MAX_ATTEMPTS,
+        outcome: attempts >= MAX_ATTEMPTS ? "gave up" : "requeued for retry",
+        // `.message`, not the Error: winston's errors({stack:true}) only unwraps an Error passed
+        // AS the message, and an Error nested in metadata has non-enumerable properties — it
+        // serialises to `{}`. A render throw would otherwise log nothing at all about itself.
+        error: err instanceof Error ? err.message : String(err),
+      });
       await emailQueueRepo.markFailed(trx, id, MAX_ATTEMPTS);
     }
   });
@@ -288,7 +372,18 @@ export async function sendDigestGroup(template: string, recipientEmail: string):
       await emailQueueRepo.markSentMany(trx, ids);
       logger.info("Sent enquiry summary", { template, recipientEmail, count: rows.length });
     } catch (err) {
-      logger.error("Failed to send enquiry summary", { template, recipientEmail, error: err });
+      // Per-row attempts differ inside one group (a retried row is older than a fresh one), so
+      // the log reports the worst case: how close the most-attempted row is to being abandoned.
+      const attempts = Math.max(...rows.map((r) => r.attempts ?? 0)) + 1;
+      logger.error("Failed to send enquiry summary", {
+        template,
+        recipientEmail,
+        count: rows.length,
+        attempts,
+        maxAttempts: MAX_ATTEMPTS,
+        outcome: attempts >= MAX_ATTEMPTS ? "gave up" : "requeued for retry",
+        error: err instanceof Error ? err.message : String(err),
+      });
       await emailQueueRepo.markFailedMany(trx, ids, MAX_ATTEMPTS);
     }
   });
@@ -332,34 +427,75 @@ export async function sweepDigests(): Promise<void> {
  * address rather than being told nothing — a silently undelivered lead is worse than a mail
  * arriving at a personal inbox. The recipient is an inbox, not a platform user, so `userId`
  * stays null and the dedup key ends in "business": exactly one row per distribution.
+ *
+ * Claim state rides along because it decides which mail is sent, not whether one is: an
+ * unclaimed business is a legitimate recipient (matching has never filtered on it) but has
+ * nobody who has agreed to work the lead a notice points at.
+ *
+ * `claim_status`, NOT `account_status`, is the test, and the difference is not academic.
+ * `account_status` answers "could someone sign in", which the ADMIN create-business path sets
+ * to 1 the moment it eagerly provisions a tenant schema — before anyone at that business has
+ * been told the listing exists. Branching on it sent a lead notice to a listing an admin had
+ * typed in that morning. `claim_status` answers the question this mail actually turns on:
+ * has a human from this business taken ownership? Only self-service registration and the
+ * accept-claim flow set it to 'claimed'; admin-created and promoted listings stay 'unclaimed'.
+ *
+ * 'claim_pending' — what minting a claim link leaves behind — correctly reads as NOT claimed,
+ * so a second enquiry mints a fresh link rather than flipping the recipient to the claimed mail
+ * because we happened to mail it once already.
  */
-async function resolveBusinessRecipients(
-  businessId: number,
-): Promise<{ recipients: { userId: number | null; email: string }[]; businessName: string | null }> {
+async function resolveBusinessRecipients(businessId: number): Promise<{
+  recipients: { userId: number | null; email: string }[];
+  businessName: string | null;
+  isClaimed: boolean;
+}> {
   const business = await masterKnex("businesses as b")
     .leftJoin("platform_users as owner", "owner.id", "b.owner_id")
     .where("b.id", businessId)
-    .first("b.email", "b.business_name", "owner.email as owner_email");
+    .first("b.email", "b.business_name", "b.claim_status", "owner.email as owner_email");
 
-  const inbox = business?.email?.trim() || business?.owner_email?.trim();
+  const isClaimed = business?.claim_status === "claimed";
+  const own = business?.email?.trim();
+  const inbox = deliverable(own) ? own : deliverable(business?.owner_email) ? business.owner_email.trim() : null;
   if (!inbox) {
     // Not an error: the enquiry is distributed and visible in the business's inbox UI.
     // Nobody is reachable by mail, which is worth knowing about.
-    logger.warn("Business has no email and no owner address — no enquiry notification sent", { businessId });
-    return { recipients: [], businessName: business?.business_name ?? null };
+    logger.warn("Business has no deliverable email and no owner address — no enquiry notification sent", {
+      businessId,
+      isClaimed,
+    });
+    return { recipients: [], businessName: business?.business_name ?? null, isClaimed };
   }
-  if (!business?.email?.trim()) {
-    logger.warn("Business has no email set — notifying the owner instead", { businessId });
+  if (!deliverable(own)) {
+    logger.warn("Business has no usable email set — notifying the owner instead", { businessId });
   }
 
   // business_name comes back on the same row: the mail names the business it was sent to,
   // since one person can hold several.
-  return { recipients: [{ userId: null, email: inbox }], businessName: business?.business_name ?? null };
+  return { recipients: [{ userId: null, email: inbox }], businessName: business?.business_name ?? null, isClaimed };
 }
 
-/** Enqueues the single `enquiry_distributed` row for a newly-distributed business. */
+/**
+ * Enqueues the new-enquiry notice for a newly-distributed business — the lead notice when the
+ * business is claimed, the acquisition mail with a claim CTA when it is not.
+ *
+ * A claim link is minted per enquiry, exactly as the institution fallback does, because the
+ * token lives 72 hours and an enquiry can land long after the last one expired. The newest mint
+ * supersedes the older ones; `renderDigest` reads the newest row's link for precisely that reason.
+ */
 export async function enqueueDistributionEmails(enquiryId: string, distributionId: string, businessId: number) {
-  const { recipients, businessName } = await resolveBusinessRecipients(businessId);
+  const { recipients, businessName, isClaimed } = await resolveBusinessRecipients(businessId);
+  logger.info("Enquiry recipient identified", {
+    enquiryId,
+    distributionId,
+    businessId,
+    isClaimed,
+    reachable: recipients.length > 0,
+  });
+  if (recipients.length === 0) return;
+
+  const claimUrl = isClaimed ? null : await mintBusinessClaimUrl(businessId);
+  if (claimUrl) logger.info("Claim CTA generated for unclaimed business", { businessId, enquiryId, distributionId });
 
   // Names, not raw ids — the email is read by a human.
   const enquiry = await masterKnex("enquiries as e")
@@ -385,11 +521,15 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
   // One label rather than two payload fields: the mail prints "April 2027", and either half
   // can be missing.
   const intake = [enquiry?.preferred_intake, enquiry?.preferred_year].filter(Boolean).join(" ") || null;
+  const template = isClaimed ? TEMPLATE.BUSINESS : TEMPLATE.BUSINESS_CLAIM;
 
   for (const r of recipients) {
+    // The dedup key stays keyed on the distribution and NOT on the template: one distribution is
+    // one notification, and a business that gets claimed between the enqueue and the sweep must
+    // not be told twice under two template names.
     await enqueue({
       dedupKey: `enquiry_distributed:${distributionId}:${r.userId ?? "business"}`,
-      template: "enquiry_distributed",
+      template,
       payload: {
         course_id: enquiry?.course_id ?? null,
         course_name: enquiry?.course_name ?? null,
@@ -398,6 +538,7 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
         business_name: businessName,
         student_first_name: enquiry?.student_first_name ?? null,
         distribution_id: distributionId,
+        claim_url: claimUrl,
       },
       recipientEmail: r.email,
       recipientUserId: r.userId,
@@ -405,6 +546,7 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
       enquiryId,
       distributionId,
     });
+    logger.info("Enquiry summary queued", { template, enquiryId, distributionId, businessId });
   }
 }
 
@@ -444,6 +586,11 @@ export async function enqueueUnlockedEmailToStudent(
   // No address, nobody to tell. Not an error: the enquiry and its conversation are unaffected.
   if (!enquiry?.student_email) return;
 
+  const firstMessage = await masterKnex("enquiry_messages")
+    .where({ distribution_id: distributionId })
+    .orderBy("created_at", "asc")
+    .first("body");
+
   await enqueue({
     dedupKey: `enquiry_unlocked:${distributionId}`,
     template: "enquiry_unlocked",
@@ -455,6 +602,10 @@ export async function enqueueUnlockedEmailToStudent(
       // Echoed back so the mail can state what the unlocker can actually see, rather than
       // describing the feature in the abstract.
       shared_contact: enquiry.share_contact_number === true,
+      // The thread's opening message — today always the templated unlock greeting. Snapshotted
+      // at enqueue rather than read at send: the mail describes the moment of the unlock, and a
+      // later reply would make "sent you a message" point at the wrong one.
+      message_preview: firstMessage?.body ?? null,
     },
     recipientEmail: enquiry.student_email,
     recipientUserId: Number(enquiry.student_user_id),
@@ -484,15 +635,21 @@ export async function resolveInstitutionRecipients(institutionId: number) {
   const institution = await masterKnex("institutions")
     .where({ id: institutionId })
     .whereNull("deleted_at")
-    .first("id", "email", "institution_name", "account_status");
+    .first("id", "email", "institution_name", "claim_status");
   if (!institution) return { recipients: [], institution: null };
 
   // The institution's own contact address, and nobody else — same rule as a business, so the
   // two recipient paths cannot drift. `institutions.email` is NOT NULL, but promote nulls it
   // when extraction found no address (or another institution already holds it), which is
   // precisely the "nobody reachable" case matching gates the fallback on.
+  //
+  // Reachability is the ONLY gate here. Claim state and verification are not: an unclaimed,
+  // unverified institution with an address on file is a legitimate recipient and gets the
+  // acquisition mail below.
   const contact = institution.email?.trim();
-  const recipients: { userId: number | null; email: string }[] = contact ? [{ userId: null, email: contact }] : [];
+  const recipients: { userId: number | null; email: string }[] = deliverable(contact)
+    ? [{ userId: null, email: contact }]
+    : [];
   return { recipients, institution };
 }
 
@@ -502,10 +659,21 @@ export async function enqueueInstitutionFallbackEmail(
   institutionId: number,
 ) {
   const { recipients, institution } = await resolveInstitutionRecipients(institutionId);
+  // `claim_status`, not `account_status` — see resolveBusinessRecipients for why.
+  const isClaimed = institution?.claim_status === "claimed";
+  logger.info("Enquiry recipient identified", {
+    enquiryId,
+    distributionId,
+    institutionId,
+    isClaimed,
+    reachable: recipients.length > 0,
+  });
   if (!institution || recipients.length === 0) return;
 
-  const isClaimed = Number(institution.account_status) === 1;
   const claimUrl = isClaimed ? null : await mintInstitutionClaimUrl(institutionId);
+  if (claimUrl) {
+    logger.info("Claim CTA generated for unclaimed institution", { institutionId, enquiryId, distributionId });
+  }
 
   const enquiry = await masterKnex("enquiries as e")
     .leftJoin("superadmin.extraction_courses as c", "c.id", "e.course_id")
@@ -516,17 +684,18 @@ export async function enqueueInstitutionFallbackEmail(
     .where("e.id", enquiryId)
     .first("e.preferred_intake", "e.preferred_year", "c.name as course_name", "u.first_name as student_first_name");
   const intake = [enquiry?.preferred_intake, enquiry?.preferred_year].filter(Boolean).join(" ") || null;
+  const template = isClaimed ? TEMPLATE.INSTITUTION : TEMPLATE.INSTITUTION_CLAIM;
 
   for (const r of recipients) {
+    // Keyed on the distribution, not the template — see enqueueDistributionEmails.
     await enqueue({
       dedupKey: `enquiry_institution_fallback:${distributionId}:${r.userId ?? "institution"}`,
-      template: "enquiry_institution_fallback",
+      template,
       payload: {
         student_first_name: enquiry?.student_first_name ?? null,
         course_name: enquiry?.course_name ?? null,
         institution_name: institution.institution_name ?? null,
         intake,
-        is_claimed: isClaimed,
         claim_url: claimUrl,
         distribution_id: distributionId,
       },
@@ -536,5 +705,6 @@ export async function enqueueInstitutionFallbackEmail(
       enquiryId,
       distributionId,
     });
+    logger.info("Enquiry summary queued", { template, enquiryId, distributionId, institutionId });
   }
 }
