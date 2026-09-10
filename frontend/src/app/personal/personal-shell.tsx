@@ -26,7 +26,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
-import { NAV_ITEMS } from "./const";
+import { NAV_ITEMS, PERSONAL_PORTAL_HOME } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
 import { ICON } from "@/lib/public-assets";
 
@@ -166,7 +166,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                     </DropdownMenuItem>
                   </>
                 )} */}
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
                   Personal Portal
                 </DropdownMenuItem>
                 <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>

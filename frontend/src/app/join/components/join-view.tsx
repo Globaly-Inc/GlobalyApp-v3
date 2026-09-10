@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { referralsApi } from "@/app/personal/earn/referrals/apis";
 import { resolveInvite } from "../store/join-slice";
 import { LOGO } from "@/lib/public-assets";
+import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
 
 export function JoinView() {
   const router = useRouter();
@@ -143,7 +144,7 @@ export function JoinView() {
                   anything on yours.
                 </p>
                 <Link
-                  href="/personal/portal"
+                  href={PERSONAL_PORTAL_HOME}
                   className={cn(buttonVariants(), "mt-6 w-full cursor-pointer")}
                 >
                   Continue to Globaly

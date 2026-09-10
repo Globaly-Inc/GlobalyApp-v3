@@ -22,6 +22,7 @@ import { AdminMobileNav } from "./components/admin-mobile-nav";
 import { AdminPortalSwitcher } from "./components/admin-portal-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { ICON } from "@/lib/public-assets";
+import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
 
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
@@ -168,7 +169,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
                 </div>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
                 Personal Portal
               </DropdownMenuItem>
               <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>

@@ -32,9 +32,9 @@ export const LOGO_WHITE = {
  * portal headers used. It carries its own background, so it holds up on `bg-card` in either
  * theme without needing a per-theme swap.
  *
- * The inverse cut (white tile, navy glyph) is the browser favicon and ships at
- * `src/app/icon.png` instead of here — Next's app-dir icon convention only reads a real
- * file, so a bucket URL cannot serve it.
+ * The browser favicon is this same mark: Next's app-dir icon convention only reads a real
+ * file, so it ships as a downloaded copy at `src/app/icon.png` rather than from here.
+ * Re-download that file whenever this URL changes.
  */
 export const ICON = {
   src: `${BUCKET}/logos/GlobalyOS%20White%20BG%20Icon.png`,
@@ -73,5 +73,13 @@ export const PEOPLE_PHOTOS = {
   sofiaAlmeida: `${PHOTOS}/images%20(1).jpg`,
 } as const;
 
-/** Ask Aly's animated orb, used as the assistant's nav icon and avatar. Square, 240×240. */
-export const ALY_ORB = `${BUCKET}/ai/avatar/globaly-orb-rose-crimson-240.gif`;
+/**
+ * Ask Aly's animated orb — the azure variant of the brand mark, used as the assistant's nav icon
+ * and avatar. Square, 512×512 viewBox.
+ *
+ * The exception to this file's bucket rule: it is an SVG authored as code (vector, transparent,
+ * ~6 KB, motion in an embedded `<style>` that honours `prefers-reduced-motion`), not a bitmap
+ * maintained in the bucket, so it ships in `frontend/public` and is versioned with the repo.
+ * It replaces the rose-crimson GIF at `${BUCKET}/ai/avatar/globaly-orb-rose-crimson-240.gif`.
+ */
+export const ALY_ORB = "/globaly-orb-azure.svg";

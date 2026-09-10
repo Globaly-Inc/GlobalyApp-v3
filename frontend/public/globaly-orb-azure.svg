@@ -1,0 +1,121 @@
+<svg class="globaly-orb" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Globaly" xmlns="http://www.w3.org/2000/svg">
+  <title>Globaly</title>
+  <defs>
+    <radialGradient id="go-azure-halo" cx=".5" cy=".5" r=".5">
+      <stop offset=".50" stop-color="#3E86FF" stop-opacity=".30"/>
+      <stop offset=".70" stop-color="#3E86FF" stop-opacity=".12"/>
+      <stop offset=".86" stop-color="#3E86FF" stop-opacity=".04"/>
+      <stop offset="1" stop-color="#3E86FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="go-azure-bloom" cx=".5" cy=".5" r=".5">
+      <stop offset=".62" stop-color="#3E86FF" stop-opacity="0"/>
+      <stop offset=".82" stop-color="#3E86FF" stop-opacity=".30"/>
+      <stop offset=".93" stop-color="#3E86FF" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#3E86FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="go-azure-cast" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#3E86FF" stop-opacity=".52"/>
+      <stop offset=".55" stop-color="#3E86FF" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#3E86FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="go-azure-frost" x1="150" y1="110" x2="380" y2="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".12"/>
+      <stop offset=".45" stop-color="#fff" stop-opacity=".03"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".15"/>
+    </linearGradient>
+    <linearGradient id="go-azure-edge" x1="146" y1="112" x2="378" y2="372" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".95"/>
+      <stop offset=".38" stop-color="#fff" stop-opacity=".14"/>
+      <stop offset=".72" stop-color="#fff" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".62"/>
+    </linearGradient>
+    <linearGradient id="go-azure-sheen" x1="180" y1="112" x2="300" y2="230" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".48"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="go-azure-underlight" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#fff" stop-opacity=".45"/>
+      <stop offset=".6" stop-color="#fff" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="go-azure-blur" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="30"/></filter>
+    <filter id="go-azure-soft" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="go-azure-eyeglow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="6"/></filter>
+    <clipPath id="go-azure-ball"><circle cx="256" cy="240" r="152"/></clipPath>
+  </defs>
+  <style>
+/* Globaly orb - motion. Five loops at lengths that do not divide into each other,
+   so the drift never visibly repeats. Everything resets every 8 seconds. */
+
+.globaly-orb { display: block; width: 100%; height: 100%; }
+
+.globaly-orb .go-bob   { animation: go-bob 8s ease-in-out infinite; }
+.globaly-orb .go-swirl { transform-box: view-box; transform-origin: 256px 240px;
+                         animation: go-swirl 16s ease-in-out infinite; }
+.globaly-orb .go-d0 { transform-box: view-box; animation: go-k0  8s ease-in-out infinite; }
+.globaly-orb .go-d1 { transform-box: view-box; animation: go-k1 10s ease-in-out infinite; }
+.globaly-orb .go-d2 { transform-box: view-box; animation: go-k2  9s ease-in-out infinite; }
+.globaly-orb .go-d3 { transform-box: view-box; animation: go-k3 11s ease-in-out infinite; }
+.globaly-orb .go-d4 { transform-box: view-box; animation: go-k4 12s ease-in-out infinite; }
+.globaly-orb .go-look { transform-box: view-box; transform-origin: 256px 232px;
+                        animation: go-look 8s ease-in-out infinite; }
+.globaly-orb .go-lids { transform-box: fill-box; transform-origin: center;
+                        animation: go-blink 8s infinite; }
+
+@keyframes go-bob   { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+@keyframes go-swirl { 0%, 100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
+
+@keyframes go-k0 { 0%,100%{transform:translate(0,0)} 25%{transform:translate(13px,-9px)}
+                   50%{transform:translate(4px,12px)} 75%{transform:translate(-11px,3px)} }
+@keyframes go-k1 { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-10px,10px)}
+                   50%{transform:translate(-14px,-6px)} 75%{transform:translate(6px,-12px)} }
+@keyframes go-k2 { 0%,100%{transform:translate(0,0)} 25%{transform:translate(9px,11px)}
+                   50%{transform:translate(-8px,14px)} 75%{transform:translate(-12px,-7px)} }
+@keyframes go-k3 { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-12px,-8px)}
+                   50%{transform:translate(10px,-13px)} 75%{transform:translate(13px,6px)} }
+@keyframes go-k4 { 0%,100%{transform:translate(0,0)} 25%{transform:translate(7px,-13px)}
+                   50%{transform:translate(-13px,-2px)} 75%{transform:translate(2px,13px)} }
+
+@keyframes go-look {
+  0%, 14%   { transform: translate(0, 0); }
+  22%, 34%  { transform: translate(11px, -3px); }
+  42%, 52%  { transform: translate(0, 0); }
+  60%, 72%  { transform: translate(-11px, 2px); }
+  82%, 100% { transform: translate(0, 0); }
+}
+@keyframes go-blink {
+  0%, 17% { transform: scaleY(1); } 18.6% { transform: scaleY(.06); } 20.2% { transform: scaleY(1); }
+  56%     { transform: scaleY(1); } 57.4% { transform: scaleY(.06); } 59%   { transform: scaleY(1); }
+  100%    { transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .globaly-orb .go-bob, .globaly-orb .go-swirl, .globaly-orb .go-look, .globaly-orb .go-lids,
+  .globaly-orb .go-d0, .globaly-orb .go-d1, .globaly-orb .go-d2,
+  .globaly-orb .go-d3, .globaly-orb .go-d4 { animation: none; }
+}
+  </style>
+
+  <ellipse cx="256" cy="416" rx="132" ry="34" fill="url(#go-azure-cast)" filter="url(#go-azure-soft)"/>
+  <g class="go-bob">
+    <circle cx="256" cy="240" r="214" fill="url(#go-azure-halo)" filter="url(#go-azure-soft)"/>
+    <circle cx="256" cy="240" r="186" fill="url(#go-azure-bloom)" filter="url(#go-azure-soft)"/>
+    <g clip-path="url(#go-azure-ball)">
+      <g class="go-swirl" filter="url(#go-azure-blur)">
+        <rect x="-60" y="-76" width="632" height="632" fill="#1B55CE"/>
+        <g class="go-d0" style="mix-blend-mode:screen"><ellipse cx="180" cy="156" rx="113" ry="79" fill="#7FB6FF" opacity="1" transform="rotate(-90 180 156)"/></g><g class="go-d1" style="mix-blend-mode:normal"><ellipse cx="348" cy="194" rx="118" ry="82" fill="#2A63D6" opacity="1" transform="rotate(-53 348 194)"/></g><g class="go-d2" style="mix-blend-mode:normal"><ellipse cx="184" cy="306" rx="120" ry="84" fill="#1A57C6" opacity="1" transform="rotate(-16 184 306)"/></g><g class="go-d3" style="mix-blend-mode:normal"><ellipse cx="340" cy="330" rx="116" ry="80" fill="#2B69D6" opacity="1" transform="rotate(21 340 330)"/></g><g class="go-d4" style="mix-blend-mode:screen"><ellipse cx="256" cy="132" rx="68" ry="48" fill="#CFE6FF" opacity="0.9" transform="rotate(58 256 132)"/></g>
+      </g>
+      <circle cx="256" cy="240" r="152" fill="url(#go-azure-frost)"/>
+      <ellipse cx="214" cy="150" rx="88" ry="52" fill="url(#go-azure-sheen)" filter="url(#go-azure-soft)" transform="rotate(-24 214 150)"/>
+      <!-- underlight: the drifting shades bottom out around the lower third, which read as a dark band at
+           nav-icon size. This lifts that band without touching the hue structure above it. -->
+      <ellipse cx="256" cy="336" rx="150" ry="96" fill="url(#go-azure-underlight)" filter="url(#go-azure-soft)"/>
+    </g>
+    <circle cx="256" cy="240" r="150.5" fill="none" stroke="url(#go-azure-edge)" stroke-width="3"/>
+    <circle cx="256" cy="240" r="153" fill="none" stroke="#3E86FF" stroke-opacity=".28" stroke-width="4" filter="url(#go-azure-soft)"/>
+    <g class="go-look"><g class="go-lids">
+      <g filter="url(#go-azure-eyeglow)" opacity=".7"><rect x="213" y="198.5" width="23" height="67" rx="11.5" fill="#fff"/><rect x="276" y="198.5" width="23" height="67" rx="11.5" fill="#fff"/></g>
+      <rect x="213" y="198.5" width="23" height="67" rx="11.5" fill="#fff" fill-opacity=".97"/><rect x="276" y="198.5" width="23" height="67" rx="11.5" fill="#fff" fill-opacity=".97"/>
+    </g></g>
+  </g>
+</svg>
