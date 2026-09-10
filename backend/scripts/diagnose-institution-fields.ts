@@ -9,6 +9,7 @@
 //      (geocoding) run per-campus, this script only reports the gap.
 //
 // Run with: npm run diagnose:institution-fields <jobId>
+// Or without a jobId to run across every institution job.
 
 import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";
@@ -18,17 +19,11 @@ function status(ok: boolean): string {
   return ok ? "OK  " : "MISS";
 }
 
-async function main() {
-  const jobId = process.argv[2];
-  if (!jobId) {
-    console.error("Usage: npm run diagnose:institution-fields <jobId>");
-    process.exit(1);
-  }
-
+async function diagnoseJob(jobId: string): Promise<void> {
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
   if (!job) {
     console.error(`No job found with id ${jobId}`);
-    process.exit(1);
+    return;
   }
   console.log(`Job: ${job.institution_name ?? job.institution_url} (${job.status})\n`);
 
@@ -56,6 +51,21 @@ async function main() {
     console.log(`  ${status(!!c.email)} email: ${c.email ?? "—"}${emailFellBack ? "  (fell back from institution)" : ""}`);
     console.log(`  ${status(!!c.postcode)} postcode: ${c.postcode ?? "—"}`);
     console.log(`  ${status(!!c.map_link)} map_link: ${c.map_link ?? "—"}${!c.postcode || !c.map_link ? "  → try Find Missing Details" : ""}`);
+  }
+}
+
+async function main() {
+  const jobId = process.argv[2];
+
+  if (jobId) {
+    await diagnoseJob(jobId);
+  } else {
+    const jobs = await masterKnex(`${S}.extraction_jobs`).where({ source_type: "institution" }).orWhereNull("source_type");
+    console.log(`No jobId given — diagnosing all ${jobs.length} institution job(s)\n`);
+    for (const job of jobs) {
+      await diagnoseJob(job.id);
+      console.log("\n" + "=".repeat(60) + "\n");
+    }
   }
 
   await masterKnex.destroy();

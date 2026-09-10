@@ -79,7 +79,12 @@ export async function listBusinesses(
       "b.email", "b.phone", "b.status", "b.claim_status", "b.is_published", "b.country_id", "b.city",
       "b.logo_url", "b.account_status", "b.created_at",
       "b.owner_id", "b.schema_name", "b.profile_views", "b.source_job_id",
-      masterKnex.raw("b.owner_id IS NULL as is_unclaimed"),
+      // Unclaimed means no one has actually signed in as this business's owner yet — an
+      // owner_id assigned at creation (e.g. superadmin's "Add Business" placeholder account)
+      // doesn't count until that owner verifies via OTP, which is the only thing that flips
+      // is_email_verified from its false default. Self-registered owners are already verified
+      // the moment their business exists, so they read as claimed immediately.
+      masterKnex.raw("(b.owner_id IS NULL OR owner.is_email_verified IS NOT TRUE) as is_unclaimed"),
       "cat.name as category_name",
       "cat.slug as category_slug",
       "c.name as country_name",
@@ -189,7 +194,8 @@ export async function listInstitutions(
       "i.email", "i.phone", "i.status", "i.claim_status", "i.is_published", "i.country_id", "i.city",
       "i.logo_url", "i.account_status", "i.created_at",
       "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
-      masterKnex.raw("i.platform_user_id IS NULL as is_unclaimed"),
+      // See listBusinesses' matching comment — same "owner has actually logged in" rule.
+      masterKnex.raw("(i.platform_user_id IS NULL OR owner.is_email_verified IS NOT TRUE) as is_unclaimed"),
       masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
       masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
       "c.name as country_name",
@@ -253,7 +259,8 @@ export async function findInstitutionDetail(id: number) {
       "i.gallery_images", "i.video_urls",
       "i.account_status", "i.created_at", "i.updated_at", "i.verified_at",
       "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
-      masterKnex.raw("i.platform_user_id IS NULL as is_unclaimed"),
+      // See listBusinesses' matching comment — same "owner has actually logged in" rule.
+      masterKnex.raw("(i.platform_user_id IS NULL OR owner.is_email_verified IS NOT TRUE) as is_unclaimed"),
       masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
       masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
       "c.name as country_name",
@@ -342,7 +349,8 @@ export async function findBusinessDetail(id: number) {
     .where("b.id", id)
     .select(
       "b.*",
-      masterKnex.raw("b.owner_id IS NULL as is_unclaimed"),
+      // See listBusinesses' matching comment — same "owner has actually logged in" rule.
+      masterKnex.raw("(b.owner_id IS NULL OR owner.is_email_verified IS NOT TRUE) as is_unclaimed"),
       "cat.name as category_name",
       "cat.slug as category_slug",
       "c.name as country_name",
