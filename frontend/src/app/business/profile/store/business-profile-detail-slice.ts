@@ -16,18 +16,18 @@ import type {
 // backend) instead of /businesses/branches — same table, different owning entity.
 export const fetchBranches = createAsyncThunk(
   "businessProfileDetail/fetchBranches",
-  ({ params }: { id: number; params?: BranchListParams }, { getState }) =>
-    businessProfileDetailApi.getBranches(params, getOrgBase(getState)),
+  ({ id, params }: { id: number; params?: BranchListParams }, { getState }) =>
+    businessProfileDetailApi.getBranches(params, getOrgBase(getState, id)),
 );
 export const createBranch = createAsyncThunk(
   "businessProfileDetail/createBranch",
-  ({ input }: { id: number; input: BranchInput }, { getState }) =>
-    businessProfileDetailApi.createBranch(input, getOrgBase(getState)),
+  ({ id, input }: { id: number; input: BranchInput }, { getState }) =>
+    businessProfileDetailApi.createBranch(input, getOrgBase(getState, id)),
 );
 export const updateBranch = createAsyncThunk(
   "businessProfileDetail/updateBranch",
-  ({ branchId, patch }: { id: number; branchId: string; patch: BranchPatch }, { getState }) =>
-    businessProfileDetailApi.updateBranch(branchId, patch, getOrgBase(getState)),
+  ({ id, branchId, patch }: { id: number; branchId: string; patch: BranchPatch }, { getState }) =>
+    businessProfileDetailApi.updateBranch(branchId, patch, getOrgBase(getState, id)),
 );
 // No orgBase — linking another registered business as a branch has no institution twin.
 export const linkExistingBranch = createAsyncThunk(
@@ -36,8 +36,8 @@ export const linkExistingBranch = createAsyncThunk(
 );
 export const deleteBranch = createAsyncThunk(
   "businessProfileDetail/deleteBranch",
-  async ({ branchId }: { id: number; branchId: string }, { getState }) => {
-    await businessProfileDetailApi.deleteBranch(branchId, getOrgBase(getState));
+  async ({ id, branchId }: { id: number; branchId: string }, { getState }) => {
+    await businessProfileDetailApi.deleteBranch(branchId, getOrgBase(getState, id));
     return branchId;
   },
 );
@@ -115,26 +115,42 @@ export const resendInvitation = createAsyncThunk(
 );
 
 // ─── Roles (Members → Roles sub-tab) ─────────────────────────────────────────
-// ponytail: orgBase switches the API prefix for institution tokens (/institutions/roles vs /businesses/roles)
-function getOrgBase(getState: () => unknown): string {
-  const state = getState() as { auth?: { user?: { user_category?: string | null } } };
-  return state.auth?.user?.user_category === "institution" ? "/institutions" : "/businesses";
+// orgBase switches the API prefix for institution tokens (/institutions/roles vs /businesses/roles).
+// Keyed on the PROFILE BEING VIEWED (`id`, checked against the account's own businesses/
+// institutions membership lists), never `user_category` — that only names a dual-role account's
+// highest-priority role, so it picked the wrong base whenever such a user viewed the org that
+// ISN'T their primary one (e.g. a business-primary user viewing an institution they also belong
+// to), sending institution operations to the business-only route and getting rejected.
+function getOrgBase(getState: () => unknown, id: number): string {
+  const state = getState() as {
+    auth?: { user?: { businesses?: { id: number }[]; institutions?: { id: number }[] } };
+  };
+  const isInstitution =
+    !state.auth?.user?.businesses?.some((b) => b.id === id) &&
+    !!state.auth?.user?.institutions?.some((i) => i.id === id);
+  return isInstitution ? "/institutions" : "/businesses";
 }
 
-export const fetchRoles = createAsyncThunk("businessProfileDetail/fetchRoles", (_: void, { getState }) => businessProfileDetailApi.getRoles(getOrgBase(getState)));
-export const fetchPermissions = createAsyncThunk("businessProfileDetail/fetchPermissions", (_: void, { getState }) => businessProfileDetailApi.getPermissions(getOrgBase(getState)));
+export const fetchRoles = createAsyncThunk(
+  "businessProfileDetail/fetchRoles",
+  ({ id }: { id: number }, { getState }) => businessProfileDetailApi.getRoles(getOrgBase(getState, id)),
+);
+export const fetchPermissions = createAsyncThunk(
+  "businessProfileDetail/fetchPermissions",
+  ({ id }: { id: number }, { getState }) => businessProfileDetailApi.getPermissions(getOrgBase(getState, id)),
+);
 export const createRole = createAsyncThunk(
   "businessProfileDetail/createRole",
-  ({ input }: { input: RoleCreateInput }, { getState }) => businessProfileDetailApi.createRole(input, getOrgBase(getState)),
+  ({ id, input }: { id: number; input: RoleCreateInput }, { getState }) => businessProfileDetailApi.createRole(input, getOrgBase(getState, id)),
 );
 export const updateRole = createAsyncThunk(
   "businessProfileDetail/updateRole",
-  ({ roleId, patch }: { roleId: number; patch: RolePatch }, { getState }) => businessProfileDetailApi.updateRole(roleId, patch, getOrgBase(getState)),
+  ({ id, roleId, patch }: { id: number; roleId: number; patch: RolePatch }, { getState }) => businessProfileDetailApi.updateRole(roleId, patch, getOrgBase(getState, id)),
 );
 export const deleteRole = createAsyncThunk(
   "businessProfileDetail/deleteRole",
-  async ({ roleId }: { roleId: number }, { getState }) => {
-    await businessProfileDetailApi.deleteRole(roleId, getOrgBase(getState));
+  async ({ id, roleId }: { id: number; roleId: number }, { getState }) => {
+    await businessProfileDetailApi.deleteRole(roleId, getOrgBase(getState, id));
     return roleId;
   },
 );
@@ -142,23 +158,23 @@ export const deleteRole = createAsyncThunk(
 // ─── Relations (Partners tab) ─────────────────────────────────────────────────
 export const fetchRelations = createAsyncThunk(
   "businessProfileDetail/fetchRelations",
-  ({ params }: { id: number; params?: RelationListParams }, { getState }) =>
-    businessProfileDetailApi.getRelations(params, getOrgBase(getState)),
+  ({ id, params }: { id: number; params?: RelationListParams }, { getState }) =>
+    businessProfileDetailApi.getRelations(params, getOrgBase(getState, id)),
 );
 export const createRelation = createAsyncThunk(
   "businessProfileDetail/createRelation",
-  ({ input }: { id: number; input: RelationInput }, { getState }) =>
-    businessProfileDetailApi.createRelation(input, getOrgBase(getState)),
+  ({ id, input }: { id: number; input: RelationInput }, { getState }) =>
+    businessProfileDetailApi.createRelation(input, getOrgBase(getState, id)),
 );
 export const updateRelation = createAsyncThunk(
   "businessProfileDetail/updateRelation",
-  ({ relationId, patch }: { id: number; relationId: string; patch: RelationPatch }, { getState }) =>
-    businessProfileDetailApi.updateRelation(relationId, patch, getOrgBase(getState)),
+  ({ id, relationId, patch }: { id: number; relationId: string; patch: RelationPatch }, { getState }) =>
+    businessProfileDetailApi.updateRelation(relationId, patch, getOrgBase(getState, id)),
 );
 export const deleteRelation = createAsyncThunk(
   "businessProfileDetail/deleteRelation",
-  async ({ relationId }: { id: number; relationId: string }, { getState }) => {
-    await businessProfileDetailApi.deleteRelation(relationId, getOrgBase(getState));
+  async ({ id, relationId }: { id: number; relationId: string }, { getState }) => {
+    await businessProfileDetailApi.deleteRelation(relationId, getOrgBase(getState, id));
     return relationId;
   },
 );
