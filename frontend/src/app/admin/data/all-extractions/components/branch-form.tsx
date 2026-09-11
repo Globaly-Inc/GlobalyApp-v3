@@ -222,7 +222,19 @@ export function BranchForm({
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="branch-address">Address</Label>
-          <Textarea id="branch-address" value={values.address} onChange={(e) => set("address", e.target.value)} rows={3} />
+          <Textarea
+            id="branch-address"
+            value={values.address}
+            onChange={(e) => set("address", e.target.value)}
+            onBlur={() => {
+              if (values.map_link.trim() || !values.address.trim()) return;
+              const query = [values.address, values.city, values.state, values.postcode, values.country]
+                .filter(Boolean)
+                .join(", ");
+              set("map_link", `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`);
+            }}
+            rows={3}
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">
