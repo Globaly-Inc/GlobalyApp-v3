@@ -763,6 +763,13 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     }
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_scraped", 1);
 
+    if (overflowQueued > 0) {
+      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+        total_pages_found: masterKnex.raw("total_pages_found + ?", [overflowQueued]),
+        pages_total: masterKnex.raw("pages_total + ?", [overflowQueued]),
+      });
+    }
+
     await writeJobEvent(jobId, "page_extracted", {
       phase: "data_extraction",
       message: `Extracted ${entitiesWritten} ${isVisaService ? "visa services" : "courses"} from ${url}`,
