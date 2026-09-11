@@ -25,6 +25,8 @@ const BRAND = {
   faint: "#8D9AAD",
   line: "#E1E5EA", // --border           hsl(215 16% 90%)
   page: "#F2F4F8", // --secondary        hsl(220 30% 96%)
+  /** Tinted navy, for the acquisition mail's hero count block. */
+  soft: "#E8EEFB",
 } as const;
 
 /**
@@ -165,8 +167,14 @@ export interface DigestItem {
   intake?: string | null;
 }
 
-/** How many enquiries a summary actually lists; the rest are counted, not printed. */
-const DIGEST_PREVIEW = 5;
+/**
+ * How many enquiries a summary actually lists; the rest are counted, not printed.
+ *
+ * Shared by the lead notice and the acquisition mail, so the two cannot disagree about how long
+ * a mail gets. Three cards plus a count reads as a prompt to open the inbox; a longer stack
+ * starts to read as the inbox itself, which is the thing the CTA is for.
+ */
+const DIGEST_PREVIEW = 3;
 
 /**
  * One enquiry, rendered the way the business already sees it in the inbox
@@ -232,23 +240,126 @@ function infoCard(opts: {
   </table>`;
 }
 
+/** The grey of a redaction bar. Cool, so it reads as a deliberate block rather than a stain. */
+const REDACT_BG = "#D7DBE0";
+/** Rough rendered width of one &nbsp; at the 12px these bars use — the unit the bars are built from. */
+const NBSP_PX = 2.6;
+
+/**
+ * A redaction bar, matching the `<Redacted />` placeholder on the inbox card.
+ *
+ * Width is carried by non-breaking spaces rather than a CSS width: Outlook's Word engine ignores
+ * width on an inline span, and a bar that collapses in one client is worse than one that is a few
+ * pixels off everywhere. The text colour is set to the background so the spaces stay invisible
+ * even where the background paints and the radius does not. Nothing here derives from real data —
+ * there is no hidden value to reveal.
+ */
+const redacted = (px: number) =>
+  `<span style="border-radius:3px;background-color:${REDACT_BG};color:${REDACT_BG};font-size:12px">${"&nbsp;".repeat(
+    Math.round(px / NBSP_PX),
+  )}</span>`;
+
+/**
+ * How wide one student's bar should be.
+ *
+ * Constant-width bars down a list read as a template placeholder rather than as withheld
+ * information — real surnames and addresses are not all the same length. Seeded off the first name
+ * so a given student's bar is stable across mails, and so the two bars on one card do not come out
+ * identical.
+ */
+function redactionWidth(seed: string | null | undefined, base: number, salt = 0): number {
+  // Position-weighted, and salted per bar: a plain character sum makes the two bars on one card
+  // move together, which is its own kind of obviously-generated.
+  const sum = [...(seed ?? "?")].reduce((acc, ch, i) => acc + ch.charCodeAt(0) * (i + 1), salt);
+  return base + (sum % 7) * 6;
+}
+
+/** One enquiry, as the recipient sees it before paying to unlock. */
+function enquiryCard(item: DigestItem): string {
+  const first = item.studentFirstName?.trim();
+  return infoCard({
+    initial: first ? esc(first[0].toUpperCase()) : "&#8226;",
+    titleHtml: `${first ? `${esc(first)} ` : ""}${redacted(redactionWidth(first, 62))}`,
+    subtitleHtml: `${redacted(redactionWidth(first, 94, 37))}@gmail.com`,
+    title: item.courseName ?? "Course enquiry",
+    // Institution and intake share one muted line: two facts, one row, rather than two thin lines
+    // that make every card taller than the thing it describes.
+    metaParts: [item.institutionName, item.intake && `Intake ${item.intake}`],
+  });
+}
+
+/**
+ * The stack of enquiry cards.
+ *
+ * Separate bordered cards with real gaps between them, not one table split by hairlines: at six
+ * enquiries the hairline version reads as a single dense block.
+ *
+ * A card with no course still renders — dropping it would silently lose an enquiry from a mail
+ * whose whole promise is that nothing is missed.
+ */
+function listBlock(items: DigestItem[]): string {
+  if (items.length === 0) return "";
+  const rows = items
+    .map((item, i) => `<tr><td style="padding-top:${i === 0 ? 0 : 8}px">${enquiryCard(item)}</td></tr>`)
+    .join("");
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%">${rows}</table>`;
+}
+
+/**
+ * The hero number. A count stated in a sentence gets skimmed past; the whole point of the
+ * acquisition mail is that the recipient registers "there are N of these waiting" before deciding
+ * whether to read on, so it gets its own block.
+ *
+ * Solid background rather than a gradient or an image — both are stripped or mangled by Outlook,
+ * and a tinted cell renders identically everywhere.
+ */
+function countBlock(count: number, label: string): string {
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border-radius:12px;background-color:${BRAND.soft}">
+    <tr>
+      <td align="center" style="padding:20px 16px">
+        <p style="margin:0;color:${BRAND.primary};font-family:${HEADING_FONT};font-size:36px;line-height:40px;font-weight:700">${count}</p>
+        <p style="margin:6px 0 0;color:${BRAND.muted};font-size:13px;line-height:18px;text-transform:uppercase;letter-spacing:0.06em">${esc(
+          label,
+        )}</p>
+      </td>
+    </tr>
+  </table>`;
+}
+
+/**
+ * The "what claiming gets you" list. A table rather than a <ul>: Outlook's Word engine applies its
+ * own indentation to list markup and the bullets land somewhere the padding did not put them,
+ * while a two-cell row lands identically in every client.
+ */
+function benefitList(items: string[]): string {
+  const rows = items
+    .map(
+      (item) =>
+        `<tr>
+           <td width="18" valign="top" style="width:18px;color:${BRAND.primary};font-size:14px;line-height:21px">&#10003;</td>
+           <td valign="top" style="color:${BRAND.body};font-size:14px;line-height:21px;padding-bottom:6px">${esc(item)}</td>
+         </tr>`,
+    )
+    .join("");
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%">${rows}</table>`;
+}
+
 /**
  * Sent to the STUDENT the moment a business or institution unlocks their enquiry — the only
  * notification in this module that goes to the person who sent the enquiry rather than to a
  * recipient of it.
  *
- * Shares `mailShell` with the two recipient-facing mails, so the student sees the same product
- * the agency does. The body is its own: what the student needs is the message that is waiting,
- * proof a real person is on the other end, and a clear statement of what that person can now
- * see about them.
+ * On the same centred `emailLayout` card as the lead notice and the acquisition mail, and using
+ * the same `infoCard` the enquiry lists use. All three enquiry mails are one design; this is the
+ * student's side of the identical event and had been reading like a different product.
  *
  * `messagePreview` is the first line of the actual thread — today always the templated unlock
  * greeting, which is still honest ("here is the message waiting for you") and makes the mail
  * concrete rather than abstract. Truncated, because the point is to get them into the app.
  *
- * The headline names the UNLOCKER, never `institutionName`. An agency that represents Cornell
- * is not Cornell, and "Cornell University wants to talk to you" over a message from an agency
- * would be a lie the student acts on.
+ * The headline names the UNLOCKER, never `institutionName`. An agency that represents Cornell is
+ * not Cornell, and "Cornell University wants to talk to you" over a message from an agency would
+ * be a lie the student acts on.
  */
 export function enquiryUnlockedEmail(options: {
   businessName?: string | null;
@@ -274,120 +385,55 @@ export function enquiryUnlockedEmail(options: {
   const preview = messagePreview?.trim();
   const clipped = preview && preview.length > 180 ? `${preview.slice(0, 180).trimEnd()}…` : preview;
 
-  const aboutHtml = courseName
-    ? ` about <strong style="color:${MK.ink}">${esc(courseName)}</strong>`
-    : "";
-  const introHtml = `<strong style="color:${MK.ink}">${esc(
-    who,
-  )}</strong> unlocked your enquiry${aboutHtml} and sent you a message. That means a real person on the admissions side is reading about you right now.`;
-
-  // Three reasons to open it now. Product claims, not measured statistics.
-  const reasons: [string, string][] = [
-    ["Today", "Replies land fastest while your enquiry is still fresh"],
-    ["1 chat", "Fees, scholarships and intake dates without another form"],
-    ["3 min", "All it takes to reply before the intake fills up"],
-  ];
-
-  const reasonCells = reasons
-    .map(
-      ([big, small], i) => `${i > 0 ? `<td class="stack-gap" width="14" style="width:14px;font-size:0;line-height:0">&nbsp;</td>` : ""}
-          <td class="stack" width="32%" valign="top">
-            <div style="font-family:${HEADING_FONT};font-size:24px;line-height:28px;font-weight:bold;color:${MK.primary};letter-spacing:-0.4px">${esc(
-              big,
-            )}</div>
-            <div style="padding-top:5px;font-size:13px;line-height:20px;color:${MK.muted}">${esc(small)}</div>
-          </td>`,
-    )
-    .join("");
-
-  const bodyRows = `${shellOpening("New message", `${who} wants to talk to you`, introHtml, "accent")}
-
-        <tr><td class="px" align="left" style="padding:24px 40px 0 40px">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${MK.tile};border-radius:12px;border:1px solid ${MK.cardEdge}">
-            <tr><td style="padding:18px 20px;font-family:${MK_FONT}">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td width="46" valign="top" style="width:46px">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;background-color:${MK.avatar};border-radius:100px;font-size:15px;line-height:15px;font-weight:bold;color:${MK.primary}">${esc(
-                      who[0].toUpperCase(),
-                    )}</td></tr></table>
-                  </td>
-                  <td valign="top">
-                    <div style="font-size:15px;line-height:21px;font-weight:bold;color:${MK.ink}">${esc(who)}</div>
-                    <div style="padding-top:2px;font-size:13px;line-height:19px;color:${MK.muted}">${
-                      institutionName ? `Unlocked your enquiry &middot; ${esc(institutionName)}` : "Unlocked your enquiry"
-                    }</div>
-                  </td>
-                </tr>
-                ${
-                  clipped
-                    ? `<tr><td colspan="2" style="padding-top:14px;font-size:15px;line-height:25px;color:${MK.body}">&ldquo;${esc(
-                        clipped,
-                      )}&rdquo;</td></tr>`
-                    : ""
-                }
-              </table>
-            </td></tr>
-          </table>
-        </td></tr>
-
-${shellButton("Read & reply", href).replace("padding:26px 40px 0 40px", "padding:24px 40px 0 40px")}
-${shellTrustLine("Free · Reply in the app · No forms to fill again")}
-${shellRule}
-
-        <tr><td class="px" align="left" style="padding:28px 40px 0 40px;font-family:${MK_FONT}">
-          <div style="font-size:15px;line-height:22px;font-weight:bold;color:${MK.ink}">Why it pays to reply today</div>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="stack-table" style="margin-top:18px">
-            <tr class="stack-tr">${reasonCells}</tr>
-          </table>
-        </td></tr>
-
-        <tr><td class="px" align="left" style="padding:28px 40px 0 40px">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${MK.primarySoft};border-radius:12px"><tr>
-            <td width="46" valign="top" style="width:46px;padding:16px 0 16px 18px">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="24" height="24" align="center" valign="middle" style="width:24px;height:24px;background-color:${MK.avatar};border-radius:100px;font-family:${MK_FONT};font-size:12px;line-height:12px;font-weight:bold;color:${MK.primary}">&#10003;</td></tr></table>
-            </td>
-            <td valign="top" style="padding:16px 18px 16px 10px;font-family:${MK_FONT};font-size:14px;line-height:22px;color:${MK.primaryInk}">
-              <strong style="color:${MK.ink}">You stay in control.</strong> ${esc(contactLine)}
-            </td>
-          </tr></table>
-        </td></tr>
-
-${shellRule.replace("padding:32px", "padding:30px")}
-
-        <tr><td class="px" align="left" style="padding:26px 40px 38px 40px;font-family:${MK_FONT}">
-          <div style="font-size:15px;line-height:22px;font-weight:bold;color:${MK.ink}">Want more universities reaching out?</div>
-          <div style="padding-top:6px;font-size:15px;line-height:24px;color:${MK.body}">
-            Students who send three or four enquiries hear back from more institutions &mdash; and get to compare fees and scholarships side by side.
-          </div>
-          <div style="padding-top:14px;font-size:15px;line-height:22px">
-            <a href="${web("/personal/explore")}" style="color:${MK.primary};font-weight:bold;text-decoration:underline">Explore more programmes &rarr;</a>
-          </div>
-        </td></tr>`;
+  const lead = `${who} unlocked your enquiry${
+    courseName ? ` about ${courseName}` : ""
+  } and sent you a message. That means a real person on the admissions side is reading about you right now.`;
 
   const textLines = [
-    `${who} wants to talk to you`,
-    "",
-    `${who} unlocked your enquiry${courseName ? ` about ${courseName}` : ""} and sent you a message.`,
-    institutionName ? `Institution: ${institutionName}` : null,
+    lead,
     "",
     clipped ? `"${clipped}"` : null,
     clipped ? "" : null,
-    `Read & reply → ${href}`,
-    "",
     contactLine,
+    "",
+    `Read & reply → ${href}`,
   ].filter((l) => l !== null);
 
   return {
     subject: courseName ? `${who} replied about ${courseName}` : `${who} unlocked your enquiry`,
     text: textLines.join("\n"),
-    html: mailShell({
-      title: esc(`${who} wants to talk to you`),
-      preheader: `${who} unlocked your enquiry${courseName ? ` about ${courseName}` : ""} and sent you a message.`,
-      eyebrow: "Your applications",
-      bodyRows,
-      footerReason: "You&rsquo;re receiving this because you sent this enquiry on Globaly App.",
-      footerLinks: `<div style="padding-top:10px;font-size:12px;line-height:20px"><a href="${href}" style="color:${MK.primary};text-decoration:underline">Open your enquiry</a></div>`,
+    html: emailLayout({
+      size: "wide",
+      align: "left",
+      heading: `${esc(who)} wants to talk to you`,
+      body: `<p style="margin:0 0 18px;color:${BRAND.muted};font-size:15px;line-height:23px">
+               <strong style="color:${BRAND.ink}">${esc(who)}</strong> unlocked your enquiry${
+                 courseName ? ` about <strong style="color:${BRAND.ink}">${esc(courseName)}</strong>` : ""
+               } and sent you a message. That means a real person on the admissions side is reading about you right now.
+             </p>
+             <p style="margin:22px 0 10px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:600">The message waiting for you</p>
+             ${infoCard({
+               // The unlocker is the identity here, and nothing is redacted: the student knows
+               // their own details, and who unlocked it was never the paid-for part.
+               initial: esc(who[0].toUpperCase()),
+               titleHtml: esc(who),
+               subtitleHtml: institutionName
+                 ? `Unlocked your enquiry &nbsp;&middot;&nbsp; ${esc(institutionName)}`
+                 : "Unlocked your enquiry",
+               title: courseName ?? "Your enquiry",
+             })}
+             ${
+               clipped
+                 ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin-top:8px">
+                      <tr><td style="border-left:3px solid ${BRAND.line};padding:2px 0 2px 14px;color:${BRAND.body};font-size:15px;line-height:24px">&ldquo;${esc(
+                        clipped,
+                      )}&rdquo;</td></tr>
+                    </table>`
+                 : ""
+             }
+             <p style="margin:22px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${esc(contactLine)}</p>`,
+      cta: { label: "Read & reply", href },
+      footnote: "You're receiving this because you sent this enquiry on Globaly.",
     }),
   };
 }
@@ -396,11 +442,14 @@ ${shellRule.replace("padding:32px", "padding:30px")}
  * The lead notice a CLAIMED recipient gets — a business whose profile someone has taken
  * ownership of, or an institution the enquiry fell back to.
  *
- * Shares `marketingShell` with the acquisition mail, and that is the point: the two are the same
- * product speaking to the same person at two moments, and they read as one thing. What differs is
- * the ask. The acquisition mail asks for a claim; this asks them to open the inbox they already
- * have. It carries no benefits block — an evergreen "here's what you can do" list is fine once,
- * on the mail that converts, and reads as filler on the tenth send.
+ * Same shape as `enquiryClaimEmail` beside it, on the same centred `emailLayout` card: the hero
+ * count, the enquiry cards, the single CTA. The two mails are one product speaking to the same
+ * person at two moments and they read as one thing.
+ *
+ * What differs is the ask and the tail. The acquisition mail asks for a claim and spends its
+ * closing block explaining what claiming gets them; this asks them to open the inbox they already
+ * have, so its tail is one line about the unlock. An evergreen benefits list is right on the mail
+ * that converts once and reads as filler on the tenth daily send.
  *
  * Replaces three separate templates (the single business notice, the multi-enquiry summary, and
  * the institution fallback). They were three renderings of one event that had already drifted
@@ -423,53 +472,43 @@ export function enquiryLeadEmail(options: {
   const asked = institution ? "your programmes" : "your courses";
   const total = items.length;
   const one = total === 1;
+  const enquiryWord = one ? "enquiry" : "enquiries";
+  const period = windowMinutes === 1 ? "minute" : `${windowMinutes} minutes`;
+
   const shown = items.slice(0, DIGEST_PREVIEW);
   const hidden = total - shown.length;
   const who = recipientName?.trim();
-  const period = windowMinutes === 1 ? "minute" : `${windowMinutes} minutes`;
+  const course = one ? shown[0]?.courseName : null;
 
   // Straight to the enquiry when the window held exactly one — opening it should be one tap,
   // not a hunt through the inbox. Older queued rows have no distribution_id and fall back.
   const deepLink = one && !!distributionId;
-  const href = deepLink ? web(`/business/enquiries/${distributionId}/student`) : web("/business/enquiries");
-  const ctaLabel = deepLink ? "Open this enquiry" : "Open your inbox";
+  const cta = {
+    label: deepLink ? "Open this enquiry" : "Open your inbox",
+    href: deepLink ? web(`/business/enquiries/${distributionId}/student`) : web("/business/enquiries"),
+  };
 
-  const headline = one ? "A student is waiting to hear from you" : `${total} students are waiting to hear from you`;
-  const pill = one ? "1 new enquiry" : `${total} new enquiries`;
-  const course = one ? shown[0]?.courseName : null;
+  const heading = institution
+    ? "Students are looking for your institution 🎓"
+    : "Your business is getting noticed 🎓";
 
-  const intro = institution
-    ? `${one ? "This enquiry" : "These enquiries"} came to you directly — no agent representing ${
-        one ? "this course" : "these courses"
-      } was available to take ${one ? "it" : "them"}.`
-    : `They found ${who ?? "you"} on Globaly App and asked about ${asked}. Open your inbox to see who they are and reply.`;
+  const lead = institution
+    ? `We received ${total} student ${enquiryWord} in the last ${period} about programs offered by your institution, and no agent representing ${
+        one ? "it" : "them"
+      } was available.`
+    : `We received ${total} student ${enquiryWord} in the last ${period} about courses your business represents.`;
 
-  const introHtml =
-    !institution && who
-      ? `They found <strong style="color:${MK.ink}">${esc(
-          who,
-        )}</strong> on Globaly App and asked about ${asked}. Open your inbox to see who they are and reply.`
-      : esc(intro);
+  const more =
+    hidden > 0
+      ? `Showing the ${shown.length} most recent. ${hidden} more ${hidden === 1 ? "is" : "are"} waiting for you.`
+      : null;
 
-  const footerReason = institution
-    ? "You&rsquo;re receiving this because these enquiries are about courses listed under your institution."
-    : who
-      ? `Sent to ${esc(who)} because these enquiries match courses it represents on Globaly App.`
-      : "You&rsquo;re receiving this because these enquiries match courses you represent on Globaly App.";
-
-  const lockedNote = "Names and contact details unlock when you open the enquiry.";
-  const urgencyNote =
-    "Most students contact several providers the same day and go with whoever replies first — so it’s worth doing now.";
+  const closing = `Unlock ${one ? "the enquiry" : "an enquiry"} to see the student's full details and start the conversation.`;
 
   const textLines = [
-    headline,
+    lead,
     "",
-    intro,
-    "",
-    `${ctaLabel} → ${href}`,
-    "",
-    "WHAT THEY ASKED ABOUT",
-    lockedNote,
+    `${total} new student ${enquiryWord}`,
     "",
     ...shown.map((item) =>
       [
@@ -481,11 +520,12 @@ export function enquiryLeadEmail(options: {
         .filter((l) => l !== null)
         .join("\n  "),
     ),
-    hidden > 0 ? `\nAnd ${hidden} more ${hidden === 1 ? "enquiry" : "enquiries"} waiting for you.` : null,
     "",
-    urgencyNote,
+    more,
+    more ? "" : null,
+    closing,
     "",
-    `${ctaLabel} → ${href}`,
+    `${cta.label} → ${cta.href}`,
   ].filter((l) => l !== null);
 
   return {
@@ -495,19 +535,28 @@ export function enquiryLeadEmail(options: {
         : `A student is asking about ${asked}`
       : `${total} students are asking about ${asked}`,
     text: textLines.join("\n"),
-    html: marketingShell({
-      preheader: `${pill} about ${asked}. Open your inbox to see who is asking.`,
-      pill,
-      headline,
-      introHtml,
-      ctaLabel,
-      href,
-      trustLine: `In the last ${period} · Contact details unlock when you open an enquiry`,
-      lockedNote,
-      cards: shown.map(shellCard).join(""),
-      hidden,
-      urgencyNote,
-      footerReason,
+    html: emailLayout({
+      size: "wide",
+      align: "left",
+      heading,
+      body: `<p style="margin:0 0 18px;color:${BRAND.muted};font-size:15px;line-height:23px">${esc(lead)}</p>
+             ${countBlock(total, `new student ${enquiryWord}`)}
+             <p style="margin:22px 0 10px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:600">What students are asking about</p>
+             ${listBlock(shown)}
+             ${
+               more
+                 ? `<p style="margin:12px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${esc(more)}</p>`
+                 : ""
+             }
+             <p style="margin:22px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${esc(closing)}</p>`,
+      cta,
+      footnote: institution
+        ? who
+          ? `Sent to ${esc(who)} because these enquiries are about courses listed under it.`
+          : "You're receiving this because these enquiries are about courses listed under your institution."
+        : who
+          ? `Sent to ${esc(who)} because these enquiries match courses it represents.`
+          : "You're receiving this because these enquiries match courses you represent.",
     }),
   };
 }
@@ -519,20 +568,17 @@ export function enquiryLeadEmail(options: {
  * into, so the one thing it asks for is the one thing they cannot do. This inverts the ask: the
  * enquiries are the evidence, claiming the profile is the action.
  *
- * DOES NOT USE `emailLayout`. Every other mail here is transactional and shares that shell; this
- * one is cold outreach to someone who has no account, and it needs what marketing mail needs and
- * transactional mail does not — a preheader, an above-the-fold CTA repeated at the foot, proof,
- * objection handling, and a footer that says why this arrived. Forcing it through the shared
- * shell is what produced the version that read as another system notification.
+ * On the same centred `emailLayout` card as the lead notice and the student's unlock mail. All
+ * three enquiry mails are one design; what separates them is the ask, not the frame.
  *
  * One function for both recipient kinds: the mail is the same, differing in the noun and the CTA
  * label. Keeping them together is what stops the two drifting into different designs.
  *
- * Pre-unlock boundary is unchanged: first name plus a dotted mask, never a surname, address or
+ * Pre-unlock boundary is unchanged: a first name and a redaction bar, never a surname, address or
  * phone. Claiming is what buys the details; reading the email must not be a way around that.
  *
- * `items.length` IS the count in the headline — the caller passes every enquiry the mail
- * accounts for, and only the first five are printed.
+ * `items.length` IS the count in the hero block — the caller passes every enquiry the mail
+ * accounts for, and only the first DIGEST_PREVIEW are printed.
  */
 export function enquiryClaimEmail(options: {
   kind: "business" | "institution";
@@ -541,412 +587,97 @@ export function enquiryClaimEmail(options: {
   items: DigestItem[];
   /** Minted per send by the caller; falls back to the portal so a missing token is not a dead button. */
   claimUrl?: string | null;
-  /** Length of the collection window. Unused in the copy for now — kept so the caller's contract
-   *  does not change if the mail starts saying "this week" vs "in the last 5 minutes". */
+  /** Length of the collection window, so the mail can say over what period these arrived. */
   windowMinutes?: number;
 }): { subject: string; html: string; text: string } {
-  const { kind, recipientName, items, claimUrl } = options;
+  const { kind, recipientName, items, claimUrl, windowMinutes = 5 } = options;
   const noun = kind === "institution" ? "institution" : "business";
-  const asked = kind === "institution" ? "your programmes" : "your courses";
   const total = items.length;
   const one = total === 1;
+  const plural = one ? "student is" : "students are";
+  const enquiryWord = one ? "enquiry" : "enquiries";
+  const period = windowMinutes === 1 ? "minute" : `${windowMinutes} minutes`;
 
   const shown = items.slice(0, DIGEST_PREVIEW);
   const hidden = total - shown.length;
   const who = recipientName?.trim();
 
-  const href = claimUrl || web("/business/enquiries");
-  const ctaLabel = `Claim your ${noun}`;
+  const heading =
+    kind === "institution" ? "Students are looking for your institution 🎓" : "Your business is getting noticed 🎓";
 
-  const headline = one
-    ? "1 student is waiting to hear from you"
-    : `${total} students are waiting to hear from you`;
-  const pill = one ? "1 new enquiry" : `${total} new enquiries`;
-
-  const intro = `They found ${who ?? `your ${noun}`} on Globaly App and asked about ${asked}. Your profile isn't claimed yet, so you can't reply to them.`;
-
-  const benefits =
+  const lead =
     kind === "institution"
-      ? [
-          "Read and reply to every enquiry in one inbox",
-          "Keep your programmes, fees and intakes accurate",
-          "See which programmes students are searching for",
-        ]
-      : [
-          "Read and reply to every enquiry in one inbox",
-          "Keep your courses, fees and intakes accurate",
-          "See which programmes students are searching for",
-        ];
+      ? `We received ${total} student ${enquiryWord} in the last ${period} about programs offered by your institution.`
+      : `We received ${total} student ${enquiryWord} in the last ${period} about courses your business represents.`;
+
+  // Named benefits, not "manage your account": the recipient has no account yet, so the mail has
+  // to say what claiming actually gets them.
+  const benefits = [
+    "View and manage every enquiry in one inbox",
+    "Connect directly with students who are already interested",
+    `Keep your ${noun} details, courses and contact information up to date`,
+  ];
+
+  const cta = {
+    label: kind === "institution" ? "Claim your institution" : "Claim your business",
+    href: claimUrl || web("/business/enquiries"),
+  };
+
+  const more =
+    hidden > 0
+      ? `Showing the ${shown.length} most recent. ${hidden} more ${hidden === 1 ? "is" : "are"} waiting for you.`
+      : null;
 
   const textLines = [
-    headline.toUpperCase(),
+    lead,
     "",
-    intro,
-    "",
-    `${ctaLabel} → ${href}`,
-    "Free · Takes under a minute · No card needed",
-    "",
-    "WHAT THEY ASKED ABOUT",
-    "Names and contact details unlock when you claim the profile.",
+    `${total} new student ${enquiryWord}`,
     "",
     ...shown.map((item) =>
       [
         `• ${item.courseName ?? "Course enquiry"}`,
-        [item.institutionName, item.intake && `Intake ${item.intake}`].filter(Boolean).join(" · ") || null,
+        [item.studentFirstName, item.institutionName, item.intake && `Intake ${item.intake}`]
+          .filter(Boolean)
+          .join(" · ") || null,
       ]
         .filter((l) => l !== null)
         .join("\n  "),
     ),
-    hidden > 0 ? `\n${hidden} more ${hidden === 1 ? "is" : "are"} waiting for you.` : null,
     "",
-    "ONCE YOU CLAIM IT, YOU CAN",
+    more,
+    more ? "" : null,
+    `Your ${noun} profile on Globaly is currently unclaimed. Claim it to:`,
     ...benefits.map((b) => `• ${b}`),
     "",
-    "Most students contact several providers the same day and go with whoever replies first — so it's worth doing now.",
-    "",
-    `${ctaLabel} → ${href}`,
-    "",
-    "Not the right person? Forward this to whoever handles admissions.",
+    `${cta.label} → ${cta.href}`,
   ].filter((l) => l !== null);
 
   return {
-    subject: one
-      ? `A student is waiting to hear from ${who ?? `your ${noun}`}`
-      : `${total} students are waiting to hear from ${who ?? `your ${noun}`}`,
+    subject: `${total} ${plural} interested in your ${noun} — claim your profile`,
     text: textLines.join("\n"),
-    html: marketingShell({
-      preheader: `${pill} about ${asked}. Claim your profile free to reply.`,
-      pill,
-      headline,
-      introHtml: who
-        ? `They found <strong style="color:${MK.ink}">${esc(who)}</strong> on Globaly App and asked about ${asked}. Your profile isn't claimed yet, so you can't reply to them.`
-        : esc(intro),
-      ctaLabel,
-      href,
-      trustLine: "Free · Takes under a minute · No card needed",
-      lockedNote: "Names and contact details unlock when you claim the profile.",
-      cards: shown.map(shellCard).join(""),
-      hidden,
-      benefits,
-      urgencyNote:
-        "Most students contact several providers the same day and go with whoever replies first — so it’s worth doing now.",
-      footerReason: who
-        ? `Sent to ${esc(who)} because students enquired about courses it offers on Globaly App.`
-        : `Sent because students enquired about courses your ${noun} offers on Globaly App.`,
+    html: emailLayout({
+      size: "wide",
+      align: "left",
+      heading,
+      body: `<p style="margin:0 0 18px;color:${BRAND.muted};font-size:15px;line-height:23px">${esc(lead)}</p>
+             ${countBlock(total, `new student ${enquiryWord}`)}
+             <p style="margin:22px 0 10px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:600">What students are asking about</p>
+             ${listBlock(shown)}
+             ${
+               more
+                 ? `<p style="margin:12px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${esc(more)}</p>`
+                 : ""
+             }
+             <p style="margin:22px 0 10px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:600">Your ${noun} profile is not claimed yet</p>
+             <p style="margin:0 0 12px;color:${BRAND.muted};font-size:14px;line-height:21px">Claim it — it is free and takes a minute — to:</p>
+             ${benefitList(benefits)}`,
+      cta,
+      footnote: who
+        ? `Sent to ${esc(who)} because these students enquired about courses it offers.`
+        : `You're receiving this because students enquired about courses your ${noun} offers on Globaly.`,
     }),
   };
 }
-
-/**
- * Palette for the acquisition mail only.
- *
- * Deliberately its own set rather than BRAND: this mail sits on a warm paper ground with a card
- * floating on it, where the transactional shell is a white card on cool grey. Sharing the tokens
- * would mean one mail's redesign silently restyling the OTP mail.
- */
-const MK = {
-  page: "#F2F4F8",
-  card: "#FFFFFF",
-  cardEdge: "#E1E5EA",
-  rule: "#EAEEF4",
-  tile: "#F7F9FC",
-  primary: "#012E8A",
-  /** Tinted navy for pills, the avatar tile and the closing note. */
-  primarySoft: "#E8EEFB",
-  /** --purple-dark hsl(220 99% 18%) — navy deep enough to read on primarySoft. */
-  primaryInk: "#001F5B",
-  /** The aqua accent, solid fills only. */
-  accent: "#23DDF6",
-  /** Tinted aqua + a deep teal that actually reads on it — the student mail's pill. */
-  accentSoft: "#E4F7FB",
-  accentInk: "#0A5C6B",
-  avatar: "#DDE7FA",
-  ink: "#0F1729",
-  body: "#3F4B60",
-  soft: "#556579",
-  muted: "#65758B",
-  faint: "#8D9AAD",
-  mask: "#B9C3D1",
-} as const;
-
-const MK_FONT = `-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
-
-/** One enquiry, as the unclaimed recipient sees it: what was asked, who is masked. */
-function shellCard(item: DigestItem): string {
-  const first = item.courseName ?? "Course enquiry";
-  const meta = [item.institutionName, item.intake && `Intake ${item.intake}`].filter(Boolean) as string[];
-  const student = item.studentFirstName?.trim();
-  // Dots rather than the grey bars the in-app card uses: a bar depends on a background painting,
-  // and a mask that collapses to nothing in one client reads as missing data rather than withheld.
-  const mask = "&bull;".repeat(8);
-  return `<tr><td class="px" align="left" style="padding:10px 40px 0 40px">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${MK.tile};border-radius:12px">
-      <tr><td style="padding:16px 18px;font-family:${MK_FONT}">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-          <td width="42" valign="top" style="width:42px">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-              <td width="32" height="32" align="center" valign="middle" style="width:32px;height:32px;background-color:${MK.avatar};border-radius:100px;font-size:14px;line-height:14px;font-weight:bold;color:${MK.primary}">${
-                student ? esc(student[0].toUpperCase()) : "&bull;"
-              }</td>
-            </tr></table>
-          </td>
-          <td valign="top">
-            <div style="font-size:15px;line-height:22px;font-weight:bold;color:${MK.ink}">${esc(first)}</div>
-            ${
-              meta.length
-                ? `<div style="padding-top:3px;font-size:14px;line-height:21px;color:${MK.soft}">${meta
-                    .map((m) => esc(m))
-                    .join(" &nbsp;&middot;&nbsp; ")}</div>`
-                : ""
-            }
-            <div style="padding-top:7px;font-size:13px;line-height:19px;color:${MK.mask}">${
-              student ? `${esc(student)} ${mask}` : mask
-            } &nbsp;&middot;&nbsp; ${mask}@gmail.com</div>
-          </td>
-        </tr></table>
-      </td></tr>
-    </table>
-  </td></tr>`;
-}
-
-/** The brand pill button, with the VML twin Outlook needs to render a rounded fill at all. */
-function shellButton(label: string, href: string): string {
-  return `<tr><td class="px" align="left" style="padding:26px 40px 0 40px">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn"><tr><td align="center">
-      <!--[if mso]>
-      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:50px;v-text-anchor:middle;width:228px;" arcsize="20%" stroke="f" fillcolor="${MK.primary}">
-        <w:anchorlock/>
-        <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">${label} &rarr;</center>
-      </v:roundrect>
-      <![endif]-->
-      <!--[if !mso]><!-- -->
-      <a href="${href}" style="display:inline-block;background-color:${MK.primary};color:#ffffff;font-family:${MK_FONT};font-size:15px;line-height:20px;font-weight:bold;padding:15px 28px;border-radius:10px;text-align:center">${label} &nbsp;&rarr;</a>
-      <!--<![endif]-->
-    </td></tr></table>
-  </td></tr>`;
-}
-
-const shellRule = `<tr><td class="px" style="padding:32px 40px 0 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="1" style="height:1px;line-height:1px;font-size:0;background-color:${MK.rule}">&nbsp;</td></tr></table></td></tr>`;
-
-/**
- * The chrome every non-transactional mail shares: brand row above the card, the card with its
- * accent bar, and the footer below it. Callers supply the `<tr>` rows that go inside the card.
- *
- * Split out of marketingShell once the student's unlock mail needed the same frame around a
- * completely different body. Three bodies, one frame — which is the only reason the acquisition
- * mail, the lead notice and the unlock notice read as the same product.
- *
- * Table markup with inline styles and MSO conditionals: Gmail and Outlook strip <style> blocks,
- * so the media query is a progressive enhancement and everything load-bearing is inline.
- */
-function mailShell(o: {
-  /** Also the <title>; pre-escaped by the caller if it carries user text. */
-  title: string;
-  preheader: string;
-  /** Small uppercase label opposite the wordmark — who this mail is for. */
-  eyebrow: string;
-  /** The card's contents, as `<tr>` rows. Trusted markup. */
-  bodyRows: string;
-  /** Pre-escaped: callers build it from a name they have already escaped. */
-  footerReason: string;
-  /** Optional anchor row under the reason line. Trusted markup. */
-  footerLinks?: string;
-}): string {
-  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="X-UA-Compatible" content="IE=edge" />
-<meta name="x-apple-disable-message-reformatting" />
-<meta name="color-scheme" content="light" />
-<meta name="supported-color-schemes" content="light" />
-<title>${o.title}</title>
-<!--[if mso]>
-<xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
-<style>* { font-family: Arial, Helvetica, sans-serif !important; }</style>
-<![endif]-->
-<style type="text/css">
-  html, body { margin:0 !important; padding:0 !important; width:100% !important; }
-  * { -ms-text-size-adjust:100%; -webkit-text-size-adjust:100%; }
-  table, td { mso-table-lspace:0pt !important; mso-table-rspace:0pt !important; border-collapse:collapse !important; }
-  img { -ms-interpolation-mode:bicubic; border:0; height:auto; line-height:100%; outline:none; text-decoration:none; }
-  a { text-decoration:none; }
-  .ExternalClass, .ExternalClass p, .ExternalClass td, .ExternalClass div, .ExternalClass span { line-height:inherit; }
-  a[x-apple-data-detectors] { color:inherit !important; text-decoration:none !important; font-size:inherit !important; font-family:inherit !important; font-weight:inherit !important; line-height:inherit !important; }
-  @media only screen and (max-width:620px) {
-    .wrap { width:100% !important; }
-    .px { padding-left:24px !important; padding-right:24px !important; }
-    .h1 { font-size:26px !important; line-height:34px !important; }
-    .btn a { display:block !important; }
-    .hide-sm { display:none !important; }
-    /* A three-across stat row is unreadable at 320px — each cell becomes its own block. */
-    .stack-table, .stack-tr { display:block !important; width:100% !important; }
-    .stack { display:block !important; width:100% !important; max-width:100% !important; padding-bottom:14px !important; }
-    .stack-gap { display:none !important; }
-  }
-</style>
-</head>
-<body style="margin:0;padding:0;background-color:${MK.page}">
-<div style="display:none;font-size:1px;color:${MK.page};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all">${esc(
-    o.preheader,
-  )}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${MK.page}">
-<tr><td align="center" style="padding:32px 12px 44px 12px">
-  <table role="presentation" class="wrap" width="580" cellpadding="0" cellspacing="0" border="0" style="width:580px;max-width:580px">
-
-    <tr><td style="padding:0 6px 16px 6px;font-family:${MK_FONT}">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-        <td align="left" valign="middle">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-            <td width="26" height="26" align="center" valign="middle" style="width:26px;height:26px;background-color:${MK.primary};border-radius:8px"><img src="${logoUrl()}" alt="Globaly" width="26" height="26" style="display:block;width:26px;height:26px" /></td>
-            <td style="padding-left:8px;font-size:15px;line-height:20px;font-weight:bold;color:${MK.ink};letter-spacing:-0.2px">Globaly App</td>
-          </tr></table>
-        </td>
-        <td align="right" valign="middle" class="hide-sm" style="font-size:11px;line-height:14px;letter-spacing:0.7px;text-transform:uppercase;color:${MK.muted}">${esc(
-          o.eyebrow,
-        )}</td>
-      </tr></table>
-    </td></tr>
-
-    <tr><td style="background-color:${MK.card};border-radius:16px;border:1px solid ${MK.cardEdge}">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-        <tr><td height="4" style="height:4px;line-height:4px;font-size:0;background-color:${MK.accent};border-radius:16px 16px 0 0">&nbsp;</td></tr>
-${o.bodyRows}
-      </table>
-    </td></tr>
-
-    <tr><td align="center" style="padding:24px 20px 0 20px;font-family:${MK_FONT}">
-      <div style="font-size:12px;line-height:20px;color:${MK.muted}">${o.footerReason}</div>
-      ${o.footerLinks ?? ""}
-      <div style="padding-top:12px;font-size:11px;line-height:18px;color:${MK.soft}">
-        &copy; ${new Date().getFullYear()} GlobalyHub &nbsp;&middot;&nbsp; World #1 AI Integrated Education Ecosystem
-      </div>
-    </td></tr>
-
-  </table>
-</td></tr>
-</table>
-</body>
-</html>`;
-}
-
-/** The pill above a headline. Navy for the recipient-facing notices, accent for the student's. */
-function shellPill(text: string, tone: "brand" | "accent" = "brand"): string {
-  const bg = tone === "accent" ? MK.accentSoft : MK.primarySoft;
-  const fg = tone === "accent" ? MK.accentInk : MK.primary;
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td style="background-color:${bg};border-radius:6px;padding:6px 11px;font-size:11px;line-height:13px;font-weight:bold;letter-spacing:0.8px;text-transform:uppercase;color:${fg}">${esc(
-      text,
-    )}</td>
-  </tr></table>`;
-}
-
-/** Pill, headline and intro — the opening every one of these mails uses. */
-function shellOpening(pill: string, headline: string, introHtml: string, tone: "brand" | "accent" = "brand"): string {
-  return `<tr><td class="px" align="left" style="padding:36px 40px 0 40px;font-family:${MK_FONT}">
-    ${shellPill(pill, tone)}
-    <div class="h1" style="padding-top:20px;font-family:${HEADING_FONT};font-size:30px;line-height:39px;font-weight:bold;color:${MK.ink};letter-spacing:-0.5px">${esc(
-      headline,
-    )}</div>
-    <div style="padding-top:14px;font-size:16px;line-height:26px;color:${MK.body}">${introHtml}</div>
-  </td></tr>`;
-}
-
-/** The reassurance line under a CTA. */
-function shellTrustLine(text: string): string {
-  return `<tr><td class="px" align="left" style="padding:13px 40px 0 40px;font-family:${MK_FONT};font-size:13px;line-height:20px;color:${MK.muted}">${esc(
-    text,
-  )}</td></tr>`;
-}
-
-/**
- * The body shared by the two recipient-facing enquiry mails — the lead notice and the
- * acquisition mail. Composes its rows and hands them to `mailShell`.
- */
-function marketingShell(o: {
-  preheader: string;
-  pill: string;
-  headline: string;
-  introHtml: string;
-  ctaLabel: string;
-  href: string;
-  /** The reassurance line under the first CTA. Different ask, different reassurance. */
-  trustLine: string;
-  lockedNote: string;
-  cards: string;
-  hidden: number;
-  /** Only the acquisition mail carries these — an evergreen list reads as filler on a
-   *  notice the recipient gets every day. */
-  benefits?: string[];
-  urgencyNote: string;
-  /** Pre-escaped: callers build it from a name they have already escaped. */
-  footerReason: string;
-}): string {
-  const benefitRows = (o.benefits ?? [])
-    .map(
-      (b, i, all) => `<tr>
-        <td width="30" valign="top" style="width:30px">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="20" height="20" align="center" valign="middle" style="width:20px;height:20px;background-color:${MK.primarySoft};border-radius:100px;font-size:11px;line-height:11px;font-weight:bold;color:${MK.primary}">&#10003;</td></tr></table>
-        </td>
-        <td valign="top" style="${i === all.length - 1 ? "" : "padding-bottom:12px;"}font-size:15px;line-height:23px;color:${MK.body}">${esc(b)}</td>
-      </tr>`,
-    )
-    .join("");
-
-  const bodyRows = `${shellOpening(o.pill, o.headline, o.introHtml)}
-${shellButton(o.ctaLabel, o.href)}
-${shellTrustLine(o.trustLine)}
-${shellRule.replace("padding:32px", "padding:34px")}
-
-        <tr><td class="px" align="left" style="padding:28px 40px 0 40px;font-family:${MK_FONT}">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-            <td align="left" style="font-size:15px;line-height:22px;font-weight:bold;color:${MK.ink}">What they asked about</td>
-            <td align="right" class="hide-sm" style="font-size:11px;line-height:14px;letter-spacing:0.6px;text-transform:uppercase;color:${MK.muted}">Locked</td>
-          </tr></table>
-          <div style="padding-top:5px;font-size:14px;line-height:22px;color:${MK.muted}">${esc(o.lockedNote)}</div>
-        </td></tr>
-
-${o.cards}
-${
-  o.hidden > 0
-    ? `        <tr><td class="px" align="left" style="padding:14px 40px 0 40px;font-family:${MK_FONT};font-size:14px;line-height:22px;color:${MK.muted}">And ${
-        o.hidden
-      } more ${o.hidden === 1 ? "enquiry" : "enquiries"} waiting for you.</td></tr>`
-    : ""
-}
-${shellRule}
-${
-  benefitRows
-    ? `        <tr><td class="px" align="left" style="padding:28px 40px 0 40px;font-family:${MK_FONT}">
-          <div style="font-size:15px;line-height:22px;font-weight:bold;color:${MK.ink}">Once you claim it, you can</div>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px">${benefitRows}</table>
-        </td></tr>`
-    : ""
-}
-        <tr><td class="px" align="left" style="padding:30px 40px 0 40px">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${MK.primarySoft};border-radius:12px"><tr>
-            <td style="padding:18px 20px;font-family:${MK_FONT};font-size:15px;line-height:24px;color:${MK.primaryInk}">${esc(
-              o.urgencyNote,
-            )}</td>
-          </tr></table>
-        </td></tr>
-
-${shellButton(o.ctaLabel, o.href).replace("padding:26px 40px 0 40px", "padding:22px 40px 0 40px")}
-
-        <tr><td class="px" align="left" style="padding:14px 40px 38px 40px;font-family:${MK_FONT};font-size:14px;line-height:22px;color:${MK.muted}">
-          Not the right person? Forward this to whoever handles admissions.
-        </td></tr>`;
-
-  return mailShell({
-    title: esc(o.headline),
-    preheader: o.preheader,
-    eyebrow: "For education businesses",
-    bodyRows,
-    footerReason: o.footerReason,
-  });
-}
-
 
 /** The sign-in / verification code mail. Returns the subject too so both call sites stay in step. */
 export function otpEmail(otp: string): { subject: string; html: string; text: string } {

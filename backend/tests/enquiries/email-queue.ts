@@ -245,14 +245,16 @@ async function main() {
     }));
     const digest = enquiryLeadEmail({ kind: "business", recipientName: "Acme & Co", items, windowMinutes: 5 });
     eq(digest.subject, "3 students are asking about your courses", "subject names the count");
-    if (!digest.html.includes("3 new enquiries")) throw new Error("the count pill is missing");
+    if (!digest.html.includes("new student enquiries")) throw new Error("the hero count label is missing");
+    if (!digest.html.includes(">3</p>")) throw new Error("the hero count is not the true total");
     for (const i of [1, 2, 3]) {
       if (!digest.html.includes(`Course ${i}`)) throw new Error(`html is missing enquiry ${i}`);
       if (!digest.text.includes(`Course ${i}`)) throw new Error(`text part is missing enquiry ${i}`);
       if (!digest.html.includes(`Student${i}`)) throw new Error(`html does not name student ${i}`);
     }
-    // Count alone leaves "since when?" unanswered — the period has to be on the page.
-    if (!digest.html.includes("In the last 5 minutes")) throw new Error("mail does not state the window");
+    // Count alone leaves "since when?" unanswered — the period has to be in the lead.
+    if (!digest.html.includes("in the last 5 minutes")) throw new Error("lead does not state the window");
+    if (!digest.text.includes("in the last 5 minutes")) throw new Error("text lead does not state the window");
     if (!digest.html.includes("Acme &amp; Co")) throw new Error("business name was not escaped");
 
     // A card with no course still appears — dropping it would silently lose an enquiry from a
@@ -267,7 +269,7 @@ async function main() {
     if (digest.html.includes("Once you claim it")) throw new Error("benefits block leaked into the lead notice");
   });
 
-  await assert("a large summary lists five and counts the rest, heading the true total", async () => {
+  await assert("a large summary lists three and counts the rest, heading the true total", async () => {
     const many = Array.from({ length: 12 }, (_, i) => ({
       studentFirstName: `Student${i + 1}`,
       courseName: `Course ${i + 1}`,
@@ -275,11 +277,11 @@ async function main() {
     const digest = enquiryLeadEmail({ kind: "business", items: many });
 
     eq(digest.subject, "12 students are asking about your courses", "subject counts every enquiry");
-    if (!digest.html.includes("12 new enquiries")) throw new Error("the pill is not the true total");
-    if (!digest.html.includes("Course 5")) throw new Error("the fifth enquiry should be listed");
-    if (digest.html.includes("Course 6")) throw new Error("the sixth enquiry should not be listed");
-    if (!digest.html.includes("And 7 more enquiries")) throw new Error("the unlisted enquiries are not accounted for");
-    eq((digest.text.match(/^• /gm) ?? []).length, 5, "text part lists five too");
+    if (!digest.html.includes(">12</p>")) throw new Error("the hero count is not the true total");
+    if (!digest.html.includes("Course 3")) throw new Error("the third enquiry should be listed");
+    if (digest.html.includes("Course 4")) throw new Error("the fourth enquiry should not be listed");
+    if (!digest.html.includes("9 more are waiting")) throw new Error("the unlisted enquiries are not accounted for");
+    eq((digest.text.match(/^• /gm) ?? []).length, 3, "text part lists three too");
   });
 
   await assert("the institution fallback says why it came directly, and asks about programmes", async () => {
@@ -289,10 +291,10 @@ async function main() {
       items: [{ courseName: "Ancient Philosophy" }],
     });
     eq(inst.subject, "A student is asking about Ancient Philosophy", "institution subject");
-    if (!inst.html.includes("no agent representing this course was available")) {
+    if (!inst.html.includes("no agent representing it was available")) {
       throw new Error("the fallback lost its explanation");
     }
-    if (!inst.html.includes("listed under your institution")) throw new Error("wrong reason-for-receipt");
+    if (!inst.html.includes("courses listed under it")) throw new Error("wrong reason-for-receipt");
     const many = enquiryLeadEmail({ kind: "institution", items: [{ courseName: "A" }, { courseName: "B" }] });
     eq(many.subject, "2 students are asking about your programmes", "institutions are asked about programmes");
   });
@@ -322,10 +324,10 @@ async function main() {
 
     // A student with no usable first name gets the bullet placeholder, not a broken initial.
     const nameless = enquiryLeadEmail({ kind: "business", items: [{ studentFirstName: "  " }, { courseName: "B" }] });
-    if (!nameless.html.includes("&bull;<")) throw new Error("blank student name lost its placeholder initial");
+    if (!nameless.html.includes("&#8226;")) throw new Error("blank student name lost its placeholder initial");
   });
 
-  await assert("both lead and acquisition mails share one shell and leak nothing beyond the card", async () => {
+  await assert("lead and acquisition mails are one design that differs only in the ask", async () => {
     const args = {
       recipientName: "Acme & Co",
       items: [
@@ -336,18 +338,36 @@ async function main() {
     const lead = enquiryLeadEmail({ kind: "business", ...args });
     const claim = enquiryClaimEmail({ kind: "business", ...args });
 
+    // Both mails now sit on the SAME centred emailLayout card — that is the point of this test.
     for (const [label, mail] of [
       ["lead", lead],
       ["claim", claim],
     ] as const) {
-      // One shell: same brand row, same card, same masking, same urgency note.
-      if (!mail.html.includes("For education businesses")) throw new Error(`${label}: brand row missing`);
-      if (!mail.html.includes("What they asked about")) throw new Error(`${label}: enquiry section missing`);
-      if (!mail.html.includes("whoever replies first")) throw new Error(`${label}: urgency note missing`);
-      if (!mail.html.includes("mso-hide:all")) throw new Error(`${label}: preheader missing`);
-      eq((mail.html.match(/<a\s/g) ?? []).length, 2, `${label}: two CTA links`);
+      if (!mail.html.includes("max-width:600px")) throw new Error(`${label}: not the wide centred card`);
+      if (!mail.html.includes('align="left"')) throw new Error(`${label}: a list of cards must be left-aligned`);
+      if (!mail.html.includes("font-size:36px")) throw new Error(`${label}: hero count missing`);
+      if (!mail.html.includes("What students are asking about")) throw new Error(`${label}: card section missing`);
+      // One anchor: the CTA. Two would be two decisions.
+      eq((mail.html.match(/<a\s/g) ?? []).length, 1, `${label}: one link in the whole mail`);
+      // Neither carries the retired marketing frame.
+      if (mail.html.includes("For education businesses")) throw new Error(`${label}: marketing frame survived`);
+    }
 
-      // Avatar initial, real first name, masked surname and address.
+    // The ask is what separates them, and only the ask.
+    if (!lead.html.includes("Open your inbox")) throw new Error("lead: inbox CTA missing");
+    if (lead.html.includes("Claim your")) throw new Error("lead: must not offer a claim");
+    if (lead.html.includes("Once you claim it")) throw new Error("lead: benefits block leaked in");
+    if (!claim.html.includes("Claim your business")) throw new Error("claim: claim CTA missing");
+    if (!claim.html.includes("Claim it — it is free")) throw new Error("claim: benefits preamble missing");
+    if (claim.html.includes("Open your inbox")) throw new Error("claim: offers an inbox it cannot open");
+
+    // What they DO share: the navy brand, the logo, and the pre-unlock boundary.
+    for (const [label, mail] of [
+      ["lead", lead],
+      ["claim", claim],
+    ] as const) {
+      if (!mail.html.includes("#012E8A")) throw new Error(`${label}: not on the navy brand`);
+      if (!mail.html.includes("GlobalyOS%20White%20BG%20Icon")) throw new Error(`${label}: old logo`);
       if (!mail.html.includes(">R<")) throw new Error(`${label}: no avatar initial`);
       if (!mail.html.includes("Rojan")) throw new Error(`${label}: first name missing`);
       if (!mail.html.includes("@gmail.com")) throw new Error(`${label}: masked address missing`);
@@ -378,7 +398,14 @@ async function main() {
     if (!mail.html.includes(greeting.slice(0, 40))) throw new Error("message preview missing");
     if (!mail.html.includes("/personal/enquiries/e1")) throw new Error("no deep link to the enquiry");
     if (!mail.html.includes("phone number stays private")) throw new Error("contact boundary not stated");
-    if (!mail.html.includes("Your applications")) throw new Error("student eyebrow missing");
+    // Same centred card as the two recipient-facing mails — one design across all three.
+    if (!mail.html.includes("max-width:600px")) throw new Error("not the wide centred card");
+    if (!mail.html.includes("The message waiting for you")) throw new Error("message section missing");
+    if (!mail.html.includes("Read &amp; reply") && !mail.html.includes("Read & reply")) {
+      throw new Error("CTA missing");
+    }
+    eq((mail.html.match(/<a\s/g) ?? []).length, 1, "one link in the whole mail");
+    if (mail.html.includes("Your applications")) throw new Error("the retired marketing frame survived");
 
     // Shared contact flips the sentence rather than dropping it.
     const shared = enquiryUnlockedEmail({ businessName: "Acme & Co", enquiryId: "e1", sharedContact: true });
@@ -409,49 +436,54 @@ async function main() {
         claimUrl: "http://localhost:3001/invite/business/accept?token=abc",
       });
 
-      // The subject names the recipient, not the product — it has to survive a crowded inbox
-      // from a sender they have never heard of.
-      eq(mail.subject, "3 students are waiting to hear from Acme & Co", `${kind} subject`);
+      // The subject leads with the count and the ask — it has to survive a crowded inbox from a
+      // sender they have never heard of.
+      eq(mail.subject, `3 students are interested in your ${kind} — claim your profile`, `${kind} subject`);
       if (!mail.html.includes(`Claim your ${kind}`)) throw new Error(`${kind}: claim CTA missing`);
       if (!mail.html.includes("token=abc")) throw new Error(`${kind}: claim URL missing`);
-      // Marketing-mail scaffolding the transactional shell does not have.
-      if (!mail.html.includes("mso-hide:all")) throw new Error(`${kind}: preheader missing`);
-      if (!mail.html.includes("v:roundrect")) throw new Error(`${kind}: Outlook button fallback missing`);
-      if (!mail.html.includes("No card needed")) throw new Error(`${kind}: objection-handling line missing`);
-      if (!mail.html.includes("Once you claim it, you can")) throw new Error(`${kind}: benefits missing`);
-      // Repeated CTA: one above the fold, one after the case has been made. Counted as anchors —
-      // the phrase itself also appears in the preheader and in each VML twin.
-      eq((mail.html.match(/<a\s/g) ?? []).length, 2, `${kind}: two CTA links`);
+      // The hero count is a block, not a sentence — 36px is the number.
+      if (!mail.html.includes("font-size:36px")) throw new Error(`${kind}: hero count block missing`);
+      if (!mail.html.includes("What students are asking about")) throw new Error(`${kind}: card section missing`);
+      if (!mail.html.includes("Claim it — it is free and takes a minute")) {
+        throw new Error(`${kind}: benefits preamble missing`);
+      }
       // Course cards still carry the enquiries; the mail is marketing, not contentless.
       for (const i of [1, 2, 3]) {
         if (!mail.html.includes(`Course ${i}`)) throw new Error(`${kind}: html is missing enquiry ${i}`);
         if (!mail.text.includes(`Course ${i}`)) throw new Error(`${kind}: text is missing enquiry ${i}`);
       }
       if (!mail.html.includes("Acme &amp; Co")) throw new Error(`${kind}: recipient name was not escaped`);
+      // Exactly one anchor — the claim button. A second link is a second decision.
+      eq((mail.html.match(/<a\s/g) ?? []).length, 1, `${kind}: one link in the whole mail`);
       // It must never read as a lead notice pointing at an inbox they cannot open.
       if (mail.html.includes("Open your inbox")) throw new Error(`${kind}: still offers an inbox CTA`);
       if (mail.html.includes("Unlock the enquiry")) throw new Error(`${kind}: still asks for an unlock`);
-      // Same pre-unlock boundary as every other enquiry mail: a first name and a mask, never
-      // a surname or a real address.
+      // Navy branding, not the retired maroon, and the new hosted mark.
+      if (!mail.html.includes("#012E8A")) throw new Error(`${kind}: not on the navy brand`);
+      if (mail.html.toLowerCase().includes("#811d1d") || mail.html.includes("#7A1620")) {
+        throw new Error(`${kind}: maroon survived the recolour`);
+      }
+      if (!mail.html.includes("GlobalyOS%20White%20BG%20Icon")) throw new Error(`${kind}: old logo`);
+      // Same pre-unlock boundary as every other enquiry mail: a first name and a redaction bar,
+      // never a surname or a real address.
       if (!mail.html.includes("@gmail.com")) throw new Error(`${kind}: masked address missing`);
-      if (!mail.html.includes("&bull;&bull;")) throw new Error(`${kind}: student identity is not masked`);
+      if (!mail.html.includes("#D7DBE0")) throw new Error(`${kind}: redaction bars missing`);
     }
 
     // One enquiry still gets the acquisition mail: the recipient's problem is that they cannot
     // open anything, which does not depend on how many are waiting.
     const single = enquiryClaimEmail({ kind: "business", recipientName: "Solo Co", items: [{ courseName: "Solo" }] });
-    eq(single.subject, "A student is waiting to hear from Solo Co", "singular subject");
-    if (!single.html.includes("1 new enquiry<")) throw new Error("count pill did not go singular");
-    if (single.html.includes("students are waiting")) throw new Error("headline did not go singular");
+    eq(single.subject, "1 student is interested in your business — claim your profile", "singular subject");
+    if (!single.html.includes("new student enquiry<")) throw new Error("count label did not go singular");
     // No token minted (a DB failure, say) must still leave a working button, not a dead one.
     if (!single.html.includes('href="http')) throw new Error("claim CTA fell back to a dead href");
 
-    // Long windows list five and count the rest, exactly like the lead summary.
+    // Long windows list five and count the rest.
     const many = Array.from({ length: 9 }, (_, i) => ({ courseName: `Course ${i + 1}` }));
     const big = enquiryClaimEmail({ kind: "institution", items: many });
-    if (!big.html.includes("9 new enquiries")) throw new Error("the pill is not the true total");
-    if (big.html.includes("Course 6")) throw new Error("the sixth enquiry should not be listed");
-    if (!big.html.includes("And 4 more enquiries")) throw new Error("the unlisted enquiries are not accounted for");
+    if (!big.html.includes(">9</p>")) throw new Error("the hero count is not the true total");
+    if (big.html.includes("Course 4")) throw new Error("the fourth enquiry should not be listed");
+    if (!big.html.includes("6 more")) throw new Error("the unlisted enquiries are not accounted for");
     // No recipient name — the footer still has to explain why the mail arrived.
     if (!big.html.includes("students enquired about courses your institution offers")) {
       throw new Error("nameless footer lost its reason-for-receipt line");
@@ -552,7 +584,7 @@ async function main() {
         return sent.filter((m) => m.to === inbox);
       });
       eq(mine.length, 1, "the sweep sent the acquisition mail");
-      if (!mine[0].subject.includes("waiting to hear from")) {
+      if (!mine[0].subject.includes("interested in your business")) {
         throw new Error(`not the acquisition subject: ${mine[0].subject}`);
       }
       if (!mine[0].html?.includes("Claim your business")) throw new Error("claim CTA missing from the sent mail");
@@ -585,7 +617,7 @@ async function main() {
         return sent.filter((m) => m.to === inbox);
       });
       eq(mine.length, 1, "exactly one mail");
-      if (!mine[0].subject.includes("waiting to hear from")) {
+      if (!mine[0].subject.includes("interested in your business")) {
         throw new Error(`still the lead notice: ${mine[0].subject}`);
       }
     } finally {

@@ -109,7 +109,7 @@ const windowMs = () => Number(process.env.ENQUIRY_EMAIL_WINDOW_MS ?? 5 * 60_000)
 
 /**
  * Most enquiries ONE summary may account for. Not how many it prints — the template lists the
- * five most recent and counts the rest (see enquiryDigestEmail), so this only bounds how many
+ * first few and counts the rest (see DIGEST_PREVIEW), so this only bounds how many
  * rows a single transaction claims and resolves.
  *
  * Beyond it, the surplus stays `pending`; its group is already past the window, so the next
@@ -245,7 +245,7 @@ function renderDigest(
   const str = (p: Record<string, unknown>, key: string) => (p[key] as string | null) ?? null;
   const payloadOf = (row: emailQueueRepo.QueueRow) => (row.payload ?? {}) as Record<string, unknown>;
 
-  // Every row goes in: the templates print the first five and count the rest, so the heading's
+  // Every row goes in: the templates print the first few and count the rest, so the heading's
   // number is the true size of this window.
   const items: DigestItem[] = rows.map((row) => digestItemOf(payloadOf(row)));
   const windowMinutes = Math.max(1, Math.round(windowMs() / 60_000));
