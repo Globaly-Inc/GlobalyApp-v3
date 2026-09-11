@@ -241,7 +241,17 @@ The centralized error handler maps these to HTTP responses.
    workers, never reimplemented in the step worker's switch. Sharing dedupes on name, so
    "Fall 2027" and "Fall Semester 2027" stay separate by design, and is per-job — two
    institutions never share a row. `agentcis-product-staging.ts` is a third writer
-   (structured import, pre-coerced mappers, no LLM) that does not share rows; left as is.
+   (structured import, pre-coerced mappers, no LLM) that now shares rows too (2026-09-11): its
+   fees, intakes and eligibility go through `upsertFee` / `upsertIntake` / `upsertEligibility`
+   instead of three direct inserts, because the import was minting an identical row per product —
+   one fee or intake offered by two courses landed as two rows rather than one row with two
+   assignment rows. Notes: currency is resolved to a code (AUD fallback) BEFORE `upsertFee`,
+   since it is part of that dedupe key and the feed usually states none; the intake insert's
+   legacy `course_id` is gone, per (g); and every product's requirement carries the same generic
+   "Entry Requirements" name, so it is `eligibilityRowsAgree`'s non-contradiction check — not the
+   name — that keeps products demanding different thresholds on separate rows. Study options are
+   still inserted per product, which matches what `writeCourse` does (no upsert helper exists for
+   that table on either path).
    (f) `source_url` added to `extraction_eligibility_requirements` and
    `extraction_intakes` (migration `20260904_001`) and now written by both paths;
    `extraction_english_requirements.source_url` existed and was never populated.

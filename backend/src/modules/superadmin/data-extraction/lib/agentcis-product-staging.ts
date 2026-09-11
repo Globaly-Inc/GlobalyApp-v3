@@ -7,7 +7,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { coerceLabel, mapDegreeLevel } from "./agentcis-mappers.js";
 import { extractIntakes, extractStudyOptions, extractEligibility } from "./agentcis-product-mappers.js";
-import { normaliseCurrency, normalisePeriodType } from "./staging-writer.js";
+import { normaliseCurrency, upsertEligibility, upsertFee, upsertIntake } from "./staging-writer.js";
 
 export interface StagingCounters {
   branches_extracted: number;
@@ -37,6 +37,7 @@ export async function stageProduct(
   counters: StagingCounters,
 ): Promise<void> {
   const dLevel = mapDegreeLevel(p.degree_level || p.qualification_type);
+  const sourceUrl = (p.url as string) || (p.product_url as string) || website;
 
   const [course] = await masterKnex(`${S}.extraction_courses`)
     .insert({
@@ -47,7 +48,7 @@ export async function stageProduct(
       subject_area: (p.subject_area as string) || (p.field_of_study as string) || null,
       description: (p.description as string) || null,
       awarding_institution: (p.awarding_institution as string) || institutionName,
-      source_url: (p.url as string) || (p.product_url as string) || website,
+      source_url: sourceUrl,
       verification_status: "pending",
     })
     .returning("id");
@@ -77,7 +78,9 @@ export async function stageProduct(
       .onConflict().ignore();
   }
 
-  // Fees — simplified: store each fee item as a course fee row
+  // Fees — through the same upsert the extraction pipeline uses, so one identical fee across two
+  // products is ONE row with two assignment rows, not two copies (CLAUDE.md (h): shared write
+  // behaviour lives in staging-writer, never reimplemented per writer).
   const rawFees = (p.fees ?? p.fee_items ?? p.fee ?? []) as unknown[];
   const feeArr = Array.isArray(rawFees) ? rawFees : rawFees ? [rawFees] : [];
   for (const fg of feeArr) {
@@ -86,41 +89,30 @@ export async function stageProduct(
     const amount = Number(feeObj.amount ?? feeObj.fee_amount ?? feeObj.total ?? feeObj.value ?? 0);
     if (!amount) continue;
 
-    const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-      .insert({
-        job_id: jobId,
-        name: coerceLabel(feeObj.name || feeObj.fee_type || feeObj.type) || "Tuition Fee",
-        student_type: String(feeObj.student_type ?? feeObj.applicable_to ?? "international").toLowerCase(),
-        period_type: normalisePeriodType(coerceLabel(feeObj.period_type || feeObj.period) || "Total"),
-        currency: (await normaliseCurrency(String(feeObj.currency ?? p.currency ?? ""), jobId)) ?? "AUD",
-        total_amount: Math.round(amount),
-      })
-      .returning("id");
+    const feeId = await upsertFee(jobId, {
+      name: coerceLabel(feeObj.name || feeObj.fee_type || feeObj.type),
+      student_type: String(feeObj.student_type ?? feeObj.applicable_to ?? "international").toLowerCase(),
+      period_type: coerceLabel(feeObj.period_type || feeObj.period) || "Total",
+      // AgentCIS states no currency on most fee rows; the feed is AUD-denominated, and the
+      // resolved code is part of upsertFee's dedup key, so it is settled before the call.
+      currency: (await normaliseCurrency(String(feeObj.currency ?? p.currency ?? ""), jobId)) ?? "AUD",
+      total_amount: Math.round(amount),
+    });
 
     await masterKnex(`${S}.extraction_course_fee_assignments`)
-      .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id })
+      .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
       .onConflict(["course_id", "course_fee_id"]).ignore();
     counters.fees_extracted++;
   }
 
-  // Intakes
-  const rawIntakes = extractIntakes(p);
-  for (const ik of rawIntakes) {
-    const [intakeRow] = await masterKnex(`${S}.extraction_intakes`)
-      .insert({
-        job_id: jobId,
-        course_id: courseId,
-        intake_name: ik.intake_name,
-        intake_month: ik.intake_month,
-        intake_year: ik.intake_year,
-        start_date: ik.start_date,
-        end_date: ik.end_date,
-        admission_deadline: ik.admission_deadline,
-      })
-      .returning("id");
-
+  // Intakes — one "Semester 1 2027" row per JOB, linked to every product offering it, via the
+  // same upsertIntake the workers use (CLAUDE.md (g)). The legacy `course_id` column that this
+  // used to set is left NULL: a shared intake cannot name one course, and every public read goes
+  // through the assignment junction.
+  for (const ik of extractIntakes(p)) {
+    const intakeId = await upsertIntake(jobId, ik, sourceUrl);
     await masterKnex(`${S}.extraction_course_intake_assignments`)
-      .insert({ job_id: jobId, course_id: courseId, intake_id: intakeRow.id })
+      .insert({ job_id: jobId, course_id: courseId, intake_id: intakeId })
       .onConflict(["course_id", "intake_id"]).ignore();
     counters.intakes_extracted++;
   }
@@ -143,25 +135,25 @@ export async function stageProduct(
       .onConflict(["course_id", "study_option_id"]).ignore();
   }
 
-  // Eligibility
+  // Eligibility — shared per job like the workers' path. Every product here gets the same generic
+  // "Entry Requirements" name, so the non-contradiction check in upsertEligibility is what keeps
+  // products demanding DIFFERENT thresholds on separate rows rather than the name alone.
   const elig = extractEligibility(p);
   if (elig) {
-    const [eligRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
-      .insert({
-        job_id: jobId,
-        name: "Entry Requirements",
-        applicable_to: "international",
-        min_degree_level: elig.min_degree_level,
-        min_score_percent: elig.min_score_percent,
-        description: elig.description,
-      })
-      .returning("id");
-
+    const fields = {
+      name: "Entry Requirements",
+      applicable_to: "international",
+      min_degree_level: elig.min_degree_level,
+      min_score_percent: elig.min_score_percent,
+      description: elig.description,
+      source_url: sourceUrl,
+    };
+    const eligId = await upsertEligibility(jobId, fields, fields);
     await masterKnex(`${S}.extraction_course_eligibility_assignments`)
       .insert({
         job_id: jobId,
         course_id: courseId,
-        eligibility_requirement_id: eligRow.id,
+        eligibility_requirement_id: eligId,
       })
       .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
   }
