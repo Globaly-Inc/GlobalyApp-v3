@@ -1380,10 +1380,12 @@ export async function upsertEnglishRequirement(
 }
 
 /**
- * Upsert a fee for a job — deduplicates by (student_type, period_type, currency, total_amount)
- * within the same job so a shared rate (e.g. "$325/credit for all programs") creates ONE row
- * linked to multiple courses via extraction_course_fee_assignments, not one identical row per
- * course. Name is excluded from the key because LLM wording varies across pages.
+ * Upsert a fee for a job — deduplicates by (student_type, period_type, currency, total_amount,
+ * fee kind) within the same job so a shared rate (e.g. "$325/credit for all programs") creates ONE
+ * row linked to multiple courses via extraction_course_fee_assignments, not one identical row per
+ * course. The name itself is excluded from the key because LLM wording varies across pages, but the
+ * KIND it maps to is not: ancillary fees are small round numbers, so a $100 application fee and a
+ * $100 enrolment fee collide on amount alone and one of them silently disappeared.
  */
 export async function upsertFee(jobId: string, fee: {
   name?: string | null;
@@ -1407,7 +1409,9 @@ export async function upsertFee(jobId: string, fee: {
     .where({ job_id: jobId, student_type: fee.student_type, period_type: periodType });
   if (currency != null) q.where({ currency }); else q.whereNull("currency");
   if (fee.total_amount != null) q.where({ total_amount: fee.total_amount }); else q.whereNull("total_amount");
-  const existing = await q.first();
+  const kind = feeTypeFor(fee.name);
+  const existing = (await q as Array<{ id: string; name: string | null; description: string | null }>)
+    .find((r) => feeTypeFor(r.name) === kind);
   if (existing) {
     // Whichever page was scraped first wins the row, but not the metadata: a later page that
     // carries the fee's wording (or any name at all) fills what the first one left blank.
@@ -1431,7 +1435,7 @@ export async function upsertFee(jobId: string, fee: {
       period_type: periodType,
       currency,
       total_amount: fee.total_amount ?? null,
-      installments: JSON.stringify(feeBreakdown({ ...fee, period_type: periodType, name })),
+      installments: JSON.stringify(feeBreakdown({ ...fee, period_type: periodType, name, fee_type: kind })),
     })
     .returning("id");
   return row.id as string;
@@ -1466,6 +1470,8 @@ export function feeTypeFor(name: string | null | undefined): string {
  */
 export function feeBreakdown(fee: {
   name?: string | null;
+  /** Resolved kind from the raw label; falls back to the cleaned name when absent. */
+  fee_type?: string | null;
   period_type: string;
   total_amount?: number | null;
   installments?: Installment[] | null;
@@ -1475,7 +1481,7 @@ export function feeBreakdown(fee: {
   const parts = fee.installments?.length
     ? fee.installments
     : parseInstallments({ totalAmount: total, periodType: fee.period_type });
-  const feeType = feeTypeFor(fee.name);
+  const feeType = fee.fee_type || feeTypeFor(fee.name);
   return parts.map((i) => ({
     ...i,
     lines: i.lines?.length ? i.lines : [{ fee_type: feeType, amount: i.amount }],

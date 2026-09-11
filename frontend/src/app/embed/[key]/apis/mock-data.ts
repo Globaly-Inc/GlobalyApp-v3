@@ -25,7 +25,7 @@ export const embedMockApi = {
   resolveConfig: async (key: string): Promise<EmbedPublicConfig> => {
     console.log("[mock] GET /embed/resolve", key);
     await delay(300);
-    return { display_name: "Acme University", logo_url: null, brand_color: "#4f46e5" };
+    return { display_name: "Acme University", logo_url: null, brand_color: "#4f46e5", owner_kind: "institution" };
   },
 
   sendMessage: async (

@@ -1065,6 +1065,12 @@ async function handleEnrichmentStep(jobId: string) {
       currency?: string;
       period_type?: string;
     }>;
+    application_fee?: {
+      description?: string | null;
+      amount?: number;
+      currency?: string;
+      student_type?: string;
+    } | null;
   }>({
     system,
     prompt: bulkFeePrompt(courseNames, truncateMarkdown(feePageText, 35000), {
@@ -1117,10 +1123,31 @@ async function handleEnrichmentStep(jobId: string) {
     linked++;
   }
 
+  // The application fee is stated once for the whole institution, not per program — fee_schedule
+  // above has no room for it at all, which is why not one of the extracted fee rows was an
+  // application fee. One row, linked to every course in the job.
+  const appFee = result.application_fee;
+  let appLinked = 0;
+  if (appFee?.amount && appFee.amount > 0) {
+    const feeId = await upsertFee(jobId, {
+      name: "Application Fee",
+      description: appFee.description ?? null,
+      student_type: appFee.student_type || "both",
+      total_amount: appFee.amount,
+      currency: appFee.currency || siteIntel?.currency || "USD",
+      period_type: "Total",
+    });
+    const rows = courses.map((c: { id: string }) => ({ job_id: jobId, course_id: c.id, course_fee_id: feeId }));
+    await masterKnex(`${S}.extraction_course_fee_assignments`)
+      .insert(rows).onConflict(["course_id", "course_fee_id"]).ignore();
+    appLinked = rows.length;
+  }
+
   await writeJobEvent(jobId, "step_complete", {
     phase: "enrichment",
-    message: `Bulk fees: ${linked} course-fee links created (fuzzy matched from ${feeEntries.length} fee entries)`,
-    data: { linked, fee_entries: feeEntries.length, unmatched: feeEntries.length - matches.length },
+    message: `Bulk fees: ${linked} course-fee links created (fuzzy matched from ${feeEntries.length} fee entries)`
+      + (appLinked ? `, application fee linked to ${appLinked} courses` : ", no application fee stated"),
+    data: { linked, fee_entries: feeEntries.length, unmatched: feeEntries.length - matches.length, application_fee_links: appLinked },
   });
 }
 

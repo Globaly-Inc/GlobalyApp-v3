@@ -78,6 +78,10 @@ export async function embedPublicRoutes(app: FastifyInstance) {
       display_name: config.display_name,
       logo_url: config.logo_url,
       brand_color: config.brand_color,
+      // The panel's starter questions differ by owner: an institution's widget answers
+      // about its own campus and catalog, a business's counsels on studying abroad.
+      // Kind only — never the owner's id.
+      owner_kind: config.institution_id != null ? "institution" : "business",
     });
   });
 }

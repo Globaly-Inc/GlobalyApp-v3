@@ -1,12 +1,15 @@
 /** Wire types for the public embed widget API. */
 
 import type { CourseCard } from "@/app/ai/apis/types";
+import type { EmbedOwnerKind } from "../const";
 
 /** Public branding subset of an embed config — all the widget ever sees. */
 export type EmbedPublicConfig = {
   display_name: string | null;
   logo_url: string | null;
   brand_color: string | null;
+  /** Drives the starter questions — an institution's widget is scoped to its own catalog. */
+  owner_kind: EmbedOwnerKind;
 };
 
 /** Card shape the backend streams (prompt format) — adapted to the shared CourseCard for rendering. */
