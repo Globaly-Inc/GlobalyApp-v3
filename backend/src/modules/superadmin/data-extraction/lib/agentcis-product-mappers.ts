@@ -51,7 +51,21 @@ function findIntakeArray(source: Record<string, unknown>): unknown[] {
   for (const c of candidates) {
     if (Array.isArray(c) && c.length) return c;
   }
-  if (source.intake_year != null || source.start_date != null) return [source];
+  // The intake-shaped keys ONLY, never the product itself. `mapOneIntake` reads `name` as the
+  // intake label, and on a product that is the COURSE name — which is how every imported course
+  // once grew one dateless intake named after itself (103 of them for Victoria University). No
+  // product today carries `intake_year`/`start_date`, so this is a guard against the day one does,
+  // not a live path.
+  if (source.intake_year != null || source.start_date != null) {
+    return [{
+      intake_name: source.intake_name,
+      intake_month: source.intake_month,
+      intake_year: source.intake_year,
+      start_date: source.start_date,
+      end_date: source.end_date,
+      application_deadline: source.application_deadline ?? source.deadline,
+    }];
+  }
   return [];
 }
 
