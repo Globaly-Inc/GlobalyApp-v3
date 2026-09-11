@@ -81,9 +81,7 @@ export async function queueRoutes(app: FastifyInstance) {
     return reply.send(await service.deepScrape(id, adminId(req)));
   });
 
-  // POST /jobs/:id/enrich-from-web — AgentCIS jobs only: run the normal discovery/crawl
-  // pipeline over the institution's own website to fill gaps AgentCIS can't provide (study
-  // units, etc). See services/agentcis-enrichment.service.ts.
+  // POST /jobs/:id/enrich-from-web — AgentCIS jobs only, see agentcis-enrichment.service.ts
   app.post("/jobs/:id/enrich-from-web", async (req, reply) => {
     const { id } = QueueJobParamSchema.parse(req.params);
     return reply.send(await enrichFromWebsite(id, adminId(req)));

@@ -1,13 +1,7 @@
 /**
- * writeCourse's AgentCIS protection guardrail (Phase 1 of the "Enrich from Website" plan) — a
- * later website-enrichment pass over an AgentCIS-sourced job is meant to fill gaps AgentCIS
- * can't provide (study units), but must never add a second, possibly conflicting fee/intake/
- * study-option/eligibility/english-requirement row alongside one AgentCIS already gave a course.
- * Gated per category, per course: only write when the course currently has NONE of that type.
- * A non-AgentCIS job's normal writeCourse behaviour must be completely unaffected.
- *
- * Style matches tests/agentcis-progress-merge.ts: DB integration against the real dev DB,
- * self-cleaning (creates its own throwaway jobs + rows, deletes them in a finally block).
+ * writeCourse's AgentCIS guardrail: a website-enrichment pass over an AgentCIS job must only fill
+ * a fee/intake/study-option/eligibility/english-requirement category a course has NONE of yet,
+ * never add a second row beside one AgentCIS already gave it. Non-AgentCIS jobs stay unaffected.
  *
  * Run: node --import tsx tests/agentcis-writecourse-guardrail.ts
  */
@@ -84,6 +78,16 @@ async function main() {
 
     const unitAssignments = await masterKnex(`${S}.extraction_course_study_unit_assignments`).where({ course_id: agentcisCourse.id });
     assert(unitAssignments.length === 1, "AgentCIS course: study unit WAS added (this category had none before)");
+
+    // A second page for the SAME course naming a DIFFERENT unit must still land — study units
+    // are not behind the "has existing -> skip" guard, since AgentCIS never has any to protect
+    // and page order shouldn't decide which units a course ends up with.
+    await writeCourse(agentcisJob.id, {
+      name: "Bachelor of Testing",
+      study_units: [{ unit_name: "Advanced Testing", credit_points: 6 }],
+    } as never, new Map());
+    const unitAssignmentsAfter = await masterKnex(`${S}.extraction_course_study_unit_assignments`).where({ course_id: agentcisCourse.id });
+    assert(unitAssignmentsAfter.length === 2, "AgentCIS course: a later page's different study unit is ALSO added, not blocked by the first");
 
     // Same scraped data, but a non-AgentCIS job — normal writeCourse behaviour must be untouched:
     // the fee is written straight away since this isn't a source_type "agentcis" job.

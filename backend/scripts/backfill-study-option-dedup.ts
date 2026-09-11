@@ -1,19 +1,12 @@
 /**
  * Collapse duplicate extraction_study_options rows within a job onto ONE shared row per distinct
- * (study_mode, study_load, duration_value, duration_unit) tuple — the sharing property
- * upsertStudyOption (staging-writer.ts) now enforces going forward. Before that fix landed, every
- * course write inserted a fresh row unconditionally, so two courses offering the identical option
- * ended up as two separate rows instead of sharing one via the assignment junction. This repairs
- * data already staged before the fix — it does not touch anything written after it (those rows
- * are already correctly deduplicated at write time).
+ * (study_mode, study_load, duration_value, duration_unit) tuple — the sharing upsertStudyOption
+ * (staging-writer.ts) now enforces at write time. Repairs data staged before that fix.
  *
  *   node --import tsx scripts/backfill-study-option-dedup.ts --job <id> [--apply]
  *   node --import tsx scripts/backfill-study-option-dedup.ts --all [--apply]
  *
- * No model call, no scrape — pure DB dedup, free and repeatable. Same "repoint the assignments
- * onto the survivor FIRST, then delete the copies" order as eligibility-backfill.ts's intake-merge
- * pass: a copy's assignments cascade away with it, so deleting before repointing would lose the
- * course links entirely.
+ * No model call, no scrape — pure DB dedup, free and repeatable.
  */
 import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";

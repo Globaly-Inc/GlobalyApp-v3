@@ -879,9 +879,7 @@ async function handleDiscoveryStep(jobId: string) {
     await processListUrl(url, 0);
   }
 
-  // Update total_pages_found (and its companion pages_total — extraction-job.worker.ts's
-  // pagination-siblings branch always keeps the two in step, and the admin UI's "Pages Found"
-  // stat reads total_pages_found directly).
+  // Keep pages_total in step with total_pages_found — the admin "Pages Found" stat reads the latter.
   if (totalCoursePages > 0) {
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: masterKnex.raw("COALESCE(total_pages_found, 0) + ?", [totalCoursePages]),

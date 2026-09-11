@@ -1,22 +1,8 @@
-// AgentCIS institution web-enrichment ("Enrich from Website").
-//
-// AgentCIS imports (lib/agentcis-staging.ts) never crawl the institution's own site — every
-// course/campus/fee comes structured from the AgentCIS API. That means AgentCIS-sourced courses
-// can never have study units (curriculum), since AgentCIS's own schema has no such field (see
-// data-extraction/CLAUDE.md). This action re-runs the SAME site-discovery/crawl pipeline every
-// other job already uses, over the SAME job_id, pointed at the institution's real website — so
-// writeCourse's job-scoped course-name match (staging-writer.ts) naturally attaches whatever it
-// finds onto the AgentCIS course rows instead of creating duplicates.
-//
-// Safety: writeCourse's per-category "has any existing?" guard (staging-writer.ts) makes this
-// strictly additive for an AgentCIS job — it only ever fills a fee/intake/study-option/
-// eligibility/english-requirement/study-unit slot a course doesn't already have one of, and
-// never updates or deletes anything AgentCIS already wrote. writeInstitutionOverview is
-// fill-blanks-only by its own SQL merge (COALESCE(NULLIF(new, ''), existing)), so re-running
-// site analysis against the same job is safe there too.
-//
-// Kept in its own file, not folded into queue.service.ts, so this AgentCIS-specific trigger
-// stays easy to find and change independently of the general job-queue actions it reuses.
+// AgentCIS imports never crawl the institution's own site, so AgentCIS courses can never get
+// study units through that path. This re-runs the normal discovery/crawl pipeline over the same
+// job_id against the institution's real website — writeCourse's job-scoped name match attaches
+// results onto the existing AgentCIS courses, and its per-category guard (staging-writer.ts)
+// keeps this strictly additive, never touching data AgentCIS already wrote.
 
 import { NotFoundError, BadRequestError } from "../../../../shared/errors.js";
 import { createChildLogger } from "../../../../shared/logger.js";
@@ -28,8 +14,7 @@ import { findJobById } from "../repositories/jobs.repository.js";
 
 const logger = createChildLogger("agentcis-enrichment-service");
 
-// AgentCIS's own synthetic fallback (lib/agentcis-staging.ts) when it never gave a real
-// website — nothing on the real internet to crawl there.
+// AgentCIS's synthetic fallback when it has no real website — nothing to crawl there.
 const AGENTCIS_SYNTHETIC_URL_PREFIX = "https://agentcis.com/institution/";
 
 export async function enrichFromWebsite(jobId: string, adminId: number) {
@@ -46,9 +31,7 @@ export async function enrichFromWebsite(jobId: string, adminId: number) {
     throw new BadRequestError("AgentCIS never supplied a real website for this institution — there is nothing to crawl");
   }
 
-  // Same reactivation deep-scrape/rerun already use — clears a paused/failed/declined status so
-  // the job worker's guard doesn't drop the re-dispatch. "done" isn't in that list, so it passes
-  // through untouched here; the worker itself sets status to "processing" as its first action.
+  // Same reactivation deep-scrape/rerun use; the worker itself flips status to "processing".
   await reactivateJob(jobId, adminId);
   await logAudit(adminId, "JOB_ENRICH_FROM_WEB", {
     entityType: "extraction_jobs",
@@ -56,10 +39,15 @@ export async function enrichFromWebsite(jobId: string, adminId: number) {
     details: { institution_url: job.institution_url },
   });
 
+  // Unlike rerun/deep-scrape (which reactivate a job that was already "processing" and have a
+  // prior status to fall back to), reactivateJob is a no-op for "done" — so a swallowed publish
+  // failure here would leave the job stuck at "done" forever with nothing to ever pick it up.
+  // Log it, then rethrow: the admin sees "Enrichment failed" instead of a false "started".
   try {
     await pipelineQueue.publish(EXTRACTION_QUEUES.JOBS, { jobId, resumed: true });
-  } catch {
-    logger.warn("Queue unavailable on enrich-from-web, worker will poll", { jobId });
+  } catch (err) {
+    logger.error("Queue publish failed on enrich-from-web — job left at 'done', nothing will pick it up", { jobId, err });
+    throw err;
   }
 
   return { updated: true };

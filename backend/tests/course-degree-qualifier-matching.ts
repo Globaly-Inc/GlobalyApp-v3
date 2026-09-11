@@ -1,16 +1,7 @@
 /**
- * degreeSignature + writeCourse's degree-qualifier-aware dedup fallback.
- *
- * Real bug (Aberystwyth University, 2026-09-11, via the "Enrich from Website" feature): AgentCIS
- * names a course "Biology BSc (Hons)" (qualifier last); the institution's own site names the SAME
- * course "BSc Biology" (qualifier first). writeCourse's exact-match dedup is position-sensitive,
- * so it never matched — every scraped course became a SECOND row instead of attaching study units
- * to the one AgentCIS already had. Measured before this fix: 18 of 474 AgentCIS courses matched a
- * scraped page; the other 456 sat as unlinked duplicates, capping study-unit coverage under half
- * the catalogue.
- *
- * Style: the degreeSignature part is pure (no DB); the writeCourse part is DB integration against
- * the real dev DB, self-cleaning, matching tests/agentcis-writecourse-guardrail.ts.
+ * degreeSignature + writeCourse's degree-qualifier-aware dedup fallback — AgentCIS names a course
+ * "Biology BSc (Hons)" (qualifier last), a school's own site often says "BSc Biology" (qualifier
+ * first); exact-match dedup is position-sensitive and never bridges that on its own.
  *
  * Run: node --import tsx tests/course-degree-qualifier-matching.ts
  */
@@ -41,6 +32,8 @@ async function main() {
   assert(!!prefixed && !!suffixed, "both real-world name shapes produce a signature");
   assert(prefixed?.subject === suffixed?.subject, "'BSc Biology' and 'Biology BSc (Hons)' share a subject");
   assert(prefixed?.qualifier === suffixed?.qualifier, "'BSc Biology' and 'Biology BSc (Hons)' share a qualifier");
+  assert(prefixed?.honours === false, "'BSc Biology' states no honours marker");
+  assert(suffixed?.honours === true, "'Biology BSc (Hons)' states one");
 
   const joint1 = degreeSignature("Accounting and Finance/Economics BSc (Hons)");
   const joint2 = degreeSignature("BSc Accounting and Finance/Economics");
@@ -93,6 +86,39 @@ async function main() {
 
     const fees = await masterKnex(`${S}.extraction_course_fee_assignments`).where({ course_id: agentcisCourse.id });
     assert(fees.length === 1 && fees[0]?.course_fee_id === existingFee.id, "the AgentCIS fee is untouched (Phase 1's guardrail still applies)");
+
+    // ── Ambiguous case: a catalogue with BOTH a plain and an honours course of the same subject ──
+    const [job2] = await masterKnex(`${S}.extraction_jobs`)
+      .insert({ institution_url: "https://degree-qualifier-ambiguous-test.invalid", source_type: "agentcis", status: "processing" })
+      .returning("id");
+    try {
+      const [plainCourse] = await masterKnex(`${S}.extraction_courses`)
+        .insert({ job_id: job2.id, name: "Chemistry BSc" }).returning("id");
+      const [honsCourse] = await masterKnex(`${S}.extraction_courses`)
+        .insert({ job_id: job2.id, name: "Chemistry BSc (Hons)" }).returning("id");
+
+      // Incoming name states no honours marker either, so it disambiguates to the non-honours
+      // candidate — not a guess, since "no marker" is itself a distinguishing signal here.
+      const writtenId = await writeCourse(job2.id, {
+        name: "BSc Chemistry",
+        study_units: [{ unit_name: "Inorganic Chemistry", credit_points: 15 }],
+      } as never, new Map());
+      assert(writtenId === plainCourse.id, "a marker-less scraped name resolves to the NON-honours candidate, not arbitrarily to whichever row sorts first");
+      const coursesAfter = await masterKnex(`${S}.extraction_courses`).where({ job_id: job2.id });
+      assert(coursesAfter.length === 2, "still exactly 2 courses — no third row, and the honours course got nothing attached");
+      const honsUnits = await masterKnex(`${S}.extraction_course_study_unit_assignments`).where({ course_id: honsCourse.id });
+      assert(honsUnits.length === 0, "the honours course's data is untouched by the marker-less merge");
+
+      // A second scraped name that genuinely can't be told apart (both existing candidates carry
+      // the SAME honours flag as each other) must not guess — a new row is safer than a wrong merge.
+      const [dupHonsCourse] = await masterKnex(`${S}.extraction_courses`)
+        .insert({ job_id: job2.id, name: "Chemistry BSc (Honours)" }).returning("id");
+      const writtenId2 = await writeCourse(job2.id, { name: "BSc Chemistry (Hons)" } as never, new Map());
+      assert(writtenId2 !== honsCourse.id && writtenId2 !== dupHonsCourse.id && writtenId2 !== plainCourse.id,
+        "genuinely ambiguous (two honours candidates) -> a NEW row, never an arbitrary pick");
+    } finally {
+      await masterKnex(`${S}.extraction_jobs`).where({ id: job2.id }).delete();
+    }
   } finally {
     await masterKnex(`${S}.extraction_jobs`).where({ id: job.id }).delete();
     await masterKnex.destroy();

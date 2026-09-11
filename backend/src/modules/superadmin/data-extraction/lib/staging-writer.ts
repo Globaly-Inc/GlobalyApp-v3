@@ -824,7 +824,12 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
 }
 
 // Dedupes by (study_mode, study_load, duration_value, duration_unit), same shared-row pattern
-// as upsertFee/upsertIntake/upsertEligibility/upsertStudyUnit (CLAUDE.md (g)/(h)).
+// as upsertFee/upsertIntake/upsertEligibility/upsertStudyUnit (CLAUDE.md (g)/(h)). Atomic
+// INSERT ... ON CONFLICT, not check-then-insert: two page workers racing on the identical option
+// used to both find nothing and both insert, recreating the duplicates this helper exists to
+// prevent (review finding, 2026-09-11). The conflict target is the COALESCE-normalized
+// expression index from migration 20260911_001 — a plain unique constraint on nullable columns
+// wouldn't catch two NULL-study_mode rows, since Postgres never treats NULL as equal to NULL.
 export async function upsertStudyOption(jobId: string, opt: {
   name?: string | null;
   study_mode?: string | null;
@@ -837,26 +842,18 @@ export async function upsertStudyOption(jobId: string, opt: {
   const durationValue = coerceInt(opt.duration_value);
   const durationUnit = opt.duration_unit ?? "months";
 
-  const existing = await masterKnex(`${S}.extraction_study_options`)
-    .where({
-      job_id: jobId, study_mode: studyMode, study_load: studyLoad,
-      duration_value: durationValue, duration_unit: durationUnit,
-    })
-    .first();
-  if (existing) {
-    if (existing.name == null && opt.name) {
-      await masterKnex(`${S}.extraction_study_options`)
-        .where({ id: existing.id })
-        .update({ name: opt.name, updated_at: masterKnex.fn.now() });
-    }
-    return existing.id;
-  }
-
   const [row] = await masterKnex(`${S}.extraction_study_options`)
     .insert({
       job_id: jobId, name: opt.name ?? null,
       study_mode: studyMode, study_load: studyLoad,
       duration_value: durationValue, duration_unit: durationUnit,
+    })
+    .onConflict(masterKnex.raw(
+      "(job_id, COALESCE(study_mode, ''), COALESCE(study_load, ''), COALESCE(duration_value, -1), COALESCE(duration_unit, ''))",
+    ))
+    .merge({
+      name: masterKnex.raw(`COALESCE(${S}.extraction_study_options.name, EXCLUDED.name)`),
+      updated_at: masterKnex.fn.now(),
     })
     .returning("id");
   return row.id;
@@ -1631,19 +1628,23 @@ const QUALIFIER_RE = new RegExp(`^(${QUALIFIER_ALTERNATION})\\b|\\b(${QUALIFIER_
 interface DegreeSignature {
   subject: string;
   qualifier: string;
+  // Whether THIS name states "(Hons)" — kept, not just stripped, so a catalogue holding both
+  // "Biology BSc" and "Biology BSc (Hons)" as separate courses can still be told apart when an
+  // incoming name matches both on subject+qualifier (see the fallback matcher in writeCourse).
+  honours: boolean;
 }
 
 export function degreeSignature(name: string): DegreeSignature | null {
-  const s = name.toLowerCase().trim()
-    .replace(/\s*\((?:hons|honours)\)\s*$/i, "")
-    .replace(/\s+/g, " ");
+  const trimmed = name.toLowerCase().trim().replace(/\s+/g, " ");
+  const honours = /\((?:hons|honours)\)\s*$/i.test(trimmed);
+  const s = trimmed.replace(/\s*\((?:hons|honours)\)\s*$/i, "");
   const m = s.match(QUALIFIER_RE);
   if (!m) return null;
   const matchedAtStart = m[1] != null;
   const subjectRaw = matchedAtStart ? s.slice(m[0].length) : s.slice(0, s.length - m[0].length);
   const subject = subjectRaw.replace(/^[\s/:-]+|[\s/:-]+$/g, "").trim();
   if (!subject) return null;
-  return { subject: normaliseCourseName(subject), qualifier: (m[1] ?? m[2]).toLowerCase() };
+  return { subject: normaliseCourseName(subject), qualifier: (m[1] ?? m[2]).toLowerCase(), honours };
 }
 
 export function courseOwnPage(
@@ -1782,10 +1783,20 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     const sig = degreeSignature(course.name);
     if (sig) {
       const candidates = await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId }).select("*");
-      existing = candidates.find((c: Record<string, unknown>) => {
+      const sameSubjectAndQualifier = candidates.filter((c: Record<string, unknown>) => {
         const other = degreeSignature(c.name as string);
         return other && other.subject === sig.subject && other.qualifier === sig.qualifier;
       });
+      // A catalogue can hold BOTH "Biology BSc" and "Biology BSc (Hons)" as separate courses,
+      // and a reordered, marker-less name like "BSc Biology" matches both on subject+qualifier
+      // alone — picking either would silently attach data to the wrong one. Narrow by the
+      // honours marker first; merge only once exactly one candidate survives, never guess among
+      // several (matches this module's own "unmatched -> unlinked, never guessed" convention).
+      const honoursNarrowed = sameSubjectAndQualifier.filter(
+        (c) => degreeSignature(c.name as string)?.honours === sig.honours,
+      );
+      const finalMatches = honoursNarrowed.length === 1 ? honoursNarrowed : sameSubjectAndQualifier;
+      if (finalMatches.length === 1) existing = finalMatches[0];
     }
   }
 
@@ -1946,7 +1957,12 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   }
 
   // ── Study units + assignments ──
-  if (course.study_units?.length && !(isAgentcisJob && await courseHasExisting("extraction_course_study_unit_assignments", courseId))) {
+  // Not guarded by isAgentcisJob/courseHasExisting like the categories above: AgentCIS never
+  // provides units at all (CLAUDE.md), so "has existing" here only ever means an earlier
+  // enrichment page already added SOME units for this course — blocking the whole category on
+  // that would make a later page's DIFFERENT units depend on crawl/page order. upsertStudyUnit
+  // + the assignment's onConflict().ignore() already dedupe identical units on their own.
+  if (course.study_units?.length) {
     // Which of these "units" are really other courses of this job. Asked as one query over the
     // candidate names rather than by loading every course name, so a 800-course job costs the
     // same as a small one.

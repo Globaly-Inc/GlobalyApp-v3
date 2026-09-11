@@ -1,13 +1,7 @@
 /**
- * Correct extraction_jobs.total_pages_found/pages_total (the admin UI's "Pages Found" stat)
- * against the REAL row count in extraction_queue for that job.
- *
- * Root cause: 3 of the 4 code paths that queue new pages mid-run (secondary curriculum/fees
- * fetch overflow in extraction-page.worker.ts, and two guided-URL re-run paths in
- * extraction-step.worker.ts) never updated this counter — only the pagination-siblings path did.
- * Fixed going forward (see staging-writer.ts / those two worker files), but that fix only stops
- * FUTURE undercounting — it does nothing for a job whose counter already fell behind before the
- * fix landed and the process restarted. This corrects the existing gap.
+ * Correct extraction_jobs.total_pages_found/pages_total against the real row count in
+ * extraction_queue — some code paths that queue pages mid-run never updated this counter (now
+ * fixed going forward); this repairs jobs whose counter already fell behind.
  *
  *   node --import tsx scripts/backfill-pages-found.ts --job <id> [--apply]
  *   node --import tsx scripts/backfill-pages-found.ts --all [--apply]

@@ -1,14 +1,7 @@
 /**
- * enrichFromWebsite (services/agentcis-enrichment.service.ts) — the "Enrich from Website" trigger,
- * Phase 2 of the AgentCIS website-enrichment plan. Covers the guard rails: only an AgentCIS job,
- * only once its import finished ("done"), only when AgentCIS gave a real website (not its own
- * synthetic agentcis.com/institution/{id} placeholder) — and that a valid call dispatches to the
- * JOBS queue (the normal discovery pipeline), not some AgentCIS-specific queue.
- *
- * Style matches tests/rerun-agentcis.ts: DB integration against the real dev DB, queueService.publish
- * mocked out (a real LavinMQ connection never gets opened, and never needs closing) rather than
- * tests/agentcis-progress-merge.ts's plain style, since this is the first AgentCIS test that
- * actually publishes.
+ * enrichFromWebsite (services/agentcis-enrichment.service.ts) — covers its guard rails (AgentCIS
+ * job only, import must be "done", real website only) and that a valid call dispatches to the
+ * normal JOBS queue. queueService.publish is mocked so no real LavinMQ connection opens.
  *
  * Run: node --import tsx tests/agentcis-enrich-from-web.ts
  */
@@ -64,6 +57,9 @@ async function main() {
   const [validJob] = await masterKnex(`${S}.extraction_jobs`)
     .insert({ institution_url: "https://enrich-web-test-valid.invalid", source_type: "agentcis", status: "done" })
     .returning("id");
+  const [dispatchFailsJob] = await masterKnex(`${S}.extraction_jobs`)
+    .insert({ institution_url: "https://enrich-web-test-dispatch-fails.invalid", source_type: "agentcis", status: "done" })
+    .returning("id");
 
   try {
     await expectRejects(
@@ -90,9 +86,22 @@ async function main() {
     assert(calls[0]?.queue === "extraction_jobs", "dispatched to the normal JOBS queue, not an AgentCIS-specific one");
     assert((calls[0]?.message as { jobId: string })?.jobId === validJob.id, "publish message carries the right job id");
     assert((calls[0]?.message as { resumed: boolean })?.resumed === true, "resumed:true — same shape deep-scrape/rerun already use");
+
+    queueService.publish = (async () => { throw new Error("queue unavailable"); }) as typeof queueService.publish;
+    let threw = false;
+    try {
+      await enrichFromWebsite(dispatchFailsJob.id, ADMIN_ID);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "a failed queue publish propagates instead of returning { updated: true }");
+    const stillDone = await masterKnex(`${S}.extraction_jobs`).where({ id: dispatchFailsJob.id }).first("status");
+    assert(stillDone.status === "done", "the job is left truthfully at 'done', not falsely advanced, when dispatch fails");
   } finally {
     queueService.publish = originalPublish;
-    await masterKnex(`${S}.extraction_jobs`).whereIn("id", [notAgentcisJob.id, notDoneJob.id, syntheticUrlJob.id, validJob.id]).delete();
+    await masterKnex(`${S}.extraction_jobs`)
+      .whereIn("id", [notAgentcisJob.id, notDoneJob.id, syntheticUrlJob.id, validJob.id, dispatchFailsJob.id])
+      .delete();
     await masterKnex.destroy();
   }
 

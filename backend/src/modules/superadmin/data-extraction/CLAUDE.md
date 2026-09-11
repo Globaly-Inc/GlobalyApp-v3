@@ -621,8 +621,8 @@ AgentCIS gave a real website (not its own synthetic `agentcis.com/institution/{i
 **Never removes or overwrites AgentCIS's own data** — the explicit requirement this was scoped
 to. `writeCourse` (`staging-writer.ts`) gained a per-category, per-course guard: for a
 `source_type: "agentcis"` job, each of fees/intakes/study-options/eligibility/English-
-requirements/study-units is written ONLY when that specific course currently has NONE of that
-type (`courseHasExisting`, one query per category against the assignment junction table, or
+requirements is written ONLY when that specific course currently has NONE of that type
+(`courseHasExisting`, one query per category against the assignment junction table, or
 `extraction_english_requirements` directly). A course AgentCIS already gave a fee to keeps that
 fee untouched even if the website scrape finds a different one; a course with no fee at all is
 free to gain one. Completely inert for every non-AgentCIS job — `isAgentcisSourcedJob` short-
@@ -630,6 +630,14 @@ circuits false, so this changes nothing about the pipeline's existing behavior a
 Institution-overview fields need no equivalent guard: `writeInstitutionOverview` was already
 fill-blanks-only (`COALESCE(NULLIF(new, ''), existing)`), so re-running site analysis against the
 same job safely fills only what AgentCIS left null.
+
+Study units are deliberately NOT behind `courseHasExisting` — AgentCIS never has any to protect
+(no curriculum concept at all), so "has existing" there only ever means an earlier enrichment
+page already added some, and gating the whole category on that made a later page's different
+units depend on crawl/page order (review finding, 2026-09-11: one page's unit blocked every
+other page's units for the same course). `upsertStudyUnit` plus the assignment junction's
+`onConflict().ignore()` already dedupe an identical unit on their own, so nothing is lost by
+leaving this category unguarded.
 
 Course-name matching is exact/normalized only in v1 (the same match `writeCourse` already does)
 — a scraped course whose name doesn't match an existing AgentCIS course lands as a new, separate

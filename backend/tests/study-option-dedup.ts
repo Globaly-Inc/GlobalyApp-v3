@@ -1,13 +1,6 @@
 /**
- * upsertStudyOption — study options should be SHARED across every course that offers them, the
- * same pattern upsertFee/upsertIntake/upsertEligibility/upsertStudyUnit already use. Before this
- * fix, NO upsert helper existed for extraction_study_options at all: every course write inserted
- * a fresh row unconditionally, so two courses both offering "on_campus, full_time, 3 years" got
- * two separate rows instead of sharing one — the Study Options tab looked like one option per
- * course rather than options genuinely shared across the courses that offer them.
- *
- * Style matches tests/course-degree-qualifier-matching.ts: DB integration against the real dev
- * DB, self-cleaning.
+ * upsertStudyOption — study options should be SHARED across every course that offers them, same
+ * pattern as upsertFee/upsertIntake/upsertEligibility/upsertStudyUnit.
  *
  * Run: node --import tsx tests/study-option-dedup.ts
  */
@@ -62,6 +55,20 @@ async function main() {
 
     const totalOptions = await masterKnex(`${S}.extraction_study_options`).where({ job_id: job.id });
     assert(totalOptions.length === 5, "exactly 5 distinct option rows for 5 distinct tuples (not 7 inserts)");
+
+    // Two page workers racing on the identical tuple: both must resolve to the SAME row, not
+    // each insert their own — this is what the DB-level unique index (migration 20260911_001)
+    // plus the atomic ON CONFLICT DO UPDATE guards against check-then-insert can't.
+    const concurrentTuple = { study_mode: "on_campus", study_load: "full_time", duration_value: 4, duration_unit: "years" };
+    const [raceId1, raceId2, raceId3] = await Promise.all([
+      upsertStudyOption(job.id, concurrentTuple),
+      upsertStudyOption(job.id, concurrentTuple),
+      upsertStudyOption(job.id, concurrentTuple),
+    ]);
+    assert(raceId1 === raceId2 && raceId2 === raceId3, "three concurrent calls on the identical tuple all resolve to the same row");
+    const raceRows = await masterKnex(`${S}.extraction_study_options`)
+      .where({ job_id: job.id, study_mode: "on_campus", study_load: "full_time", duration_value: 4, duration_unit: "years" });
+    assert(raceRows.length === 1, "only one row exists for the raced tuple, not three");
 
     // ── End-to-end via writeCourse: two DIFFERENT courses sharing one option ──
     const courseA = { name: "Bachelor of Testing A", study_options: [{ study_mode: "on_campus", study_load: "full_time", duration_value: 3, duration_unit: "years" }] };

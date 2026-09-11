@@ -12,14 +12,9 @@ export type EnrichFromWebButtonProps = Readonly<{
   onReload: () => void;
 }>;
 
-/**
- * AgentCIS-imported jobs never crawl the institution's own website — every course comes
- * structured from the AgentCIS API, which has no curriculum concept at all. This re-runs the
- * normal discovery/crawl pipeline against the institution's real site to fill in what AgentCIS
- * can't provide (study units, and any institution field AgentCIS left blank). It never removes
- * or overwrites a fee/intake/eligibility/etc AgentCIS already gave a course — see writeCourse's
- * guard in staging-writer.ts.
- */
+// AgentCIS jobs never crawl the institution's own site, so they can never get study units through
+// that path. Re-runs the normal discovery/crawl pipeline against the real site to fill gaps —
+// never touches data AgentCIS already gave a course (writeCourse's guard in staging-writer.ts).
 export function EnrichFromWebButton({ jobId, onReload }: EnrichFromWebButtonProps) {
   const [running, setRunning] = useState(false);
   const { confirm, dialog } = useConfirmDelete();

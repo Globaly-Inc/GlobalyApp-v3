@@ -1,11 +1,6 @@
 /**
- * extractStudyOptions — duration parsing for AgentCIS products.
- *
- * AgentCIS sends `duration` as a single free-text string ("2 Years", "18 Months"), never the
- * split duration_value/duration_unit pair the mapper used to assume. `Number("2 Years")` is NaN,
- * and the unit fallback read duration_unit/duration_type — both absent on every real AgentCIS
- * product — so duration_value came back null and duration_unit came back the literal default
- * "weeks" for every AgentCIS-imported course, regardless of what the source actually said.
+ * extractStudyOptions — duration parsing for AgentCIS products. AgentCIS sends `duration` as a
+ * single free-text string ("2 Years", "18 Months"), not a split value/unit pair.
  *
  * Pure — no database, no model. Run it directly:
  *   node --import tsx tests/agentcis-duration.ts

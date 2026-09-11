@@ -71,7 +71,7 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
         {job.source_type !== "agentcis" && job.status !== "exported" && (
           <DeepScrapeButton jobId={job.id} onReload={onReload} />
         )}
-        {job.source_type === "agentcis" && job.status !== "exported" && (
+        {job.source_type === "agentcis" && job.status === "done" && (
           <EnrichFromWebButton jobId={job.id} onReload={onReload} />
         )}
 

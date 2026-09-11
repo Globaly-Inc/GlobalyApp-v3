@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { allExtractionsApi } from "../apis";
 import { saveFormAndLearn } from "./editable-field";
 import { StudyOptionForm } from "./study-option-form";
+import { useConfirmDelete } from "./use-confirm-delete";
 import { DURATION_WEEK_OPTIONS } from "../const";
 import { courseDuration, feeAmount } from "../utils";
 import type {
@@ -172,6 +173,7 @@ export function CourseDetailPanel({
   const [description, setDescription] = useState(course.description ?? "");
   const [addingOption, setAddingOption] = useState(false);
   const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirmDelete();
 
   // Re-seed when a different course is selected, or after a save round-trips.
   useEffect(() => {
@@ -233,9 +235,8 @@ export function CourseDetailPanel({
 
   const pick = <T extends { id: string }>(all: T[], ids: Set<string>) => all.filter((e) => ids.has(e.id));
 
-  // Study units/options are shared rows — one row can back several courses (see
-  // upsertStudyUnit/upsertStudyOption in staging-writer.ts). Surfaced here so unlinking or
-  // editing one doesn't read as exclusive to this course.
+  // Study units/options are shared rows across courses — surfaced so unlinking/editing one
+  // doesn't read as exclusive to this course.
   const sharedWithCount = (rows: CourseAssignment[], column: string, entityId: string) =>
     new Set(rows.filter((r) => r[column] === entityId && r.course_id !== course.id).map((r) => r.course_id)).size;
 
@@ -471,9 +472,8 @@ export function CourseDetailPanel({
           busy={busy} onLink={link} onUnlink={unlink}
         />
 
-        {/* Unlike Intakes/Eligibility/Accreditations above, "Add study option" always creates a
-            NEW row rather than offering to link an existing one — options are shared once
-            created (see upsertStudyOption), just not from this button. */}
+        {/* Unlike Intakes/Eligibility/Accreditations above, this always creates a new row rather
+            than offering to link an existing one. */}
         <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <h4 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -557,7 +557,17 @@ export function CourseDetailPanel({
                   <Button
                     variant="ghost" size="icon-xs" className="cursor-pointer text-destructive hover:text-destructive"
                     title="Delete" disabled={busy}
-                    onClick={() => run(() => allExtractionsApi.deleteStudyOption(option.id), "Study option deleted")}
+                    onClick={async () => {
+                      const ok = await confirm(
+                        "Delete study option?",
+                        otherCourses > 0
+                          ? `Shared with ${otherCourses} other course${otherCourses === 1 ? "" : "s"} — deleting it removes it from those too, not just this course.`
+                          : "This can't be undone.",
+                        { confirmLabel: "Delete", variant: "destructive" },
+                      );
+                      if (!ok) return;
+                      run(() => allExtractionsApi.deleteStudyOption(option.id), "Study option deleted");
+                    }}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -576,6 +586,7 @@ export function CourseDetailPanel({
           busy={busy} onLink={link} onUnlink={unlink}
         />
       </CardContent>
+      {confirmDialog}
     </Card>
   );
 }
