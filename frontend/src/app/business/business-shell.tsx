@@ -52,7 +52,7 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
   }));
 }
 
-const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Representative", "Team", "Services"]);
+const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Branches", "Representative", "Team", "Services"]);
 // Enquiries and Messages used to be hidden here: both called requireBusinessContext routes and
 // just produced a 403 for an institution. They now serve either org kind, because an enquiry
 // nobody represents falls back to the institution that owns the course and it works that lead in

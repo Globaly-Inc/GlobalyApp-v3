@@ -4,6 +4,9 @@
 
 import { config } from "../../config.js";
 import { AppError } from "../errors.js";
+import { createChildLogger } from "../logger.js";
+
+const logger = createChildLogger("google-places");
 
 type GoogleAddressComponent = { long_name: string; short_name: string; types: string[] };
 
@@ -69,12 +72,16 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
     error_message?: string;
     results?: { formatted_address: string; geometry: { location: { lat: number; lng: number } }; address_components: GoogleAddressComponent[] }[];
   };
-  if (body.status === "ZERO_RESULTS") return null;
+  if (body.status === "ZERO_RESULTS") {
+    logger.warn("Geocoding returned no results", { address });
+    return null;
+  }
   if (body.status !== "OK" || !body.results?.[0]) {
     throw new AppError(body.error_message ?? `Geocoding failed: ${body.status}`, 502, "PLACES_API_ERROR");
   }
 
   const result = body.results[0];
+  logger.info("Geocoded address", { address, mapLink: `https://www.google.com/maps/search/?api=1&query=${result.geometry.location.lat},${result.geometry.location.lng}` });
   return {
     formattedAddress: result.formatted_address,
     latitude: result.geometry.location.lat,

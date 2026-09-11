@@ -90,6 +90,9 @@ function toBusinessSearchQuery(params: BusinessSearchParams): string {
   // Only sent when on: the branch picker must keep getting businesses only, since it stores a
   // bare id with no kind alongside it.
   if (params.include_institutions) q.set("include_institutions", "true");
+  // Representations picker: server enforces the verified consultancy<->institution pairing
+  // regardless of this flag — see businesses.service.ts searchBusinesses.
+  if (params.for_partner_link) q.set("for_partner_link", "true");
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -116,15 +119,16 @@ export const businessProfileDetailRealApi = {
   searchBusinesses: (params: BusinessSearchParams = {}): Promise<BusinessSearchResult[]> =>
     httpGet(`${BASE}/search${toBusinessSearchQuery(params)}`),
 
-  getBranches: async (params: BranchListParams = {}): Promise<BranchListResult> => {
-    const { data, meta } = await httpGet<{ data: Branch[]; meta: { total: number } }>(`${BASE}/branches${toBranchQuery(params)}`);
+  getBranches: async (params: BranchListParams = {}, orgBase = BASE): Promise<BranchListResult> => {
+    const { data, meta } = await httpGet<{ data: Branch[]; meta: { total: number } }>(`${orgBase}/branches${toBranchQuery(params)}`);
     return { data, total: meta.total };
   },
-  createBranch: (input: BranchInput): Promise<Branch> => httpPost(`${BASE}/branches`, input),
-  updateBranch: (branchId: string, patch: BranchPatch): Promise<Branch> => httpPatch(`${BASE}/branches/${branchId}`, patch),
+  createBranch: (input: BranchInput, orgBase = BASE): Promise<Branch> => httpPost(`${orgBase}/branches`, input),
+  updateBranch: (branchId: string, patch: BranchPatch, orgBase = BASE): Promise<Branch> => httpPatch(`${orgBase}/branches/${branchId}`, patch),
+  // No institution twin — linking another registered org as a branch is business-to-business only.
   linkExistingBranch: (input: LinkExistingBranchInput): Promise<LinkExistingBranchResult> =>
     httpPost(`${BASE}/branches/link-existing`, input),
-  deleteBranch: (branchId: string): Promise<void> => httpDelete(`${BASE}/branches/${branchId}`),
+  deleteBranch: (branchId: string, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/branches/${branchId}`),
 
   searchServices: async (params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
     const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(`${BASE}/services/search${toServiceSearchQuery(params)}`);

@@ -70,6 +70,7 @@ export const BusinessSearchQuerySchema = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((v) => v === "true"),
+  for_partner_link: z.coerce.boolean().optional(),
 });
 
 // first/last name are collected HERE rather than at promote time: extraction never captures a

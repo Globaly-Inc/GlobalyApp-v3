@@ -119,12 +119,12 @@ export const businessProfileDetailMockApi = {
       .sort((a, b) => a.business_name.localeCompare(b.business_name));
   },
 
-  getBranches: async (params: BranchListParams = {}): Promise<BranchListResult> => {
+  getBranches: async (params: BranchListParams = {}, _orgBase?: string): Promise<BranchListResult> => {
     console.log("[mock] GET /businesses/branches", params);
     await delay(300);
     return { data: mockBranches, total: mockBranches.length };
   },
-  createBranch: async (input: BranchInput): Promise<Branch> => {
+  createBranch: async (input: BranchInput, _orgBase?: string): Promise<Branch> => {
     await delay(300);
     const branch: Branch = {
       id: uuid(), name: input.name, country: input.country ?? null, state: input.state ?? null,
@@ -136,7 +136,7 @@ export const businessProfileDetailMockApi = {
     mockBranches = [...mockBranches, branch];
     return branch;
   },
-  updateBranch: async (branchId: string, patch: BranchPatch): Promise<Branch> => {
+  updateBranch: async (branchId: string, patch: BranchPatch, _orgBase?: string): Promise<Branch> => {
     await delay(300);
     mockBranches = mockBranches.map((b) => (b.id === branchId ? { ...b, ...patch } : b));
     return mockBranches.find((b) => b.id === branchId)!;
@@ -151,7 +151,7 @@ export const businessProfileDetailMockApi = {
     mockBranches = [...mockBranches, branch];
     return { branch };
   },
-  deleteBranch: async (branchId: string): Promise<void> => {
+  deleteBranch: async (branchId: string, _orgBase?: string): Promise<void> => {
     await delay(300);
     mockBranches = mockBranches.filter((b) => b.id !== branchId);
   },

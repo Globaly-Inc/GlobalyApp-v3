@@ -9,7 +9,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { deleteRole, fetchPermissions, fetchRoles } from "../../store/business-profile-detail-slice";
 import type { Role } from "../../apis/types";
 
-export function RolesList({ onEdit }: Readonly<{ onEdit: (role: Role) => void }>) {
+export function RolesList({ businessId, onEdit }: Readonly<{ businessId: number; onEdit: (role: Role) => void }>) {
   const dispatch = useAppDispatch();
   const { items: roles, status } = useAppSelector((state) => state.businessProfileDetail.roles);
   const permissions = useAppSelector((state) => state.businessProfileDetail.permissions);
@@ -18,14 +18,14 @@ export function RolesList({ onEdit }: Readonly<{ onEdit: (role: Role) => void }>
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    dispatch(fetchRoles());
-    if (permissions.length === 0) dispatch(fetchPermissions());
+    dispatch(fetchRoles({ id: businessId }));
+    if (permissions.length === 0) dispatch(fetchPermissions({ id: businessId }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]);
+  }, [dispatch, businessId]);
 
   const handleDelete = async (role: Role) => {
     try {
-      await dispatch(deleteRole({ roleId: role.id })).unwrap();
+      await dispatch(deleteRole({ id: businessId, roleId: role.id })).unwrap();
       toast.success("Role deleted");
     } catch (e) {
       toast.error("Couldn't delete role", { description: (e as Error).message });
