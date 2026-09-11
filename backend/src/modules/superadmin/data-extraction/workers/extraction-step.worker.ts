@@ -703,10 +703,15 @@ async function handleAgentsStep(jobId: string) {
 
     // ── 3. LLM fallback ──
     if (!foundFromTable && markdown) {
-      const pageText = truncateMarkdown(markdown, 20000);
+      // A directory listing every agent on one page (no real pagination, just country-filter
+      // anchors) can run well past the old 20k cutoff — CIHE's own page held 36 agents beyond
+      // it that were silently never sent to the model at all. 60k/32k matches the cap the
+      // course listing prompt already uses for the same "big single page" shape.
+      const pageText = truncateMarkdown(markdown, 60000);
       const result = await extractJson<{ agents: Record<string, unknown>[] }>({
         system,
         prompt: agentExtractionPrompt(seedUrl, pageText, job.institution_name),
+        maxTokens: 32768,
       });
       for (const raw of (result.agents || [])) {
         const row = llmAgentToSourceRow(raw);
@@ -737,7 +742,8 @@ async function handleAgentsStep(jobId: string) {
         if (pageMd) {
           const result = await extractJson<{ agents: Record<string, unknown>[] }>({
             system,
-            prompt: agentExtractionPrompt(pageUrl, truncateMarkdown(pageMd, 20000), job.institution_name),
+            prompt: agentExtractionPrompt(pageUrl, truncateMarkdown(pageMd, 60000), job.institution_name),
+            maxTokens: 32768,
           });
           for (const raw of (result.agents || [])) {
             const row = llmAgentToSourceRow(raw);
