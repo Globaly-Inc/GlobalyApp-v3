@@ -879,10 +879,13 @@ async function handleDiscoveryStep(jobId: string) {
     await processListUrl(url, 0);
   }
 
-  // Update total_pages_found
+  // Update total_pages_found (and its companion pages_total — extraction-job.worker.ts's
+  // pagination-siblings branch always keeps the two in step, and the admin UI's "Pages Found"
+  // stat reads total_pages_found directly).
   if (totalCoursePages > 0) {
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: masterKnex.raw("COALESCE(total_pages_found, 0) + ?", [totalCoursePages]),
+      pages_total: masterKnex.raw("COALESCE(pages_total, 0) + ?", [totalCoursePages]),
       updated_at: masterKnex.fn.now(),
     });
   }
@@ -963,6 +966,7 @@ async function handleCoursesStep(jobId: string) {
   if (queuedNew > 0) {
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: masterKnex.raw("COALESCE(total_pages_found, 0) + ?", [queuedNew]),
+      pages_total: masterKnex.raw("COALESCE(pages_total, 0) + ?", [queuedNew]),
       updated_at: masterKnex.fn.now(),
     });
   }

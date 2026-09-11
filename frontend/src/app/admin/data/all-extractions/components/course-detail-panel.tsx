@@ -233,6 +233,12 @@ export function CourseDetailPanel({
 
   const pick = <T extends { id: string }>(all: T[], ids: Set<string>) => all.filter((e) => ids.has(e.id));
 
+  // Study units/options are shared rows — one row can back several courses (see
+  // upsertStudyUnit/upsertStudyOption in staging-writer.ts). Surfaced here so unlinking or
+  // editing one doesn't read as exclusive to this course.
+  const sharedWithCount = (rows: CourseAssignment[], column: string, entityId: string) =>
+    new Set(rows.filter((r) => r[column] === entityId && r.course_id !== course.id).map((r) => r.course_id)).size;
+
   const fees = pick(links.course_fees, idsFor(links.fee_assignments, "course_fee_id"));
   const intakes = pick(links.intakes, idsFor(links.intake_assignments, "intake_id"));
   const units = pick(links.study_units, idsFor(links.study_unit_assignments, "study_unit_id"));
@@ -419,22 +425,30 @@ export function CourseDetailPanel({
             rows.length === 0 ? (
               <p className="rounded-md bg-muted/50 py-2 text-center text-xs text-muted-foreground">No study units</p>
             ) : (
-              rows.map((unit) => (
-                <div key={unit.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5">
-                  <span className="flex min-w-0 items-center gap-2">
-                    {unit.unit_code && <Badge variant="outline" className="shrink-0 text-[10px]">{unit.unit_code}</Badge>}
-                    <span className="truncate text-sm">{unit.unit_name}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {unit.credit_points != null && (
-                      <Badge className="bg-primary/10 text-[10px] text-primary">{unit.credit_points} CP</Badge>
-                    )}
-                    <Button variant="ghost" size="icon-xs" className="cursor-pointer" title="Unlink" disabled={busy} onClick={() => unlinkRow(unit.id)}>
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </span>
-                </div>
-              ))
+              rows.map((unit) => {
+                const otherCourses = sharedWithCount(links.study_unit_assignments, "study_unit_id", unit.id);
+                return (
+                  <div key={unit.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5">
+                    <span className="flex min-w-0 items-center gap-2">
+                      {unit.unit_code && <Badge variant="outline" className="shrink-0 text-[10px]">{unit.unit_code}</Badge>}
+                      <span className="truncate text-sm">{unit.unit_name}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {otherCourses > 0 && (
+                        <span className="text-xs text-muted-foreground" title="Also linked to other courses">
+                          +{otherCourses} other course{otherCourses === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      {unit.credit_points != null && (
+                        <Badge className="bg-primary/10 text-[10px] text-primary">{unit.credit_points} CP</Badge>
+                      )}
+                      <Button variant="ghost" size="icon-xs" className="cursor-pointer" title="Unlink" disabled={busy} onClick={() => unlinkRow(unit.id)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </span>
+                  </div>
+                );
+              })
             )
           }
         />
@@ -457,7 +471,9 @@ export function CourseDetailPanel({
           busy={busy} onLink={link} onUnlink={unlink}
         />
 
-        {/* Study options are created per course rather than picked from a shared pool. */}
+        {/* Unlike Intakes/Eligibility/Accreditations above, "Add study option" always creates a
+            NEW row rather than offering to link an existing one — options are shared once
+            created (see upsertStudyOption), just not from this button. */}
         <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <h4 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -489,8 +505,9 @@ export function CourseDetailPanel({
             />
           )}
 
-          {studyOptions.map((option) =>
-            editingOptionId === option.id ? (
+          {studyOptions.map((option) => {
+            const otherCourses = sharedWithCount(links.study_option_assignments, "study_option_id", option.id);
+            return editingOptionId === option.id ? (
               <StudyOptionForm
                 key={option.id}
                 option={option}
@@ -523,6 +540,11 @@ export function CourseDetailPanel({
                     {option.duration_value != null && (
                       <p className="mt-1 text-xs text-muted-foreground">{option.duration_value} {option.duration_unit}</p>
                     )}
+                    {otherCourses > 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground" title="Also linked to other courses">
+                        Shared with {otherCourses} other course{otherCourses === 1 ? "" : "s"}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -541,8 +563,8 @@ export function CourseDetailPanel({
                   </Button>
                 </div>
               </div>
-            ),
-          )}
+            );
+          })}
         </section>
 
         <LinkSection

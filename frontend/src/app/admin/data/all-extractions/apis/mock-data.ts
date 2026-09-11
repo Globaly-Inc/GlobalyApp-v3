@@ -214,6 +214,12 @@ export const allExtractionsMockApi = {
     mockJobs = mockJobs.map((j) => (j.id === id ? { ...j, status: "processing" } : j));
   },
 
+  enrichFromWebJob: async (id: string): Promise<void> => {
+    console.log("[mock] POST /admin/data-extraction/jobs/" + id + "/enrich-from-web");
+    await delay(200);
+    mockJobs = mockJobs.map((j) => (j.id === id ? { ...j, status: "processing" } : j));
+  },
+
   rerunJob: async (id: string): Promise<void> => {
     console.log("[mock] POST /admin/data-extraction/jobs/" + id + "/rerun");
     await delay(200);

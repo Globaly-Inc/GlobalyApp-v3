@@ -601,6 +601,50 @@ Extraction links to a seeded row and never adds one.
   keeps the slug `doctoral`, and a level the list drops (Associate Degree, Graduate Certificate,
   Other) is deactivated, never deleted.
 
+## AgentCIS "Enrich from Website" (2026-09-11)
+
+Not a V2 behavior — explicitly requested and scoped by the team, not a parity port.
+
+AgentCIS imports (`lib/agentcis-staging.ts`) never crawl the institution's own site — every
+course/campus/fee comes structured from the AgentCIS API. AgentCIS's own schema has no
+curriculum/study-unit concept at all (confirmed against the real API response and the
+`agentcis-app` source), so an AgentCIS-imported course can never have study units through that
+path. `POST /jobs/:id/enrich-from-web` (`services/agentcis-enrichment.service.ts`, its own file
+so this AgentCIS-specific trigger stays easy to find and change independently of the general
+job-queue actions it reuses) re-runs the SAME site-discovery/crawl pipeline every other job
+already uses — `extraction-job.worker.ts` unchanged — over the SAME `job_id`, pointed at the
+institution's real website, so `writeCourse`'s existing job-scoped course-name match naturally
+attaches whatever it finds onto the AgentCIS course rows instead of creating duplicates. Guarded:
+only a `source_type: "agentcis"` job, only once its import finished (`status: "done"`), only when
+AgentCIS gave a real website (not its own synthetic `agentcis.com/institution/{id}` fallback).
+
+**Never removes or overwrites AgentCIS's own data** — the explicit requirement this was scoped
+to. `writeCourse` (`staging-writer.ts`) gained a per-category, per-course guard: for a
+`source_type: "agentcis"` job, each of fees/intakes/study-options/eligibility/English-
+requirements/study-units is written ONLY when that specific course currently has NONE of that
+type (`courseHasExisting`, one query per category against the assignment junction table, or
+`extraction_english_requirements` directly). A course AgentCIS already gave a fee to keeps that
+fee untouched even if the website scrape finds a different one; a course with no fee at all is
+free to gain one. Completely inert for every non-AgentCIS job — `isAgentcisSourcedJob` short-
+circuits false, so this changes nothing about the pipeline's existing behavior anywhere else.
+Institution-overview fields need no equivalent guard: `writeInstitutionOverview` was already
+fill-blanks-only (`COALESCE(NULLIF(new, ''), existing)`), so re-running site analysis against the
+same job safely fills only what AgentCIS left null.
+
+Course-name matching is exact/normalized only in v1 (the same match `writeCourse` already does)
+— a scraped course whose name doesn't match an existing AgentCIS course lands as a new, separate
+row rather than being fuzzy-matched or dropped. Deliberately deferred, not built until real usage
+shows AgentCIS's course names diverge too much from what institutions call them on their own
+sites.
+
+Manual, opt-in per job (an "Enrich from Website" button, shown only for AgentCIS-sourced jobs) —
+not automatic on every AgentCIS import — to avoid multiplying Gemini/Scrapling spend across
+institutions nobody asked to enrich.
+
+Tests: `npm run test:agentcis-writecourse-guardrail` (the per-category add-only-if-missing rule,
+DB integration) and `npm run test:agentcis-enrich-from-web` (the trigger's guard rails and queue
+dispatch, DB integration with `queueService.publish` mocked).
+
 ## External FK columns
 
 7 columns reference tables that may not exist yet in V3. These are plain

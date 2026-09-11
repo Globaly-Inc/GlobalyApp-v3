@@ -823,6 +823,45 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
   return row.id;
 }
 
+// Dedupes by (study_mode, study_load, duration_value, duration_unit), same shared-row pattern
+// as upsertFee/upsertIntake/upsertEligibility/upsertStudyUnit (CLAUDE.md (g)/(h)).
+export async function upsertStudyOption(jobId: string, opt: {
+  name?: string | null;
+  study_mode?: string | null;
+  study_load?: string | null;
+  duration_value?: number | string | null;
+  duration_unit?: string | null;
+}): Promise<string> {
+  const studyMode = opt.study_mode ?? "on_campus";
+  const studyLoad = opt.study_load ?? "full_time";
+  const durationValue = coerceInt(opt.duration_value);
+  const durationUnit = opt.duration_unit ?? "months";
+
+  const existing = await masterKnex(`${S}.extraction_study_options`)
+    .where({
+      job_id: jobId, study_mode: studyMode, study_load: studyLoad,
+      duration_value: durationValue, duration_unit: durationUnit,
+    })
+    .first();
+  if (existing) {
+    if (existing.name == null && opt.name) {
+      await masterKnex(`${S}.extraction_study_options`)
+        .where({ id: existing.id })
+        .update({ name: opt.name, updated_at: masterKnex.fn.now() });
+    }
+    return existing.id;
+  }
+
+  const [row] = await masterKnex(`${S}.extraction_study_options`)
+    .insert({
+      job_id: jobId, name: opt.name ?? null,
+      study_mode: studyMode, study_load: studyLoad,
+      duration_value: durationValue, duration_unit: durationUnit,
+    })
+    .returning("id");
+  return row.id;
+}
+
 // ── Fee normalisation ──
 // The LLM writes whatever the page showed: "$", "", "null", "per_term", "Per Credit". Both
 // normalisers run inside upsertFee so every write path (course extraction, the bulk fee
@@ -1573,6 +1612,40 @@ export function bareCourseKey(name: string): string | null {
   return bare && bare !== name.trim() ? normaliseCourseName(bare) : null;
 }
 
+// ── Degree-qualifier-aware course matching ──
+// AgentCIS says "Biology BSc (Hons)" (qualifier last); a school's own site often says
+// "BSc Biology" (qualifier first). normaliseCourseName's exact match is position-sensitive and
+// never bridges that, so a website-enrichment pass over an AgentCIS job would otherwise create a
+// second row per course instead of merging into the one AgentCIS already has.
+const DEGREE_QUALIFIERS = [
+  "bsc", "ba", "beng", "bmus", "bed", "bcomm", "bba", "bacc", "llb", "bn", "bnurs",
+  "ma", "msc", "meng", "mmus", "mres", "mphil", "march", "magr", "mba", "mcomm", "llm",
+  "phd", "dphil", "edd", "dprof", "dba",
+  "fda", "fdsc", "fdeng",
+  "pgce", "pgdip", "pgcert",
+] as const;
+
+const QUALIFIER_ALTERNATION = [...DEGREE_QUALIFIERS].sort((a, b) => b.length - a.length).join("|");
+const QUALIFIER_RE = new RegExp(`^(${QUALIFIER_ALTERNATION})\\b|\\b(${QUALIFIER_ALTERNATION})$`, "i");
+
+interface DegreeSignature {
+  subject: string;
+  qualifier: string;
+}
+
+export function degreeSignature(name: string): DegreeSignature | null {
+  const s = name.toLowerCase().trim()
+    .replace(/\s*\((?:hons|honours)\)\s*$/i, "")
+    .replace(/\s+/g, " ");
+  const m = s.match(QUALIFIER_RE);
+  if (!m) return null;
+  const matchedAtStart = m[1] != null;
+  const subjectRaw = matchedAtStart ? s.slice(m[0].length) : s.slice(0, s.length - m[0].length);
+  const subject = subjectRaw.replace(/^[\s/:-]+|[\s/:-]+$/g, "").trim();
+  if (!subject) return null;
+  return { subject: normaliseCourseName(subject), qualifier: (m[1] ?? m[2]).toLowerCase() };
+}
+
 export function courseOwnPage(
   links: Map<string, string>, name: string, contestedBareNames?: ReadonlySet<string>,
 ): string | null {
@@ -1673,6 +1746,21 @@ function logLookupLink(
   else linkLogger.warn("unlinked", entry);
 }
 
+const jobSourceTypeCache = new Map<string, string | null>();
+
+async function isAgentcisSourcedJob(jobId: string): Promise<boolean> {
+  if (!jobSourceTypeCache.has(jobId)) {
+    const row = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first("source_type");
+    jobSourceTypeCache.set(jobId, row?.source_type ?? null);
+  }
+  return jobSourceTypeCache.get(jobId) === "agentcis";
+}
+
+async function courseHasExisting(table: string, courseId: string): Promise<boolean> {
+  const row = await masterKnex(`${S}.${table}`).where({ course_id: courseId }).first("course_id");
+  return !!row;
+}
+
 export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string | null> {
   // ── Dedup: check if this course name already exists for this job ──
   // Both sides MUST apply the same normalisation as normaliseCourseName(). A bare
@@ -1682,13 +1770,24 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // inserted a DUPLICATE row instead of merging, so one copy carried the lookup links and the
   // other did not. Caught by the end-to-end linking check.
   const normName = normaliseCourseName(course.name);
-  const existing = await masterKnex(`${S}.extraction_courses`)
+  let existing = await masterKnex(`${S}.extraction_courses`)
     .where({ job_id: jobId })
     .whereRaw(
       "regexp_replace(regexp_replace(lower(trim(name)), '\\s+', ' ', 'g'), '[^a-z0-9]+$', '') = ?",
       [normName],
     )
     .first();
+
+  if (!existing) {
+    const sig = degreeSignature(course.name);
+    if (sig) {
+      const candidates = await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId }).select("*");
+      existing = candidates.find((c: Record<string, unknown>) => {
+        const other = degreeSignature(c.name as string);
+        return other && other.subject === sig.subject && other.qualifier === sig.qualifier;
+      });
+    }
+  }
 
   let courseId: string;
 
@@ -1770,8 +1869,10 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
     logLookupLink(jobId, courseId, course, link, await isCourseInScope(jobId, link.degree_level_code));
   }
 
+  const isAgentcisJob = await isAgentcisSourcedJob(jobId);
+
   // ── Fees + assignments ──
-  if (course.fees?.length) {
+  if (course.fees?.length && !(isAgentcisJob && await courseHasExisting("extraction_course_fee_assignments", courseId))) {
     for (const fee of course.fees) {
       // Tuition and the application fee only — see isExtractableFee.
       if (!isExtractableFee(fee.name)) continue;
@@ -1790,7 +1891,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   }
 
   // ── Intakes + assignments ──
-  if (course.intakes?.length) {
+  if (course.intakes?.length && !(isAgentcisJob && await courseHasExisting("extraction_course_intake_assignments", courseId))) {
     for (const intake of course.intakes) {
       const intakeId = await upsertIntake(jobId, intake, course.source_url ?? null);
       await masterKnex(`${S}.extraction_course_intake_assignments`)
@@ -1800,26 +1901,17 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   }
 
   // ── Study options + assignments ──
-  if (course.study_options?.length) {
+  if (course.study_options?.length && !(isAgentcisJob && await courseHasExisting("extraction_course_study_option_assignments", courseId))) {
     for (const opt of course.study_options) {
-      const [optRow] = await masterKnex(`${S}.extraction_study_options`)
-        .insert({
-          job_id: jobId,
-          name: opt.name ?? null,
-          study_mode: opt.study_mode ?? "on_campus",
-          study_load: opt.study_load ?? "full_time",
-          duration_value: coerceInt(opt.duration_value),
-          duration_unit: opt.duration_unit ?? "months",
-        })
-        .returning("id");
+      const optionId = await upsertStudyOption(jobId, opt);
       await masterKnex(`${S}.extraction_course_study_option_assignments`)
-        .insert({ job_id: jobId, course_id: courseId, study_option_id: optRow.id })
+        .insert({ job_id: jobId, course_id: courseId, study_option_id: optionId })
         .onConflict(["course_id", "study_option_id"]).ignore();
     }
   }
 
   // ── Eligibility requirements + assignments ──
-  if (course.eligibility?.length) {
+  if (course.eligibility?.length && !(isAgentcisJob && await courseHasExisting("extraction_course_eligibility_assignments", courseId))) {
     for (const elig of course.eligibility) {
       let scoreType = normaliseScoreType(elig.score_type);
       let scoreValue = coerceMoney(elig.min_score);
@@ -1847,14 +1939,14 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   }
 
   // ── English requirements ──
-  if (course.english_requirements?.length) {
+  if (course.english_requirements?.length && !(isAgentcisJob && await courseHasExisting("extraction_english_requirements", courseId))) {
     for (const eng of course.english_requirements) {
       await upsertEnglishRequirement(jobId, courseId, eng, course.source_url ?? null);
     }
   }
 
   // ── Study units + assignments ──
-  if (course.study_units?.length) {
+  if (course.study_units?.length && !(isAgentcisJob && await courseHasExisting("extraction_course_study_unit_assignments", courseId))) {
     // Which of these "units" are really other courses of this job. Asked as one query over the
     // candidate names rather than by loading every course name, so a 800-course job costs the
     // same as a small one.
