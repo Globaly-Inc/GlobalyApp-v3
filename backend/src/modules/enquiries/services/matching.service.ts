@@ -16,6 +16,12 @@
 // `no_match` rather than being sent to unrelated agents. See rankCandidates for
 // the tier definitions.
 //
+// Claim state is NOT a filter, here or anywhere downstream, and neither is
+// verification. An unclaimed listing promoted from an extraction holds real
+// representations (promote writes them) and is a real recipient; verification
+// only decides which tier it ranks in. What differs is the mail it gets — see
+// TEMPLATE in email-queue.service — not whether it is matched.
+//
 // Country is a hard eligibility gate (see rankCandidates), which makes two bits
 // of data load-bearing rather than merely nice-to-have:
 //   - Country: an enquiry whose student country cannot be resolved (neither
@@ -36,11 +42,14 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { createChildLogger } from "../../../shared/logger.js";
 import { logEnquiryAudit } from "../shared/audit.js";
 import * as distributionsRepo from "../repositories/distributions.repository.js";
 import * as representationsRepo from "../repositories/representations.repository.js";
 import * as emailQueueService from "./email-queue.service.js";
 import { syncDistributionToTenant, syncInstitutionDistributionToTenant } from "./tenant-sync.service.js";
+
+const logger = createChildLogger("enquiry-matching");
 
 export const MAX_DISTRIBUTIONS = Number(process.env.ENQUIRY_MAX_DISTRIBUTIONS) || 6;
 
@@ -225,6 +234,15 @@ async function matchAndCommit(enquiry: any, excludeBusinessIds: number[]): Promi
     maxDistributions: MAX_DISTRIBUTIONS,
   });
 
+  logger.info("Enquiry matched", {
+    enquiryId,
+    institutionId: enquiry.institution_id ?? null,
+    studentCountryCode,
+    candidates: repCandidates.length,
+    selected: selected.length,
+    tiers: selected.map((c) => c.tier),
+  });
+
   // One last-resort path: the institution that owns the course takes the lead itself.
   //
   // There used to be a second — an agent flagged `is_institution_contact` for being an
@@ -316,7 +334,15 @@ async function commitInstitutionFallback(enquiry: any, studentCountryCode: strin
 
   // Both fire-and-forget, per PRD §17 — never blocking distribution.
   await syncInstitutionDistributionToTenant(institutionId, enquiry.id, row.id).catch(() => {});
-  await emailQueueService.enqueueInstitutionFallbackEmail(enquiry.id, row.id, institutionId).catch(() => {});
+  await emailQueueService
+    .enqueueInstitutionFallbackEmail(enquiry.id, row.id, institutionId)
+    .catch((err) =>
+      logger.error("Failed to queue institution fallback email", {
+        enquiryId: enquiry.id,
+        institutionId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
 
   return true;
 }
@@ -388,6 +414,17 @@ async function commitDistributions(
   // Fire-and-forget per PRD §17 ("never blocking distribution") — enqueue is
   // itself dedup-safe, so a failure here never re-runs matching/insert.
   for (const row of inserted) {
-    await emailQueueService.enqueueDistributionEmails(row.enquiry_id, row.id, row.business_id).catch(() => {});
+    // Logged rather than swallowed: for an UNCLAIMED recipient the mail is the only channel —
+    // there is no inbox for reconcileTenantMirror to surface the lead in later — so a dropped
+    // enqueue here is the whole notification, not a cosmetic miss.
+    await emailQueueService
+      .enqueueDistributionEmails(row.enquiry_id, row.id, row.business_id)
+      .catch((err) =>
+        logger.error("Failed to queue distribution email", {
+          enquiryId: row.enquiry_id,
+          businessId: row.business_id,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
   }
 }

@@ -35,6 +35,12 @@ export interface RepresentingBusiness {
  *
  * `country_ids` is deliberately NOT a gate. Its UI is commented out in link-consultancy-dialog,
  * so every row stores `[]`, and treating empty as "serves nowhere" would match nobody at all.
+ *
+ * Neither is `claim_status`/`owner_id`, and neither is verification. A listing promoted from an
+ * extraction is unclaimed and unverified by construction, holds a representation promote wrote
+ * for it, and is a legitimate recipient — it just gets the acquisition mail instead of the lead
+ * notice (see TEMPLATE in email-queue.service). `verification_status` is selected below to RANK
+ * on, not to filter on: it splits the verified tiers from T4, and nothing here drops a row.
  */
 export async function findRepresentingBusinesses(institutionId: number): Promise<RepresentingBusiness[]> {
   const rows = await masterKnex("business_representations as br")
