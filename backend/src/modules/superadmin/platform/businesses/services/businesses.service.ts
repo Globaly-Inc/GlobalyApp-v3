@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import type { Knex } from "knex";
 import { NotFoundError, ConflictError } from "../../../../../shared/errors.js";
 import * as storage from "../../../../../shared/storage/storageService.js";
-import { provisionBusinessSchema } from "../../../../../core/business/provisioner.js";
+import { provisionBusinessSchema, provisionInstitutionSchema } from "../../../../../core/business/provisioner.js";
 import { getKnex } from "../../../../../core/db/pool-manager.js";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
 import { schemaName } from "../../../../../core/db/knex.js";
@@ -128,12 +128,17 @@ async function mintManualInstitutionJob(
 }
 
 export async function createBusiness(input: BusinessCreateInput) {
+  const isInstitution = (await repo.findCategorySlugById(input.business_category_id)) === "institutions";
+  // Institutions have their own table — admin-created "Institutions" used to be shoehorned into
+  // `businesses` with a category tag, which made it invisible to every institutions-scoped admin
+  // list/filter (those read `institutions` directly, never `businesses` by category). Mirrors the
+  // self-service split: registerBusiness/onboardInstitution are two different tables too.
+  if (isInstitution) return createInstitution(input);
+
   const existingOwner = await userRepo.findByEmail(input.email);
   if (existingOwner) throw new ConflictError("This email is already in use");
 
-
   const { first_name, last_name, ...businessInput } = input;
-  const isInstitution = (await repo.findCategorySlugById(input.business_category_id)) === "institutions";
 
   // No subdomain field for an admin to fix, so a collision (including the check-then-insert
   // race between two concurrent creates) is retried with a freshly generated subdomain instead
@@ -151,11 +156,8 @@ export async function createBusiness(input: BusinessCreateInput) {
           phone: input.phone ?? undefined,
           account_status: 1,
         }, trx);
-        const sourceJobId = isInstitution
-          ? await mintManualInstitutionJob(input, subdomain, trx)
-          : null;
         const trxBusiness = await repo.insertBusiness(
-          { ...businessInput, subdomain, owner_id: trxOwner.id, source_job_id: sourceJobId },
+          { ...businessInput, subdomain, owner_id: trxOwner.id, source_job_id: null },
           trx,
         );
         return { owner: trxOwner, business: trxBusiness };
@@ -191,7 +193,7 @@ export async function createBusiness(input: BusinessCreateInput) {
     // Mark the owner as a business account holder — same as the self-service registration flow.
     // Without this, /auth/me reports is_business_account: false for an owner who clearly has one.
     await userRepo.updateUser(owner.id, { is_business_account: true });
-    
+
     await userRepo.addAccountCategory(owner.id, { type: "business", role: business.business_type ?? "business" });
     // Only now is the business fully provisioned — findBusinessByDbName (used by the
     // invite/accept flow) requires account_status: 1, same as the self-service registration flow.
@@ -202,6 +204,88 @@ export async function createBusiness(input: BusinessCreateInput) {
   }
 
   return repo.findBusinessDetail(business.id);
+}
+
+/**
+ * Admin-created institution — mirrors platform-users.service's onboardInstitution (the
+ * self-service path), but synthesizes the owner platform_user from the admin form's
+ * first_name/last_name/email instead of using an already-authenticated caller.
+ */
+async function createInstitution(input: BusinessCreateInput) {
+  const existingOwner = await userRepo.findByEmail(input.email);
+  if (existingOwner) throw new ConflictError("This email is already in use");
+
+  const { first_name, last_name } = input;
+
+  let owner: Awaited<ReturnType<typeof userRepo.insert>> | undefined;
+  let institution: Awaited<ReturnType<typeof userRepo.insertInstitution>> | undefined;
+  for (let attempt = 0; !institution && attempt < 5; attempt++) {
+    const subdomain = await generateSubdomain(input.business_name, subdomainTaken);
+    try {
+      ({ owner, institution } = await masterKnex.transaction(async (trx) => {
+        const trxOwner = await userRepo.insert({
+          first_name: first_name || input.business_name,
+          last_name: last_name ?? "",
+          email: input.email,
+          phone: input.phone ?? undefined,
+          account_status: 1,
+        }, trx);
+        const sourceJobId = await mintManualInstitutionJob(input, subdomain, trx);
+        const trxInstitution = await userRepo.insertInstitution({
+          platform_user_id: trxOwner.id,
+          source_job_id: sourceJobId,
+          first_name: trxOwner.first_name,
+          last_name: trxOwner.last_name,
+          email: input.email,
+          phone: input.phone ?? null,
+          subdomain,
+          institution_name: input.business_name,
+          description: input.description ?? null,
+          website: input.website ?? null,
+          country_id: input.country_id ?? null,
+          state: input.state ?? null,
+          city: input.city ?? null,
+          address: input.address ?? null,
+          postcode: input.postcode ?? null,
+          logo_url: input.logo_url ?? null,
+          cover_url: input.cover_url ?? null,
+          linkedin_url: input.linkedin_url ?? null,
+          facebook_url: input.facebook_url ?? null,
+          instagram_url: input.instagram_url ?? null,
+          twitter_url: input.twitter_url ?? null,
+          // Left at its default ("unclaimed") — same as admin-created businesses. The owner
+          // account is synthesized from the form, not logged in, so `is_unclaimed` should stay
+          // true until they actually verify/log in, matching createBusiness's behavior.
+        }, trx);
+        return { owner: trxOwner, institution: trxInstitution };
+      }));
+    } catch (err: any) {
+      if (err.code !== "23505" || attempt === 4) throw err;
+    }
+  }
+  if (!owner || !institution) throw new Error("Could not create institution after retrying subdomain collisions");
+
+  try {
+    await provisionInstitutionSchema(institution.schema_name);
+    const tenantDb = await getKnex(institution.id, schemaName(institution.schema_name));
+    await institutionMembersService.addMember(tenantDb, Number(institution.id), {
+      platform_user_id: owner.id,
+      role: "owner",
+      is_owner: true,
+      first_name: owner.first_name,
+      last_name: owner.last_name,
+      email: owner.email,
+      phone: owner.phone,
+    });
+    await userRepo.updateUser(owner.id, { is_institution_account: true });
+    await userRepo.addAccountCategory(owner.id, { type: "institution", role: "institution" });
+    await userRepo.updateInstitution(institution.id, { account_status: 1 });
+  } catch (err) {
+    await userRepo.deleteInstitution(institution.id);
+    throw err;
+  }
+
+  return repo.findInstitutionDetail(institution.id);
 }
 
 /**

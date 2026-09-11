@@ -136,12 +136,27 @@ export async function searchBusinesses(
   search: string | undefined,
   limit: number,
   includeInstitutions = false,
+  forPartnerLink = false,
 ) {
   // An institution caller has no business row to exclude — and its own id would exclude an
   // unrelated business, since the two id spaces collide.
-  if (auth.orgType === "institution") return repo.searchBusinesses(search, undefined, limit, includeInstitutions);
+  if (auth.orgType === "institution") {
+    // Representations picker: an institution may only link a verified consultancy — see
+    // business-representations.service.ts requireVerifiedAgent for the matching server-side
+    // enforcement on the actual link endpoint. The client can't widen this by omitting the flag.
+    const partnerKind = forPartnerLink ? "agent" : undefined;
+    return repo.searchBusinesses(search, undefined, limit, includeInstitutions, partnerKind);
+  }
   const caller = await repo.findBusinessByDbName(auth.orgId!);
   if (!caller) throw new NotFoundError("Business not found");
+  // Representations picker: only a consultancy (business_type "agent") may link a partner here,
+  // and only a verified institution. A non-agent business gets an empty result — V1 never had
+  // this pairing either.
+  if (forPartnerLink) {
+    const partnerKind = caller.business_type === "agent" ? "institution" : undefined;
+    if (!partnerKind) return [];
+    return repo.searchBusinesses(search, caller.id, limit, includeInstitutions, partnerKind);
+  }
   return repo.searchBusinesses(search, caller.id, limit, includeInstitutions);
 }
 

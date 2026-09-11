@@ -21,14 +21,17 @@ export function LinkConsultancyDialog({
   onOpenChange,
   businessId,
   businessName,
+  isInstitution,
   editRelation,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   businessId: number;
   businessName?: string;
+  isInstitution: boolean;
   editRelation?: BusinessRelation | null;
 }>) {
+  const partnerLabel = isInstitution ? "education agency" : "institution";
   const dispatch = useAppDispatch();
   const isEdit = !!editRelation;
 
@@ -47,9 +50,12 @@ export function LinkConsultancyDialog({
   const handleQueryChange = async (query: string) => {
     setLoading(true);
     try {
+      // Mirrors V1: an institution may only link a verified education agency, an education agency
+      // may only link a verified institution — the server enforces the same pairing on the create
+      // endpoint regardless of what this picker shows (business-representations.service.ts).
       const rows = await businessProfileDetailApi.searchBusinesses({
         search: query || undefined,
-        include_institutions: true,
+        for_partner_link: true,
       });
       setResults(rows);
     } finally {
@@ -114,11 +120,11 @@ export function LinkConsultancyDialog({
             },
           }),
         ).unwrap();
-        toast.success("Consultancy linked");
+        toast.success(`${isInstitution ? "Education agency" : "Institution"} linked`);
       }
       onOpenChange(false);
     } catch (e) {
-      toast.error(isEdit ? "Couldn't update partnership" : "Couldn't link consultancy", { description: (e as Error).message });
+      toast.error(isEdit ? "Couldn't update partnership" : `Couldn't link ${partnerLabel}`, { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -129,7 +135,7 @@ export function LinkConsultancyDialog({
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : "Link consultancy"}
+            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : `Link ${partnerLabel}`}
           </SheetTitle>
           <SheetDescription>
             {isEdit ? (
@@ -138,7 +144,7 @@ export function LinkConsultancyDialog({
               </>
             ) : (
               <>
-                Connect a verified consultancy to <strong>{businessName ?? "this institution"}</strong>.
+                Connect a verified {partnerLabel} to <strong>{businessName ?? "this profile"}</strong>.
               </>
             )}
           </SheetDescription>
@@ -146,8 +152,8 @@ export function LinkConsultancyDialog({
 
         <div className="flex flex-col gap-5 px-4">
           <div className="flex flex-col gap-2">
-            <Label>
-              Consultancy <span className="text-destructive">*</span>
+            <Label className="capitalize">
+              {partnerLabel} <span className="text-destructive">*</span>
             </Label>
             {isEdit ? (
               <div className="flex h-10 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
@@ -166,8 +172,8 @@ export function LinkConsultancyDialog({
                 value={partnerRef}
                 onChange={setPartnerRef}
                 options={results.map((b) => ({ value: `${b.kind}:${b.id}`, label: b.business_name }))}
-                placeholder="Select a consultancy or institution..."
-                searchPlaceholder="Search consultancies and institutions..."
+                placeholder={`Select a verified ${partnerLabel}...`}
+                searchPlaceholder={`Search verified ${partnerLabel === "education agency" ? "education agencies" : "institutions"}...`}
                 loading={loading}
                 onQueryChange={handleQueryChange}
               />
@@ -211,7 +217,7 @@ export function LinkConsultancyDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={!partnerRef || saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEdit ? "Save changes" : "Link consultancy"}
+            {isEdit ? "Save changes" : `Link ${partnerLabel}`}
           </Button>
         </SheetFooter>
       </SheetContent>

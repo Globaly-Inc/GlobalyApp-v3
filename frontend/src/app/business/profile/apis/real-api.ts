@@ -90,6 +90,9 @@ function toBusinessSearchQuery(params: BusinessSearchParams): string {
   // Only sent when on: the branch picker must keep getting businesses only, since it stores a
   // bare id with no kind alongside it.
   if (params.include_institutions) q.set("include_institutions", "true");
+  // Representations picker: server enforces the verified consultancy<->institution pairing
+  // regardless of this flag — see businesses.service.ts searchBusinesses.
+  if (params.for_partner_link) q.set("for_partner_link", "true");
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }

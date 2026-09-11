@@ -285,8 +285,8 @@ export async function findInstitutionByUserId(userId: number) {
   return masterKnex<Record<string, unknown>>("institutions").where({ platform_user_id: userId }).whereNull("deleted_at").first<Record<string, unknown>>();
 }
 
-export async function insertInstitution(data: Record<string, unknown>) {
-  const [row] = await masterKnex("institutions").insert(data).returning("*");
+export async function insertInstitution(data: Record<string, unknown>, trx?: Knex.Transaction) {
+  const [row] = await (trx ?? masterKnex)("institutions").insert(data).returning("*");
   return row;
 }
 

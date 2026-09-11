@@ -38,13 +38,30 @@ export type OrgSearchResult = {
  * Neither half gates on published/verified status — the businesses half never has, and a
  * consultancy declaring which institution it represents needs the promoted-but-unclaimed ones,
  * which are exactly the ones `is_published` excludes.
+ *
+ * `partnerKind`, when set, is a STRICTER mode for the representations picker: mirrors V1's fixed
+ * agent<->institution pairing (see business-representations.service.ts requireVerifiedAgent/
+ * requireVerifiedInstitution). "agent" returns only verified consultancies; "institution" returns
+ * only verified institutions. It overrides `includeInstitutions`.
  */
 export async function searchBusinesses(
   search: string | undefined,
   excludeId: string | undefined,
   limit: number,
   includeInstitutions = false,
+  partnerKind?: "agent" | "institution",
 ): Promise<OrgSearchResult[]> {
+  if (partnerKind === "institution") {
+    const institutions = masterKnex("institutions")
+      .select(masterKnex.raw("'institution' as kind"), "id", "institution_name as business_name", "logo_url")
+      .whereNull("deleted_at")
+      .where("status", "verified")
+      .orderBy("institution_name")
+      .limit(limit);
+    if (search) institutions.whereILike("institution_name", `%${search}%`);
+    return institutions as unknown as Promise<OrgSearchResult[]>;
+  }
+
   const businesses = masterKnex<BusinessRecord>("businesses")
     .select(masterKnex.raw("'business' as kind"), "id", "business_name", "logo_url")
     .whereNull("deleted_at")
@@ -52,6 +69,10 @@ export async function searchBusinesses(
     .limit(limit);
   if (excludeId) businesses.whereNot("id", excludeId);
   if (search) businesses.whereILike("business_name", `%${search}%`);
+  if (partnerKind === "agent") {
+    businesses.where("business_type", "agent").where("status", "verified");
+    return businesses as unknown as Promise<OrgSearchResult[]>;
+  }
   if (!includeInstitutions) return businesses as unknown as Promise<OrgSearchResult[]>;
 
   // `institution_name as business_name`: one label column for two tables, the convention

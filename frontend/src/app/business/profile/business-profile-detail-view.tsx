@@ -52,9 +52,10 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     !authUser?.businesses.some((b) => b.id === businessId) &&
     !!authUser?.institutions.some((i) => i.id === businessId);
   const parsedTab = parseTab(searchParams.get("tab"));
-  // Branches/Partners/Scholarships/Activity have no institution-side data — the sidebar never
-  // links there for an institution, but fall back to profile if the URL is edited directly.
-  const institutionTabAllowed = ["profile", "team", "services", "partners", "scholarships"].includes(parsedTab);
+  // Partners/Scholarships/Activity have no institution-side data — the sidebar never links
+  // there for an institution, but fall back to profile if the URL is edited directly. Branches
+  // DOES apply to institutions (a university's own campuses) and is linked from the sidebar.
+  const institutionTabAllowed = ["profile", "branches", "team", "services", "partners", "scholarships"].includes(parsedTab);
   const isDisallowedForRole = (isInstitution && !institutionTabAllowed) || (isBusiness && parsedTab === "scholarships");
   const tab = isDisallowedForRole ? "profile" : parsedTab;
 
@@ -183,7 +184,9 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
           <CardContent>
             {tab === "profile" && <ProfileTab profile={profile} countries={countries} readOnly={previewMode} />}
             {tab === "branches" && <BranchesTab businessId={businessId} />}
-            {tab === "partners" && <PartnersTab businessId={businessId} businessName={profile.business_name} />}
+            {tab === "partners" && (
+              <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
+            )}
             {tab === "team" && <MembersTab businessId={businessId} />}
             {tab === "services" && <ServicesTab businessId={businessId} readOnly={isViewingInstitution} />}
             {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
