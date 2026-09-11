@@ -11,7 +11,7 @@ export function HeroSection() {
   const { displayText, showCursor } = useTypingEffect(INSTITUTION_TYPING_PHRASES);
 
   return (
-    <section className="hero-radiant relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
+    <section className="hero-radiant relative -mt-[68px] sm:-mt-[72px] pt-[68px] sm:pt-[72px] min-h-[100svh] md:min-h-[688px] flex items-center overflow-hidden">
       <AutoplayVideo
         src={`${MEDIA_URL}/institutions-hero.mp4`}
         poster={`${MEDIA_URL}/institutions-hero-poster.webp`}
