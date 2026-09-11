@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 const pdfParse = createRequire(import.meta.url)("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { safeFetch } from "../../../../shared/public-url.js";
 
 const logger = createChildLogger("document-extractor");
 
@@ -77,9 +78,11 @@ async function downloadFromGcs(filePath: string): Promise<Buffer | null> {
   }
 }
 
+// The URL comes from scraped catalogue HTML, so it is attacker-influenced: safeFetch re-checks
+// every redirect hop against the public-address rules rather than trusting the first one.
 async function downloadFromHttp(url: string): Promise<Buffer | null> {
   try {
-    const res = await fetch(url);
+    const res = await safeFetch(url);
     if (!res.ok) return null;
     return Buffer.from(await res.arrayBuffer());
   } catch {

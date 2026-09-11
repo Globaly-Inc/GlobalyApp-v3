@@ -1518,6 +1518,30 @@ export function normaliseCourseName(name: string): string {
 }
 
 /**
+ * An index anchor carries the bare programme name; the model routinely appends the award it saw
+ * on the card — "Data Science: Visualization (Individual Certificate)". `normaliseCourseName`
+ * strips only the trailing ")", so the exact lookup misses every such course. Retry without a
+ * trailing parenthetical. NOT fixable in normaliseCourseName itself: that is the dedup key, and
+ * collapsing parentheticals would merge "Computer Science (Bachelor)" with "… (Master)".
+ */
+export function bareCourseKey(name: string): string | null {
+  const bare = name.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  return bare && bare !== name.trim() ? normaliseCourseName(bare) : null;
+}
+
+export function courseOwnPage(
+  links: Map<string, string>, name: string, contestedBareNames?: ReadonlySet<string>,
+): string | null {
+  const exact = links.get(normaliseCourseName(name));
+  if (exact) return exact;
+  const bare = bareCourseKey(name);
+  // Two awards of one programme reduce to the same bare name. Whichever anchor the index carries,
+  // it belongs to at most one of them and the name cannot say which — so neither may claim it.
+  if (!bare || contestedBareNames?.has(bare)) return null;
+  return links.get(bare) ?? null;
+}
+
+/**
  * Write a full course with all its child entities and junction assignments.
  * Deduplicates by normalised name within the same job — if a course already exists,
  * merges richer data into the existing row and attaches new child entities.
@@ -2159,10 +2183,18 @@ export async function updateVisaServiceById(id: string, service: Partial<Extract
  * can overshoot by a few rows, fine for a billing guardrail.
  */
 // The unique index is on the exact string, so "/programs" and "/programs/" queued twice.
-function normaliseQueueUrl(url: string): string {
+// Also the identity test for "do these two links point at the same page?" — an index that links
+// one course twice with a trailing slash or a campaign parameter must not read as two courses.
+// Only unambiguous campaign tags. "ref" and "source" are deliberately absent — a catalogue can
+// use them to select content, and merging two genuinely different pages is the expensive error.
+const TRACKING_PARAMS = /^(utm_|fbclid$|gclid$|msclkid$|mc_cid$|mc_eid$)/i;
+export function normaliseQueueUrl(url: string): string {
   try {
     const u = new URL(url);
     u.hash = "";
+    for (const key of [...u.searchParams.keys()]) {
+      if (TRACKING_PARAMS.test(key)) u.searchParams.delete(key);
+    }
     if (u.pathname.length > 1 && u.pathname.endsWith("/")) u.pathname = u.pathname.replace(/\/+$/, "");
     return u.toString();
   } catch {

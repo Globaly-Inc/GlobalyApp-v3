@@ -45,6 +45,53 @@ async function main() {
   eq(w.durationFromProse("Two-year MSc in Data Science"), { value: 2, unit: "years" }, "hyphenated year + award");
   eq(w.durationFromProse("Graduates earn on average 5 years after"), null, "no cue → null");
 
+  // Real page markdown — a course found on an index has its length only on its OWN page.
+  // Harvard Online states "Course Length / 8 weeks" beside two per-week figures and a related
+  // -course rail; the cue must pick the programme length and ignore the effort figures.
+  const HARVARD_ONLINE = [
+    "Individual Course", "Data Science: Visualization", "===",
+    "Course Length", "", "8 weeks", "", "1-2 hours a week", "",
+    "Certificate Price:", "$ 219", "On demand",
+    "Related courses", "### Data Science: Capstone", "Start today \u2022 15-20 hours a week",
+    "### Data Science: Probability", "Start today \u2022 1-2 hours a week",
+  ].join("\n");
+  eq(w.durationFromProse(HARVARD_ONLINE), { value: 8, unit: "weeks" }, "'Course Length / 8 weeks' beats the hours-per-week figures around it");
+
+  // The opposite direction: an NYU bulletin overview genuinely states no length, and mining it
+  // must stay silent rather than reach for a number elsewhere on the page.
+  const NYU_BULLETIN = [
+    "Bioethics (MA)", "Program Description",
+    "Founded through NYU's Center for Bioethics, the Master of Arts in Bioethics degree at GPH is",
+    "one of the first programs in the world to promote a broad conception of bioethics.",
+    "Admissions", "All applicants are required to submit three letters of recommendation.",
+  ].join("\n");
+  eq(w.durationFromProse(NYU_BULLETIN), null, "a page that states no length yields none");
+
+  // The index anchor carries the bare programme name; the model appends the award off the card.
+  // normaliseCourseName strips only the trailing ")", so the exact lookup missed EVERY such
+  // course — including the harvardonline set this recovery was built for.
+  const links = new Map<string, string>([
+    ["data science: visualization", "https://x.edu/course/dsv"],
+    ["computer science", "https://x.edu/cs"],
+  ]);
+  eq(w.courseOwnPage(links, "Data Science: Visualization"), "https://x.edu/course/dsv", "an exact name still matches");
+  eq(w.courseOwnPage(links, "Data Science: Visualization (Individual Certificate)"), "https://x.edu/course/dsv", "a trailing award parenthetical does not block the match");
+  eq(w.courseOwnPage(links, "Computer Science (Bachelor)"), "https://x.edu/cs", "…for any trailing parenthetical");
+  eq(w.courseOwnPage(links, "Nursing (Graduate)"), null, "a course the page does not link stays unmatched");
+  eq(w.courseOwnPage(links, "(Individual Certificate)"), null, "a name that is ONLY a parenthetical never matches everything");
+
+  // Two awards of one programme both reduce to "computer science". The index carries a single
+  // anchor for it, which belongs to at most one of them — so NEITHER may take it, or one award's
+  // curriculum and duration is staged onto the other.
+  const contested = new Set(["computer science"]);
+  eq(w.courseOwnPage(links, "Computer Science (Bachelor)", contested), null, "a contested bare name is refused…");
+  eq(w.courseOwnPage(links, "Computer Science (Master)", contested), null, "…for every award that claims it");
+  eq(w.courseOwnPage(links, "Computer Science", contested), "https://x.edu/cs", "an EXACT anchor match is still that course's own page");
+  eq(w.courseOwnPage(links, "Data Science: Visualization (Individual Certificate)", contested), "https://x.edu/course/dsv", "an uncontested name is unaffected");
+
+  eq(w.bareCourseKey("Computer Science (Bachelor)"), "computer science", "the bare key drops a trailing award");
+  eq(w.bareCourseKey("Computer Science"), null, "a name with no parenthetical has no separate bare key");
+
   // Study options helper
   eq(w.weeksFromStudyOptions([{ name: "On Campus", duration_value: 3, duration_unit: "years" }]), 156, "single option without load");
   eq(w.weeksFromStudyOptions([]), null, "no options");

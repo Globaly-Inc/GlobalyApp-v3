@@ -258,3 +258,6 @@ export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
   { value: "name_asc", label: "Name A → Z" },
   { value: "name_desc", label: "Name Z → A" },
 ];
+
+/** The durations courses are actually advertised in, in weeks — the column's unit. */
+export const DURATION_WEEK_OPTIONS = [4, 8, 12, 16, 24, 26, 39, 52, 78, 104, 130, 156, 208, 260];

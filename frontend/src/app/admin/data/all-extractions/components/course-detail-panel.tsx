@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BookMarked, Building2, CalendarDays, CheckCircle2, ChevronsUpDown, Clock, DollarSign, ExternalLink, Flag, Link2,
@@ -19,7 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { allExtractionsApi } from "../apis";
 import { saveFormAndLearn } from "./editable-field";
 import { StudyOptionForm } from "./study-option-form";
-import { feeAmount } from "../utils";
+import { DURATION_WEEK_OPTIONS } from "../const";
+import { courseDuration, feeAmount } from "../utils";
 import type {
   CampusFull, CourseAssignment, CourseFull, CourseLinks, JunctionSlug, StudyOption,
 } from "../apis/types";
@@ -192,6 +193,19 @@ export function CourseDetailPanel({
     }
   };
 
+  // An extracted duration is any integer of weeks, so the preset list alone would render blank
+  // on a course the crawler read as 11 weeks — the same trap the subject-area picker fell into.
+  const durationOptions = useMemo(() => {
+    const weeks = [...DURATION_WEEK_OPTIONS];
+    const current = course.duration_weeks;
+    if (current && !weeks.includes(current)) weeks.push(current);
+    weeks.sort((a, b) => a - b);
+    return [
+      { value: "", label: "Not set" },
+      ...weeks.map((w) => ({ value: String(w), label: courseDuration(w) ?? `${w} weeks` })),
+    ];
+  }, [course.duration_weeks]);
+
   // save-and-learn, not a plain PATCH: a reviewer correcting the same field twice on a
   // domain is what creates an AI Memory lesson. Courses are where most corrections happen,
   // so a plain PATCH here left the learning loop effectively switched off.
@@ -307,6 +321,16 @@ export function CourseDetailPanel({
             {course.subject_area && (
               <p className="text-xs text-muted-foreground">Extracted as “{course.subject_area}”</p>
             )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Duration</Label>
+            <Combobox
+              options={durationOptions}
+              value={course.duration_weeks ? String(course.duration_weeks) : ""}
+              onChange={(v) => patchCourse({ duration_weeks: v ? Number(v) : null })}
+              placeholder="Select duration"
+              searchPlaceholder="Search duration..."
+            />
           </div>
         </div>
 

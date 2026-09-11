@@ -278,3 +278,18 @@ export function formatPartialDate(value: string | null | undefined): string | nu
   const month = MONTH_NAMES[Number(m) - 1] ?? m;
   return precision === "month" ? `${month} ${y}` : `${Number(d)} ${month} ${y}`;
 }
+
+/**
+ * Weeks are how the column stores it, years are how a degree is advertised. The label must be
+ * REVERSIBLE — a rounded one made 53 and 54 weeks both read "1.0 years", so a reviewer could not
+ * tell two stored values apart. Only exact whole and half years take the year form; anything else
+ * stays in weeks. No month form either: 4 weeks is not a month.
+ */
+export function courseDuration(weeks: number | null | undefined): string | null {
+  if (!weeks || weeks <= 0) return null;
+  if (weeks >= 52 && weeks % 26 === 0) {
+    const years = weeks / 52;
+    return `${years} ${years === 1 ? "year" : "years"}`;
+  }
+  return `${weeks} ${weeks === 1 ? "week" : "weeks"}`;
+}
