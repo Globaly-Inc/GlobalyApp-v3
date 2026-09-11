@@ -513,6 +513,18 @@ async function geocodeCampus(campus: ExtractedCampus): Promise<{ map_link?: stri
   }
 }
 
+/** Null on either side is unknown, not a contradiction — same rule partialDatesAgree uses for
+ * intake dates. Guards against geocoding a NEW occurrence's address onto an EXISTING campus row
+ * that names a genuinely different place under the same normalised name. */
+function campusLocationsAgree(a: { city?: string | null; state?: string | null; country?: string | null }, b: typeof a): boolean {
+  for (const key of ["city", "state", "country"] as const) {
+    const av = a[key]?.trim().toLowerCase();
+    const bv = b[key]?.trim().toLowerCase();
+    if (av && bv && av !== bv) return false;
+  }
+  return true;
+}
+
 export async function upsertCampus(jobId: string, rawCampus: ExtractedCampus): Promise<string> {
   if (!rawCampus.name) return "";
   const campus = parseCampusAddress(rawCampus);
@@ -572,10 +584,13 @@ export async function upsertCampus(jobId: string, rawCampus: ExtractedCampus): P
           phone: existing.phone ?? overview.phone, email: existing.email ?? overview.email,
         });
       }
-    } else if (!existing.map_link && campus.address) {
+    } else if (!existing.map_link && campus.address && campusLocationsAgree(campus, existing)) {
       // This occurrence supplies an address the existing campus row doesn't have a map link
       // for yet — geocode and persist it instead of running (and discarding) the same lookup
-      // on every rerun/duplicate page that names this campus.
+      // on every rerun/duplicate page that names this campus. Guarded by campusLocationsAgree so
+      // a differently-located same-named campus (a data error, or two genuinely different sites
+      // sharing a generic label) doesn't get a map_link stamped from an address that contradicts
+      // its own stored city/state/country.
       const geocoded = await geocodeCampus(campus);
       if (geocoded.map_link) {
         await masterKnex(`${S}.extraction_campuses`).where({ id: existing.id }).update({

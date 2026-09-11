@@ -183,7 +183,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         <Card>
           <CardContent>
             {tab === "profile" && <ProfileTab profile={profile} countries={countries} readOnly={previewMode} />}
-            {tab === "branches" && <BranchesTab businessId={businessId} />}
+            {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} />}
             {tab === "partners" && (
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
             )}

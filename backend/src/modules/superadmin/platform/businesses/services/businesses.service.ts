@@ -281,7 +281,15 @@ async function createInstitution(input: BusinessCreateInput) {
     await userRepo.addAccountCategory(owner.id, { type: "institution", role: "institution" });
     await userRepo.updateInstitution(institution.id, { account_status: 1 });
   } catch (err) {
+    // Everything the transaction created has to go, not just the institution — otherwise the
+    // owner's platform_users row survives and blocks a retry with the same email ("already in
+    // use"), and the minted job survives with no institution left to reference it. Mirrors
+    // onboardInstitution's rollback, plus the owner cleanup that's unique here since the admin
+    // path creates that user itself (self-service reuses an already-existing, already-logged-in
+    // caller, so it has no owner row of its own to roll back).
     await userRepo.deleteInstitution(institution.id);
+    await userRepo.deleteUser(owner.id);
+    await jobsRepo.deleteJob(institution.source_job_id);
     throw err;
   }
 

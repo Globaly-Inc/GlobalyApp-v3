@@ -295,6 +295,12 @@ export async function deleteInstitution(id: number) {
   await masterKnex("institutions").where({ id }).delete();
 }
 
+/** Hard delete — only used to roll back an admin-created owner whose institution/business
+ * provisioning failed after this user row was created. Never call on a real, already-active user. */
+export async function deleteUser(id: number) {
+  await masterKnex("platform_users").where({ id }).delete();
+}
+
 // ── Institution claim (promoted listings) ──
 // Mirrors the businesses claim repo. Institutions only need this because promote can now
 // create one nobody owns yet.

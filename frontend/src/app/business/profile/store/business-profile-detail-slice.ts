@@ -12,26 +12,32 @@ import type {
 } from "../apis/types";
 
 // ─── Branches ────────────────────────────────────────────────────────────────
+// getOrgBase routes an institution session to /institutions/branches (institution-branches.routes.ts
+// backend) instead of /businesses/branches — same table, different owning entity.
 export const fetchBranches = createAsyncThunk(
   "businessProfileDetail/fetchBranches",
-  ({ params }: { id: number; params?: BranchListParams }) => businessProfileDetailApi.getBranches(params),
+  ({ params }: { id: number; params?: BranchListParams }, { getState }) =>
+    businessProfileDetailApi.getBranches(params, getOrgBase(getState)),
 );
 export const createBranch = createAsyncThunk(
   "businessProfileDetail/createBranch",
-  ({ input }: { id: number; input: BranchInput }) => businessProfileDetailApi.createBranch(input),
+  ({ input }: { id: number; input: BranchInput }, { getState }) =>
+    businessProfileDetailApi.createBranch(input, getOrgBase(getState)),
 );
 export const updateBranch = createAsyncThunk(
   "businessProfileDetail/updateBranch",
-  ({ branchId, patch }: { id: number; branchId: string; patch: BranchPatch }) => businessProfileDetailApi.updateBranch(branchId, patch),
+  ({ branchId, patch }: { id: number; branchId: string; patch: BranchPatch }, { getState }) =>
+    businessProfileDetailApi.updateBranch(branchId, patch, getOrgBase(getState)),
 );
+// No orgBase — linking another registered business as a branch has no institution twin.
 export const linkExistingBranch = createAsyncThunk(
   "businessProfileDetail/linkExistingBranch",
   ({ input }: { id: number; input: LinkExistingBranchInput }) => businessProfileDetailApi.linkExistingBranch(input),
 );
 export const deleteBranch = createAsyncThunk(
   "businessProfileDetail/deleteBranch",
-  async ({ branchId }: { id: number; branchId: string }) => {
-    await businessProfileDetailApi.deleteBranch(branchId);
+  async ({ branchId }: { id: number; branchId: string }, { getState }) => {
+    await businessProfileDetailApi.deleteBranch(branchId, getOrgBase(getState));
     return branchId;
   },
 );
