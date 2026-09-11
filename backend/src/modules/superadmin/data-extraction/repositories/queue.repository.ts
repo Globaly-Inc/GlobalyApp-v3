@@ -91,6 +91,22 @@ export async function reactivateJob(jobId: string, adminId: number) {
     });
 }
 
+// Enrich-from-web: the "done" guard lives in THIS update, not a prior SELECT, so two
+// concurrent requests can't both observe "done" and both dispatch a full crawl — only one
+// wins the atomic status flip to "processing"; the other affects 0 rows and its caller must
+// refuse rather than report success (same shape as raisePageCap's exported guard above).
+export async function claimDoneJob(jobId: string, adminId: number) {
+  const count = await masterKnex(T_JOBS)
+    .where({ id: jobId, status: "done" })
+    .update({
+      status: "processing",
+      processing_heartbeat_at: masterKnex.fn.now(),
+      updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
+    });
+  return count > 0;
+}
+
 // C9: reset-pipeline
 export async function resetPipeline(jobId: string, adminId: number) {
   const jobCount = await masterKnex(T_JOBS)

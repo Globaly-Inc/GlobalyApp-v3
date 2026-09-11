@@ -13,6 +13,7 @@ import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../sto
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
 import { DeepScrapeButton } from "./deep-scrape-button";
+import { EnrichFromWebButton } from "./enrich-from-web-button";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
@@ -69,6 +70,9 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
         <RerunExtractionButton jobId={job.id} status={job.status} onReload={onReload} />
         {job.source_type !== "agentcis" && job.status !== "exported" && (
           <DeepScrapeButton jobId={job.id} onReload={onReload} />
+        )}
+        {job.source_type === "agentcis" && job.status === "done" && (
+          <EnrichFromWebButton jobId={job.id} onReload={onReload} />
         )}
 
         {ACTIVE_STATUSES.includes(job.status) && (

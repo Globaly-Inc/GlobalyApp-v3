@@ -130,6 +130,9 @@ export const allExtractionsRealApi = {
   deepScrapeJob: (id: string): Promise<void> =>
     httpPost(`/admin/data-extraction/jobs/${id}/deep-scrape`, {}),
 
+  enrichFromWebJob: (id: string): Promise<void> =>
+    httpPost(`/admin/data-extraction/jobs/${id}/enrich-from-web`, {}),
+
   // Combines the job-detail endpoint with the four tables the Overview tab's
   // "Extraction Details by Tab" cards summarize — one round trip per card group,
   // same shape V2's OverviewTab.loadSummary() fetched.

@@ -2,6 +2,7 @@
 
 import type { FastifyInstance } from "fastify";
 import * as service from "../services/queue.service.js";
+import { enrichFromWebsite } from "../services/agentcis-enrichment.service.js";
 import { QueueUuidParamSchema, QueueJobParamSchema, QueueStatusQuerySchema } from "../schemas/queue.schema.js";
 
 export async function queueRoutes(app: FastifyInstance) {
@@ -78,5 +79,11 @@ export async function queueRoutes(app: FastifyInstance) {
   app.post("/jobs/:id/deep-scrape", async (req, reply) => {
     const { id } = QueueJobParamSchema.parse(req.params);
     return reply.send(await service.deepScrape(id, adminId(req)));
+  });
+
+  // POST /jobs/:id/enrich-from-web — AgentCIS jobs only, see agentcis-enrichment.service.ts
+  app.post("/jobs/:id/enrich-from-web", async (req, reply) => {
+    const { id } = QueueJobParamSchema.parse(req.params);
+    return reply.send(await enrichFromWebsite(id, adminId(req)));
   });
 }
