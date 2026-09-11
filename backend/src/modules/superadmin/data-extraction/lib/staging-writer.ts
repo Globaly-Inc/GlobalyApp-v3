@@ -11,6 +11,7 @@ import {
   courseCategoryForLevel, categoryForServiceSlug, shouldDemoteForDuration, type CourseCategory,
 } from "./lookup-catalog.js";
 import { coercePartialDate, morePrecise, normaliseStored, partialDatesAgree } from "./partial-date.js";
+import { parseAddress } from "./address-parser.js";
 
 const logger = createChildLogger("staging-writer");
 /** Every course's lookup binding lands here, linked or not; the verify worker totals them per job. */
@@ -471,13 +472,50 @@ export function isMainCampusLabel(campusName: string, institutionName: string): 
 /**
  * Upsert a campus for a job — deduplicates by normalised name within the same job.
  */
-export async function upsertCampus(jobId: string, campus: ExtractedCampus): Promise<string> {
-  if (!campus.name) return "";
+/**
+ * Split a raw "street, city, state postcode" address into its parts, filling only what the
+ * caller didn't already supply, and trims `address` down to just the street line — matching
+ * what the branches step's 3-phase discovery has always done for its own campuses. Without
+ * this, a campus found via a course page's `campuses_found` (upserted below with no parsing at
+ * all) kept the full address string with no postcode and never geocoded, since geocoding also
+ * happens only here.
+ */
+async function normaliseCampusAddress(campus: ExtractedCampus): Promise<ExtractedCampus> {
+  if (!campus.address) return campus;
+  const parsed = parseAddress(campus.address, campus.country);
+  const streetLine = [parsed.street1, parsed.street2].filter(Boolean).join(", ");
+  const normalised: ExtractedCampus = {
+    ...campus,
+    city: campus.city || parsed.city,
+    state: campus.state || parsed.state,
+    country: campus.country || parsed.country,
+    postcode: campus.postcode || parsed.postcode,
+    address: streetLine || campus.address,
+  };
+  if (!normalised.map_link) {
+    try {
+      const addressLine = [normalised.address, normalised.city, normalised.state, normalised.country]
+        .filter(Boolean).join(", ");
+      const geocoded = await geocodeAddress(addressLine);
+      if (geocoded) {
+        normalised.map_link = geocoded.mapLink;
+        if (!normalised.postcode) normalised.postcode = geocoded.postcode;
+      }
+    } catch (e) {
+      logger.warn("Campus geocoding failed", { name: campus.name, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return normalised;
+}
+
+export async function upsertCampus(jobId: string, rawCampus: ExtractedCampus): Promise<string> {
+  if (!rawCampus.name) return "";
+  const campus = await normaliseCampusAddress(rawCampus);
 
   const allCampuses = await masterKnex(`${S}.extraction_campuses`)
     .where({ job_id: jobId });
 
-  const norm = normaliseCampusName(campus.name);
+  const norm = normaliseCampusName(campus.name!);
   const existing = allCampuses.find(c => normaliseCampusName(c.name) === norm);
 
   // A course page frequently names a campus (its own institution, "Main Campus", or any other
@@ -546,6 +584,18 @@ export async function upsertCampus(jobId: string, campus: ExtractedCampus): Prom
       } as ExtractedCampus;
     } else if (overview && (overview.phone || overview.email)) {
       enriched = { ...campus, phone: overview.phone as string | null, email: overview.email as string | null };
+    }
+  } else if (!campus.phone || !campus.email) {
+    // Not bare — it has an address of its own — but the page rarely repeats the institution's
+    // phone/email on a branch's own page, so fall back to the institution's until the branch
+    // has its own on file (same reasoning as the bare-stub branch above).
+    const overview = await overviewFor();
+    if (overview && (overview.phone || overview.email)) {
+      enriched = {
+        ...campus,
+        phone: campus.phone || (overview.phone as string | null),
+        email: campus.email || (overview.email as string | null),
+      };
     }
   }
 
