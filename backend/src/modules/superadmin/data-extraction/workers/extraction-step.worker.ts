@@ -32,6 +32,8 @@ import {
   writeJobEvent,
   normaliseCampusName,
   upsertStudyUnit,
+  feeTypeFor,
+  isExtractableFee,
   upsertFee,
   normaliseCourseCategory,
   resolveCourseLookups,
@@ -1141,6 +1143,32 @@ async function handleEnrichmentStep(jobId: string) {
     await masterKnex(`${S}.extraction_course_fee_assignments`)
       .insert(rows).onConflict(["course_id", "course_fee_id"]).ignore();
     appLinked = rows.length;
+
+    // REPLACE, don't append. The amount, currency and student type are all part of upsertFee's
+    // dedupe key, so a rerun that reads a corrected figure mints a NEW row — and the conflict
+    // clause above only skips an identical (course_id, course_fee_id) pair, so the previous row
+    // stayed linked to every course and each one ended up showing two application fees. The job
+    // has ONE institution-wide application fee by this block's own rule, so the older ones are
+    // stale.
+    //
+    // Scoped to rows linked to MORE THAN ONE course: that is the signature of this block's own
+    // earlier run. A course page can legitimately state its own program-specific application fee
+    // (FEE_SCOPE_RULE asks for it), and that link — one course, one fee — is left alone. The fee
+    // ROWS are left alone too; they stay in the admin Fees tab to relink or delete, because a
+    // worker deleting a row an admin may have added by hand is how data disappears.
+    const shared = await masterKnex(`${S}.extraction_course_fee_assignments as a`)
+      .join(`${S}.extraction_course_fees as f`, "f.id", "a.course_fee_id")
+      .where("a.job_id", jobId)
+      .whereNot("f.id", feeId)
+      .groupBy("f.id", "f.name")
+      .havingRaw("count(distinct a.course_id) > 1")
+      .select("f.id", "f.name");
+    const staleIds = shared.filter((f) => feeTypeFor(f.name) === "Application Fee").map((f) => f.id);
+    if (staleIds.length > 0) {
+      const unlinked = await masterKnex(`${S}.extraction_course_fee_assignments`)
+        .where({ job_id: jobId }).whereIn("course_fee_id", staleIds).delete();
+      logger.info("Superseded application fees unlinked", { jobId, feeId, staleIds, unlinked });
+    }
   }
 
   await writeJobEvent(jobId, "step_complete", {
@@ -1280,6 +1308,8 @@ async function handleCourseDataStep(
       const fees = (extracted.fees as Array<Record<string, unknown>>) || [];
       for (const fee of fees) {
         if (!fee.total_amount || (fee.total_amount as number) <= 0) continue;
+        // Tuition and the application fee only — see isExtractableFee.
+        if (!isExtractableFee(fee.name as string | null)) continue;
         const installments = parseInstallments({
           totalAmount: fee.total_amount as number,
           periodType: (fee.period_type as string) ?? "Per Year",

@@ -27,8 +27,12 @@ export function SuggestedStarters({ onSelect, name, children, categories = START
   }, []);
   // The embed panel swaps its categories once the owner kind resolves, so the label picked
   // from the previous set can go stale — fall back to the first chip instead of showing a
-  // row of chips with no questions under it.
-  const activeLabel = categories.some((c) => c.label === openLabel) ? openLabel : categories[0]?.label ?? null;
+  // row of chips with no questions under it. A null openLabel is NOT stale: it is the user
+  // closing the open category, and falling back there made that click reopen the first chip.
+  const activeLabel =
+    openLabel === null || categories.some((c) => c.label === openLabel)
+      ? openLabel
+      : categories[0]?.label ?? null;
   const openQuestions = categories.find((c) => c.label === activeLabel)?.questions ?? [];
 
   return (

@@ -502,6 +502,32 @@ The centralized error handler maps these to HTTP responses.
    when a job has nothing queued yet to resume from — no V2 equivalent to
    port, this is a cost fix.
 
+## Fee scope is tuition + application fee, enforced in the writer (2026-09-11)
+
+`FEE_SCOPE_RULE` says only two kinds of fee are wanted, and two prompts CONTRADICTED it in the
+same request: `FEES_FROM_PAGE_SYSTEM` and `CURRICULUM_AND_FEES_SYSTEM` both asked for "the tuition
+AND every other charge stated alongside it", and the `name` field's own examples in three schemas
+offered 'Enrolment Fee', 'Material Fee', 'Student Services Fee' and 'Health Cover' — the exact
+charges the rule tells the model to leave out. A model following the broader wording had its answer
+staged verbatim, because nothing downstream re-checked the kind.
+
+Both wordings now match the rule, and `isExtractableFee(name)` in `staging-writer.ts` (built on the
+existing `feeTypeFor`) drops an out-of-scope fee at the two LLM write paths: `writeCourse` and the
+step worker's `fees` branch. Deliberately NOT inside `upsertFee` — the AgentCIS import writes the
+institution's own structured fee list, where a material or insurance fee is real data rather than a
+model overreaching. Guarded by `npm run test:fee-scope`.
+
+Same pass: the bulk-fees step's INSTITUTION-WIDE APPLICATION FEE now replaces its predecessor
+instead of piling up. Amount, currency and student type are all part of `upsertFee`'s dedupe key,
+so a rerun reading a corrected figure minted a new row, and `.onConflict([course_id, course_fee_id])
+.ignore()` only skips an identical pair — the old row stayed linked to every course and each one
+showed two application fees. The step now unlinks superseded application fees, scoped to rows
+linked to MORE THAN ONE course (the signature of this block's own earlier run), so a course page's
+own program-specific application fee — one course, one fee — is left alone. Assignments only: the
+orphaned fee row stays in the admin Fees tab, because a worker deleting a row an admin may have
+hand-added is how data disappears. The per-course `fees` step doesn't need this; it already deletes
+the course's assignments before re-extracting.
+
 ## Subject area & degree level are CLOSED lists (2026-09-08)
 
 `public.areas_of_study` and `public.degree_levels` are the only values a course may be linked to.

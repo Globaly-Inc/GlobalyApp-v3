@@ -141,7 +141,7 @@ Extract this JSON:
       "career_paths": [],
       "fees": [
         {
-          "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+          "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Program Fee', 'Application Fee' — max 40 characters. Only these two kinds are in scope (see the rules); never label an entry 'Enrolment Fee', 'Material Fee', 'Health Cover' or the like — such a charge is not extracted at all. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
           "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
           "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
           "student_type": "domestic|international|both",
@@ -271,7 +271,7 @@ ${FEE_SCOPE_RULE}
 // fees_page_url.
 
 export const FEES_FROM_PAGE_SYSTEM = `You are a strict data extraction assistant for an education platform.
-Your ONLY job is to extract the fees explicitly stated on this page for the named course — the tuition AND every other charge stated alongside it.
+Your ONLY job is to extract the fees explicitly stated on this page for the named course — the tuition AND the application fee, and NOTHING else — see the scope rule below.
 ONLY extract fees EXPLICITLY stated on the page. NEVER invent or estimate a figure.
 Respond in valid JSON only.`;
 
@@ -286,7 +286,7 @@ Return JSON:
 {
   "fees": [
     {
-      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Program Fee', 'Application Fee' — max 40 characters. Only these two kinds are in scope (see the rules); never label an entry 'Enrolment Fee', 'Material Fee', 'Health Cover' or the like — such a charge is not extracted at all. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
       "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
       "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
       "student_type": "domestic|international|both",
@@ -313,7 +313,7 @@ ${FEE_SCOPE_RULE}
 // call halves the input tokens for the dominant secondary-fetch case.
 
 export const CURRICULUM_AND_FEES_SYSTEM = `You are a strict data extraction assistant for an education platform.
-Your ONLY job is to extract the study units/subjects and the fees explicitly stated on this page for the named course — the tuition AND every other charge stated alongside it.
+Your ONLY job is to extract the study units/subjects and the fees explicitly stated on this page for the named course — the tuition AND the application fee, and NOTHING else — see the scope rule below.
 ONLY extract what is EXPLICITLY stated on the page. NEVER infer, invent, or estimate.
 Respond in valid JSON only.`;
 
@@ -337,7 +337,7 @@ Return JSON:
   ],
   "fees": [
     {
-      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Program Fee', 'Application Fee' — max 40 characters. Only these two kinds are in scope (see the rules); never label an entry 'Enrolment Fee', 'Material Fee', 'Health Cover' or the like — such a charge is not extracted at all. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
       "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
       "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
       "student_type": "domestic|international|both",

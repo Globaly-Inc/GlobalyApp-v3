@@ -1460,6 +1460,24 @@ export function feeTypeFor(name: string | null | undefined): string {
 }
 
 /**
+ * Whether an EXTRACTED fee is one of the two kinds the pipeline stages: tuition (under any of the
+ * page's own wordings) and the application fee. Everything else — enrolment, material, exam, health
+ * cover, student services, late payment — is out of scope per FEE_SCOPE_RULE.
+ *
+ * The prompts state the rule, and a model that ignores it used to reach the staging tables anyway,
+ * because nothing downstream re-checked. feeTypeFor already classifies the label for the fee form,
+ * so the check costs one call. Guarded by `npm run test:fee-scope`.
+ *
+ * Deliberately NOT inside upsertFee: the AgentCIS import writes the institution's own structured
+ * fee list, where a material or insurance fee is real data rather than a model overreaching. This
+ * guards the LLM paths only — writeCourse and the step worker's fee branch.
+ */
+export function isExtractableFee(name: string | null | undefined): boolean {
+  const kind = feeTypeFor(name);
+  return kind === "Tuition Fee" || kind === "Application Fee";
+}
+
+/**
  * The installment breakdown in the shape the fee form reads and writes: every installment carries
  * at least one {fee_type, amount} line.
  *
@@ -1735,6 +1753,8 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Fees + assignments ──
   if (course.fees?.length) {
     for (const fee of course.fees) {
+      // Tuition and the application fee only — see isExtractableFee.
+      if (!isExtractableFee(fee.name)) continue;
       const feeId = await upsertFee(jobId, {
         name: fee.name ?? null,
         description: fee.description ?? null,
