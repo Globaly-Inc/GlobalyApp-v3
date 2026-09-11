@@ -511,22 +511,39 @@ offered 'Enrolment Fee', 'Material Fee', 'Student Services Fee' and 'Health Cove
 charges the rule tells the model to leave out. A model following the broader wording had its answer
 staged verbatim, because nothing downstream re-checked the kind.
 
-Both wordings now match the rule, and `isExtractableFee(name)` in `staging-writer.ts` (built on the
-existing `feeTypeFor`) drops an out-of-scope fee at the two LLM write paths: `writeCourse` and the
-step worker's `fees` branch. Deliberately NOT inside `upsertFee` — the AgentCIS import writes the
-institution's own structured fee list, where a material or insurance fee is real data rather than a
-model overreaching. Guarded by `npm run test:fee-scope`.
+Both wordings now match the rule, and `isExtractableFee(name)` in `staging-writer.ts` drops an
+out-of-scope fee at the two LLM write paths: `writeCourse` and the step worker's `fees` branch.
+Deliberately NOT inside `upsertFee` — the AgentCIS import writes the institution's own structured
+fee list, where a material or insurance fee is real data rather than a model overreaching.
 
-Same pass: the bulk-fees step's INSTITUTION-WIDE APPLICATION FEE now replaces its predecessor
-instead of piling up. Amount, currency and student type are all part of `upsertFee`'s dedupe key,
-so a rerun reading a corrected figure minted a new row, and `.onConflict([course_id, course_fee_id])
-.ignore()` only skips an identical pair — the old row stayed linked to every course and each one
-showed two application fees. The step now unlinks superseded application fees, scoped to rows
-linked to MORE THAN ONE course (the signature of this block's own earlier run), so a course page's
-own program-specific application fee — one course, one fee — is left alone. Assignments only: the
-orphaned fee row stays in the admin Fees tab, because a worker deleting a row an admin may have
-hand-added is how data disappears. The per-course `fees` step doesn't need this; it already deletes
-the course's assignments before re-extracting.
+`feeTypeFor` alone was not enough to express the rule: it answers "which of the fee form's 8 types
+is this", and anything it does not recognise falls through to `Tuition Fee`. Five of the ten kinds
+FEE_SCOPE_RULE excludes have a keyword entry; accommodation, transport, graduation and deposits do
+not, so they passed the guard AND were staged as TUITION — a $400 accommodation deposit reading as
+the course's headline price. `OUT_OF_SCOPE_FEE` names those four plus the ancillary charges a
+university fee table puts beside tuition (library, technology, lab, activity, sports, orientation,
+ID card, alumni, admin). An explicit tuition/application marker overrides it, so
+"Travel & Tourism Tuition Fee" and "Graduate Tuition Fee" stay in scope — hence "graduation", never
+"graduat". Still NOT an allow-list: an unlabelled fee, or one labelled "Standard Rate 2027", is the
+page's headline tuition and dropping it would lose the number the fee tab exists to show.
+Guarded by `npm run test:fee-scope`.
+
+Same pass: the bulk-fees step's INSTITUTION-WIDE APPLICATION FEE is now CORRECTED IN PLACE instead
+of duplicated. Amount, currency and student type are all part of `upsertFee`'s dedupe key, so a
+rerun reading a corrected figure minted a new row while the old one stayed linked to every course
+(`.onConflict([course_id, course_fee_id]).ignore()` only skips an identical pair) — each course
+then showing two application fees. `findSharedApplicationFee` locates the existing row — an
+application fee this pipeline created (`created_by` null) that is linked to MORE THAN ONE course,
+the shape only this step produces — and updates its figures; a course page's own program-specific
+application fee (one course, one fee, which FEE_SCOPE_RULE asks for) is not that and is untouched.
+A row an admin has edited (`updated_by` non-null) is left exactly as they left it, and no second
+row is added beside it.
+
+**Nothing is unlinked**, and that is the point: `assignJunction` records no provenance, so a link
+an admin curated in the Fees tab is indistinguishable from one this block wrote. An earlier version
+of this fix deleted "stale" assignments and would have silently discarded reviewed links. Correcting
+the row keeps every assignment valid and pointing at the new figure. The per-course `fees` step
+needs none of this — it already deletes the course's assignments before re-extracting.
 
 ## Subject area & degree level are CLOSED lists (2026-09-08)
 

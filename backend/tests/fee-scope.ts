@@ -33,6 +33,25 @@ for (const name of [
   "Health Cover", "OSHC", "Health Insurance", "Student Services Fee", "Amenities Fee (SSAF)",
 ]) ok(isExtractableFee(name), false, `out of scope: ${name}`);
 
+// The rest of the rule's list, plus the ancillary charges a fee table puts next to tuition. None
+// of these match a fee_types keyword, so feeTypeFor calls them "Tuition Fee" — they were staged as
+// the course's headline price until OUT_OF_SCOPE_FEE caught them.
+for (const name of [
+  "Accommodation Fee", "On-campus Housing", "Hostel Charges", "Boarding Fee",
+  "Transport Fee", "Parking Permit", "Shuttle Service",
+  "Graduation Fee", "Convocation Charges", "Security Deposit", "Caution Money",
+  "Library Fee", "Technology Fee", "Laboratory Fee", "Activity Fee", "Sports Fee",
+  "Orientation Fee", "ID Card Fee", "Alumni Fee", "Administrative Fee",
+]) ok(isExtractableFee(name), false, `out of scope (unclassified kind): ${name}`);
+
+// ...but an explicit tuition/application marker wins, so a course whose SUBJECT is one of those
+// words keeps its tuition. These are labels, and the model does put the programme in them.
+for (const name of [
+  "Travel & Tourism Tuition Fee", "Transport Engineering Program Tuition",
+  "Graduate Tuition Fee", "Graduate Program Fee", "Application Fee (deposit deducted)",
+  "Standard Rate 2027", // no label the classifier knows — still the page's headline figure
+]) ok(isExtractableFee(name), true, `marker wins: ${name}`);
+
 // The predicate is exactly feeTypeFor's two in-scope kinds — it must not drift from the labels
 // the fee form offers.
 ok(feeTypeFor("Health Cover") === "Health Insurance Fee", true, "feeTypeFor still classifies health cover");

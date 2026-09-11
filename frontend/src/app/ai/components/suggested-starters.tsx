@@ -16,21 +16,27 @@ type SuggestedStartersProps = {
 };
 
 export function SuggestedStarters({ onSelect, name, children, categories = STARTER_CATEGORIES }: Readonly<SuggestedStartersProps>) {
-  // Categories collapse to one chip each; "Course Search" opens by default so the hero shows
+  // Categories collapse to one chip each; the first one opens by default so the hero shows
   // recommended questions immediately instead of an empty row of chips.
-  const [openLabel, setOpenLabel] = useState<string | null>(categories[0]?.label ?? null);
+  //
+  // Three states, not two: `undefined` is "the visitor hasn't touched a chip", which is what the
+  // default below resolves. `null` is "the visitor closed the open chip" and must survive. The
+  // embed renders once with NO categories while its config loads, so seeding this from
+  // categories[0] would have locked in null — the collapse state — before there was anything to
+  // open, and the panel would have shown a row of chips with no questions under it.
+  const [openLabel, setOpenLabel] = useState<string | null | undefined>(undefined);
   // Picked once per mount (useState initializer), not per render — and only on the client,
   // so SSR/hydration can't disagree about which greeting was drawn.
   const [greeting, setGreeting] = useState<string | null>(null);
   useEffect(() => {
     setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)] ?? null);
   }, []);
-  // The embed panel swaps its categories once the owner kind resolves, so the label picked
-  // from the previous set can go stale — fall back to the first chip instead of showing a
-  // row of chips with no questions under it. A null openLabel is NOT stale: it is the user
-  // closing the open category, and falling back there made that click reopen the first chip.
+  // The embed panel swaps its categories once the owner kind resolves, so a label picked from the
+  // previous set can go stale — fall back to the first chip rather than show a row of chips with
+  // no questions under it. Untouched (undefined) resolves to that same default; an explicit null
+  // does not, or closing the open chip would immediately reopen the first one.
   const activeLabel =
-    openLabel === null || categories.some((c) => c.label === openLabel)
+    openLabel === null || (openLabel !== undefined && categories.some((c) => c.label === openLabel))
       ? openLabel
       : categories[0]?.label ?? null;
   const openQuestions = categories.find((c) => c.label === activeLabel)?.questions ?? [];
@@ -59,7 +65,9 @@ export function SuggestedStarters({ onSelect, name, children, categories = START
             <button
               key={label}
               type="button"
-              onClick={() => setOpenLabel((cur) => (cur === label ? null : label))}
+              // Compared against activeLabel, not the raw state: the chip the visitor sees open
+              // while openLabel is still undefined has to close on the first click, not open.
+              onClick={() => setOpenLabel(activeLabel === label ? null : label)}
               aria-pressed={activeLabel === label}
               className={cn(
                 "flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium shadow-sm backdrop-blur-sm transition-all",

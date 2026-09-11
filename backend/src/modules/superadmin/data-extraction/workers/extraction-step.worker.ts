@@ -1130,53 +1130,81 @@ async function handleEnrichmentStep(jobId: string) {
   // application fee. One row, linked to every course in the job.
   const appFee = result.application_fee;
   let appLinked = 0;
+  let appSkipped = false;
   if (appFee?.amount && appFee.amount > 0) {
-    const feeId = await upsertFee(jobId, {
-      name: "Application Fee",
-      description: appFee.description ?? null,
-      student_type: appFee.student_type || "both",
-      total_amount: appFee.amount,
-      currency: appFee.currency || siteIntel?.currency || "USD",
-      period_type: "Total",
-    });
+    // CORRECT the existing row, don't mint a second one. Amount, currency and student type are all
+    // part of upsertFee's dedupe key, so a rerun reading a corrected figure used to create a NEW
+    // row while the previous one stayed linked to every course — each course then showing two
+    // application fees, which is what this branch exists to prevent.
+    //
+    // Correcting in place rather than unlinking the old row is deliberate: the assignment junction
+    // records no provenance (no created_by — see assignJunction), so a link an admin curated by
+    // hand in the Fees tab is indistinguishable from one this block wrote, and deleting "stale"
+    // links would silently discard reviewed work. Nothing is unlinked here; every existing
+    // assignment stays valid and now points at the corrected figure.
+    const prior = await findSharedApplicationFee(jobId);
+    let feeId: string;
+    if (prior?.updated_by_platform_user_id) {
+      // An admin's own figure outranks a re-scrape, and adding a second row beside theirs is the
+      // duplicate we are avoiding — so this job's application fee is left exactly as they left it.
+      feeId = prior.id;
+      appSkipped = true;
+      logger.info("Application fee hand-corrected; leaving it alone", { jobId, feeId });
+    } else if (prior) {
+      feeId = prior.id;
+      await masterKnex(`${S}.extraction_course_fees`).where({ id: feeId }).update({
+        description: appFee.description ?? null,
+        student_type: appFee.student_type || "both",
+        total_amount: appFee.amount,
+        currency: appFee.currency || siteIntel?.currency || "USD",
+        updated_at: masterKnex.fn.now(),
+      });
+    } else {
+      feeId = await upsertFee(jobId, {
+        name: "Application Fee",
+        description: appFee.description ?? null,
+        student_type: appFee.student_type || "both",
+        total_amount: appFee.amount,
+        currency: appFee.currency || siteIntel?.currency || "USD",
+        period_type: "Total",
+      });
+    }
     const rows = courses.map((c: { id: string }) => ({ job_id: jobId, course_id: c.id, course_fee_id: feeId }));
     await masterKnex(`${S}.extraction_course_fee_assignments`)
       .insert(rows).onConflict(["course_id", "course_fee_id"]).ignore();
     appLinked = rows.length;
-
-    // REPLACE, don't append. The amount, currency and student type are all part of upsertFee's
-    // dedupe key, so a rerun that reads a corrected figure mints a NEW row — and the conflict
-    // clause above only skips an identical (course_id, course_fee_id) pair, so the previous row
-    // stayed linked to every course and each one ended up showing two application fees. The job
-    // has ONE institution-wide application fee by this block's own rule, so the older ones are
-    // stale.
-    //
-    // Scoped to rows linked to MORE THAN ONE course: that is the signature of this block's own
-    // earlier run. A course page can legitimately state its own program-specific application fee
-    // (FEE_SCOPE_RULE asks for it), and that link — one course, one fee — is left alone. The fee
-    // ROWS are left alone too; they stay in the admin Fees tab to relink or delete, because a
-    // worker deleting a row an admin may have added by hand is how data disappears.
-    const shared = await masterKnex(`${S}.extraction_course_fee_assignments as a`)
-      .join(`${S}.extraction_course_fees as f`, "f.id", "a.course_fee_id")
-      .where("a.job_id", jobId)
-      .whereNot("f.id", feeId)
-      .groupBy("f.id", "f.name")
-      .havingRaw("count(distinct a.course_id) > 1")
-      .select("f.id", "f.name");
-    const staleIds = shared.filter((f) => feeTypeFor(f.name) === "Application Fee").map((f) => f.id);
-    if (staleIds.length > 0) {
-      const unlinked = await masterKnex(`${S}.extraction_course_fee_assignments`)
-        .where({ job_id: jobId }).whereIn("course_fee_id", staleIds).delete();
-      logger.info("Superseded application fees unlinked", { jobId, feeId, staleIds, unlinked });
-    }
   }
 
   await writeJobEvent(jobId, "step_complete", {
     phase: "enrichment",
     message: `Bulk fees: ${linked} course-fee links created (fuzzy matched from ${feeEntries.length} fee entries)`
-      + (appLinked ? `, application fee linked to ${appLinked} courses` : ", no application fee stated"),
+      + (appLinked
+        ? `, application fee ${appSkipped ? "left as hand-corrected" : "updated"} and linked to ${appLinked} courses`
+        : ", no application fee stated"),
     data: { linked, fee_entries: feeEntries.length, unmatched: feeEntries.length - matches.length, application_fee_links: appLinked },
   });
+}
+
+/**
+ * The job's institution-wide application fee, if it already has one: an application-fee row this
+ * pipeline created (created_by null — a hand-ADDED row is never rewritten by a worker) that is
+ * linked to more than one course, which is the shape only the bulk-fees step produces. A course
+ * page's own program-specific application fee — one course, one fee, which FEE_SCOPE_RULE asks
+ * for — is not this, and is left alone.
+ */
+async function findSharedApplicationFee(jobId: string) {
+  const rows: Array<{ id: string; name: string | null; updated_by_platform_user_id: number | null; links: string }> =
+    await masterKnex(`${S}.extraction_course_fee_assignments as a`)
+      .join(`${S}.extraction_course_fees as f`, "f.id", "a.course_fee_id")
+      .where("a.job_id", jobId)
+      .whereNull("f.created_by_platform_user_id")
+      .groupBy("f.id", "f.name", "f.updated_by_platform_user_id")
+      .havingRaw("count(distinct a.course_id) > 1")
+      .select("f.id", "f.name", "f.updated_by_platform_user_id")
+      .select(masterKnex.raw("count(distinct a.course_id) as links"));
+  return rows
+    .filter((f) => feeTypeFor(f.name) === "Application Fee")
+    .sort((a, b) => Number(b.links) - Number(a.links))[0] ?? null;
 }
 
 async function handleVerificationStep(jobId: string) {

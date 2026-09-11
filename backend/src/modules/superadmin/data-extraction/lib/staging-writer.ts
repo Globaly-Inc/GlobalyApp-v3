@@ -1472,7 +1472,27 @@ export function feeTypeFor(name: string | null | undefined): string {
  * fee list, where a material or insurance fee is real data rather than a model overreaching. This
  * guards the LLM paths only — writeCourse and the step worker's fee branch.
  */
+/**
+ * Excluded charges that have no `fee_types` entry of their own, so feeTypeFor cannot recognise
+ * them and its "unrecognised means tuition" default used to wave them through — the worst possible
+ * outcome, since a $400 accommodation deposit then reads as the course's headline price. The first
+ * five kinds FEE_SCOPE_RULE names (enrolment, material, exam, health cover, student services) are
+ * already FEE_TYPE_KEYWORDS entries and need nothing here; these are the rest of that list, plus
+ * the ancillary charges a university fee table actually puts next to tuition.
+ *
+ * "graduation", never "graduat" — a Graduate Tuition Fee is tuition. Deliberately NOT an
+ * allow-list: a bare figure with no label at all, or one labelled "Standard Rate 2027", IS the
+ * page's headline tuition, and dropping it would lose the number the whole fee tab exists to show.
+ */
+const OUT_OF_SCOPE_FEE =
+  /accommodat|housing|hostel|dormitor|boarding|transport|parking|shuttle|graduation|convocation|deposit|caution money|library|technolog|laborator|\blab fee|activity fee|sport|gym|orientation fee|id card|alumni|administrative fee|admin fee/i;
+
 export function isExtractableFee(name: string | null | undefined): boolean {
+  const s = name ?? "";
+  // An explicit tuition/application marker wins outright, so a course whose SUBJECT is one of the
+  // words below ("Travel & Tourism Tuition Fee", "Transport Engineering Program Fee") is never
+  // mistaken for the ancillary charge of the same name.
+  if (!/tuition|application/i.test(s) && OUT_OF_SCOPE_FEE.test(s)) return false;
   const kind = feeTypeFor(name);
   return kind === "Tuition Fee" || kind === "Application Fee";
 }
