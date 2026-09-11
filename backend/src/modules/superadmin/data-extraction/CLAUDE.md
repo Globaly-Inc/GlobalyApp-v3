@@ -241,7 +241,17 @@ The centralized error handler maps these to HTTP responses.
    workers, never reimplemented in the step worker's switch. Sharing dedupes on name, so
    "Fall 2027" and "Fall Semester 2027" stay separate by design, and is per-job — two
    institutions never share a row. `agentcis-product-staging.ts` is a third writer
-   (structured import, pre-coerced mappers, no LLM) that does not share rows; left as is.
+   (structured import, pre-coerced mappers, no LLM) that now shares rows too (2026-09-11): its
+   fees, intakes and eligibility go through `upsertFee` / `upsertIntake` / `upsertEligibility`
+   instead of three direct inserts, because the import was minting an identical row per product —
+   one fee or intake offered by two courses landed as two rows rather than one row with two
+   assignment rows. Notes: currency is resolved to a code (AUD fallback) BEFORE `upsertFee`,
+   since it is part of that dedupe key and the feed usually states none; the intake insert's
+   legacy `course_id` is gone, per (g); and every product's requirement carries the same generic
+   "Entry Requirements" name, so it is `eligibilityRowsAgree`'s non-contradiction check — not the
+   name — that keeps products demanding different thresholds on separate rows. Study options are
+   still inserted per product, which matches what `writeCourse` does (no upsert helper exists for
+   that table on either path).
    (f) `source_url` added to `extraction_eligibility_requirements` and
    `extraction_intakes` (migration `20260904_001`) and now written by both paths;
    `extraction_english_requirements.source_url` existed and was never populated.
@@ -491,6 +501,49 @@ The centralized error handler maps these to HTTP responses.
    an August Gemini cost spike. `resetPipeline` (full wipe) is still used
    when a job has nothing queued yet to resume from — no V2 equivalent to
    port, this is a cost fix.
+
+## Fee scope is tuition + application fee, enforced in the writer (2026-09-11)
+
+`FEE_SCOPE_RULE` says only two kinds of fee are wanted, and two prompts CONTRADICTED it in the
+same request: `FEES_FROM_PAGE_SYSTEM` and `CURRICULUM_AND_FEES_SYSTEM` both asked for "the tuition
+AND every other charge stated alongside it", and the `name` field's own examples in three schemas
+offered 'Enrolment Fee', 'Material Fee', 'Student Services Fee' and 'Health Cover' — the exact
+charges the rule tells the model to leave out. A model following the broader wording had its answer
+staged verbatim, because nothing downstream re-checked the kind.
+
+Both wordings now match the rule, and `isExtractableFee(name)` in `staging-writer.ts` drops an
+out-of-scope fee at the two LLM write paths: `writeCourse` and the step worker's `fees` branch.
+Deliberately NOT inside `upsertFee` — the AgentCIS import writes the institution's own structured
+fee list, where a material or insurance fee is real data rather than a model overreaching.
+
+`feeTypeFor` alone was not enough to express the rule: it answers "which of the fee form's 8 types
+is this", and anything it does not recognise falls through to `Tuition Fee`. Five of the ten kinds
+FEE_SCOPE_RULE excludes have a keyword entry; accommodation, transport, graduation and deposits do
+not, so they passed the guard AND were staged as TUITION — a $400 accommodation deposit reading as
+the course's headline price. `OUT_OF_SCOPE_FEE` names those four plus the ancillary charges a
+university fee table puts beside tuition (library, technology, lab, activity, sports, orientation,
+ID card, alumni, admin). An explicit tuition/application marker overrides it, so
+"Travel & Tourism Tuition Fee" and "Graduate Tuition Fee" stay in scope — hence "graduation", never
+"graduat". Still NOT an allow-list: an unlabelled fee, or one labelled "Standard Rate 2027", is the
+page's headline tuition and dropping it would lose the number the fee tab exists to show.
+Guarded by `npm run test:fee-scope`.
+
+Same pass: the bulk-fees step's INSTITUTION-WIDE APPLICATION FEE is now CORRECTED IN PLACE instead
+of duplicated. Amount, currency and student type are all part of `upsertFee`'s dedupe key, so a
+rerun reading a corrected figure minted a new row while the old one stayed linked to every course
+(`.onConflict([course_id, course_fee_id]).ignore()` only skips an identical pair) — each course
+then showing two application fees. `findSharedApplicationFee` locates the existing row — an
+application fee this pipeline created (`created_by` null) that is linked to MORE THAN ONE course,
+the shape only this step produces — and updates its figures; a course page's own program-specific
+application fee (one course, one fee, which FEE_SCOPE_RULE asks for) is not that and is untouched.
+A row an admin has edited (`updated_by` non-null) is left exactly as they left it, and no second
+row is added beside it.
+
+**Nothing is unlinked**, and that is the point: `assignJunction` records no provenance, so a link
+an admin curated in the Fees tab is indistinguishable from one this block wrote. An earlier version
+of this fix deleted "stale" assignments and would have silently discarded reviewed links. Correcting
+the row keeps every assignment valid and pointing at the new figure. The per-course `fees` step
+needs none of this — it already deletes the course's assignments before re-extracting.
 
 ## Subject area & degree level are CLOSED lists (2026-09-08)
 

@@ -218,6 +218,20 @@ export const PERIOD_TYPE_OPTIONS = [
   { value: "Total", label: "Total" },
 ];
 
+// Which of public.fee_types the fee form offers. Only tuition and the application fee are wanted
+// for now; the rest still exist in the table and the extractor still recognises them, they are
+// just not selectable here. Uncomment a line to bring one back.
+export const ENABLED_FEE_TYPES = [
+  "Tuition Fee",
+  "Application Fee",
+  // "Enrollment Fee",
+  // "Material Fee",
+  // "Exam Fee",
+  // "Late Payment Fee",
+  // "Health Insurance Fee",
+  // "Student Services Fee",
+];
+
 export const CURRENCY_OPTIONS = ["AUD", "NZD", "CAD", "USD", "GBP", "EUR", "NPR", "INR"].map((c) => ({
   value: c,
   label: c,

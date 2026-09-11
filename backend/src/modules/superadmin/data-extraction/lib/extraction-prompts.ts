@@ -6,6 +6,14 @@
 // actually be linked to, and editing a seed file changes the prompt with no code change.
 import type { LookupLists } from "./lookup-catalog.js";
 
+// Every fee prompt carries this. Two kinds are in scope and nothing else: tuition and the
+// application fee. The model reliably reports the headline tuition figure and drops the
+// application fee even when the same table states it — 0 of 9,600 extracted fee rows were
+// application fees — so it is called out explicitly, and the rest of the fee table is refused
+// explicitly so it doesn't come back as noise the operator has to delete.
+export const FEE_SCOPE_RULE = `- ONLY two kinds of fee are wanted: TUITION (whatever the page calls it — tuition, course fee, program fee, per-credit rate, semester fee) and the APPLICATION FEE. Extract the application fee as its OWN entry named "Application Fee" whenever the page states one, even when it is small, stated in a different table, or described as applying to all programs — never fold it into the tuition amount and never leave it out because tuition is the headline figure.
+- IGNORE every other charge: enrolment/registration, material, exam, health cover/OSHC/insurance, student services/amenities, deposits, graduation, late payment, accommodation, transport. Leave them out of the array entirely.`;
+
 // ── Phase 1: Site analysis (job worker) ──
 
 export const SITE_ANALYSIS_SYSTEM = `You are a data extraction specialist for educational institutions.
@@ -133,7 +141,7 @@ Extract this JSON:
       "career_paths": [],
       "fees": [
         {
-          "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+          "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Program Fee', 'Application Fee' — max 40 characters. Only these two kinds are in scope (see the rules); never label an entry 'Enrolment Fee', 'Material Fee', 'Health Cover' or the like — such a charge is not extracted at all. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
           "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
           "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
           "student_type": "domestic|international|both",
@@ -244,6 +252,7 @@ Rules:
 - An english_requirements entry holds SCORES ONLY. The wording around the English requirement — a waiver or exemption ("waived if your previous degree was taught in English"), an accepted equivalent ("or an approved equivalent qualification"), a validity window ("taken within the last two years") — goes in the DESCRIPTION of the eligibility requirement it belongs to, alongside that requirement's own conditions. Never drop it: it frequently decides whether the student needs the test at all. If the page's English section has no academic requirement of its own to hang it on, add one eligibility entry named "English Language Requirement" whose description carries that wording.
 - For duration, convert to weeks if possible (1 year = 52 weeks, 1 semester = 26 weeks)
 - Distinguish tuition/course fees from career salary ranges — salary outcomes are NOT fees
+${FEE_SCOPE_RULE}
 - If this page states no real fee figures but links to a dedicated fees/tuition/cost page (a schedule page, a catalog entry, an external PDF), leave fees empty and set fees_page_url to that link instead — never fabricate a fee entry with no amount just to record the URL
 - NAME vs DESCRIPTION: name is only the label a student reads in a fee table ("Tuition Fee", "Semester Fee", "Application Fee"). Every figure, credit count, range, and caveat goes in description — never in name.
 - If a fee is shown as a range (e.g. "$25,000-$30,000"), set total_amount to the lower bound and keep the full range in the fee's description — never average or invent a single figure. If a page shows both a per-year figure AND a total-program figure, extract BOTH as separate fees array entries distinguished by period_type — never collapse them into one guess.
@@ -262,12 +271,12 @@ Rules:
 // fees_page_url.
 
 export const FEES_FROM_PAGE_SYSTEM = `You are a strict data extraction assistant for an education platform.
-Your ONLY job is to extract the tuition/fee figures explicitly stated on this page for the named course.
+Your ONLY job is to extract the fees explicitly stated on this page for the named course — the tuition AND the application fee, and NOTHING else — see the scope rule below.
 ONLY extract fees EXPLICITLY stated on the page. NEVER invent or estimate a figure.
 Respond in valid JSON only.`;
 
 export function feesFromPagePrompt(courseName: string, url: string, pageText: string) {
-  return `Extract the tuition/fee figures on this page for "${courseName}".
+  return `Extract the fees on this page for "${courseName}" — tuition and every other fee stated.
 Source URL: ${url}
 
 Page content:
@@ -277,7 +286,7 @@ Return JSON:
 {
   "fees": [
     {
-      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Program Fee', 'Application Fee' — max 40 characters. Only these two kinds are in scope (see the rules); never label an entry 'Enrolment Fee', 'Material Fee', 'Health Cover' or the like — such a charge is not extracted at all. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
       "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
       "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
       "student_type": "domestic|international|both",
@@ -288,6 +297,7 @@ Return JSON:
 }
 
 Rules:
+${FEE_SCOPE_RULE}
 - NAME vs DESCRIPTION: name is only the label a student reads in a fee table ("Tuition Fee", "Semester Fee", "Application Fee"). Every figure, credit count, range, and caveat goes in description — never in name.
 - If a fee is shown as a range, set total_amount to the lower bound and keep the full range in description
 - If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
@@ -303,12 +313,12 @@ Rules:
 // call halves the input tokens for the dominant secondary-fetch case.
 
 export const CURRICULUM_AND_FEES_SYSTEM = `You are a strict data extraction assistant for an education platform.
-Your ONLY job is to extract the study units/subjects and the tuition/fee figures explicitly stated on this page for the named course.
+Your ONLY job is to extract the study units/subjects and the fees explicitly stated on this page for the named course — the tuition AND the application fee, and NOTHING else — see the scope rule below.
 ONLY extract what is EXPLICITLY stated on the page. NEVER infer, invent, or estimate.
 Respond in valid JSON only.`;
 
 export function curriculumAndFeesPrompt(courseName: string, url: string, pageText: string) {
-  return `Extract the study units/subjects and the tuition/fee figures on this page for "${courseName}".
+  return `Extract the study units/subjects and the fees (tuition and every other fee stated) on this page for "${courseName}".
 Source URL: ${url}
 
 Page content:
@@ -327,7 +337,7 @@ Return JSON:
   ],
   "fees": [
     {
-      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Application Fee', 'Enrolment Fee', 'Material Fee', 'Student Services Fee', 'Health Cover' — max 40 characters. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
+      "name": "SHORT generic label for the KIND of fee — e.g. 'Tuition Fee', 'Semester Fee', 'Program Fee', 'Application Fee' — max 40 characters. Only these two kinds are in scope (see the rules); never label an entry 'Enrolment Fee', 'Material Fee', 'Health Cover' or the like — such a charge is not extracted at all. NEVER put amounts, currency symbols, credit counts, or the course name in the label",
       "description": "the page's own wording for this fee, verbatim — the per-credit breakdown, the full range, the 'contact us' note, what the fee covers. null if the page states nothing beyond the amount",
       "currency": "ISO 4217 code (AUD, USD, GBP, EUR, CAD, NPR, INR, ...) — NEVER a symbol like '$' or '£'. If the page shows only a symbol, use the code for the institution's own country. null if genuinely unstated",
       "student_type": "domestic|international|both",
@@ -338,6 +348,7 @@ Return JSON:
 }
 
 Rules:
+${FEE_SCOPE_RULE}
 - NAME vs DESCRIPTION: name is only the label a student reads in a fee table ("Tuition Fee", "Semester Fee", "Application Fee"). Every figure, credit count, range, and caveat goes in description — never in name.
 - If a fee is shown as a range, set total_amount to the lower bound and keep the full range in description
 - If the page shows both a per-year figure AND a total-program figure, extract BOTH as separate entries
@@ -727,6 +738,7 @@ export function bulkFeePrompt(
   return `Below is content from an educational institution's FEES PAGE, followed by a numbered list of ALL courses.
 
 Your task: Extract the fee for EACH course in the list. Match course names against fee tables, headings, or categories.
+Then, separately, extract the APPLICATION FEE if this page states one — it is normally stated once for the whole institution rather than per course.
 
 Rules:
 - If a fee applies to a category (e.g. "all Bachelor programs"), map it to each matching course
@@ -736,6 +748,7 @@ Rules:
 - If you cannot find a fee for a specific course, set its totals to 0
 - Currency: an ISO 4217 code only (never a symbol like "$"), defaulting to ${currency}${countryNote}. Only use a different code if explicitly stated
 - Only extract fees explicitly stated — do NOT guess
+- application_fee is the fee charged to APPLY, whatever the page calls it (application fee, application charge, processing fee for an application). Fill it in whenever the page states one, even when it applies to all programs. Set it to null if the page states none — and never put any other charge there: enrolment, material, exam, health cover, amenities and deposits are all out of scope
 
 === FEES PAGE ===
 ${feePageText}
@@ -753,7 +766,13 @@ Return JSON:
       "currency": "${currency}",
       "period_type": "Per Year|Per Term|Total"
     }
-  ]
+  ],
+  "application_fee": {
+    "description": "the page's own wording for the application fee, verbatim — who pays it, whether it is refundable. null if the page states nothing beyond the amount",
+    "amount": 0,
+    "currency": "${currency}",
+    "student_type": "domestic|international|both"
+  }
 }`;
 }
 
@@ -784,7 +803,10 @@ export function courseDataPrompt(
     "period_type": "Per Year|Per Semester|Per Trimester|Total|Per Unit",
     "total_amount": 0
   }]
-}`,
+}
+
+Rules:
+${FEE_SCOPE_RULE}`,
     intakes: `{
   "intakes": [{ "intake_name": "e.g. Semester 1 2027", "start_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "end_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "orientation_date": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "intake_month": "1-12, the month this intake starts — derive it from the intake name or start date when the page doesn't state it separately", "intake_year": "4-digit year this intake starts — derive it from the intake name (\\"Semester 1 2027\\" -> 2027) or start date", "admission_deadline": "YYYY-MM-DD when the page states a day, or YYYY-MM when it states only a month — never invent a day. null if unstated", "custom_dates": "[] or [{\"name\": \"the page's own label\", \"date\": \"YYYY-MM-DD or YYYY-MM\"}] for any OTHER dated milestone — never duplicate the four fields above" }]
 }`,

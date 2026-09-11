@@ -20,7 +20,6 @@ import {
   Play,
   RotateCw,
   Trash2,
-  UserRound,
   Users,
   XCircle,
 } from "lucide-react";
@@ -42,6 +41,7 @@ import {
 import { ACTIVE_STATUSES, FINISHED_STATUSES, PAUSABLE_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { ExtractionStatusBadge, NeedsAttentionBadge } from "./status-badge";
 import { useRerunJob } from "./rerun-extraction-button";
+import { RowActors } from "./row-actors";
 import { PipelineProgressPanel } from "./pipeline-progress-panel";
 import type { ExtractionJob, PipelineProgress } from "../apis/types";
 
@@ -154,12 +154,10 @@ export function ExtractionJobRow({
                 <Calendar className="h-3.5 w-3.5" />
                 {new Date(job.created_at).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}
               </span>
-              {(job.created_by_name || job.created_by_email) && (
-                <span className="flex items-center gap-1 shrink-0" title={job.created_by_email ?? undefined}>
-                  <UserRound className="h-3.5 w-3.5" />
-                  {job.created_by_name || job.created_by_email}
-                </span>
-              )}
+              {/* Both actors, same wording as the job header and every sub-tab card — this row
+                  used to print the creator's bare name with a user icon, so the last admin to
+                  act on the job was invisible here and the one name shown was unlabelled. */}
+              <RowActors row={job} className="text-sm" />
             </div>
 
             {(job.courses_extracted > 0 || Boolean(job.agent_count) || Boolean(job.campus_count)) && (

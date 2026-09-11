@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { geoApi } from "@/app/geo/apis";
 import { Textarea } from "@/components/ui/textarea";
-import { CURRENCY_OPTIONS, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "../const";
+import { CURRENCY_OPTIONS, ENABLED_FEE_TYPES, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "../const";
 import { buildFeePayloads, emptyFeeInstallment, feeInstallmentsFromFee } from "../utils";
 import { CourseLinkPicker } from "./course-link-picker";
 import { FeeInstallmentsEditor } from "./fee-installments-editor";
@@ -52,9 +52,17 @@ export function FeeForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    // A fee being edited keeps whatever type its lines already carry, even a disabled one —
+    // dropping it from the options would blank that line and save the fee back without it.
+    const inUse = feeInstallmentsFromFee(fee).flatMap((i) => i.lines.map((l) => l.fee_type));
     categoriesApi.getFeeTypes({ limit: 100 })
-      .then((res) => setFeeTypes(res.data.map((f) => ({ value: f.name, label: f.name }))))
+      .then((res) => setFeeTypes(
+        res.data
+          .filter((f) => ENABLED_FEE_TYPES.includes(f.name) || inUse.includes(f.name))
+          .map((f) => ({ value: f.name, label: f.name })),
+      ))
       .catch(() => setFeeTypes([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the fee's own types, read once on mount
   }, []);
 
   // Currencies come from the countries table — CURRENCY_OPTIONS is only the offline fallback.

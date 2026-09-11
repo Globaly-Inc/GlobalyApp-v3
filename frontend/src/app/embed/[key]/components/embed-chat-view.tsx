@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
+import { Expand } from "lucide-react";
 import { ChatInput } from "@/app/ai/components/chat-input";
 import { ChatMessage, StreamingMessage } from "@/app/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/ai/components/thinking-indicator";
+import { SuggestedStarters } from "@/app/ai/components/suggested-starters";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
+import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CourseCard, Message } from "@/app/ai/apis/types";
 import { embedApi, type EmbedPublicConfig } from "../apis";
 import { toMessage } from "../utils";
+import { embedStarters } from "../const";
 import { uuid } from "@/lib/utils";
 
 const FINGERPRINT_KEY = "globaly_embed_fp";
@@ -86,6 +90,10 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   const [signupDismissed, setSignupDismissed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fetchedRef = useRef(false);
+  // The expand affordance only makes sense inside the host's iframe — on the full tab it
+  // would just reopen the page it is already on. Read after hydration (server snapshot
+  // false) so prerender and client agree; nothing to subscribe to, the value never changes.
+  const framed = useSyncExternalStore(() => () => {}, () => window.self !== window.top, () => false);
 
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -155,45 +163,74 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   const name = config?.display_name ?? "AI Counsellor";
   const hasFirstAiResponse = messages.some((m) => m.role === "assistant");
   const showSignupCard = hasFirstAiResponse && !signupDismissed && !sending;
+  const isChatting = messages.length > 0 || sending;
 
   return (
     <div className="flex h-dvh flex-col bg-background">
+      {/* Same shape as the in-app Ask Aly popover header: identity on the left, expand on
+          the right. The brand colour stays a hairline accent so the header keeps reading
+          as the counsellor's, not as a coloured banner. */}
       <header
-        className="flex items-center gap-3 border-b px-4 py-3"
+        className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5"
         style={config?.brand_color ? { borderTopColor: config.brand_color, borderTopWidth: 3 } : undefined}
       >
-        {config?.logo_url && (
-          <Image src={config.logo_url} alt={name} width={28} height={28} className="rounded" unoptimized />
+        {config?.logo_url ? (
+          <Image src={config.logo_url} alt={name} width={28} height={28} className="size-7 rounded" unoptimized />
+        ) : (
+          <AlyOrbIcon className="size-7" />
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{name}</p>
-          <p className="text-xs text-muted-foreground">AI counsellor · powered by Globaly</p>
+          <p className="truncate text-xs text-muted-foreground">AI counsellor · powered by Globaly</p>
         </div>
+        {framed && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Open in a new tab"
+            title="Open in a new tab"
+            render={<a href={`/embed/${encodeURIComponent(embedKey)}`} target="_blank" rel="noreferrer" />}
+          >
+            <Expand className="h-4 w-4" />
+          </Button>
+        )}
       </header>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && !sending && (
-          <p className="pt-10 text-center text-sm text-muted-foreground">
-            Ask me anything about {name}&apos;s courses and services.
-          </p>
-        )}
-        {messages.map((m) => (
-          <ChatMessage key={m.id} message={m} onChipClick={send} />
-        ))}
-        {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
-        {sending && streamText && (
-          <StreamingMessage content={streamText} cards={streamCards} chips={streamChips} onChipClick={send} />
-        )}
-        {showSignupCard && (
-          <GuestRegistrationCard fingerprint={getFingerprint()} onDismiss={() => setSignupDismissed(true)} />
-        )}
-        {error && <p className="text-center text-sm text-destructive">{error}</p>}
-        <div ref={bottomRef} />
-      </div>
+      {isChatting ? (
+        <div className="flex-1 overflow-y-auto">
+          {/* Mirrors ChatMessages: one centred column, generous turn spacing. In the 380px
+              panel the max-width is inert; in the expanded tab it stops the thread from
+              running the full screen width. */}
+          <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
+            {messages.map((m) => (
+              <ChatMessage key={m.id} message={m} onChipClick={send} />
+            ))}
+            {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
+            {sending && streamText && (
+              <StreamingMessage content={streamText} cards={streamCards} chips={streamChips} onChipClick={send} />
+            )}
+            {showSignupCard && (
+              <GuestRegistrationCard fingerprint={getFingerprint()} onDismiss={() => setSignupDismissed(true)} />
+            )}
+            <div ref={bottomRef} className="h-2" />
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <SuggestedStarters
+            onSelect={send}
+            // Empty until the config lands: rendering the business set first and swapping it
+            // for the institution's a moment later is a visible flip of the whole hero.
+            categories={config ? embedStarters(config.owner_kind ?? "business") : []}
+          />
+        </div>
+      )}
 
-      <div className="border-t px-4 py-3">
-        <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
-      </div>
+      {error && (
+        <p className="border-t bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">{error}</p>
+      )}
+
+      <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
       <CompareTray />
     </div>
   );

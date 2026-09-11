@@ -32,6 +32,7 @@
     "test:scraper-cascade": "node --import tsx tests/scraper-cascade.ts",
     "test:eligibility-extraction": "node --import tsx tests/eligibility-extraction.ts",
     "test:partial-date": "node --import tsx tests/partial-date.ts",
+    "test:fee-scope": "node --import tsx tests/fee-scope.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",
     "test:embeddings": "node --import tsx tests/embeddings.ts",
     "test:manual-institution-job": "node --import tsx tests/manual-institution-job.ts",
