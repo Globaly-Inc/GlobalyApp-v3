@@ -205,6 +205,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
       return;
     }
     toast.success(successMessage);
+    dispatch(fetchAllExtractions(fetchParams));
   };
 
   const handlePublish = async (id: string) => {

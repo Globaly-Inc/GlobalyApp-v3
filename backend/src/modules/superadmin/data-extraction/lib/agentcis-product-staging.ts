@@ -5,9 +5,15 @@
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
-import { coerceLabel, mapDegreeLevel } from "./agentcis-mappers.js";
-import { extractIntakes, extractStudyOptions, extractEligibility } from "./agentcis-product-mappers.js";
-import { normaliseCurrency, upsertEligibility, upsertFee, upsertIntake } from "./staging-writer.js";
+import { coerceLabel } from "./agentcis-mappers.js";
+import {
+  extractIntakes, extractStudyOptions, extractEligibility,
+  extractCourseTaxonomy, extractEnglishTestScores, extractCourseDuration,
+} from "./agentcis-product-mappers.js";
+import {
+  normaliseCurrency, upsertEligibility, upsertEnglishRequirement, upsertFee, upsertIntake,
+  resolveCourseLookups, durationToWeeks, coerceInt,
+} from "./staging-writer.js";
 
 export interface StagingCounters {
   branches_extracted: number;
@@ -36,18 +42,31 @@ export async function stageProduct(
   campusIds: string[],
   counters: StagingCounters,
 ): Promise<void> {
-  const dLevel = mapDegreeLevel(p.degree_level || p.qualification_type);
   const sourceUrl = (p.url as string) || (p.product_url as string) || website;
+
+  const taxonomy = extractCourseTaxonomy(p);
+  const link = await resolveCourseLookups({
+    name: cName,
+    degree_level: taxonomy.degreeLevelName,
+    subject_area: taxonomy.subjectName,
+    area_of_study: taxonomy.areaName,
+  });
+
+  const duration = extractCourseDuration(p);
+  const durationWeeks = durationToWeeks(duration.value, duration.unit);
 
   const [course] = await masterKnex(`${S}.extraction_courses`)
     .insert({
       job_id: jobId,
       name: cName,
       short_name: (p.short_name as string) || null,
-      degree_level: dLevel,
-      subject_area: (p.subject_area as string) || (p.field_of_study as string) || null,
+      degree_level: link.degree_level,
+      degree_level_code: link.degree_level_code,
+      subject_area: taxonomy.subjectName,
+      subject_area_code: link.subject_area_code,
       description: (p.description as string) || null,
       awarding_institution: (p.awarding_institution as string) || institutionName,
+      duration_weeks: durationWeeks,
       source_url: sourceUrl,
       verification_status: "pending",
     })
@@ -81,22 +100,26 @@ export async function stageProduct(
   // Fees — through the same upsert the extraction pipeline uses, so one identical fee across two
   // products is ONE row with two assignment rows, not two copies (CLAUDE.md (h): shared write
   // behaviour lives in staging-writer, never reimplemented per writer).
-  const rawFees = (p.fees ?? p.fee_items ?? p.fee ?? []) as unknown[];
-  const feeArr = Array.isArray(rawFees) ? rawFees : rawFees ? [rawFees] : [];
-  for (const fg of feeArr) {
-    if (!fg || typeof fg !== "object") continue;
-    const feeObj = fg as Record<string, unknown>;
-    const amount = Number(feeObj.amount ?? feeObj.fee_amount ?? feeObj.total ?? feeObj.value ?? 0);
-    if (!amount) continue;
+
+  const feeGroup = p.fees as Record<string, unknown> | undefined;
+  const feeItems = (feeGroup?.fee_items ?? []) as unknown[];
+  const periodType = coerceLabel((feeGroup?.feeTerms as Record<string, unknown> | undefined)?.name) || "Total";
+  for (const fi of feeItems) {
+    if (!fi || typeof fi !== "object") continue;
+    const item = fi as Record<string, unknown>;
+    const amount = Number(item.amount ?? 0) || 0;
+    const instalments = Number(item.instalment ?? 1) || 1;
+    const total = Math.round(amount * instalments);
+    if (!total) continue;
 
     const feeId = await upsertFee(jobId, {
-      name: coerceLabel(feeObj.name || feeObj.fee_type || feeObj.type),
-      student_type: String(feeObj.student_type ?? feeObj.applicable_to ?? "international").toLowerCase(),
-      period_type: coerceLabel(feeObj.period_type || feeObj.period) || "Total",
-      // AgentCIS states no currency on most fee rows; the feed is AUD-denominated, and the
+      name: coerceLabel((item.fee_type as Record<string, unknown> | undefined)?.name) || "Tuition Fee",
+      student_type: "international",
+      period_type: periodType,
+      // AgentCIS states no currency on the fee itself; the feed is AUD-denominated, and the
       // resolved code is part of upsertFee's dedup key, so it is settled before the call.
-      currency: (await normaliseCurrency(String(feeObj.currency ?? p.currency ?? ""), jobId)) ?? "AUD",
-      total_amount: Math.round(amount),
+      currency: (await normaliseCurrency(coerceLabel(feeGroup?.currency ?? p.currency), jobId)) ?? "AUD",
+      total_amount: total,
     });
 
     await masterKnex(`${S}.extraction_course_fee_assignments`)
@@ -125,7 +148,7 @@ export async function stageProduct(
         job_id: jobId,
         study_mode: opt.study_mode,
         study_load: opt.study_load,
-        duration_value: opt.duration_value,
+        duration_value: coerceInt(opt.duration_value),
         duration_unit: opt.duration_unit,
       })
       .returning("id");
@@ -140,15 +163,22 @@ export async function stageProduct(
   // products demanding DIFFERENT thresholds on separate rows rather than the name alone.
   const elig = extractEligibility(p);
   if (elig) {
-    const fields = {
+    const isPercentage = elig.score_type === "percentage";
+    const eligForMatch = {
       name: "Entry Requirements",
       applicable_to: "international",
       min_degree_level: elig.min_degree_level,
-      min_score_percent: elig.min_score_percent,
-      description: elig.description,
+      min_score_percent: isPercentage ? elig.score_value : null,
+      min_score: isPercentage ? null : elig.score_value,
+      score_type: elig.score_type,
+      academic_tests: elig.academic_tests,
+    };
+    const fields = {
+      ...eligForMatch,
+      academic_tests: JSON.stringify(elig.academic_tests),
       source_url: sourceUrl,
     };
-    const eligId = await upsertEligibility(jobId, fields, fields);
+    const eligId = await upsertEligibility(jobId, eligForMatch, fields);
     await masterKnex(`${S}.extraction_course_eligibility_assignments`)
       .insert({
         job_id: jobId,
@@ -156,6 +186,9 @@ export async function stageProduct(
         eligibility_requirement_id: eligId,
       })
       .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
+  }
+  for (const eng of extractEnglishTestScores(p.english_test_score)) {
+    await upsertEnglishRequirement(jobId, courseId, eng, sourceUrl);
   }
 
   counters.courses_extracted++;
