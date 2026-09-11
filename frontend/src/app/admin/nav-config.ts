@@ -59,9 +59,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: "Platform",
     roles: GENERAL_ADMIN,
     items: [
-      { icon: Building2, label: "Businesses", href: "/admin/platform/businesses" },
+      { icon: Building2, label: "Businesses", href: "/admin/platform/businesses", roles: ADMIN_ROLES },
       { icon: Users, label: "Users", href: "/admin/platform/users" },
-      { icon: Layers, label: "Categories", href: "/admin/platform/categories" },
+      { icon: Layers, label: "Categories", href: "/admin/platform/categories", roles: ADMIN_ROLES },
       { icon: Globe, label: "Countries", href: "/admin/platform/countries", roles: ADMIN_ROLES },
       // { icon: Settings, label: "Feature flags", href: "/admin/platform/feature-flags" },
     ],

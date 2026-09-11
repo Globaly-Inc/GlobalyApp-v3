@@ -4,7 +4,7 @@ import { useTypingEffect } from "../hooks/use-typing-effect";
 import { HeroSection } from "./components/hero-section";
 import { WhyAgentsJoinSection } from "./components/why-agents-join-section";
 import { QualifiedLeadsSection } from "./components/qualified-leads-section";
-import { CoinsBannerSection } from "./components/coins-banner-section";
+import { CreditsBannerSection } from "./components/credits-banner-section";
 import { PartnershipsSection } from "./components/partnerships-section";
 import { HowItWorksSection } from "./components/how-it-works-section";
 import { LatestBlogSection } from "../components/latest-blog-section";
@@ -27,7 +27,7 @@ export default function ForAgentsPage() {
       <HeroSection displayText={displayText} showCursor={showCursor} />
       <WhyAgentsJoinSection />
       <QualifiedLeadsSection />
-      <CoinsBannerSection />
+      <CreditsBannerSection />
       <PartnershipsSection />
       <HowItWorksSection />
       <LatestBlogSection subtitle="Expert insights on international education and agent success." />

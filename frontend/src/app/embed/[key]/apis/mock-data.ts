@@ -1,12 +1,31 @@
-import type { EmbedChatEvent, EmbedPublicConfig, GuestMessageRequest } from "./types";
+import type {
+  EmbedChatEvent, EmbedPublicConfig, EmbedThread, GuestMessageRequest, WireCourseCard,
+} from "./types";
+import type { CourseCard } from "@/app/ai/apis/types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const embedMockApi = {
+  getThread: async (key: string, fingerprint: string): Promise<EmbedThread> => {
+    console.log("[mock] GET /guest/session", key, fingerprint);
+    await delay(200);
+    // A returning visitor mid-thread — the case the empty-panel bug hid.
+    return {
+      session_id: 1,
+      messages: [
+        { id: 1, role: "user", content: "Do you offer data science?", cards: [], chips: [], created_at: new Date().toISOString() },
+        { id: 2, role: "assistant", content: "Yes — we run a Master of Data Science.", cards: [], chips: [], created_at: new Date().toISOString() },
+      ],
+    };
+  },
+
+  toCourseCards: (cards: WireCourseCard[]): CourseCard[] =>
+    cards.map((c) => ({ ...c, course_name: c.name ?? "", institution_name: c.institution ?? "" }) as unknown as CourseCard),
+
   resolveConfig: async (key: string): Promise<EmbedPublicConfig> => {
     console.log("[mock] GET /embed/resolve", key);
     await delay(300);
-    return { display_name: "Acme University", logo_url: null, brand_color: "#4f46e5" };
+    return { display_name: "Acme University", logo_url: null, brand_color: "#4f46e5", owner_kind: "institution" };
   },
 
   sendMessage: async (

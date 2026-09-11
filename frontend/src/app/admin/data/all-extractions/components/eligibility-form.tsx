@@ -12,8 +12,9 @@ import { Label } from "@/components/ui/label";
 import { LookupCombobox } from "@/components/lookup-combobox";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ACADEMIC_TEST_OPTIONS, APPLICABLE_TO_OPTIONS, ENGLISH_SUBSCORES, ENGLISH_TEST_OPTIONS, SCORE_TYPE_OPTIONS,
+  APPLICABLE_TO_OPTIONS, ENGLISH_SUBSCORES, ENGLISH_TEST_OPTIONS, SCORE_TYPE_OPTIONS,
 } from "../const";
+import { EligibilityAcademicTests } from "./eligibility-academic-tests";
 import type { AcademicTest, EligibilityParams, EligibilityRequirement, LanguageTest } from "../apis/types";
 
 const ANY_DEGREE = "__any__";
@@ -62,8 +63,6 @@ export function EligibilityForm({
   const patchLanguage = (index: number, patch: Partial<LanguageTest>) =>
     setLanguageTests((list) => list.map((t, i) => (i === index ? { ...t, ...patch } : t)));
 
-  const patchAcademic = (index: number, patch: Partial<AcademicTest>) =>
-    setAcademicTests((list) => list.map((t, i) => (i === index ? { ...t, ...patch } : t)));
 
   const handleSave = () => {
     const result = eligibilitySchema.safeParse({
@@ -241,7 +240,7 @@ export function EligibilityForm({
                 {ENGLISH_SUBSCORES.map(({ key, label }) => (
                   <Input
                     key={key}
-                    value={(test as any)[key] ?? ""}
+                    value={test[key] ?? ""}
                     onChange={(e) => patchLanguage(index, { [key]: e.target.value })}
                     placeholder={label}
                     className="h-8 text-xs"
@@ -253,49 +252,7 @@ export function EligibilityForm({
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <div className="flex items-center justify-between">
-            <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-              <GraduationCap className="h-4 w-4 text-primary" /> Academic Tests
-            </h4>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs cursor-pointer"
-              onClick={() => setAcademicTests((list) => [...list, { test_name: "SAT", score: "1200" }])}
-            >
-              <Plus className="mr-1 h-3 w-3" /> Add Test
-            </Button>
-          </div>
-          {academicTests.map((test, index) => (
-            <div key={index} className="flex items-center gap-3">
-              <div className="w-48">
-                <Combobox
-                  options={ACADEMIC_TEST_OPTIONS}
-                  value={test.test_name ?? ""}
-                  onChange={(v) => patchAcademic(index, { test_name: v })}
-                  placeholder="Select test"
-                  creatable
-                />
-              </div>
-              <Input
-                value={test.score ?? ""}
-                onChange={(e) => patchAcademic(index, { score: e.target.value })}
-                placeholder="Min score"
-                className="h-10 w-40"
-              />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 cursor-pointer"
-                title="Remove test"
-                onClick={() => setAcademicTests((list) => list.filter((_, i) => i !== index))}
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ))}
-        </div>
+        <EligibilityAcademicTests tests={academicTests} onChange={setAcademicTests} />
 
       </CardContent>
       <CardFooter className="justify-end gap-2">

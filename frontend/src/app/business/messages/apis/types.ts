@@ -7,7 +7,7 @@
 // the neutral `counterpart_name`/`counterpart_avatar`, and the two mappers below are that
 // translation, applied once at the api boundary.
 
-import type { ChatThread, EnquiryMessage, StarredMessage } from "@/components/chat/types";
+import type { ChatThread, EnquiryMessage, StarredMessage, ThreadRole } from "@/components/chat/types";
 
 export type {
   ChatThread,
@@ -73,35 +73,15 @@ export const toStarredMessage = (m: BusinessStarredWire): StarredMessage => ({
 
 // ── Thread membership (the Space roster) ──
 
-export type ThreadRole = "admin" | "member";
-
-export type ThreadMember = {
-  platform_user_id: number;
-  role: ThreadRole;
-  /** 'auto' = the owner or the agent who unlocked. Structural, so not removable. */
-  source: "auto" | "manual";
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  photo_url: string | null;
-  created_at: string;
-};
-
-export type ThreadMembersResult = {
-  /** The caller's own role, so the UI need not find itself in the list. */
-  my_role: ThreadRole;
-  /** Which row in `members` is the caller — the roster offers Leave there and manage elsewhere. */
-  my_user_id: number;
-  can_manage: boolean;
-  /** False while an open thread still needs them — the last member, or the last admin. */
-  can_leave: boolean;
-  /**
-   * Null when they can leave. Otherwise the exact sentence the leave endpoint would throw, so the
-   * panel never has to reason about the rules itself and cannot contradict the server.
-   */
-  leave_blocked_reason: string | null;
-  members: ThreadMember[];
-};
+// The roster types live in @/components/chat/types — ThreadMembersSection is shared with the
+// personal portal, so a type owned by one feature's apis/ folder would make the other import
+// across features. Re-exported so this module's own consumers still find them here.
+export type {
+  ThreadRole,
+  ThreadMember,
+  ThreadMembersResult,
+  ThreadMembersApi,
+} from "@/components/chat/types";
 
 export type MemberCandidate = {
   platform_user_id: number;

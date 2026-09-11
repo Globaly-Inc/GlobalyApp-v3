@@ -46,10 +46,10 @@ export async function listMaraAgentsByJob(jobId: string) {
   return masterKnex(`${S}.extraction_mara_agents`).where({ job_id: jobId }).orderBy("created_at", "asc");
 }
 
-export async function updateAgent(id: string, data: Record<string, unknown>) {
+export async function updateAgent(id: string, data: Record<string, unknown>, adminId: number) {
   const count = await masterKnex(`${S}.extraction_agents`)
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
   return count > 0;
 }
 
@@ -76,10 +76,10 @@ export async function countCampusesByJob(jobId: string, filters: CampusListFilte
   return Number(row.count);
 }
 
-export async function updateCampus(id: string, data: Record<string, unknown>) {
+export async function updateCampus(id: string, data: Record<string, unknown>, adminId: number) {
   const count = await masterKnex(`${S}.extraction_campuses`)
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
   return count > 0;
 }
 

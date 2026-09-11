@@ -107,7 +107,14 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     });
 
     // Write institution overview + site intelligence
-    await writeInstitutionOverview(jobId, { ...analysis.institution, source_url: job.institution_url } as any);
+    // The prompt's response key is `other_social_urls` (readable in the JSON schema); the DB
+    // column is `other_social_links` — rename here rather than in the prompt/schema.
+    const { other_social_urls, ...institutionRest } = analysis.institution as Record<string, unknown>;
+    await writeInstitutionOverview(jobId, {
+      ...institutionRest,
+      ...(Array.isArray(other_social_urls) && other_social_urls.length ? { other_social_links: other_social_urls } : {}),
+      source_url: job.institution_url,
+    } as any);
     await writeSiteIntelligence(jobId, analysis.site_intelligence as any);
 
     await writeJobEvent(jobId, "site_analyzed", {
@@ -115,6 +122,24 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       message: "Site analysis complete",
       data: { patterns: analysis.course_page_patterns },
     });
+
+    // ponytail: the "institution" step (extraction-step.worker.ts) does a much better job of this
+    // same overview than the homepage-only analysis above — it also scrapes guided_urls.contact_urls
+    // (or discovers/guesses a contact page), and non-destructively merges into what's already there.
+    // Previously only ran when an admin manually clicked "Re-run" on the Institution tab, so email/
+    // phone/address came back null on every fresh job. Auto-dispatch it right after site analysis
+    // instead of duplicating its contact-page logic here.
+    //
+    // "branches" is dispatched by handleInstitutionStep itself once it finishes (not here,
+    // alongside "institution") — the branches step falls back to the institution's own phone/
+    // email whenever a campus doesn't have its own, and firing both steps at once raced that
+    // fallback against the institution step's own writes: branches often finishes faster (fewer
+    // pages/LLM calls), reads institution overview before institution step has written email/
+    // phone, finds it still empty, and silently has nothing to fall back to. Chaining instead of
+    // firing in parallel guarantees the institution row is actually complete first.
+    if (!job.source_type || job.source_type === "institution") {
+      await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "institution" });
+    }
 
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "processing", data_extraction: "waiting", verification: "waiting" }),
@@ -220,19 +245,43 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     });
 
     // ── Phase 3: Queue each page for extraction ──
+    let queued = 0;
     for (const url of courseUrls) {
       const queueItemId = await insertQueueItem(jobId, url);
       if (!queueItemId) continue; // already queued (e.g. duplicate JOBS message) — its owner dispatches it
       await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
+      queued++;
     }
+
+    // Nothing published means nothing advances the job — a re-dispatch whose URLs are all
+    // already queued would otherwise sit in "processing" forever.
+    // Counts `processing` too: a duplicate job message arriving while pages are still in flight
+    // queues nothing and has no pending rows, and calling that idle retires the job to `review`
+    // before its pages finish — after which the normal completion path can no longer start
+    // verification, leaving it permanently `waiting`.
+    const live = await masterKnex(`${S}.extraction_queue`)
+      .where({ job_id: jobId }).whereIn("status", ["pending", "processing"]).count({ n: "*" }).first();
+    const idle = queued === 0 && Number(live?.n ?? 0) === 0;
 
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: courseUrls.length,
       pages_total: courseUrls.length,
-      pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "processing", verification: "waiting" }),
+      ...(idle ? { status: "review" } : {}),
+      pipeline_progress: JSON.stringify({
+        site_mapping: "done", course_discovery: "done",
+        data_extraction: idle ? "done" : "processing", verification: "waiting",
+      }),
       processing_heartbeat_at: masterKnex.fn.now(),
       updated_at: masterKnex.fn.now(),
     });
+
+    if (idle) {
+      await writeJobEvent(jobId, "discovery_found_nothing_new", {
+        level: "warn", phase: "course_discovery",
+        message: `Discovery found no pages that weren't already queued (${courseUrls.length} URLs, all known)`,
+        data: { method: discovery.method, urls: courseUrls.length },
+      });
+    }
 
     logger.info("Job discovery complete", { jobId, method: discovery.method, pages: courseUrls.length });
 

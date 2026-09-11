@@ -24,6 +24,7 @@ import type {
   JunctionSlug,
   LibraryAccreditation,
   LibraryAccreditationInput,
+  MissingDetailCandidate,
   Paginated,
   QueueItem,
   StudyOption,
@@ -35,7 +36,7 @@ import type {
   VisaService,
 } from "./types";
 
-import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type { ExtractionStatus, GetJobsParams, GetJobsResult } from "./types";
 
@@ -84,10 +85,6 @@ let mockJobs: ExtractionJob[] = [
   { id: "23", institution_name: "Queensland University of Technology (QUT)", institution_url: "https://qut.edu.au", status: "done", total_pages_found: 65, courses_extracted: 58, verification_score: 55, verification_total: 58, pages_scraped: 65, pages_failed: 0, agent_count: 2, created_at: "2026-06-10T09:00:00Z", updated_at: "2026-06-10T09:00:00Z" },
 ];
 
-function rawStatusesForLabel(label: string): ExtractionStatus[] {
-  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
-}
-
 export const allExtractionsMockApi = {
   getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
     console.log("[mock] GET /admin/data-extraction/jobs-filtered", params);
@@ -96,7 +93,7 @@ export const allExtractionsMockApi = {
     const baseStatuses = MODE_STATUS_FILTER[params.mode];
     const statuses =
       params.statusLabel && params.statusLabel !== "all"
-        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        ? statusesForFilterValue(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
         : baseStatuses;
 
     let filtered = statuses ? mockJobs.filter((j) => statuses.includes(j.status)) : [...mockJobs];
@@ -250,7 +247,7 @@ export const allExtractionsMockApi = {
       short_name: null,
       source_url: null,
       degree_level: i % 2 === 0 ? "bachelor" : "master",
-      subject_area: "General Studies",
+      subject_area: "General Studies", subject_area_code: null, degree_level_code: null,
       duration_weeks: 104,
       study_mode: "full-time",
       description: `Mock course ${i + 1} description`,
@@ -290,7 +287,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST course for job", jobId, params);
     await delay(300);
     const now = new Date().toISOString();
-    return { id: uuid(), name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: now, updated_at: now };
+    return { id: uuid(), name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, subject_area_code: null, degree_level_code: null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: now, updated_at: now };
   },
 
   updateCourse: async (id: string, params: UpdateCourseParams): Promise<void> => {
@@ -463,6 +460,28 @@ export const allExtractionsMockApi = {
     await delay(200);
   },
 
+  findMissingInstitutionDetails: async (jobId: string): Promise<{ fields: MissingDetailCandidate[] }> => {
+    console.log("[mock] POST find-missing-institution-details", jobId);
+    await delay(600);
+    return {
+      fields: [
+        { field: "email", label: "Email", value: "admissions@example.edu", source_url: "https://example.edu/contact" },
+        { field: "phone", label: "Phone", value: "+1 555 0100", source_url: "https://example.edu/contact" },
+      ],
+    };
+  },
+
+  findMissingCampusDetails: async (campusId: string): Promise<{ fields: MissingDetailCandidate[] }> => {
+    console.log("[mock] POST campus find-missing-details", campusId);
+    await delay(600);
+    return {
+      fields: [
+        { field: "postcode", label: "Postcode", value: "94305", source_url: null },
+        { field: "map_link", label: "Map link", value: "https://www.google.com/maps/search/?api=1&query=37.4275,-122.1697", source_url: null },
+      ],
+    };
+  },
+
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
     console.log("[mock] PATCH context", id, params);
     await delay(200);
@@ -518,8 +537,8 @@ export const allExtractionsMockApi = {
     await delay(250);
     const now = new Date().toISOString();
     const all: CourseFee[] = [
-      { id: "fee-1", name: "Standard Tuition", student_type: "domestic", period_type: "Per Year", currency: "CAD", total_amount: 12500, created_at: now },
-      { id: "fee-2", name: "International Tuition", student_type: "international", period_type: "Per Year", currency: "CAD", total_amount: 28000, created_at: now },
+      { id: "fee-1", name: "Standard Tuition", description: "Domestic tuition, 30 credits at CAD 416.67 per credit", student_type: "domestic", period_type: "Per Year", currency: "CAD", total_amount: 12500, created_at: now },
+      { id: "fee-2", name: "International Tuition", description: null, student_type: "international", period_type: "Per Year", currency: "CAD", total_amount: 28000, created_at: now },
     ];
     const filtered = params.search
       ? all.filter((f) => (f.name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
@@ -536,7 +555,8 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST course-fee", params);
     await delay(300);
     return {
-      id: uuid(), name: params.name ?? null, student_type: params.student_type ?? null,
+      id: uuid(), name: params.name ?? null, description: params.description ?? null,
+      student_type: params.student_type ?? null,
       period_type: params.period_type ?? null, currency: params.currency ?? null,
       total_amount: params.total_amount ?? null, installments: params.installments ?? [],
       save_for_reuse: params.save_for_reuse ?? false, created_at: new Date().toISOString(),
@@ -566,6 +586,10 @@ export const allExtractionsMockApi = {
       { id: "intake-1", intake_name: "Semester 1 2026", start_date: "2026-02-15", end_date: "2026-06-30", orientation_date: "2026-02-10", admission_deadline: "2026-01-15", intake_month: 2, intake_year: 2026, created_at: now },
       { id: "intake-2", intake_name: "Semester 2 2026", start_date: "2026-07-20", end_date: "2026-11-30", orientation_date: "2026-07-15", admission_deadline: "2026-06-20", intake_month: 7, intake_year: 2026, created_at: now },
       { id: "intake-3", intake_name: "Summer Intensive 2027", start_date: "2027-01-05", end_date: "2027-02-20", orientation_date: "2027-01-02", admission_deadline: "2026-12-01", intake_month: 1, intake_year: 2027, created_at: now },
+      // Month-precision throughout, which is what a calendar page stating "applications close in
+      // December 2026" actually gives. Kept in the mock so the Month selector and the
+      // "December 2026" rendering are exercised without a backend.
+      { id: "intake-4", intake_name: "Autumn 2026-2027", start_date: "2026-09", end_date: "2026-12", orientation_date: null, admission_deadline: "2026-12", intake_month: 9, intake_year: 2026, custom_dates: [{ name: "Scholarship Deadline", date: "2026-11" }, { name: "Exam Date", date: "2026-12-11" }], created_at: now },
     ];
     const filtered = params.search
       ? all.filter((i) => (i.intake_name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
@@ -585,7 +609,8 @@ export const allExtractionsMockApi = {
       id: uuid(), intake_name: params.intake_name ?? null, start_date: params.start_date ?? null,
       end_date: params.end_date ?? null, orientation_date: params.orientation_date ?? null,
       admission_deadline: params.admission_deadline ?? null, intake_month: params.intake_month ?? null,
-      intake_year: params.intake_year ?? null, created_at: new Date().toISOString(),
+      intake_year: params.intake_year ?? null, custom_dates: params.custom_dates ?? [],
+      created_at: new Date().toISOString(),
     };
   },
 
@@ -846,11 +871,13 @@ export const allExtractionsMockApi = {
             phone: "+1 555 0100",
             address: null,
             zip_code: null,
+            ownership_type: null,
             facebook_url: null,
             instagram_url: null,
             twitter_url: null,
             linkedin_url: null,
             youtube_url: null,
+            other_social_links: null,
             updated_at: now,
           }
         : null,

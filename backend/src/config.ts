@@ -26,6 +26,26 @@ const envSchema = z.object({
   API_URL: z.string().optional(),
   APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
+  /**
+   * Fastify `trustProxy` — decides what `req.ip` means, and `req.ip` is the only
+   * unforgeable client identity the rate limiter and the guest gate have.
+   *
+   * Defaults to `loopback` because the backend image ALWAYS runs nginx in front of Fastify
+   * in the same container (`Dockerfile`: `service nginx start && npm start`), proxying over
+   * localhost with `X-Forwarded-For $proxy_add_x_forwarded_for`. Trusting loopback means
+   * Fastify takes the rightmost address nginx appended — the real client — and ignores
+   * anything the caller prepended, so header rotation buys nothing.
+   *
+   * `loopback` rather than the hop count `1`: identical behind nginx, but strictly safer if
+   * Fastify is ever exposed directly, where `1` would trust the connecting client itself
+   * and hand its own `X-Forwarded-For` straight back.
+   *
+   * Add ranges if something else goes in FRONT of nginx: a CDN or ALB makes the client one
+   * hop further away, so `loopback,<cdn cidr>` is needed or `req.ip` becomes the CDN's
+   * address and every visitor shares one rate-limit bucket. Avoid `true` — it trusts the
+   * whole chain and returns the attacker-controlled leftmost value.
+   */
+  TRUST_PROXY: z.string().default("loopback"),
 
   // Third-party (optional at skeleton stage)
   DRAGONFLY_URL: z.string().optional(),
@@ -52,16 +72,15 @@ const envSchema = z.object({
   // LLM fallback — used when Gemini is unavailable (billing hold, rate limit exhausted, etc.)
   // Set either OPENROUTER_API_KEY or OPENAI_API_KEY; OpenRouter takes precedence if both are set.
   OPENROUTER_API_KEY: z.string().optional(),
-  OPENROUTER_MODEL: z.string().default("anthropic/claude-haiku-4.5"),
-  // Diagnostic kill-switch for the counsellor's tool loop (Phase 7). "false" reverts every
-  // turn to the pre-Phase-7 path (searchAll + plain streamChat) — the A/B for the
-  // one-turn-lag investigation. Remove once the lag's root cause is confirmed.
-  AI_COUNSELLOR_TOOLS: z
-    .string()
-    .default("true")
-    .transform((v) => v !== "false"),
+  // Non-Google on purpose: this is the fallback for Gemini outages, so it must not share Google's failure domain.
+  OPENROUTER_MODEL: z.string().default("openai/gpt-4.1-nano"),
   // text-embedding-004 is retired — it 404s on embedContent for current keys.
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
+  // Which provider embed() calls. Gemini's embedContent 403s on keys without the Generative
+  // Language API enabled, and embed() would then fall back per call — a wasted round trip each
+  // time, and vectors from two different spaces in the same column. Point this at "openrouter"
+  // to use the fallback key directly, and re-embed after switching either way.
+  EMBEDDING_PROVIDER: z.enum(["gemini", "openrouter"]).default("gemini"),
 
   // Scrapers
   SCRAPLING_BASE_URL: z.string().optional(),  // base URL of Scrapling's own MCP server (e.g. http://localhost:8123) — /mcp is appended by scraper.ts

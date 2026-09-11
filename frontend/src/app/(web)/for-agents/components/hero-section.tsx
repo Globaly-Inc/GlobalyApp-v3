@@ -8,14 +8,14 @@ export function HeroSection({
   showCursor,
 }: Readonly<{ displayText: string; showCursor: boolean }>) {
   return (
-    <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
+    <section className="hero-radiant relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
       <AutoplayVideo
         src={`${MEDIA_URL}/agents-hero.mp4`}
         poster={`${MEDIA_URL}/agents-hero-poster.webp`}
         className="absolute inset-0 w-full h-full object-cover scale-105"
         style={{ transformOrigin: "center" }}
       />
-      <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/80" />
+      <div className="hero-wash absolute inset-0" />
       <div className="container relative mx-auto px-4 py-16 md:py-20 z-10">
         <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
           <Badge className="mb-4 bg-[hsl(var(--gold))]/20 text-[hsl(var(--gold))] border-[hsl(var(--gold))]/30 text-xs font-semibold px-3 py-1 rounded-full">

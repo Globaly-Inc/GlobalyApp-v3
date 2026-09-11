@@ -54,14 +54,14 @@ export default function ForStudentsPage() {
   return (
     <>
       {/* ── 1. HERO ─────────────────────────────────────────────────────── */}
-      <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
+      <section className="hero-radiant relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
         <AutoplayVideo
           src={`${MEDIA_URL}/students-hero.mp4`}
           poster={`${MEDIA_URL}/students-hero-poster.webp`}
           className="absolute inset-0 w-full h-full object-cover scale-105"
           style={{ transformOrigin: "center" }}
         />
-        <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/80" />
+        <div className="hero-wash absolute inset-0" />
         <div className="relative container mx-auto px-4 py-16 md:py-20 z-10">
           <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
             <Badge className="mb-3 bg-[hsl(var(--gold))]/20 text-[hsl(var(--gold))] border-[hsl(var(--gold))]/40 text-xs font-semibold px-3 py-1 rounded-full">
@@ -96,9 +96,9 @@ export default function ForStudentsPage() {
 
         <div className="container relative mx-auto px-4 text-center z-10">
           <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">Your Global Future Begins Today.</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">Your Education Journey Begins Today.</h2>
             <p className="text-white/70 text-lg mb-10 max-w-2xl mx-auto">
-              Join thousands of students who have already found their perfect education path with Globaly.app. Start
+              Join thousands of students who have already found their perfect education path with Globalyapp. Start
               your journey for free.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

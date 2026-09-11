@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type UIEvent } from "react";
 import { Check, ChevronsUpDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,10 @@ export function Combobox({
   disabled = false,
   creatable = false,
   onQueryChange,
+  onLoadMore,
+  hasMore = false,
+  loadingMore = false,
+  multiple = false,
   id,
   className,
   contentClassName,
@@ -46,6 +50,10 @@ export function Combobox({
   disabled?: boolean;
   creatable?: boolean;
   onQueryChange?: (query: string) => void;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  multiple?: boolean;
   id?: string;
   className?: string;
   contentClassName?: string;
@@ -76,14 +84,24 @@ export function Combobox({
 
   function select(option: ComboboxOption) {
     onChange(option.value);
-    setOpen(false);
     setQuery("");
+    setActiveIndex(0);
+    if (multiple) inputRef.current?.focus({ preventScroll: true });
+    else setOpen(false);
   }
 
   function createFromQuery() {
     onChange(trimmedQuery);
-    setOpen(false);
     setQuery("");
+    setActiveIndex(0);
+    if (multiple) inputRef.current?.focus({ preventScroll: true });
+    else setOpen(false);
+  }
+
+  function onOptionsScroll(e: UIEvent<HTMLDivElement>) {
+    if (!onLoadMore || !hasMore || loadingMore) return;
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) onLoadMore();
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -159,7 +177,7 @@ export function Combobox({
             className="h-8 border-none pl-8 shadow-none focus-visible:ring-0"
           />
         </div>
-        <div className="max-h-[250px] overflow-y-auto p-1">
+        <div className="max-h-[250px] overflow-y-auto p-1" onScroll={onOptionsScroll}>
           {filtered.length === 0 && !showCreateOption ? (
             <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
           ) : (
@@ -202,6 +220,7 @@ export function Combobox({
                   <span className="truncate">Use &quot;{trimmedQuery}&quot;</span>
                 </button>
               )}
+              {loadingMore && <p className="py-2 text-center text-xs text-muted-foreground">Loading more…</p>}
             </>
           )}
         </div>

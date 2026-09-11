@@ -24,6 +24,9 @@ export type CourseCard = {
   duration: string;
   annual_tuition_fee: number | null;
   currency: string;
+  /** How the fee is charged — "per year", "per semester", "per credit", "total". Absent on cards
+   * persisted before the backend started sending it; the card then shows no period at all. */
+  fee_period?: string | null;
   country: string;
   city: string | null;
   intakes: string[];
@@ -81,6 +84,7 @@ export type WireCourseCard = {
   duration?: string;
   fees?: number | null;
   currency?: string;
+  fee_period?: string | null;
   country?: string;
   city?: string | null;
   intakes?: string[];

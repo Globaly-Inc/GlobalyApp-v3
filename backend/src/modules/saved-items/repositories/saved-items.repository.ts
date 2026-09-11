@@ -37,15 +37,15 @@ export async function toggleItem(
   userId: number, type: SavedItemType, itemId: string, db: Knex = masterKnex,
 ): Promise<boolean> {
   const { rows } = await db.raw(
-    `insert into ${T} (platform_user_id, item_type, item_id)
+    `insert into ?? (platform_user_id, item_type, item_id)
      values (?, ?, ?)
      on conflict on constraint saved_items_user_item_uniq do update
-        set deleted_at = case when ${T}.deleted_at is null then now() else null end,
+        set deleted_at = case when ??.deleted_at is null then now() else null end,
             updated_at = now()
      returning deleted_at`,
-    [userId, type, itemId],
+    [T, userId, type, itemId, T],
   );
-  return (rows as { deleted_at: Date | null }[])[0]?.deleted_at == null;
+  return (rows as { deleted_at: Date | null }[])[0]?.deleted_at === null;
 }
 
 /**

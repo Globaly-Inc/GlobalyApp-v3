@@ -12,6 +12,8 @@ import { useCompareTray } from "../search/use-compare-tray";
 import { COMPARE_GROUPS } from "../search/compare-rows";
 import { getCourseBySlug } from "../search/api";
 import type { CourseDetail } from "../search/types";
+import { LOGO } from "@/lib/public-assets";
+import { amountLabel } from "@/lib/utils";
 
 export function ComparePageView({
   basePath = "/compare",
@@ -106,13 +108,17 @@ export function ComparePageView({
     el.scrollTo({ left: (currentIndex + dir * columnsPerPage) * step, behavior: "smooth" });
   };
 
+  // Only the portal's own compare route (/personal/explore/compare) requires a signed-in user —
+  // the public /compare route is a guest-facing feature, same as the search page it's reached from.
+  const requiresAuth = basePath.startsWith("/personal");
+
   useEffect(() => {
-    if (!initializing && !user) {
+    if (requiresAuth && !initializing && !user) {
       router.replace(`/auth/sign-in?redirect=${basePath}`);
     }
-  }, [initializing, user, router, basePath]);
+  }, [requiresAuth, initializing, user, router, basePath]);
 
-  if (!initializing && !user) return null;
+  if (requiresAuth && !initializing && !user) return null;
 
   if (items.length === 0) {
     return (
@@ -136,7 +142,7 @@ export function ComparePageView({
       <style>{"@media print { @page { size: landscape; margin: 0; } }"}</style>
       <div className="mb-6 hidden print:block">
         <div className="flex items-center justify-between">
-          <Image src="/globaly-logo.png" alt="Globaly.ai" width={753} height={157} className="h-8 w-auto" />
+          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" />
           <span className="text-xs text-muted-foreground">
             {new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
           </span>
@@ -215,8 +221,8 @@ export function ComparePageView({
                   )}
                   <p className="mt-1 text-center text-sm font-semibold text-foreground">
                     {item.annualTuition != null
-                      ? `${item.feeCurrency ?? "AUD"} ${item.annualTuition.toLocaleString()}`
-                      : "$0.00"}
+                      ? amountLabel(item.annualTuition, item.feeCurrency ?? "AUD")
+                      : "Fees on enquiry"}
                   </p>
                 </th>
               ))}

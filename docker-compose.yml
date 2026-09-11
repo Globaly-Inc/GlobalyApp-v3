@@ -356,6 +356,24 @@ services:
     networks:
       - globalyapp
 
+  extraction-course-bulk-delete-worker:
+    container_name: globalyapp-extraction-course-bulk-delete-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-course-bulk-delete"]
+    command: npm run job:extraction-course-bulk-delete
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   import-v2-worker:
     container_name: globalyapp-import-v2-worker
     image: globalyapp-backend:local
@@ -397,6 +415,24 @@ services:
     image: globalyapp-backend:local
     profiles: ["globalyapp-scholarship-bulk-delete"]
     command: npm run job:scholarship-bulk-delete
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  blog-generate-worker:
+    container_name: globalyapp-blog-generate-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-blog-generate"]
+    command: npm run job:blog-generate
     env_file:
       - ./backend/.env
     depends_on:

@@ -19,7 +19,17 @@ export type ExtractionStatus =
   | "stalled"
   | "paused";
 
-export type ExtractionJob = {
+/** Who hand-added and who last edited a row, resolved from the platform user ids the
+ *  backend stores. A null created_by_name means the pipeline scraped the row — nobody
+ *  typed it in. Present on every extraction row the admin UI can edit. */
+export type ActorFields = {
+  created_by_name?: string | null;
+  created_by_email?: string | null;
+  updated_by_name?: string | null;
+  updated_by_email?: string | null;
+};
+
+export type ExtractionJob = ActorFields & {
   id: string;
   institution_name: string | null;
   institution_url: string;
@@ -68,6 +78,8 @@ export type CreateJobParams = {
   guided_urls?: Record<string, string[]>;
   guidance_notes?: string;
   sample_course_url?: string;
+  /** Omitted means every level. */
+  degree_level_codes?: string[];
 };
 
 export type ExistingJobConflict = {
@@ -78,7 +90,7 @@ export type ExistingJobConflict = {
   phone: string | null;
 };
 
-export type InstitutionOverview = {
+export type InstitutionOverview = ActorFields & {
   id: string;
   name: string | null;
   website: string | null;
@@ -91,11 +103,16 @@ export type InstitutionOverview = {
   phone: string | null;
   address: string | null;
   zip_code: string | null;
+  /** "public" | "private" | null — ownership, not the educational category. */
+  ownership_type: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
   twitter_url: string | null;
   linkedin_url: string | null;
   youtube_url: string | null;
+  /** Social/profile links that don't fit a known platform column (TikTok, Threads, etc), each
+   * with a label — either LLM-guessed from the platform or set manually by an admin. */
+  other_social_links: { label: string; url: string }[] | null;
   updated_at?: string | null;
 };
 
@@ -125,9 +142,9 @@ export type GetJobsResult = { jobs: ExtractionJob[]; meta: JobsPageMeta };
 // recent timestamp of, on the Overview tab's "Extraction Details by Tab" cards.
 export type TimestampedRow = { updated_at?: string | null; created_at?: string | null };
 
-export type CampusRow = TimestampedRow & { id: string };
-export type AgentRow = TimestampedRow & { id: string };
-export type CourseRow = TimestampedRow & { id: string; name: string; verification_status?: string | null };
+export type CampusRow = ActorFields & TimestampedRow & { id: string };
+export type AgentRow = ActorFields & TimestampedRow & { id: string };
+export type CourseRow = ActorFields & TimestampedRow & { id: string; name: string; verification_status?: string | null };
 
 export type CourseAssignment = { id: string; course_id: string; course_name: string | null } & Record<string, string | null>;
 
@@ -183,13 +200,16 @@ export type JobFull = {
 
 // ── Full entity types for tab views ──────────────────────────────
 
-export type CourseFull = {
+export type CourseFull = ActorFields & {
   id: string;
   name: string;
   short_name?: string | null;
   source_url: string | null;
   degree_level: string | null;
   subject_area: string | null;
+  /** areas_of_study.slug — the actual link. subject_area above is free description. */
+  subject_area_code: string | null;
+  degree_level_code: string | null;
   duration_weeks: number | null;
   study_mode: string | null;
   description: string | null;
@@ -204,7 +224,7 @@ export type CourseFull = {
   updated_at: string;
 };
 
-export type CampusFull = {
+export type CampusFull = ActorFields & {
   id: string;
   name: string | null;
   address: string | null;
@@ -220,7 +240,7 @@ export type CampusFull = {
   updated_at: string;
 };
 
-export type AgentFull = {
+export type AgentFull = ActorFields & {
   id: string;
   name: string | null;
   country: string | null;
@@ -299,6 +319,15 @@ export type CreateCourseParams = {
   study_mode?: string | null;
   description?: string | null;
 };
+/** One result from the "Find Missing Details" lookup — a value found for a currently-empty
+ * extraction_institution_overview field, pending admin approval via save-and-learn. */
+export type MissingDetailCandidate = {
+  field: string;
+  label: string;
+  value: string;
+  source_url: string | null;
+};
+
 /** Tables the backend's save-and-learn endpoint accepts a patch for. */
 export type EditableTable =
   | "extraction_courses"
@@ -326,9 +355,11 @@ export type FeeInstallment = {
   lines?: { fee_type: string; amount: number }[];
 };
 
-export type CourseFee = {
+export type CourseFee = ActorFields & {
   id: string;
   name: string | null;
+  /** The source page's own fee wording — the label stays short, the detail lives here. */
+  description: string | null;
   student_type: string | null;
   period_type: string | null;
   currency: string | null;
@@ -341,34 +372,60 @@ export type CourseFee = {
 
 export type CourseFeeParams = {
   name?: string | null;
+  description?: string | null;
   student_type?: string;
   period_type?: string;
   currency?: string;
   total_amount?: number;
   installments?: FeeInstallment[];
   save_for_reuse?: boolean;
+  /** Courses to link on create. Junction write, not a column — never send it on a PATCH. */
+  course_ids?: string[];
 };
-export type Intake = {
+/**
+ * One row of an intake's `custom_dates` jsonb — a date this intake carries beyond the four fixed
+ * ones, named by the admin or extracted from a calendar page ("Exam Date", "Scholarship Deadline").
+ *
+ * `date` is a PARTIAL date: "2026-09-21" when the source gave a day, "2026-09" when it gave only a
+ * month. The precision is the value's own shape (see utils/datePrecisionOf) rather than a separate
+ * field, so the two can never disagree.
+ */
+export type IntakeCustomDate = {
+  name: string;
+  /** "YYYY-MM-DD" or "YYYY-MM" — never widened into a day the source didn't state. */
+  date: string;
+};
+
+export type Intake = ActorFields & {
   id: string;
   intake_name: string | null;
+  /**
+   * The four fixed dates, each a PARTIAL date: "2026-09-21" or "2026-09". A university that
+   * publishes "applications close in January 2027" has stated a month, and storing "2027-01-01"
+   * for it is a deadline nobody set — which a student can then miss by weeks.
+   */
   start_date: string | null;
   end_date: string | null;
   orientation_date: string | null;
   admission_deadline: string | null;
   intake_month: number | null;
   intake_year: number | null;
+  /** Optional on the wire: rows created before the column existed read back as `[]`. */
+  custom_dates?: IntakeCustomDate[] | null;
   created_at: string;
   updated_at?: string;
 };
 
 export type IntakeParams = {
   intake_name?: string;
+  /** Partial dates, as Intake above. */
   start_date?: string;
   end_date?: string;
   orientation_date?: string;
   admission_deadline?: string;
   intake_month?: number;
   intake_year?: number;
+  custom_dates?: IntakeCustomDate[];
 };
 /** One row of an eligibility requirement's language_tests / academic_tests jsonb. */
 export type LanguageTest = {
@@ -380,9 +437,16 @@ export type LanguageTest = {
   speaking_score?: string;
 };
 
-export type AcademicTest = { test_name: string; score: string };
+export type AcademicTest = {
+  test_name: string;
+  /** A stated minimum the applicant must clear. */
+  score: string;
+  /** What admitted students scored (average/median/percentile) — context, never a bar. */
+  typical_score?: string | null;
+  is_optional?: boolean;
+};
 
-export type EligibilityRequirement = {
+export type EligibilityRequirement = ActorFields & {
   id: string;
   name: string | null;
   applicable_to: string | null;
@@ -408,7 +472,7 @@ export type EligibilityParams = {
   language_tests?: LanguageTest[];
   academic_tests?: AcademicTest[];
 };
-export type StudyUnit = { id: string; unit_code: string | null; unit_name: string; credit_points: number | null; unit_type: string | null; description: string | null; created_at: string; updated_at?: string };
+export type StudyUnit = ActorFields & { id: string; unit_code: string | null; unit_name: string; credit_points: number | null; unit_type: string | null; description: string | null; created_at: string; updated_at?: string };
 
 export type StudyUnitParams = {
   unit_name?: string;
@@ -417,14 +481,14 @@ export type StudyUnitParams = {
   unit_type?: string | null;
   description?: string | null;
 };
-export type StudyOption = { id: string; name: string | null; study_mode: string | null; study_load: string | null; duration_value: number | null; duration_unit: string | null; applicable_to: string | null; save_for_reuse?: boolean; created_at: string; updated_at?: string };
+export type StudyOption = ActorFields & { id: string; name: string | null; study_mode: string | null; study_load: string | null; duration_value: number | null; duration_unit: string | null; applicable_to: string | null; save_for_reuse?: boolean; created_at: string; updated_at?: string };
 
 // ── Visa services (source_type: "visa_service") ──────────────────
 
 export type VisaServiceStatus = "pending" | "approved" | "discarded";
 
 /** One row of extraction_visa_services — flat table, no child/junction entities. */
-export type VisaService = {
+export type VisaService = ActorFields & {
   id: string;
   job_id: string;
   status: VisaServiceStatus | string;
@@ -477,7 +541,7 @@ export type StudyOptionParams = {
   applicable_to?: string | null;
   save_for_reuse?: boolean;
 };
-export type Accreditation = { id: string; name: string; issuing_organization: string | null; website: string | null; description: string | null; created_at: string; updated_at?: string };
+export type Accreditation = ActorFields & { id: string; name: string; issuing_organization: string | null; website: string | null; description: string | null; created_at: string; updated_at?: string };
 
 /** One junction row: which scraped accreditation is on which course, and its library mapping. */
 export type AccreditationAssignment = {

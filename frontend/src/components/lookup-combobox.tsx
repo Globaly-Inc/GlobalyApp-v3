@@ -5,11 +5,17 @@ import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import type { LookupKind } from "@/app/admin/platform/categories/apis/types";
 
-const SEARCH_LIMIT = 10;
+// Both lookups this drives are CLOSED lists — 14 areas of study, 11 degree levels — so the
+// first fetch has to return all of them. At 10 the tail of the list never arrived, and since
+// Combobox only renders a value it can find among its options, every course in an area sorting
+// past the tenth (Law, Personal Care and Fitness, Social Studies and Media, Travel and
+// Hospitality) showed the placeholder as though it had no subject area at all.
+const SEARCH_LIMIT = 50;
 const DEBOUNCE_MS = 300;
 
 export function LookupCombobox({
   kind,
+  by = "name",
   value,
   onChange,
   placeholder = "Select…",
@@ -18,6 +24,8 @@ export function LookupCombobox({
   className,
 }: Readonly<{
   kind: LookupKind;
+  /** What `value` holds. Slug for a column storing the link (subject_area_code); name otherwise. */
+  by?: "name" | "slug";
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -34,13 +42,13 @@ export function LookupCombobox({
     setLoading(true);
     try {
       const res = await categoriesApi.getLookups(kind, { search: query.trim() || undefined, limit: SEARCH_LIMIT });
-      setOptions(res.data.map((l) => ({ value: l.name, label: l.name })));
+      setOptions(res.data.map((l) => ({ value: by === "slug" ? l.slug : l.name, label: l.name })));
     } catch {
       setOptions([]);
     } finally {
       setLoading(false);
     }
-  }, [kind]);
+  }, [kind, by]);
 
   const search = useCallback((query: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

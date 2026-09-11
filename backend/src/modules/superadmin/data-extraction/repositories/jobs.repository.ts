@@ -16,7 +16,7 @@ export async function listJobs(opts: { status?: string; q?: string; limit: numbe
   const query = masterKnex(T)
     .select(`${T}.*`)
     .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
-    .orderBy("created_at", "desc")
+    .orderBy(`${T}.created_at`, "desc")
     .limit(opts.limit);
   if (opts.status) query.where("status", opts.status);
   if (opts.q) query.whereRaw(`coalesce(${T}.institution_name, ${OVERVIEW_NAME}) ilike ?`, [`%${opts.q}%`]);
@@ -88,7 +88,7 @@ export type JobFilterOpts = {
   statuses?: string[];
   excludeStatuses?: string[];
   sourceType?: string;
-  excludeSourceType?: string;
+  excludeSourceTypes?: string[];
   businessCategoryId?: number;
   q?: string;
 };
@@ -100,7 +100,12 @@ function filteredJobsQuery(opts: JobFilterOpts) {
   if (opts.statuses?.length) query.whereIn("status", opts.statuses);
   if (opts.excludeStatuses?.length) query.whereNotIn("status", opts.excludeStatuses);
   if (opts.sourceType) query.where("source_type", opts.sourceType);
-  if (opts.excludeSourceType) query.whereNot("source_type", opts.excludeSourceType);
+  // whereNotIn drops NULL source_type rows, and 'institution' is the column default that
+  // predates it being set explicitly — coalesce so an exclusion can't hide real jobs.
+  if (opts.excludeSourceTypes?.length) {
+    query.whereRaw(`coalesce(${T}.source_type, 'institution') not in (${opts.excludeSourceTypes.map(() => "?").join(",")})`,
+      opts.excludeSourceTypes);
+  }
   if (opts.businessCategoryId) query.where("business_category_id", opts.businessCategoryId);
   if (opts.q) query.whereRaw(`(${RESOLVED_NAME} ilike ? or ${T}.institution_url ilike ?)`, [`%${opts.q}%`, `%${opts.q}%`]);
   return query;
@@ -120,7 +125,7 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
 
   switch (opts.sort) {
     case "oldest":
-      query.orderBy("created_at", "asc");
+      query.orderBy(`${T}.created_at`, "asc");
       break;
     case "name_asc":
       query.orderByRaw(`${RESOLVED_NAME} asc nulls last`);
@@ -130,7 +135,7 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
       break;
     case "newest":
     default:
-      query.orderBy("created_at", "desc");
+      query.orderBy(`${T}.created_at`, "desc");
   }
 
   const jobs = await query;
@@ -219,10 +224,29 @@ export async function insertJob(data: Record<string, unknown>, db: Knex = master
   return row;
 }
 
-export async function updateJob(id: string, data: Record<string, unknown>) {
+/**
+ * Point a non-crawl job (a manual or self-registered listing's own job) at its real website.
+ * That URL is what the AI embed widget matches courses on, so a website supplied after
+ * signup has to reach the job or the widget silently scopes to nothing.
+ *
+ * Guarded on source_type: a crawled or AgentCIS job's institution_url is its provenance — the
+ * address the pipeline actually fetched — and must never be rewritten from a display field.
+ */
+export async function syncOwnedJobUrl(jobId: string, website: string) {
+  const url = website.includes("://") ? website : `https://${website}`;
+  return masterKnex(T)
+    .where({ id: jobId })
+    .whereIn("source_type", ["manual", "self_service"])
+    .update({ institution_url: url, updated_at: masterKnex.fn.now() });
+}
+
+// adminId is required for the same reason as the staged repos: every admin action on a job
+// records who took it. The workers don't call this — they write status/heartbeat/counters
+// through their own queries — so updated_by stays an admin trail, not worker noise.
+export async function updateJob(id: string, data: Record<string, unknown>, adminId: number) {
   const count = await masterKnex(T)
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
   return count > 0;
 }
 

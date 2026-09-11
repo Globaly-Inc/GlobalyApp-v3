@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 // import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
-import { useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
+import { fetchMe, useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile, updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { businessApi } from "@/app/business/apis";
 import type { BusinessProfilePatch } from "../apis/types";
@@ -70,6 +70,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   }, [initializing, authUser, isBusiness, isInstitution, router]);
 
   const switchedRef = useRef(false);
+  const refetchedMeRef = useRef(false);
   useEffect(() => {
     if (initializing || (!isBusiness && !isInstitution) || switchedRef.current) return;
     // Search both lists — user_category picks the primary role, so a dual-role user has
@@ -77,7 +78,18 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     const target =
       authUser?.businesses.find((b) => b.id === businessId) ??
       authUser?.institutions.find((i) => i.id === businessId);
-    if (!target) return;
+    if (!target) {
+      // This business/institution isn't in the session's cached membership list — most likely
+      // the user was granted access after login and /auth/me hasn't been refetched since. Try
+      // once before giving up, instead of leaving the page stuck on its loading spinner forever.
+      if (!refetchedMeRef.current) {
+        refetchedMeRef.current = true;
+        dispatch(fetchMe());
+      } else {
+        toast.error("Couldn't load this business", { description: "You may not have access to it, or your session is out of date." });
+      }
+      return;
+    }
     switchedRef.current = true;
     if (target.org_id === authUser?.orgId) {
       // Already in the right org context — BusinessShell has already fetched this profile.

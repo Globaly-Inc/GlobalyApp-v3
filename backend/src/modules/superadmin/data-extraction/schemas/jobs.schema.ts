@@ -19,6 +19,8 @@ export const CreateJobSchema = z.object({
   guided_urls: z.record(z.unknown()).optional(),
   guidance_notes: z.string().optional(),
   sample_course_url: z.string().url().optional(),
+  /** degree_levels slugs; omitted means every level. */
+  degree_level_codes: z.array(z.string()).optional(),
   supporting_documents: z.array(z.unknown()).optional(),
   pipeline_progress: z.record(z.unknown()).optional(),
 });

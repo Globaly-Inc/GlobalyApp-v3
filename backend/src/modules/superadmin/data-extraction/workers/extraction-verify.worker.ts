@@ -12,6 +12,8 @@ import { scrapeMarkdown } from "../lib/scraper.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import { verificationPrompt, VERIFICATION_SYSTEM } from "../lib/extraction-prompts.js";
+import { loadLookupLists, lookupListsHealth, categoryForServiceSlug } from "../lib/lookup-catalog.js";
+import { jobExcludedLevels } from "../lib/staging-writer.js";
 import { writeJobEvent } from "../lib/staging-writer.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
@@ -28,6 +30,121 @@ interface VerifyResult {
     live_value: string | null;
     status: "match" | "mismatch" | "not_found";
   }>;
+}
+
+/**
+ * Is every course in this job bound to a subject area and a degree level?
+ *
+ * Runs as part of verification rather than as a script someone has to remember: this is the same
+ * question verification already answers for the other fields, and the job timeline is where an
+ * admin looks. Counts come from the link columns — `subject_area_code` = areas_of_study.slug,
+ * `degree_level_code` = degree_levels.slug — so "linked" means a real seeded row, not just text.
+ * Pure counting: no scrape, no model call. The per-course detail is in staging-writer's
+ * `lookup-link` log lines, written when the course was extracted.
+ */
+async function verifyLookupLinks(jobId: string) {
+  // The list configuration travels with the counts: an unseeded list, or a fold pointing at a
+  // level that is no longer seeded, is WHY a job comes out unlinked — the counts can't say that.
+  const health = lookupListsHealth(await loadLookupLists());
+
+  const { rows } = await masterKnex.raw(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE degree_level_code IS NOT NULL)::int AS level_linked,
+            count(*) FILTER (WHERE subject_area_code IS NOT NULL)::int AS area_linked
+       FROM ${S}.extraction_courses WHERE job_id = :jobId`,
+    { jobId },
+  );
+  const { total, level_linked: levelLinked, area_linked: areaLinked } = rows[0] as
+    { total: number; level_linked: number; area_linked: number };
+  if (total === 0) return;
+
+  // The wording that failed to link, so the event says WHY, not just how many.
+  const unlinked = await masterKnex(`${S}.extraction_courses`)
+    .where({ job_id: jobId })
+    .where((qb) => qb.whereNull("degree_level_code").orWhereNull("subject_area_code"))
+    .select("name", "degree_level", "subject_area", "degree_level_code", "subject_area_code")
+    .limit(25);
+  const unlinkedLevels = [...new Set(unlinked.filter((c) => !c.degree_level_code).map((c) => c.degree_level ?? "(none extracted)"))];
+  const unlinkedAreas = [...new Set(unlinked.filter((c) => !c.subject_area_code).map((c) => c.subject_area ?? "(none extracted)"))];
+
+  const pct = (n: number) => Math.round((n / total) * 100);
+  const complete = levelLinked === total && areaLinked === total && health.ok;
+  const message = complete
+    ? `Lookup links: all ${total} courses linked to a degree level and a subject area`
+    : `Lookup links: degree level ${levelLinked}/${total} (${pct(levelLinked)}%), subject area ${areaLinked}/${total} (${pct(areaLinked)}%)`
+      + (health.ok ? "" : ` — lookup lists need seeding (${health.areas_seeded} areas, ${health.levels_seeded} levels; unseeded levels: ${health.missing_fold_targets.join(", ") || "none"})`);
+
+  await writeJobEvent(jobId, "lookup_links_verified", {
+    level: complete ? "info" : "warn",
+    phase: "verification",
+    message,
+    data: {
+      total, degree_level_linked: levelLinked, subject_area_linked: areaLinked,
+      unlinked_degree_levels: unlinkedLevels.slice(0, 10),
+      unlinked_subject_areas: unlinkedAreas.slice(0, 10),
+      lists: health,
+    },
+  });
+  logger[complete ? "info" : "warn"]("Lookup links verified", {
+    jobId, total, degree_level_linked: levelLinked, subject_area_linked: areaLinked,
+    unlinked_degree_levels: unlinkedLevels.slice(0, 10),
+    unlinked_subject_areas: unlinkedAreas.slice(0, 10),
+  });
+  await verifyRequestedLevels(jobId, total);
+}
+
+async function verifyRequestedLevels(jobId: string, total: number) {
+  const job = await masterKnex(`${S}.extraction_jobs as j`)
+    .leftJoin("public.service_categories as sc", "sc.id", "j.service_category_id")
+    .where("j.id", jobId)
+    .first("j.degree_level_codes", "sc.name as category_name", "sc.slug as category_slug");
+  const wanted: string[] = job?.degree_level_codes ?? [];
+  const category = categoryForServiceSlug(job?.category_slug) ? job?.category_name : null;
+  if (!wanted.length && !category) return;   // nothing was scoped, so nothing to report
+
+  // An empty job is the case most worth reporting, not least: when a scope matches nothing the
+  // result looks identical to a failed crawl. Say which scope emptied it.
+  if (total === 0) {
+    await writeJobEvent(jobId, "requested_levels_verified", {
+      level: "warn", phase: "verification",
+      message: `No courses staged. This job is scoped to ${[category, wanted.join(", ")].filter(Boolean).join(" / ")} — widen it, or check whether the site publishes those.`,
+      data: { requested: wanted, category, in_scope: 0, out_of_scope: 0, no_level: 0 },
+    });
+    return;
+  }
+
+  // Counted against the SAME exclusion set the writer and the review filter use. Counting against
+  // `wanted` alone reported every course out of scope on a category-only job, because
+  // `= ANY('{}')` is false for everything.
+  const excluded = (await jobExcludedLevels(jobId)) ?? [];
+  const { rows } = await masterKnex.raw(
+    `SELECT count(*) FILTER (WHERE degree_level_code IS NOT NULL
+                               AND NOT (degree_level_code = ANY(:excluded)))::int AS in_scope,
+            count(*) FILTER (WHERE degree_level_code = ANY(:excluded))::int       AS out_of_scope,
+            count(*) FILTER (WHERE degree_level_code IS NULL)::int                AS no_level
+       FROM ${S}.extraction_courses WHERE job_id = :jobId`,
+    { jobId, excluded },
+  );
+  const { in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel } = rows[0] as
+    { in_scope: number; out_of_scope: number; no_level: number };
+
+  const found = outOfScope
+    ? await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId })
+        .whereIn("degree_level_code", excluded)
+        .select("degree_level_code").count("id as count").groupBy("degree_level_code")
+    : [];
+
+  await writeJobEvent(jobId, "requested_levels_verified", {
+    level: outOfScope ? "warn" : "info",
+    phase: "verification",
+    message: outOfScope
+      ? `Degree levels: ${inScope}/${total} courses are one this job asked for, ${outOfScope} are another level`
+      : `Degree levels: all ${inScope} courses are one this job asked for`,
+    data: { requested: wanted, category, in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel, other_levels: found },
+  });
+  logger[outOfScope ? "warn" : "info"]("Requested levels verified", {
+    jobId, requested: wanted, in_scope: inScope, out_of_scope: outOfScope, no_level: noLevel,
+  });
 }
 
 await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
@@ -137,6 +254,8 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "done" }),
       updated_at: masterKnex.fn.now(),
     });
+
+    await verifyLookupLinks(jobId);
 
     await writeJobEvent(jobId, "verification_complete", {
       phase: "verification",

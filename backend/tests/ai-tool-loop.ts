@@ -17,7 +17,8 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || "x";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { cleanTitle, streamChatWithTools } from "../src/modules/ai-counsellor/lib/gemini-stream.js";
-import { cleanCourseName, cleanIntakes, toolsFor } from "../src/modules/ai-counsellor/lib/tools.js";
+import { cleanCourseName, cleanIntakes, feeLine, headlineFee, rankFees, toolsFor } from "../src/modules/ai-counsellor/lib/tools.js";
+import type { FeeResult } from "../src/modules/ai-counsellor/repositories/knowledge.repository.js";
 
 let passed = 0;
 let failed = 0;
@@ -270,6 +271,53 @@ async function main() {
     );
     assertEqual(JSON.stringify(kept), JSON.stringify(["Fall 2026", "Winter intake"]),
       "holidays and past-year intakes are dropped, undated intakes kept");
+  }
+
+  console.log("\nfee display — period and currency travel with the figure");
+  {
+    const fee = (f: Partial<FeeResult>): FeeResult => ({
+      id: "f", name: null, description: null, student_type: "both",
+      period_type: "Total", currency: "USD", total_amount: 1000, ...f,
+    });
+
+    // A per-credit rate must never be what a card headlines — it reads as the whole cost.
+    const perCredit = fee({ period_type: "Per Unit", total_amount: 1090 });
+    const total = fee({ period_type: "Total", total_amount: 35970 });
+    assertEqual(headlineFee([perCredit, total])?.total_amount, 35970, "whole-period price beats a per-credit rate");
+    assertEqual(
+      headlineFee([fee({ student_type: "domestic", total_amount: 10 }), fee({ student_type: "international", total_amount: 20 })])?.total_amount,
+      20, "international figure is preferred");
+    assertEqual(
+      headlineFee([fee({ total_amount: null }), fee({ total_amount: 500 })])?.total_amount,
+      500, "a real figure beats an unknown one");
+    assertEqual(headlineFee([]), undefined, "no fees, no headline");
+
+    // The context caps the fee list, so the survivors must be the ranked ones — not whatever
+    // order Postgres returned — and the order must not shift between two identical runs.
+    const many = [
+      fee({ id: "a", student_type: "domestic", period_type: "Per Unit", total_amount: 500 }),
+      fee({ id: "b", student_type: "international", period_type: "Total", total_amount: 40000 }),
+      fee({ id: "c", student_type: "both", period_type: "Per Year", total_amount: 20000 }),
+      fee({ id: "d", student_type: "international", period_type: "Total", total_amount: null }),
+    ];
+    assertEqual(rankFees(many).map(f => f.id).join(""), "bcad",
+      "ranked: whole-period internationals first, then any real figure, an amount-less fee last");
+    assertEqual(rankFees([...many].reverse()).map(f => f.id).join(""), "bcad",
+      "ranking does not depend on input order");
+
+    assertEqual(
+      feeLine(fee({ name: "Semester Fee", period_type: "Per Semester", currency: "AUD", total_amount: 12500 })),
+      "Semester Fee: AUD 12,500 per semester (both)", "label, currency, period and audience");
+    assertEqual(
+      feeLine(fee({ currency: null, total_amount: 35970 })),
+      "Fee: 35,970 (currency not stated) total (both)", "a null currency is stated, never guessed");
+    assertEqual(
+      feeLine(fee({ total_amount: null })),
+      "Fee: amount not stated total (both)", "an unknown amount is not a zero");
+    assertEqual(
+      feeLine(fee({ name: "Tuition Fee", description: "$1,090 per credit, 33 credits" })),
+      "Tuition Fee: USD 1,000 total (both) — $1,090 per credit, 33 credits",
+      "the page's own wording reaches the model");
   }
 
   console.log("\ncleanTitle — session naming");

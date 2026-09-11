@@ -3,6 +3,7 @@
 
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { safeFetch } from "../../../../shared/public-url.js";
 import {
   uploadFile,
   isConfigured as gcsConfigured,
@@ -57,7 +58,8 @@ export async function rehostLogo(opts: {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 12_000);
-    const res = await fetch(sourceUrl, {
+    // sourceUrl will come from a scraped page once this is wired up — safeFetch, not fetch.
+    const res = await safeFetch(sourceUrl, {
       signal: ctrl.signal,
       headers: { "User-Agent": "GlobalyBot/1.0 (+https://globaly.app)" },
     }).finally(() => clearTimeout(t));

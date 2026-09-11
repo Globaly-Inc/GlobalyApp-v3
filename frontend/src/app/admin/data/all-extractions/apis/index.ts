@@ -30,4 +30,5 @@ export type {
   Paginated,
   VisaService,
   VisaServiceStatus,
+  MissingDetailCandidate,
 } from "./types";

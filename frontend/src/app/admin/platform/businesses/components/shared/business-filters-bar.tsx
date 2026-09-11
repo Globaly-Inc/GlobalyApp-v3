@@ -1,6 +1,7 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { OWNERSHIP_FILTER_OPTIONS, SORT_OPTIONS, SOURCE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS } from "../../const";
@@ -19,6 +20,8 @@ export function BusinessFiltersBar({
   onOwnershipChange,
   sort,
   onSortChange,
+  hasActiveFilters,
+  onClearFilters,
 }: Readonly<{
   search: string;
   onSearchChange: (value: string) => void;
@@ -33,6 +36,8 @@ export function BusinessFiltersBar({
   onOwnershipChange: (value: string) => void;
   sort: string;
   onSortChange: (value: string) => void;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
 }>) {
   return (
     <div className="flex flex-wrap gap-3">
@@ -50,6 +55,12 @@ export function BusinessFiltersBar({
       <Combobox options={SOURCE_FILTER_OPTIONS} value={sourceFilter} onChange={onSourceChange} className="h-10 w-44 cursor-pointer" />
       <Combobox options={OWNERSHIP_FILTER_OPTIONS} value={ownershipFilter} onChange={onOwnershipChange} className="h-10 w-44 cursor-pointer" />
       <Combobox options={SORT_OPTIONS} value={sort} onChange={onSortChange} className="h-10 w-44 cursor-pointer" />
+      {hasActiveFilters && (
+        <Button variant="ghost" className="h-10 gap-1.5 text-muted-foreground cursor-pointer" onClick={onClearFilters}>
+          <X className="h-4 w-4" />
+          Clear filters
+        </Button>
+      )}
     </div>
   );
 }

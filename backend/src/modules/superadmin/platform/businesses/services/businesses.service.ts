@@ -1,6 +1,7 @@
 // Businesses service — admin-managed listing CRUD, owner provisioning, members, activity.
 
 import { randomBytes } from "node:crypto";
+import type { Knex } from "knex";
 import { NotFoundError, ConflictError } from "../../../../../shared/errors.js";
 import * as storage from "../../../../../shared/storage/storageService.js";
 import { provisionBusinessSchema } from "../../../../../core/business/provisioner.js";
@@ -20,6 +21,7 @@ import { generateSubdomain } from "../../../../../shared/subdomain.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
 import * as agentsService from "../../../../agents/services/agents.service.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
+import * as jobsRepo from "../../../data-extraction/repositories/jobs.repository.js";
 import * as reviewRepo from "../../../data-extraction/repositories/review.repository.js";
 import { courseSlug } from "../../../../search/utils/slug.js";
 import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
@@ -63,12 +65,75 @@ async function subdomainTaken(subdomain: string): Promise<boolean> {
   return Boolean(biz || inst);
 }
 
+/**
+ * RFC 2606 reserved TLD, same trick as promote's PLACEHOLDER_EMAIL_DOMAIN: guaranteed
+ * unroutable, and `.invalid` can never collide with a real institution's host.
+ */
+const MANUAL_JOB_URL_DOMAIN = "manual.globalyhub.invalid";
+
+/** normaliseHost() runs `new URL()`, which throws on the scheme-less values the DB holds
+ *  (e.g. "www.globalyhub.com"). Same coercion embed.service's extractDomain does. */
+function withScheme(url: string): string {
+  return url.includes("://") ? url : `https://${url}`;
+}
+
+/**
+ * Every extraction_* child is `job_id NOT NULL REFERENCES extraction_jobs ON DELETE CASCADE`,
+ * and an institution's catalog is read through `source_job_id` rather than copied
+ * (see promote.service's header). So an institution created by hand needs a job row of its
+ * own before it has anywhere to put a course — same shape as an AI or AgentCIS job, minus
+ * the crawl.
+ *
+ * `status: "done"` is what keeps the crawl off it: the pipeline workers claim through the
+ * partial index on status IN ('pending','processing','stalled'), so a job created as pending
+ * would go and scrape the institution's website. The source is named by `source_type`
+ * instead — never by a new status string, which would render as undefined against the
+ * frontend's fixed STATUS_CONFIG record.
+ */
+async function mintManualInstitutionJob(
+  input: BusinessCreateInput,
+  subdomain: string,
+  trx: Knex.Transaction,
+): Promise<string> {
+  // institution_url is the job's only NOT NULL column, and it is load-bearing beyond display:
+  // the AI embed widget scopes a business's courses by ILIKE-matching its website against it.
+  const url = input.website?.trim()
+    ? withScheme(input.website.trim())
+    : `https://${MANUAL_JOB_URL_DOMAIN}/${subdomain}`;
+  const host = jobsRepo.normaliseHost(url);
+
+  // Two catalogs for one university is the failure mode here — a manual institution today and
+  // an AI extraction of the same site tomorrow. Same advisory lock + duplicate check
+  // createJob uses. Skipped for the placeholder host, where every institution shares a domain.
+  if (host && !host.endsWith(".invalid")) {
+    await jobsRepo.lockInstitutionHost(host, trx);
+    const existing = await jobsRepo.findJobByInstitutionHost(url, trx);
+    if (existing) {
+      throw new ConflictError(
+        `${existing.institution_name ?? "An institution"} already has an extraction for ${host}. ` +
+        "Promote that job instead of creating a duplicate listing.",
+      );
+    }
+  }
+
+  const row = await jobsRepo.insertJob({
+    institution_name: input.business_name,
+    institution_url: url,
+    source_type: "manual",
+    status: "done",
+    // Promote routes by category, and refuses an uncategorised job from a non-agentcis source.
+    business_category_id: input.business_category_id,
+  }, trx);
+  return row.id as string;
+}
+
 export async function createBusiness(input: BusinessCreateInput) {
   const existingOwner = await userRepo.findByEmail(input.email);
   if (existingOwner) throw new ConflictError("This email is already in use");
 
 
   const { first_name, last_name, ...businessInput } = input;
+  const isInstitution = (await repo.findCategorySlugById(input.business_category_id)) === "institutions";
 
   // No subdomain field for an admin to fix, so a collision (including the check-then-insert
   // race between two concurrent creates) is retried with a freshly generated subdomain instead
@@ -86,7 +151,13 @@ export async function createBusiness(input: BusinessCreateInput) {
           phone: input.phone ?? undefined,
           account_status: 1,
         }, trx);
-        const trxBusiness = await repo.insertBusiness({ ...businessInput, subdomain, owner_id: trxOwner.id }, trx);
+        const sourceJobId = isInstitution
+          ? await mintManualInstitutionJob(input, subdomain, trx)
+          : null;
+        const trxBusiness = await repo.insertBusiness(
+          { ...businessInput, subdomain, owner_id: trxOwner.id, source_job_id: sourceJobId },
+          trx,
+        );
         return { owner: trxOwner, business: trxBusiness };
       }));
     } catch (err: any) {
@@ -228,6 +299,9 @@ export async function getBusinessDetail(id: number) {
 export async function updateBusiness(id: number, data: BusinessPatchInput) {
   await requireBusiness(id);
   const updated = await repo.updateBusiness(id, data);
+  if (updated?.source_job_id && data.website?.trim()) {
+    await jobsRepo.syncOwnedJobUrl(updated.source_job_id, data.website.trim());
+  }
   return withImagePreviews(updated);
 }
 

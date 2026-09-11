@@ -1,16 +1,48 @@
 import { GraduationCap, Info, ShieldCheck, Trophy } from "lucide-react";
 import { testImage, type PlatformTest } from "@/lib/tests-catalog";
 import { ProfileSection } from "../../../components/profile/profile-section";
-import { DEGREE_LABEL, type CourseDetail } from "../../../search/types";
+import { DEGREE_LABEL, SCORE_TYPE_LABEL, type CourseDetail } from "../../../search/types";
+
+/** The requirement's minimum, whichever of the three ways extraction stored it. */
+function minimumScore(requirement: CourseDetail["eligibility"][number]): string | null {
+  if (requirement.min_score_percent) return `${requirement.min_score_percent}%`;
+  if (requirement.min_score) {
+    const scale = requirement.score_type ? SCORE_TYPE_LABEL[requirement.score_type] ?? requirement.score_type : null;
+    return scale ? `${requirement.min_score} ${scale}` : String(requirement.min_score);
+  }
+  return requirement.min_score_grade;
+}
+
+const AUDIENCE_LABEL: Record<string, string> = {
+  domestic: "Domestic students",
+  international: "International students",
+  both: "All students",
+};
 
 function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{children}</p>;
 }
 
+/**
+ * `score` is a bar to clear; `typical` is what admitted students scored. They are shown in
+ * different words — "≥ 320" versus "avg 49.5" — because a page that reports only an average
+ * is stating no requirement at all, and rendering it as a minimum tells a student they fall
+ * short of a threshold the institution never set.
+ */
 function TestTile({
-  name, score, tests,
-}: Readonly<{ name: string; score: string | null | undefined; tests: PlatformTest[] }>) {
+  name, score, typical, tests, optional,
+}: Readonly<{
+  name: string;
+  score: string | null | undefined;
+  typical?: string | null;
+  tests: PlatformTest[];
+  optional?: boolean;
+}>) {
   const logo = testImage(name, tests);
+  const detail = [
+    score ? `≥ ${score}` : typical ? `avg ${typical}` : null,
+    optional ? "optional" : null,
+  ].filter(Boolean).join(" · ");
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2">
       {logo && (
@@ -19,7 +51,7 @@ function TestTile({
       )}
       <div className="min-w-0">
         <p className="truncate text-[11px] font-semibold leading-tight">{name}</p>
-        {score && <p className="text-[10px] text-muted-foreground">≥ {score}</p>}
+        {detail && <p className="text-[10px] text-muted-foreground">{detail}</p>}
       </div>
     </div>
   );
@@ -72,12 +104,19 @@ function LanguageRequirement({
 function AcademicRequirement({
   requirement, tests,
 }: Readonly<{ requirement: CourseDetail["eligibility"][number]; tests: PlatformTest[] }>) {
-  const minScore = requirement.min_score_percent ? `${requirement.min_score_percent}%` : requirement.min_score_grade;
+  const minScore = minimumScore(requirement);
   const scores = (requirement.academic_tests ?? []).filter((t) => t.test_name);
   if (!requirement.min_degree_level && !minScore && scores.length === 0 && !requirement.description) return null;
+  const audience = requirement.applicable_to ? AUDIENCE_LABEL[requirement.applicable_to] : null;
 
   return (
     <div className="space-y-3">
+      {(requirement.name || audience) && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-xs font-semibold text-foreground">{requirement.name}</p>
+          {audience && <span className="shrink-0 text-[10px] text-muted-foreground">{audience}</span>}
+        </div>
+      )}
       {(requirement.min_degree_level || minScore) && (
         <div className="space-y-2">
           <SectionLabel>Academic Requirement</SectionLabel>
@@ -109,7 +148,14 @@ function AcademicRequirement({
           <SectionLabel>Academic Test Score</SectionLabel>
           <div className="grid grid-cols-2 gap-1.5">
             {scores.map((score) => (
-              <TestTile key={score.test_name} name={score.test_name} score={score.score} tests={tests} />
+              <TestTile
+                key={score.test_name}
+                name={score.test_name}
+                score={score.score}
+                typical={score.typical_score}
+                optional={score.is_optional}
+                tests={tests}
+              />
             ))}
           </div>
         </div>

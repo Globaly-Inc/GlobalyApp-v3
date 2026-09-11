@@ -12,7 +12,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeMarkdown, scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
-import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
   institutionExtractionPrompt, INSTITUTION_EXTRACTION_SYSTEM,
@@ -32,19 +32,37 @@ import {
   writeJobEvent,
   normaliseCampusName,
   upsertStudyUnit,
+  feeTypeFor,
+  isExtractableFee,
+  upsertFee,
   normaliseCourseCategory,
+  resolveCourseLookups,
+  isCourseInScope,
+  resolveDurationWeeks,
+  type ExtractedStudyOption,
   normaliseScoreType,
   deriveScoreFromDescription,
+  normaliseAcademicTests,
+  upsertIntake,
+  upsertEligibility,
+  upsertEnglishRequirement,
   coerceMoney,
+  coerceMonth,
+  coerceInt,
+  deriveIntakeMonthYear,
   writeVisaService,
   updateVisaServiceById,
   normaliseVisaServiceName,
   atPageCap,
   type ExtractedCampus,
+  type ExtractedEnglishReq,
+  type ExtractedIntake,
   type InstitutionOverview,
   type ExtractedVisaService,
 } from "../lib/staging-writer.js";
+import { coercePartialDate } from "../lib/partial-date.js";
 import { parseAddress } from "../lib/address-parser.js";
+import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
 import { normalizeAgentRow } from "../lib/agent-normalizers.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { detectAgentSource } from "../lib/agent-sources/index.js";
@@ -94,6 +112,17 @@ async function scrapeUrl(url: string): Promise<string | null> {
   return r.markdown && r.markdown.length > 50 ? r.markdown : null;
 }
 
+/** Like scrapeUrl but falls back to Gemini vision for PDF URLs. */
+async function scrapeUrlOrPdf(url: string): Promise<string | null> {
+  if (/\.pdf(\?|#|$)/i.test(url)) {
+    const docExtractor = createDocumentExtractor();
+    const fileName = url.split("/").pop()?.split("?")[0] || "fees.pdf";
+    const result = await docExtractor.extract({ file_url: url, file_name: fileName });
+    return result.text && result.text.length >= 50 ? result.text : null;
+  }
+  return scrapeUrl(url);
+}
+
 async function scrapeInstitutionPage(url: string): Promise<{ markdown: string; links: string[] } | null> {
   const r = await scrapeMarkdown(url, { onlyMainContent: false, withLinks: true });
   return r.markdown && r.markdown.length > 50 ? { markdown: r.markdown, links: r.links } : null;
@@ -133,6 +162,44 @@ async function findContactLink(markdown: string, links: string[], origin: string
   if (await resolvesToPrivateHost(url.hostname)) return null;
 
   return candidate;
+}
+
+type SocialLink = { label: string; url: string };
+
+/** Unions two other_social_links lists, deduping by URL (case-insensitive) — first-seen label
+ * wins so an admin's own label on an existing entry survives a later extraction run. */
+function unionSocialLinks(existing: unknown, incoming: unknown): SocialLink[] {
+  const seen = new Map<string, SocialLink>();
+  for (const list of [existing, incoming]) {
+    if (!Array.isArray(list)) continue;
+    for (const entry of list) {
+      const url = typeof entry === "string" ? entry : entry?.url;
+      if (typeof url !== "string" || !url) continue;
+      const key = url.trim().toLowerCase();
+      if (!seen.has(key)) {
+        const label = typeof entry === "string" ? "Link" : (entry?.label || "Link");
+        seen.set(key, { label, url });
+      }
+    }
+  }
+  return [...seen.values()];
+}
+
+/** Folds one page's institutionExtractionPrompt result into the running `merged` accumulator.
+ * Scalars use first-non-null-wins; the LLM's `other_social_urls` (plural pages can each surface
+ * different links) is unioned into `merged.other_social_links` instead of overwritten. */
+function mergeInstitutionFields(merged: Record<string, unknown>, data: Record<string, unknown>): void {
+  for (const [key, val] of Object.entries(data)) {
+    if (key === "other_social_urls") {
+      if (Array.isArray(val) && val.length) {
+        merged.other_social_links = unionSocialLinks(merged.other_social_links, val);
+      }
+      continue;
+    }
+    if (val != null && val !== "" && (merged[key] == null || merged[key] === "")) {
+      merged[key] = val;
+    }
+  }
 }
 
 function sha1(...parts: (string | null | undefined)[]): string {
@@ -247,15 +314,29 @@ async function handleInstitutionStep(jobId: string) {
 
   const homepage = await scrapeInstitutionPage(baseUrl);
   const discoveredContact = homepage && origin ? await findContactLink(homepage.markdown, homepage.links, origin) : null;
-  const guessContact = origin ? new URL("/contact", origin).href : null;
 
-  const urlsToScrape = [...new Set([
-    baseUrl,
-    ...contactUrls,
-    ...(contactUrls.length === 0 ? [discoveredContact, guessContact].filter((u): u is string => !!u) : []),
-  ])];
+  // Most institution detail (phone/email/address) lives on a Contact page, not the homepage —
+  // try several common paths (cheap markdown scrape, no LLM call yet) and keep the first that
+  // has real content, so a missing "/contact" doesn't silently fall back to homepage-only data.
+  let guessedContact: string | null = null;
+  if (!discoveredContact && contactUrls.length === 0 && origin) {
+    for (const path of ["/contact", "/contact-us", "/about/contact", "/about-us/contact"]) {
+      const candidate = new URL(path, origin).href;
+      if (await scrapeUrl(candidate)) { guessedContact = candidate; break; }
+    }
+  }
 
-  await writeJobEvent(jobId, "step_start", { phase: "institution", message: `Scraping ${urlsToScrape.length} URLs for institution data` });
+  const contactCandidates = contactUrls.length > 0 ? contactUrls : [discoveredContact, guessedContact].filter((u): u is string => !!u);
+  // Cost control: Contact page(s) first (primary source), homepage as fallback, and — only if
+  // still missing required fields after both — a generic /about page as a last resort. Capped
+  // so one job can never run away extracting an unbounded number of pages.
+  const REQUIRED_FIELDS = ["email", "phone", "address"];
+  const MAX_INSTITUTION_PAGES = 4;
+  const candidateQueue = [...new Set([...contactCandidates, baseUrl, origin ? new URL("/about", origin).href : null])]
+    .filter((u): u is string => !!u)
+    .slice(0, MAX_INSTITUTION_PAGES);
+
+  await writeJobEvent(jobId, "step_start", { phase: "institution", message: `Scraping up to ${candidateQueue.length} URLs for institution data` });
 
   // Recall memory
   const domain = domainOf(baseUrl);
@@ -263,36 +344,56 @@ async function handleInstitutionStep(jobId: string) {
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${INSTITUTION_EXTRACTION_SYSTEM}\n\n${addendum}` : INSTITUTION_EXTRACTION_SYSTEM;
 
-  // Scrape the rest in parallel — the homepage was already scraped above, reuse it instead
-  // of scraping it again.
-  const scrapeResults = await Promise.all(
-    urlsToScrape.map((u) =>
-      u === baseUrl ? Promise.resolve(homepage?.markdown ?? null) : scrapeInstitutionPage(u).then((r) => r?.markdown ?? null),
-    ),
-  );
+  // One page at a time (not fetched/extracted in parallel up front) — each iteration can end
+  // the loop early, so a page after the required fields are already filled is never fetched at
+  // all, let alone billed to an LLM call. Contact pages are processed first (and merged first),
+  // so when both a contact page and the homepage state a field, the contact page — a more
+  // authoritative, single-purpose source — wins.
   const scrapedPairs: { url: string; markdown: string }[] = [];
-  for (let i = 0; i < urlsToScrape.length; i++) {
-    if (scrapeResults[i]) scrapedPairs.push({ url: urlsToScrape[i], markdown: scrapeResults[i]! });
+  let merged: Record<string, unknown> = {};
+  const allLinks: string[] = [];
+  for (const url of candidateQueue) {
+    const hasAllRequired = REQUIRED_FIELDS.every((f) => merged[f] != null && merged[f] !== "");
+    if (hasAllRequired) break;
+
+    const page = url === baseUrl ? homepage : await scrapeInstitutionPage(url);
+    if (!page?.markdown) continue;
+    scrapedPairs.push({ url, markdown: page.markdown });
+    if (page.links) allLinks.push(...page.links);
+
+    await heartbeat(jobId);
+    const pageText = truncateMarkdown(page.markdown, 25000);
+    const data = await extractJson<Record<string, unknown>>({
+      system,
+      prompt: institutionExtractionPrompt(url, pageText, job.guidance_notes),
+    });
+    mergeInstitutionFields(merged, data);
   }
 
   if (scrapedPairs.length === 0) {
     throw new Error("Failed to scrape any pages for institution data");
   }
 
-  // LLM per page → merge (first non-null per field)
-  let merged: Record<string, unknown> = {};
-  for (const { url, markdown } of scrapedPairs) {
-    await heartbeat(jobId);
-    const pageText = truncateMarkdown(markdown, 25000);
-    const data = await extractJson<Record<string, unknown>>({
-      system,
-      prompt: institutionExtractionPrompt(url, pageText, job.guidance_notes),
-    });
-    for (const [key, val] of Object.entries(data)) {
-      if (val != null && val !== "" && (merged[key] == null || merged[key] === "")) {
-        merged[key] = val;
-      }
-    }
+  // The scraper's own `links` array (pushed into allLinks above) is derived from the
+  // already-converted MARKDOWN text (extractLinksFromMarkdown in scraper.ts), so it's just
+  // as blind to icon-only anchors (no visible text — a common social-footer pattern) as the
+  // LLM reading that same markdown. One extra raw-HTML fetch of the homepage — footers are
+  // sitewide, so whichever page carries the social bar, the homepage has it too — recovers
+  // every href regardless of visible text. Best-effort: silently proceeds without it if this
+  // fails, since allLinks/the LLM's own answer may still have found something.
+  const { html: homepageHtml } = await scrapeRenderedHtml(baseUrl).catch(() => ({ html: "" }));
+  if (homepageHtml) allLinks.push(...extractHrefsFromHtml(homepageHtml));
+
+  // Deterministic domain-based classification of every raw link seen across the scraped
+  // pages — catches icon-only social footers (no visible anchor text) that markdown
+  // conversion strips before the LLM above ever sees them. Only fills gaps; never
+  // overwrites what the LLM already found from visible page text.
+  const detectedSocial = extractSocialLinks(allLinks);
+  for (const key of ["facebook_url", "instagram_url", "twitter_url", "linkedin_url", "youtube_url"] as const) {
+    if (!merged[key] && detectedSocial[key]) merged[key] = detectedSocial[key];
+  }
+  if (detectedSocial.other_social_links.length) {
+    merged.other_social_links = unionSocialLinks(merged.other_social_links, detectedSocial.other_social_links);
   }
 
   // Process supporting documents (PDFs/files attached to the job)
@@ -306,11 +407,7 @@ async function handleInstitutionStep(jobId: string) {
         system,
         prompt: institutionExtractionPrompt("supporting-documents", docContext, job.guidance_notes),
       });
-      for (const [key, val] of Object.entries(docData)) {
-        if (val != null && val !== "" && (merged[key] == null || merged[key] === "")) {
-          merged[key] = val;
-        }
-      }
+      mergeInstitutionFields(merged, docData);
     }
   }
 
@@ -320,17 +417,59 @@ async function handleInstitutionStep(jobId: string) {
 
   if (existing) {
     for (const [key, val] of Object.entries(existing)) {
-      if (["id", "job_id", "created_at", "updated_at", "source_url"].includes(key)) continue;
+      if (["id", "job_id", "created_at", "updated_at", "source_url", "other_social_links"].includes(key)) continue;
       if ((merged[key] == null || merged[key] === "") && val != null && val !== "") {
         merged[key] = val;
       }
     }
-    merged.source_url = baseUrl;
+    // Union rather than fill-if-empty — an existing link the admin already found (or manually
+    // labeled) should never be dropped just because this run's pages didn't happen to restate it.
+    const unioned = unionSocialLinks(existing.other_social_links, merged.other_social_links);
+    if (unioned.length) merged.other_social_links = unioned;
+  }
+
+  // Last-resort email fallback: only after existing (possibly admin-reviewed) values have
+  // already been restored above, so a same-domain regex hit like privacy@ or webmaster@
+  // never overwrites a real reviewed email — it only fills a field that's genuinely still
+  // empty everywhere (fresh LLM pass AND no prior saved value).
+  if (!merged.email) {
+    const institutionDomain = domainOf(baseUrl);
+    for (const { markdown } of scrapedPairs) {
+      const found = extractDomainEmails(markdown, institutionDomain);
+      if (found.length) { merged.email = found[0]; break; }
+    }
+  }
+
+  // The LLM occasionally "absolutizes" a root-relative asset URL (e.g. Sitecore's
+  // `/-/media/...` convention) by prefixing https:// without the actual domain, producing
+  // a syntactically valid but broken URL like "https://-/media/...". Fix it up against the
+  // institution's own homepage origin, which every root-relative path on this site resolves
+  // against regardless of which scraped page (or even Phase 1's earlier pass) found it.
+  if (typeof merged.logo_url === "string") {
+    merged.logo_url = fixMalformedAbsoluteUrl(merged.logo_url, baseUrl);
+  }
+
+  // The LLM (or the older homepage-only pass) often returns the FULL address ("77 Main St,
+  // Cambridge, MA, USA") in one field instead of just the street line, duplicating city/state/
+  // country the admin already sees in their own fields. Trim it down to the street portion and
+  // pull a postcode out of it if one wasn't found separately.
+  if (typeof merged.address === "string" && merged.address) {
+    const parsed = parseAddress(merged.address, (merged.country as string | undefined) ?? existing?.country);
+    const streetLine = [parsed.street1, parsed.street2].filter(Boolean).join(", ");
+    if (streetLine) merged.address = streetLine;
+    if (!merged.zip_code && parsed.postcode) merged.zip_code = parsed.postcode;
+  }
+
+  merged.source_url = baseUrl;
+  if (existing) {
+    // jsonb column — the insert path (writeInstitutionOverview) stringifies internally, but this
+    // direct .update() doesn't, so it must be done here.
+    const updateData = { ...merged };
+    if (updateData.other_social_links) updateData.other_social_links = JSON.stringify(updateData.other_social_links);
     await masterKnex(`${S}.extraction_institution_overview`).where({ id: existing.id }).update({
-      ...merged, updated_at: masterKnex.fn.now(),
+      ...updateData, updated_at: masterKnex.fn.now(),
     });
   } else {
-    merged.source_url = baseUrl;
     await writeInstitutionOverview(jobId, merged as InstitutionOverview);
   }
 
@@ -354,6 +493,7 @@ async function handleInstitutionStep(jobId: string) {
     message: `Institution data extracted from ${scrapedPairs.length} pages`,
     data: { fields_filled: Object.keys(merged).filter(k => merged[k] != null).length },
   });
+
 }
 
 async function handleBranchesStep(jobId: string) {
@@ -446,19 +586,51 @@ async function handleBranchesStep(jobId: string) {
     }
   }
 
-  // parseAddress on each result for structured fields
+  // parseAddress on each result for structured fields — also trims `address` down to just the
+  // street line instead of the full "street, city, state postcode" string the LLM tends to
+  // return (city/state/postcode already have their own fields), and fills postcode if found.
   for (const campus of allCampuses) {
     if (campus.address) {
       const parsed = parseAddress(campus.address, campus.country);
       if (!campus.city && parsed.city) campus.city = parsed.city;
       if (!campus.state && parsed.state) campus.state = parsed.state;
       if (!campus.country && parsed.country) campus.country = parsed.country;
+      if (!campus.postcode && parsed.postcode) campus.postcode = parsed.postcode;
+      const streetLine = [parsed.street1, parsed.street2].filter(Boolean).join(", ");
+      if (streetLine) campus.address = streetLine;
+    }
+  }
+
+  // Geocode a map link (and postcode, if the address text didn't state one) from the address
+  // now on file — no LLM call, just Google's Geocoding API, so this doesn't add to LLM spend.
+  // Best-effort: a campus keeps going with whatever it already has if geocoding fails.
+  for (const campus of allCampuses) {
+    if (campus.map_link || !campus.address) continue;
+    try {
+      const addressLine = [campus.address, campus.city, campus.state, campus.country].filter(Boolean).join(", ");
+      const geocoded = await geocodeAddress(addressLine);
+      if (geocoded) {
+        campus.map_link = geocoded.mapLink;
+        if (!campus.postcode && geocoded.postcode) campus.postcode = geocoded.postcode;
+      }
+    } catch (e) {
+      logger.warn("Campus geocoding failed, continuing without map link", { name: campus.name, error: e instanceof Error ? e.message : String(e) });
     }
   }
 
   // 3-layer dedup (street filter → name → address)
   const deduped = dedupCampuses(allCampuses);
   logger.info("Campus dedup", { raw: allCampuses.length, final: deduped.length });
+
+  // A branch's own phone/email is frequently never published on its own page — fall back to
+  // the institution's, which the "institution" step already found. Admin can still override.
+  const overview = await masterKnex(`${S}.extraction_institution_overview`).where({ job_id: jobId }).first();
+  if (overview?.phone || overview?.email) {
+    for (const campus of deduped) {
+      if (!campus.phone && overview.phone) campus.phone = overview.phone;
+      if (!campus.email && overview.email) campus.email = overview.email;
+    }
+  }
 
   // Replace existing campuses, re-link junctions
   const idMap = await replaceCampuses(jobId, deduped);
@@ -834,7 +1006,7 @@ async function handleEnrichmentStep(jobId: string) {
   const guided = parseGuidedUrls(job);
   const feesUrls: string[] = (guided.fees_urls as string[]) || [];
   if (feesUrls.length > 0) {
-    const pages = (await Promise.all(feesUrls.map((u) => scrapeUrl(u)))).filter((md): md is string => !!md);
+    const pages = (await Promise.all(feesUrls.map((u) => scrapeUrlOrPdf(u)))).filter((md): md is string => !!md);
     if (pages.length > 0) feePageText = pages.join("\n\n");
   }
 
@@ -857,7 +1029,7 @@ async function handleEnrichmentStep(jobId: string) {
   if (!feePageText) {
     for (const p of candidatePaths) {
       const url = `${origin}${p}`;
-      const md = await scrapeUrl(url);
+      const md = await scrapeUrlOrPdf(url);
       if (md && md.length > 500) { feePageText = md; break; }
     }
   }
@@ -895,6 +1067,12 @@ async function handleEnrichmentStep(jobId: string) {
       currency?: string;
       period_type?: string;
     }>;
+    application_fee?: {
+      description?: string | null;
+      amount?: number;
+      currency?: string;
+      student_type?: string;
+    } | null;
   }>({
     system,
     prompt: bulkFeePrompt(courseNames, truncateMarkdown(feePageText, 35000), {
@@ -932,25 +1110,101 @@ async function handleEnrichmentStep(jobId: string) {
       durationWeeks: course?.duration_weeks ?? null,
     });
 
-    const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-      .insert({
-        job_id: jobId, student_type: fee.student_type,
-        total_amount: fee.amount, currency: fee.currency,
-        period_type: fee.period,
-        installments: installments.length > 0 ? JSON.stringify(installments) : null,
-      })
-      .returning("id");
+    const feeId = await upsertFee(jobId, {
+      // The bulk fee schedule is the institution's tuition table — upsertFee turns the period
+      // into the label ("Annual Tuition Fee", "Semester Fee") rather than leaving it unnamed.
+      student_type: fee.student_type,
+      total_amount: fee.amount,
+      currency: fee.currency,
+      period_type: fee.period,
+      installments,
+    });
     await masterKnex(`${S}.extraction_course_fee_assignments`)
-      .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id })
+      .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
       .onConflict(["course_id", "course_fee_id"]).ignore();
     linked++;
   }
 
+  // The application fee is stated once for the whole institution, not per program — fee_schedule
+  // above has no room for it at all, which is why not one of the extracted fee rows was an
+  // application fee. One row, linked to every course in the job.
+  const appFee = result.application_fee;
+  let appLinked = 0;
+  let appSkipped = false;
+  if (appFee?.amount && appFee.amount > 0) {
+    // CORRECT the existing row, don't mint a second one. Amount, currency and student type are all
+    // part of upsertFee's dedupe key, so a rerun reading a corrected figure used to create a NEW
+    // row while the previous one stayed linked to every course — each course then showing two
+    // application fees, which is what this branch exists to prevent.
+    //
+    // Correcting in place rather than unlinking the old row is deliberate: the assignment junction
+    // records no provenance (no created_by — see assignJunction), so a link an admin curated by
+    // hand in the Fees tab is indistinguishable from one this block wrote, and deleting "stale"
+    // links would silently discard reviewed work. Nothing is unlinked here; every existing
+    // assignment stays valid and now points at the corrected figure.
+    const prior = await findSharedApplicationFee(jobId);
+    let feeId: string;
+    if (prior?.updated_by_platform_user_id) {
+      // An admin's own figure outranks a re-scrape, and adding a second row beside theirs is the
+      // duplicate we are avoiding — so this job's application fee is left exactly as they left it.
+      feeId = prior.id;
+      appSkipped = true;
+      logger.info("Application fee hand-corrected; leaving it alone", { jobId, feeId });
+    } else if (prior) {
+      feeId = prior.id;
+      await masterKnex(`${S}.extraction_course_fees`).where({ id: feeId }).update({
+        description: appFee.description ?? null,
+        student_type: appFee.student_type || "both",
+        total_amount: appFee.amount,
+        currency: appFee.currency || siteIntel?.currency || "USD",
+        updated_at: masterKnex.fn.now(),
+      });
+    } else {
+      feeId = await upsertFee(jobId, {
+        name: "Application Fee",
+        description: appFee.description ?? null,
+        student_type: appFee.student_type || "both",
+        total_amount: appFee.amount,
+        currency: appFee.currency || siteIntel?.currency || "USD",
+        period_type: "Total",
+      });
+    }
+    const rows = courses.map((c: { id: string }) => ({ job_id: jobId, course_id: c.id, course_fee_id: feeId }));
+    await masterKnex(`${S}.extraction_course_fee_assignments`)
+      .insert(rows).onConflict(["course_id", "course_fee_id"]).ignore();
+    appLinked = rows.length;
+  }
+
   await writeJobEvent(jobId, "step_complete", {
     phase: "enrichment",
-    message: `Bulk fees: ${linked} course-fee links created (fuzzy matched from ${feeEntries.length} fee entries)`,
-    data: { linked, fee_entries: feeEntries.length, unmatched: feeEntries.length - matches.length },
+    message: `Bulk fees: ${linked} course-fee links created (fuzzy matched from ${feeEntries.length} fee entries)`
+      + (appLinked
+        ? `, application fee ${appSkipped ? "left as hand-corrected" : "updated"} and linked to ${appLinked} courses`
+        : ", no application fee stated"),
+    data: { linked, fee_entries: feeEntries.length, unmatched: feeEntries.length - matches.length, application_fee_links: appLinked },
   });
+}
+
+/**
+ * The job's institution-wide application fee, if it already has one: an application-fee row this
+ * pipeline created (created_by null — a hand-ADDED row is never rewritten by a worker) that is
+ * linked to more than one course, which is the shape only the bulk-fees step produces. A course
+ * page's own program-specific application fee — one course, one fee, which FEE_SCOPE_RULE asks
+ * for — is not this, and is left alone.
+ */
+async function findSharedApplicationFee(jobId: string) {
+  const rows: Array<{ id: string; name: string | null; updated_by_platform_user_id: number | null; links: string }> =
+    await masterKnex(`${S}.extraction_course_fee_assignments as a`)
+      .join(`${S}.extraction_course_fees as f`, "f.id", "a.course_fee_id")
+      .where("a.job_id", jobId)
+      .whereNull("f.created_by_platform_user_id")
+      .groupBy("f.id", "f.name", "f.updated_by_platform_user_id")
+      .havingRaw("count(distinct a.course_id) > 1")
+      .select("f.id", "f.name", "f.updated_by_platform_user_id")
+      .select(masterKnex.raw("count(distinct a.course_id) as links"));
+  return rows
+    .filter((f) => feeTypeFor(f.name) === "Application Fee")
+    .sort((a, b) => Number(b.links) - Number(a.links))[0] ?? null;
 }
 
 async function handleVerificationStep(jobId: string) {
@@ -1001,13 +1255,14 @@ async function handleCourseDataStep(
 
   // Admin-supplied pages for this data type (fees_urls, intakes_urls, …) get appended to
   // the course page — a shared fee table often lives off the course page entirely.
+  // PDF URLs (fee schedules, prospectuses) are handled via Gemini vision.
   // ponytail: first 3 only, to bound scrape cost; raise if sites split data wider than that.
   let combined = markdown;
   const guidedForType = parseGuidedUrls(job)[`${dataType}_urls`];
   if (Array.isArray(guidedForType)) {
     for (const extra of guidedForType.slice(0, 3)) {
       if (typeof extra !== "string") continue;
-      const extraMd = await scrapeUrl(extra);
+      const extraMd = await scrapeUrlOrPdf(extra);
       if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
     }
   }
@@ -1030,7 +1285,42 @@ async function handleCourseDataStep(
       }
       const category = normaliseCourseCategory(extracted.course_category);
       if (category) updates.course_category = category;
-      if (typeof extracted.duration_weeks === "number" && extracted.duration_weeks > 0) updates.duration_weeks = extracted.duration_weeks;
+      // Same closed-list binding as the page worker (lib/lookup-catalog.ts): the re-extracted
+      // level/subject only land as the platform's own values, with their *_code link.
+      const link = await resolveCourseLookups({
+        name: (typeof extracted.name === "string" && extracted.name) || course.name,
+        degree_level: updates.degree_level as string | undefined,
+        subject_area: updates.subject_area as string | undefined,
+        area_of_study: extracted.area_of_study as string | undefined,
+      });
+      // Fill, never erase — same rule as writeCourse's merge. A re-extract of a page that simply
+      // doesn't restate the qualification resolves to null, and assigning that would unlink a
+      // course that was already linked. When the resolver has no answer the raw text is dropped
+      // from the update too, so an unlinkable value is never stored in its place.
+      // A re-extract must not move a course onto a level the job did not ask for — writeCourse
+      // refuses to stage one, and this path would otherwise smuggle it in on an update.
+      if (link.degree_level_code && !(await isCourseInScope(jobId, link.degree_level_code))) {
+        logger.warn("Re-extract resolved a level outside the job's selection — keeping the stored one", {
+          jobId, courseId, course: course.name, resolved: link.degree_level_code,
+        });
+        delete updates.degree_level;
+      } else if (link.degree_level_code) {
+        updates.degree_level = link.degree_level;
+        updates.degree_level_code = link.degree_level_code;
+      } else {
+        delete updates.degree_level;
+      }
+      if (link.subject_area_code) updates.subject_area_code = link.subject_area_code;
+      // Through the same resolver as the writers, not the raw field: a re-extract that answers
+      // "3 years" (or answers nothing but states it in the description) must resolve identically
+      // to a first extraction, or a re-run silently downgrades a course that already had one.
+      const weeks = resolveDurationWeeks({
+        duration_weeks: extracted.duration_weeks as number | string | null | undefined,
+        duration_text: extracted.duration_text as string | null | undefined,
+        study_options: extracted.study_options as ExtractedStudyOption[] | undefined,
+        description: extracted.description as string | null | undefined,
+      });
+      if (weeks != null) updates.duration_weeks = weeks;
       if (Array.isArray(extracted.career_paths) && extracted.career_paths.length > 0) updates.career_paths = extracted.career_paths;
       if (Object.keys(updates).length > 0) {
         updates.updated_at = masterKnex.fn.now();
@@ -1046,24 +1336,25 @@ async function handleCourseDataStep(
       const fees = (extracted.fees as Array<Record<string, unknown>>) || [];
       for (const fee of fees) {
         if (!fee.total_amount || (fee.total_amount as number) <= 0) continue;
+        // Tuition and the application fee only — see isExtractableFee.
+        if (!isExtractableFee(fee.name as string | null)) continue;
         const installments = parseInstallments({
           totalAmount: fee.total_amount as number,
           periodType: (fee.period_type as string) ?? "Per Year",
           durationWeeks: course.duration_weeks ?? null,
         });
-        const [feeRow] = await masterKnex(`${S}.extraction_course_fees`)
-          .insert({
-            job_id: jobId,
-            name: fee.name ?? null,
-            student_type: fee.student_type ?? "both",
-            period_type: fee.period_type ?? "Per Year",
-            currency: fee.currency ?? "AUD",
-            total_amount: fee.total_amount,
-            installments: installments.length > 0 ? JSON.stringify(installments) : null,
-          })
-          .returning("id");
+        const feeId = await upsertFee(jobId, {
+          name: (fee.name as string) ?? null,
+          description: (fee.description as string) ?? null,
+          student_type: (fee.student_type as string) ?? "both",
+          period_type: (fee.period_type as string) ?? "Per Year",
+          currency: (fee.currency as string) ?? null,
+          total_amount: fee.total_amount as number,
+          installments,
+        });
         await masterKnex(`${S}.extraction_course_fee_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeRow.id });
+          .insert({ job_id: jobId, course_id: courseId, course_fee_id: feeId })
+          .onConflict(["course_id", "course_fee_id"]).ignore();
         count++;
       }
       // Update course-level fee totals
@@ -1087,19 +1378,31 @@ async function handleCourseDataStep(
       await masterKnex(`${S}.extraction_course_intake_assignments`).where({ course_id: courseId }).delete();
       const intakes = (extracted.intakes as Array<Record<string, unknown>>) || [];
       for (const intake of intakes) {
-        if (!intake.intake_name) continue;
-        const [intakeRow] = await masterKnex(`${S}.extraction_intakes`)
-          .insert({
-            job_id: jobId, course_id: courseId,
-            intake_name: intake.intake_name,
-            start_date: intake.start_date ?? null,
-            admission_deadline: intake.admission_deadline ?? null,
-            intake_month: intake.intake_month ?? null,
-            intake_year: intake.intake_year ?? null,
-          })
-          .returning("id");
+        // Shared with the page worker rather than reimplemented. This branch previously kept its
+        // own copy and had drifted: raw LLM strings went straight at `date`/`integer` columns
+        // (the LLM emits "February 15" and "September"), and a dated-but-unnamed intake was
+        // dropped here while the page worker kept it. One helper, one behaviour.
+        const parsed: ExtractedIntake = {
+          intake_name: (intake.intake_name as string | null) ?? null,
+          start_date: (intake.start_date as string | null) ?? null,
+          end_date: (intake.end_date as string | null) ?? null,
+          orientation_date: (intake.orientation_date as string | null) ?? null,
+          admission_deadline: (intake.admission_deadline as string | null) ?? null,
+          intake_month: intake.intake_month as number | string | null,
+          intake_year: intake.intake_year as number | string | null,
+          custom_dates: intake.custom_dates as ExtractedIntake["custom_dates"],
+        };
+        // Only a row with nothing identifying at all is worth skipping.
+        const derived = deriveIntakeMonthYear(
+          parsed.intake_name, coercePartialDate(parsed.start_date),
+          coerceMonth(parsed.intake_month), coerceInt(parsed.intake_year),
+        );
+        if (!parsed.intake_name && !coercePartialDate(parsed.start_date) && derived.intake_year == null) continue;
+
+        const intakeId = await upsertIntake(jobId, parsed, sourceUrl);
         await masterKnex(`${S}.extraction_course_intake_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, intake_id: intakeRow.id });
+          .insert({ job_id: jobId, course_id: courseId, intake_id: intakeId })
+          .onConflict(["course_id", "intake_id"]).ignore();
         count++;
       }
       break;
@@ -1126,8 +1429,34 @@ async function handleCourseDataStep(
     }
 
     case "eligibility": {
-      // Delete existing eligibility assignments for this course
+      // Unassign this course's existing requirements AND delete the rows themselves.
+      //
+      // Deleting only the assignments used to leave the requirement rows behind with no
+      // assignment at all — which is exactly the condition findRequirementsForCourse reads as
+      // "institution-wide" (a job-scoped row assigned to no course applies to every course that
+      // names none of its own). So re-extracting one course's eligibility silently injected its
+      // stale requirements into every other course on the job. Scoped to the ids these
+      // assignments actually pointed at, so an admin's deliberately-unassigned institution-wide
+      // requirement is untouched.
+      const priorIds = await masterKnex(`${S}.extraction_course_eligibility_assignments`)
+        .where({ course_id: courseId })
+        .pluck("eligibility_requirement_id");
       await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
+      const orphanIds = priorIds.filter((id): id is string => id != null);
+      if (orphanIds.length > 0) {
+        // A requirement still assigned to another course is shared and must survive; only the
+        // ones left assigned to nothing get deleted. Two plain queries rather than a correlated
+        // NOT EXISTS against the delete target — same result, nothing to get subtly wrong.
+        const stillAssigned = new Set<string>(
+          await masterKnex(`${S}.extraction_course_eligibility_assignments`)
+            .whereIn("eligibility_requirement_id", orphanIds)
+            .pluck("eligibility_requirement_id"),
+        );
+        const unreferenced = orphanIds.filter((id) => !stillAssigned.has(id));
+        if (unreferenced.length > 0) {
+          await masterKnex(`${S}.extraction_eligibility_requirements`).whereIn("id", unreferenced).delete();
+        }
+      }
       const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
       for (const req of reqs) {
         const description = (req.description as string | null) ?? null;
@@ -1139,9 +1468,19 @@ async function handleCourseDataStep(
         }
         const isPercentage = scoreType === "percentage";
 
-        const [reqRow] = await masterKnex(`${S}.extraction_eligibility_requirements`)
-          .insert({
-            job_id: jobId,
+        // Shared with the page worker, like the intakes branch above. A direct insert here made
+        // this the one path that did NOT share: re-extracting a course's eligibility minted a
+        // fresh row instead of joining the job's existing "Bachelor degree or equivalent",
+        // so sharing worked on a first crawl and silently stopped working after any per-course
+        // re-run. upsertEligibility dedupes on (job_id, name, applicable_to) and fills blanks.
+        const reqId = await upsertEligibility(
+          jobId,
+          {
+            name: req.name as string | null,
+            applicable_to: (req.applicable_to as string) ?? "both",
+            description,
+          },
+          {
             name: req.name ?? null,
             applicable_to: req.applicable_to ?? "both",
             description,
@@ -1149,25 +1488,49 @@ async function handleCourseDataStep(
             min_degree_level: req.min_degree_level ?? null,
             score_type: scoreType,
             min_score: isPercentage ? null : scoreValue,
-          })
-          .returning("id");
+            academic_tests: JSON.stringify(normaliseAcademicTests(req.academic_tests)),
+            source_url: sourceUrl,
+          },
+        );
         await masterKnex(`${S}.extraction_course_eligibility_assignments`)
-          .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: reqRow.id });
+          .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: reqId })
+          .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
         count++;
       }
-      // English requirements
-      const engReqs = (extracted.english_requirements as Array<Record<string, unknown>>) || [];
-      for (const eng of engReqs) {
-        await masterKnex(`${S}.extraction_english_requirements`).insert({
-          job_id: jobId, course_id: courseId,
-          test_type_name: eng.test_type_name ?? null,
-          overall_score: eng.overall_score ?? null,
-          listening_score: eng.listening_score ?? null,
-          reading_score: eng.reading_score ?? null,
-          writing_score: eng.writing_score ?? null,
-          speaking_score: eng.speaking_score ?? null,
+      // English requirements — replaced wholesale for this course, mirroring the requirement rows
+      // above, so a re-extraction reflects what the page says NOW rather than adding another copy
+      // of the bar on every run. Safe to delete outright where requirements needed care: these
+      // rows carry a direct course_id and no junction, so no other course can be sharing them.
+      //
+      // The insert itself is upsertEnglishRequirement, shared with the page worker. This branch
+      // has drifted from that worker four times now (raw dates at date/integer columns; dropping
+      // dated-but-unnamed intakes; a direct eligibility insert; this one) — CLAUDE.md (h): write
+      // behaviour belongs in a staging-writer helper called from BOTH, never reimplemented here.
+      //
+      // AN EXTRACTION THAT FOUND NOTHING REPLACES NOTHING. Entries with no test name are dropped
+      // by the helper, so they are not counted here either — a response of `[]`, or one made
+      // entirely of nameless entries, means this run learned nothing about the English bar, which
+      // is overwhelmingly a scrape or chunking miss (the page's English table simply did not make
+      // the extracted text) rather than an institution dropping its requirement. Deleting on that
+      // signal wipes a good bar with nothing to put back, and these rows have no admin UI to
+      // restore them from. Same rule the fees path already applies: only act when something was
+      // actually found.
+      const engReqs = ((extracted.english_requirements as Array<ExtractedEnglishReq>) || [])
+        .filter((eng) => (eng?.test_type_name ?? "").trim());
+      if (engReqs.length > 0) {
+        // One transaction, so the course is never left with the old rows gone and the new ones
+        // not yet in: a failure part-way through would otherwise leave a partial English bar
+        // that the verdict engine judges a real student against.
+        await masterKnex.transaction(async (trx) => {
+          await trx(`${S}.extraction_english_requirements`).where({ course_id: courseId }).delete();
+          for (const eng of engReqs) {
+            if (await upsertEnglishRequirement(jobId, courseId, eng, sourceUrl, trx)) count++;
+          }
         });
-        count++;
+      } else if (((extracted.english_requirements as unknown[]) || []).length > 0) {
+        logger.warn("English requirements extracted with no test name — existing rows kept", {
+          courseId, count: (extracted.english_requirements as unknown[]).length,
+        });
       }
       break;
     }

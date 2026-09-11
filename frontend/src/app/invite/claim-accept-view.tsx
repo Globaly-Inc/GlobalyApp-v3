@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { inviteApi } from "./apis";
+import { LOGO } from "@/lib/public-assets";
 
 // One view for both kinds — a business and an institution claim are the same flow, the two
 // tables exist only to keep the rows apart. `kind` picks the endpoint and the wording.
@@ -68,7 +69,7 @@ export function ClaimAcceptView({ kind }: Readonly<{ kind: Kind }>) {
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-8">
           <Link href="/">
-            <Image src="/globaly-logo.png" alt="Globaly.io" width={753} height={157} className="h-10 w-auto" />
+            <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
           </Link>
         </div>
         <Card>

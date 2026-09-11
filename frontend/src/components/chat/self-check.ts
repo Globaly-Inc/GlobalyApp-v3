@@ -97,13 +97,13 @@ assert.deepEqual(parseMessageBody("run `a **b**` now"), [
 
 // A bare URL becomes a link, with the trailing sentence punctuation left outside it.
 {
-  const parsed = parseMessageBody("see https://globaly.app/courses, thanks");
-  assert.deepEqual(parsed[1], { kind: "link", href: "https://globaly.app/courses", label: "globaly.app/courses" });
+  const parsed = parseMessageBody("see https://globalyapp.com/courses, thanks");
+  assert.deepEqual(parsed[1], { kind: "link", href: "https://globalyapp.com/courses", label: "globalyapp.com/courses" });
   assert.deepEqual(parsed[2], { kind: "text", value: ", thanks" });
 }
 
 // `www.` links get a protocol so the href is navigable.
-assert.equal((parseMessageBody("www.globaly.app")[0] as { href: string }).href, "https://www.globaly.app");
+assert.equal((parseMessageBody("www.globalyapp.com")[0] as { href: string }).href, "https://www.globalyapp.com");
 
 // Nothing is ever emitted as HTML — the renderer only ever sees known segment kinds.
 for (const segment of parseMessageBody("<script>alert(1)</script> **x**")) {
@@ -111,7 +111,7 @@ for (const segment of parseMessageBody("<script>alert(1)</script> **x**")) {
 }
 assert.deepEqual(parseMessageBody("<b>x</b>"), [{ kind: "text", value: "<b>x</b>" }]);
 
-assert.equal(truncateUrl("https://globaly.app/a/very/long/path/that/keeps/going/and/going/on", 20), "globaly.app/a/ver...");
+assert.equal(truncateUrl("https://globalyapp.com/a/very/long/path/that/keeps/going/and/going/on", 20), "globalyapp.com/a/...");
 
 // ── grouping ──
 

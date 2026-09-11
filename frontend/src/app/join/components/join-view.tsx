@@ -21,6 +21,8 @@ import { buildReferralLink, captureRefTokenIfAbsent } from "@/lib/referral-token
 import { cn } from "@/lib/utils";
 import { referralsApi } from "@/app/personal/earn/referrals/apis";
 import { resolveInvite } from "../store/join-slice";
+import { LOGO } from "@/lib/public-assets";
+import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
 
 export function JoinView() {
   const router = useRouter();
@@ -89,7 +91,7 @@ export function JoinView() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex justify-center">
           <Link href="/">
-            <Image src="/globaly-logo.png" alt="Globaly" width={753} height={157} className="h-10 w-auto" />
+            <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
           </Link>
         </div>
 
@@ -142,7 +144,7 @@ export function JoinView() {
                   anything on yours.
                 </p>
                 <Link
-                  href="/personal/portal"
+                  href={PERSONAL_PORTAL_HOME}
                   className={cn(buttonVariants(), "mt-6 w-full cursor-pointer")}
                 >
                   Continue to Globaly

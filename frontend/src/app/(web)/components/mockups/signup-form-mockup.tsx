@@ -7,7 +7,7 @@ import { MockupFrame } from "./mockup-frame";
 /** Staggered signup form — pure CSS animations, no JS state needed. */
 export function SignupFormMockup() {
   return (
-    <MockupFrame label="globaly.app / sign up">
+    <MockupFrame label="globalyapp.com / sign up">
       <div className="space-y-4">
         <div className="space-y-1 animate-fade-in" style={{ animationDelay: "0ms", animationFillMode: "both" }}>
           <h3 className="text-lg font-semibold text-foreground">Create your account</h3>
@@ -19,7 +19,7 @@ export function SignupFormMockup() {
             <Label className="text-xs text-muted-foreground">Full name</Label>
             <div className="relative mt-1">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input readOnly value="Aanya Sharma" className="pl-9" />
+              <Input readOnly value="Sofia Almeida" className="pl-9" />
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BookMarked, Building2, CalendarDays, CheckCircle2, ChevronsUpDown, Clock, DollarSign, ExternalLink, Flag, Link2,
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { RowActors } from "./row-actors";
 import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { allExtractionsApi } from "../apis";
 import { saveFormAndLearn } from "./editable-field";
 import { StudyOptionForm } from "./study-option-form";
-import { feeAmount } from "../utils";
+import { DURATION_WEEK_OPTIONS } from "../const";
+import { courseDuration, feeAmount } from "../utils";
 import type {
   CampusFull, CourseAssignment, CourseFull, CourseLinks, JunctionSlug, StudyOption,
 } from "../apis/types";
@@ -191,6 +193,19 @@ export function CourseDetailPanel({
     }
   };
 
+  // An extracted duration is any integer of weeks, so the preset list alone would render blank
+  // on a course the crawler read as 11 weeks — the same trap the subject-area picker fell into.
+  const durationOptions = useMemo(() => {
+    const weeks = [...DURATION_WEEK_OPTIONS];
+    const current = course.duration_weeks;
+    if (current && !weeks.includes(current)) weeks.push(current);
+    weeks.sort((a, b) => a - b);
+    return [
+      { value: "", label: "Not set" },
+      ...weeks.map((w) => ({ value: String(w), label: courseDuration(w) ?? `${w} weeks` })),
+    ];
+  }, [course.duration_weeks]);
+
   // save-and-learn, not a plain PATCH: a reviewer correcting the same field twice on a
   // domain is what creates an AI Memory lesson. Courses are where most corrections happen,
   // so a plain PATCH here left the learning loop effectively switched off.
@@ -245,6 +260,7 @@ export function CourseDetailPanel({
                 Source
               </a>
             )}
+            <RowActors row={course} className="mt-1" />
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {course.verification_status && course.verification_status !== "unverified" && (
@@ -280,22 +296,40 @@ export function CourseDetailPanel({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Degree level</Label>
+            {/* Closed platform lists (2026-09-08): a course may only be linked to a level/area that
+                already exists, so neither picker can create one. The server re-derives the link
+                codes from what's picked. */}
             <LookupCombobox
               kind="degree-levels"
               value={course.degree_level ?? ""}
               onChange={(v) => patchCourse({ degree_level: v || null })}
               placeholder="Select degree level"
-              creatable
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Subject area</Label>
+            {/* Bound to the LINK, not to `subject_area` — that column holds the page's own wording
+                ("Civil Engineering"), which is never one of the 14 options, so the picker rendered
+                blank on a correctly linked course. */}
             <LookupCombobox
               kind="areas-of-study"
-              value={course.subject_area ?? ""}
-              onChange={(v) => patchCourse({ subject_area: v || null })}
+              by="slug"
+              value={course.subject_area_code ?? ""}
+              onChange={(v) => patchCourse({ subject_area_code: v || null })}
               placeholder="Select subject area"
-              creatable
+            />
+            {course.subject_area && (
+              <p className="text-xs text-muted-foreground">Extracted as “{course.subject_area}”</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Duration</Label>
+            <Combobox
+              options={durationOptions}
+              value={course.duration_weeks ? String(course.duration_weeks) : ""}
+              onChange={(v) => patchCourse({ duration_weeks: v ? Number(v) : null })}
+              placeholder="Select duration"
+              searchPlaceholder="Search duration..."
             />
           </div>
         </div>

@@ -1,11 +1,27 @@
+"use client";
+
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { studentFeatures, earnCards, aiCosts } from "../data";
+import { studentFeatures, earnCards, aiCosts, SEARCHABLE_FEATURE_INDEX } from "../data";
+import { usePlatformStats } from "../../hooks/use-platform-stats";
+import { formatStatValue } from "../../types";
 
 export function PricingStudentSection() {
+  const { stats } = usePlatformStats();
+
+  // Everything a student can search from one box: the three catalogs plus marketplace services.
+  const features = studentFeatures.map((f, i) => {
+    if (i !== SEARCHABLE_FEATURE_INDEX || !stats) return f;
+    const listings = stats.courses + stats.institutions + stats.educationCounselors + stats.serviceListings;
+    return {
+      text: `Search & compare ${formatStatValue(listings)} listings`,
+      sub: `Courses, institutions, education counselors across ${formatStatValue(stats.countries)} countries`,
+    };
+  });
+
   return (
     <>
       {/* Student free forever */}
@@ -26,7 +42,7 @@ export function PricingStudentSection() {
                 Everything included at $0
               </p>
               <div className="space-y-4">
-                {studentFeatures.map((f) => (
+                {features.map((f) => (
                   <div key={f.text} className="flex gap-3">
                     <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
                     <div>

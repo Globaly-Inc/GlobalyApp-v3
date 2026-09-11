@@ -1,7 +1,7 @@
 export const THEME_SETTINGS_KEY = "theme-settings";
 export const THEME_SETTINGS_EVENT = "theme-settings-change";
 
-export const DEFAULT_PRIMARY = "#7F1D1D";
+export const DEFAULT_PRIMARY = "#012E8A";
 
 /** The un-themed body font. Exported so the layout can tell an untouched
     install from a tenant that has actually picked a font, which is what decides

@@ -1,5 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG,statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type {
   Accreditation,
@@ -32,6 +32,7 @@ import type {
   JunctionSlug,
   LibraryAccreditation,
   LibraryAccreditationInput,
+  MissingDetailCandidate,
   Paginated,
   QueueItem,
   StudyOption,
@@ -44,10 +45,6 @@ import type {
   VisaService,
 } from "./types";
 
-function rawStatusesForLabel(label: string): ExtractionStatus[] {
-  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
-}
-
 export const allExtractionsRealApi = {
   getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
     const query: Record<string, string> = {
@@ -59,16 +56,23 @@ export const allExtractionsRealApi = {
     const baseStatuses = MODE_STATUS_FILTER[params.mode];
     const statuses =
       params.statusLabel && params.statusLabel !== "all"
-        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        ? statusesForFilterValue(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
         : baseStatuses;
     if (statuses?.length) query.statuses = statuses.join(",");
     if (!params.showDeclined) query.exclude_statuses = "declined";
 
-    if (params.mode === "ai-ongoing") {
-      query.exclude_source_type = "agentcis";
+    // An admin-created institution ("manual") and a self-registered one ("self_service") each
+    // own a synthetic job, status "done", purely so their courses have a job_id to hang off.
+    // Neither is an extraction, so both stay out of every dashboard list unless asked for.
+    if (OWNED_JOB_SOURCE_TYPES.includes(params.sourceFilter ?? "")) {
+      query.source_type = params.sourceFilter!;
+    } else if (params.mode === "ai-ongoing") {
+      query.exclude_source_type = ["agentcis", ...OWNED_JOB_SOURCE_TYPES].join(",");
     } else if (params.mode === "completed" && params.sourceFilter && params.sourceFilter !== "all") {
       if (params.sourceFilter === "agentcis") query.source_type = "agentcis";
-      else query.exclude_source_type = "agentcis";
+      else query.exclude_source_type = ["agentcis", ...OWNED_JOB_SOURCE_TYPES].join(",");
+    } else {
+      query.exclude_source_type = OWNED_JOB_SOURCE_TYPES.join(",");
     }
 
     if (params.businessCategoryId) query.business_category_id = String(params.businessCategoryId);
@@ -171,7 +175,7 @@ export const allExtractionsRealApi = {
     const res = await httpPost<{ id: string; name: string; created_at: string; updated_at: string }>(
       `/admin/data-extraction/jobs/${jobId}/courses`, params,
     );
-    return { ...params, id: res.id, name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: res.created_at, updated_at: res.updated_at };
+    return { ...params, id: res.id, name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, subject_area_code: null, degree_level_code: null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: res.created_at, updated_at: res.updated_at };
   },
 
   updateCourse: async (id: string, params: UpdateCourseParams): Promise<void> => {
@@ -269,6 +273,15 @@ export const allExtractionsRealApi = {
     await httpPost("/admin/data-extraction/save-and-learn", params);
   },
 
+  // Looks up values for currently-empty institution overview fields only (homepage +
+  // best-effort /contact scrape), for the admin to individually accept via saveAndLearn.
+  findMissingInstitutionDetails: async (jobId: string): Promise<{ fields: MissingDetailCandidate[] }> =>
+    httpPost(`/admin/data-extraction/jobs/${jobId}/find-missing-institution-details`, {}),
+
+  // Geocodes a campus's existing address to backfill postcode/map link only.
+  findMissingCampusDetails: async (campusId: string): Promise<{ fields: MissingDetailCandidate[] }> =>
+    httpPost(`/admin/data-extraction/campuses/${campusId}/find-missing-details`, {}),
+
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
     await httpPatch(`/admin/data-extraction/jobs/${id}/context`, params);
   },
@@ -318,7 +331,8 @@ export const allExtractionsRealApi = {
   createCourseFee: async (params: { job_id: string } & CourseFeeParams): Promise<CourseFee> => {
     const res = await httpPost<{ id: string; created_at: string }>("/admin/data-extraction/course-fees", params);
     return {
-      id: res.id, name: params.name ?? null, student_type: params.student_type ?? null,
+      id: res.id, name: params.name ?? null, description: params.description ?? null,
+      student_type: params.student_type ?? null,
       period_type: params.period_type ?? null, currency: params.currency ?? null,
       total_amount: params.total_amount ?? null, installments: params.installments ?? [],
       save_for_reuse: params.save_for_reuse ?? false, created_at: res.created_at,

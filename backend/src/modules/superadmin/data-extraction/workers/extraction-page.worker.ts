@@ -11,26 +11,51 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeMarkdown } from "../lib/scraper.js";
+import { scrapeMarkdown, scrapeRenderedHtml } from "../lib/scraper.js";
 import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
+import { courseLinksByName, looksLikeCourseList, parseCourseList } from "../lib/courselist-parser.js";
 import { extractJson } from "../lib/llm-client.js";
 import {
   courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
+  courseDataPrompt, COURSE_DATA_SYSTEM,
   feesFromPagePrompt, FEES_FROM_PAGE_SYSTEM, curriculumAndFeesPrompt, CURRICULUM_AND_FEES_SYSTEM,
   visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
   writeCourse, upsertCampus, normaliseCampusName, writeVisaService, insertQueueItem, writeJobEvent,
+  upsertIntake, type ExtractedIntake, resolveDurationWeeks, durationFromProse, courseOwnPage, bareCourseKey,
+  normaliseCourseName,
   type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
+import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { classifyFailure, type FailureClass } from "../lib/classify-failure.js";
+import { createDocumentExtractor } from "../lib/document-extractor.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("extraction-page-worker");
 
 /** Detect paginated sibling pages from links (DataTables, ?page=N, /page/N). */
+/**
+ * URLs the operator filed under Context -> Intakes, as a set.
+ *
+ * The courses step already queues these (COURSES_STEP_GUIDED_CATEGORIES in
+ * extraction-step.worker.ts), but nothing ever told this worker they were anything other than a
+ * course page — so they were extracted with the course prompt and produced nothing.
+ */
+function intakeGuidedUrls(job: Record<string, unknown>): Set<string> {
+  if (!job.guided_urls) return new Set();
+  try {
+    const guided = typeof job.guided_urls === "string"
+      ? JSON.parse(job.guided_urls as string)
+      : job.guided_urls as Record<string, unknown>;
+    return new Set((guided?.intakes_urls as string[] | undefined) ?? []);
+  } catch {
+    return new Set();
+  }
+}
+
 function detectPaginationUrls(baseUrl: string, links: string[], markdown: string): string[] {
   let baseObj: URL | null = null;
   try { baseObj = new URL(baseUrl); } catch { return []; }
@@ -104,11 +129,24 @@ async function scrapeSecondaryPage(resolvedUrl: string, cache: Map<string, strin
   if (cache.has(resolvedUrl)) return cache.get(resolvedUrl)!;
   let markdown: string | null = null;
   try {
-    const page = await scrapeMarkdown(resolvedUrl, { onlyMainContent: true });
-    if (!page.blocked && page.markdown.length >= 50) {
-      markdown = truncateMarkdown(page.markdown);
+    const isPdf = /\.pdf(\?|#|$)/i.test(resolvedUrl);
+    if (isPdf) {
+      // scrapeMarkdown can't render PDFs — use Gemini vision extraction instead
+      const docExtractor = createDocumentExtractor();
+      const fileName = resolvedUrl.split("/").pop()?.split("?")[0] || "fees.pdf";
+      const result = await docExtractor.extract({ file_url: resolvedUrl, file_name: fileName });
+      if (result.text && result.text.length >= 50) {
+        markdown = truncateMarkdown(result.text);
+      } else {
+        logger.warn("PDF secondary page empty or failed", { jobId, url: resolvedUrl, error: result.error });
+      }
     } else {
-      logger.warn("Secondary page blocked or empty, skipping fetch", { jobId, url: resolvedUrl });
+      const page = await scrapeMarkdown(resolvedUrl, { onlyMainContent: true });
+      if (!page.blocked && page.markdown.length >= 50) {
+        markdown = truncateMarkdown(page.markdown);
+      } else {
+        logger.warn("Secondary page blocked or empty, skipping fetch", { jobId, url: resolvedUrl });
+      }
     }
   } catch (err) {
     logger.warn("Secondary page scrape failed, skipping fetch", {
@@ -117,6 +155,35 @@ async function scrapeSecondaryPage(resolvedUrl: string, cache: Map<string, strin
   }
   cache.set(resolvedUrl, markdown);
   return markdown;
+}
+
+/**
+ * A curriculum read straight out of a secondary page's markup, or null when that page does not
+ * publish one. Cached per URL like the markdown path, because several qualification variants of
+ * one subject share a curriculum link.
+ *
+ * Tried BEFORE the model on every curriculum page: where the site is a CourseLeaf catalogue the
+ * table is exact — code, title, credit hours, requirement block — and it costs no Gemini call
+ * at all. Where it is not, this returns null in one fetch and the markdown path runs as before.
+ */
+async function unitsFromMarkup(
+  resolvedUrl: string, cache: Map<string, ExtractedStudyUnit[] | null>, jobId: string,
+): Promise<ExtractedStudyUnit[] | null> {
+  if (cache.has(resolvedUrl)) return cache.get(resolvedUrl)!;
+  let units: ExtractedStudyUnit[] | null = null;
+  try {
+    const { html } = await scrapeRenderedHtml(resolvedUrl);
+    if (html && looksLikeCourseList(html)) {
+      const parsed = parseCourseList(html);
+      if (parsed.units.length) units = parsed.units;
+    }
+  } catch (err) {
+    logger.warn("Curriculum markup fetch failed, falling back to the model", {
+      jobId, url: resolvedUrl, error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  cache.set(resolvedUrl, units);
+  return units;
 }
 
 /**
@@ -195,6 +262,13 @@ async function checkAllPagesDone(jobId: string) {
       phase: "data_extraction", message: "All pages extracted, starting verification",
     });
     await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+    const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
+    if (!job?.source_type || job.source_type === "institution") {
+      const hasCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first();
+      if (!hasCampuses) {
+        await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "branches" });
+      }
+    }
   }
 }
 
@@ -212,12 +286,13 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   // Check job is still active + load site intelligence hints
   const [job, siteIntel] = await Promise.all([
     masterKnex(`${S}.extraction_jobs`)
-      .select("status", "stop_requested", "guidance_notes", "source_type")
+      .select("status", "stop_requested", "guidance_notes", "source_type", "degree_level_codes")
       .where({ id: jobId })
       .first(),
     masterKnex(`${S}.extraction_site_intelligence`)
-      .select("fee_structure", "extraction_hints")
+      .select("fee_structure", "extraction_hints", "country")
       .where({ job_id: jobId })
+      .orderBy("created_at", "desc")
       .first(),
   ]);
 
@@ -376,15 +451,44 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     // extraction" in extraction-prompts.ts.
     const domain = domainOf(url);
     const isVisaService = job.source_type === "visa_service";
-    const memoryStep = isVisaService ? "visa_service_extraction" : "course_extraction";
+    // A page the operator filed under Context -> Intakes. An academic calendar is the case this
+    // exists for: it states term dates for the whole institution and lists no courses at all, so
+    // the course prompt (whose `intakes` live INSIDE each course object) returned an empty courses
+    // array and dropped every date on the page. Stanford's calendar is exactly this shape.
+    const isIntakeSource = !isVisaService && intakeGuidedUrls(job).has(url);
+    const memoryStep = isVisaService
+      ? "visa_service_extraction"
+      : isIntakeSource ? "intakes" : "course_extraction";
     const recalled = await recallMemory(domain, memoryStep, markdown.slice(0, 500));
     const addendum = buildSystemAddendum(recalled);
 
     let entitiesWritten = 0;
     let campusCount = 0;
+    let overflowQueued = 0;
     let extractedForMemory: unknown;
 
-    if (isVisaService) {
+    if (isIntakeSource) {
+      // The FLAT intakes schema, job-scoped — no course wrapper to come up empty.
+      const system = addendum ? `${COURSE_DATA_SYSTEM}\n\n${addendum}` : COURSE_DATA_SYSTEM;
+      const extracted = await extractJson<{ intakes?: ExtractedIntake[] }>({
+        system,
+        prompt: courseDataPrompt(url, markdown, "intakes", job.guidance_notes),
+        maxTokens: 65536,
+      });
+      extractedForMemory = extracted;
+
+      // Deliberately assigned to NO course. upsertIntake is keyed on job + name + month + year, so
+      // a calendar's "Autumn 2026-2027" lands on the row 38 courses are already linked to and
+      // fills its empty dates — which is the point, and why this needs no name-matching of its
+      // own. A term the catalogue never mentioned becomes an unlinked intake: visible in the admin
+      // tab for someone to link, and excluded from public reads until they do (those read through
+      // the assignment junction).
+      for (const intake of extracted.intakes ?? []) {
+        if (!intake.intake_name && !intake.start_date) continue;
+        await upsertIntake(jobId, intake, url);
+        entitiesWritten++;
+      }
+    } else if (isVisaService) {
       const system = addendum ? `${VISA_SERVICE_EXTRACTION_SYSTEM}\n\n${addendum}` : VISA_SERVICE_EXTRACTION_SYSTEM;
       const extracted = await extractJson<VisaServiceExtractionResult>({
         system,
@@ -406,7 +510,12 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // ponytail: 65536 tokens — listing pages with 50+ courses need room
       const extracted = await extractJson<ExtractionResult>({
         system,
-        prompt: courseExtractionPrompt(url, markdown, job.guidance_notes, siteIntel),
+        // The model picks the degree level and area of study from the platform's live lists
+        // (seeded, read once per process) — see lib/lookup-catalog.ts.
+        prompt: courseExtractionPrompt(
+          url, markdown, job.guidance_notes, siteIntel, await loadLookupLists(),
+          job.degree_level_codes ?? undefined,
+        ),
         maxTokens: 65536,
       });
       extractedForMemory = extracted;
@@ -433,10 +542,61 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // Scraped markdown per secondary URL (null = failed/blocked) — the fees fallback
       // usually points at the very page curriculum discovery just scraped.
       const secondaryPageCache = new Map<string, string | null>();
+      // Units parsed from a secondary page's markup (null = that page publishes no table).
+      const markupCache = new Map<string, ExtractedStudyUnit[] | null>();
+
+      // ── Curriculum straight from the markup, when the site publishes one ──
+      // CourseLeaf catalogues (Johns Hopkins, Georgia Tech and much of the US sector) render a
+      // programme's curriculum as `table.sc_courselist` — code, title, credit hours, under a
+      // named requirement block. The model never sees it: JHU renders its whole catalogue
+      // navigation tree inline, so one programme page comes out as ~155,000 characters of
+      // links with the curriculum past the truncation point and the tables not converted at
+      // all, and every JHU course was staged with zero study units while 42 rows of real
+      // curriculum sat in the page.
+      //
+      // So the HTML is fetched ONCE per page, and only when the model actually left a course
+      // without units — a page that already yielded a curriculum costs nothing extra. Two
+      // things come out of it: the units for a course whose own page this is, and the
+      // per-programme links for an index page, which is how a course reaches its own
+      // curriculum when the model flagged no curriculum_page_url.
+      let pageUnits: ExtractedStudyUnit[] = [];
+      let pageCourseLinks: Map<string, string> = new Map();
+      if (extracted.courses?.some((c) => c.name && !c.study_units?.length)) {
+        const { html: pageHtml } = await scrapeRenderedHtml(url);
+        if (pageHtml && looksLikeCourseList(pageHtml)) {
+          pageUnits = parseCourseList(pageHtml).units;
+        }
+        if (pageHtml) pageCourseLinks = courseLinksByName(pageHtml, url);
+        if (pageUnits.length || pageCourseLinks.size) {
+          logger.info("Parsed curriculum markup", {
+            jobId, url, units: pageUnits.length, links: pageCourseLinks.size,
+          });
+        }
+      }
+
+      // Which bare names more than one course on this page would claim. "CS (Bachelor)" and
+      // "CS (Master)" both reduce to "cs", and the index's single "CS" anchor belongs to at most
+      // one of them — so the fallback refuses it for both rather than staging one's curriculum
+      // and duration onto the other.
+      const bareClaims = new Map<string, number>();
+      for (const c of extracted.courses ?? []) {
+        const key = c.name ? (bareCourseKey(c.name) ?? normaliseCourseName(c.name)) : null;
+        if (key) bareClaims.set(key, (bareClaims.get(key) ?? 0) + 1);
+      }
+      const contestedBareNames = new Set(
+        [...bareClaims].filter(([, n]) => n > 1).map(([key]) => key),
+      );
 
       if (extracted.courses?.length) {
         for (const course of extracted.courses) {
           if (!course.name) continue;
+
+          // This page's own curriculum table belongs to the course this page is ABOUT. A page
+          // describing several courses (a listing) gets its units from each course's own page
+          // below instead, so the same table is never handed to every course on an index.
+          if (!course.study_units?.length && pageUnits.length && extracted.courses.length === 1) {
+            course.study_units = pageUnits;
+          }
 
           // Upsert campuses mentioned in this course
           if (course.campus_names?.length) {
@@ -459,6 +619,14 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           if (course.curriculum_page_url) {
             try { currUrl = new URL(course.curriculum_page_url, url).toString(); }
             catch { logger.warn("Invalid curriculum_page_url, skipping secondary fetch", { jobId, url, curriculumUrl: course.curriculum_page_url }); }
+          }
+          // The model flagged nothing, but the page links this very programme by name — the
+          // ordinary case on a catalogue index, and the reason 18 of 19 JHU courses had no
+          // curriculum. Only when the course still has no units, so a page that already
+          // produced one is never re-fetched.
+          if (!currUrl && !course.study_units?.length) {
+            const own = courseOwnPage(pageCourseLinks, course.name, contestedBareNames);
+            if (own && own !== url) currUrl = own;
           }
 
           // Fees usually live on the primary page; when they don't, the LLM flags a link
@@ -483,11 +651,34 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             currUrl = null;
           }
 
+          // Markup before the model. When the curriculum page is a CourseLeaf catalogue this
+          // settles the units exactly and spends no Gemini call; `currUrl` is then cleared so
+          // the branches below only run for a fees need.
+          if (currUrl && secondaryFetches < SECONDARY_FETCH_CAP) {
+            const parsed = await unitsFromMarkup(currUrl, markupCache, jobId);
+            if (parsed?.length) {
+              secondaryFetches++;
+              curriculumCache.set(currUrl, parsed);
+              course.study_units = [...(course.study_units ?? []), ...parsed];
+              logger.info("Units from curriculum markup", {
+                jobId, course: course.name, url: currUrl, units: parsed.length,
+              });
+              currUrl = null;
+            }
+          }
+
           if (currUrl || feesUrl) {
             if (secondaryFetches >= SECONDARY_FETCH_CAP) {
-              logger.warn("Secondary fetch cap reached, skipping remaining courses", {
-                jobId, url, cap: SECONDARY_FETCH_CAP,
-              });
+              // Past the cap the course's own page becomes a queue item rather than being
+              // dropped, so each gets a full secondary budget. page_cap still bounds the total.
+              const own = currUrl ?? feesUrl;
+              if (own) {
+                const queued = await insertQueueItem(jobId, own);
+                if (queued) {
+                  await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: queued, url: own });
+                  overflowQueued++;
+                }
+              }
             } else if (currUrl && currUrl === feesUrl) {
               // Both point at the same page — one scrape, ONE combined Gemini call.
               secondaryFetches++;
@@ -531,8 +722,30 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             }
           }
 
-          await writeCourse(jobId, { ...course, source_url: course.source_url ?? url }, campusIdMap);
-          entitiesWritten++;
+          if (resolveDurationWeeks(course) == null && secondaryFetches < SECONDARY_FETCH_CAP) {
+            const ownUrl = courseOwnPage(pageCourseLinks, course.name, contestedBareNames);
+            if (ownUrl && ownUrl !== url) {
+              const cached = secondaryPageCache.has(ownUrl);
+              const md = await scrapeSecondaryPage(ownUrl, secondaryPageCache, jobId);
+              if (!cached) secondaryFetches++;
+              const stated = md ? durationFromProse(md) : null;
+              if (stated) {
+                course.duration_text = `${stated.value} ${stated.unit}`;
+                logger.info("Duration from course page", {
+                  jobId, course: course.name, url: ownUrl, duration: course.duration_text,
+                });
+              }
+            }
+          }
+
+          const written = await writeCourse(jobId, {
+            ...course,
+            source_url: course.source_url ?? url,
+            // From site intelligence, never the model — one country per job, resolved to the ISO2
+            // the public search joins on. See lookup-catalog.resolveCountryCode.
+            country_code: await resolveCountryCode(siteIntel?.country),
+          }, campusIdMap);
+          if (written) entitiesWritten++;
         }
       }
       campusCount = campusIdMap.size;
@@ -553,7 +766,10 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     await writeJobEvent(jobId, "page_extracted", {
       phase: "data_extraction",
       message: `Extracted ${entitiesWritten} ${isVisaService ? "visa services" : "courses"} from ${url}`,
-      data: { url, courses: entitiesWritten, campuses: campusCount, scraper: page.scraper },
+      data: {
+        url, courses: entitiesWritten, campuses: campusCount, scraper: page.scraper,
+        ...(overflowQueued ? { queued_for_curriculum: overflowQueued } : {}),
+      },
     });
 
     // ponytail: feed the learning loop — non-blocking, best-effort
@@ -566,7 +782,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       }).catch(() => {}); // fire-and-forget
     }
 
-    logger.info("Page processed", { jobId, url, entitiesWritten, scraper: page.scraper });
+    logger.info("Page processed", { jobId, url, entitiesWritten, overflowQueued, scraper: page.scraper });
 
     await checkAllPagesDone(jobId);
 

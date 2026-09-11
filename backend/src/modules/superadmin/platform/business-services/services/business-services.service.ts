@@ -2,10 +2,24 @@
 // dynamic per-category field values.
 
 import { masterKnex } from "../../../../../core/db/master-pool.js";
+import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
 import { NotFoundError } from "../../../../../shared/errors.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as repo from "../repositories/business-services.repository.js";
 import type { ServiceFieldValuesInput, ServiceInput, ServicePatchInput } from "../schemas/business-services.schema.js";
+
+/** A course scraped by the source extraction job, shaped like a real (but uneditable) service. */
+function courseAsService(c: {
+  id: string; name: string; subject_area: string | null; description: string | null;
+  domestic_fee_total: string | null; international_fee_total: string | null; created_at: string;
+}) {
+  return {
+    id: c.id, service_category_id: null, category_name: c.subject_area, name: c.name,
+    description: c.description, price: c.international_fee_total ?? c.domestic_fee_total,
+    is_published: true, public_visibility: true, created_at: c.created_at,
+    degree_level: null, area_of_study: null, duration: null,
+  };
+}
 
 async function requireBusiness(id: number) {
   const biz = await platformRepo.findBusinessById(id);
@@ -55,6 +69,17 @@ export async function listServices(businessId: number) {
 
 export async function searchServices(businessId: number, limit: number, offset: number, search?: string) {
   const biz = await requireBusiness(businessId);
+
+  // Same fallback as branches: a pre-seeded business (never provisioned) has no business_services
+  // rows of its own — the extraction job's scraped courses are read-only stand-ins until claimed.
+  if (biz.account_status === 0 && biz.source_job_id) {
+    const [rows, total] = await Promise.all([
+      coursesRepo.listCoursesByJob(biz.source_job_id, limit, offset, { search }),
+      coursesRepo.countCoursesByJob(biz.source_job_id, { search }),
+    ]);
+    return { rows: rows.map(courseAsService), total };
+  }
+
   const { rows, total } = await repo.searchServices(businessId, biz.schema_name, limit, offset, search);
   return { rows: await withListExtras(businessId, biz.schema_name, rows), total };
 }

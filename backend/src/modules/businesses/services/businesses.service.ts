@@ -16,7 +16,6 @@ import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
-import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
 import type { BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput } from "../schemas/businesses.schema.js";
 import { generateSubdomain } from "../../../shared/subdomain.js";
 
@@ -106,11 +105,13 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
     authorId: userId,
     businessId: Number(business.id),
     content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    // Always the landscape banner, never the business's own logo: a square logo forced into
+    // the feed's wide image box gets center-cropped into an unrecognisable zoom.
     media: [
       {
-        storage_path: business.logo_url ?? WELCOME_POST_IMAGE,
+        storage_path: WELCOME_POST_IMAGE,
         type: "image",
-        mime_type: business.logo_url ? guessImageMimeType(business.logo_url) : "image/png",
+        mime_type: "image/png",
       },
     ],
   }).catch((err) => logger.warn("Welcome post creation error", { businessId: business.id, err: err.message }));

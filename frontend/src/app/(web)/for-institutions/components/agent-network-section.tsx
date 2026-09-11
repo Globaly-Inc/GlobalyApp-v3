@@ -15,7 +15,7 @@ export function AgentNetworkSection() {
               Qualified Student Leads. Process Faster.
             </h2>
             <p className="text-muted-foreground mb-8 leading-relaxed">
-              With Globaly.app, you can connect directly with verified education counselors, receive
+              With Globalyapp, you can connect directly with verified education counselors, receive
               verified student inquiries, and manage your education counselor network, events, and
               recruitment performance — all from one platform.
             </p>
@@ -46,7 +46,7 @@ export function AgentNetworkSection() {
             </div>
           </Reveal>
           <Reveal direction="right">
-            <PartnershipConnectMockup />
+            <PartnershipConnectMockup audience="institution" />
           </Reveal>
         </div>
       </div>
