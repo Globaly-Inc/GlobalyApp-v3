@@ -46,7 +46,16 @@ const MODES: { id: Mode; label: string; Icon: typeof Search }[] = [
   { id: "search", label: "Search", Icon: Search },
 ];
 
-export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?: string }> = {}) {
+/**
+ * "light" restyles only the Try row below the card. Every hero but the home page's lays this bar
+ * over .hero-wash, where white-on-scrim is the only thing that reads, so that stays the default.
+ */
+type Tone = "dark" | "light";
+
+export function UnifiedSearchBar({
+  defaultTabSlug,
+  tone = "dark",
+}: Readonly<{ defaultTabSlug?: string; tone?: Tone }> = {}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("ai");
   // Courses everywhere except the pages that are about something else: a Search from the
@@ -204,13 +213,27 @@ export function UnifiedSearchBar({ defaultTabSlug }: Readonly<{ defaultTabSlug?:
       </div>
 
       <div className="mt-5 max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-2">
-        <span className="text-sm font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">Try:</span>
+        <span
+          className={cn(
+            "text-sm font-medium",
+            tone === "light"
+              ? "text-muted-foreground"
+              : "text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]",
+          )}
+        >
+          Try:
+        </span>
         {suggestions.map((suggestion) => (
           <button
             key={suggestion}
             type="button"
             onClick={() => submit(suggestion)}
-            className="rounded-full border border-white/60 bg-black/35 backdrop-blur-xl px-3.5 py-1.5 text-sm font-medium text-white shadow-md transition-colors duration-200 hover:bg-black/50 hover:border-white cursor-pointer"
+            className={cn(
+              "rounded-full border backdrop-blur-xl px-3.5 py-1.5 text-sm font-medium shadow-md transition-colors duration-200 cursor-pointer",
+              tone === "light"
+                ? "border-border bg-card/80 text-foreground/80 hover:bg-card hover:border-primary/30 hover:text-primary"
+                : "border-white/60 bg-black/35 text-white hover:bg-black/50 hover:border-white",
+            )}
           >
             {suggestion}
           </button>

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Inter, Fraunces } from "next/font/google";
+import { Geist_Mono, Inter, Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import { cookies } from "next/headers";
 import Script from "next/script";
 import { siteConfig } from "@/config/site";
@@ -19,6 +19,14 @@ const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
   weight: ["600", "700"],
+});
+
+// The home hero's headline face, read by .font-display. Deliberately not wired into
+// --heading-font: every other heading stays on Fraunces, or on whatever face the tenant picked.
+const plusJakarta = Plus_Jakarta_Sans({
+  variable: "--font-plus-jakarta",
+  subsets: ["latin"],
+  weight: ["700", "800"],
 });
 
 const geistMono = Geist_Mono({
@@ -74,6 +82,7 @@ export default async function RootLayout({
       className={cn(
         inter.variable,
         fraunces.variable,
+        plusJakarta.variable,
         geistMono.variable,
         "h-full antialiased",
         isDark && "dark"

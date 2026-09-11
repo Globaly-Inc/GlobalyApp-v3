@@ -103,6 +103,9 @@
   --gold-foreground: 220 99% 27%;
   --navy: 222 47% 11%;
   --navy-foreground: 0 0% 95%;
+  /* One step up in lightness from --primary, for accents that have to carry on the brand navy
+     itself: the home hero's typing cursor and the lit blob behind its headline. */
+  --primary-bright: 220 88% 45%;
   --purple-dark: 220 99% 18%;
   --purple-deep: 220 99% 12%;
 
@@ -153,6 +156,9 @@
   --gold-foreground: 220 99% 27%;
   --navy: 222 47% 8%;
   --navy-foreground: 0 0% 95%;
+  /* One step up in lightness from --primary, for accents that have to carry on the brand navy
+     itself: the home hero's typing cursor and the lit blob behind its headline. */
+  --primary-bright: 220 88% 45%;
   --purple-dark: 220 99% 18%;
   --purple-deep: 220 99% 12%;
 }
@@ -382,6 +388,57 @@
     animation: fade-out 0.4s ease-out;
   }
 
+  /* Entrance for the home hero: the badge fades in place while the headline, subtitle and
+     search bar rise into it. */
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-up {
+    animation: fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* The breathing dot in the home hero's "World #1 AI…" badge. */
+  @keyframes ai-pulse {
+    0%, 100% { opacity: 0.45; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.15); }
+  }
+  .animate-ai-pulse {
+    animation: ai-pulse 2.4s ease-in-out infinite;
+  }
+
+  /* Takes 2px off the footage behind the home hero's copy, and nothing else: no tint, and no
+     text-shadow on the type. A backdrop-filter blurs only what is painted under this one
+     element, so the rest of the frame stays sharp.
+
+     The radial mask confines it to the copy column and fades it out well before the edges, so
+     there is no frosted rectangle over the footage.
+
+     Standard property last: with the -webkit- alias second, the CSS minifier collapses the pair
+     to the prefixed one alone and Firefox gets no blur. */
+  .hero-copy-blur {
+    /* -webkit-backdrop-filter: blur(0.5px);
+    backdrop-filter: blur(0.5px); */
+    -webkit-mask-image: radial-gradient(
+      ellipse 76% 58% at 50% 44%,
+      #000 0%,
+      #000 34%,
+      transparent 80%
+    );
+    mask-image: radial-gradient(
+      ellipse 76% 58% at 50% 44%,
+      #000 0%,
+      #000 34%,
+      transparent 80%
+    );
+  }
+
+  /* The display face for the home hero headline. A utility rather than a change to the h1..h6
+     rule in @layer base, so every other heading keeps the theme's --heading-font. */
+  .font-display {
+    font-family: var(--font-plus-jakarta), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  }
+
   @keyframes float {
     0%, 100% { transform: translate(0, 0) rotate(var(--float-rotate, 0deg)); }
     50% { transform: translate(6px, -32px) rotate(var(--float-rotate, 0deg)); }
@@ -441,15 +498,14 @@
     position: relative;
   }
   /*
-   * Both layers carry the same sweep. A dozen hue stops rather than three: the halo in the
-   * reference reads as a continuous run of colour, and with a couple of stops a conic gradient
-   * spends most of its circumference on one hue. The run is the vibrant half of the wheel —
-   * cyan, blue, violet, magenta, pink, coral — kept in the 58-67% lightness range, since
-   * neither a 27% navy nor a 55% ember can glow.
+   * Both layers carry the same sweep. A dozen hue stops rather than three: the halo reads as a
+   * continuous run of colour, and with a couple of stops a conic gradient spends most of its
+   * circumference on one hue. The run is cyan → blue → purple and nothing else, kept in the
+   * 58-67% lightness range, since neither a 27% navy nor a 55% ember can glow.
    *
-   * The back half mirrors the front back to cyan, which buys two things: the loop closes on
-   * the opening hue so there is no seam, and the wrap never interpolates coral straight into
-   * cyan, which in sRGB crosses a grey-olive dead zone.
+   * The back half mirrors the front back to cyan, which buys two things: the loop closes on the
+   * opening hue so there is no seam, and the wrap never has to interpolate the far end of the
+   * run straight into cyan across the grey dead zone in between.
    */
   .ai-ring::before,
   .ai-ring::after {
@@ -459,18 +515,17 @@
     background: conic-gradient(
       from var(--ai-ring-angle),
       hsl(188 92% 58%) 0deg,
-      hsl(210 94% 63%) 36deg,
-      hsl(248 88% 67%) 72deg,
-      hsl(288 80% 63%) 108deg,
-      hsl(322 90% 65%) 144deg,
-      hsl(348 94% 65%) 176deg,
-      /* the glint: 12deg of pale apricot, the brightest point of the sweep */
-      hsl(24 98% 82%) 196deg,
-      hsl(24 98% 82%) 208deg,
-      hsl(10 96% 67%) 228deg,
-      hsl(338 92% 65%) 260deg,
-      hsl(296 80% 63%) 292deg,
-      hsl(224 92% 65%) 324deg,
+      hsl(200 94% 60%) 40deg,
+      hsl(214 94% 63%) 80deg,
+      hsl(230 90% 65%) 120deg,
+      hsl(250 88% 66%) 160deg,
+      /* the glint: 12deg of pale periwinkle, the brightest point of the sweep */
+      hsl(266 100% 84%) 190deg,
+      hsl(266 100% 84%) 202deg,
+      hsl(284 80% 64%) 232deg,
+      hsl(252 88% 66%) 268deg,
+      hsl(228 92% 65%) 302deg,
+      hsl(204 94% 61%) 332deg,
       hsl(188 92% 58%) 360deg
     );
     animation: ai-ring-spin 6s linear infinite;
@@ -506,9 +561,9 @@
 
   /* The "Ask AI" label, painted with the same hue run as the ring around the card it sits in.
      Text is the one place the ring's own 58-67% lightness cannot be reused: at 14px on white
-     those stops land near 2.5:1. This ramp is the same cyan → blue → violet → pink path taken
-     30-40% darker, so every stop clears 4.5:1 and the sweep still reads as colour rather than
-     as a muddy near-black.
+     those stops land near 2.5:1. This ramp is the same cyan → blue → purple path taken 30-40%
+     darker, so every stop clears 4.5:1 and the sweep still reads as colour rather than as a
+     muddy near-black.
 
      background-clip: text needs a transparent foreground to show through, so anything that
      must stay solid — the Sparkles glyph, whose stroke follows currentColor — sets its own
@@ -517,9 +572,9 @@
     background-image: linear-gradient(
       100deg,
       hsl(192 88% 34%) 0%,
-      hsl(220 88% 46%) 30%,
-      hsl(268 78% 50%) 62%,
-      hsl(326 84% 45%) 100%
+      hsl(220 88% 46%) 34%,
+      hsl(254 80% 50%) 70%,
+      hsl(282 78% 45%) 100%
     );
     -webkit-background-clip: text;
     background-clip: text;
