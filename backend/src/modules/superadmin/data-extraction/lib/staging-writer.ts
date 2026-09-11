@@ -480,37 +480,42 @@ export function isMainCampusLabel(campusName: string, institutionName: string): 
  * all) kept the full address string with no postcode and never geocoded, since geocoding also
  * happens only here.
  */
-async function normaliseCampusAddress(campus: ExtractedCampus): Promise<ExtractedCampus> {
+function parseCampusAddress(campus: ExtractedCampus): ExtractedCampus {
   if (!campus.address) return campus;
   const parsed = parseAddress(campus.address, campus.country);
   const streetLine = [parsed.street1, parsed.street2].filter(Boolean).join(", ");
-  const normalised: ExtractedCampus = {
+  return {
     ...campus,
     city: campus.city || parsed.city,
     state: campus.state || parsed.state,
     country: campus.country || parsed.country,
     postcode: campus.postcode || parsed.postcode,
-    address: streetLine || campus.address,
+    // Only trim `address` down to the parsed street line when the caller actually relied on
+    // parsing to supply the city — if city was already given separately, the address string is
+    // structured on its own terms (e.g. "Building 7, 123 Main St") and parseAddress reading its
+    // last comma-segment as a trailing locality would silently drop real street content.
+    address: (!campus.city && streetLine) ? streetLine : campus.address,
   };
-  if (!normalised.map_link) {
-    try {
-      const addressLine = [normalised.address, normalised.city, normalised.state, normalised.country]
-        .filter(Boolean).join(", ");
-      const geocoded = await geocodeAddress(addressLine);
-      if (geocoded) {
-        normalised.map_link = geocoded.mapLink;
-        if (!normalised.postcode) normalised.postcode = geocoded.postcode;
-      }
-    } catch (e) {
-      logger.warn("Campus geocoding failed", { name: campus.name, error: e instanceof Error ? e.message : String(e) });
-    }
+}
+
+/** Geocodes a campus's address, best-effort. Only call this once it's known to be needed —
+ * geocoding is a billed external call. */
+async function geocodeCampus(campus: ExtractedCampus): Promise<{ map_link?: string; postcode?: string | null }> {
+  if (!campus.address) return {};
+  try {
+    const addressLine = [campus.address, campus.city, campus.state, campus.country].filter(Boolean).join(", ");
+    const geocoded = await geocodeAddress(addressLine);
+    if (!geocoded) return {};
+    return { map_link: geocoded.mapLink, ...(campus.postcode ? {} : { postcode: geocoded.postcode }) };
+  } catch (e) {
+    logger.warn("Campus geocoding failed", { name: campus.name, error: e instanceof Error ? e.message : String(e) });
+    return {};
   }
-  return normalised;
 }
 
 export async function upsertCampus(jobId: string, rawCampus: ExtractedCampus): Promise<string> {
   if (!rawCampus.name) return "";
-  const campus = await normaliseCampusAddress(rawCampus);
+  const campus = parseCampusAddress(rawCampus);
 
   const allCampuses = await masterKnex(`${S}.extraction_campuses`)
     .where({ job_id: jobId });
@@ -567,23 +572,37 @@ export async function upsertCampus(jobId: string, rawCampus: ExtractedCampus): P
           phone: existing.phone ?? overview.phone, email: existing.email ?? overview.email,
         });
       }
+    } else if (!existing.map_link && campus.address) {
+      // This occurrence supplies an address the existing campus row doesn't have a map link
+      // for yet — geocode and persist it instead of running (and discarding) the same lookup
+      // on every rerun/duplicate page that names this campus.
+      const geocoded = await geocodeCampus(campus);
+      if (geocoded.map_link) {
+        await masterKnex(`${S}.extraction_campuses`).where({ id: existing.id }).update({
+          map_link: geocoded.map_link,
+          ...(!existing.postcode && geocoded.postcode ? { postcode: geocoded.postcode } : {}),
+        });
+      }
     }
     return existing.id;
   }
 
   let enriched = campus;
+  if (!enriched.map_link) {
+    enriched = { ...enriched, ...(await geocodeCampus(enriched)) };
+  }
   if (isBare(campus)) {
     const overview = await overviewFor();
     if (overview?.name && isMainCampusLabel(campus.name!, overview.name as string)) {
       enriched = {
-        ...campus,
+        ...enriched,
         city: overview.city, state: overview.state, country: overview.country,
         address: overview.address, postcode: overview.zip_code,
         phone: overview.phone, email: overview.email,
         ...(await geocodeOverview(overview)),
       } as ExtractedCampus;
     } else if (overview && (overview.phone || overview.email)) {
-      enriched = { ...campus, phone: overview.phone as string | null, email: overview.email as string | null };
+      enriched = { ...enriched, phone: overview.phone as string | null, email: overview.email as string | null };
     }
   } else if (!campus.phone || !campus.email) {
     // Not bare — it has an address of its own — but the page rarely repeats the institution's
@@ -592,7 +611,7 @@ export async function upsertCampus(jobId: string, rawCampus: ExtractedCampus): P
     const overview = await overviewFor();
     if (overview && (overview.phone || overview.email)) {
       enriched = {
-        ...campus,
+        ...enriched,
         phone: campus.phone || (overview.phone as string | null),
         email: campus.email || (overview.email as string | null),
       };
