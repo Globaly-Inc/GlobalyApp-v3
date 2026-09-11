@@ -55,6 +55,7 @@ function applyBusinessFilters<T extends ReturnType<typeof businessListQuery>>(
   status?: string,
   category?: number,
   categorySlug?: string,
+  businessType?: string,
 ) {
   if (search) {
     q.where((b) =>
@@ -65,16 +66,17 @@ function applyBusinessFilters<T extends ReturnType<typeof businessListQuery>>(
   }
   if (status) q.where({ "b.status": status });
   if (category) q.where({ "b.business_category_id": category });
+  if (businessType) q.where({ "b.business_type": businessType });
   if (categorySlug) q.where({ "cat.slug": categorySlug });
   return q;
 }
 
 export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
-  sort: BusinessSort = "name_asc",
+  sort: BusinessSort = "name_asc", businessType?: string,
 ) {
   const q = applySort(
-    applyBusinessFilters(businessListQuery(), search, status, category, categorySlug).select(
+    applyBusinessFilters(businessListQuery(), search, status, category, categorySlug, businessType).select(
       "b.id", "b.business_name", "b.subdomain", "b.business_type", "b.business_category_id",
       "b.email", "b.phone", "b.status", "b.claim_status", "b.is_published", "b.country_id", "b.city",
       "b.logo_url", "b.account_status", "b.created_at",
@@ -142,8 +144,8 @@ export async function listBusinesses(
   return rows.map((row: any) => ({ ...row, kind: "business" as const }));
 }
 
-export async function countBusinesses(search?: string, status?: string, category?: number, categorySlug?: string) {
-  const q = applyBusinessFilters(businessListQuery(), search, status, category, categorySlug).count("b.id as count");
+export async function countBusinesses(search?: string, status?: string, category?: number, categorySlug?: string, businessType?: string) {
+  const q = applyBusinessFilters(businessListQuery(), search, status, category, categorySlug, businessType).count("b.id as count");
   const [row] = await q;
   return Number(row.count);
 }

@@ -19,9 +19,15 @@ const PAGE_SIZE = 10;
 export function PartnersTab({
   businessId,
   businessName,
+  businessType,
   readOnly = false,
-}: Readonly<{ businessId: number; businessName?: string; readOnly?: boolean }>) {
+}: Readonly<{ businessId: number; businessName?: string; businessType?: string | null; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
+  // An education agency links INSTITUTIONS as partners (mirrors the self-service flow); every
+  // other business_type keeps the original generic "link another business" behavior admin has
+  // always had. Only this one type gets special-cased — see LinkConsultancyDialog's isAgent prop.
+  const isAgent = businessType === "agent";
+  const partnerLabel = isAgent ? "institution" : "consultancy";
   const { items: partners, status, total: relationsTotal } = useAppSelector((state) => state.platformBusinesses.relations);
   const [addOpen, setAddOpen] = useState(false);
   const [editingRelation, setEditingRelation] = useState<BusinessRelation | null>(null);
@@ -72,8 +78,12 @@ export function PartnersTab({
     list = (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
         <Handshake className="h-10 w-10 text-muted-foreground/40" />
-        <p className="text-sm font-medium">No consultancies linked yet</p>
-        <p className="text-xs text-muted-foreground">Link a consultancy authorised to represent this institution.</p>
+        <p className="text-sm font-medium">No {isAgent ? "institutions" : "consultancies"} linked yet</p>
+        <p className="text-xs text-muted-foreground">
+          {isAgent
+            ? "Link a verified institution this consultancy represents."
+            : "Link a consultancy authorised to represent this business."}
+        </p>
       </div>
     );
   } else {
@@ -126,11 +136,13 @@ export function PartnersTab({
             <span className="text-sm font-semibold">Partnerships</span>
             <Badge variant="secondary">{partners.length}</Badge>
           </div>
-          <p className="text-xs text-muted-foreground">Educational consultancies authorised to represent this institution.</p>
+          <p className="text-xs text-muted-foreground">
+            {isAgent ? "Institutions this consultancy represents." : "Consultancies authorised to represent this business."}
+          </p>
         </div>
         {!readOnly && (
           <Button className="h-10" onClick={() => setAddOpen(true)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Link consultancy
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Link {partnerLabel}
           </Button>
         )}
       </div>
@@ -144,12 +156,13 @@ export function PartnersTab({
 
       {relationsTotal > 0 && <Pagination page={page} total={relationsTotal} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
 
-      <LinkConsultancyDialog open={addOpen} onOpenChange={setAddOpen} businessId={businessId} businessName={businessName} />
+      <LinkConsultancyDialog open={addOpen} onOpenChange={setAddOpen} businessId={businessId} businessName={businessName} isAgent={isAgent} />
       <LinkConsultancyDialog
         open={!!editingRelation}
         onOpenChange={(open) => { if (!open) setEditingRelation(null); }}
         businessId={businessId}
         businessName={businessName}
+        isAgent={isAgent}
         editRelation={editingRelation}
       />
       <DeletePartnerDialog

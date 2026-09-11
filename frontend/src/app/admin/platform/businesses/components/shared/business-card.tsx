@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { STATUS_COLORS, STATUS_LABELS } from "../../const";
 import type { Business } from "../../apis/types";
@@ -202,13 +203,34 @@ export function BusinessCard({
           <div className="flex flex-wrap items-center gap-2">
             {/* Offered for BOTH kinds, and gated on any contact address rather than owner_email:
                 a promoted listing has no owner until it is claimed, and the link goes to its own
-                contact email. The backend picks the endpoint from `kind`. */}
-            {b.claim_status !== "claimed" && (b.owner_email ?? b.email) && (
-              <Button size="sm" variant="outline" className="h-8 cursor-pointer" disabled={claimRequestBusy} onClick={onSendClaimRequest}>
-                <Mail className="mr-1 h-3.5 w-3.5" />
-                Send claim request
-              </Button>
-            )}
+                contact email. The backend picks the endpoint from `kind`. Shown (not hidden) with
+                no email so it's obvious the action exists but needs an email on file first. */}
+            {b.claim_status !== "claimed" && (() => {
+              const hasEmail = Boolean(b.owner_email ?? b.email);
+              const button = (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 cursor-pointer"
+                  disabled={claimRequestBusy || !hasEmail}
+                  onClick={onSendClaimRequest}
+                >
+                  <Mail className="mr-1 h-3.5 w-3.5" />
+                  Send claim request
+                </Button>
+              );
+              if (hasEmail) return button;
+              return (
+                <Tooltip>
+                  {/* Disabled buttons swallow pointer events, so the trigger needs a hoverable
+                      wrapper around it for the tooltip to fire at all. */}
+                  <TooltipTrigger render={<span className="inline-flex" tabIndex={0} />}>
+                    {button}
+                  </TooltipTrigger>
+                  <TooltipContent>Add an email before sending a claim request</TooltipContent>
+                </Tooltip>
+              );
+            })()}
             <Button size="sm" variant="outline" className="h-8 cursor-pointer" onClick={onView}>
               <Eye className="mr-1 h-3.5 w-3.5" />
               View

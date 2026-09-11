@@ -198,7 +198,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
               : null
           }
         />
-        <DetailTabs kind={kind} id={id} businessName={business?.business_name} readOnly={readOnly} isPreSeeded={isPreSeeded} />
+        <DetailTabs kind={kind} id={id} businessName={business?.business_name} businessType={business?.business_type} readOnly={readOnly} isPreSeeded={isPreSeeded} />
       </div>
 
       {kind === "business" ? (

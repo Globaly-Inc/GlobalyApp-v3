@@ -83,6 +83,11 @@ export const ListQuerySchema = PaginationSchema.extend({
   // specific business category (e.g. a consultancy picker that wants ALL businesses, no
   // category restriction, and never institutions).
   kind: z.enum(["business", "institution"]).optional(),
+  // Filters on the businesses.business_type column directly — distinct from `category`, which
+  // filters the curated business_categories taxonomy. An institution-side "link consultancy"
+  // picker needs this applied server-side (before pagination), not client-filtered over one
+  // page of results, or a page full of non-agent businesses hides real agencies on later pages.
+  business_type: z.string().optional(),
   sort: z.enum(BusinessSortOptions).default("name_asc"),
 });
 
