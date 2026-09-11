@@ -371,13 +371,39 @@ export async function findUnclaimedInstitutionByContactEmail(email: string) {
     .first();
 }
 
+/** Fresh token, replacing whatever was there — for a deliberate resend. Guarded so a claimed
+ *  institution is never walked back to `claim_pending`. */
 export async function setInstitutionClaimPending(id: number, token: string, expiresAt: Date) {
-  await masterKnex("institutions").where({ id }).update({
+  await masterKnex("institutions").where({ id }).whereNot("claim_status", "claimed").update({
     claim_token: token,
     claim_token_expires_at: expiresAt,
     claim_status: "claim_pending",
     updated_at: masterKnex.fn.now(),
   });
+}
+
+/** The institution twin of `ensureClaimToken` — see that for why reuse matters. The two claim
+ *  paths must not drift. */
+export async function ensureInstitutionClaimToken(
+  id: number,
+  token: string,
+  expiresAt: Date,
+): Promise<string | null> {
+  const live = "claim_token IS NOT NULL AND claim_token_expires_at > now()";
+  const [row] = await masterKnex("institutions")
+    .where({ id })
+    .whereNot("claim_status", "claimed")
+    .update({
+      claim_token: masterKnex.raw(`CASE WHEN ${live} THEN claim_token ELSE ? END`, [token]),
+      claim_token_expires_at: masterKnex.raw(
+        `CASE WHEN ${live} THEN claim_token_expires_at ELSE ? END`,
+        [expiresAt],
+      ),
+      claim_status: "claim_pending",
+      updated_at: masterKnex.fn.now(),
+    })
+    .returning("claim_token");
+  return (row as { claim_token?: string } | undefined)?.claim_token ?? null;
 }
 
 export async function clearInstitutionClaim(id: number) {

@@ -23,6 +23,7 @@ import {
   enquiryUnlockedEmail,
 } from "../../src/shared/mail/templates.js";
 import * as emailQueueService from "../../src/modules/enquiries/services/email-queue.service.js";
+import * as businessesService from "../../src/modules/businesses/services/businesses.service.js";
 
 // The throttle exists to stay inside the provider's rate limit; in tests it only makes the
 // suite take minutes. Read lazily by the service, so setting it here is enough.
@@ -622,6 +623,91 @@ async function main() {
       }
     } finally {
       await cleanupAll({ enquiryIds: [enquiryId], businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  // ── 1e. Review finding: a second enquiry must not kill the first mail's claim link ──
+  await assert("a live claim token is reused, so earlier acquisition mails keep working", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Token Reuse Subject");
+    const businessId = await makeBusiness({ claimed: false });
+    const first = await makeEnquiry(studentId, courseId);
+    const second = await makeEnquiry(studentId, courseId);
+    try {
+      const d1 = await makeDistribution(first, businessId);
+      await emailQueueService.enqueueDistributionEmails(first, d1, businessId);
+      const row1 = await masterKnex("enquiry_email_queue").where({ distribution_id: d1 }).first();
+      const url1 = String(row1.payload.claim_url);
+
+      const d2 = await makeDistribution(second, businessId);
+      await emailQueueService.enqueueDistributionEmails(second, d2, businessId);
+      const row2 = await masterKnex("enquiry_email_queue").where({ distribution_id: d2 }).first();
+      const url2 = String(row2.payload.claim_url);
+
+      eq(url2, url1, "the second enquiry reused the live token instead of minting a new one");
+      const biz = await masterKnex("businesses").where({ id: businessId }).first("claim_token");
+      eq(biz.claim_token, new URL(url1).searchParams.get("token"), "the stored token still opens the first mail");
+    } finally {
+      await cleanupAll({ enquiryIds: [first, second], businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  await assert("a business claimed mid-flight gets the lead notice, and is not reset to claim_pending", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Claim Race Subject");
+    const businessId = await makeBusiness({ claimed: false });
+    const enquiryId = await makeEnquiry(studentId, courseId);
+    try {
+      const distId = await makeDistribution(enquiryId, businessId);
+      // The claim lands between the claim_status read and the token write. Simulated by claiming
+      // first and forcing the unclaimed branch, which is what that window looks like downstream.
+      await masterKnex("businesses").where({ id: businessId }).update({ claim_status: "claimed" });
+      const url = await businessesService.mintBusinessClaimUrl(businessId);
+      eq(url, null, "minting against a claimed listing returns nothing");
+
+      const biz = await masterKnex("businesses").where({ id: businessId }).first("claim_status", "claim_token");
+      eq(biz.claim_status, "claimed", "a claimed listing was walked back to claim_pending");
+      eq(biz.claim_token, null, "a claimed listing had a fresh token written onto it");
+      eq(distId.length > 0, true, "distribution exists");
+    } finally {
+      await cleanupAll({ enquiryIds: [enquiryId], businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  // ── 1f. Review finding: two listings on one address must not share a digest ──
+  await assert("two unclaimed businesses sharing an address get one mail each, not one mixed", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Shared Inbox Subject");
+    const bizA = await makeBusiness({ claimed: false });
+    const bizB = await makeBusiness({ claimed: false });
+    const shared = await businessInbox(bizA);
+    await masterKnex("businesses").where({ id: bizB }).update({ email: shared });
+    const eA = await makeEnquiry(studentId, courseId);
+    const eB = await makeEnquiry(studentId, courseId);
+    try {
+      const dA = await makeDistribution(eA, bizA);
+      const dB = await makeDistribution(eB, bizB);
+      await emailQueueService.enqueueDistributionEmails(eA, dA, bizA);
+      await emailQueueService.enqueueDistributionEmails(eB, dB, bizB);
+
+      const mine = await withCapturedMail(async (sent) => {
+        await sweepWithWindow(0);
+        return sent.filter((m) => m.to === shared);
+      });
+      eq(mine.length, 2, "one mail per listing, not one mail mixing both");
+
+      // Each mail names its own business and carries that business's own claim link.
+      const [tokenA, tokenB] = await Promise.all(
+        [bizA, bizB].map(async (id) => (await masterKnex("businesses").where({ id }).first("claim_token")).claim_token),
+      );
+      eq(tokenA === tokenB, false, "the two listings share a claim token");
+      for (const token of [tokenA, tokenB]) {
+        if (!mine.some((m) => m.html?.includes(String(token)))) {
+          throw new Error("a listing's own claim token never reached its recipient");
+        }
+      }
+    } finally {
+      await cleanupAll({ enquiryIds: [eA, eB], businessIds: [bizA, bizB], studentIds: [studentId], jobIds: [jobId] });
     }
   });
 

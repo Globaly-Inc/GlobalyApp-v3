@@ -27,9 +27,11 @@
 // human agreed to work the leads. See resolveBusinessRecipients.
 //
 // The window is tumbling, keyed on the oldest pending row in a
-// (recipient_email, template) group — see findReadyDigestGroups. Grouping on the
-// address rather than the business is deliberate: someone who belongs to two
-// matched businesses gets one mail, not two.
+// (template, recipient_email, business_id) group — see findReadyDigestGroups.
+// business_id is in the key because two listings can share one contact address, and a
+// mail names the single listing it was sent to and carries that listing's claim link.
+// Merging them produced cards attributed to the wrong business and a claim button that
+// only worked for one of them.
 //
 // schema.enquiry_email_queue has no `max_attempts` column (see the migration)
 // — the cap is an application constant, not app-configurable-per-row.
@@ -356,13 +358,17 @@ export async function sendQueuedRow(id: string): Promise<void> {
  * `sending` with no reaper to free them. Split it into claim/commit/send/mark only if
  * lock hold time actually shows up.
  */
-export async function sendDigestGroup(template: string, recipientEmail: string): Promise<void> {
+export async function sendDigestGroup(
+  template: string,
+  recipientEmail: string,
+  businessId: number | null,
+): Promise<void> {
   // Throttle BEFORE the transaction — sleeping inside would hold locks and a pool connection.
   await throttleSends();
 
   await masterKnex.transaction(async (trx) => {
     const cap = digestCap();
-    const rows = await emailQueueRepo.claimGroup(trx, template, recipientEmail, cap);
+    const rows = await emailQueueRepo.claimGroup(trx, template, recipientEmail, businessId, cap);
     if (rows.length === 0) return; // another sweep owns this group
 
     const ids = rows.map((r) => r.id);
@@ -370,7 +376,7 @@ export async function sendDigestGroup(template: string, recipientEmail: string):
       const { subject, text, html } = renderDigest(template, rows);
       await mailerService.sendMail({ to: recipientEmail, subject, text, html });
       await emailQueueRepo.markSentMany(trx, ids);
-      logger.info("Sent enquiry summary", { template, recipientEmail, count: rows.length });
+      logger.info("Sent enquiry summary", { template, recipientEmail, businessId, count: rows.length });
     } catch (err) {
       // Per-row attempts differ inside one group (a retried row is older than a fresh one), so
       // the log reports the worst case: how close the most-attempted row is to being abandoned.
@@ -378,6 +384,7 @@ export async function sendDigestGroup(template: string, recipientEmail: string):
       logger.error("Failed to send enquiry summary", {
         template,
         recipientEmail,
+        businessId,
         count: rows.length,
         attempts,
         maxAttempts: MAX_ATTEMPTS,
@@ -410,7 +417,7 @@ export async function sweepDigests(): Promise<void> {
   logger.info(`Enquiry email sweep: ${singles.length} single(s), ${groups.length} summary group(s)`);
 
   for (const group of groups) {
-    await sendDigestGroup(group.template, group.recipient_email);
+    await sendDigestGroup(group.template, group.recipient_email, group.business_id);
   }
 }
 
@@ -494,8 +501,13 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
   });
   if (recipients.length === 0) return;
 
+  // The mint is guarded on claim_status, so a null back means the listing was claimed between
+  // the read above and the write. Treat that as claimed: an acquisition mail asking someone to
+  // claim what they just claimed is worse than a lead notice arriving a beat early.
   const claimUrl = isClaimed ? null : await mintBusinessClaimUrl(businessId);
+  const claimed = isClaimed || claimUrl === null;
   if (claimUrl) logger.info("Claim CTA generated for unclaimed business", { businessId, enquiryId, distributionId });
+  else if (!isClaimed) logger.info("Business was claimed mid-flight — sending the lead notice", { businessId });
 
   // Names, not raw ids — the email is read by a human.
   const enquiry = await masterKnex("enquiries as e")
@@ -521,7 +533,7 @@ export async function enqueueDistributionEmails(enquiryId: string, distributionI
   // One label rather than two payload fields: the mail prints "April 2027", and either half
   // can be missing.
   const intake = [enquiry?.preferred_intake, enquiry?.preferred_year].filter(Boolean).join(" ") || null;
-  const template = isClaimed ? TEMPLATE.BUSINESS : TEMPLATE.BUSINESS_CLAIM;
+  const template = claimed ? TEMPLATE.BUSINESS : TEMPLATE.BUSINESS_CLAIM;
 
   for (const r of recipients) {
     // The dedup key stays keyed on the distribution and NOT on the template: one distribution is
@@ -670,9 +682,13 @@ export async function enqueueInstitutionFallbackEmail(
   });
   if (!institution || recipients.length === 0) return;
 
+  // Same guard as the business path — see enqueueDistributionEmails.
   const claimUrl = isClaimed ? null : await mintInstitutionClaimUrl(institutionId);
+  const claimed = isClaimed || claimUrl === null;
   if (claimUrl) {
     logger.info("Claim CTA generated for unclaimed institution", { institutionId, enquiryId, distributionId });
+  } else if (!isClaimed) {
+    logger.info("Institution was claimed mid-flight — sending the lead notice", { institutionId });
   }
 
   const enquiry = await masterKnex("enquiries as e")
@@ -684,7 +700,7 @@ export async function enqueueInstitutionFallbackEmail(
     .where("e.id", enquiryId)
     .first("e.preferred_intake", "e.preferred_year", "c.name as course_name", "u.first_name as student_first_name");
   const intake = [enquiry?.preferred_intake, enquiry?.preferred_year].filter(Boolean).join(" ") || null;
-  const template = isClaimed ? TEMPLATE.INSTITUTION : TEMPLATE.INSTITUTION_CLAIM;
+  const template = claimed ? TEMPLATE.INSTITUTION : TEMPLATE.INSTITUTION_CLAIM;
 
   for (const r of recipients) {
     // Keyed on the distribution, not the template — see enqueueDistributionEmails.

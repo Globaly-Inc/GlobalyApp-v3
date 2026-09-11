@@ -77,12 +77,16 @@ async function resolveClaimant(
  * to an unclaimed institution has to put a way in inside its notification, or the mail asks
  * someone to sign into an account that cannot be signed into.
  *
- * A new token supersedes the previous one — the newest link is always the live one.
+ * Reuses a live token rather than replacing it, so an acquisition mail already in the inbox
+ * keeps working; returns null once the institution has been claimed.
  */
-export async function mintInstitutionClaimUrl(institutionId: number): Promise<string> {
-  const token = randomBytes(32).toString("hex");
-  await repo.setInstitutionClaimPending(institutionId, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-  return `${config.WEB_APP_URL}/invite/institution/accept?token=${token}`;
+export async function mintInstitutionClaimUrl(institutionId: number): Promise<string | null> {
+  const token = await repo.ensureInstitutionClaimToken(
+    institutionId,
+    randomBytes(32).toString("hex"),
+    new Date(Date.now() + CLAIM_TOKEN_TTL_MS),
+  );
+  return token ? `${config.WEB_APP_URL}/invite/institution/accept?token=${token}` : null;
 }
 
 /**
@@ -95,6 +99,8 @@ export async function requestInstitutionClaim(email: string): Promise<void> {
   if (!institution) return;
 
   const claimUrl = await mintInstitutionClaimUrl(institution.id);
+  // Null means it was claimed between the lookup above and the write — nothing left to send.
+  if (!claimUrl) return;
   // Personalise only if someone already registered on this address.
   const existingUser = await repo.findByEmail(email);
   const ownerName =

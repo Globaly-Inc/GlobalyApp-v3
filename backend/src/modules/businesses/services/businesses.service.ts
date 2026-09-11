@@ -187,18 +187,25 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
 }
 
 /**
- * Issues a fresh claim link for a business nobody owns yet — the twin of
- * `mintInstitutionClaimUrl`, and exported for the same reason: an enquiry matching an unclaimed
- * business has to put a way in inside its notification, or the mail asks someone to sign into an
- * account that cannot be signed into.
+ * The claim link for a business nobody owns yet — the twin of `mintInstitutionClaimUrl`, and
+ * exported for the same reason: an enquiry matching an unclaimed business has to put a way in
+ * inside its notification, or the mail asks someone to sign into an account that cannot be
+ * signed into.
  *
- * A new token supersedes the previous one — `setClaimPending` overwrites `claim_token`, so the
- * newest link is always the live one and any older mail's button is spent.
+ * Reuses a live token rather than replacing it. There is only one `claim_token` column, so
+ * minting per enquiry invalidated every acquisition mail already in the inbox — see
+ * `ensureClaimToken`.
+ *
+ * Returns null when the listing has already been claimed, so the caller can stop asking for a
+ * claim it no longer needs.
  */
-export async function mintBusinessClaimUrl(businessId: string | number): Promise<string> {
-  const token = randomBytes(32).toString("hex");
-  await repo.setClaimPending(businessId, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-  return `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
+export async function mintBusinessClaimUrl(businessId: string | number): Promise<string | null> {
+  const token = await repo.ensureClaimToken(
+    businessId,
+    randomBytes(32).toString("hex"),
+    new Date(Date.now() + CLAIM_TOKEN_TTL_MS),
+  );
+  return token ? `${config.WEB_APP_URL}/invite/business/accept?token=${token}` : null;
 }
 
 /**
@@ -213,6 +220,8 @@ export async function requestClaimByEmail(email: string): Promise<void> {
   if (!business) return;
 
   const claimUrl = await mintBusinessClaimUrl(business.id);
+  // Null means it was claimed between the lookup above and the write — nothing left to send.
+  if (!claimUrl) return;
   // Personalise only if someone already registered on this address; otherwise stay generic,
   // since the listing itself has no name for a person.
   const existingUser = await userRepo.findByEmail(email);
