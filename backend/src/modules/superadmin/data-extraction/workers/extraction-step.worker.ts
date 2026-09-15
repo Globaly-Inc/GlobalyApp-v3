@@ -879,10 +879,11 @@ async function handleDiscoveryStep(jobId: string) {
     await processListUrl(url, 0);
   }
 
-  // Update total_pages_found
+  // Keep pages_total in step with total_pages_found — the admin "Pages Found" stat reads the latter.
   if (totalCoursePages > 0) {
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: masterKnex.raw("COALESCE(total_pages_found, 0) + ?", [totalCoursePages]),
+      pages_total: masterKnex.raw("COALESCE(pages_total, 0) + ?", [totalCoursePages]),
       updated_at: masterKnex.fn.now(),
     });
   }
@@ -963,6 +964,7 @@ async function handleCoursesStep(jobId: string) {
   if (queuedNew > 0) {
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: masterKnex.raw("COALESCE(total_pages_found, 0) + ?", [queuedNew]),
+      pages_total: masterKnex.raw("COALESCE(pages_total, 0) + ?", [queuedNew]),
       updated_at: masterKnex.fn.now(),
     });
   }

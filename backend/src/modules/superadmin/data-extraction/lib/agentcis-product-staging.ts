@@ -12,7 +12,7 @@ import {
 } from "./agentcis-product-mappers.js";
 import {
   normaliseCurrency, upsertEligibility, upsertEnglishRequirement, upsertFee, upsertIntake,
-  resolveCourseLookups, durationToWeeks, coerceInt,
+  resolveCourseLookups, durationToWeeks, upsertStudyOption,
 } from "./staging-writer.js";
 
 export interface StagingCounters {
@@ -143,18 +143,9 @@ export async function stageProduct(
   // Study options — mode + duration
   const studyOptions = extractStudyOptions(p);
   for (const opt of studyOptions) {
-    const [soRow] = await masterKnex(`${S}.extraction_study_options`)
-      .insert({
-        job_id: jobId,
-        study_mode: opt.study_mode,
-        study_load: opt.study_load,
-        duration_value: coerceInt(opt.duration_value),
-        duration_unit: opt.duration_unit,
-      })
-      .returning("id");
-
+    const optionId = await upsertStudyOption(jobId, opt);
     await masterKnex(`${S}.extraction_course_study_option_assignments`)
-      .insert({ job_id: jobId, course_id: courseId, study_option_id: soRow.id })
+      .insert({ job_id: jobId, course_id: courseId, study_option_id: optionId })
       .onConflict(["course_id", "study_option_id"]).ignore();
   }
 

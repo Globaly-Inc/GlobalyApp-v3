@@ -1,21 +1,7 @@
 /**
  * AgentCIS product field mapping — subject/degree-level taxonomy, entry-requirement eligibility,
- * English/academic test scores, and intake months.
- *
- * All four used to read fields that don't exist on the real AgentCIS payload (reconstructed from
- * agentcis-app's own sync-job code, then confirmed live against
- * https://api.superadmin.agentcis.com/partner-product-database/search):
- *   - degree_level/subject_area live under `subject_area_and_level`, not top-level p.degree_level.
- *   - entry requirement lives under `academic_requirement.degree_level`/`.academic_score`, not
- *     `.qualification_type`/`.min_score`.
- *   - english_test_score/other_test_score were never read at all.
- *   - `intake_month` is an array of recurring month names with no year; being present at all used
- *     to make extractIntakes treat the WHOLE PRODUCT as one intake, naming it after the product's
- *     own `name`.
- *
- * FIXTURE is the real "Bachelor of Business" product from Victoria University (ECA), pulled live
- * from the AgentCIS search endpoint on 2026-09-11 (institution id 2704, product id 115870) — not
- * synthesized, to keep this test anchored to what the source actually sends.
+ * English/academic test scores, and intake months. FIXTURE is a real product payload from the
+ * AgentCIS search endpoint, not synthesized, to keep this anchored to what the source sends.
  *
  * Pure — no database, no model. Run it directly:
  *   node --import tsx tests/agentcis-fields.ts
