@@ -17,8 +17,13 @@
 
 import { masterKnex } from "../../src/core/db/master-pool.js";
 import { mailerService } from "../../src/shared/mail/mailerService.js";
-import { enquiryDigestEmail, enquiryDistributedEmail, enquiryUnlockedEmail } from "../../src/shared/mail/templates.js";
+import {
+  enquiryClaimEmail,
+  enquiryLeadEmail,
+  enquiryUnlockedEmail,
+} from "../../src/shared/mail/templates.js";
 import * as emailQueueService from "../../src/modules/enquiries/services/email-queue.service.js";
+import * as businessesService from "../../src/modules/businesses/services/businesses.service.js";
 
 // The throttle exists to stay inside the provider's rate limit; in tests it only makes the
 // suite take minutes. Read lazily by the service, so setting it here is enough.
@@ -105,15 +110,24 @@ async function makeStudent(): Promise<number> {
   return user.id;
 }
 
-async function makeBusiness(): Promise<number> {
+/**
+ * `accountStatus` is deliberately settable apart from `claimed`. The two columns really do come
+ * apart in production — the admin create-business path provisions a schema and sets
+ * account_status 1 while leaving claim_status 'unclaimed' — and that combination is the one that
+ * shipped the wrong mail, so the suite has to be able to build it.
+ */
+async function makeBusiness(opts: { claimed?: boolean; accountStatus?: number } = {}): Promise<number> {
   const owner = await masterKnex("platform_users").orderBy("id").first();
   if (!owner) throw new Error("no platform_users row available to own the test business");
+  const claimed = opts.claimed !== false;
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const [row] = await masterKnex("businesses")
     .insert({
       owner_id: owner.id,
       subdomain: `email-q-test-${suffix}`,
       business_name: `Email Queue Test Biz ${suffix}`,
+      claim_status: claimed ? "claimed" : "unclaimed",
+      account_status: opts.accountStatus ?? (claimed ? 1 : 0),
       // Every test business gets its own inbox: that address is now the ONLY recipient, and a
       // unique one per test keeps the sweep's captured mail attributable when the suite shares
       // a database with other pending rows.
@@ -197,23 +211,30 @@ async function main() {
 
   // ── 0. Rendering. No database, so these still run when the rest cannot. ──
   await assert("the single-enquiry mail deep-links, escapes user text, and avoids the API origin", async () => {
-    const mail = enquiryDistributedEmail({
-      courseName: "MSc Data Science",
-      institutionName: "University of <X>",
-      intake: "April 2027",
-      businessName: "Acme & Co",
-      studentFirstName: "Priya",
+    const mail = enquiryLeadEmail({
+      kind: "business",
+      recipientName: "Acme & Co",
       distributionId: "dist-1",
+      items: [
+        {
+          courseName: "MSc Data Science",
+          institutionName: "University of <X>",
+          intake: "April 2027",
+          studentFirstName: "Priya",
+        },
+      ],
     });
-    eq(mail.subject, "New student enquiry — MSc Data Science", "subject names the course");
+    eq(mail.subject, "A student is asking about MSc Data Science", "subject names the course");
     if (!mail.html.includes("/business/enquiries/dist-1/student")) throw new Error("no deep link to the distribution");
+    if (!mail.html.includes("Open this enquiry")) throw new Error("a deep-linked mail should say so");
     if (mail.html.includes("localhost:3000")) throw new Error("links point at the API origin, not the web app");
     if (!mail.html.includes("University of &lt;X&gt;")) throw new Error("user-supplied text was not escaped");
 
     // Rows queued before distribution_id was in the payload must still render a usable link.
-    const legacy = enquiryDistributedEmail({ courseName: "Old Course" });
+    const legacy = enquiryLeadEmail({ kind: "business", items: [{ courseName: "Old Course" }] });
     if (!legacy.html.includes("/business/enquiries")) throw new Error("legacy row lost its link");
     if (legacy.html.includes("/business/enquiries/null")) throw new Error("null leaked into the URL");
+    if (!legacy.html.includes("Open your inbox")) throw new Error("legacy row lost its CTA");
   });
 
   await assert("the summary lists each enquiry in both mail parts and states count and period", async () => {
@@ -223,8 +244,10 @@ async function main() {
       institutionName: "Uni",
       intake: "Sep 2027",
     }));
-    const digest = enquiryDigestEmail({ items, businessName: "Acme & Co", windowMinutes: 5 });
-    eq(digest.subject, "3 new student enquiries", "subject names the count");
+    const digest = enquiryLeadEmail({ kind: "business", recipientName: "Acme & Co", items, windowMinutes: 5 });
+    eq(digest.subject, "3 students are asking about your courses", "subject names the count");
+    if (!digest.html.includes("new student enquiries")) throw new Error("the hero count label is missing");
+    if (!digest.html.includes(">3</p>")) throw new Error("the hero count is not the true total");
     for (const i of [1, 2, 3]) {
       if (!digest.html.includes(`Course ${i}`)) throw new Error(`html is missing enquiry ${i}`);
       if (!digest.text.includes(`Course ${i}`)) throw new Error(`text part is missing enquiry ${i}`);
@@ -237,27 +260,44 @@ async function main() {
 
     // A card with no course still appears — dropping it would silently lose an enquiry from a
     // summary whose entire promise is that nothing is missed.
-    const sparse = enquiryDigestEmail({ items: [{}, {}] });
+    const sparse = enquiryLeadEmail({ kind: "business", items: [{}, {}] });
     eq((sparse.html.match(/Course enquiry/g) ?? []).length, 2, "both bare cards render");
 
-    // An unclaimed institution has no inbox to open — the CTA must offer the claim link.
-    const claim = enquiryDigestEmail({ items, claimUrl: "http://localhost:3001/join/abc" });
-    if (!claim.html.includes("Claim your account")) throw new Error("claim CTA missing");
-    if (!claim.html.includes("/join/abc")) throw new Error("claim URL missing");
+    // The claim CTA belongs to the acquisition mail only. A lead notice that could grow a claim
+    // button is how the two audiences got mixed up in one mail in the first place.
+    if (digest.html.includes("Claim your")) throw new Error("the lead notice must not carry a claim CTA");
+    // And the benefits block is acquisition-only — evergreen filler on a daily notice.
+    if (digest.html.includes("Once you claim it")) throw new Error("benefits block leaked into the lead notice");
   });
 
-  await assert("a large summary lists five and counts the rest, heading the true total", async () => {
+  await assert("a large summary lists three and counts the rest, heading the true total", async () => {
     const many = Array.from({ length: 12 }, (_, i) => ({
       studentFirstName: `Student${i + 1}`,
       courseName: `Course ${i + 1}`,
     }));
-    const digest = enquiryDigestEmail({ items: many });
+    const digest = enquiryLeadEmail({ kind: "business", items: many });
 
-    eq(digest.subject, "12 new student enquiries", "heading counts every enquiry, not the printed ones");
-    if (!digest.html.includes("Course 5")) throw new Error("the fifth enquiry should be listed");
-    if (digest.html.includes("Course 6")) throw new Error("the sixth enquiry should not be listed");
-    if (!digest.html.includes("7 more")) throw new Error("the unlisted enquiries are not accounted for");
-    eq((digest.text.match(/^• /gm) ?? []).length, 5, "text part lists five too");
+    eq(digest.subject, "12 students are asking about your courses", "subject counts every enquiry");
+    if (!digest.html.includes(">12</p>")) throw new Error("the hero count is not the true total");
+    if (!digest.html.includes("Course 3")) throw new Error("the third enquiry should be listed");
+    if (digest.html.includes("Course 4")) throw new Error("the fourth enquiry should not be listed");
+    if (!digest.html.includes("9 more are waiting")) throw new Error("the unlisted enquiries are not accounted for");
+    eq((digest.text.match(/^• /gm) ?? []).length, 3, "text part lists three too");
+  });
+
+  await assert("the institution fallback says why it came directly, and asks about programmes", async () => {
+    const inst = enquiryLeadEmail({
+      kind: "institution",
+      recipientName: "Cornell University",
+      items: [{ courseName: "Ancient Philosophy" }],
+    });
+    eq(inst.subject, "A student is asking about Ancient Philosophy", "institution subject");
+    if (!inst.html.includes("no agent representing it was available")) {
+      throw new Error("the fallback lost its explanation");
+    }
+    if (!inst.html.includes("courses listed under it")) throw new Error("wrong reason-for-receipt");
+    const many = enquiryLeadEmail({ kind: "institution", items: [{ courseName: "A" }, { courseName: "B" }] });
+    eq(many.subject, "2 students are asking about your programmes", "institutions are asked about programmes");
   });
 
   // A throw in a template is not cosmetic: sendQueuedRow catches it, marks the row failed,
@@ -275,61 +315,180 @@ async function main() {
       }
       if (unlocked.subject.includes("  ")) throw new Error(`subject has a blank name for ${JSON.stringify(name)}`);
 
-      // The footnotes take the same value down a different path.
-      const digest = enquiryDigestEmail({ items: [{ courseName: "A" }, { courseName: "B" }], businessName: name });
-      if (digest.html.includes("Sent to  ")) throw new Error("digest footnote names a blank business");
-      const single = enquiryDistributedEmail({ courseName: "A", businessName: name });
-      if (single.html.includes("Sent to  ")) throw new Error("single footnote names a blank business");
+      // The reason-for-receipt line takes the same value down a different path.
+      const lead = enquiryLeadEmail({ kind: "business", recipientName: name, items: [{ courseName: "A" }] });
+      if (lead.html.includes("Sent to  ")) throw new Error("lead footer names a blank business");
+      if (!lead.html.includes("courses you represent")) throw new Error("blank name lost the generic footer");
+      const claim = enquiryClaimEmail({ kind: "business", recipientName: name, items: [{ courseName: "A" }] });
+      if (claim.html.includes("Sent to  ")) throw new Error("claim footer names a blank business");
     }
 
     // A student with no usable first name gets the bullet placeholder, not a broken initial.
-    const nameless = enquiryDigestEmail({ items: [{ studentFirstName: "  " }, { courseName: "B" }] });
+    const nameless = enquiryLeadEmail({ kind: "business", items: [{ studentFirstName: "  " }, { courseName: "B" }] });
     if (!nameless.html.includes("&#8226;")) throw new Error("blank student name lost its placeholder initial");
   });
 
-  await assert("the summary carries one CTA and no per-card action", async () => {
-    const items = [1, 2, 3].map((i) => ({ studentFirstName: `S${i}`, courseName: `Course ${i}` }));
-    const digest = enquiryDigestEmail({ items });
-
-    if (digest.html.includes("View enquiry")) throw new Error("a per-card action is still rendered");
-    // Exactly one anchor: the CTA. The logo is an <img>, the footer is plain text.
-    eq((digest.html.match(/<a\s/g) ?? []).length, 1, "one link in the whole mail");
-    if (!digest.html.includes("Open your inbox")) throw new Error("primary CTA missing");
-    // Wide, left-aligned shell — the narrow centred one is what made six cards unreadable.
-    if (!digest.html.includes("max-width:600px")) throw new Error("summary should use the wide container");
-    if (!digest.html.includes('align="left"')) throw new Error("a list of cards must be left-aligned");
-  });
-
-  await assert("both mails render the inbox card's shape and leak nothing beyond it", async () => {
-    const single = enquiryDistributedEmail({
-      studentFirstName: "Rojan",
-      courseName: "Revenue Management 360",
-      institutionName: "Cornell University",
-      distributionId: "dist-1",
-    });
-    const digest = enquiryDigestEmail({
+  await assert("lead and acquisition mails are one design that differs only in the ask", async () => {
+    const args = {
+      recipientName: "Acme & Co",
       items: [
-        { studentFirstName: "Rojan", courseName: "Revenue Management 360" },
+        { studentFirstName: "Rojan", courseName: "Revenue Management 360", institutionName: "Cornell University" },
         { studentFirstName: "Asha", courseName: "Data Science" },
       ],
-    });
+    };
+    const lead = enquiryLeadEmail({ kind: "business", ...args });
+    const claim = enquiryClaimEmail({ kind: "business", ...args });
 
+    // Both mails now sit on the SAME centred emailLayout card — that is the point of this test.
     for (const [label, mail] of [
-      ["single", single],
-      ["digest", digest],
+      ["lead", lead],
+      ["claim", claim],
     ] as const) {
-      // Avatar initial, real first name, redacted surname and address — the same boundary the
-      // inbox card draws. The @gmail.com is a fixed placeholder on both, not a real provider.
+      if (!mail.html.includes("max-width:600px")) throw new Error(`${label}: not the wide centred card`);
+      if (!mail.html.includes('align="left"')) throw new Error(`${label}: a list of cards must be left-aligned`);
+      if (!mail.html.includes("font-size:36px")) throw new Error(`${label}: hero count missing`);
+      if (!mail.html.includes("What students are asking about")) throw new Error(`${label}: card section missing`);
+      // One anchor: the CTA. Two would be two decisions.
+      eq((mail.html.match(/<a\s/g) ?? []).length, 1, `${label}: one link in the whole mail`);
+      // Neither carries the retired marketing frame.
+      if (mail.html.includes("For education businesses")) throw new Error(`${label}: marketing frame survived`);
+    }
+
+    // The ask is what separates them, and only the ask.
+    if (!lead.html.includes("Open your inbox")) throw new Error("lead: inbox CTA missing");
+    if (lead.html.includes("Claim your")) throw new Error("lead: must not offer a claim");
+    if (lead.html.includes("Once you claim it")) throw new Error("lead: benefits block leaked in");
+    if (!claim.html.includes("Claim your business")) throw new Error("claim: claim CTA missing");
+    if (!claim.html.includes("Claim it — it is free")) throw new Error("claim: benefits preamble missing");
+    if (claim.html.includes("Open your inbox")) throw new Error("claim: offers an inbox it cannot open");
+
+    // What they DO share: the navy brand, the logo, and the pre-unlock boundary.
+    for (const [label, mail] of [
+      ["lead", lead],
+      ["claim", claim],
+    ] as const) {
+      if (!mail.html.includes("#012E8A")) throw new Error(`${label}: not on the navy brand`);
+      if (!mail.html.includes("GlobalyOS%20White%20BG%20Icon")) throw new Error(`${label}: old logo`);
       if (!mail.html.includes(">R<")) throw new Error(`${label}: no avatar initial`);
       if (!mail.html.includes("Rojan")) throw new Error(`${label}: first name missing`);
-      if (!mail.html.includes("@gmail.com")) throw new Error(`${label}: redacted address missing`);
+      if (!mail.html.includes("@gmail.com")) throw new Error(`${label}: masked address missing`);
       if (!mail.html.includes("Revenue Management 360")) throw new Error(`${label}: course missing`);
-      // The redaction bar must carry no real characters to un-hide.
+      // The mask must carry no real characters to un-hide.
       if (/Rojan\s*[A-Za-z]/.test(mail.html.replace(/<[^>]+>/g, ""))) {
         throw new Error(`${label}: something followed the first name in the rendered text`);
       }
     }
-    if (!single.html.includes("Cornell University")) throw new Error("single: institution missing");
+    if (!lead.html.includes("Cornell University")) throw new Error("lead: institution missing");
+  });
+
+  await assert("the unlock mail names the unlocker, previews the message, and states what they see", async () => {
+    const greeting = "Hi Rojan! Thanks for your enquiry. We've unlocked it and we're happy to help.";
+    const mail = enquiryUnlockedEmail({
+      businessName: "Acme & Co",
+      courseName: "Ancient Philosophy",
+      institutionName: "Cornell University",
+      enquiryId: "e1",
+      sharedContact: false,
+      messagePreview: greeting,
+    });
+
+    // The headline names the UNLOCKER, never the institution: an agency representing Cornell
+    // is not Cornell, and the student would act on that.
+    if (!mail.html.includes("Acme &amp; Co wants to talk to you")) throw new Error("headline does not name the unlocker");
+    if (mail.html.includes("Cornell University wants to talk")) throw new Error("headline claimed the institution sent it");
+    if (!mail.html.includes(greeting.slice(0, 40))) throw new Error("message preview missing");
+    if (!mail.html.includes("/personal/enquiries/e1")) throw new Error("no deep link to the enquiry");
+    if (!mail.html.includes("phone number stays private")) throw new Error("contact boundary not stated");
+    // Same centred card as the two recipient-facing mails — one design across all three.
+    if (!mail.html.includes("max-width:600px")) throw new Error("not the wide centred card");
+    if (!mail.html.includes("The message waiting for you")) throw new Error("message section missing");
+    if (!mail.html.includes("Read &amp; reply") && !mail.html.includes("Read & reply")) {
+      throw new Error("CTA missing");
+    }
+    eq((mail.html.match(/<a\s/g) ?? []).length, 1, "one link in the whole mail");
+    if (mail.html.includes("Your applications")) throw new Error("the retired marketing frame survived");
+
+    // Shared contact flips the sentence rather than dropping it.
+    const shared = enquiryUnlockedEmail({ businessName: "Acme & Co", enquiryId: "e1", sharedContact: true });
+    if (!shared.html.includes("phone number, as you agreed")) throw new Error("shared-contact wording missing");
+    // No message on the thread yet must not render an empty quote block.
+    if (shared.html.includes("&ldquo;")) throw new Error("empty quote block rendered with no preview");
+
+    // A long first message is clipped, not dumped whole into the mail.
+    const long = enquiryUnlockedEmail({ businessName: "Acme", enquiryId: "e1", messagePreview: "x".repeat(400) });
+    if (!long.html.includes("…")) throw new Error("long preview was not truncated");
+    if (long.html.includes("x".repeat(200))) throw new Error("preview exceeded the clip length");
+  });
+
+  // ── The acquisition mail: what an unclaimed business or institution gets instead ──
+  await assert("the claim mail leads with the count and asks for the claim, not the inbox", async () => {
+    const items = [1, 2, 3].map((i) => ({
+      studentFirstName: `Student${i}`,
+      courseName: `Course ${i}`,
+      institutionName: "Uni",
+      intake: "Sep 2027",
+    }));
+
+    for (const kind of ["business", "institution"] as const) {
+      const mail = enquiryClaimEmail({
+        kind,
+        recipientName: "Acme & Co",
+        items,
+        claimUrl: "http://localhost:3001/invite/business/accept?token=abc",
+      });
+
+      // The subject leads with the count and the ask — it has to survive a crowded inbox from a
+      // sender they have never heard of.
+      eq(mail.subject, `3 students are interested in your ${kind} — claim your profile`, `${kind} subject`);
+      if (!mail.html.includes(`Claim your ${kind}`)) throw new Error(`${kind}: claim CTA missing`);
+      if (!mail.html.includes("token=abc")) throw new Error(`${kind}: claim URL missing`);
+      // The hero count is a block, not a sentence — 36px is the number.
+      if (!mail.html.includes("font-size:36px")) throw new Error(`${kind}: hero count block missing`);
+      if (!mail.html.includes("What students are asking about")) throw new Error(`${kind}: card section missing`);
+      if (!mail.html.includes("Claim it — it is free and takes a minute")) {
+        throw new Error(`${kind}: benefits preamble missing`);
+      }
+      // Course cards still carry the enquiries; the mail is marketing, not contentless.
+      for (const i of [1, 2, 3]) {
+        if (!mail.html.includes(`Course ${i}`)) throw new Error(`${kind}: html is missing enquiry ${i}`);
+        if (!mail.text.includes(`Course ${i}`)) throw new Error(`${kind}: text is missing enquiry ${i}`);
+      }
+      if (!mail.html.includes("Acme &amp; Co")) throw new Error(`${kind}: recipient name was not escaped`);
+      // Exactly one anchor — the claim button. A second link is a second decision.
+      eq((mail.html.match(/<a\s/g) ?? []).length, 1, `${kind}: one link in the whole mail`);
+      // It must never read as a lead notice pointing at an inbox they cannot open.
+      if (mail.html.includes("Open your inbox")) throw new Error(`${kind}: still offers an inbox CTA`);
+      if (mail.html.includes("Unlock the enquiry")) throw new Error(`${kind}: still asks for an unlock`);
+      // Navy branding, not the retired maroon, and the new hosted mark.
+      if (!mail.html.includes("#012E8A")) throw new Error(`${kind}: not on the navy brand`);
+      if (mail.html.toLowerCase().includes("#811d1d") || mail.html.includes("#7A1620")) {
+        throw new Error(`${kind}: maroon survived the recolour`);
+      }
+      if (!mail.html.includes("GlobalyOS%20White%20BG%20Icon")) throw new Error(`${kind}: old logo`);
+      // Same pre-unlock boundary as every other enquiry mail: a first name and a redaction bar,
+      // never a surname or a real address.
+      if (!mail.html.includes("@gmail.com")) throw new Error(`${kind}: masked address missing`);
+      if (!mail.html.includes("#D7DBE0")) throw new Error(`${kind}: redaction bars missing`);
+    }
+
+    // One enquiry still gets the acquisition mail: the recipient's problem is that they cannot
+    // open anything, which does not depend on how many are waiting.
+    const single = enquiryClaimEmail({ kind: "business", recipientName: "Solo Co", items: [{ courseName: "Solo" }] });
+    eq(single.subject, "1 student is interested in your business — claim your profile", "singular subject");
+    if (!single.html.includes("new student enquiry<")) throw new Error("count label did not go singular");
+    // No token minted (a DB failure, say) must still leave a working button, not a dead one.
+    if (!single.html.includes('href="http')) throw new Error("claim CTA fell back to a dead href");
+
+    // Long windows list five and count the rest.
+    const many = Array.from({ length: 9 }, (_, i) => ({ courseName: `Course ${i + 1}` }));
+    const big = enquiryClaimEmail({ kind: "institution", items: many });
+    if (!big.html.includes(">9</p>")) throw new Error("the hero count is not the true total");
+    if (big.html.includes("Course 4")) throw new Error("the fourth enquiry should not be listed");
+    if (!big.html.includes("6 more")) throw new Error("the unlisted enquiries are not accounted for");
+    // No recipient name — the footer still has to explain why the mail arrived.
+    if (!big.html.includes("students enquired about courses your institution offers")) {
+      throw new Error("nameless footer lost its reason-for-receipt line");
+    }
   });
 
   // ── 1. One enquiry, one email, to the business inbox — never to team members ──
@@ -387,6 +546,168 @@ async function main() {
       eq(rows[0].recipient_email, owner.email, "falls back to the owner's address");
     } finally {
       await cleanupAll({ enquiryIds: [enquiryId], businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  // ── 1c. An UNCLAIMED business is matched like any other, and gets the acquisition mail ──
+  await assert("an unclaimed business is queued the claim template with a live claim link", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Unclaimed Subject");
+    const businessId = await makeBusiness({ claimed: false });
+    const enquiryId = await makeEnquiry(studentId, courseId);
+    try {
+      const distId = await makeDistribution(enquiryId, businessId);
+      await emailQueueService.enqueueDistributionEmails(enquiryId, distId, businessId);
+
+      const rows = await masterKnex("enquiry_email_queue").where({ distribution_id: distId });
+      eq(rows.length, 1, "an unclaimed business is a recipient, not a skipped one");
+      eq(rows[0].template, "enquiry_business_claim", "queued under the acquisition template");
+      // The dedup key is deliberately NOT keyed on the template — a business claimed between
+      // enqueue and sweep must not be told a second time under the other name.
+      eq(rows[0].dedup_key, `enquiry_distributed:${distId}:business`, "dedup_key stays per distribution");
+
+      const claimUrl = rows[0].payload?.claim_url;
+      if (typeof claimUrl !== "string" || !claimUrl.includes("/invite/business/accept?token=")) {
+        throw new Error(`claim CTA was not minted: ${JSON.stringify(claimUrl)}`);
+      }
+      // The link has to actually open: minting writes the token onto the row it points at.
+      const token = new URL(claimUrl).searchParams.get("token");
+      const business = await masterKnex("businesses").where({ id: businessId }).first("claim_token");
+      eq(business.claim_token, token, "the mailed token is the one stored on the business");
+
+      // And the mail it renders is the acquisition one, not a lead notice.
+      //
+      // Filtered by the address this test owns, never by subject: the sweep drains the whole
+      // table, so a dev database holding other pending claim rows would otherwise fail this.
+      const inbox = await businessInbox(businessId);
+      const mine = await withCapturedMail(async (sent) => {
+        await sweepWithWindow(0);
+        return sent.filter((m) => m.to === inbox);
+      });
+      eq(mine.length, 1, "the sweep sent the acquisition mail");
+      if (!mine[0].subject.includes("interested in your business")) {
+        throw new Error(`not the acquisition subject: ${mine[0].subject}`);
+      }
+      if (!mine[0].html?.includes("Claim your business")) throw new Error("claim CTA missing from the sent mail");
+    } finally {
+      await cleanupAll({ enquiryIds: [enquiryId], businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  // ── 1d. The regression: a provisioned schema is not a claim ──
+  //
+  // Business 367 in the dev database — created through the admin panel, so account_status 1 and
+  // a tenant schema from minute one, but claim_status 'unclaimed' because nobody at that
+  // business had ever been told the listing existed. Branching on account_status sent it the
+  // ordinary lead notice. This pins the combination, not just the happy pair.
+  await assert("account_status 1 with claim_status unclaimed still gets the acquisition mail", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Admin Created Subject");
+    const businessId = await makeBusiness({ claimed: false, accountStatus: 1 });
+    const enquiryId = await makeEnquiry(studentId, courseId);
+    try {
+      const distId = await makeDistribution(enquiryId, businessId);
+      await emailQueueService.enqueueDistributionEmails(enquiryId, distId, businessId);
+
+      const row = await masterKnex("enquiry_email_queue").where({ distribution_id: distId }).first();
+      eq(row.template, "enquiry_business_claim", "an admin-created listing is not a claimed one");
+
+      const inbox = await businessInbox(businessId);
+      const mine = await withCapturedMail(async (sent) => {
+        await sweepWithWindow(0);
+        return sent.filter((m) => m.to === inbox);
+      });
+      eq(mine.length, 1, "exactly one mail");
+      if (!mine[0].subject.includes("interested in your business")) {
+        throw new Error(`still the lead notice: ${mine[0].subject}`);
+      }
+    } finally {
+      await cleanupAll({ enquiryIds: [enquiryId], businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  // ── 1e. Review finding: a second enquiry must not kill the first mail's claim link ──
+  await assert("a live claim token is reused, so earlier acquisition mails keep working", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Token Reuse Subject");
+    const businessId = await makeBusiness({ claimed: false });
+    const first = await makeEnquiry(studentId, courseId);
+    const second = await makeEnquiry(studentId, courseId);
+    try {
+      const d1 = await makeDistribution(first, businessId);
+      await emailQueueService.enqueueDistributionEmails(first, d1, businessId);
+      const row1 = await masterKnex("enquiry_email_queue").where({ distribution_id: d1 }).first();
+      const url1 = String(row1.payload.claim_url);
+
+      const d2 = await makeDistribution(second, businessId);
+      await emailQueueService.enqueueDistributionEmails(second, d2, businessId);
+      const row2 = await masterKnex("enquiry_email_queue").where({ distribution_id: d2 }).first();
+      const url2 = String(row2.payload.claim_url);
+
+      eq(url2, url1, "the second enquiry reused the live token instead of minting a new one");
+      const biz = await masterKnex("businesses").where({ id: businessId }).first("claim_token");
+      eq(biz.claim_token, new URL(url1).searchParams.get("token"), "the stored token still opens the first mail");
+    } finally {
+      await cleanupAll({ enquiryIds: [first, second], businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  await assert("a business claimed mid-flight gets the lead notice, and is not reset to claim_pending", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Claim Race Subject");
+    const businessId = await makeBusiness({ claimed: false });
+    const enquiryId = await makeEnquiry(studentId, courseId);
+    try {
+      const distId = await makeDistribution(enquiryId, businessId);
+      // The claim lands between the claim_status read and the token write. Simulated by claiming
+      // first and forcing the unclaimed branch, which is what that window looks like downstream.
+      await masterKnex("businesses").where({ id: businessId }).update({ claim_status: "claimed" });
+      const url = await businessesService.mintBusinessClaimUrl(businessId);
+      eq(url, null, "minting against a claimed listing returns nothing");
+
+      const biz = await masterKnex("businesses").where({ id: businessId }).first("claim_status", "claim_token");
+      eq(biz.claim_status, "claimed", "a claimed listing was walked back to claim_pending");
+      eq(biz.claim_token, null, "a claimed listing had a fresh token written onto it");
+      eq(distId.length > 0, true, "distribution exists");
+    } finally {
+      await cleanupAll({ enquiryIds: [enquiryId], businessIds: [businessId], studentIds: [studentId], jobIds: [jobId] });
+    }
+  });
+
+  // ── 1f. Review finding: two listings on one address must not share a digest ──
+  await assert("two unclaimed businesses sharing an address get one mail each, not one mixed", async () => {
+    const studentId = await makeStudent();
+    const { jobId, courseId } = await makeJobAndCourse("Shared Inbox Subject");
+    const bizA = await makeBusiness({ claimed: false });
+    const bizB = await makeBusiness({ claimed: false });
+    const shared = await businessInbox(bizA);
+    await masterKnex("businesses").where({ id: bizB }).update({ email: shared });
+    const eA = await makeEnquiry(studentId, courseId);
+    const eB = await makeEnquiry(studentId, courseId);
+    try {
+      const dA = await makeDistribution(eA, bizA);
+      const dB = await makeDistribution(eB, bizB);
+      await emailQueueService.enqueueDistributionEmails(eA, dA, bizA);
+      await emailQueueService.enqueueDistributionEmails(eB, dB, bizB);
+
+      const mine = await withCapturedMail(async (sent) => {
+        await sweepWithWindow(0);
+        return sent.filter((m) => m.to === shared);
+      });
+      eq(mine.length, 2, "one mail per listing, not one mail mixing both");
+
+      // Each mail names its own business and carries that business's own claim link.
+      const [tokenA, tokenB] = await Promise.all(
+        [bizA, bizB].map(async (id) => (await masterKnex("businesses").where({ id }).first("claim_token")).claim_token),
+      );
+      eq(tokenA === tokenB, false, "the two listings share a claim token");
+      for (const token of [tokenA, tokenB]) {
+        if (!mine.some((m) => m.html?.includes(String(token)))) {
+          throw new Error("a listing's own claim token never reached its recipient");
+        }
+      }
+    } finally {
+      await cleanupAll({ enquiryIds: [eA, eB], businessIds: [bizA, bizB], studentIds: [studentId], jobIds: [jobId] });
     }
   });
 
@@ -507,7 +828,7 @@ async function main() {
       });
 
       eq(mine.length, 1, "three enquiries collapsed into one email");
-      eq(mine[0].subject, "3 new student enquiries", "summary subject names the count");
+      eq(mine[0].subject, "3 students are asking about your courses", "summary subject names the count");
 
       // Every enquiry is accounted for by name — the promise the summary makes. There is no
       // per-card link any more; the one CTA opens the inbox where they are all actionable.
@@ -575,7 +896,7 @@ async function main() {
       });
 
       eq(mine.length, 1, "one email");
-      if (!mine[0].subject.startsWith("New student enquiry")) {
+      if (!mine[0].subject.startsWith("A student is asking about")) {
         throw new Error(`expected the single-enquiry subject, got '${mine[0].subject}'`);
       }
       if (!mine[0].html?.includes(`/business/enquiries/${distId}/student`)) {

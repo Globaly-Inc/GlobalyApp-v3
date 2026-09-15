@@ -187,6 +187,28 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
 }
 
 /**
+ * The claim link for a business nobody owns yet — the twin of `mintInstitutionClaimUrl`, and
+ * exported for the same reason: an enquiry matching an unclaimed business has to put a way in
+ * inside its notification, or the mail asks someone to sign into an account that cannot be
+ * signed into.
+ *
+ * Reuses a live token rather than replacing it. There is only one `claim_token` column, so
+ * minting per enquiry invalidated every acquisition mail already in the inbox — see
+ * `ensureClaimToken`.
+ *
+ * Returns null when the listing has already been claimed, so the caller can stop asking for a
+ * claim it no longer needs.
+ */
+export async function mintBusinessClaimUrl(businessId: string | number): Promise<string | null> {
+  const token = await repo.ensureClaimToken(
+    businessId,
+    randomBytes(32).toString("hex"),
+    new Date(Date.now() + CLAIM_TOKEN_TTL_MS),
+  );
+  return token ? `${config.WEB_APP_URL}/invite/business/accept?token=${token}` : null;
+}
+
+/**
  * Self-serve claim trigger, called from the registration page after a user is told a business
  * profile already exists for their email. Always resolves silently (no "found"/"not found"
  * signal) to avoid leaking account existence — same anti-enumeration stance as `registerUser`.
@@ -197,10 +219,9 @@ export async function requestClaimByEmail(email: string): Promise<void> {
   const business = await repo.findUnclaimedBusinessByContactEmail(email);
   if (!business) return;
 
-  const token = randomBytes(32).toString("hex");
-  await repo.setClaimPending(business.id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-
-  const claimUrl = `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
+  const claimUrl = await mintBusinessClaimUrl(business.id);
+  // Null means it was claimed between the lookup above and the write — nothing left to send.
+  if (!claimUrl) return;
   // Personalise only if someone already registered on this address; otherwise stay generic,
   // since the listing itself has no name for a person.
   const existingUser = await userRepo.findByEmail(email);

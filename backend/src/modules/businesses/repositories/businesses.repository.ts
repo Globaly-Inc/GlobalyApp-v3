@@ -153,10 +153,54 @@ export async function findUnclaimedBusinessByContactEmail(email: string): Promis
     .first();
 }
 
+/**
+ * Stores a FRESH claim token, replacing whatever was there. For a deliberate resend, where the
+ * point may well be to invalidate a link that went astray.
+ *
+ * Guarded on `claim_status`: a listing someone has already claimed must never be walked back to
+ * `claim_pending`, which would both re-open it and flip it back onto the acquisition mail.
+ */
 export async function setClaimPending(id: string | number, token: string, expiresAt: Date): Promise<void> {
   await masterKnex("businesses")
     .where({ id: String(id) })
+    .whereNot("claim_status", "claimed")
     .update({ claim_token: token, claim_token_expires_at: expiresAt, claim_status: "claim_pending", updated_at: masterKnex.fn.now() });
+}
+
+/**
+ * Returns the token a claim link should carry, minting one only when there isn't a live one.
+ *
+ * There is a single `claim_token` column, so minting unconditionally invalidated every link
+ * already sitting in the recipient's inbox. An unclaimed business can be matched by an enquiry
+ * every day; each one used to kill yesterday's acquisition mail, so the button failed as
+ * "invalid or already used" well inside the 72 hours the mail implies.
+ *
+ * A live token keeps BOTH its value and its original expiry — reusing it must not silently
+ * extend the lifetime the earlier mail was sent under. An absent or expired one is replaced.
+ *
+ * Returns null when the listing is already claimed (the `whereNot` matches nothing), which is
+ * the caller's signal that it raced a claim and should send the lead notice instead.
+ */
+export async function ensureClaimToken(
+  id: string | number,
+  token: string,
+  expiresAt: Date,
+): Promise<string | null> {
+  const live = "claim_token IS NOT NULL AND claim_token_expires_at > now()";
+  const [row] = await masterKnex("businesses")
+    .where({ id: String(id) })
+    .whereNot("claim_status", "claimed")
+    .update({
+      claim_token: masterKnex.raw(`CASE WHEN ${live} THEN claim_token ELSE ? END`, [token]),
+      claim_token_expires_at: masterKnex.raw(
+        `CASE WHEN ${live} THEN claim_token_expires_at ELSE ? END`,
+        [expiresAt],
+      ),
+      claim_status: "claim_pending",
+      updated_at: masterKnex.fn.now(),
+    })
+    .returning("claim_token");
+  return (row as { claim_token?: string } | undefined)?.claim_token ?? null;
 }
 
 export async function clearClaim(id: string | number): Promise<BusinessRecord> {
