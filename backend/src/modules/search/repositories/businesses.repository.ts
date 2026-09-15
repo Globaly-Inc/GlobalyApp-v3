@@ -28,6 +28,8 @@ const INSTITUTION_COLUMNS = [
   "i.status", "i.institution_type as category_name", "i.registration_number", "i.registration_licenses",
   // Profile-page extras: the media strips and the "Other Information" sidebar rows.
   "i.gallery_images", "i.video_urls", "i.company_size", "i.created_at",
+  // Read to decide which sections go out; stripped from the response before sending.
+  "i.public_visibility",
 ];
 
 /**

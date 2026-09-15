@@ -15,6 +15,20 @@ export async function findBusinessByDbName(dbName: string): Promise<BusinessReco
   return masterKnex<BusinessRecord>("businesses").where({ schema_name: dbName }).whereNull("deleted_at").first();
 }
 
+export type BusinessCategoryRef = { id: number; name: string; icon: string | null };
+
+/**
+ * The profile badge shows the owner-chosen category, not the coarse `business_type`, so the /me
+ * response has to carry its label. Kept out of `findBusinessByDbName` because that finder also
+ * backs `searchBusinesses`, which has no use for the join.
+ */
+export async function findBusinessCategoryById(id: number): Promise<BusinessCategoryRef | undefined> {
+  return masterKnex("business_categories")
+    .where({ id })
+    .whereNull("deleted_at")
+    .first("id", "name", "icon");
+}
+
 
 /**
  * One row per selectable org. `kind` is not decoration: businesses and institutions are separate

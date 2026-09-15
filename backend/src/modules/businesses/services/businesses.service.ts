@@ -186,11 +186,26 @@ export async function withImagePreviews<
   };
 }
 
+/**
+ * Resolves `business_category_id` to the label and icon the profile header renders. Two explicit
+ * fields rather than a nested object, so the /me response stays flat like the rest of the record.
+ */
+async function withCategory<T extends { business_category_id?: number | null }>(
+  biz: T,
+): Promise<T & { business_category_name: string | null; business_category_icon: string | null }> {
+  const category = biz.business_category_id ? await repo.findBusinessCategoryById(biz.business_category_id) : undefined;
+  return {
+    ...biz,
+    business_category_name: category?.name ?? null,
+    business_category_icon: category?.icon ?? null,
+  };
+}
+
 /** Get full business record by schema_name (orgId from JWT). */
 export async function getProfile(orgId: string) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  return withImagePreviews(business);
+  return withCategory(await withImagePreviews(business));
 }
 
 /** Update business profile fields by schema_name (orgId from JWT). */
@@ -198,7 +213,7 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
   const existing = await repo.findBusinessByDbName(orgId);
   if (!existing) throw new NotFoundError("Business not found");
   const updated = await repo.updateBusinessProfile(existing.id, data);
-  return withImagePreviews(updated);
+  return withCategory(await withImagePreviews(updated));
 }
 
 /**

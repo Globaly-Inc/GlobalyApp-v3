@@ -2,7 +2,8 @@ import { Globe, Mail, MapPin, Phone } from "lucide-react";
 import { ProfileSection, externalUrl } from "./profile-section";
 import type { ProfileData } from "./profile-data";
 
-function ContactRow({
+/** Exported so the business portal's editable Contact Details card renders identical rows. */
+export function ContactRow({
   icon: Icon, label, value, isLink,
 }: Readonly<{ icon: typeof Phone; label: string; value: string | null; isLink?: boolean }>) {
   return (
