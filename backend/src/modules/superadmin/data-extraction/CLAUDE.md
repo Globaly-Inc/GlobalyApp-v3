@@ -531,6 +531,128 @@ The centralized error handler maps these to HTTP responses.
    when a job has nothing queued yet to resume from — no V2 equivalent to
    port, this is a cost fix.
 
+## AgentCIS product staging shares the resolveDurationWeeks resolver (2026-09-15)
+
+`agentcis-product-staging.ts`'s `stageProduct` computed `duration_weeks` with a hand-rolled
+`durationToWeeks(duration.value, duration.unit)` off the course-level duration field only,
+bypassing `resolveDurationWeeks` (staging-writer.ts) that every other writer already goes
+through. It now calls the same shared resolver, passing the AgentCIS-computed weeks as
+`duration_weeks`, the raw `p.duration` string as `duration_text` (a second, independent parse
+attempt if the first failed), the product's `study_options` (via `extractStudyOptions`, moved
+earlier in the function so it's available here too), and `description`.
+
+The study-options tier is currently a no-op for AgentCIS specifically: `extractStudyOptions`
+derives every option's duration from the SAME `extractCourseDuration(p)` call as the course-level
+figure, so if one is null the other is too — there's no independent signal there today. Wired in
+anyway, both because it's the correct shared-resolver call (CLAUDE.md (h): no reimplementing
+duration_weeks resolution per writer) and because it stops being a no-op the moment
+`extractStudyOptions` ever gains a genuinely per-option duration source. The real, immediately
+useful addition is the prose-description tier: an AgentCIS product whose `duration`/
+`duration_value` fields are blank or unparseable but whose `description` states "a 3-year
+full-time programme" now gets `duration_weeks` filled where it previously never could.
+
+`weeksFromStudyOptions` itself (the general pipeline's tier, used by every writer including
+AgentCIS through the above) is where the general-pipeline half of this actually bites: it only
+ever preferred a **full-time** option over the shortest-of-everything fallback, silently missing
+an **on-campus** option that states no load at all — a common real shape, since a school states a
+mode without always repeating "full-time" next to it. `normaliseStudyMode` (mirrors
+`normaliseStudyLoad`'s spelling tolerance: `on campus`/`on-campus`/`on_campus`/`campus`/
+`classroom`/`in person`/`offline`) now makes on-campus a second, independent qualifying signal —
+an option needs only ONE of (full-time, on-campus) to enter the preferred pool, matching how an
+admin reads the Study Options tab: either signal alone marks the "normal" way to take a course,
+as opposed to an extended part-time or remote variant that legitimately runs longer.
+
+Tests: `npm run test:agentcis-product-duration-weeks` (DB integration — structured duration
+unchanged, prose-description fallback fills what the old hand-rolled path couldn't, no duration
+anywhere stays null rather than guessed) and `npm run test:duration-resolution` (pure, covers
+`weeksFromStudyOptions`'s on-campus-or-full-time preference specifically — each case makes the
+preferred option NOT the shortest of the set, so a fix that just widened the fallback pool
+instead of actually preferring on-campus/full-time would still fail them).
+
+**Never overwrite a course's EXISTING duration_weeks with a re-resolved one.** `writeCourse`'s
+merge path already got this right (`existing.duration_weeks == null` gates the update, same as
+every other merge field). `extraction-step.worker.ts`'s per-course "course" data-type
+re-extraction step did not: it called `resolveDurationWeeks` and wrote the result whenever it
+came back non-null, with no check on what the course already had — a re-scrape whose study
+options resolve to a different figure than an AgentCIS import, or an admin's own manual
+correction, would silently replace it. Now gated behind the identical
+`course.duration_weeks == null || course.duration_weeks === ""` check (2026-09-15). No automated
+test added for this one: `handleCourseDataStep` isn't exported and the worker file has a
+top-level `queueService.consume()` side effect on import like every other worker here, so testing
+it would mean building new mock/export infrastructure this file has never had — verified instead
+by matching it to the identical, already-tested guard shape in `writeCourse`'s merge.
+
+**Study options are shared, not duplicated per course — including the admin's manual "Add study
+option" form** (2026-09-15). The pipeline (`writeCourse`, `agentcis-product-staging.ts`) always
+went through `upsertStudyOption`, so it never created a duplicate for an identical tuple. The
+admin form (`staged.service.ts`'s `createStudyOption`) did NOT — it called the generic
+`insertEntity` raw insert used by every other staged entity type. Before the study-options unique
+index (migration `20260911_001`), that meant it silently created a genuine duplicate ROW whenever
+an admin added an option matching one another course already had. After that migration, it got
+WORSE: the raw insert started throwing a raw `duplicate key value violates unique constraint`
+error straight to the admin instead. `createStudyOption` now calls the same `upsertStudyOption`
+(which gained an optional `adminId` param, stamped only on a genuine insert via
+`COALESCE(existing.created_by, ...)`-style logic so reusing an existing row never claims someone
+else's attribution) — an admin adding "on-campus, full-time, 3 years" to a second course now
+correctly LINKS to the same shared row instead of erroring or duplicating.
+
+A second, related gap surfaced once study options started sharing rows: `staged.repository.ts`'s
+generic `assignJunction` (used by every "link this course to that entity" action — study options,
+fees, intakes, eligibility, study units, accreditations, campuses) did a raw junction insert with
+no conflict handling. This was mostly latent before (each entity type's own row-creation rarely
+handed back an id another course was already linked to), but reusing a shared study-option row
+makes a double-submit (or "link existing" clicked twice) hit the junction's own
+`unique(course_id, entity_col)` constraint. Fixed generically: `assignJunction` now targets that
+constraint with `.onConflict(...).ignore()` and falls back to reading the existing link's id, for
+every junction table that has one — all six except `extraction_course_campuses`, which has no
+such constraint (pre-existing, unrelated) and is left as a plain insert.
+
+Verified live (not just by reading the code): reproduced both failures against the real dev DB
+before fixing — a second course's manual "Add study option" throwing the unique-constraint error,
+and a same-course double-submit throwing the junction's own duplicate-key error — confirmed both
+are silent no-ops after the fix, then reverted the fix and confirmed the test genuinely crashes
+again before restoring it. Tests: `npm run test:study-option-dedup`'s new admin-path assertions.
+
+## Three further review fixes on the above (2026-09-15)
+
+**Prose duration can't tell a course's length from a component's.** `durationFromProse`'s
+"duration:"/"lasts"/"X full-time" cues (unlike its course-word-anchored first cue) have no
+requirement that the figure describes the WHOLE course — "Placement duration: 6 months" or "each
+module lasts 10 weeks" satisfies them just as well as a real course-length statement, and AgentCIS
+descriptions state exactly this kind of component duration often. `COMPONENT_DURATION_CUE` (a word
+list: placement, internship, practicum, module, project, dissertation, thesis, …) now vetoes a
+match with one of those words in a NARROW window (25 chars) around the matched figure — narrow,
+not the whole sentence, because a genuine course-length statement often mentions a component
+elsewhere in the same sentence ("a four-year programme with a 10-week placement in year 3") and a
+sentence-wide veto wrongly rejected that real case during development. Guarded by
+`test:duration-resolution`'s new component-duration cases.
+
+**A populated duration_weeks isn't permanently immutable, but it's not free-for-all either.** The
+per-course rerun guard added earlier this session (never overwrite an existing value) was too
+strict: it also blocked a legitimate LATER correction of a stale machine-derived figure, with no
+way to ever fix it short of clearing the column by hand. Now protected only when there's a reason
+to trust the existing value over a fresh crawl: the job is `source_type: "agentcis"` (AgentCIS's
+own figure stays authoritative, matching every other category's additive-only guard) or the course
+row has a non-null `updated_by_platform_user_id` (an admin touched this row at some point — there's
+no field-level provenance to know if duration_weeks specifically was hand-corrected, so a non-null
+row-level `updated_by` is the closest available signal and errs toward not discarding a possible
+manual fix). A plain machine-derived value from an earlier crawl, never hand-touched, non-AgentCIS,
+can still be corrected by a rerun. No automated test for this specific branch, same reason as
+before — `handleCourseDataStep` isn't exported and the worker has the same top-level side effect
+on import as every worker file here.
+
+**Reusing a shared study option must not log a fabricated creation.** `upsertStudyOption` now
+returns `{ id, created }` — `created` comes from Postgres's `xmax = 0` (the standard tell for "this
+row came from THIS statement's INSERT branch", not the ON CONFLICT UPDATE one) rather than a
+separate check-then-act query. `staged.repository.ts`'s `assignJunction` similarly returns
+`{ id, linked }`, `linked` false when the row already existed. `createStudyOption` (and the generic
+`assignJunction` service function used by every other entity type) now logs `STUDY_OPTION_CREATE`
+only on a genuine insert, `STUDY_OPTION_LINK` when an existing option is newly linked to a course,
+and nothing at all for a true no-op (already linked) — instead of always claiming a creation.
+Verified via a real audit-log row count in `test:study-option-dedup`, and via the same
+break-it-then-fix-it method as the two bugs above: reverted to unconditional logging, confirmed the
+no-op case's assertion genuinely failed, then restored.
+
 ## Fee scope is tuition + application fee, enforced in the writer (2026-09-11)
 
 `FEE_SCOPE_RULE` says only two kinds of fee are wanted, and two prompts CONTRADICTED it in the

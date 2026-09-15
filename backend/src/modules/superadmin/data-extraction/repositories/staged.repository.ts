@@ -144,20 +144,28 @@ export function getJunctionInfo(slug: string) {
   return JUNCTION_TABLE_MAP[slug];
 }
 
+// linked: true only when this call actually created the assignment — false for a no-op re-link,
+// so a caller that audits the action (staged.service.ts) doesn't log a link/create event for a
+// resubmission that changed nothing (review finding, 2026-09-15).
 export async function assignJunction(
   slug: string,
   data: { job_id: string; course_id: string; entity_id: string },
-) {
+): Promise<{ id: string; linked: boolean } | null> {
   const info = JUNCTION_TABLE_MAP[slug];
   if (!info) return null;
-  const [row] = await masterKnex(`${S}.${info.table}`)
-    .insert({
-      job_id: data.job_id,
-      course_id: data.course_id,
-      [info.entityCol]: data.entity_id,
-    })
-    .returning("id");
-  return row;
+  const insertData = { job_id: data.job_id, course_id: data.course_id, [info.entityCol]: data.entity_id };
+  const query = masterKnex(`${S}.${info.table}`).insert(insertData);
+  // Every junction but campuses has a real unique(course_id, entity_col) constraint to target —
+  // re-linking an entity the course already has (a re-submitted form, "link existing" clicked
+  // twice, or now the shared study-option row two different actions both resolved to) must be a
+  // harmless no-op, not a raw duplicate-key error. extraction_course_campuses has no such
+  // constraint (pre-existing; unrelated to this fix), so it's left as a plain insert.
+  const [row] = slug === "campuses"
+    ? await query.returning("id")
+    : await query.onConflict(["course_id", info.entityCol]).ignore().returning("id");
+  if (row) return { id: row.id, linked: true };
+  const existing = await masterKnex(`${S}.${info.table}`).where(insertData).first("id");
+  return existing ? { id: existing.id, linked: false } : null;
 }
 
 export async function unassignJunction(

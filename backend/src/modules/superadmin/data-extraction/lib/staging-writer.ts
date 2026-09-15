@@ -580,6 +580,18 @@ export function normaliseStudyLoad(v: unknown): "full_time" | "part_time" | null
   return null;
 }
 
+/** Same canonical/spacing tolerance as normaliseStudyLoad — the extraction prompt asks for both
+ * `on-campus` (course-level study_mode) and `on_campus` (study-option study_mode) across
+ * different prompts, plus AgentCIS's own "on campus"/"classroom"/"in person" wording. */
+export function normaliseStudyMode(v: unknown): "on_campus" | "online" | "hybrid" | null {
+  if (typeof v !== "string") return null;
+  const s = v.toLowerCase();
+  if (/\b(on[-_ ]?campus|campus|classroom|in[-_ ]?person|offline)\b/.test(s)) return "on_campus";
+  if (/\b(online|distance|remote)\b/.test(s)) return "online";
+  if (/\b(hybrid|blended|mixed)\b/.test(s)) return "hybrid";
+  return null;
+}
+
 /**
  * "3 years", "18 months", "2 years full-time / 4 years part-time" (first figure), "1.5 years",
  * "52 weeks", "4 semesters", "3-4 years" (lower bound), "three years". Null when no figure.
@@ -617,6 +629,18 @@ function plausibleWeeks(weeks: number | null): number | null {
  * figure that sits next to a duration cue — a description also mentions "two years of work
  * experience" and "a 10-week placement", which are not the course length.
  */
+// A "duration:"/"lasts"/"X full-time" cue (cues[1] and cues[2] below) has no requirement that
+// it's describing the WHOLE course — a page just as often states a component's length this way
+// ("Placement duration: 6 months", "each module lasts 10 weeks", "6 months full-time placement"),
+// and the cue alone can't tell them apart. cues[0] doesn't need this: it already requires a
+// course-identifying word (programme/degree/msc/…) immediately after the figure, which a
+// component's own name never satisfies. Reject a cues[1]/cues[2] match with a component word
+// close to it — a narrow window, not the whole sentence, so an unrelated component mentioned
+// elsewhere in the same sentence (as a legitimate course-length statement often does — "a
+// four-year programme with a 10-week placement in year 3") doesn't wrongly veto it.
+const COMPONENT_DURATION_CUE = /\b(placement|internship|practicum|attachment|residency|rotation|apprenticeship|module|unit|component|elective|block|industrial year|sandwich year|work experience|project|dissertation|capstone|thesis)\b/i;
+const COMPONENT_CUE_WINDOW = 25;
+
 export function durationFromProse(text: unknown): { value: number; unit: DurationUnit } | null {
   if (typeof text !== "string" || !text) return null;
   const num = "(\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|twelve|eighteen)";
@@ -629,9 +653,15 @@ export function durationFromProse(text: unknown): { value: number; unit: Duratio
     // "3 years full-time", "two years (full-time)"
     new RegExp(`\\b${num}[- ]?${unit}\\s*\\(?(?:of )?(?:full|part)[- ]time`, "i"),
   ];
-  for (const re of cues) {
-    const m = text.match(re);
+  for (let i = 0; i < cues.length; i++) {
+    const m = text.match(cues[i]);
     if (m) {
+      if (i > 0) {
+        const start = m.index ?? 0;
+        const end = start + m[0].length;
+        const context = text.slice(Math.max(0, start - COMPONENT_CUE_WINDOW), Math.min(text.length, end + COMPONENT_CUE_WINDOW));
+        if (COMPONENT_DURATION_CUE.test(context)) continue;
+      }
       const parsed = parseDurationText(`${m[1]} ${m[2]}`);
       if (parsed) return parsed;
     }
@@ -666,7 +696,13 @@ export function resolveDurationWeeks(course: Pick<ExtractedCourse, "duration_wee
   return prose ? plausibleWeeks(durationToWeeks(prose.value, prose.unit)) : null;
 }
 
-/** Shortest full-time option's duration, else shortest of any option — the standard length. */
+/**
+ * Shortest on-campus-or-full-time option's duration, else shortest of any option — the standard
+ * length. On-campus and full-time are the two signals that most reliably mean "the course as
+ * normally taken", as opposed to an extended part-time or remote variant that runs longer; either
+ * one qualifies an option for the preferred pool, matching how an admin reads the Study Options
+ * tab (2026-09-15).
+ */
 export function weeksFromStudyOptions(options: ExtractedStudyOption[] | null | undefined): number | null {
   if (!options?.length) return null;
   const weeks = options.map((o) => {
@@ -677,11 +713,12 @@ export function weeksFromStudyOptions(options: ExtractedStudyOption[] | null | u
       if (p) { value = p.value; unit = p.unit; }
     }
     const load = normaliseStudyLoad(o.study_load) ?? normaliseStudyLoad(o.name) ?? normaliseStudyLoad(o.duration_text);
-    return { weeks: plausibleWeeks(durationToWeeks(value, unit)), load };
-  }).filter((x): x is { weeks: number; load: "full_time" | "part_time" | null } => x.weeks != null);
+    const mode = normaliseStudyMode(o.study_mode) ?? normaliseStudyMode(o.name) ?? normaliseStudyMode(o.duration_text);
+    return { weeks: plausibleWeeks(durationToWeeks(value, unit)), load, mode };
+  }).filter((x): x is { weeks: number; load: "full_time" | "part_time" | null; mode: "on_campus" | "online" | "hybrid" | null } => x.weeks != null);
   if (!weeks.length) return null;
-  const fullTime = weeks.filter((x) => x.load === "full_time");
-  const pool = fullTime.length ? fullTime : weeks;
+  const preferred = weeks.filter((x) => x.load === "full_time" || x.mode === "on_campus");
+  const pool = preferred.length ? preferred : weeks;
   return Math.min(...pool.map((x) => x.weeks));
 }
 
@@ -830,13 +867,23 @@ export async function upsertStudyUnit(jobId: string, unit: ExtractedStudyUnit): 
 // prevent (review finding, 2026-09-11). The conflict target is the COALESCE-normalized
 // expression index from migration 20260911_001 — a plain unique constraint on nullable columns
 // wouldn't catch two NULL-study_mode rows, since Postgres never treats NULL as equal to NULL.
+// adminId is for the manual "Add study option" form (staged.service.ts) — stamped ONLY on a
+// genuine insert, via COALESCE-against-EXCLUDED so a match against an EXISTING row (however it
+// was created) never overwrites that row's own created_by. The pipeline (writeCourse,
+// agentcis-product-staging.ts) omits it, same as every other scraped write.
+//
+// Returns whether a NEW row was inserted, not just its id — `xmax = 0` is the standard Postgres
+// tell for "this row came from this statement's INSERT branch", vs. a nonzero xmax from the
+// UPDATE the ON CONFLICT merge issued. staged.service.ts's createStudyOption needs this to log an
+// accurate audit event instead of always claiming a creation, even when the call only reused or
+// re-linked an existing shared row (review finding, 2026-09-15).
 export async function upsertStudyOption(jobId: string, opt: {
   name?: string | null;
   study_mode?: string | null;
   study_load?: string | null;
   duration_value?: number | string | null;
   duration_unit?: string | null;
-}): Promise<string> {
+}, adminId?: number): Promise<{ id: string; created: boolean }> {
   const studyMode = opt.study_mode ?? "on_campus";
   const studyLoad = opt.study_load ?? "full_time";
   const durationValue = coerceInt(opt.duration_value);
@@ -847,6 +894,7 @@ export async function upsertStudyOption(jobId: string, opt: {
       job_id: jobId, name: opt.name ?? null,
       study_mode: studyMode, study_load: studyLoad,
       duration_value: durationValue, duration_unit: durationUnit,
+      ...(adminId != null ? { created_by_platform_user_id: adminId } : {}),
     })
     .onConflict(masterKnex.raw(
       "(job_id, COALESCE(study_mode, ''), COALESCE(study_load, ''), COALESCE(duration_value, -1), COALESCE(duration_unit, ''))",
@@ -855,8 +903,8 @@ export async function upsertStudyOption(jobId: string, opt: {
       name: masterKnex.raw(`COALESCE(${S}.extraction_study_options.name, EXCLUDED.name)`),
       updated_at: masterKnex.fn.now(),
     })
-    .returning("id");
-  return row.id;
+    .returning(["id", masterKnex.raw("(xmax = 0) as created")]);
+  return { id: row.id, created: row.created };
 }
 
 // ── Fee normalisation ──
@@ -1914,7 +1962,7 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
   // ── Study options + assignments ──
   if (course.study_options?.length && !(isAgentcisJob && await courseHasExisting("extraction_course_study_option_assignments", courseId))) {
     for (const opt of course.study_options) {
-      const optionId = await upsertStudyOption(jobId, opt);
+      const { id: optionId } = await upsertStudyOption(jobId, opt);
       await masterKnex(`${S}.extraction_course_study_option_assignments`)
         .insert({ job_id: jobId, course_id: courseId, study_option_id: optionId })
         .onConflict(["course_id", "study_option_id"]).ignore();
