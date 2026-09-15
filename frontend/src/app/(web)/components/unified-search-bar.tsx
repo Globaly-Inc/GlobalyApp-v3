@@ -47,8 +47,10 @@ const MODES: { id: Mode; label: string; Icon: typeof Search }[] = [
 ];
 
 /**
- * "light" restyles only the Try row below the card. Every hero but the home page's lays this bar
- * over .hero-wash, where white-on-scrim is the only thing that reads, so that stays the default.
+ * "light" restyles only the Try row below the card: on the landing heroes the bar sits on a
+ * page-coloured wash, where white-on-nothing would disappear. All four heroes pass it today —
+ * "dark" is kept as the default for a bar dropped on a dark scrim, which is what the Try row's
+ * white-on-black chips are built for.
  */
 type Tone = "dark" | "light";
 

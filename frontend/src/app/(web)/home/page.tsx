@@ -58,11 +58,10 @@ export default function HomePage() {
 
   return (
     <>
-      {/* The one landing hero that runs light: dark copy over barely-tinted footage, with the
-          navbar's floating pill overlapping it. The negative margin slides the video up under
-          that pill (its pt-3 + h-14 = 68px, sm:pt-4 + h-14 = 72px) and the top padding puts the
-          copy back below it. The other three heroes keep .hero-wash / .hero-radiant. */}
-      <section className="relative flex items-center overflow-hidden -mt-[68px] sm:-mt-[72px] pt-[96px] pb-4 md:pt-[116px] md:pb-8">
+      {/* Dark copy over barely-tinted footage. The for-students, for-institutions and
+          for-agents heroes are built the same way — keep the four backdrop layers, the badge
+          pill and the headline sizes in step across all four. */}
+      <section className="relative flex items-center overflow-hidden pt-8 pb-4 md:pt-11 md:pb-8">
         <AutoplayVideo
           src="https://videos.pexels.com/video-files/7945680/7945680-hd_1920_1080_25fps.mp4"
           poster="https://images.pexels.com/photos/1205651/pexels-photo-1205651.jpeg?auto=compress&cs=tinysrgb&w=1920"

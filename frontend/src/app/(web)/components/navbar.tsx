@@ -56,51 +56,26 @@ export function Navbar() {
     router.push("/auth/sign-in");
   };
 
-  // The pill floats translucent over the home hero's video and goes solid once it is scrolled
-  // over ordinary page content. 8px rather than 0 so a rubber-band overscroll does not flicker it.
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   const initial = (profile?.first_name?.[0] ?? user?.email?.[0] ?? "U").toUpperCase();
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 w-full px-3 sm:px-4 transition-all duration-300 print:hidden",
-        scrolled ? "pt-2" : "pt-3 sm:pt-4",
-      )}
-    >
-      {/* A floating pill, not a full-width bar: the home hero pulls its video up underneath the
-          header (-mt-[68px], which is this element's pt-3 + the pill's h-14), so the bar has to
-          read as a surface over the footage. The -mt there tracks these paddings — change one
-          and the hero slides out from under the pill. */}
-      <div
-        className={cn(
-          "mx-auto flex h-14 w-full max-w-6xl items-center gap-1 rounded-full px-3 sm:px-4 animate-fade-in transition-all duration-300",
-          scrolled
-            ? "bg-background border border-border shadow-lg"
-            : "bg-background/70 backdrop-blur-md border border-border/50 shadow-sm",
-        )}
-      >
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md print:hidden">
+      <div className="container mx-auto flex h-16 items-center px-3 sm:px-4 gap-1">
         <Link href="/" className="flex items-center flex-shrink-0">
           <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" priority />
         </Link>
 
-        <nav className="hidden items-center gap-0.5 lg:flex flex-1 justify-center">
+        <nav className="hidden items-center gap-1 lg:flex flex-1 justify-start ml-8">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                "px-3.5 py-2 text-sm font-medium transition-colors rounded-full",
+                "px-3 py-2 text-sm font-medium transition-colors rounded-md",
                 pathname === link.href
                   ? "text-primary bg-primary/10"
-                  : "text-foreground/70 hover:text-primary hover:bg-secondary",
+                  : "text-foreground/70 hover:text-foreground hover:bg-muted",
               )}
             >
               {link.label}
@@ -174,7 +149,7 @@ export function Navbar() {
               <>
                 <Button
                   variant="ghost"
-                  className="hidden h-10 sm:inline-flex rounded-full text-foreground/70 hover:text-primary hover:bg-secondary"
+                  className="hidden h-10 sm:inline-flex text-foreground/70 hover:text-foreground hover:bg-muted"
                   nativeButton={false}
                   render={<Link href="/auth/sign-in" />}
                 >
