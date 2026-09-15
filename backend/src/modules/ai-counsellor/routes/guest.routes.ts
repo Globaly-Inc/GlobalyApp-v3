@@ -190,6 +190,19 @@ export async function guestRoutes(app: FastifyInstance) {
         embedRepo.incrementMonthlyUsage(embed.config.id).catch((err) =>
           logger.warn("Embed usage increment failed", { configId: embed.config.id, err: String(err) }),
         );
+
+        // The owner's own contact record, in the owner's own schema — see recordWidgetContact.
+        // Sits here rather than in persistVisitorTurn: that writes the conversation to
+        // globalyapp, this writes the visitor to one tenant, and neither should fail the other.
+        if (session) {
+          embedService.recordWidgetContact(embed.config, session.id, {
+            ip,
+            userAgent: req.headers["user-agent"],
+            ...guestService.extractContactDetails(input.content),
+          }).catch((err) => logger.error("Failed to record widget contact", {
+            configId: embed.config.id, err: String(err),
+          }));
+        }
       }
 
       // Persist the turn (fire-and-forget — the reply has already been streamed).

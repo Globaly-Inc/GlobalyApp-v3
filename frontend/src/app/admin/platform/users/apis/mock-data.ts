@@ -1,5 +1,5 @@
 import { uuid } from "@/lib/utils";
-import type { AdminInvitation, InviteAdminParams, ListParams, PaginatedInvitations } from "./types";
+import type { AdminInvitation, InviteAdminParams, ListParams, PaginatedInvitations, PaginatedWaitlist, WaitlistEntry, WaitlistParams } from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,6 +24,13 @@ let mockInvitations: AdminInvitation[] = [
     created_at: new Date(Date.now() - 10 * 86_400_000).toISOString(),
     expired_at: new Date(Date.now() - 7 * 86_400_000).toISOString(),
   },
+];
+
+const mockWaitlist: WaitlistEntry[] = [
+  { uuid: uuid(), name: "John Student", email: "john@student.test", registrant_type: "student", created_at: new Date(Date.now() - 86_400_000).toISOString() },
+  { uuid: uuid(), name: "Kathmandu College", email: "admin@ktmcollege.test", registrant_type: "institution", created_at: new Date(Date.now() - 3 * 86_400_000).toISOString() },
+  { uuid: uuid(), name: "Visa Helpers", email: "hello@visahelpers.test", registrant_type: "service_provider", created_at: new Date(Date.now() - 6 * 86_400_000).toISOString() },
+  { uuid: uuid(), name: "", email: "jane@newsletter.test", registrant_type: "newsletter", created_at: new Date(Date.now() - 9 * 86_400_000).toISOString() },
 ];
 
 function matches(search: string | undefined, ...fields: string[]): boolean {
@@ -58,6 +65,15 @@ export const usersMockApi = {
     const invitation = mockInvitations.find((i) => i.id === id);
     if (!invitation) throw new Error("Invitation not found");
     invitation.expired_at = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  },
+
+  listWaitlist: async (params: WaitlistParams = {}): Promise<PaginatedWaitlist> => {
+    console.log("[mock] GET /admin/platform/waitlist", params);
+    await delay(300);
+    const filtered = mockWaitlist
+      .filter((w) => !params.registrant_type || w.registrant_type === params.registrant_type)
+      .filter((w) => matches(params.search, w.name, w.email));
+    return paginate(filtered, params);
   },
 
   inviteAdmin: async (params: InviteAdminParams): Promise<void> => {

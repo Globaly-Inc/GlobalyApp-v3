@@ -139,7 +139,7 @@ export async function markInConversation(recipient: Recipient, enquiryId: string
  * nothing can be reading a status from it either, and skipping is the honest answer rather
  * than provisioning a schema as a side effect of a status change.
  */
-async function tenantDbFor(recipient: Recipient) {
+export async function tenantDbFor(recipient: Recipient) {
   if (recipient.kind === "institution") {
     const institution = await masterKnex("institutions")
       .where({ id: recipient.id })

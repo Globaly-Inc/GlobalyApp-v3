@@ -31,3 +31,20 @@ export type InviteAdminParams = {
   email: string;
   role: AdminRole;
 };
+
+export type RegistrantType = "student" | "institution" | "service_provider" | "other" | "newsletter";
+
+export type WaitlistParams = ListParams & { registrant_type?: RegistrantType };
+
+export type WaitlistEntry = {
+  uuid: string;
+  name: string;
+  email: string;
+  registrant_type: RegistrantType;
+  created_at: string;
+};
+
+export type PaginatedWaitlist = {
+  data: WaitlistEntry[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+};

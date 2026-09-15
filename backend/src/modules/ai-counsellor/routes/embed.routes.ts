@@ -5,8 +5,12 @@ import {
   EmbedConfigCreateSchema,
   EmbedConfigIdParamSchema,
   EmbedKeyQuerySchema,
+  SessionIdParamSchema,
 } from "../schemas/chat.schema.js";
 import * as embedRepo from "../repositories/embed.repository.js";
+import * as messagesRepo from "../repositories/messages.repository.js";
+import * as contactsRepo from "../repositories/contacts.repository.js";
+import { contactLabel, deviceLabel } from "../services/embed.service.js";
 import { ensureOwnerSiteIndex } from "../services/site-index.service.js";
 import { NotFoundError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -65,6 +69,41 @@ export async function embedRoutes(app: FastifyInstance) {
     startSiteIndex(owner);
 
     return reply.send({ ok: true });
+  });
+
+  /**
+   * The people who have used this owner's widgets.
+   *
+   * Most widget visitors never give a name — the widget has no form and asking for one up
+   * front is what makes visitors close it — so a contact is identified by what the browser
+   * leaves behind (device + IP) and upgraded to an email or phone the moment the visitor
+   * types one into the chat. `label` is computed here so every surface shows the same
+   * identity instead of each re-deriving its own.
+   *
+   * Reads req.db, not masterKnex: these are the caller's own records in the caller's own
+   * schema, so the tenant connection is the entire authorisation story.
+   */
+  app.get("/embed/contacts", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const contacts = await contactsRepo.list(req.db);
+    return reply.send({
+      contacts: contacts.map((c) => ({
+        ...c,
+        label: contactLabel(c),
+        device: deviceLabel(c.visitor_user_agent),
+      })),
+    });
+  });
+
+  /** One contact's conversation. 404, not 403, on someone else's thread — whether a given
+   *  session id exists is not the owner's business either. */
+  app.get("/embed/contacts/:id/messages", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = SessionIdParamSchema.parse(req.params);
+    // The contact row lives in the caller's own schema, so finding one IS the ownership
+    // check — another tenant's session id simply does not exist in here.
+    if (!(await contactsRepo.findBySession(req.db, id))) {
+      throw new NotFoundError("Conversation not found");
+    }
+    return reply.send({ messages: await messagesRepo.findBySession(id) });
   });
 }
 

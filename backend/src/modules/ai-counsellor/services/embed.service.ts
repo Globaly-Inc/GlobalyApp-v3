@@ -2,7 +2,10 @@
 // guest (/guest/messages + embed_key) chat flows.
 
 import * as embedRepo from "../repositories/embed.repository.js";
+import * as contactsRepo from "../repositories/contacts.repository.js";
 import * as knowledgeRepo from "../repositories/knowledge.repository.js";
+import { recipientOf } from "../../enquiries/shared/recipient.js";
+import { tenantDbFor } from "../../enquiries/services/tenant-sync.service.js";
 import { NotFoundError, ForbiddenError, TooManyRequestsError } from "../../../shared/errors.js";
 
 export type EmbedContext = {
@@ -79,4 +82,57 @@ export function sanitizeCustomInstructions(text: string | null): string | null {
   const trimmed = text.trim();
   if (!trimmed || INJECTION_PATTERN.test(trimmed)) return null;
   return trimmed.slice(0, 2000);
+}
+
+/** "Chrome on Windows" — enough to tell two unnamed visitors apart in a list. */
+export function deviceLabel(ua: string | null): string | null {
+  if (!ua) return null;
+  const browser = /Edg\//.test(ua) ? "Edge"
+    : /OPR\//.test(ua) ? "Opera"
+    : /Firefox\//.test(ua) ? "Firefox"
+    : /Chrome\//.test(ua) ? "Chrome"
+    : /Safari\//.test(ua) ? "Safari"
+    : null;
+  const os = /Android/.test(ua) ? "Android"
+    : /iPhone|iPad|iPod/.test(ua) ? "iOS"
+    : /Windows/.test(ua) ? "Windows"
+    : /Mac OS X/.test(ua) ? "Mac"
+    : /Linux/.test(ua) ? "Linux"
+    : null;
+  return [browser, os].filter(Boolean).join(" on ") || null;
+}
+
+/**
+ * One line the owner can read in a list. Falls back down the identity ladder: what the
+ * visitor told the widget, then what their browser told it, then the IP on its own —
+ * never "Anonymous", because a row the owner cannot tell apart from the next one is
+ * the failure this whole lane exists to avoid.
+ */
+export function contactLabel(contact: contactsRepo.WidgetContactRow): string {
+  if (contact.visitor_email) return contact.visitor_email;
+  if (contact.visitor_phone) return contact.visitor_phone;
+  const device = deviceLabel(contact.visitor_user_agent);
+  return [device, contact.visitor_ip].filter(Boolean).join(" · ") || `Visitor #${contact.session_id}`;
+}
+
+/**
+ * Write this turn's visitor identity into the WIDGET OWNER'S schema.
+ *
+ * The guest endpoint is unauthenticated, so there is no req.db to inherit — the owner is
+ * resolved from the embed config the visitor is talking through, which is the only tenant
+ * this data may ever reach.
+ *
+ * Callers treat this as best-effort (it runs after the answer has already streamed). A
+ * failure costs one turn's worth of detail, not the contact: every turn re-writes it, so
+ * the visitor's next message repairs the row, and the transcript is durable centrally
+ * either way. An institution that was promoted but never claimed has no schema at all —
+ * tenantDbFor throws, and the catch is the whole handling.
+ */
+export async function recordWidgetContact(
+  config: embedRepo.EmbedConfigRow,
+  sessionId: number,
+  visitor: { ip?: string; userAgent?: string; email?: string; phone?: string },
+): Promise<void> {
+  const db = await tenantDbFor(recipientOf(config));
+  await contactsRepo.recordTurn(db, { sessionId, embedConfigId: config.id, ...visitor });
 }

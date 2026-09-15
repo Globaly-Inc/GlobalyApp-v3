@@ -6,17 +6,19 @@ import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs"
 import { fetchInvitations } from "../store/users-slice";
 import { PlatformUsersTab } from "./platform-users-tab";
 import { InvitationsTab } from "./invitations-tab";
+import { WaitlistTab } from "./waitlist-tab";
 
 const TABS = [
   { value: "users" as const, label: "Users" },
   { value: "invitations" as const, label: "Admin Invitations" },
+  { value: "waitlist" as const, label: "The Waiting List" },
 ];
 
 export function UsersView() {
   const dispatch = useAppDispatch();
   const { invitations, invitationsStatus } = useAppSelector((state) => state.adminUsers);
 
-  const [tab, setTab] = useState<"users" | "invitations">("users");
+  const [tab, setTab] = useState<"users" | "invitations" | "waitlist">("users");
   const [invitationsSearch, setInvitationsSearch] = useState("");
   const [debouncedInvitationsSearch, setDebouncedInvitationsSearch] = useState("");
   const invitationsSearchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -40,12 +42,13 @@ export function UsersView() {
     <div className="mx-auto max-w-3xl">
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-foreground">Users</h1>
-        <p className="text-muted-foreground mt-1">Manage users and pending admin invitations.</p>
+        <p className="text-muted-foreground mt-1">Manage users, pending admin invitations and waiting-list sign-ups.</p>
       </div>
 
       <AdminSegmentedTabs options={TABS} value={tab} onChange={setTab} />
 
       {tab === "users" && <PlatformUsersTab />}
+      {tab === "waitlist" && <WaitlistTab />}
       {tab === "invitations" && (
         <InvitationsTab
           invitations={invitations}

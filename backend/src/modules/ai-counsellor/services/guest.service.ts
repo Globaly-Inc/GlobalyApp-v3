@@ -29,6 +29,28 @@ export function visitorKey(fingerprint: string, embedKey: string): string {
   return createHash("sha256").update(`${fingerprint}:${embedKey}`).digest("hex");
 }
 
+// Deliberately loose: a visitor types "mail me at sam@x.co" mid-sentence, not into a field.
+const EMAIL_PATTERN = /[\w.+-]+@[\w-]+\.[\w.-]{2,}/;
+// 8+ digits so a course code, a year or an intake size can't pass as a phone number.
+const PHONE_PATTERN = /\+?\d[\d\s().-]{6,}\d/;
+
+/**
+ * Contact details the visitor volunteered in a message.
+ *
+ * ponytail: regex, not a model call — the widget has no contact form and this runs on every
+ * guest turn. Swap in a tool call if name capture is ever wanted too; a name cannot be
+ * pattern-matched out of free text, which is exactly why the device columns exist.
+ */
+export function extractContactDetails(text: string): { email?: string; phone?: string } {
+  const email = text.match(EMAIL_PATTERN)?.[0];
+  const phone = text.match(PHONE_PATTERN)?.[0]?.trim();
+  return {
+    ...(email ? { email: email.toLowerCase().slice(0, 254) } : {}),
+    // A long digit run inside an email (a phone-number-looking local part) is not a phone.
+    ...(phone && !email?.includes(phone) ? { phone: phone.slice(0, 32) } : {}),
+  };
+}
+
 /**
  * The visitor's thread for this widget, created on first message.
  *
