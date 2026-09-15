@@ -600,4 +600,14 @@
   .ai-ring::after {
     animation: none !important;
   }
+  /* The landing heroes: the badge and its pulsing dot, and the rise the headline, subtitle and
+     search bar come in on. animation:none alone is enough here — unlike .reveal, whose hidden
+     state lives on the class itself, these carry nothing outside their keyframes, so the copy
+     renders in its final state rather than stranded at the from-frame. The dot's infinite pulse
+     is the one that matters most: it never stops on its own. */
+  .animate-fade-in,
+  .animate-fade-up,
+  .animate-ai-pulse {
+    animation: none !important;
+  }
 }
