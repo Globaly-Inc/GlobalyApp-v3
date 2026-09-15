@@ -35,6 +35,7 @@
     "test:fee-scope": "node --import tsx tests/fee-scope.ts",
     "test:agentcis-duration": "node --import tsx tests/agentcis-duration.ts",
     "test:agentcis-fields": "node --import tsx tests/agentcis-fields.ts",
+    "test:agentcis-intakes": "node --import tsx tests/agentcis-intakes.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",
     "test:embeddings": "node --import tsx tests/embeddings.ts",
     "test:manual-institution-job": "node --import tsx tests/manual-institution-job.ts",

@@ -405,8 +405,37 @@ The centralized error handler maps these to HTTP responses.
    Verified clean in the same pass, worth not re-deriving: every child-entity helper is reached from
    BOTH writers; `custom_dates` flows because `writeCourse` passes the whole intake object; no reader
    parses an intake date through `Date()` any more; AgentCIS creates a fresh job per import so its
-   direct inserts do not accumulate within one; and `business/profile`'s intakes tab writes
+   direct inserts do not accumulate within one (superseded for intakes by (p) — a fresh job per
+   import says nothing about duplication ACROSS courses inside one job, which is what that direct
+   insert was actually causing); and `business/profile`'s intakes tab writes
    `service_intakes` in the business schema, NOT extraction data, despite looking identical.
+   (p) AgentCIS intakes: read the array, and share the row (2026-09-10). An AgentCIS product
+   states its intakes as `intake_month: [{ id: 3, value: "April" }, …]` — the months the partner
+   ticked — and as `[]` when it ticked none (live: 2089 of 2269 products). `extractIntakes` read
+   neither shape, and the two failures compounded: every stated month was dropped, and because `[]`
+   is not `null` the "scalars present" fallback mapped the PRODUCT OBJECT as an intake, so
+   `mapOneIntake` took `source.name` — the COURSE name — as the intake label. A 103-course
+   institution imported as 103 dateless intakes, each named after its course, and not one real
+   month. `extractRecurringIntakeMonths` now takes each ticked month off the entry's `value`, and
+   an empty list produces nothing. The entry's `id` is a ZERO-based month index
+   (`{id: 0, value: "January"}`) — never read it as a month number, it would file every intake a
+   month early. `findIntakeArray`'s remaining scalar fallback maps the intake KEYS rather than the
+   product object; no AgentCIS product carries `intake_year`/`start_date` today, so that branch is
+   a guard against the day one does, not a live path — restoring `[source]` there restores the
+   defect. `agentcis-product-staging.ts` no longer inserts into `extraction_intakes` directly
+   either: it calls `upsertIntake` + the junction like both crawl workers, which is what makes one
+   "February" row serve every course that offers it (see (g)), and the "fresh job per import" note
+   under (m) does not cover duplication across courses inside one job.
+   **This whole fix was written twice, in parallel, and the duplication cost two rebases.** Staging
+   shipped the writer half as #263 ("Validate fees and intakes for duplication") and then the
+   mapper half as #265 ("fetch available data for agentcis products"), while branch
+   `dev-hotfix-agentcis-intake-fix-rojan` shipped both; staging's side won every conflict, and the
+   branch kept only this note, the scalar-fallback narrowing, and the test. Third occurrence of
+   this collision on this module (see the junction-read rebase under (g)). Before starting work on
+   an extraction defect, check what is already in flight on staging.
+   **AgentCIS states a month with no year**, so `start_date` stays NULL and the month lives in
+   `intake_name` + `intake_month` — deriving a year would be exactly the fabrication (k) removed.
+   Guarded by `npm run test:agentcis-intakes` (pure, real payloads copied from the live API).
    Exception: `/jobs-filtered` search/sort/category-filter (2026-08-24) —
    added `q` (institution name/URL search), `sort`, and
    `business_category_id` params to `FilteredJobsQuerySchema`, plus a matching
