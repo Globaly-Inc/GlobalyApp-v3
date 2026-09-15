@@ -9,6 +9,7 @@
 
 import { masterKnex } from "../src/core/db/master-pool.js";
 import * as repo from "../src/modules/search/repositories/courses.repository.js";
+import { upsertStudyOption } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
 
 let passed = 0;
 let failed = 0;
@@ -37,16 +38,25 @@ const S = "superadmin";
 async function durationOf(courseId: string) {
   const [row] = await repo.listPublicCourses({ courseIds: [courseId] }, undefined, 1, 0);
   if (!row) throw new Error("course not returned by listPublicCourses");
-  return (row as { duration_weeks: number | null }).duration_weeks;
+  // PublicCourseRow is deliberately narrow (see its own comment) and doesn't declare
+  // duration_weeks, even though it's genuinely in the select list — bridge via unknown.
+  return (row as unknown as { duration_weeks: number | null }).duration_weeks;
 }
 
+// A nonce-suffixed study_mode ("on_campus" is only ever compared/displayed, never part of the
+// duration logic under test here) guarantees every row this test creates and mutates is its
+// own — never a REAL course's genuine shared option. Without this, both creating (via the real
+// upsert, not a raw insert — extraction_study_options rows are shared per job since migration
+// 20260911_001's unique index) and the later duration_value mutations below could collide with,
+// or corrupt, an unrelated real option that happens to already hold the same tuple in this job.
+const TEST_MODE = `on_campus_test_${Date.now()}`;
+
 async function addOption(jobId: string, courseId: string, opt: { study_load: string; duration_value: number; duration_unit: string }) {
-  const [o] = await masterKnex(`${S}.extraction_study_options`)
-    .insert({ job_id: jobId, name: "test option", study_mode: "on_campus", ...opt })
-    .returning("id");
+  const { id: optionId } = await upsertStudyOption(jobId, { name: "test option", study_mode: TEST_MODE, ...opt });
   await masterKnex(`${S}.extraction_course_study_option_assignments`)
-    .insert({ job_id: jobId, course_id: courseId, study_option_id: o.id });
-  return o.id as string;
+    .insert({ job_id: jobId, course_id: courseId, study_option_id: optionId })
+    .onConflict(["course_id", "study_option_id"]).ignore();
+  return optionId;
 }
 
 async function main() {
@@ -113,8 +123,15 @@ async function main() {
       eq(await durationOf(course.id), null, "duration_weeks");
     });
   } finally {
-    await masterKnex(`${S}.extraction_course_study_option_assignments`).whereIn("study_option_id", optionIds).delete();
-    await masterKnex(`${S}.extraction_study_options`).whereIn("id", optionIds).delete();
+    // upsertStudyOption can REUSE an existing row if the job already has an identical option
+    // elsewhere (real data, shared per job) — only remove this test's own link to it, and only
+    // delete the row itself if nothing else is left pointing at it afterward.
+    await masterKnex(`${S}.extraction_course_study_option_assignments`)
+      .where({ course_id: course.id }).whereIn("study_option_id", optionIds).delete();
+    for (const id of optionIds) {
+      const stillLinked = await masterKnex(`${S}.extraction_course_study_option_assignments`).where({ study_option_id: id }).first();
+      if (!stillLinked) await masterKnex(`${S}.extraction_study_options`).where({ id }).delete();
+    }
     await masterKnex(`${S}.extraction_courses`).where({ id: course.id }).update({ duration_weeks: course.duration_weeks });
   }
 

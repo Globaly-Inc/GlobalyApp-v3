@@ -12,7 +12,7 @@ import {
 } from "./agentcis-product-mappers.js";
 import {
   normaliseCurrency, upsertEligibility, upsertEnglishRequirement, upsertFee, upsertIntake,
-  resolveCourseLookups, durationToWeeks, upsertStudyOption,
+  resolveCourseLookups, durationToWeeks, upsertStudyOption, resolveDurationWeeks,
 } from "./staging-writer.js";
 
 export interface StagingCounters {
@@ -53,7 +53,19 @@ export async function stageProduct(
   });
 
   const duration = extractCourseDuration(p);
-  const durationWeeks = durationToWeeks(duration.value, duration.unit);
+  const description = (p.description as string) || null;
+  // AgentCIS's per-mode study options (below) are derived from this SAME course-level duration
+  // field, so they can never independently fill a gap here — this is still the shared resolver
+  // (not a hand-rolled durationToWeeks) so a description mentioning "3-year programme" is tried
+  // too when AgentCIS states no parseable duration at all, and so study options DO help the
+  // moment extractStudyOptions ever gains a genuinely per-option duration source.
+  const studyOptions = extractStudyOptions(p);
+  const durationWeeks = resolveDurationWeeks({
+    duration_weeks: durationToWeeks(duration.value, duration.unit),
+    duration_text: (p.duration as string) || null,
+    study_options: studyOptions,
+    description,
+  });
 
   const [course] = await masterKnex(`${S}.extraction_courses`)
     .insert({
@@ -64,7 +76,7 @@ export async function stageProduct(
       degree_level_code: link.degree_level_code,
       subject_area: taxonomy.subjectName,
       subject_area_code: link.subject_area_code,
-      description: (p.description as string) || null,
+      description,
       awarding_institution: (p.awarding_institution as string) || institutionName,
       duration_weeks: durationWeeks,
       source_url: sourceUrl,
@@ -140,10 +152,9 @@ export async function stageProduct(
     counters.intakes_extracted++;
   }
 
-  // Study options — mode + duration
-  const studyOptions = extractStudyOptions(p);
+  // Study options — mode + duration (extracted earlier, alongside duration_weeks resolution)
   for (const opt of studyOptions) {
-    const optionId = await upsertStudyOption(jobId, opt);
+    const { id: optionId } = await upsertStudyOption(jobId, opt);
     await masterKnex(`${S}.extraction_course_study_option_assignments`)
       .insert({ job_id: jobId, course_id: courseId, study_option_id: optionId })
       .onConflict(["course_id", "study_option_id"]).ignore();

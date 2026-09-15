@@ -1315,14 +1315,28 @@ async function handleCourseDataStep(
       if (link.subject_area_code) updates.subject_area_code = link.subject_area_code;
       // Through the same resolver as the writers, not the raw field: a re-extract that answers
       // "3 years" (or answers nothing but states it in the description) must resolve identically
-      // to a first extraction, or a re-run silently downgrades a course that already had one.
-      const weeks = resolveDurationWeeks({
-        duration_weeks: extracted.duration_weeks as number | string | null | undefined,
-        duration_text: extracted.duration_text as string | null | undefined,
-        study_options: extracted.study_options as ExtractedStudyOption[] | undefined,
-        description: extracted.description as string | null | undefined,
-      });
-      if (weeks != null) updates.duration_weeks = weeks;
+      // to a first extraction. A populated duration is protected from being silently REPLACED,
+      // but not forever — only when there's a reason to trust it over a fresh read of the live
+      // page (review finding, 2026-09-15: treating every existing value as permanent means a
+      // stale machine-derived figure can never be corrected by a later, better crawl). Protected
+      // when: (a) this is an AgentCIS job — AgentCIS's own figure is authoritative and a website
+      // re-scrape (e.g. "Enrich from Website") stays additive-only here exactly like every other
+      // category in writeCourse's guard, or (b) an admin has edited this course row since — no
+      // field-level provenance exists, so a non-null updated_by is the closest available signal
+      // that SOME hand correction happened and a blind overwrite risks discarding it. Otherwise
+      // (a plain machine-derived value from an earlier crawl, never hand-touched) a rerun may
+      // still correct it.
+      const durationProtected = (course.duration_weeks != null && course.duration_weeks !== "")
+        && (job.source_type === "agentcis" || course.updated_by_platform_user_id != null);
+      if (!durationProtected) {
+        const weeks = resolveDurationWeeks({
+          duration_weeks: extracted.duration_weeks as number | string | null | undefined,
+          duration_text: extracted.duration_text as string | null | undefined,
+          study_options: extracted.study_options as ExtractedStudyOption[] | undefined,
+          description: extracted.description as string | null | undefined,
+        });
+        if (weeks != null) updates.duration_weeks = weeks;
+      }
       if (Array.isArray(extracted.career_paths) && extracted.career_paths.length > 0) updates.career_paths = extracted.career_paths;
       if (Object.keys(updates).length > 0) {
         updates.updated_at = masterKnex.fn.now();

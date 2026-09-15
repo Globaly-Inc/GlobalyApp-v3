@@ -45,6 +45,18 @@ async function main() {
   eq(w.durationFromProse("Two-year MSc in Data Science"), { value: 2, unit: "years" }, "hyphenated year + award");
   eq(w.durationFromProse("Graduates earn on average 5 years after"), null, "no cue → null");
 
+  // Component durations (a placement, module, internship) must not be mistaken for the whole
+  // course's length (review finding, 2026-09-15) — the "duration:"/"lasts"/"X full-time" cues
+  // have no course-word anchor, so a component's own stated length can satisfy them too.
+  eq(w.durationFromProse("Placement duration: 6 months."), null, "a labelled COMPONENT duration ('Placement duration:') is not the course length");
+  eq(w.durationFromProse("Each module lasts 10 weeks."), null, "'module... lasts' is a component cue, not a course-length one");
+  eq(w.durationFromProse("The final-year project is 6 months full-time."), null, "a component named right before a full-time figure is still rejected");
+  eq(w.durationFromProse("There is a 3-month internship in year 2."), null, "an internship's own duration is not the course length");
+  // But a genuine course-length statement must still work even when some OTHER, unrelated
+  // component duration is mentioned elsewhere in the very same sentence — the guard is a narrow
+  // window around the matched figure, not a blanket "sentence mentions a component" veto.
+  eq(w.durationFromProse("This MSc lasts 2 years full-time, with a 3-month placement in year 2."), { value: 2, unit: "years" }, "the course's own 'lasts 2 years' cue still wins even though 'placement' appears later in the same sentence");
+
   // Real page markdown — a course found on an index has its length only on its OWN page.
   // Harvard Online states "Course Length / 8 weeks" beside two per-week figures and a related
   // -course rail; the cue must pick the programme length and ignore the effort figures.
@@ -95,6 +107,27 @@ async function main() {
   // Study options helper
   eq(w.weeksFromStudyOptions([{ name: "On Campus", duration_value: 3, duration_unit: "years" }]), 156, "single option without load");
   eq(w.weeksFromStudyOptions([]), null, "no options");
+
+  // On-campus is a second, independent qualifying signal alongside full-time (2026-09-15) — an
+  // on-campus option is the "standard" way to take a course just as much as a full-time one is.
+  // Each case below deliberately makes the on-campus/part-time option NOT the shortest of the
+  // set, so a fix that just widened the "take the shortest of everything" fallback (rather than
+  // actually preferring on-campus-or-full-time) would still get these wrong.
+  eq(w.weeksFromStudyOptions([
+    { name: "Online", study_mode: "online", study_load: "part_time", duration_value: 1, duration_unit: "years" },
+    { name: "On Campus", study_mode: "on_campus", study_load: "part_time", duration_value: 3, duration_unit: "years" },
+  ]), 156, "on-campus (part-time, not full-time) wins over a shorter online part-time option");
+  eq(w.weeksFromStudyOptions([
+    { name: "Online Fast-Track", study_mode: "online", study_load: "full_time", duration_value: 2, duration_unit: "years" },
+    { name: "On Campus", study_mode: "on_campus", study_load: "part_time", duration_value: 4, duration_unit: "years" },
+  ]), 104, "full-time (even online) still qualifies and, being shorter, wins over the on-campus part-time option");
+  eq(w.weeksFromStudyOptions([
+    { name: "Distance Learning", study_mode: "online", study_load: "part_time", duration_value: 5, duration_unit: "years" },
+  ]), 260, "neither on-campus nor full-time present -> falls back to the only option, not dropped");
+  eq(w.weeksFromStudyOptions([
+    { name: "On-Campus", study_mode: null, study_load: "part_time", duration_value: 3, duration_unit: "years" },
+    { name: "Remote", study_mode: "online", study_load: "part_time", duration_value: 1, duration_unit: "years" },
+  ]), 156, "on-campus recognised from the option's own name (study_mode blank) still wins over a shorter, non-on-campus, non-full-time option");
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

@@ -4,23 +4,37 @@ import { BadRequestError, NotFoundError } from "../../../../shared/errors.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/staged.repository.js";
 import { withActorNames } from "../shared/actor-names.js";
+import { upsertStudyOption } from "../lib/staging-writer.js";
 
 // ── Study options ──
 
+// Through the shared upsert, not the generic insertEntity every other staged entity uses: study
+// options are shared per job (migration 20260911_001's unique index), so a raw insert of a tuple
+// another course in this job already has throws a constraint violation instead of the admin form
+// correctly reusing/linking that existing row like the pipeline already does.
+//
+// Audits the ACTUAL outcome, not always a creation (review finding, 2026-09-15): reusing an
+// existing shared option previously still logged STUDY_OPTION_CREATE even for a same-course
+// resubmission that created neither a row nor a link — overstating what the admin did.
 export async function createStudyOption(data: Record<string, unknown>, adminId: number) {
   const courseId = data.course_id as string | undefined;
-  delete data.course_id;
-  const row = await repo.studyOptions.insert(data, adminId);
-  // Auto-assign to course if course_id provided
+  const jobId = data.job_id as string;
+  const { id: optionId, created } = await upsertStudyOption(jobId, data, adminId);
+
+  let linked = false;
   if (courseId) {
-    await repo.assignJunction("study-options", {
-      job_id: data.job_id as string,
-      course_id: courseId,
-      entity_id: row.id,
-    });
+    const assignment = await repo.assignJunction("study-options", { job_id: jobId, course_id: courseId, entity_id: optionId });
+    linked = assignment?.linked ?? false;
   }
-  await logAudit(adminId, "STUDY_OPTION_CREATE", { entityType: "extraction_study_options", entityId: row.id });
-  return { id: row.id };
+
+  if (created) {
+    await logAudit(adminId, "STUDY_OPTION_CREATE", { entityType: "extraction_study_options", entityId: optionId });
+  } else if (linked) {
+    await logAudit(adminId, "STUDY_OPTION_LINK", { entityType: "extraction_study_options", entityId: optionId });
+  }
+  // Else: an existing option was reused AND already linked (or nothing was asked to link) — a
+  // true no-op, so nothing is recorded rather than a misleading "created" or "linked" event.
+  return { id: optionId };
 }
 
 export async function patchStudyOption(id: string, data: Record<string, unknown>, adminId: number) {
@@ -210,7 +224,9 @@ export async function assignJunction(
   if (!repo.getJunctionInfo(slug)) throw new BadRequestError(`Unknown junction: ${slug}`);
   const row = await repo.assignJunction(slug, data);
   if (!row) throw new BadRequestError(`Unknown junction: ${slug}`);
-  await logAudit(adminId, "JUNCTION_ASSIGN", { entityType: slug, entityId: row.id });
+  // Same accuracy fix as createStudyOption: "link existing" clicked on something already linked
+  // is a no-op, not a fresh assignment worth an audit entry.
+  if (row.linked) await logAudit(adminId, "JUNCTION_ASSIGN", { entityType: slug, entityId: row.id });
   return { id: row.id };
 }
 

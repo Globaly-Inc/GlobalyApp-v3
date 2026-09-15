@@ -40,6 +40,8 @@
     "test:agentcis-enrich-from-web": "node --import tsx tests/agentcis-enrich-from-web.ts",
     "test:course-degree-qualifier-matching": "node --import tsx tests/course-degree-qualifier-matching.ts",
     "test:study-option-dedup": "node --import tsx tests/study-option-dedup.ts",
+    "test:agentcis-product-duration-weeks": "node --import tsx tests/agentcis-product-duration-weeks.ts",
+    "test:duration-resolution": "node --import tsx tests/duration-resolution.ts",
     "test:chunker": "node --import tsx tests/chunker.ts",
     "test:embeddings": "node --import tsx tests/embeddings.ts",
     "test:manual-institution-job": "node --import tsx tests/manual-institution-job.ts",
