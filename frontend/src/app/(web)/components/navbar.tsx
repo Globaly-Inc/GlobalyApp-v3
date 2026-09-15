@@ -56,6 +56,7 @@ export function Navbar() {
     router.push("/auth/sign-in");
   };
 
+
   const initial = (profile?.first_name?.[0] ?? user?.email?.[0] ?? "U").toUpperCase();
 
   return (
@@ -154,8 +155,9 @@ export function Navbar() {
                 >
                   Sign In
                 </Button>
+                {/* The brand navy rather than .btn-gold's aqua, matching the reference's CTA. */}
                 <Button
-                  className="btn-gold h-10 rounded-full px-5"
+                  className="h-10 rounded-full px-5 shadow-sm"
                   nativeButton={false}
                   render={<Link href="/auth/sign-up" />}
                 >

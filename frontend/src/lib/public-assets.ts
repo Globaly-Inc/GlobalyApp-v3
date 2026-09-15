@@ -14,11 +14,11 @@ const BUCKET = "https://storage.googleapis.com/globalyapp-public-images";
 
 /** The brand marks sit under `logos/`; everything else under `photos/`. */
 
-/** The full GlobalyApp wordmark in navy — for light backgrounds. */
+/** The full GlobalyApp wordmark, navy glyph and charcoal type — for light backgrounds. */
 export const LOGO = {
-  src: `${BUCKET}/logos/GlobalyApp%20Main%20Full%20Logo%20(2).png`,
-  width: 737,
-  height: 157,
+  src: `${BUCKET}/logos/GlobalyApp%20Main%20Full%20Logo%20(3).png`,
+  width: 1474,
+  height: 313,
 } as const;
 /** The same wordmark reversed to white — for navy and photographic backgrounds. */
 export const LOGO_WHITE = {
