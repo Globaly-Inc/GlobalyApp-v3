@@ -812,6 +812,45 @@ Tests: `npm run test:agentcis-writecourse-guardrail` (the per-category add-only-
 DB integration) and `npm run test:agentcis-enrich-from-web` (the trigger's guard rails and queue
 dispatch, DB integration with `queueService.publish` mocked).
 
+## Stale queue-item reclaim (2026-09-15)
+
+Root cause of jobs found stuck at `status: "processing"` forever (seen live, both local and
+staging, some for 5+ days): a page's worker process can die mid-scrape (crash, OOM, deploy
+restart, manual kill) or hang on a network/model call with no timeout, while its
+`extraction_queue` row is still `"processing"`. Nothing else ever revisits that row —
+`checkAllPagesDone` (`lib/queue-completion.ts`) only runs REACTIVELY when another page finishes —
+so if the stuck item is the last one left, the whole job (and its frozen
+`processing_heartbeat_at`) is stuck forever with nothing to unstick it. No item-level
+timeout/lease existed anywhere in the pipeline.
+
+`workers/extraction-queue-reclaim.worker.ts` (`npm run job:extraction-queue-reclaim`, long-running
+poll every 5 minutes, or `--once` for a one-shot manual/cron fix) sweeps `extraction_queue` for
+`"processing"` rows whose `updated_at` is more than 20 minutes stale: resets them to `"pending"`
+and re-publishes to PAGES (a healthy worker's own normal completion path then calls
+`checkAllPagesDone` when it finishes, same as any other page), up to 3 reclaim attempts, after
+which the item is marked `"failed"` and `checkAllPagesDone` is called directly (nothing else
+would call it for a failure this worker caused itself). As defense in depth, it also re-runs
+`checkAllPagesDone` for every `"processing"` job whose heartbeat has gone stale — cheap and safe,
+since that function already no-ops unless the queue is genuinely fully resolved — covering the
+rarer case where the LAST item's own worker died after updating queue status but before calling it.
+
+`checkAllPagesDone`/`deduplicateCampuses` were moved out of `extraction-page.worker.ts` into
+`lib/queue-completion.ts` so this worker can call the exact same transition logic without
+importing a file that starts a second PAGES consumer as a side effect of import (every `workers/`
+file here has a top-level `queueService.consume(...)` call) — reimplementing the transition a
+second time was rejected as the same "drifts between two copies" failure this module has hit
+before (see (h) above).
+
+Verified live against a real stuck job (not just by reading the code): seeded a stale
+"processing" queue item, ran the reclaim worker, confirmed it correctly reset the item and
+re-published it — a live page worker then picked it up and ran it through the normal
+scrape/retry/fail path, proving the whole pipeline reconnects correctly rather than just the
+reclaim step in isolation.
+
+For staging: run `npm run job:extraction-queue-reclaim -- --once` once to clear whatever's
+currently stuck there, then deploy the reclaim worker as a standing process (or cron) alongside
+the existing `job:extraction*` workers so this doesn't recur.
+
 ## External FK columns
 
 7 columns reference tables that may not exist yet in V3. These are plain

@@ -113,6 +113,13 @@ function parseRetryDelay(err: unknown): number | null {
   return match ? Number(match[1]) * 1000 : null;
 }
 
+// A wait longer than this is never absorbed inline: blocking a worker slot (and, transitively,
+// the caller's "processing" claim on whatever queue item this call is for) for however long the
+// provider feels like asking is what let a legitimate rate-limit turn into a false stale-reclaim
+// in the first place. Anything under this is short enough that just waiting it out here is simpler
+// and cheaper than the caller re-dispatching a whole new attempt.
+const INLINE_RETRY_CEILING_MS = 60_000;
+
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -122,18 +129,24 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       lastLlmCall = Date.now();
       return await fn();
     } catch (err) {
-      if (attempt < MAX_RETRIES && isTransient(err)) {
-        // Respect server's retry delay if provided, otherwise exponential backoff
-        const serverDelay = parseRetryDelay(err);
-        const delay = serverDelay ?? Math.min(2000 * Math.pow(2, attempt), 15_000) + Math.random() * 1000;
+      if (!isTransient(err)) throw err;
+
+      const serverDelay = parseRetryDelay(err);
+      // The provider's own requested wait is honoured in full — never truncated — but a long one
+      // is hard availability information ("don't bother before this"), not a cue to retry sooner.
+      // Rather than block this call (and the caller's queue claim) for the whole thing, surface it
+      // immediately so the caller can release its claim and schedule its own deferred retry — see
+      // extraction-page.worker.ts's ai_5xx handling for retry_after_ms.
+      if (serverDelay != null && serverDelay > INLINE_RETRY_CEILING_MS) {
+        throw new Error(`AI_TRANSIENT: retry_after_ms=${serverDelay} ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      }
+      if (attempt < MAX_RETRIES) {
+        const delay = (serverDelay ?? Math.min(2000 * Math.pow(2, attempt), 15_000)) + Math.random() * 1000;
         logger.warn(`Transient LLM error, retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
-      if (isTransient(err)) {
-        throw new Error(`AI_TRANSIENT: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
-      }
-      throw err;
+      throw new Error(`AI_TRANSIENT: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
     }
   }
   throw new Error("unreachable");
