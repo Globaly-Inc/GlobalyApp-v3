@@ -204,7 +204,7 @@ export default async function BlogPage({
             <BlogHeroHeading />
           </Reveal>
           <Reveal delay={0.2}>
-            <p className="text-lg text-muted-foreground max-w-xl mx-auto">
+            <p className="text-base sm:text-lg font-medium text-muted-foreground max-w-xl mx-auto">
              Expert guides, tips, and stories to help students, education counselors, and institutions navigate the world of
             international education.
             </p>

@@ -433,12 +433,6 @@
     );
   }
 
-  /* The display face for the home hero headline. A utility rather than a change to the h1..h6
-     rule in @layer base, so every other heading keeps the theme's --heading-font. */
-  .font-display {
-    font-family: var(--font-plus-jakarta), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  }
-
   @keyframes float {
     0%, 100% { transform: translate(0, 0) rotate(var(--float-rotate, 0deg)); }
     50% { transform: translate(6px, -32px) rotate(var(--float-rotate, 0deg)); }
