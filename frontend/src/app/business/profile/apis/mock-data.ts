@@ -163,18 +163,24 @@ export const businessProfileDetailMockApi = {
   },
   createService: async (input: ServiceInput): Promise<BusinessService> => {
     await delay(300);
+    const now = new Date().toISOString();
     const service: BusinessService = {
-      id: uuid(), service_category_id: input.service_category_id, category_name: null, name: input.name,
+      id: uuid(), service_category_id: input.service_category_id, category_name: null, category_icon: null,
+      category_slug: null, name: input.name,
       description: input.description ?? null, price: input.price != null ? String(input.price) : null,
       is_published: false, public_visibility: {}, degree_level: null, area_of_study: null, duration: null,
-      created_at: new Date().toISOString(),
+      created_at: now, updated_at: now,
     };
     mockServices = [service, ...mockServices];
     return service;
   },
   updateService: async (serviceId: string, patch: ServicePatch): Promise<BusinessService> => {
     await delay(300);
-    mockServices = mockServices.map((s) => (s.id === serviceId ? { ...s, ...patch, price: patch.price != null ? String(patch.price) : s.price } : s));
+    mockServices = mockServices.map((s) =>
+      s.id === serviceId
+        ? { ...s, ...patch, price: patch.price != null ? String(patch.price) : s.price, updated_at: new Date().toISOString() }
+        : s,
+    );
     return mockServices.find((s) => s.id === serviceId)!;
   },
   deleteService: async (serviceId: string): Promise<void> => {

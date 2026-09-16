@@ -3,89 +3,121 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Package, Plus, Search } from "lucide-react";
+import { Loader2, Package, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Combobox } from "@/components/combobox";
 import { Pagination } from "@/components/ui/pagination";
+import { applyClientFilter } from "@/lib/filter-matcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { deleteServiceThunk, fetchServices, toggleServicePublished, updateService } from "../../store/business-profile-detail-slice";
+import { useColumnPreferences } from "@/lib/use-column-preferences";
+import { useUniversalFilter } from "@/lib/use-universal-filter";
+import { SERVICES_MODULE_KEY, SERVICES_PAGE_SIZE, SERVICE_COLUMNS, buildServiceFilterFields } from "../../const";
+import {
+  deleteServiceThunk, fetchAllServices, fetchServices, toggleServicePublished, updateService,
+} from "../../store/business-profile-detail-slice";
+import { distinctOptions, flattenService, sortServices } from "../../utils";
 import type { BusinessService } from "../../apis/types";
-import { DeleteServiceDialog } from "../services/delete-service-dialog";
-import { ServiceColumnPicker } from "../services/service-column-picker";
-import { ServiceManagementTable, type ColumnKey, type SortColumn, type SortState } from "../services/service-management-table";
+import { ServiceBulkActionsBar, type BulkAction } from "../services/service-bulk-actions-bar";
+import { ServiceListDialogs } from "../services/service-list-dialogs";
+import { ServiceListToolbar } from "../services/service-list-toolbar";
+import { ServiceManagementTable, type SortState } from "../services/service-management-table";
 
-const PAGE_SIZE = 10;
-const DEFAULT_COLUMNS: ColumnKey[] = ["category", "degree_level", "area_of_study", "duration", "location", "price", "status"];
-const STATUS_OPTIONS = [
-  { value: "all", label: "All statuses" },
-  { value: "published", label: "Published" },
-  { value: "draft", label: "Draft" },
-];
-
+/**
+ * Service management — V1's `/business/services` page, rendered as this profile's Services tab.
+ *
+ * A business's whole catalog is loaded once and then searched, filtered, sorted and paginated in
+ * the browser, as V1 does: the condition builder can combine any fields with AND/OR, which no
+ * query string on `/services/search` expresses. An institution's rows are read-only extracted
+ * courses and can run to thousands, so that path keeps the backend's own paging and search.
+ */
 export function ServicesTab({ businessId, readOnly = false }: Readonly<{ businessId: number; readOnly?: boolean }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { items: services, status, total } = useAppSelector((state) => state.businessProfileDetail.services);
+  const { items: services, status, total: backendTotal } = useAppSelector((state) => state.businessProfileDetail.services);
+
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<SortState>({ column: null, direction: null });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletingService, setDeletingService] = useState<BusinessService | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<SortState>({ column: null, direction: "asc" });
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(new Set(DEFAULT_COLUMNS));
-
+  const [feeService, setFeeService] = useState<BusinessService | null>(null);
+  const [showBulkUpdate, setShowBulkUpdate] = useState(false);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const fetchPage = (p: number) => {
-    dispatch(fetchServices({ id: businessId, params: { search: search || undefined, page: p, limit: PAGE_SIZE } })).finally(() => setHasLoaded(true));
+
+  const columnPrefs = useColumnPreferences({ module: SERVICES_MODULE_KEY, allColumns: SERVICE_COLUMNS });
+
+  const fieldDefinitions = useMemo(
+    () =>
+      buildServiceFilterFields({
+        categories: distinctOptions(services, (s) => s.category_name),
+        degreeLevels: distinctOptions(services, (s) => s.degree_level),
+        areasOfStudy: distinctOptions(services, (s) => s.area_of_study),
+      }),
+    [services],
+  );
+  const filter = useUniversalFilter({ moduleKey: SERVICES_MODULE_KEY, fieldDefinitions });
+
+  const load = (nextPage: number, query: string) => {
+    const thunk = readOnly
+      ? fetchServices({ id: businessId, params: { search: query || undefined, page: nextPage, limit: SERVICES_PAGE_SIZE } })
+      : fetchAllServices({ id: businessId });
+    dispatch(thunk).finally(() => setHasLoaded(true));
   };
 
-  // Debounced, backend-driven search — the backend already supports `search` (and, for
-  // institutions, filters their extraction courses by it too), so this no longer fetches
-  // everything and filters client-side.
+  // Read-only course catalogs re-query the backend on every keystroke, so they debounce; a
+  // business's catalog is already in memory and only needs one fetch for the whole tab.
   const fetchedRef = useRef(false);
   useEffect(() => {
-    setPage(1);
+    if (!readOnly) {
+      if (fetchedRef.current) return;
+      fetchedRef.current = true;
+      load(1, "");
+      return;
+    }
     const isFirstRun = !fetchedRef.current;
     fetchedRef.current = true;
-    const timer = setTimeout(() => fetchPage(1), isFirstRun ? 0 : 300);
+    const timer = setTimeout(() => load(1, search), isFirstRun ? 0 : 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, businessId, search]);
+  }, [dispatch, businessId, readOnly, search]);
 
-  const handlePageChange = (p: number) => {
-    setPage(p);
-    fetchPage(p);
+  const hasActiveFilters = search.trim().length > 0 || filter.activeCount > 0;
+
+  const { rows, total } = useMemo(() => {
+    // The backend already searched and paged this one — filtering it again would only hide rows.
+    if (readOnly) return { rows: services, total: backendTotal };
+
+    let filtered = services;
+    const query = search.trim().toLowerCase();
+    if (query) filtered = filtered.filter((s) => s.name.toLowerCase().includes(query));
+    if (filter.activeCount > 0) {
+      const matched = new Set(applyClientFilter(filtered.map(flattenService), filter.filterConfig).map((r) => r.id as string));
+      filtered = filtered.filter((s) => matched.has(s.id));
+    }
+    const sorted = sortServices(filtered, sort.column, sort.direction);
+    const start = (page - 1) * SERVICES_PAGE_SIZE;
+    return { rows: sorted.slice(start, start + SERVICES_PAGE_SIZE), total: filtered.length };
+  }, [readOnly, services, backendTotal, search, filter.activeCount, filter.filterConfig, sort, page]);
+
+  const handlePageChange = (next: number) => {
+    setPage(next);
+    if (readOnly) load(next, search);
   };
 
-  const handleSortChange = (column: SortColumn) => {
-    setSort((s) => (s.column === column ? { column, direction: s.direction === "asc" ? "desc" : "asc" } : { column, direction: "asc" }));
-  };
+  // Third click on the same header clears the sort, matching V1.
+  const handleSortChange = (column: string) =>
+    setSort((prev) => {
+      if (prev.column !== column) return { column, direction: "asc" };
+      if (prev.direction === "asc") return { column, direction: "desc" };
+      return { column: null, direction: null };
+    });
 
-  // Status filter and sort apply only within the current backend page — the search endpoint has
-  // no status/sort query params, and a page is only PAGE_SIZE rows, so this is a light, page-local
-  // refinement rather than a full re-query.
-  const pageRows = useMemo(() => {
-    let rows = services;
-    if (statusFilter !== "all") {
-      rows = rows.filter((s) => (statusFilter === "published" ? s.is_published : !s.is_published));
-    }
-    if (sort.column) {
-      const col = sort.column;
-      const key = (s: BusinessService): string => {
-        if (col === "name") return s.name;
-        if (col === "category") return s.category_name ?? "";
-        if (col === "degree_level") return s.degree_level ?? "";
-        if (col === "area_of_study") return s.area_of_study ?? "";
-        if (col === "duration") return s.duration ?? "";
-        if (col === "status") return s.is_published ? "1" : "0";
-        return s.price ?? "";
-      };
-      rows = [...rows].sort((a, b) => key(a).localeCompare(key(b)) * (sort.direction === "asc" ? 1 : -1));
-    }
-    return rows;
-  }, [services, statusFilter, sort]);
+  const clearAll = () => {
+    setSearch("");
+    filter.clearFilters();
+    setPage(1);
+  };
 
   const handleTogglePublish = async (serviceId: string, next: boolean) => {
     try {
@@ -93,6 +125,15 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
       toast.success(next ? "Service published" : "Service unpublished");
     } catch (e) {
       toast.error("Couldn't update service", { description: (e as Error).message });
+    }
+  };
+
+  const handlePriceSave = async (serviceId: string, price: number) => {
+    try {
+      await dispatch(updateService({ id: businessId, serviceId, patch: { price } })).unwrap();
+      toast.success("Price updated");
+    } catch (e) {
+      toast.error("Couldn't update price", { description: (e as Error).message });
     }
   };
 
@@ -110,32 +151,78 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
     }
   };
 
-  const handlePriceSave = async (serviceId: string, price: number) => {
-    try {
-      await dispatch(updateService({ id: businessId, serviceId, patch: { price } })).unwrap();
-      toast.success("Price updated");
-    } catch (e) {
-      toast.error("Couldn't update price", { description: (e as Error).message });
+  const handleBulkAction = async (action: BulkAction) => {
+    const ids = [...selectedIds];
+    if (action === "update_fields") return setShowBulkUpdate(true);
+    if (action === "assign_shared") return setShowBulkAssign(true);
+    if (action === "delete") {
+      await Promise.all(ids.map((serviceId) => dispatch(deleteServiceThunk({ id: businessId, serviceId }))));
+      toast.success(`Deleted ${ids.length} service${ids.length === 1 ? "" : "s"}`);
+    } else {
+      const is_published = action === "publish";
+      await Promise.all(ids.map((serviceId) => dispatch(toggleServicePublished({ id: businessId, serviceId, is_published }))));
+      toast.success(`${is_published ? "Published" : "Unpublished"} ${ids.length} service${ids.length === 1 ? "" : "s"}`);
     }
-  };
-
-  const handleBulkPublish = async (is_published: boolean) => {
-    await Promise.all([...selectedIds].map((id) => dispatch(toggleServicePublished({ id: businessId, serviceId: id, is_published }))));
-    toast.success(is_published ? "Services published" : "Services unpublished");
     setSelectedIds(new Set());
   };
 
-  const handleBulkDelete = async () => {
-    await Promise.all([...selectedIds].map((id) => dispatch(deleteServiceThunk({ id: businessId, serviceId: id }))));
-    toast.success("Services deleted");
-    setSelectedIds(new Set());
-  };
+  const noun = readOnly ? "courses" : "services";
+
+  let body: React.ReactNode;
+  if (!hasLoaded || status === "loading") {
+    body = (
+      <div className="flex justify-center py-12">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      </div>
+    );
+  } else if (rows.length === 0) {
+    body = (
+      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
+        <Package className="h-12 w-12 text-muted-foreground/30" />
+        <p className="text-sm text-muted-foreground">
+          {hasActiveFilters
+            ? `No ${noun} match your filters.`
+            : `No ${noun} yet.${readOnly ? "" : " Add your first service to get started."}`}
+        </p>
+        {hasActiveFilters && (
+          <Button variant="outline" size="sm" onClick={clearAll}>
+            Clear filters
+          </Button>
+        )}
+      </div>
+    );
+  } else {
+    body = (
+      <ServiceManagementTable
+        services={rows}
+        allColumns={SERVICE_COLUMNS}
+        orderedVisibleColumns={columnPrefs.orderedVisibleColumns}
+        frozenColumns={columnPrefs.frozenColumns}
+        sort={sort}
+        onSortChange={handleSortChange}
+        selectedIds={selectedIds}
+        onSelectedIdsChange={setSelectedIds}
+        onRowClick={(service) => !readOnly && router.push(`/business/profile/${businessId}/services/${service.id}/edit`)}
+        actions={
+          readOnly
+            ? undefined
+            : {
+                onEdit: (id) => router.push(`/business/profile/${businessId}/services/${id}/edit`),
+                onTogglePublish: handleTogglePublish,
+                onEditFees: setFeeService,
+                onPriceSave: handlePriceSave,
+                onDelete: setDeletingService,
+              }
+        }
+      />
+    );
+  }
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold">{readOnly ? "Courses" : "Service management"}</h2>
+          <h2 className="text-2xl font-bold">{readOnly ? "Courses" : "Service management"}</h2>
           <p className="text-sm text-muted-foreground">
             {readOnly ? "Courses extracted for this institution." : "Manage your service listings."}
           </p>
@@ -147,58 +234,61 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
         )}
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {!readOnly && (
-            <Combobox className="h-10 w-40" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} placeholder="Filter" />
-          )}
-          {!readOnly && selectedIds.size > 0 && (
-            <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm">
-              <span>{selectedIds.size} selected</span>
-              <Button size="sm" variant="outline" onClick={() => handleBulkPublish(true)}>Publish</Button>
-              <Button size="sm" variant="outline" onClick={() => handleBulkPublish(false)}>Unpublish</Button>
-              <Button size="sm" variant="outline" className="text-destructive" onClick={handleBulkDelete}>Delete</Button>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative w-56">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="h-10 pl-9" placeholder={readOnly ? "Search courses..." : "Search services..."} value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <ServiceColumnPicker visibleColumns={visibleColumns} onChange={setVisibleColumns} />
-        </div>
-      </div>
+      <ServiceListToolbar
+        filter={filter}
+        fieldDefinitions={fieldDefinitions}
+        search={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          // Page 1 of the new result set, and a selection of rows that may no longer be listed
+          // would make the bulk bar act on things the user can't see.
+          setPage(1);
+          setSelectedIds(new Set());
+        }}
+        hasActiveFilters={hasActiveFilters}
+        onClear={clearAll}
+        showFilter={!readOnly}
+        searchPlaceholder={`Search ${noun}...`}
+        columns={{
+          allColumns: SERVICE_COLUMNS,
+          visibleColumns: columnPrefs.visibleColumns,
+          frozenColumns: columnPrefs.frozenColumns,
+          onToggleColumn: columnPrefs.toggleColumn,
+          onToggleFreeze: columnPrefs.toggleFreeze,
+          onReset: columnPrefs.resetToDefaults,
+        }}
+      />
 
-      {!hasLoaded || status === "loading" ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-      ) : pageRows.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
-          <Package className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm font-medium">{readOnly ? "No courses yet" : "No services yet"}</p>
-        </div>
-      ) : (
-        <ServiceManagementTable
-          services={pageRows}
-          visibleColumns={visibleColumns}
-          sort={sort}
-          onSortChange={handleSortChange}
-          selectedIds={selectedIds}
-          onSelectedIdsChange={setSelectedIds}
-          onEdit={(id) => router.push(`/business/profile/${businessId}/services/${id}/edit`)}
-          onTogglePublish={handleTogglePublish}
-          onPriceSave={handlePriceSave}
-          onDelete={setDeletingService}
-          readOnly={readOnly}
+      {body}
+
+      {total > 0 && <Pagination page={page} total={total} limit={SERVICES_PAGE_SIZE} onPageChange={handlePageChange} />}
+
+      {selectedIds.size > 0 && (
+        <ServiceBulkActionsBar
+          selectedCount={selectedIds.size}
+          totalItems={total}
+          onSelectAll={() => setSelectedIds(new Set(rows.map((s) => s.id)))}
+          onDeselectAll={() => setSelectedIds(new Set())}
+          onAction={handleBulkAction}
         />
       )}
 
-      {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
-
-      <DeleteServiceDialog
-        service={deletingService}
-        onOpenChange={(open) => { if (!open) setDeletingService(null); }}
-        onConfirm={handleDelete}
+      <ServiceListDialogs
+        selectedIds={[...selectedIds]}
+        bulkUpdateOpen={showBulkUpdate}
+        onBulkUpdateOpenChange={setShowBulkUpdate}
+        onBulkUpdated={() => {
+          dispatch(fetchAllServices({ id: businessId }));
+          setSelectedIds(new Set());
+        }}
+        bulkAssignOpen={showBulkAssign}
+        onBulkAssignOpenChange={setShowBulkAssign}
+        onBulkAssigned={() => setSelectedIds(new Set())}
+        feeService={feeService}
+        onFeeServiceClose={() => setFeeService(null)}
+        deletingService={deletingService}
+        onDeletingServiceClose={() => setDeletingService(null)}
+        onConfirmDelete={handleDelete}
         deleting={deleting}
       />
     </div>

@@ -1,53 +1,61 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, Eye, EyeOff, Package, Pencil, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PriceEditPopover } from "@/app/admin/platform/businesses/components/services/price-edit-popover";
+import type { ColumnDefinition } from "@/lib/use-column-preferences";
+import { cn } from "@/lib/utils";
 import type { BusinessService } from "../../apis/types";
+import { ServiceTableCell, type ServiceRowActions } from "./service-table-cell";
 
-export type SortColumn = "name" | "category" | "degree_level" | "area_of_study" | "duration" | "price" | "status";
-export type SortState = { column: SortColumn | null; direction: "asc" | "desc" };
+export type SortDirection = "asc" | "desc" | null;
+export type SortState = { column: string | null; direction: SortDirection };
 
-export type ColumnKey = "category" | "degree_level" | "area_of_study" | "duration" | "location" | "price" | "status";
-
-export const COLUMN_LABELS: Record<ColumnKey, string> = {
-  category: "Category", degree_level: "Degree Level", area_of_study: "Subject Area",
-  duration: "Duration", location: "Location", price: "Price", status: "Status",
+/** Width rules the frozen block and its scrolling twin have to agree on, or the two misalign. */
+const COLUMN_SIZING: Record<string, string> = {
+  name: "min-w-[280px] max-w-[360px]",
+  actions: "min-w-[120px]",
 };
 
-const SORTABLE: Partial<Record<ColumnKey, SortColumn>> = {
-  category: "category", degree_level: "degree_level", area_of_study: "area_of_study",
-  duration: "duration", price: "price", status: "status",
-};
+function SortIcon({ column, sort }: Readonly<{ column: string; sort: SortState }>) {
+  if (sort.column !== column) return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/50" />;
+  return sort.direction === "asc" ? <ArrowUp className="ml-1 h-3 w-3" /> : <ArrowDown className="ml-1 h-3 w-3" />;
+}
 
+/**
+ * V1's service table: a sticky left-hand block (row checkbox + the pinned columns) that survives
+ * horizontal scrolling, with the remaining columns scrolling past it. The block is one `<th>`/
+ * `<td>` holding a flex row rather than several sticky cells, because per-cell `left` offsets
+ * would need every pinned column's measured width to stay aligned.
+ */
 export function ServiceManagementTable({
   services,
-  visibleColumns,
+  allColumns,
+  orderedVisibleColumns,
+  frozenColumns,
   sort,
   onSortChange,
   selectedIds,
   onSelectedIdsChange,
-  onEdit,
-  onTogglePublish,
-  onPriceSave,
-  onDelete,
-  readOnly = false,
+  onRowClick,
+  actions,
 }: Readonly<{
   services: BusinessService[];
-  visibleColumns: Set<ColumnKey>;
+  allColumns: ColumnDefinition[];
+  orderedVisibleColumns: string[];
+  frozenColumns: string[];
   sort: SortState;
-  onSortChange: (column: SortColumn) => void;
+  onSortChange: (column: string) => void;
   selectedIds: Set<string>;
   onSelectedIdsChange: (next: Set<string>) => void;
-  onEdit: (id: string) => void;
-  onTogglePublish: (id: string, next: boolean) => void;
-  onPriceSave: (id: string, price: number) => Promise<void>;
-  onDelete: (service: BusinessService) => void;
-  /** Institutions' rows are extracted courses, not real business_services — no edit/publish/delete backing them. */
-  readOnly?: boolean;
+  onRowClick: (service: BusinessService) => void;
+  /** Omit to render the table read-only — no checkboxes, no Actions column. */
+  actions?: ServiceRowActions;
 }>) {
+  const selectable = !!actions;
+  const frozen = orderedVisibleColumns.filter((key) => frozenColumns.includes(key));
+  const scrolling = orderedVisibleColumns.filter((key) => !frozenColumns.includes(key));
+  const definition = (key: string) => allColumns.find((c) => c.key === key);
+
   const allSelected = services.length > 0 && services.every((s) => selectedIds.has(s.id));
   const toggleAll = () => onSelectedIdsChange(allSelected ? new Set() : new Set(services.map((s) => s.id)));
   const toggleOne = (id: string) => {
@@ -57,94 +65,112 @@ export function ServiceManagementTable({
     onSelectedIdsChange(next);
   };
 
-  const sortIcon = (col: ColumnKey) => {
-    const sortCol = SORTABLE[col];
-    if (!sortCol) return null;
-    if (sort.column !== sortCol) return <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />;
-    return sort.direction === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
-  };
-
-  const headerButton = (col: ColumnKey, label: string) => {
-    const sortCol = SORTABLE[col];
-    if (!sortCol) return <span>{label}</span>;
+  const headerLabel = (key: string) => {
+    const col = definition(key);
+    if (!col) return null;
     return (
-      <button type="button" className="flex items-center gap-1 hover:text-foreground" onClick={() => onSortChange(sortCol)}>
-        {label} {sortIcon(col)}
-      </button>
+      <span className="flex items-center">
+        {col.label}
+        {col.sortable && <SortIcon column={key} sort={sort} />}
+      </span>
     );
   };
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
+    <div className="relative w-full overflow-auto rounded-lg border">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
-            {!readOnly && <th className="w-10 p-3"><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></th>}
-            <th className="p-3 text-left">
-              <button type="button" className="flex items-center gap-1 hover:text-foreground" onClick={() => onSortChange("name")}>
-                Service Name
-                {sort.column === "name" ? (sort.direction === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />}
-              </button>
+          <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
+            <th className="sticky left-0 z-20 bg-muted/50 p-0 text-left shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+              <div className="flex items-center py-3">
+                {selectable && (
+                  <div className="w-10 shrink-0 px-3">
+                    <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all services" />
+                  </div>
+                )}
+                {frozen.map((key) => {
+                  const col = definition(key);
+                  if (!col) return null;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      disabled={!col.sortable}
+                      onClick={() => col.sortable && onSortChange(key)}
+                      className={cn(
+                        "px-4 text-left text-xs font-medium whitespace-nowrap",
+                        col.sortable && "cursor-pointer select-none hover:text-foreground",
+                        key === "actions" && "border-l border-border",
+                        COLUMN_SIZING[key],
+                      )}
+                    >
+                      {headerLabel(key)}
+                    </button>
+                  );
+                })}
+              </div>
             </th>
-            {!readOnly && <th className="p-3 text-left">Actions</th>}
-            {[...visibleColumns].map((col) => (
-              <th key={col} className="p-3 text-left whitespace-nowrap">{headerButton(col, COLUMN_LABELS[col])}</th>
-            ))}
+            {scrolling.map((key) => {
+              const col = definition(key);
+              if (!col) return null;
+              return (
+                <th key={key} className="p-0 text-left">
+                  <button
+                    type="button"
+                    disabled={!col.sortable}
+                    onClick={() => col.sortable && onSortChange(key)}
+                    className={cn(
+                      "w-full px-3 py-3 text-left text-xs font-medium whitespace-nowrap",
+                      col.sortable && "cursor-pointer select-none hover:text-foreground",
+                    )}
+                  >
+                    {headerLabel(key)}
+                  </button>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
-          {services.map((s) => (
-            <tr key={s.id} className="border-b last:border-0 hover:bg-muted/20">
-              {!readOnly && <td className="p-3"><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} aria-label={`Select ${s.name}`} /></td>}
-              <td className="p-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                    <Package className="h-4 w-4" />
+          {services.map((service) => {
+            const isSelected = selectedIds.has(service.id);
+            return (
+              <tr
+                key={service.id}
+                className={cn("border-b last:border-0 hover:bg-muted/20", selectable && "cursor-pointer", isSelected && "bg-primary/5")}
+                onClick={() => onRowClick(service)}
+              >
+                <td
+                  className={cn(
+                    "sticky left-0 z-10 p-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]",
+                    isSelected ? "bg-primary/5" : "bg-background",
+                  )}
+                >
+                  <div className="flex items-center py-2">
+                    {selectable && (
+                      <div className="w-10 shrink-0 px-3" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleOne(service.id)}
+                          aria-label={`Select ${service.name}`}
+                        />
+                      </div>
+                    )}
+                    {frozen.map((key) => (
+                      <div key={key} className={cn("px-4", key === "actions" && "border-l border-border", COLUMN_SIZING[key])}>
+                        <ServiceTableCell service={service} column={key} actions={actions} />
+                      </div>
+                    ))}
                   </div>
-                  <span className="font-medium">{s.name}</span>
-                </div>
-              </td>
-              {!readOnly && (
-                <td className="p-3">
-                  <div className="flex items-center gap-1">
-                    <Button size="icon-sm" variant="ghost" onClick={() => onEdit(s.id)} aria-label="Edit service"><Pencil className="h-3.5 w-3.5" /></Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={() => onTogglePublish(s.id, !s.is_published)}
-                      aria-label={s.is_published ? "Unpublish service" : "Publish service"}
-                    >
-                      {s.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </Button>
-                    <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => onDelete(s)} aria-label="Delete service">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
                 </td>
-              )}
-              {visibleColumns.has("category") && (
-                <td className="p-3">
-                  {s.category_name ? <Badge variant="secondary" className="text-[10px]">{s.category_name}</Badge> : <span className="text-muted-foreground">—</span>}
-                </td>
-              )}
-              {visibleColumns.has("degree_level") && <td className="p-3 whitespace-nowrap">{s.degree_level ?? <span className="text-muted-foreground">—</span>}</td>}
-              {visibleColumns.has("area_of_study") && <td className="p-3 whitespace-nowrap">{s.area_of_study ?? <span className="text-muted-foreground">—</span>}</td>}
-              {visibleColumns.has("duration") && <td className="p-3 whitespace-nowrap">{s.duration ?? <span className="text-muted-foreground">—</span>}</td>}
-              {visibleColumns.has("location") && <td className="p-3 whitespace-nowrap text-muted-foreground">—</td>}
-              {visibleColumns.has("price") && (
-                <td className="p-3 whitespace-nowrap">
-                  {readOnly
-                    ? (s.price ?? <span className="text-muted-foreground">—</span>)
-                    : <PriceEditPopover price={s.price} onSave={(next) => onPriceSave(s.id, next)} />}
-                </td>
-              )}
-              {visibleColumns.has("status") && !readOnly && (
-                <td className="p-3">
-                  <Badge variant={s.is_published ? "default" : "secondary"} className="text-[10px]">{s.is_published ? "Published" : "Draft"}</Badge>
-                </td>
-              )}
-            </tr>
-          ))}
+                {scrolling.map((key) => (
+                  <td key={key} className="px-3 py-2">
+                    <ServiceTableCell service={service} column={key} actions={actions} />
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

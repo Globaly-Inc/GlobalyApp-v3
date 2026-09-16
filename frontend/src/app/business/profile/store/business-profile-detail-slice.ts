@@ -47,6 +47,30 @@ export const fetchServices = createAsyncThunk(
   "businessProfileDetail/fetchServices",
   ({ params }: { id: number; params?: ServiceSearchParams }) => businessProfileDetailApi.searchServices(params),
 );
+/**
+ * Every service the business owns, in one go.
+ *
+ * The service management table filters, sorts and paginates client-side (V1 does the same), and
+ * all three are wrong when they only see one backend page — a "Draft only" filter that hides
+ * drafts on page 2 is worse than no filter. `/services/search` caps `limit` at 100, so this walks
+ * the pages until it has them all, stopping at MAX_SERVICE_PAGES so a pathological catalog can't
+ * turn one tab into fifty requests.
+ */
+const MAX_SERVICE_PAGES = 10;
+export const fetchAllServices = createAsyncThunk(
+  "businessProfileDetail/fetchAllServices",
+  async ({ search }: { id: number; search?: string }) => {
+    const limit = 100;
+    const first = await businessProfileDetailApi.searchServices({ page: 1, limit, search });
+    const pages = Math.min(Math.ceil(first.total / limit), MAX_SERVICE_PAGES);
+    const rest = await Promise.all(
+      Array.from({ length: Math.max(0, pages - 1) }, (_, i) =>
+        businessProfileDetailApi.searchServices({ page: i + 2, limit, search }),
+      ),
+    );
+    return { data: [...first.data, ...rest.flatMap((r) => r.data)], total: first.total };
+  },
+);
 export const createService = createAsyncThunk(
   "businessProfileDetail/createService",
   ({ input }: { id: number; input: ServiceInput }) => businessProfileDetailApi.createService(input),
@@ -269,6 +293,11 @@ const businessProfileDetailSlice = createSlice({
         state.services = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
       })
       .addCase(fetchServices.rejected, (state, action) => { state.services.status = "failed"; state.services.error = action.error.message ?? "Failed to load services."; })
+      .addCase(fetchAllServices.pending, (state) => { state.services.status = "loading"; })
+      .addCase(fetchAllServices.fulfilled, (state, action) => {
+        state.services = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
+      })
+      .addCase(fetchAllServices.rejected, (state, action) => { state.services.status = "failed"; state.services.error = action.error.message ?? "Failed to load services."; })
       .addCase(createService.fulfilled, (state, action) => { state.services.items.unshift(action.payload); state.services.total += 1; })
       .addCase(updateService.fulfilled, (state, action) => {
         const i = state.services.items.findIndex((s) => s.id === action.payload.id);
