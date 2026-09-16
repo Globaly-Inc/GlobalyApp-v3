@@ -68,3 +68,53 @@ export async function deleteBranch(businessId: number, branchId: string) {
   const biz = await requireBusiness(businessId);
   return repo.deleteBranch(businessId, biz.schema_name, branchId);
 }
+
+// ─── Institution twins ──────────────────────────────────────────────────────
+// An institution's own Branches tab: same `business_branches` tenant table (see the migration's
+// comment), same repository functions — only the owning-entity lookup differs. No
+// linkExistingBranch twin: linking another registered ORG as a branch is a business-to-business
+// concept (see linked_business_id) that doesn't apply to an institution's own campuses.
+
+async function requireInstitution(id: number) {
+  const inst = await platformRepo.findInstitutionById(id);
+  if (!inst) throw new NotFoundError("Institution not found");
+  return inst;
+}
+
+export async function listInstitutionBranches(institutionId: number, limit: number, offset: number, filter: BranchFilter, search?: string) {
+  const inst = await requireInstitution(institutionId);
+
+  // Same fallback as listBranches: a promoted-but-unclaimed institution (never provisioned) has
+  // no business_branches rows of its own yet — its scraped campuses stand in until claimed.
+  if (inst.account_status === 0 && inst.source_job_id) {
+    if (filter === "linked_branches") return { rows: [], total: 0 };
+    const [rows, total] = await Promise.all([
+      reviewRepo.listCampusesByJobPaged(inst.source_job_id, limit, offset, { search }),
+      reviewRepo.countCampusesByJob(inst.source_job_id, { search }),
+    ]);
+    return { rows: rows.map(campusAsBranch), total };
+  }
+
+  const [rows, total] = await Promise.all([
+    repo.listBranches(institutionId, inst.schema_name, limit, offset, filter, search),
+    repo.countBranches(institutionId, inst.schema_name, filter, search),
+  ]);
+  return { rows, total };
+}
+
+export async function createInstitutionBranch(institutionId: number, data: BranchInput) {
+  const inst = await requireInstitution(institutionId);
+  return repo.createBranch(institutionId, inst.schema_name, data);
+}
+
+export async function updateInstitutionBranch(institutionId: number, branchId: string, data: BranchPatch) {
+  const inst = await requireInstitution(institutionId);
+  const existing = await repo.findBranchById(institutionId, inst.schema_name, branchId);
+  if (!existing) throw new NotFoundError("Branch not found");
+  return repo.updateBranch(institutionId, inst.schema_name, branchId, data);
+}
+
+export async function deleteInstitutionBranch(institutionId: number, branchId: string) {
+  const inst = await requireInstitution(institutionId);
+  return repo.deleteBranch(institutionId, inst.schema_name, branchId);
+}

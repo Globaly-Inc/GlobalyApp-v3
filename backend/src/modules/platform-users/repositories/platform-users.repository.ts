@@ -285,14 +285,20 @@ export async function findInstitutionByUserId(userId: number) {
   return masterKnex<Record<string, unknown>>("institutions").where({ platform_user_id: userId }).whereNull("deleted_at").first<Record<string, unknown>>();
 }
 
-export async function insertInstitution(data: Record<string, unknown>) {
-  const [row] = await masterKnex("institutions").insert(data).returning("*");
+export async function insertInstitution(data: Record<string, unknown>, trx?: Knex.Transaction) {
+  const [row] = await (trx ?? masterKnex)("institutions").insert(data).returning("*");
   return row;
 }
 
 /** Hard delete — only used to roll back a registration whose schema provisioning failed. */
 export async function deleteInstitution(id: number) {
   await masterKnex("institutions").where({ id }).delete();
+}
+
+/** Hard delete — only used to roll back an admin-created owner whose institution/business
+ * provisioning failed after this user row was created. Never call on a real, already-active user. */
+export async function deleteUser(id: number) {
+  await masterKnex("platform_users").where({ id }).delete();
 }
 
 // ── Institution claim (promoted listings) ──

@@ -305,7 +305,7 @@ export type PartnerInstitutionCourseListParams = { search?: string; page?: numbe
 
 export type PartnerInstitutionCourseListResult = { data: PartnerInstitutionCourse[]; total: number };
 
-export type BusinessSearchParams = { search?: string; limit?: number; include_institutions?: boolean };
+export type BusinessSearchParams = { search?: string; limit?: number; include_institutions?: boolean; for_partner_link?: boolean };
 
 // `business_name` is the label for both kinds — the API aliases institution_name onto it, the
 // same way listRelations coalesces the two into partner_name. `kind` is what disambiguates the

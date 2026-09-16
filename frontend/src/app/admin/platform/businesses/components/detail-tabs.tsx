@@ -39,9 +39,17 @@ export function DetailTabs({
   kind,
   id,
   businessName,
+  businessType,
   readOnly = false,
   isPreSeeded = false,
-}: Readonly<{ kind: "business" | "institution"; id: number; businessName?: string; readOnly?: boolean; isPreSeeded?: boolean }>) {
+}: Readonly<{
+  kind: "business" | "institution";
+  id: number;
+  businessName?: string;
+  businessType?: string | null;
+  readOnly?: boolean;
+  isPreSeeded?: boolean;
+}>) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -63,7 +71,7 @@ export function DetailTabs({
             <InstitutionBranchesTab institutionId={id} />
           ))}
           {tab === "partners" && (kind === "business" ? (
-            <PartnersTab businessId={id} businessName={businessName} readOnly={readOnly} />
+            <PartnersTab businessId={id} businessName={businessName} businessType={businessType} readOnly={readOnly} />
           ) : (
             <InstitutionPartnersTab institutionId={id} />
           ))}

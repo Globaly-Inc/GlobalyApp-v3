@@ -49,6 +49,10 @@ export type BusinessListParams = {
   /** Forces which table(s) to query, independent of `category` — e.g. a consultancy picker
    *  that wants every business, no category restriction, and never institutions. */
   kind?: ListingKind;
+  /** Filters on businesses.business_type directly — distinct from `category`. Applied
+   *  server-side (before pagination), so a picker restricted to one type doesn't miss matches
+   *  sitting past the first page. */
+  business_type?: string;
   page?: number;
   limit?: number;
   sort?: BusinessSort;
@@ -408,6 +412,9 @@ export type BusinessRelation = {
 
 export type RelationInput = {
   partner_business_id: number;
+  /** Defaults to "business" server-side when omitted — set to "institution" when linking an
+   *  agency's institution partner (see LinkConsultancyDialog's isAgent branch). */
+  partner_kind?: PartnerKind;
   country_ids?: number[];
   valid_from?: string | null;
   valid_until?: string | null;

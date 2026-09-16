@@ -212,6 +212,7 @@ function applyFilters(rows: Business[], params: BusinessListParams): Business[] 
   if (params.status) out = out.filter((b) => b.status === params.status);
   if (params.category) out = out.filter((b) => b.business_category_id === params.category);
   if (params.kind) out = out.filter((b) => b.kind === params.kind);
+  if (params.business_type) out = out.filter((b) => b.business_type === params.business_type);
   out = [...out].sort((a, b) => {
     switch (params.sort) {
       case "name_desc": return b.business_name.localeCompare(a.business_name);

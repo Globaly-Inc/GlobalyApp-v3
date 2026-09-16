@@ -21,17 +21,23 @@ export function LinkConsultancyDialog({
   onOpenChange,
   businessId,
   businessName,
+  isAgent = false,
   editRelation,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   businessId: number;
   businessName?: string;
+  /** The VIEWED business's own type is "agent" (education agency) — mirrors the self-service
+   *  flow: an agency links institutions, not other businesses. Every other business_type keeps
+   *  admin's original generic "link another business" behavior. */
+  isAgent?: boolean;
   editRelation?: BusinessRelation | null;
 }>) {
   const dispatch = useAppDispatch();
   const countries = useAppSelector((state) => state.platformCategories.countries);
   const isEdit = !!editRelation;
+  const partnerLabel = isAgent ? "institution" : "consultancy";
 
   const [results, setResults] = useState<Business[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,6 +52,13 @@ export function LinkConsultancyDialog({
   const handleQueryChange = async (query: string) => {
     setLoading(true);
     try {
+      if (isAgent) {
+        // An agency's partner is a verified institution — institutions are read into the same
+        // row shape (business_name, id, kind), so this is the same search, just kind: "institution".
+        const { data } = await businessesApi.getBusinesses({ search: query || undefined, kind: "institution", status: "verified" });
+        setResults(data);
+        return;
+      }
       // kind: "business" — this dialog only ever writes a business as the partner, so
       // institutions must never be selectable (and never worth fetching over the wire).
       const { data } = await businessesApi.getBusinesses({ search: query || undefined, kind: "business" });
@@ -103,6 +116,7 @@ export function LinkConsultancyDialog({
             id: businessId,
             input: {
               partner_business_id: Number(selected),
+              ...(isAgent ? { partner_kind: "institution" as const } : {}),
               country_ids: countryIds,
               valid_from: validFrom || null,
               valid_until: validUntil || null,
@@ -111,12 +125,12 @@ export function LinkConsultancyDialog({
             },
           }),
         ).unwrap();
-        toast.success("Consultancy linked");
+        toast.success(isAgent ? "Institution linked" : "Consultancy linked");
       }
       dispatch(fetchRelations({ id: businessId }));
       onOpenChange(false);
     } catch (e) {
-      toast.error(isEdit ? "Couldn't update partnership" : "Couldn't link consultancy", { description: (e as Error).message });
+      toast.error(isEdit ? "Couldn't update partnership" : `Couldn't link ${partnerLabel}`, { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -127,7 +141,7 @@ export function LinkConsultancyDialog({
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : "Link consultancy"}
+            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : `Link ${partnerLabel}`}
           </SheetTitle>
           <SheetDescription>
             {isEdit ? (
@@ -136,7 +150,7 @@ export function LinkConsultancyDialog({
               </>
             ) : (
               <>
-                Connect a verified consultancy to <strong>{businessName ?? "this institution"}</strong>.
+                Connect a verified {partnerLabel} to <strong>{businessName ?? "this business"}</strong>.
               </>
             )}
           </SheetDescription>
@@ -144,8 +158,8 @@ export function LinkConsultancyDialog({
 
         <div className="flex flex-col gap-5 px-4">
           <div className="flex flex-col gap-2">
-            <Label>
-              Consultancy <span className="text-destructive">*</span>
+            <Label className="capitalize">
+              {partnerLabel} <span className="text-destructive">*</span>
             </Label>
             {isEdit ? (
               <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{editRelation?.partner_name}</div>
@@ -154,8 +168,8 @@ export function LinkConsultancyDialog({
                 value={selected}
                 onChange={setSelected}
                 options={results.map((b) => ({ value: String(b.id), label: b.business_name }))}
-                placeholder="Select a consultancy..."
-                searchPlaceholder="Search consultancies..."
+                placeholder={`Select a ${partnerLabel}...`}
+                searchPlaceholder={`Search ${isAgent ? "institutions" : "consultancies"}...`}
                 loading={loading}
                 onQueryChange={handleQueryChange}
               />
@@ -213,7 +227,7 @@ export function LinkConsultancyDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={!selected || saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEdit ? "Save changes" : "Link consultancy"}
+            {isEdit ? "Save changes" : `Link ${partnerLabel}`}
           </Button>
         </SheetFooter>
       </SheetContent>

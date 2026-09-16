@@ -48,7 +48,10 @@ export function InstitutionLinkConsultancyDialog({
     try {
       // kind: "business" — the create endpoint here only ever writes a business as the owner,
       // so institutions must never be selectable (and never worth fetching over the wire).
-      const { data } = await businessesApi.getBusinesses({ search: query || undefined, kind: "business" });
+      // status + business_type are both applied SERVER-SIDE, before pagination — filtering
+      // client-side over just the first page would hide real agencies sitting on later pages
+      // whenever verified non-agents fill the page first.
+      const { data } = await businessesApi.getBusinesses({ search: query || undefined, kind: "business", status: "verified", business_type: "agent" });
       setResults(data);
     } finally {
       setLoading(false);
@@ -106,12 +109,12 @@ export function InstitutionLinkConsultancyDialog({
             },
           }),
         ).unwrap();
-        toast.success("Consultancy linked");
+        toast.success("Education agency linked");
       }
       dispatch(fetchInstitutionPartners({ id: institutionId }));
       onOpenChange(false);
     } catch (e) {
-      toast.error(isEdit ? "Couldn't update partnership" : "Couldn't link consultancy", { description: (e as Error).message });
+      toast.error(isEdit ? "Couldn't update partnership" : "Couldn't link education agency", { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -122,7 +125,7 @@ export function InstitutionLinkConsultancyDialog({
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : "Link consultancy"}
+            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : "Link education agency"}
           </SheetTitle>
           <SheetDescription>
             {isEdit ? (
@@ -130,7 +133,7 @@ export function InstitutionLinkConsultancyDialog({
                 Update the partnership with <strong>{editRelation?.partner_name}</strong>.
               </>
             ) : (
-              "Authorise a consultancy to represent this institution."
+              "Authorise a verified education agency to represent this institution."
             )}
           </SheetDescription>
         </SheetHeader>
@@ -138,7 +141,7 @@ export function InstitutionLinkConsultancyDialog({
         <div className="flex flex-col gap-5 px-4">
           <div className="flex flex-col gap-2">
             <Label>
-              Consultancy <span className="text-destructive">*</span>
+              Education agency <span className="text-destructive">*</span>
             </Label>
             {isEdit ? (
               <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{editRelation?.partner_name}</div>
@@ -147,8 +150,8 @@ export function InstitutionLinkConsultancyDialog({
                 value={selected}
                 onChange={setSelected}
                 options={results.map((b) => ({ value: String(b.id), label: b.business_name }))}
-                placeholder="Select a consultancy..."
-                searchPlaceholder="Search consultancies..."
+                placeholder="Select a verified education agency..."
+                searchPlaceholder="Search verified education agencies..."
                 loading={loading}
                 onQueryChange={handleQueryChange}
               />
@@ -192,7 +195,7 @@ export function InstitutionLinkConsultancyDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={!selected || saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEdit ? "Save changes" : "Link consultancy"}
+            {isEdit ? "Save changes" : "Link education agency"}
           </Button>
         </SheetFooter>
       </SheetContent>
