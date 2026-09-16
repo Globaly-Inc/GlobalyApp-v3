@@ -122,11 +122,21 @@ const SECONDARY_FETCH_CAP = 20;
  * A secondary page (curriculum, fees, PDF) through the snapshot store. The curriculum and
  * fees paths commonly resolve to the SAME catalog page, and forty qualification variants
  * across forty queue messages commonly share one handbook — the store serves all of them
- * from one scrape (and, for a PDF, one Gemini Vision read). Failures return null and are
- * never stored: re-scraping an identical URL seconds later almost never recovers, but a
- * WAF block frozen for 30 days would be worse.
+ * from one scrape (and, for a PDF, one Gemini Vision read). Failures are never STORED — a
+ * WAF block frozen for 30 days would be worse than a retry — but they ARE memoised in
+ * `cache` for this one message, so forty variants sharing one dead link cost one attempt
+ * and one fetch-cap slot rather than forty paid Vision calls.
  */
-async function scrapeSecondaryPage(resolvedUrl: string, jobId: string): Promise<string | null> {
+async function scrapeSecondaryPage(
+  resolvedUrl: string, cache: Map<string, string | null>, jobId: string,
+): Promise<string | null> {
+  if (cache.has(resolvedUrl)) return cache.get(resolvedUrl)!;
+  const md = await fetchSecondaryPage(resolvedUrl, jobId);
+  cache.set(resolvedUrl, md);
+  return md;
+}
+
+async function fetchSecondaryPage(resolvedUrl: string, jobId: string): Promise<string | null> {
   try {
     const page = isPdfUrl(resolvedUrl)
       ? await getDocument(resolvedUrl)
@@ -539,9 +549,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // variant re-scraped and re-billed Gemini for the identical URL, up to SECONDARY_FETCH_CAP
       // times per page for what was really one page's worth of content.
       const curriculumCache = new Map<string, ExtractedStudyUnit[]>();
-      // URLs already fetched in THIS message — only for the fetch cap below. The content
-      // itself now comes from the snapshot store, which outlives the message.
-      const fetchedThisMessage = new Set<string>();
+      // Secondary pages already attempted in THIS message, failures included (null). The
+      // snapshot store underneath outlives the message but never stores a failure; this map
+      // is what stops a shared dead link from being retried — and charged to the cap — once
+      // per qualification variant.
+      const secondaryPageCache = new Map<string, string | null>();
       // Units parsed from a secondary page's markup (null = that page publishes no table).
       const markupCache = new Map<string, ExtractedStudyUnit[] | null>();
 
@@ -681,8 +693,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
               }
             } else if (currUrl && currUrl === feesUrl) {
               // Both point at the same page — one scrape, ONE combined Gemini call.
-              secondaryFetches++;
-              const md = await scrapeSecondaryPage(currUrl, jobId);
+              if (!secondaryPageCache.has(currUrl)) secondaryFetches++;
+              const md = await scrapeSecondaryPage(currUrl, secondaryPageCache, jobId);
               if (md) {
                 const r = await extractSecondaryPage({
                   jobId, url: currUrl, markdown: md, courseName: course.name, wantUnits: true, wantFees: true,
@@ -697,8 +709,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
               }
             } else {
               if (currUrl) {
-                secondaryFetches++;
-                const md = await scrapeSecondaryPage(currUrl, jobId);
+                if (!secondaryPageCache.has(currUrl)) secondaryFetches++;
+                const md = await scrapeSecondaryPage(currUrl, secondaryPageCache, jobId);
                 if (md) {
                   const r = await extractSecondaryPage({
                     jobId, url: currUrl, markdown: md, courseName: course.name, wantUnits: true, wantFees: false,
@@ -710,8 +722,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
                 }
               }
               if (feesUrl && secondaryFetches < SECONDARY_FETCH_CAP) {
-                secondaryFetches++;
-                const md = await scrapeSecondaryPage(feesUrl, jobId);
+                if (!secondaryPageCache.has(feesUrl)) secondaryFetches++;
+                const md = await scrapeSecondaryPage(feesUrl, secondaryPageCache, jobId);
                 if (md) {
                   const r = await extractSecondaryPage({
                     jobId, url: feesUrl, markdown: md, courseName: course.name, wantUnits: false, wantFees: true,
@@ -725,10 +737,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           if (resolveDurationWeeks(course) == null && secondaryFetches < SECONDARY_FETCH_CAP) {
             const ownUrl = courseOwnPage(pageCourseLinks, course.name, contestedBareNames);
             if (ownUrl && ownUrl !== url) {
-              const cached = fetchedThisMessage.has(ownUrl);
-              const md = await scrapeSecondaryPage(ownUrl, jobId);
-              fetchedThisMessage.add(ownUrl);
-              if (!cached) secondaryFetches++;
+              if (!secondaryPageCache.has(ownUrl)) secondaryFetches++;
+              const md = await scrapeSecondaryPage(ownUrl, secondaryPageCache, jobId);
               const stated = md ? durationFromProse(md) : null;
               if (stated) {
                 course.duration_text = `${stated.value} ${stated.unit}`;
@@ -757,6 +767,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       status: "completed",
       extracted_data: JSON.stringify({ courses_found: entitiesWritten, campuses_found: campusCount, scraper: page.scraper, from_snapshot: page.fromCache }),
       page_id: page.pageId,
+      page_content_hash: page.contentHash,
       updated_at: masterKnex.fn.now(),
     });
 
