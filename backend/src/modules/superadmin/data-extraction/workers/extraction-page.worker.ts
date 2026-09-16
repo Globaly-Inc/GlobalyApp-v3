@@ -554,6 +554,10 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // is what stops a shared dead link from being retried — and charged to the cap — once
       // per qualification variant.
       const secondaryPageCache = new Map<string, string | null>();
+      // A URL already in the memo costs no fetch, so the cap must not turn it away: past
+      // the cap a cached curriculum/fees page is still reused rather than overflowed.
+      const fetchable = (u: string | null | undefined): u is string =>
+        !!u && (secondaryPageCache.has(u) || secondaryFetches < SECONDARY_FETCH_CAP);
       // Units parsed from a secondary page's markup (null = that page publishes no table).
       const markupCache = new Map<string, ExtractedStudyUnit[] | null>();
 
@@ -680,7 +684,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           }
 
           if (currUrl || feesUrl) {
-            if (secondaryFetches >= SECONDARY_FETCH_CAP) {
+            if (!fetchable(currUrl ?? feesUrl)) {
               // Past the cap the course's own page becomes a queue item rather than being
               // dropped, so each gets a full secondary budget. page_cap still bounds the total.
               const own = currUrl ?? feesUrl;
@@ -721,7 +725,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
                   }
                 }
               }
-              if (feesUrl && secondaryFetches < SECONDARY_FETCH_CAP) {
+              if (fetchable(feesUrl)) {
                 if (!secondaryPageCache.has(feesUrl)) secondaryFetches++;
                 const md = await scrapeSecondaryPage(feesUrl, secondaryPageCache, jobId);
                 if (md) {
@@ -734,9 +738,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             }
           }
 
-          if (resolveDurationWeeks(course) == null && secondaryFetches < SECONDARY_FETCH_CAP) {
+          if (resolveDurationWeeks(course) == null) {
             const ownUrl = courseOwnPage(pageCourseLinks, course.name, contestedBareNames);
-            if (ownUrl && ownUrl !== url) {
+            if (ownUrl && ownUrl !== url && fetchable(ownUrl)) {
               if (!secondaryPageCache.has(ownUrl)) secondaryFetches++;
               const md = await scrapeSecondaryPage(ownUrl, secondaryPageCache, jobId);
               const stated = md ? durationFromProse(md) : null;
