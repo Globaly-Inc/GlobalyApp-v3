@@ -66,6 +66,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   });
   const [fieldValues, setFieldValues] = useState<Record<number, unknown>>({});
   const [saving, setSaving] = useState(false);
+  const [generatingDescription, setGeneratingDescription] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>("summary");
 
   const [courseSearchResults, setCourseSearchResults] = useState<Record<string, { value: string; label: string }[]>>({});
@@ -153,6 +154,27 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
       if (selected) return [selected, ...base];
     }
     return base;
+  };
+
+  const handleWriteWithAi = async () => {
+    if (!form.name.trim()) {
+      toast.error("Enter a service name first");
+      return;
+    }
+    setGeneratingDescription(true);
+    try {
+      const categoryName = serviceCategories.find((c) => c.id === form.service_category_id)?.name;
+      const { text } = await businessProfileDetailApi.generateServiceDescription({
+        name: form.name,
+        category_name: categoryName,
+        hint: form.description || undefined,
+      });
+      set("description", text);
+    } catch (e) {
+      toast.error("Couldn't generate a description", { description: (e as ApiError).message });
+    } finally {
+      setGeneratingDescription(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -255,6 +277,8 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
                   courseFieldOptions={courseFieldOptions}
                   debouncedSearchCourseField={debouncedSearchCourseField}
                   courseSearchLoading={courseSearchLoading}
+                  onWriteWithAi={handleWriteWithAi}
+                  generatingDescription={generatingDescription}
                 />
               )}
               {detailTab === "fees" && <CourseFeesTab serviceId={serviceId} />}
@@ -278,6 +302,8 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
           courseFieldOptions={courseFieldOptions}
           debouncedSearchCourseField={debouncedSearchCourseField}
           courseSearchLoading={courseSearchLoading}
+          onWriteWithAi={handleWriteWithAi}
+          generatingDescription={generatingDescription}
         />
       )}
     </div>

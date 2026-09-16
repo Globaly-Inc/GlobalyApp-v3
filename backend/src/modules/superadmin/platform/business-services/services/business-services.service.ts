@@ -2,11 +2,13 @@
 // dynamic per-category field values.
 
 import { masterKnex } from "../../../../../core/db/master-pool.js";
+import { provisionInstitutionSchema } from "../../../../../core/business/provisioner.js";
+import { generateText } from "../../../../../shared/ai/gemini.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
 import { NotFoundError } from "../../../../../shared/errors.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as repo from "../repositories/business-services.repository.js";
-import type { ServiceFieldValuesInput, ServiceInput, ServicePatchInput } from "../schemas/business-services.schema.js";
+import type { ServiceAiAssistInput, ServiceFieldValuesInput, ServiceInput, ServicePatchInput } from "../schemas/business-services.schema.js";
 
 /** A course scraped by the source extraction job, shaped like a real (but uneditable) service. */
 function courseAsService(c: {
@@ -107,4 +109,86 @@ export async function getServiceFieldValues(businessId: number, serviceId: strin
 export async function upsertServiceFieldValues(businessId: number, serviceId: string, values: ServiceFieldValuesInput["values"]) {
   const biz = await requireBusiness(businessId);
   return repo.upsertServiceFieldValues(businessId, biz.schema_name, serviceId, values);
+}
+
+/** Drafts service/course copy for the caller to review/edit, not to publish verbatim. Shared by
+ * businesses and institutions alike — a service's name/category is the only real signal either
+ * side ever has to work with, so one org-agnostic generator covers both. */
+export async function generateServiceDescription(input: ServiceAiAssistInput) {
+  const system =
+    "You write concise, factual service/course descriptions for education agents, institutions, and " +
+    "migration/service providers listed on a study-abroad platform. No emojis, no marketing fluff, " +
+    "no unverifiable superlatives — 2 to 3 sentences a real prospective student would trust.";
+  const prompt = [
+    `Write a description for "${input.name}"`,
+    input.category_name ? ` (category: ${input.category_name})` : "",
+    input.hint ? `. Additional context: ${input.hint}` : ".",
+  ].join("");
+
+  const text = await generateText({ system, prompt, maxTokens: 300 });
+  return { text };
+}
+
+// ─── Institution twins ──────────────────────────────────────────────────────
+// An institution's own Services tab: same `business_services` tenant table (see the migration's
+// comment), same repository functions — only the owning-entity lookup differs.
+
+async function requireInstitution(id: number) {
+  const inst = await platformRepo.findInstitutionById(id);
+  if (!inst) throw new NotFoundError("Institution not found");
+  return inst;
+}
+
+export async function listInstitutionServices(institutionId: number) {
+  const inst = await requireInstitution(institutionId);
+  const rows = await repo.listServices(institutionId, inst.schema_name);
+  return withListExtras(institutionId, inst.schema_name, rows);
+}
+
+export async function searchInstitutionServices(institutionId: number, limit: number, offset: number, search?: string) {
+  const inst = await requireInstitution(institutionId);
+
+  // Unlike businesses, an institution can gain real business_services rows (via
+  // createInstitutionService's lazy provisioning below) before it's claimed — so the extraction
+  // fallback is keyed on schema_provisioned_at, not account_status, or an admin-added service
+  // would stay invisible behind its own institution's still-unclaimed scraped courses.
+  if (!inst.schema_provisioned_at && inst.source_job_id) {
+    const [rows, total] = await Promise.all([
+      coursesRepo.listCoursesByJob(inst.source_job_id, limit, offset, { search }),
+      coursesRepo.countCoursesByJob(inst.source_job_id, { search }),
+    ]);
+    return { rows: rows.map(courseAsService), total };
+  }
+
+  const { rows, total } = await repo.searchServices(institutionId, inst.schema_name, limit, offset, search);
+  return { rows: await withListExtras(institutionId, inst.schema_name, rows), total };
+}
+
+export async function createInstitutionService(institutionId: number, data: ServiceInput) {
+  const inst = await requireInstitution(institutionId);
+  // Admins can add a service before an institution is claimed — provision its tenant schema on
+  // demand (same as claim does) instead of gating the button on schema_provisioned_at. Idempotent:
+  // provisionInstitutionSchema is CREATE SCHEMA IF NOT EXISTS + migrate.latest().
+  if (!inst.schema_provisioned_at) await provisionInstitutionSchema(inst.schema_name);
+  return repo.createService(institutionId, inst.schema_name, data);
+}
+
+export async function updateInstitutionService(institutionId: number, serviceId: string, data: ServicePatchInput) {
+  const inst = await requireInstitution(institutionId);
+  return repo.updateService(institutionId, inst.schema_name, serviceId, data);
+}
+
+export async function deleteInstitutionService(institutionId: number, serviceId: string) {
+  const inst = await requireInstitution(institutionId);
+  return repo.deleteService(institutionId, inst.schema_name, serviceId);
+}
+
+export async function getInstitutionServiceFieldValues(institutionId: number, serviceId: string) {
+  const inst = await requireInstitution(institutionId);
+  return repo.getServiceFieldValues(institutionId, inst.schema_name, serviceId);
+}
+
+export async function upsertInstitutionServiceFieldValues(institutionId: number, serviceId: string, values: ServiceFieldValuesInput["values"]) {
+  const inst = await requireInstitution(institutionId);
+  return repo.upsertServiceFieldValues(institutionId, inst.schema_name, serviceId, values);
 }

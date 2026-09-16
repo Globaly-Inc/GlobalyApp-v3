@@ -156,14 +156,11 @@ export async function countBusinesses(search?: string, status?: string, category
 // the same card. `kind` is what tells them apart — every row carries it, so a caller can route
 // a click to the right detail screen.
 
-/** The 'institutions' business category. Institutions have no category column of their own — they
- *  ARE that category — so it is reported as a constant to keep the row shape identical. */
-const INSTITUTION_CATEGORY_SLUG = "institutions";
-
 function institutionListQuery() {
   return masterKnex("institutions as i")
     .leftJoin("platform_users as owner", "owner.id", "i.platform_user_id")
     .leftJoin("countries as c", "c.id", "i.country_id")
+    .leftJoin("business_categories as cat", "cat.id", "i.business_category_id")
     .whereNull("i.deleted_at");
 }
 
@@ -186,10 +183,6 @@ function applyInstitutionFilters<T extends ReturnType<typeof institutionListQuer
 export async function listInstitutions(
   limit: number, offset: number, search?: string, status?: string, sort: BusinessSort = "name_asc",
 ) {
-  const category = await masterKnex("business_categories")
-    .where({ slug: INSTITUTION_CATEGORY_SLUG })
-    .first("id", "name");
-
   const rows = await applySort(
     applyInstitutionFilters(institutionListQuery(), search, status).select(
       "i.id",
@@ -202,8 +195,8 @@ export async function listInstitutions(
       "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
       masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
-      masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
-      masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
+      "i.business_category_id",
+      "cat.name as category_name",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
     ),
@@ -247,7 +240,6 @@ export async function countInstitutions(search?: string, status?: string) {
 }
 
 export async function findInstitutionDetail(id: number) {
-  const category = await masterKnex("business_categories").where({ slug: INSTITUTION_CATEGORY_SLUG }).first("id", "name");
   const row = await institutionListQuery()
     .where("i.id", id)
     .select(
@@ -267,8 +259,8 @@ export async function findInstitutionDetail(id: number) {
       "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
       masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
-      masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
-      masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
+      "i.business_category_id",
+      "cat.name as category_name",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
     )

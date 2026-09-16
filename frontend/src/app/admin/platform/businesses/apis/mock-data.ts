@@ -8,7 +8,7 @@ import type {
   InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceAiAssistInput, ServiceAiAssistResult, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult, ListingRef,} from "./types";
 import { toSlug } from "../utils";
 
@@ -41,6 +41,10 @@ const mockBranches: Record<number, Branch[]> = {
     },
   ],
 };
+
+// Separate from mockServices: institution ids collide with business ids, so a shared map would
+// leak one kind's mock services into the other.
+const mockInstitutionServices: Record<number, BusinessService[]> = {};
 
 const mockServices: Record<number, BusinessService[]> = {
   1: [
@@ -550,6 +554,62 @@ export const businessesMockApi = {
     return [];
   },
   updateServiceFieldValues: async (_id: number, _serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> => {
+    await delay(150);
+    return values;
+  },
+  generateServiceDescription: async (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> => {
+    await delay(600);
+    return {
+      text: `${input.name} is a ${input.category_name?.toLowerCase() ?? "program"} designed to give students practical, industry-relevant skills and a clear pathway toward their career goals.`,
+    };
+  },
+
+  getInstitutionServices: async (id: number): Promise<BusinessService[]> => {
+    await delay(150);
+    return mockInstitutionServices[id] ?? [];
+  },
+  searchInstitutionServices: async (id: number, params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
+    await delay(150);
+    let items = mockInstitutionServices[id] ?? [];
+    if (params.search) items = items.filter((s) => s.name.toLowerCase().includes(params.search!.toLowerCase()));
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const start = (page - 1) * limit;
+    return { data: items.slice(start, start + limit), total: items.length };
+  },
+  createInstitutionService: async (id: number, input: ServiceInput): Promise<BusinessService> => {
+    await delay(200);
+    const service: BusinessService = {
+      id: uuid(), category_name: null, is_published: false, created_at: new Date().toISOString(),
+      name: input.name, service_category_id: input.service_category_id,
+      description: input.description ?? null, price: input.price != null ? String(input.price) : null,
+    };
+    mockInstitutionServices[id] = [...(mockInstitutionServices[id] ?? []), service];
+    return service;
+  },
+  updateInstitutionService: async (id: number, serviceId: string, patch: ServicePatch): Promise<BusinessService> => {
+    await delay(200);
+    const s = (mockInstitutionServices[id] ?? []).find((x) => x.id === serviceId);
+    if (!s) throw new Error("Service not found");
+    Object.assign(s, patch, { price: patch.price != null ? String(patch.price) : s.price });
+    return s;
+  },
+  setInstitutionServicePublished: async (id: number, serviceId: string, is_published: boolean): Promise<BusinessService> => {
+    await delay(150);
+    const s = (mockInstitutionServices[id] ?? []).find((x) => x.id === serviceId);
+    if (!s) throw new Error("Service not found");
+    s.is_published = is_published;
+    return s;
+  },
+  deleteInstitutionService: async (id: number, serviceId: string): Promise<void> => {
+    await delay(150);
+    mockInstitutionServices[id] = (mockInstitutionServices[id] ?? []).filter((s) => s.id !== serviceId);
+  },
+  getInstitutionServiceFieldValues: async (): Promise<SchemaFieldValue[]> => {
+    await delay(100);
+    return [];
+  },
+  updateInstitutionServiceFieldValues: async (_id: number, _serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> => {
     await delay(150);
     return values;
   },

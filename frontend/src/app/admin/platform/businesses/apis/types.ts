@@ -131,6 +131,7 @@ export type InstitutionDetail = {
 
 export type InstitutionPatch = Partial<{
   business_name: string;
+  business_category_id: number | null;
   description: string | null;
   email: string | null;
   phone: string | null;
@@ -351,6 +352,9 @@ export type ServiceSearchParams = {
 export type ServiceSearchResult = { data: BusinessService[]; total: number };
 
 export type ServicePatch = Partial<ServiceInput> & { is_published?: boolean };
+
+export type ServiceAiAssistInput = { name: string; category_name?: string; hint?: string };
+export type ServiceAiAssistResult = { text: string };
 
 export type SchemaFieldValue = { schema_field_id: number; value: unknown };
 

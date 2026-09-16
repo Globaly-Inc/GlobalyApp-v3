@@ -25,6 +25,13 @@ export const ServiceFieldValuesInputSchema = z.object({
   values: z.array(z.object({ schema_field_id: z.number().int().positive(), value: z.unknown() })),
 });
 
+export const ServiceAiAssistSchema = z.object({
+  name: z.string().min(1).max(200),
+  category_name: z.string().max(200).optional(),
+  hint: z.string().max(500).optional(),
+});
+
 export type ServiceInput = z.infer<typeof ServiceInputSchema>;
 export type ServicePatchInput = z.infer<typeof ServicePatchInputSchema>;
 export type ServiceFieldValuesInput = z.infer<typeof ServiceFieldValuesInputSchema>;
+export type ServiceAiAssistInput = z.infer<typeof ServiceAiAssistSchema>;

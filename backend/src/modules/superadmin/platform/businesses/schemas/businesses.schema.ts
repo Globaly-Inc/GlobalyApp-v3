@@ -103,6 +103,7 @@ export const PublishedPatchSchema = z.object({ is_published: z.boolean() });
 
 export const InstitutionPatchSchema = z.object({
   business_name: z.string().min(1),
+  business_category_id: z.number().int().positive().nullable(),
   description: z.string().nullable(),
   email: z.string().email().nullable(),
   phone: z.string().nullable(),

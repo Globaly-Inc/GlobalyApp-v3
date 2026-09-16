@@ -9,7 +9,7 @@ import type {
   InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceAiAssistInput, ServiceAiAssistResult, ServiceInput, ServicePatch,
   ServiceSearchParams, ServiceSearchResult,
 } from "./types";
 
@@ -176,6 +176,30 @@ export const businessesRealApi = {
     httpGet(`${BASE}/${id}/services/${serviceId}/field-values`),
   updateServiceFieldValues: (id: number, serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
     httpPut(`${BASE}/${id}/services/${serviceId}/field-values`, { values }),
+  generateServiceDescription: (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> =>
+    httpPost("/admin/platform/services/ai-assist", input),
+
+  // Institution twins — same business_services tenant table, own /admin/platform/institutions prefix
+  // (ids collide with businesses, so they can't share the /businesses path — see listingBase above).
+  getInstitutionServices: (id: number): Promise<BusinessService[]> => httpGet(`/admin/platform/institutions/${id}/services`),
+  searchInstitutionServices: async (id: number, params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
+    const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/services/search${toServiceSearchQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  createInstitutionService: (id: number, input: ServiceInput): Promise<BusinessService> =>
+    httpPost(`/admin/platform/institutions/${id}/services`, input),
+  updateInstitutionService: (id: number, serviceId: string, patch: ServicePatch): Promise<BusinessService> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}`, patch),
+  setInstitutionServicePublished: (id: number, serviceId: string, is_published: boolean): Promise<BusinessService> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}`, { is_published }),
+  deleteInstitutionService: (id: number, serviceId: string): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}`),
+  getInstitutionServiceFieldValues: (id: number, serviceId: string): Promise<SchemaFieldValue[]> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/field-values`),
+  updateInstitutionServiceFieldValues: (id: number, serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
+    httpPut(`/admin/platform/institutions/${id}/services/${serviceId}/field-values`, { values }),
 
   getMembers: async (id: number, params: MemberListParams = {}): Promise<MemberListResult> => {
     const { data, meta } = await httpGet<{ data: Member[]; meta: { total: number } }>(`${BASE}/${id}/members${toMemberQuery(params)}`);

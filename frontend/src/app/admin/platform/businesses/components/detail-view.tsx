@@ -57,7 +57,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   useEffect(() => {
     if (fetchedCatalogRef.current) return;
     fetchedCatalogRef.current = true;
-    if (kind === "business" && categories.length === 0) dispatch(fetchBusinessCategories({}));
+    if (categories.length === 0) dispatch(fetchBusinessCategories({}));
     if (countries.length === 0) dispatch(fetchCountries());
   }, []);
 
@@ -81,9 +81,11 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   const canVerify = !(detail.status === "unverified" && detail.is_unclaimed);
   // The owner has claimed this listing — superadmin can view its details but not edit them.
   const readOnly = !detail.is_unclaimed;
-  // Pre-seeded businesses have no tenant schema yet, so their branches/services tabs read
-  // the source extraction job's campuses/courses instead — those rows aren't editable here.
-  const isPreSeeded = kind === "business" && business?.account_status === 0 && !!business.source_job_id;
+  // Pre-seeded businesses/institutions have no tenant schema yet, so their branches/services tabs
+  // read the source extraction job's campuses/courses instead — those rows aren't editable here.
+  const isPreSeeded = kind === "business"
+    ? business?.account_status === 0 && !!business.source_job_id
+    : institution?.account_status === 0 && !!institution?.source_job_id;
 
   const handleSave = async (patch: BusinessPatch | InstitutionPatch) => {
     setSaving(true);
@@ -208,7 +210,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
         </>
       ) : (
         <>
-          <InstitutionHeaderDialog open={headerOpen} onOpenChange={setHeaderOpen} institution={institution!} countries={countries} onSave={handleSave} saving={saving} />
+          <InstitutionHeaderDialog open={headerOpen} onOpenChange={setHeaderOpen} institution={institution!} categories={categories} countries={countries} onSave={handleSave} saving={saving} />
           <InstitutionOverviewDialog open={overviewOpen} onOpenChange={setOverviewOpen} institution={institution!} onSave={handleSave} saving={saving} />
         </>
       )}

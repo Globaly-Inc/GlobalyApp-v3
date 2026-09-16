@@ -3,7 +3,7 @@ import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
 import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import {
-  ServiceFieldValuesInputSchema, ServiceInputSchema, ServicePatchInputSchema, ServiceSearchQuerySchema,
+  ServiceAiAssistSchema, ServiceFieldValuesInputSchema, ServiceInputSchema, ServicePatchInputSchema, ServiceSearchQuerySchema,
 } from "../../superadmin/platform/business-services/schemas/business-services.schema.js";
 import * as service from "../../superadmin/platform/business-services/services/business-services.service.js";
 import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
@@ -101,6 +101,15 @@ export async function businessServicesRoutes(app: FastifyInstance) {
       ? await searchInstitutionCourses(sourceJobId, limit, offset, { search })
       : await service.searchServices(Number(req.business!.id), limit, offset, search);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.post("/services/ai-assist", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const input = ServiceAiAssistSchema.parse(req.body);
+    const result = await service.generateServiceDescription(input);
+    return reply.send(result);
   });
 
   app.post("/services", { preHandler: requireBusinessContext }, async (req, reply) => {

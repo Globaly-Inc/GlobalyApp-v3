@@ -9,9 +9,9 @@ import { ActivityTab } from "./tabs/activity-tab";
 import { BranchesTab } from "./tabs/branches-tab";
 import { ContactsTab } from "./tabs/contacts-tab";
 import { InstitutionBranchesTab } from "./tabs/institution-branches-tab";
-import { InstitutionCoursesTab } from "./tabs/institution-courses-tab";
 import { InstitutionMembersTab } from "./tabs/institution-members-tab";
 import { InstitutionPartnersTab } from "./tabs/institution-partners-tab";
+import { InstitutionServicesTab } from "./tabs/institution-services-tab";
 import { MembersTab } from "./tabs/members-tab";
 import { PartnersTab } from "./tabs/partners-tab";
 import { ServicesTab } from "./tabs/services-tab";
@@ -85,7 +85,11 @@ export function DetailTabs({
           ) : (
             <EmptyTabPlaceholder icon={Contact} title="No contacts yet" subtitle={NOT_AVAILABLE} />
           ))}
-          {tab === "services" && (kind === "business" ? <ServicesTab businessId={id} readOnly={readOnly || isPreSeeded} /> : <InstitutionCoursesTab institutionId={id} />)}
+          {tab === "services" && (kind === "business" ? (
+            <ServicesTab businessId={id} readOnly={readOnly || isPreSeeded} />
+          ) : (
+            <InstitutionServicesTab institutionId={id} readOnly={readOnly} />
+          ))}
           {tab === "activity" && (kind === "business" ? (
             <ActivityTab businessId={id} />
           ) : (

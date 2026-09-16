@@ -17,9 +17,9 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { fetchAccreditations, fetchLookup, fetchServiceCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
 import {
-  createService, fetchBusinessDetail, fetchServiceFieldValues, updateService,
-  updateServiceFieldValues,
-} from "../store/businesses-slice";
+  createInstitutionService, fetchInstitutionDetail, fetchInstitutionServiceFieldValues, updateInstitutionService,
+  updateInstitutionServiceFieldValues,
+} from "../store/institution-detail-slice";
 import { businessesApi } from "../apis";
 import { ApiError } from "@/lib/api/http";
 import type { SchemaFieldValue, ServiceInput } from "../apis/types";
@@ -28,13 +28,15 @@ type FormState = { name: string; service_category_id: number | null; description
 
 const EMPTY_FORM: FormState = { name: "", service_category_id: null, description: "" };
 
-export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId: number; serviceId?: string }>) {
+// Institution twin of service-form-view.tsx — same business_services tenant table and form
+// shape, only the owning entity (institution vs business) and its thunks/routes differ.
+export function InstitutionServiceFormView({ institutionId, serviceId }: Readonly<{ institutionId: number; serviceId?: string }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const isEdit = !!serviceId;
 
-  const business = useAppSelector((state) => state.platformBusinesses.detail);
-  const services = useAppSelector((state) => state.platformBusinesses.services.items);
+  const institution = useAppSelector((state) => state.platformInstitutionDetail.detail);
+  const services = useAppSelector((state) => state.platformInstitutionDetail.services.items);
   const serviceCategories = useAppSelector((state) => state.platformCategories.serviceCategoryOptions);
   const degreeLevels = useAppSelector((state) => state.platformCategories.degreeLevels.data);
   const areasOfStudy = useAppSelector((state) => state.platformCategories.areasOfStudy.data);
@@ -73,16 +75,16 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
     if (degreeLevels.length === 0) dispatch(fetchLookup({ kind: "degree-levels" }));
     if (areasOfStudy.length === 0) dispatch(fetchLookup({ kind: "areas-of-study" }));
     if (accreditations.length === 0) dispatch(fetchAccreditations({}));
-    if (business?.id !== businessId) dispatch(fetchBusinessDetail(businessId));
+    if (institution?.id !== institutionId) dispatch(fetchInstitutionDetail(institutionId));
     if (isEdit && serviceId) {
       if (!services.some((s) => s.id === serviceId)) {
-        businessesApi.getServices(businessId).then((all) => {
+        businessesApi.getInstitutionServices(institutionId).then((all) => {
           const found = all.find((s) => s.id === serviceId);
           if (found) setForm(toForm(found));
         });
       }
-      dispatch(fetchServiceFieldValues({ id: businessId, serviceId })).then((res) => {
-        if (fetchServiceFieldValues.fulfilled.match(res)) {
+      dispatch(fetchInstitutionServiceFieldValues({ id: institutionId, serviceId })).then((res) => {
+        if (fetchInstitutionServiceFieldValues.fulfilled.match(res)) {
           const map: Record<number, unknown> = {};
           for (const v of res.payload as SchemaFieldValue[]) map[v.schema_field_id] = v.value;
           setFieldValues(map);
@@ -110,7 +112,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   const COURSE_FIELDS = [
     { key: "degree_level", label: "Degree level" },
     { key: "area_of_study", label: "Area of study" },
-    // { key: "awarded_by", label: "Accreditation" },
+    { key: "awarded_by", label: "Awarded by" },
   ];
 
   const searchCourseField = async (key: string, query: string) => {
@@ -175,19 +177,19 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         description: form.description || null,
       };
       const result = isEdit && serviceId
-        ? await dispatch(updateService({ id: businessId, serviceId, patch: input })).unwrap()
-        : await dispatch(createService({ id: businessId, input })).unwrap();
+        ? await dispatch(updateInstitutionService({ id: institutionId, serviceId, patch: input })).unwrap()
+        : await dispatch(createInstitutionService({ id: institutionId, input })).unwrap();
 
       const values = Object.entries(fieldValues).map(([schema_field_id, value]) => ({
         schema_field_id: Number(schema_field_id),
         value,
       }));
       if (values.length > 0) {
-        await dispatch(updateServiceFieldValues({ id: businessId, serviceId: result.id, values })).unwrap();
+        await dispatch(updateInstitutionServiceFieldValues({ id: institutionId, serviceId: result.id, values })).unwrap();
       }
 
       toast.success(isEdit ? "Service updated" : "Service created");
-      router.push(`/admin/platform/businesses/${businessId}?tab=services`);
+      router.push(`/admin/platform/businesses/${institutionId}?kind=institution&tab=services`);
     } catch (e) {
       const err = e as ApiError;
       toast.error(isEdit ? "Couldn't update service" : "Couldn't create service", { description: err.message });
@@ -202,7 +204,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         <Button
           variant="ghost"
           className="h-10 cursor-pointer gap-1 px-1 text-muted-foreground"
-          onClick={() => router.push(`/admin/platform/businesses/${businessId}?tab=services`)}
+          onClick={() => router.push(`/admin/platform/businesses/${institutionId}?kind=institution&tab=services`)}
         >
           <ArrowLeft className="h-4 w-4" />
           Back to services
@@ -213,43 +215,47 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         </Button>
       </div>
 
-      <Card className="overflow-hidden">
-        <div className="relative h-32 bg-gradient-to-br from-primary/15 to-primary/5">
-          {business?.cover_url && (
+      <div className="overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
+        <div className="relative h-40 bg-linear-to-br from-primary to-primary/70 sm:h-48">
+          {institution?.cover_url && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={business.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <img src={institution.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
           )}
-          <Avatar className="absolute -bottom-10 left-6 size-20 rounded-xl border-4 border-background bg-white shadow-sm">
-            {business?.logo_url && (
-              <AvatarImage src={business.logo_url} alt="" className="rounded-xl object-contain p-1" />
+          <Avatar className="absolute -bottom-12 left-10 size-24 rounded-xl border-4 border-background bg-white shadow-lg">
+            {institution?.logo_url && (
+              <AvatarImage src={institution.logo_url} alt={institution.business_name} className="rounded-lg object-contain p-1" />
             )}
-            <AvatarFallback className="rounded-xl bg-background text-xl font-bold text-primary">
-              {(business?.business_name ?? "B").charAt(0).toUpperCase()}
+            <AvatarFallback className="rounded-lg bg-primary text-2xl font-medium text-primary-foreground">
+              {(institution?.business_name ?? "I").charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
         </div>
-        <CardContent className="flex flex-col gap-1.5 pt-12">
-          <Combobox
-            options={serviceCategories.map((c) => ({
-              value: String(c.id),
-              label: c.name,
-              icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
-            }))}
-            value={form.service_category_id ? String(form.service_category_id) : ""}
-            onChange={(v) => set("service_category_id", v ? Number(v) : null)}
-            placeholder="Select category"
-            searchPlaceholder="Search categories..."
-            className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
-          />
-          <Input
-            value={form.name}
-            onChange={(e) => set("name", e.target.value)}
-            placeholder="Untitled service"
-            className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
-          />
-          <p className="text-sm text-muted-foreground">{business?.business_name ?? "Business"}</p>
+        <CardContent>
+          <div className="ml-8 flex items-start gap-4 pt-16">
+            <div className="m-2 flex flex-1 flex-col gap-1.5">
+              <Combobox
+                options={serviceCategories.map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                  icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
+                }))}
+                value={form.service_category_id ? String(form.service_category_id) : ""}
+                onChange={(v) => set("service_category_id", v ? Number(v) : null)}
+                placeholder="Select category"
+                searchPlaceholder="Search categories..."
+                className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
+              />
+              <Input
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="Untitled service"
+                className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
+              />
+              <p className="text-sm text-muted-foreground">{institution?.business_name ?? "Institution"}</p>
+            </div>
+          </div>
         </CardContent>
-      </Card>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="gap-3 lg:col-span-2">
