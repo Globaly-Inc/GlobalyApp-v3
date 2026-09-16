@@ -29,6 +29,24 @@ export type ActorFields = {
   updated_by_email?: string | null;
 };
 
+/** LLM spend for one job. Tokens are the record; cost_usd is null whenever any model in the
+ *  mix has no configured price — the backend never invents a number. */
+export type JobLlmUsage = {
+  calls: number;
+  cache_hits: number;
+  prompt_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null;
+  by_model: Array<{
+    model: string;
+    calls: number;
+    cache_hits: number;
+    prompt_tokens: number;
+    output_tokens: number;
+    cost_usd: number | null;
+  }>;
+};
+
 export type ExtractionJob = ActorFields & {
   id: string;
   institution_name: string | null;
@@ -55,6 +73,13 @@ export type ExtractionJob = ActorFields & {
   supporting_documents?: SupportingDoc[] | null;
   error_message?: string | null;
   processing_heartbeat_at?: string | null;
+  /** List rows carry flat totals (LEFT JOIN, so null when a job has made no calls yet). */
+  usage_calls?: number | string | null;
+  usage_cache_hits?: number | string | null;
+  usage_prompt_tokens?: number | string | null;
+  usage_output_tokens?: number | string | null;
+  /** The job detail carries the per-model breakdown. */
+  usage?: JobLlmUsage;
   created_at: string;
   updated_at: string;
 };

@@ -8,9 +8,9 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeMarkdown } from "../lib/scraper.js";
+import { getPage } from "../lib/page-store.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
-import { extractJson } from "../lib/llm-client.js";
+import { extractJson, setLlmContext } from "../lib/llm-client.js";
 import { verificationPrompt, VERIFICATION_SYSTEM } from "../lib/extraction-prompts.js";
 import { loadLookupLists, lookupListsHealth, categoryForServiceSlug } from "../lib/lookup-catalog.js";
 import { jobExcludedLevels } from "../lib/staging-writer.js";
@@ -156,6 +156,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
     return;
   }
   logger.info("Starting verification", { jobId });
+  setLlmContext({ jobId, kind: "verify" });
 
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
   if (!job) { logger.warn("Job not found", { jobId }); return; }
@@ -189,7 +190,8 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       if (!current || current.stop_requested || current.status === "paused") return;
 
       try {
-        const page = await scrapeMarkdown(course.source_url, { onlyMainContent: true });
+        // Verification compares against the LIVE page by definition — fresh, never a snapshot.
+        const page = await getPage(course.source_url, { onlyMainContent: true, fresh: true });
 
         if (page.blocked || page.markdown.length < 50) {
           for (const field of FIELDS_TO_VERIFY) {

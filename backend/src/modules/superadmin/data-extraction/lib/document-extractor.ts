@@ -10,6 +10,7 @@ const pdfParse = createRequire(import.meta.url)("pdf-parse") as (buf: Buffer) =>
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { safeFetch } from "../../../../shared/public-url.js";
+import { recordUsage } from "./llm-client.js";
 
 const logger = createChildLogger("document-extractor");
 
@@ -135,6 +136,9 @@ async function extractPdfWithGemini(
       },
     ]);
 
+    // Vision is the most expensive call in the pipeline and, until the page store lands,
+    // the one most often repeated for the same PDF — so it is metered under its own kind.
+    recordUsage("gemini-2.0-flash", result.response.usageMetadata, { kind: "pdf_vision" });
     const content = result.response.text();
     if (!content || content.trim().length < 20) return null;
     return truncate(content, maxChars);
