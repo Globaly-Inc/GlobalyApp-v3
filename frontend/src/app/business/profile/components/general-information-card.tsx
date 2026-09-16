@@ -1,22 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Building2, Loader2, Pencil, Save, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Combobox } from "@/components/combobox";
+import { Combobox, type ComboboxOption } from "@/components/combobox";
+import { DynamicIcon } from "@/components/dynamic-icon";
 import { FieldError } from "@/components/field-error";
 import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
 import { useAppDispatch } from "@/lib/hooks";
 import { businessApi } from "@/app/business/apis";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
-import type { BusinessProfile } from "@/app/business/apis/types";
+import type { BusinessCategoryOption, BusinessProfile } from "@/app/business/apis/types";
 import { HEADER_PENCIL, INSTITUTION_TYPE_OPTIONS } from "../const";
 import { businessTypeLabel } from "../utils";
 import { PrivacyBadge } from "@/components/privacy-badge";
+
+/** The API sends the icon as a lucide icon NAME (e.g. "Building2"); render it, don't print it. */
+const toCategoryOptions = (cats: BusinessCategoryOption[]): ComboboxOption[] =>
+  cats.map((c) => ({
+    value: c.value,
+    label: c.label,
+    description: c.description ?? undefined,
+    icon: <DynamicIcon name={c.icon} fallback="Building2" className="h-4 w-4" />,
+  }));
 
 /**
  * V1's General Information section: the pencil turns the card body into the form in place rather
@@ -40,16 +50,33 @@ export function GeneralInformationCard({
   const [name, setName] = useState(profile.business_name);
   const [description, setDescription] = useState(profile.description ?? "");
   const [institutionType, setInstitutionType] = useState(profile.institution_type ?? "");
-  const [nameError, setNameError] = useState<string | undefined>();
+  const [categoryId, setCategoryId] = useState(profile.business_category_id ? String(profile.business_category_id) : "");
+  const [categoryOptions, setCategoryOptions] = useState<ComboboxOption[]>([]);
+  const [errors, setErrors] = useState<{ name?: string; categoryId?: string }>({});
   const [saving, setSaving] = useState(false);
   const [improving, setImproving] = useState(false);
+  const categorySearchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const loadCategories = (search?: string) => {
+    businessApi.getBusinessCategories(search).then((cats) => setCategoryOptions(toCategoryOptions(cats))).catch(() => {});
+  };
 
   const startEditing = () => {
     setName(profile.business_name);
     setDescription(profile.description ?? "");
     setInstitutionType(profile.institution_type ?? "");
-    setNameError(undefined);
+    setCategoryId(profile.business_category_id ? String(profile.business_category_id) : "");
+    setErrors({});
     setEditing(true);
+    // Fetched from the click rather than an effect: the list is only ever needed once the form is
+    // open, and this keeps the card off the network until then.
+    if (!isInstitution) loadCategories();
+  };
+
+  // The endpoint pages at 10, so the picker searches server-side instead of filtering a stale page.
+  const handleCategoryQueryChange = (query: string) => {
+    clearTimeout(categorySearchTimerRef.current);
+    categorySearchTimerRef.current = setTimeout(() => loadCategories(query), 300);
   };
 
   const improveWithAi = async () => {
@@ -73,18 +100,25 @@ export function GeneralInformationCard({
 
   const save = async () => {
     const trimmed = name.trim();
-    if (!trimmed) {
-      setNameError("This field is required");
-      return;
-    }
+    const next: typeof errors = {};
+    if (!trimmed) next.name = "This field is required";
+    // Required for a business: the category drives the header badge and how the listing is
+    // classified in search, so an empty one is never a deliberate state.
+    if (!isInstitution && !categoryId) next.categoryId = "This field is required";
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+
     setSaving(true);
     try {
       await dispatch(updateMyProfile({
         business_name: trimmed,
         description: description.trim() || null,
-        // Only sent for an institution — `institution_type` is not a column on `businesses`, and
-        // the business endpoint's schema is `.strict()`.
-        ...(isInstitution ? { institution_type: institutionType || null } : {}),
+        // Each side gets only its own classification column: `institution_type` doesn't exist on
+        // `businesses`, `business_category_id` doesn't exist on `institutions`, and both endpoints
+        // parse with `.strict()`.
+        ...(isInstitution
+          ? { institution_type: institutionType || null }
+          : { business_category_id: Number(categoryId) }),
       })).unwrap();
       toast.success("General information updated");
       setEditing(false);
@@ -127,15 +161,15 @@ export function GeneralInformationCard({
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
-                if (nameError) setNameError(undefined);
+                if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
               }}
-              aria-invalid={!!nameError}
+              aria-invalid={!!errors.name}
               required
             />
-            <FieldError message={nameError} />
+            <FieldError message={errors.name} />
           </div>
 
-          {isInstitution && (
+          {isInstitution ? (
             <div className="flex flex-col gap-2">
               <Label>Institution Type</Label>
               <Combobox
@@ -148,6 +182,29 @@ export function GeneralInformationCard({
               />
               <p className="text-xs text-muted-foreground">
                 Ownership sector. Shown on your profile badge and used by the institutions search filter.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <Label>
+                Business Category <span className="text-destructive">*</span>
+              </Label>
+              <Combobox
+                options={categoryOptions}
+                value={categoryId}
+                onChange={(v) => {
+                  setCategoryId(v);
+                  if (errors.categoryId) setErrors((prev) => ({ ...prev, categoryId: undefined }));
+                }}
+                onQueryChange={handleCategoryQueryChange}
+                placeholder="Select business category"
+                searchPlaceholder="Search categories..."
+                className="h-10 w-full"
+                aria-invalid={!!errors.categoryId}
+              />
+              <FieldError message={errors.categoryId} />
+              <p className="text-xs text-muted-foreground">
+                Shown on your profile badge and used to classify this listing in search.
               </p>
             </div>
           )}

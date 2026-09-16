@@ -38,14 +38,18 @@ export function ProfileLocationsSection({
   const dispatch = useAppDispatch();
   const { isPublic, toggle, canToggle } = useSectionVisibility(profile);
   const canEditVisibility = !readOnly && canToggle;
-  const { items: branchRows } = useAppSelector((state) => state.businessProfileDetail.branches);
-  const branches = hasBranches ? branchRows : [];
+  const { items: branchRows, status: branchStatus } = useAppSelector((state) => state.businessProfileDetail.branches);
+  // The slice is keyed to nothing, so a list fetched for another business would otherwise render
+  // here — with edit pencils on rows this profile doesn't own — until the new request lands.
+  const branches = hasBranches && branchStatus !== "loading" ? branchRows : [];
 
-  // Strict Mode double-invokes effects; without the guard this fires the list request twice.
-  const fetchedRef = useRef(false);
+  // Keyed to the profile, not a bare boolean: the guard is there because Strict Mode double-invokes
+  // effects, but this component keeps its instance when the router moves between two profile ids,
+  // and a `true` that never resets would pin the card to whichever business mounted first.
+  const fetchedForRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!hasBranches || fetchedRef.current) return;
-    fetchedRef.current = true;
+    if (!hasBranches || fetchedForRef.current === profile.id) return;
+    fetchedForRef.current = profile.id;
     dispatch(fetchBranches({ id: profile.id, params: { limit: BRANCH_LIMIT } }));
   }, [dispatch, hasBranches, profile.id]);
 

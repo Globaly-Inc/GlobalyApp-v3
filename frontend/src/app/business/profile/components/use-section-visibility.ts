@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
-import { useAppDispatch } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector, useAppStore } from "@/lib/hooks";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessProfile } from "@/app/business/apis/types";
 
@@ -17,11 +17,19 @@ import type { BusinessProfile } from "@/app/business/apis/types";
  */
 export function useSectionVisibility(profile: BusinessProfile) {
   const dispatch = useAppDispatch();
+  const store = useAppStore();
+  // Every card mounts its own copy of this hook, so the guard against concurrent writes has to be
+  // shared state rather than a local flag — otherwise toggling two different sections races.
+  const saving = useAppSelector((s) => s.businessOnboarding.status === "saving");
 
   const isPublic = (section: string) => profile.public_visibility?.[section] !== false;
 
   const toggle = async (section: string) => {
-    const next = { ...(profile.public_visibility ?? {}), [section]: !isPublic(section) };
+    // The patch replaces `public_visibility` wholesale, so it has to be built on the newest map
+    // the store holds — not the one captured when this card last rendered, which a save landing
+    // mid-click would already have superseded.
+    const current = store.getState().businessOnboarding.profile?.public_visibility ?? {};
+    const next = { ...current, [section]: !isPublic(section) };
     try {
       await dispatch(updateMyProfile({ public_visibility: next })).unwrap();
     } catch (e) {
@@ -29,5 +37,12 @@ export function useSectionVisibility(profile: BusinessProfile) {
     }
   };
 
-  return { isPublic, toggle, canToggle: profile.public_visibility !== null };
+  return {
+    isPublic,
+    toggle,
+    // Held shut while any profile save is in flight: a second toggle started before the first
+    // replied would clone a map that is about to be replaced, and the later write would silently
+    // drop the earlier choice.
+    canToggle: profile.public_visibility !== null && !saving,
+  };
 }
